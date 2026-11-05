@@ -154,6 +154,7 @@ pub struct ControlEndpoint {
     pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
     pub(crate) profile_generation: u64,
     pub(crate) profile_status: Option<rt_runtime::profiling::Status>,
+    pub(crate) profile_layout: crate::profiling::Layouts,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
@@ -1177,6 +1178,8 @@ impl Endpoint for ControlEndpoint {
                 self.connected = true;
                 self.telemetry_frame = None;
                 self.profile_status = None;
+                self.profile_generation = 0;
+                self.profile_layout.rewind();
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
@@ -1215,6 +1218,8 @@ impl Endpoint for ControlEndpoint {
             ClientMessage::Resync => {
                 if self.connected {
                     self.resync = Some(Resync::default());
+                    self.profile_generation = 0;
+                    self.profile_layout.rewind();
                 }
             }
             ClientMessage::Bulk(read) => self.deliver_bulk(read, out),

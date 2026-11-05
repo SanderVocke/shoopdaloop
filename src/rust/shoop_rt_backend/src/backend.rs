@@ -48,6 +48,64 @@ fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    pub(crate) fn update_profiling_groups(&mut self) {
+        use shoop_rt_protocol::profiling::Group;
+        let view = self.profiling.view();
+        let Some(topology) = view.topology else {
+            return;
+        };
+        if self
+            .profiling_groups
+            .0
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, &topology))
+            && self.profiling_groups.2
+        {
+            return;
+        }
+        let groups: alloc::collections::BTreeSet<_> = topology
+            .nodes
+            .iter()
+            .filter(|n| n.group != 0)
+            .map(|n| (n.group, n.slot, n.owner_generation))
+            .collect();
+        let expected = groups.len();
+        let groups: Vec<_> = groups
+            .into_iter()
+            .filter_map(|(kind, slot, generation)| {
+                let entity = match kind {
+                    1 => self.mirror.tracks.iter().find_map(|(id, t)| {
+                        (t.strip.0.index == slot
+                            && t.strip.0.generation == generation
+                            && t.confirmed
+                            && !t.removing)
+                            .then_some(id.raw())
+                    }),
+                    2 => self.mirror.loops.iter().find_map(|(id, l)| {
+                        (l.slot.0.index == slot && l.slot.0.generation == generation && l.confirmed)
+                            .then_some(id.raw())
+                    }),
+                    3 => self.mirror.buses.iter().find_map(|(id, b)| {
+                        (b.slot.0.index == slot
+                            && b.slot.0.generation == generation
+                            && b.confirmed
+                            && !b.removing)
+                            .then_some(id.raw())
+                    }),
+                    _ => None,
+                }?;
+                Some(Group {
+                    kind,
+                    slot,
+                    entity,
+                    name: Default::default(),
+                })
+            })
+            .collect();
+        let complete = groups.len() == expected;
+        self.profiling_groups = (Some(topology), groups.into(), complete);
+    }
+
     fn driver_state(&self) -> BackendDriverState {
         match (&self.link, self.driver) {
             (Link::Disconnected(_), _) => BackendDriverState::Failed,
@@ -820,6 +878,15 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.persistence_progress()
     }
 
+    fn inspect_profiling(
+        &mut self,
+        request: shoop_app_api::profiling_data::CaptureRequest,
+    ) -> Result<()> {
+        self.ready()?;
+        self.profiling.select(request);
+        Ok(())
+    }
+
     fn set_profiling(&mut self, enabled: bool) -> Result<()> {
         self.ready()?;
         if !self
@@ -951,6 +1018,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             output_peak: self.status.output_peak,
             ..Default::default()
         };
+        if !self.profiling_groups.2 {
+            self.update_profiling_groups();
+        }
         let mirror = &mut self.mirror;
         let mut tracks = alloc::collections::BTreeMap::new();
         for (id, track) in mirror.tracks.iter_mut() {
@@ -982,8 +1052,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             confirmed_links: mirror.routes.clone(),
             failures: core::mem::take(&mut self.mixer_failures),
         };
+        let mut profiling = self.profiling.view();
+        if profiling
+            .topology
+            .as_ref()
+            .zip(self.profiling_groups.0.as_ref())
+            .is_some_and(|(a, b)| Arc::ptr_eq(a, b))
+        {
+            profiling.groups = self.profiling_groups.1.clone();
+        }
         Ok(BackendSnapshot {
-            profiling: self.profiling.view(),
+            profiling,
             status,
             audio_drivers: self.driver_runtime_state(),
             tracks,
@@ -999,5 +1078,79 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn wait_idle(&mut self) {
         self.wait_until_idle();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_rt_engine::{testing::OfflineRender, EngineDescription, HostPorts, Segment};
+    use shoop_wasm_test_support::shoop_test;
+
+    struct Clock(OfflineRender);
+    impl EngineClock for Clock {
+        fn advance(&mut self, _: Duration) {}
+        fn wait(&mut self) -> bool {
+            self.0.run(16, |_, _| 0.).unwrap();
+            true
+        }
+    }
+
+    #[shoop_test]
+    fn topology_owners_complete_after_a_delayed_creation_acknowledgement() {
+        let description = EngineDescription {
+            quantum: 1,
+            sample_rate: 1000,
+            max_frames: 16,
+            host: HostPorts::numbered(2, 2, 0),
+            segments: alloc::vec![Segment {
+                strips: 1,
+                loops: 1
+            }],
+            strip_channels: 2,
+            master_channels: 2,
+            resource_pages: 256,
+            page_bytes: 256,
+            ..Default::default()
+        };
+        let (render, client) = OfflineRender::new(&description).unwrap();
+        let mut backend = RtBackend::connect(client, Clock(render)).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "Delayed".into(),
+                audio_channels: 2,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend.set_profiling(true).unwrap();
+        backend.wait_idle();
+        for _ in 0..8 {
+            backend.pump();
+        }
+        let id = created.loops[0];
+        backend.profiling_groups = Default::default();
+        backend.mirror.loops.get_mut(&id).unwrap().confirmed = false;
+        backend.update_profiling_groups();
+        assert!(!backend.profiling_groups.2);
+        assert!(!backend
+            .profiling_groups
+            .1
+            .iter()
+            .any(|g| g.kind == 2 && g.entity == id.raw()));
+        backend.mirror.loops.get_mut(&id).unwrap().confirmed = true;
+        let view = backend.poll().unwrap().profiling;
+        assert!(backend.profiling_groups.2);
+        assert!(view
+            .groups
+            .iter()
+            .any(|g| g.kind == 2 && g.entity == id.raw()));
+        backend.profiling_groups = Default::default();
+        backend.mirror.loops.get_mut(&id).unwrap().slot.0.generation += 1;
+        let view = backend.poll().unwrap().profiling;
+        assert!(!view
+            .groups
+            .iter()
+            .any(|g| g.kind == 2 && g.entity == id.raw()));
     }
 }

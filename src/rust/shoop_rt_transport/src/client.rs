@@ -161,7 +161,8 @@ impl<C: Carrier> ProtocolClient<C> {
             | EngineMessage::State(_)
             | EngineMessage::Profiling(_)
             | EngineMessage::ProfilingStatus(_)
-            | EngineMessage::ProfilingNode { .. } => {}
+            | EngineMessage::ProfilingNode { .. }
+            | EngineMessage::ProfilingGraph { .. } => {}
         }
         Some(message)
     }

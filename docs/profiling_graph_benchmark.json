@@ -1,0 +1,4510 @@
+{
+  "baseline": "a192b0ce77325bc8bb55b7b749e8d68b324f0a43",
+  "method": "release; two alternating paired runs; 256 callbacks/run; offline synthetic workload; each child pinned to one available CPU; shared VM, not device acceptance",
+  "cases": [
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 398819.5,
+        "p99_ns": 734525,
+        "max_ns": 2449283,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3531.265625,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 387297.25,
+        "p99_ns": 594725,
+        "max_ns": 652812,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3040.8203125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.889088923686023
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 609286.25,
+        "p99_ns": 903348,
+        "max_ns": 1854138,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 102402.103515625,
+        "wire_bytes": 42299040,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 773
+      },
+      "graph": {
+        "median_ns": 581081.25,
+        "p99_ns": 906613,
+        "max_ns": 1512094,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 188162.25,
+        "wire_bytes": 46968004,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "median_delta_percent": -4.629187020058301
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 436281.0,
+        "p99_ns": 777880,
+        "max_ns": 1329649,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1474.978515625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 441954.5,
+        "p99_ns": 779322,
+        "max_ns": 1042598,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1065.21484375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": 1.3004233510054197
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 650087.5,
+        "p99_ns": 1090670,
+        "max_ns": 3414283,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 113000.501953125,
+        "wire_bytes": 49511104,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "graph": {
+        "median_ns": 629959.5,
+        "p99_ns": 1085292,
+        "max_ns": 1895019,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 207414.30859375,
+        "wire_bytes": 51129424,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "median_delta_percent": -3.096198588651533
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 152261.5,
+        "p99_ns": 922267,
+        "max_ns": 1059142,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 697.873046875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 158385.75,
+        "p99_ns": 942407,
+        "max_ns": 2498957,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 727.552734375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": 4.022192084013354
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 223856.75,
+        "p99_ns": 1409710,
+        "max_ns": 4128788,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 68977.578125,
+        "wire_bytes": 30876652,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 512
+      },
+      "graph": {
+        "median_ns": 195296.0,
+        "p99_ns": 1230600,
+        "max_ns": 1356760,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 122155.958984375,
+        "wire_bytes": 31371404,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 512
+      },
+      "median_delta_percent": -12.75849399225174
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 568925.5,
+        "p99_ns": 929878,
+        "max_ns": 2561602,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1974.7734375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 557427.75,
+        "p99_ns": 818861,
+        "max_ns": 2683325,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1772.9609375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.020958807436124
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 776895.75,
+        "p99_ns": 1501278,
+        "max_ns": 2377055,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 126539.79296875,
+        "wire_bytes": 49511104,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "graph": {
+        "median_ns": 769276.75,
+        "p99_ns": 1386535,
+        "max_ns": 3064218,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 219018.083984375,
+        "wire_bytes": 51129424,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "median_delta_percent": -0.9806978606846539
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 401045.5,
+        "p99_ns": 603417,
+        "max_ns": 1178091,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 818.94921875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 382971.0,
+        "p99_ns": 583858,
+        "max_ns": 771930,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 812.06640625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.506845233271539
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 568116.75,
+        "p99_ns": 864210,
+        "max_ns": 1211051,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 116790.689453125,
+        "wire_bytes": 49511104,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "graph": {
+        "median_ns": 546066.0,
+        "p99_ns": 818832,
+        "max_ns": 2181701,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 197292.78515625,
+        "wire_bytes": 51129424,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 257
+      },
+      "median_delta_percent": -3.881376495236233
+    },
+    {
+      "strips": 2,
+      "quantum": 1,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 627115.25,
+        "p99_ns": 1272804,
+        "max_ns": 2136703,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 9082.109375,
+        "wire_bytes": 1955308,
+        "dropped_batches": 129536,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 582173.0,
+        "p99_ns": 1008937,
+        "max_ns": 1575720,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 13273.7265625,
+        "wire_bytes": 2019196,
+        "dropped_batches": 129536,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "median_delta_percent": -7.166505678182755
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 33905.5,
+        "p99_ns": 55924,
+        "max_ns": 82864,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1573.828125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 32789.5,
+        "p99_ns": 51969,
+        "max_ns": 136386,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1358.310546875,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.29150137883234
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 44163.75,
+        "p99_ns": 110727,
+        "max_ns": 188293,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8405.609375,
+        "wire_bytes": 2941760,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 43305.25,
+        "p99_ns": 91037,
+        "max_ns": 182154,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 14917.216796875,
+        "wire_bytes": 3191896,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "median_delta_percent": -1.9439019557895287
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 59992.5,
+        "p99_ns": 148183,
+        "max_ns": 638791,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 585.986328125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 60466.0,
+        "p99_ns": 200251,
+        "max_ns": 492511,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 639.04296875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": 0.7892653248322778
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 72694.0,
+        "p99_ns": 180552,
+        "max_ns": 266431,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 11624.931640625,
+        "wire_bytes": 3983616,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 74872.5,
+        "p99_ns": 172219,
+        "max_ns": 234503,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 20354.552734375,
+        "wire_bytes": 4118352,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "median_delta_percent": 2.9968085399070032
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 11560.5,
+        "p99_ns": 81783,
+        "max_ns": 195844,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 481.794921875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 15115.0,
+        "p99_ns": 78939,
+        "max_ns": 136716,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 494.65234375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": 30.746940011245183
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 22977.25,
+        "p99_ns": 147832,
+        "max_ns": 323407,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8875.68359375,
+        "wire_bytes": 2763756,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 33
+      },
+      "graph": {
+        "median_ns": 19401.5,
+        "p99_ns": 153000,
+        "max_ns": 203877,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 14237.578125,
+        "wire_bytes": 2859324,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 33
+      },
+      "median_delta_percent": -15.562132108933834
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 48836.0,
+        "p99_ns": 82164,
+        "max_ns": 221302,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1003.779296875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 47902.0,
+        "p99_ns": 89094,
+        "max_ns": 190547,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 930.90234375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -1.9125235482021496
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 60591.5,
+        "p99_ns": 122614,
+        "max_ns": 327843,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 12130.619140625,
+        "wire_bytes": 3983616,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 60811.75,
+        "p99_ns": 115153,
+        "max_ns": 346200,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 24769.619140625,
+        "wire_bytes": 4118352,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "median_delta_percent": 0.36349983083436843
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 33422.75,
+        "p99_ns": 108013,
+        "max_ns": 166630,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 545.310546875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 32839.25,
+        "p99_ns": 90356,
+        "max_ns": 174903,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 617.076171875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -1.7458168463097778
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 45073.0,
+        "p99_ns": 78468,
+        "max_ns": 161273,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 10626.251953125,
+        "wire_bytes": 3983616,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 45488.0,
+        "p99_ns": 106510,
+        "max_ns": 145308,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 19634.779296875,
+        "wire_bytes": 4118352,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "median_delta_percent": 0.920728595833431
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 44108.75,
+        "p99_ns": 96635,
+        "max_ns": 171518,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5254.1640625,
+        "wire_bytes": 1622124,
+        "dropped_batches": 6656,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 43573.0,
+        "p99_ns": 90386,
+        "max_ns": 209756,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8476.841796875,
+        "wire_bytes": 1676988,
+        "dropped_batches": 6656,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "median_delta_percent": -1.2146116133420204
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 20358.25,
+        "p99_ns": 66139,
+        "max_ns": 145428,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1339.3046875,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 19439.0,
+        "p99_ns": 50946,
+        "max_ns": 174142,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1365.458984375,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.515368462416958
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 26249.25,
+        "p99_ns": 92650,
+        "max_ns": 891751,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5799.998046875,
+        "wire_bytes": 1528640,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 26162.0,
+        "p99_ns": 53841,
+        "max_ns": 126160,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 10259.37109375,
+        "wire_bytes": 1732696,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "median_delta_percent": -0.33239044925093
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 34697.0,
+        "p99_ns": 107982,
+        "max_ns": 159680,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 542.787109375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 33916.0,
+        "p99_ns": 87813,
+        "max_ns": 146911,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 549.595703125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.2509150647029963
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 41269.75,
+        "p99_ns": 105609,
+        "max_ns": 162555,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8364.8828125,
+        "wire_bytes": 2435840,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 41572.5,
+        "p99_ns": 92329,
+        "max_ns": 134953,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 12764.099609375,
+        "wire_bytes": 2521040,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "median_delta_percent": 0.7335881608199646
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 7390.75,
+        "p99_ns": 51878,
+        "max_ns": 126270,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 575.62890625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 7040.75,
+        "p99_ns": 37857,
+        "max_ns": 122404,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 467.10546875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.735649291343913
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 10560.75,
+        "p99_ns": 88383,
+        "max_ns": 169204,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 6148.39453125,
+        "wire_bytes": 1682412,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 12864.5,
+        "p99_ns": 72980,
+        "max_ns": 143155,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 9686.640625,
+        "wire_bytes": 1743396,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 17
+      },
+      "median_delta_percent": 21.814265085339592
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 30040.5,
+        "p99_ns": 79119,
+        "max_ns": 129805,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 982.33984375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 29343.75,
+        "p99_ns": 62524,
+        "max_ns": 143265,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 916.93359375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.31936885204973
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 37473.75,
+        "p99_ns": 110175,
+        "max_ns": 385529,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 9561.87890625,
+        "wire_bytes": 2435840,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 35811.5,
+        "p99_ns": 99901,
+        "max_ns": 252209,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 13675.703125,
+        "wire_bytes": 2521040,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "median_delta_percent": -4.435771706861469
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 20060.5,
+        "p99_ns": 63395,
+        "max_ns": 132800,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 511.505859375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 19414.25,
+        "p99_ns": 60521,
+        "max_ns": 109916,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 616.361328125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.2215049475337154
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 26497.5,
+        "p99_ns": 96485,
+        "max_ns": 233782,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8247.220703125,
+        "wire_bytes": 2435840,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 26387.5,
+        "p99_ns": 56535,
+        "max_ns": 211698,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 13613.3203125,
+        "wire_bytes": 2521040,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "median_delta_percent": -0.41513350316068065
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 25511.0,
+        "p99_ns": 77497,
+        "max_ns": 183266,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4895.794921875,
+        "wire_bytes": 1557932,
+        "dropped_batches": 2560,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 25628.25,
+        "p99_ns": 103796,
+        "max_ns": 256476,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 9057.580078125,
+        "wire_bytes": 1612412,
+        "dropped_batches": 2560,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "median_delta_percent": 0.4596056603034082
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 13740.5,
+        "p99_ns": 29544,
+        "max_ns": 106079,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1215.908203125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 13060.0,
+        "p99_ns": 27992,
+        "max_ns": 65849,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1241.111328125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.952512645100249
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 18052.25,
+        "p99_ns": 32539,
+        "max_ns": 112739,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4123.697265625,
+        "wire_bytes": 822080,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 17679.25,
+        "p99_ns": 35113,
+        "max_ns": 55874,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 7105.966796875,
+        "wire_bytes": 1003096,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "median_delta_percent": -2.066224431857522
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 22068.0,
+        "p99_ns": 61943,
+        "max_ns": 93751,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 500.603515625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 22148.5,
+        "p99_ns": 37176,
+        "max_ns": 100802,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 500.04296875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": 0.36478158419430695
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 26685.5,
+        "p99_ns": 60932,
+        "max_ns": 113671,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5209.888671875,
+        "wire_bytes": 1354784,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 26499.75,
+        "p99_ns": 58228,
+        "max_ns": 110697,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8031.970703125,
+        "wire_bytes": 1405088,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "median_delta_percent": -0.6960708999269261
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 6026.5,
+        "p99_ns": 29675,
+        "max_ns": 59159,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 453.642578125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 5438.5,
+        "p99_ns": 25819,
+        "max_ns": 77777,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 468.796875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -9.756906994109348
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 8357.5,
+        "p99_ns": 39089,
+        "max_ns": 51808,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4381.822265625,
+        "wire_bytes": 901516,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 6519.75,
+        "p99_ns": 47141,
+        "max_ns": 87361,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 6049.05859375,
+        "wire_bytes": 937036,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 9
+      },
+      "median_delta_percent": -21.989231229434637
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 20786.5,
+        "p99_ns": 53140,
+        "max_ns": 567844,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 828.80859375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 19742.5,
+        "p99_ns": 36384,
+        "max_ns": 60952,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 869.107421875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -5.022490558776127
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 24339.0,
+        "p99_ns": 43075,
+        "max_ns": 59510,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5432.4453125,
+        "wire_bytes": 1354784,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 22917.5,
+        "p99_ns": 40882,
+        "max_ns": 79139,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8126.537109375,
+        "wire_bytes": 1405088,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "median_delta_percent": -5.840420723940998
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 13718.25,
+        "p99_ns": 28092,
+        "max_ns": 38588,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 487.45703125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 13330.0,
+        "p99_ns": 30266,
+        "max_ns": 110527,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 525.044921875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.8301714868879
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 18177.5,
+        "p99_ns": 35794,
+        "max_ns": 77216,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5439.904296875,
+        "wire_bytes": 1354784,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 17524.0,
+        "p99_ns": 45108,
+        "max_ns": 95674,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 7565.912109375,
+        "wire_bytes": 1405088,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "median_delta_percent": -3.5951038371613286
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 17814.0,
+        "p99_ns": 33861,
+        "max_ns": 100030,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3974.123046875,
+        "wire_bytes": 1189772,
+        "dropped_batches": 512,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 17496.25,
+        "p99_ns": 35474,
+        "max_ns": 93370,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 6114.35546875,
+        "wire_bytes": 1233932,
+        "dropped_batches": 512,
+        "storage_bytes": 3302784,
+        "high_water": 1024
+      },
+      "median_delta_percent": -1.7837094420119048
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 10525.5,
+        "p99_ns": 38348,
+        "max_ns": 241984,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1251.224609375,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 9932.5,
+        "p99_ns": 38868,
+        "max_ns": 196856,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1339.34375,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -5.633936630088831
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 13249.75,
+        "p99_ns": 78649,
+        "max_ns": 158929,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4091.369140625,
+        "wire_bytes": 468800,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 12456.25,
+        "p99_ns": 64737,
+        "max_ns": 495385,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 6180.72265625,
+        "wire_bytes": 638296,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "median_delta_percent": -5.9887922413630506
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 15974.0,
+        "p99_ns": 43766,
+        "max_ns": 81552,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 605.236328125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 15538.5,
+        "p99_ns": 41322,
+        "max_ns": 225149,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 505.080078125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.726305246024785
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 18720.75,
+        "p99_ns": 71638,
+        "max_ns": 2120549,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3822.884765625,
+        "wire_bytes": 738016,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 18039.5,
+        "p99_ns": 45588,
+        "max_ns": 138569,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5183.947265625,
+        "wire_bytes": 768208,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "median_delta_percent": -3.639010189228531
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 5846.5,
+        "p99_ns": 37156,
+        "max_ns": 96255,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 434.5078125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 5573.0,
+        "p99_ns": 25669,
+        "max_ns": 124317,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 458.33984375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.6780124861028005
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 6912.75,
+        "p99_ns": 39800,
+        "max_ns": 123325,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3518.271484375,
+        "wire_bytes": 510700,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 6725.0,
+        "p99_ns": 45618,
+        "max_ns": 154903,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4122.400390625,
+        "wire_bytes": 533476,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 5
+      },
+      "median_delta_percent": -2.715995804853355
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 15813.5,
+        "p99_ns": 27712,
+        "max_ns": 76024,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 808.8125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 14789.5,
+        "p99_ns": 51778,
+        "max_ns": 132379,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 832.822265625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -6.47547981155342
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 17684.5,
+        "p99_ns": 37075,
+        "max_ns": 63545,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3984.01171875,
+        "wire_bytes": 738016,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 16980.25,
+        "p99_ns": 58798,
+        "max_ns": 255845,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5551.267578125,
+        "wire_bytes": 768208,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "median_delta_percent": -3.9823008849557473
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 10355.5,
+        "p99_ns": 22234,
+        "max_ns": 119991,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 513.435546875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 9890.0,
+        "p99_ns": 20541,
+        "max_ns": 95193,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 496.3984375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.495195789676987
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 13072.25,
+        "p99_ns": 57867,
+        "max_ns": 135223,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3848.765625,
+        "wire_bytes": 738016,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 12461.25,
+        "p99_ns": 29524,
+        "max_ns": 82834,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5640.404296875,
+        "wire_bytes": 768208,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 3
+      },
+      "median_delta_percent": -4.674023217120238
+    },
+    {
+      "strips": 2,
+      "quantum": 128,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 13127.5,
+        "p99_ns": 39870,
+        "max_ns": 138138,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2949.5390625,
+        "wire_bytes": 738124,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 768
+      },
+      "graph": {
+        "median_ns": 12631.5,
+        "p99_ns": 29504,
+        "max_ns": 211969,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4880.583984375,
+        "wire_bytes": 768316,
+        "dropped_batches": 0,
+        "storage_bytes": 3302784,
+        "high_water": 768
+      },
+      "median_delta_percent": -3.778327937535708
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 2286523.25,
+        "p99_ns": 2864417,
+        "max_ns": 4343862,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 7669.126953125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 2257454.5,
+        "p99_ns": 3239100,
+        "max_ns": 4760818,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8088.2890625,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -1.2713078688353585
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 3051608.25,
+        "p99_ns": 3828928,
+        "max_ns": 11694705,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 456733.248046875,
+        "wire_bytes": 203898112,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 773
+      },
+      "graph": {
+        "median_ns": 3238990.5,
+        "p99_ns": 4847779,
+        "max_ns": 5275763,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1145671.46875,
+        "wire_bytes": 225577496,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "median_delta_percent": 6.140442502736065
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 2666597.0,
+        "p99_ns": 3598241,
+        "max_ns": 3835336,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4735.814453125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 2644701.75,
+        "p99_ns": 3422676,
+        "max_ns": 5553991,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5000.29296875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -0.8210933260631381
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 3314989.5,
+        "p99_ns": 5378587,
+        "max_ns": 8485118,
+        "misses": 7,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 524667.03515625,
+        "wire_bytes": 241285248,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "graph": {
+        "median_ns": 3396637.5,
+        "p99_ns": 4294858,
+        "max_ns": 7242911,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1189361.9921875,
+        "wire_bytes": 243482976,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "median_delta_percent": 2.46299422667855
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 917064.0,
+        "p99_ns": 5634143,
+        "max_ns": 6724682,
+        "misses": 6,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3824.71484375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 823320.5,
+        "p99_ns": 6301495,
+        "max_ns": 10100989,
+        "misses": 6,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3755.15625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -10.222132806434448
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 1330363.0,
+        "p99_ns": 9212403,
+        "max_ns": 27799481,
+        "misses": 91,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 582113.30859375,
+        "wire_bytes": 198035676,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 512
+      },
+      "graph": {
+        "median_ns": 1244411.25,
+        "p99_ns": 7451254,
+        "max_ns": 11338099,
+        "misses": 82,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1043388.3671875,
+        "wire_bytes": 194487828,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 512
+      },
+      "median_delta_percent": -6.460774239812739
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 3558290.25,
+        "p99_ns": 5743827,
+        "max_ns": 7161278,
+        "misses": 7,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 9540.6640625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 3247488.25,
+        "p99_ns": 4214968,
+        "max_ns": 4611995,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8470.513671875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -8.734588191618153
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 4321702.75,
+        "p99_ns": 5459419,
+        "max_ns": 56531063,
+        "misses": 9,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 554031.240234375,
+        "wire_bytes": 244445616,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "graph": {
+        "median_ns": 4397674.75,
+        "p99_ns": 11611239,
+        "max_ns": 13682003,
+        "misses": 64,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1703062.720703125,
+        "wire_bytes": 303815748,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "median_delta_percent": 1.7579182186928444
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 2390777.5,
+        "p99_ns": 3044538,
+        "max_ns": 5474321,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4434.162109375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 2323155.75,
+        "p99_ns": 2857927,
+        "max_ns": 4774529,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4362.74609375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.828441793516967
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 3185122.0,
+        "p99_ns": 5382334,
+        "max_ns": 8449655,
+        "misses": 7,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 582687.40625,
+        "wire_bytes": 241187712,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "graph": {
+        "median_ns": 3090983.5,
+        "p99_ns": 5187180,
+        "max_ns": 7493368,
+        "misses": 5,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 1197668.46484375,
+        "wire_bytes": 246728808,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 257
+      },
+      "median_delta_percent": -2.9555696767659123
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 2992409.5,
+        "p99_ns": 4289019,
+        "max_ns": 6253974,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 17259.06640625,
+        "wire_bytes": 5734476,
+        "dropped_batches": 129536,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 2931257.5,
+        "p99_ns": 3760254,
+        "max_ns": 5128401,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 32836.93359375,
+        "wire_bytes": 5889540,
+        "dropped_batches": 129536,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "median_delta_percent": -2.0435705741476906
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 187233.75,
+        "p99_ns": 374664,
+        "max_ns": 2042040,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5499.9921875,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 189357.25,
+        "p99_ns": 454964,
+        "max_ns": 2094730,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 6744.443359375,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": 1.1341438175542562
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 246320.5,
+        "p99_ns": 519311,
+        "max_ns": 2470635,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 41014.078125,
+        "wire_bytes": 13995008,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 244650.25,
+        "p99_ns": 477858,
+        "max_ns": 1004560,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 95930.1640625,
+        "wire_bytes": 15452696,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "median_delta_percent": -0.6780799811627491
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 433106.25,
+        "p99_ns": 665270,
+        "max_ns": 1352103,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3246.953125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 427147.0,
+        "p99_ns": 717599,
+        "max_ns": 1251893,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3326.80078125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -1.3759325800539735
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 507337.75,
+        "p99_ns": 833853,
+        "max_ns": 1679025,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 47683.447265625,
+        "wire_bytes": 16233024,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 486549.0,
+        "p99_ns": 852411,
+        "max_ns": 3535196,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 92230.294921875,
+        "wire_bytes": 16676376,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "median_delta_percent": -4.097615444543601
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 82448.75,
+        "p99_ns": 500052,
+        "max_ns": 1231302,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2145.529296875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 74494.75,
+        "p99_ns": 455115,
+        "max_ns": 518350,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2225.099609375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -9.647205081944843
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 100513.5,
+        "p99_ns": 594764,
+        "max_ns": 2199918,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 34768.751953125,
+        "wire_bytes": 11184300,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 33
+      },
+      "graph": {
+        "median_ns": 105241.0,
+        "p99_ns": 582666,
+        "max_ns": 1107044,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 58715.42578125,
+        "wire_bytes": 10904760,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 33
+      },
+      "median_delta_percent": 4.703348306446409
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 296643.75,
+        "p99_ns": 2264104,
+        "max_ns": 2476524,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 6300.91796875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 290038.75,
+        "p99_ns": 553893,
+        "max_ns": 1829501,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5682.2890625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.226576491161536
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 354803.5,
+        "p99_ns": 1396760,
+        "max_ns": 5450025,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 47064.494140625,
+        "wire_bytes": 16689984,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 347107.0,
+        "p99_ns": 563337,
+        "max_ns": 1331011,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 90707.44921875,
+        "wire_bytes": 16676376,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "median_delta_percent": -2.169228883029617
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 184382.25,
+        "p99_ns": 400522,
+        "max_ns": 2297836,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2970.576171875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 180794.25,
+        "p99_ns": 303005,
+        "max_ns": 414864,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2701.318359375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -1.9459573793030538
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 257779.75,
+        "p99_ns": 597358,
+        "max_ns": 898221,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 48283.587890625,
+        "wire_bytes": 16233024,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 239735.25,
+        "p99_ns": 654794,
+        "max_ns": 6604481,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 104741.85546875,
+        "wire_bytes": 17116476,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "median_delta_percent": -6.999967995934508
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 236903.75,
+        "p99_ns": 468324,
+        "max_ns": 776758,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 15900.470703125,
+        "wire_bytes": 5051820,
+        "dropped_batches": 6656,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 232998.0,
+        "p99_ns": 391628,
+        "max_ns": 1252934,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 31617.8671875,
+        "wire_bytes": 5189796,
+        "dropped_batches": 6656,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "median_delta_percent": -1.6486653334951473
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 107316.5,
+        "p99_ns": 291328,
+        "max_ns": 1013664,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5088.8671875,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 102659.25,
+        "p99_ns": 225529,
+        "max_ns": 357748,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4801.41015625,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.33973340539432
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 133290.5,
+        "p99_ns": 325510,
+        "max_ns": 407873,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 25282.267578125,
+        "wire_bytes": 7175168,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 131111.75,
+        "p99_ns": 301033,
+        "max_ns": 725581,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 58745.138671875,
+        "wire_bytes": 8448536,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "median_delta_percent": -1.6345876112701219
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 230043.25,
+        "p99_ns": 415735,
+        "max_ns": 542726,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2804.4375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 227356.75,
+        "p99_ns": 365099,
+        "max_ns": 485119,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2891.4765625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -1.1678238765971183
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 256178.0,
+        "p99_ns": 517178,
+        "max_ns": 1791734,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 28381.712890625,
+        "wire_bytes": 8826624,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 260584.0,
+        "p99_ns": 431129,
+        "max_ns": 574925,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 53505.39453125,
+        "wire_bytes": 9070176,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "median_delta_percent": 1.7198978835028855
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 46307.25,
+        "p99_ns": 324799,
+        "max_ns": 479741,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2126.591796875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 43452.75,
+        "p99_ns": 285459,
+        "max_ns": 385699,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2176.134765625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -6.16426153572065
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 59111.25,
+        "p99_ns": 432931,
+        "max_ns": 554604,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 19918.919921875,
+        "wire_bytes": 5843436,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "graph": {
+        "median_ns": 55826.5,
+        "p99_ns": 369956,
+        "max_ns": 600193,
+        "misses": 3,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 39920.19140625,
+        "wire_bytes": 6424356,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 17
+      },
+      "median_delta_percent": -5.556894838123028
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 176069.75,
+        "p99_ns": 318448,
+        "max_ns": 464909,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5125.25390625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 170839.0,
+        "p99_ns": 279771,
+        "max_ns": 326220,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5213.208984375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -2.9708396814330684
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 202507.25,
+        "p99_ns": 360301,
+        "max_ns": 625651,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 28990.1328125,
+        "wire_bytes": 8826624,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 198741.5,
+        "p99_ns": 304027,
+        "max_ns": 331188,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 52300.431640625,
+        "wire_bytes": 9070176,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "median_delta_percent": -1.8595630526808349
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 106670.25,
+        "p99_ns": 229124,
+        "max_ns": 1165062,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2416.51171875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 102819.75,
+        "p99_ns": 194302,
+        "max_ns": 544820,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2385.041015625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.609722485885236
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 134111.75,
+        "p99_ns": 292229,
+        "max_ns": 1153485,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 27700.15234375,
+        "wire_bytes": 8826624,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 132621.75,
+        "p99_ns": 974776,
+        "max_ns": 3273983,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 69435.1015625,
+        "wire_bytes": 9070176,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "median_delta_percent": -1.1110137627761918
+    },
+    {
+      "strips": 16,
+      "quantum": 32,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 132469.0,
+        "p99_ns": 309996,
+        "max_ns": 876027,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 14341.619140625,
+        "wire_bytes": 4746924,
+        "dropped_batches": 2560,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 130847.25,
+        "p99_ns": 246210,
+        "max_ns": 798681,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 27998.587890625,
+        "wire_bytes": 4877892,
+        "dropped_batches": 2560,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "median_delta_percent": -1.2242486921468454
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 71384.75,
+        "p99_ns": 170426,
+        "max_ns": 1173515,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4823.87890625,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 67428.5,
+        "p99_ns": 197317,
+        "max_ns": 356846,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4875.61328125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -5.542150109091926
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 84767.5,
+        "p99_ns": 205870,
+        "max_ns": 908165,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 16631.125,
+        "wire_bytes": 3765248,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 81958.0,
+        "p99_ns": 171888,
+        "max_ns": 269745,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 38191.890625,
+        "wire_bytes": 4946456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "median_delta_percent": -3.3143598666941942
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 147569.25,
+        "p99_ns": 422776,
+        "max_ns": 3464419,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 3036.748046875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 140779.25,
+        "p99_ns": 271358,
+        "max_ns": 417167,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2711.140625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -4.6012295922084
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 162522.0,
+        "p99_ns": 990700,
+        "max_ns": 2346808,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 22206.408203125,
+        "wire_bytes": 5030400,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 159497.25,
+        "p99_ns": 452671,
+        "max_ns": 954505,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 34623.669921875,
+        "wire_bytes": 5172000,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "median_delta_percent": -1.861132646657071
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 31267.0,
+        "p99_ns": 214913,
+        "max_ns": 309695,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2091.6328125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 30308.0,
+        "p99_ns": 160591,
+        "max_ns": 318559,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2052.67578125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.0671314804746164
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 31001.5,
+        "p99_ns": 197637,
+        "max_ns": 331809,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 15079.259765625,
+        "wire_bytes": 4504428,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "graph": {
+        "median_ns": 27874.5,
+        "p99_ns": 189424,
+        "max_ns": 311798,
+        "misses": 2,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 28358.2109375,
+        "wire_bytes": 4634388,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 9
+      },
+      "median_delta_percent": -10.08660871248166
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 119564.75,
+        "p99_ns": 226060,
+        "max_ns": 321172,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5079.326171875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 115023.0,
+        "p99_ns": 214643,
+        "max_ns": 403136,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4796.11328125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.798569394407636
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 132885.0,
+        "p99_ns": 255474,
+        "max_ns": 1425994,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 21125.46484375,
+        "wire_bytes": 5030400,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 129700.25,
+        "p99_ns": 286370,
+        "max_ns": 737309,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 35486.98828125,
+        "wire_bytes": 5172000,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "median_delta_percent": -2.3966211385784697
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 71820.75,
+        "p99_ns": 197286,
+        "max_ns": 399451,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2420.685546875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 67441.75,
+        "p99_ns": 173301,
+        "max_ns": 349576,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2498.205078125,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -6.097123742094035
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 86109.25,
+        "p99_ns": 201493,
+        "max_ns": 2565538,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 17320.91796875,
+        "wire_bytes": 5030400,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 83070.0,
+        "p99_ns": 199820,
+        "max_ns": 352460,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 36229.77734375,
+        "wire_bytes": 5172000,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "median_delta_percent": -3.5295278962480747
+    },
+    {
+      "strips": 16,
+      "quantum": 64,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 84900.0,
+        "p99_ns": 201814,
+        "max_ns": 613923,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 12703.046875,
+        "wire_bytes": 4290924,
+        "dropped_batches": 512,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "graph": {
+        "median_ns": 81274.5,
+        "p99_ns": 320902,
+        "max_ns": 566892,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 25971.2109375,
+        "wire_bytes": 4411692,
+        "dropped_batches": 512,
+        "storage_bytes": 6660096,
+        "high_water": 1024
+      },
+      "median_delta_percent": -4.270318021201414
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "edits",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 52699.0,
+        "p99_ns": 173431,
+        "max_ns": 346481,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4695.515625,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 48616.0,
+        "p99_ns": 171688,
+        "max_ns": 421534,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4797.23828125,
+        "wire_bytes": 3456,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -7.747775100096776
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "edits",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 61221.75,
+        "p99_ns": 240391,
+        "max_ns": 1544502,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 14663.89453125,
+        "wire_bytes": 2060288,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 57684.25,
+        "p99_ns": 269054,
+        "max_ns": 3318249,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 35293.390625,
+        "wire_bytes": 3195416,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "median_delta_percent": -5.778175240008654
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "midi",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 99987.5,
+        "p99_ns": 188894,
+        "max_ns": 342735,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2652.724609375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 96009.5,
+        "p99_ns": 176425,
+        "max_ns": 243206,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2681.3671875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.97849731216402
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "midi",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 108881.5,
+        "p99_ns": 171348,
+        "max_ns": 466982,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 13235.890625,
+        "wire_bytes": 3004992,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 107266.0,
+        "p99_ns": 175244,
+        "max_ns": 325981,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 23016.58203125,
+        "wire_bytes": 3092808,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "median_delta_percent": -1.483723130191994
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "partitions",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 27245.75,
+        "p99_ns": 175564,
+        "max_ns": 317808,
+        "misses": 1,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2553.6171875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 25258.0,
+        "p99_ns": 95825,
+        "max_ns": 119890,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2024.744140625,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -7.295633263903545
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "partitions",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 31092.0,
+        "p99_ns": 147482,
+        "max_ns": 266220,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 9929.44140625,
+        "wire_bytes": 2003180,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "graph": {
+        "median_ns": 29319.0,
+        "p99_ns": 151148,
+        "max_ns": 355054,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 15550.90625,
+        "wire_bytes": 2064116,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 5
+      },
+      "median_delta_percent": -5.702431493631799
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "recording",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 90531.5,
+        "p99_ns": 222084,
+        "max_ns": 403537,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 5125.115234375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 87096.25,
+        "p99_ns": 187702,
+        "max_ns": 297076,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 4733.859375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -3.7945356036296785
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "recording",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 100328.75,
+        "p99_ns": 279200,
+        "max_ns": 856207,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 17574.865234375,
+        "wire_bytes": 3004992,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 95481.25,
+        "p99_ns": 257247,
+        "max_ns": 332200,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 26618.54296875,
+        "wire_bytes": 3092808,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "median_delta_percent": -4.831616062195532
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "steady",
+      "mode": "off",
+      "baseline": {
+        "median_ns": 51732.75,
+        "p99_ns": 121302,
+        "max_ns": 296836,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2422.388671875,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "graph": {
+        "median_ns": 48848.75,
+        "p99_ns": 134793,
+        "max_ns": 278558,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 2447.4609375,
+        "wire_bytes": 0,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 0
+      },
+      "median_delta_percent": -5.57480512827947
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "steady",
+      "mode": "on",
+      "baseline": {
+        "median_ns": 60175.5,
+        "p99_ns": 116705,
+        "max_ns": 222835,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 12310.55859375,
+        "wire_bytes": 3004992,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "graph": {
+        "median_ns": 56530.25,
+        "p99_ns": 98939,
+        "max_ns": 161773,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 21960.328125,
+        "wire_bytes": 3092808,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 3
+      },
+      "median_delta_percent": -6.057697900308268
+    },
+    {
+      "strips": 16,
+      "quantum": 128,
+      "scenario": "steady",
+      "mode": "stalled",
+      "baseline": {
+        "median_ns": 59334.25,
+        "p99_ns": 102855,
+        "max_ns": 298939,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 8924.20703125,
+        "wire_bytes": 3005100,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 768
+      },
+      "graph": {
+        "median_ns": 55290.75,
+        "p99_ns": 111708,
+        "max_ns": 305669,
+        "misses": 0,
+        "callbacks": 512,
+        "control_collection_ns_per_callback": 18696.021484375,
+        "wire_bytes": 3092916,
+        "dropped_batches": 0,
+        "storage_bytes": 6660096,
+        "high_water": 768
+      },
+      "median_delta_percent": -6.81478235589057
+    }
+  ],
+  "ui": [
+    {
+      "nodes": 12,
+      "initial_frame_ns": 6711762,
+      "steady_median_ns": 398529.0,
+      "steady_p99_ns": 521424,
+      "steady_max_ns": 698881
+    },
+    {
+      "nodes": 102,
+      "initial_frame_ns": 6790089,
+      "steady_median_ns": 1376905.5,
+      "steady_p99_ns": 1768058,
+      "steady_max_ns": 1846887
+    },
+    {
+      "nodes": 502,
+      "initial_frame_ns": 11123837,
+      "steady_median_ns": 4536517.0,
+      "steady_p99_ns": 5362974,
+      "steady_max_ns": 5597426
+    },
+    {
+      "nodes": 4094,
+      "initial_frame_ns": 1088185036,
+      "steady_median_ns": 90114942.0,
+      "steady_p99_ns": 100837666,
+      "steady_max_ns": 127695620
+    }
+  ],
+  "capture": {
+    "synthetic_capture": true,
+    "traces": 8192,
+    "raw_bytes": 14221312,
+    "nodes_per_tick": 128,
+    "query_median_ns": 134132.0,
+    "query_p99_ns": 298178,
+    "query_max_ns": 1086354
+  },
+  "measured_date": "2026-11-05 (Europe/Amsterdam)",
+  "graph_commit": "a7e2f7eeccf2ac6c4dcad24375bf3eeda06dfa43",
+  "raw_callbacks": {
+    "path": "profiling_graph_measurements.jsonl.gz",
+    "sha256": "6837b625e19a5f4e30a66e23b880ed3607f77517e27f6c100b4ddee2d533718e",
+    "runs": 440
+  },
+  "binary_sha256": {
+    "baseline": "af80fba0386da4df84209fc029c4141e03d0d09b17129ac1f46b09f508f07700",
+    "graph": "01ae498c4dd3379c28e6822c7edabf9c5ba3a56813ad5a2ff190facde46f54b3"
+  },
+  "repeated_cases": [
+    {
+      "strips": 2,
+      "quantum": 1,
+      "mode": "on",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 196845.5,
+          "graph": 260968.0
+        },
+        {
+          "graph": 199570.0,
+          "baseline": 213386.0
+        },
+        {
+          "baseline": 180090.5,
+          "graph": 177447.0
+        },
+        {
+          "graph": 203651.0,
+          "baseline": 216160.0
+        },
+        {
+          "baseline": 180441.5,
+          "graph": 217932.5
+        },
+        {
+          "graph": 176170.0,
+          "baseline": 213260.5
+        },
+        {
+          "baseline": 196145.0,
+          "graph": 176535.0
+        },
+        {
+          "graph": 201913.5,
+          "baseline": 194707.5
+        },
+        {
+          "baseline": 268754.0,
+          "graph": 215764.5
+        },
+        {
+          "graph": 233466.0,
+          "baseline": 216731.0
+        }
+      ],
+      "median_delta_percent": -3.627395097791436
+    },
+    {
+      "strips": 2,
+      "quantum": 64,
+      "mode": "off",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 7757.0,
+          "graph": 5954.0
+        },
+        {
+          "graph": 5388.0,
+          "baseline": 4571.5
+        },
+        {
+          "baseline": 6074.0,
+          "graph": 4467.0
+        },
+        {
+          "graph": 4582.0,
+          "baseline": 5633.5
+        },
+        {
+          "baseline": 7491.5,
+          "graph": 7196.0
+        },
+        {
+          "graph": 7266.0,
+          "baseline": 6084.0
+        },
+        {
+          "baseline": 4607.0,
+          "graph": 7526.5
+        },
+        {
+          "graph": 4412.0,
+          "baseline": 4552.0
+        },
+        {
+          "baseline": 4476.5,
+          "graph": 6844.5
+        },
+        {
+          "graph": 4491.5,
+          "baseline": 4627.0
+        }
+      ],
+      "median_delta_percent": -3.0020172723484784
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "mode": "off",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 8563.0,
+          "graph": 8302.5
+        },
+        {
+          "graph": 7106.0,
+          "baseline": 7306.0
+        },
+        {
+          "baseline": 8507.5,
+          "graph": 9349.0
+        },
+        {
+          "graph": 7075.5,
+          "baseline": 7360.5
+        },
+        {
+          "baseline": 7331.0,
+          "graph": 7436.5
+        },
+        {
+          "graph": 9619.0,
+          "baseline": 9809.5
+        },
+        {
+          "baseline": 7341.0,
+          "graph": 7096.0
+        },
+        {
+          "graph": 8092.0,
+          "baseline": 8553.0
+        },
+        {
+          "baseline": 7281.0,
+          "graph": 7005.0
+        },
+        {
+          "graph": 7051.0,
+          "baseline": 8563.0
+        }
+      ],
+      "median_delta_percent": -3.1897890460923897
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "mode": "off",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 817394.0,
+          "graph": 811480.5
+        },
+        {
+          "graph": 896132.0,
+          "baseline": 803778.0
+        },
+        {
+          "baseline": 1118917.5,
+          "graph": 744494.5
+        },
+        {
+          "graph": 756387.5,
+          "baseline": 742241.0
+        },
+        {
+          "baseline": 803934.0,
+          "graph": 960489.5
+        },
+        {
+          "graph": 925011.0,
+          "baseline": 796553.0
+        },
+        {
+          "baseline": 833869.0,
+          "graph": 932597.0
+        },
+        {
+          "graph": 963168.0,
+          "baseline": 809016.0
+        },
+        {
+          "baseline": 1042608.0,
+          "graph": 761630.0
+        },
+        {
+          "graph": 741114.0,
+          "baseline": 974600.5
+        }
+      ],
+      "median_delta_percent": 6.697952939732776
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "mode": "off",
+      "scenario": "edits",
+      "pairs": [
+        {
+          "baseline": 184372.5,
+          "graph": 181097.5
+        },
+        {
+          "graph": 179415.0,
+          "baseline": 186500.5
+        },
+        {
+          "baseline": 184893.0,
+          "graph": 179289.5
+        },
+        {
+          "graph": 180431.0,
+          "baseline": 187397.0
+        },
+        {
+          "baseline": 186300.0,
+          "graph": 181603.0
+        },
+        {
+          "graph": 183150.5,
+          "baseline": 184873.0
+        },
+        {
+          "baseline": 189234.5,
+          "graph": 181247.0
+        },
+        {
+          "graph": 182479.5,
+          "baseline": 185634.0
+        },
+        {
+          "baseline": 188293.0,
+          "graph": 178803.5
+        },
+        {
+          "graph": 179580.0,
+          "baseline": 189900.0
+        }
+      ],
+      "median_delta_percent": -3.3739568994489435
+    },
+    {
+      "strips": 2,
+      "quantum": 16,
+      "mode": "on",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 20806.0,
+          "graph": 15263.0
+        },
+        {
+          "graph": 22689.0,
+          "baseline": 21367.0
+        },
+        {
+          "baseline": 15548.5,
+          "graph": 20871.5
+        },
+        {
+          "graph": 20906.5,
+          "baseline": 15914.0
+        },
+        {
+          "baseline": 20751.5,
+          "graph": 20801.5
+        },
+        {
+          "graph": 22509.0,
+          "baseline": 21202.0
+        },
+        {
+          "baseline": 15378.0,
+          "graph": 15118.0
+        },
+        {
+          "graph": 20395.5,
+          "baseline": 16029.0
+        },
+        {
+          "baseline": 15854.0,
+          "graph": 23325.0
+        },
+        {
+          "graph": 21502.5,
+          "baseline": 21292.5
+        }
+      ],
+      "median_delta_percent": 6.175811873660297
+    }
+  ],
+  "fresh_repeated_cases": [
+    {
+      "strips": 2,
+      "quantum": 16,
+      "mode": "off",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 15393.0,
+          "graph": 11422.0
+        },
+        {
+          "graph": 15088.0,
+          "baseline": 12538.5
+        },
+        {
+          "baseline": 15718.5,
+          "graph": 15674.0
+        },
+        {
+          "graph": 12208.0,
+          "baseline": 11462.5
+        },
+        {
+          "baseline": 11502.5,
+          "graph": 11237.0
+        },
+        {
+          "graph": 11302.0,
+          "baseline": 11457.5
+        },
+        {
+          "baseline": 11787.5,
+          "graph": 11201.5
+        },
+        {
+          "graph": 11562.5,
+          "baseline": 11557.0
+        },
+        {
+          "baseline": 15889.0,
+          "graph": 11157.0
+        },
+        {
+          "graph": 11727.5,
+          "baseline": 14176.5
+        }
+      ],
+      "median_delta_percent": -1.8326917423438616
+    },
+    {
+      "strips": 2,
+      "quantum": 32,
+      "mode": "on",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 12574.0,
+          "graph": 11632.0
+        },
+        {
+          "graph": 11763.0,
+          "baseline": 10335.5
+        },
+        {
+          "baseline": 11482.0,
+          "graph": 9850.0
+        },
+        {
+          "graph": 11732.5,
+          "baseline": 10836.5
+        },
+        {
+          "baseline": 12534.0,
+          "graph": 9840.0
+        },
+        {
+          "graph": 13330.0,
+          "baseline": 12549.0
+        },
+        {
+          "baseline": 12443.5,
+          "graph": 13049.0
+        },
+        {
+          "graph": 13054.5,
+          "baseline": 11327.5
+        },
+        {
+          "baseline": 12283.0,
+          "graph": 11933.0
+        },
+        {
+          "graph": 11873.0,
+          "baseline": 10966.0
+        }
+      ],
+      "median_delta_percent": 5.544798884295121
+    },
+    {
+      "strips": 16,
+      "quantum": 1,
+      "mode": "on",
+      "scenario": "edits",
+      "pairs": [
+        {
+          "baseline": 3144285.0,
+          "graph": 3090959.5
+        },
+        {
+          "graph": 3053072.0,
+          "baseline": 3077317.0
+        },
+        {
+          "baseline": 3156176.5,
+          "graph": 3025459.5
+        },
+        {
+          "graph": 2966926.5,
+          "baseline": 3014983.5
+        },
+        {
+          "baseline": 3061369.0,
+          "graph": 3000507.0
+        },
+        {
+          "graph": 3025774.5,
+          "baseline": 3058724.0
+        },
+        {
+          "baseline": 3020877.0,
+          "graph": 3009155.0
+        },
+        {
+          "graph": 3033606.5,
+          "baseline": 3059465.5
+        },
+        {
+          "baseline": 2979750.0,
+          "graph": 2965208.0
+        },
+        {
+          "graph": 3035273.5,
+          "baseline": 3050657.0
+        }
+      ],
+      "median_delta_percent": -0.9612216196302481
+    },
+    {
+      "strips": 16,
+      "quantum": 16,
+      "mode": "on",
+      "scenario": "partitions",
+      "pairs": [
+        {
+          "baseline": 84972.5,
+          "graph": 101983.5
+        },
+        {
+          "graph": 91492.5,
+          "baseline": 79670.0
+        },
+        {
+          "baseline": 102389.5,
+          "graph": 75088.0
+        },
+        {
+          "graph": 102274.0,
+          "baseline": 98693.5
+        },
+        {
+          "baseline": 101463.0,
+          "graph": 112724.0
+        },
+        {
+          "graph": 95674.0,
+          "baseline": 110926.5
+        },
+        {
+          "baseline": 76569.5,
+          "graph": 91442.5
+        },
+        {
+          "graph": 97171.0,
+          "baseline": 100941.5
+        },
+        {
+          "baseline": 116305.0,
+          "graph": 95559.0
+        },
+        {
+          "graph": 95028.0,
+          "baseline": 112264.0
+        }
+      ],
+      "median_delta_percent": -0.05371667840228245
+    }
+  ],
+  "browser_notes": {
+    "debug_large_media": "LargeLoaded timed out after 120 seconds; this case is release-only in CI",
+    "baseline_debug_large_media": "Interrupted at LargeSaving by execution environment restart; inconclusive"
+  },
+  "ui_samples": [
+    {
+      "nodes": 12,
+      "initial_frame_ns": 6711762,
+      "frame_ns": [
+        410878,
+        428565,
+        415795,
+        423767,
+        386892,
+        379140,
+        698881,
+        479831,
+        429906,
+        384178,
+        490448,
+        411328,
+        400132,
+        461854,
+        495805,
+        398029,
+        423877,
+        407563,
+        380512,
+        400202,
+        382475,
+        377648,
+        402175,
+        379821,
+        374614,
+        398048,
+        424118,
+        470838,
+        384238,
+        401333,
+        385640,
+        374173,
+        392460,
+        396356,
+        373411,
+        399010,
+        408014,
+        409075,
+        377598,
+        374012,
+        395064,
+        375765,
+        391409,
+        377187,
+        416026,
+        403046,
+        383507,
+        521424,
+        391679,
+        377878,
+        399741,
+        377508,
+        413271,
+        378629,
+        377377,
+        503958,
+        418660,
+        431469,
+        383006,
+        399901,
+        381644,
+        376256,
+        401604,
+        376907
+      ]
+    },
+    {
+      "nodes": 102,
+      "initial_frame_ns": 6790089,
+      "frame_ns": [
+        1427856,
+        1432704,
+        1427727,
+        1449580,
+        1419705,
+        1352344,
+        1332744,
+        1381127,
+        1344782,
+        1360306,
+        1402219,
+        1345643,
+        1642560,
+        1846887,
+        1558373,
+        1490712,
+        1369189,
+        1768058,
+        1443141,
+        1466845,
+        1374157,
+        1379714,
+        1375769,
+        1338583,
+        1386224,
+        1361618,
+        1358883,
+        1361417,
+        1339914,
+        1364461,
+        1361778,
+        1346936,
+        1368317,
+        1360606,
+        1353314,
+        1369579,
+        1373065,
+        1337200,
+        1400786,
+        1357862,
+        1342479,
+        1655769,
+        1404922,
+        1453466,
+        1384972,
+        1374066,
+        1436169,
+        1393055,
+        1381097,
+        1462559,
+        1369159,
+        1344522,
+        1356520,
+        1354517,
+        1378042,
+        1367336,
+        1433796,
+        1464322,
+        1535639,
+        1435138,
+        1374888,
+        1370250,
+        1460446,
+        1412453
+      ]
+    },
+    {
+      "nodes": 502,
+      "initial_frame_ns": 11123837,
+      "frame_ns": [
+        5362974,
+        5340691,
+        4961581,
+        5597426,
+        4876843,
+        4425474,
+        4338664,
+        4100646,
+        4179585,
+        4531735,
+        4553857,
+        4567939,
+        4857484,
+        4517302,
+        4468699,
+        4451153,
+        4714970,
+        4477122,
+        4371854,
+        4621158,
+        4742701,
+        4804303,
+        4608791,
+        4587778,
+        4743262,
+        4855771,
+        4848531,
+        4846808,
+        4354618,
+        4131543,
+        4125603,
+        4218963,
+        4684523,
+        4525996,
+        4442270,
+        4426375,
+        4507868,
+        4564764,
+        4503021,
+        4599606,
+        4396761,
+        4461308,
+        4460097,
+        4658665,
+        4722111,
+        5103363,
+        4747599,
+        5004285,
+        4497272,
+        4541299,
+        4554939,
+        4291112,
+        4508990,
+        4280767,
+        4289640,
+        4436982,
+        4525915,
+        5309064,
+        4586496,
+        4497632,
+        4602842,
+        4645495,
+        4428548,
+        4375600
+      ]
+    },
+    {
+      "nodes": 4094,
+      "initial_frame_ns": 1088185036,
+      "frame_ns": [
+        92691967,
+        91759284,
+        94017901,
+        100506497,
+        94259905,
+        96286802,
+        127695620,
+        90515404,
+        96278911,
+        94483410,
+        96067262,
+        95461581,
+        92509663,
+        89884345,
+        93222144,
+        90332830,
+        91006943,
+        90634063,
+        92389822,
+        89455591,
+        86628960,
+        88060462,
+        90321893,
+        87795704,
+        87988544,
+        89348499,
+        87074590,
+        87121511,
+        93794825,
+        86409090,
+        87138667,
+        84810045,
+        88052491,
+        89567769,
+        90637989,
+        92060147,
+        93283746,
+        90157676,
+        88727676,
+        93015303,
+        89498706,
+        88999745,
+        91120895,
+        88674687,
+        91808159,
+        89973118,
+        88463089,
+        90072208,
+        88583209,
+        87203134,
+        88849610,
+        91153985,
+        95518357,
+        100837666,
+        89585666,
+        89383913,
+        89563073,
+        90006919,
+        93998722,
+        88621847,
+        87535113,
+        93805151,
+        88831702,
+        89471905
+      ]
+    }
+  ],
+  "capture_samples": {
+    "synthetic_capture": true,
+    "traces": 8192,
+    "raw_bytes": 14221312,
+    "nodes_per_tick": 128,
+    "detail_query_ns": [
+      1086354,
+      202494,
+      130005,
+      128313,
+      124437,
+      122954,
+      124928,
+      124908,
+      141814,
+      122244,
+      124307,
+      121122,
+      121843,
+      123155,
+      123997,
+      125869,
+      146090,
+      124307,
+      124157,
+      125739,
+      122925,
+      212359,
+      126571,
+      213371,
+      125709,
+      126600,
+      123436,
+      125579,
+      122514,
+      192910,
+      167232,
+      131167,
+      129004,
+      127792,
+      148103,
+      130366,
+      130416,
+      150997,
+      127041,
+      124777,
+      130086,
+      206581,
+      133280,
+      126070,
+      167622,
+      124067,
+      124827,
+      123055,
+      181613,
+      224307,
+      158608,
+      129324,
+      127321,
+      191187,
+      131237,
+      124577,
+      130246,
+      216065,
+      185298,
+      125048,
+      195153,
+      129956,
+      129264,
+      123245,
+      197327,
+      249094,
+      131378,
+      184878,
+      128894,
+      128263,
+      158929,
+      127351,
+      128163,
+      124928,
+      275294,
+      130586,
+      360852,
+      129825,
+      129444,
+      127502,
+      128323,
+      125869,
+      157737,
+      126450,
+      126390,
+      180281,
+      135694,
+      249165,
+      170186,
+      129184,
+      129345,
+      128663,
+      132800,
+      128683,
+      127902,
+      126760,
+      149364,
+      128313,
+      128594,
+      127722,
+      211017,
+      133230,
+      159169,
+      182975,
+      130637,
+      130085,
+      132269,
+      129465,
+      129875,
+      126540,
+      161764,
+      127992,
+      128644,
+      125749,
+      128323,
+      126871,
+      128132,
+      146991,
+      130076,
+      128083,
+      139239,
+      127772,
+      127752,
+      137557,
+      208113,
+      195815,
+      135814,
+      129595,
+      128703,
+      169955,
+      131879,
+      169535,
+      133531,
+      128653,
+      131408,
+      180000,
+      206760,
+      161192,
+      135053,
+      129815,
+      224818,
+      130926,
+      131367,
+      295635,
+      179039,
+      133431,
+      262384,
+      136255,
+      136856,
+      232971,
+      135443,
+      131528,
+      183476,
+      152990,
+      133101,
+      179710,
+      139039,
+      127802,
+      129204,
+      127992,
+      129515,
+      127201,
+      147222,
+      130977,
+      134902,
+      131809,
+      131337,
+      129315,
+      135233,
+      128954,
+      200191,
+      139210,
+      137446,
+      131288,
+      148113,
+      182524,
+      173231,
+      132639,
+      132860,
+      129445,
+      144177,
+      240832,
+      158869,
+      141823,
+      132059,
+      129535,
+      132749,
+      132189,
+      132770,
+      139049,
+      200962,
+      132790,
+      131758,
+      625040,
+      205179,
+      298178,
+      138479,
+      194282,
+      166891,
+      135884,
+      136866,
+      222455,
+      216966,
+      135353,
+      177007,
+      132649,
+      132349,
+      135814,
+      131478,
+      130777,
+      139099,
+      240812,
+      197477,
+      136115,
+      135804,
+      140201,
+      138608,
+      159549,
+      229425,
+      134302,
+      143056,
+      135173,
+      179249,
+      134842,
+      173561,
+      137938,
+      143485,
+      132028,
+      165639,
+      141553,
+      221804,
+      256055,
+      140421,
+      142484,
+      135314,
+      132669,
+      177037,
+      145318,
+      145579,
+      144568,
+      135563,
+      138238,
+      134042,
+      151027,
+      134182,
+      144637,
+      145308,
+      142434,
+      203156,
+      135714,
+      171518,
+      135233,
+      139150,
+      133340,
+      134082,
+      215444
+    ]
+  }
+}
