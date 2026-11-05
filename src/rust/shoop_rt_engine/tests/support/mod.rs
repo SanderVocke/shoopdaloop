@@ -9,6 +9,13 @@ use std::collections::BTreeMap;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        history: shoop_rt_protocol::host::InputHistorySettings {
+            seconds: 30,
+            audio_take_pages: 2048,
+            midi_pages: 1024,
+            midi_records: 4096,
+            writers: 4,
+        },
         sample_rate: 1000,
         max_frames: 16,
         quantum: 1,

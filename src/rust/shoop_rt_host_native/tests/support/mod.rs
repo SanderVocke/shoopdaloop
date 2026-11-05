@@ -16,6 +16,13 @@ use shoop_rt_protocol::*;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        history: shoop_rt_protocol::host::InputHistorySettings {
+            seconds: 30,
+            audio_take_pages: 2048,
+            midi_pages: 1024,
+            midi_records: 4096,
+            writers: 4,
+        },
         quantum: 1,
         sample_rate: 48_000,
         max_frames: 64,

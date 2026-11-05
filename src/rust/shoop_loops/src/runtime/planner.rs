@@ -782,11 +782,14 @@ impl Planner for LoopPlanner {
         }
         Ok(())
     }
-    fn finish_tick(&mut self, context: FinishContext<'_, Operation, Reply>) -> Result<(), Error> {
+    fn finish_tick(
+        &mut self,
+        mut context: FinishContext<'_, Operation, Reply>,
+    ) -> Result<(), Error> {
         let end = context.interval.end;
-        self.finish_boundary(context)?;
+        self.finish_boundary(&mut context)?;
         if let Some(shared) = &mut self.shared {
-            shared.finish(end, self.graph_epoch);
+            shared.finish(end, self.graph_epoch, &mut context.resources)?;
         }
         Ok(())
     }
@@ -1624,7 +1627,7 @@ impl LoopPlanner {
     }
     fn finish_boundary(
         &mut self,
-        mut context: FinishContext<'_, Operation, Reply>,
+        context: &mut FinishContext<'_, Operation, Reply>,
     ) -> Result<(), Error> {
         for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
             if let Some(interval) = row.interval {

@@ -9,8 +9,8 @@ recorded here as the implementation stages pass.
 
 | Layer | Required work |
 | --- | --- |
-| Normal host preparation | `shoop_host/engine`, native `direct`, and worklet `config`/`host` must prepare histories from a common production policy. `shoop_rt_engine::prepare` currently supplies empty shared settings. |
-| Portable domain | Add continuous writers and prefix continuation to `shoop_loops/runtime`, with a distinct Replacing mode in the resolver/program state. Retain the private-candidate API for prepared edits. |
+| Normal host preparation | The normal constructor prepares common thirty-second audio/indexed MIDI pools with a separate reservation. Host setup v7/worklet config v4 carry the limits; typed capacity/readiness and source removal/reuse are covered locally. Final live-credit and default callback gates remain. |
+| Portable domain | Continuous paired writers and a distinct resolver/program Replacing mode support explicit fixed/growing entry, scheduled exit and active exports. Ordinary Recording entry and channel-window mapping remain; private candidates stay separate. |
 | Kernel resources | Grab roots now retain visible audio pages/MIDI chunks; prepared metadata follows retained credits. Production global pooling, checkpoint-state density and continuous-writer reservations still need completion. |
 | Engine / protocol | Add bounded admission, musical batch settlement, completions and capability/limit negotiation in `shoop_rt_protocol`, `shoop_rt_engine/endpoint`, jobs, model, cells, topology and resync. |
 | Adapter | Implement Grab and Replacing in `shoop_rt_backend/backend`, requests, incoming/mirror, reads, capture, family and persistence. Invalidate canonical-import media on actual committed revisions. |
@@ -124,60 +124,59 @@ open. These library/integration tests do not close P04/P05.
 
 ## Production sizing gate
 
-The reference nominal retention is 30 seconds. At 48 kHz, sixteen stereo sources
-need 184,320,000 payload bytes for that interval. The shared arena's page geometry,
-retained users, COW writes and MIDI add to this amount. The existing 256 MiB
-loop-memory setting must keep its documented meaning.
+Normal engine preparation uses a common thirty-second policy. History and shared
+media reservations are additional to the ordinary loop-memory allowance. The
+settings are carried by native child setup version 7 and worklet configuration
+version 4; `EngineDescription::history_capacity` sizes them without allocation.
 
-Audio owners now charge the window's covering pages and retain a clipped root.
-Its index budget follows page credits plus boundary paths rather than a full ring
-per view. MIDI owners similarly retain and charge the intersecting chunks;
-metadata follows the total retained-chunk credits, with admission reserving edit
-growth and immutable source pins. These conservative guarantees still need
-production global pooling and
-admission must reserve guaranteed live history/writer work while sharing immutable
-data, bounding metadata and refusing additional owners before live capture loses
-its reservation. Exact budgets/defaults and their measured limits remain an F2
-verification gate, not an implied unlimited capacity claim.
+At 48 kHz with the application's sixteen stereo sources, 128 loops, 4096-byte
+pages and 256 MiB ordinary loop memory:
 
-MIDI configuration now offers an allocation-free estimate of the complete
-prepared metadata/state shape and owner ceiling. Unreachable handle/initial-state
-slots are excluded. A heap-guarded pressure test retains all admitted owners while live
-input wraps repeatedly, then edits a retained cut and checks the old export.
-Further packet/state oracles cover clipped roots and growing/shrinking edit-credit
-transfer while old exports remain readable. Full checkpoint projections,
-per-source reservations and continuous-writer debt
-still require the remaining production work; this change does not establish a
-default application budget or enable either capability.
+| Reservation | Prepared amount |
+| --- | --- |
+| Ordinary media | 256 MiB, preserved |
+| Thirty-second input audio rings | 256 MiB (raw samples alone are 184,320,000 bytes) |
+| Shared audio owners and write workspace | 128 MiB plus 20 KiB |
+| Shared MIDI packet payload | 16 MiB |
+| Audio pool metadata (native layout) | 37,041,992 bytes |
+| MIDI pool metadata/state (native layout) | 50,698,328 bytes |
+| MIDI packet bodies/records | 65,536 each |
+| MIDI retention quota per source | 2,048 events and 512 KiB serialized bytes |
+| Live writer slots | 8, subject to per-request storage admission |
 
-The semantic continuous MIDI pool now has ordinary resource/snapshot backing.
-Uploaded packet bases are pinned by bounded import jobs; multiple fixed/growing
-writers share source tick bodies and publish complete revisions without a fresh
-exit allocation. Byte reads, seek/state reconstruction and independent retained
-exports use the same public resource interfaces as existing media. Generation,
-source-reset and content-revision fences prevent stale jobs from publishing.
-Cancellation and teardown retain prepared staging arrays until host destruction.
-An allocation-free sizing API reports this pool's metadata and payload reservation;
-production live/writer credit guarantees and host defaults remain outstanding.
+MIDI history advertises its actual retained start; event/byte pressure can evict
+before thirty seconds. Empty input retains the nominal time window. Source slots
+share the pools independently of loop count and monitoring. Source removal queues
+old owners for bounded retirement, and required idle cleanup continues without
+optional transfer credits. A reactivated slot has a new generation and projection;
+old exports remain immutable.
 
-Audio resource views can now reserve a growing tail after a retained wrapped
-prefix, or after immutable loaded PCM, without copying the prefix. The tail has
-separate physical coordinates and may exceed the history horizon. Empty startup
-takes, immutable exports, capacity refusal and later fixed-period edits use the
-ordinary resource boundary. This remains a kernel/resource path; musical settlement,
-loop mode/output behavior and normal host/application integration are not enabled.
+Audio owners charge visible covering pages. Indexed MIDI uses shared packet
+bodies and ordered category trees; uploaded bases remain pinned instead of copied.
+Continuous paired writers prepare before entry, own each successful tick and
+publish through reserved owners. Input/source fences stop further writes after a
+reset while preserving exit from the last complete cut. Competing resource versions
+still refuse stale publication.
 
-Raw `HistoryWindow` acquisition now resolves a supplied window specification
-against current completed coverage and returns its duration, destination position
-and explicit padding with paired resources. Sparse audio padding is declared
-empty media and remains editable/extendable; it never authorizes a source gap.
-Indexed MIDI retains only the requested packet interval and its boundary state.
-This is a raw resource/coordinator helper. The public batch operation still must
-carry musical intent and settle sync/target phase from authoritative RT state,
-preflight every target/solo peer and own final publication/completion resources.
+The allocator-guarded layout test covers these default amounts and safely refuses
+a 64-source/eight-channel/one-GiB ordinary-media shape before allocation when its
+thirty-second history exceeds the portable arena limit. The normal-constructor
+scenario verifies real stopped input, thirty-second retention, wrap, old exports
+and full teardown at a representative configured rate. Socket/shared-memory child
+hosts and native dummy callbacks pass local regression checks with this preparation.
+Exact metadata amounts exclude allocator overhead and existing ordinary MIDI,
+graph/carrier and coordinator metadata. Full default preparation/callback
+measurements and indexed MIDI retained-owner/live workspace guarantees are still
+required before production acceptance. The budgets above do not establish those
+remaining admission proofs.
+
+Raw `HistoryWindow` acquisition still needs public musical batch settlement from
+authoritative sync/target state, including target/solo preflight and final receipts.
+Ordinary Recording-to-Replacing and non-default channel windows also remain open.
 
 ## Validation status
 
-No application success is claimed yet. CI will run the new arithmetic/reference
-cases and the complete integration gates as the plan progresses. Existing
-unsupported-backend tests remain valid until negotiated support is implemented.
+No application success is claimed yet. Finish implementation and local acceptance
+first; then use the plan's iterative CI correction loop for final broad/platform
+validation. Existing unsupported-backend tests remain valid until negotiated
+support is implemented.

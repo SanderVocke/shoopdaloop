@@ -4,7 +4,8 @@
 //! sample rate, the largest callback, the graph quantum, strip channels, Master channels, smoothing,
 //! the smoothing limit, the ramp, the control lead, resource pages, page bytes,
 //! MIDI events and bytes per port, pending transitions, reliable and bulk credits,
-//! the telemetry interval, the record inbox and outbox bytes, the MIDI-in and
+//! the telemetry interval, history seconds/shared audio pages/MIDI pages/MIDI records/writers,
+//! the record inbox and outbox bytes, the MIDI-in and
 //! MIDI-out lane bytes and the records delivered per quantum. Then come counted
 //! lists, each a `u32` count followed by its items: pool segments as strip and
 //! loop counts; initial Master connections as Master channel and host audio
@@ -15,7 +16,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 3;
+pub const CONFIG_VERSION: u32 = 4;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -112,6 +113,11 @@ impl WorkletConfig {
             engine.reliable_credits.into(),
             engine.bulk_credits.into(),
             engine.telemetry_interval_frames as usize,
+            engine.history.seconds as usize,
+            engine.history.audio_take_pages as usize,
+            engine.history.midi_pages as usize,
+            engine.history.midi_records as usize,
+            engine.history.writers as usize,
             self.records_in_bytes,
             self.records_out_bytes,
             self.midi_in_bytes,
@@ -174,6 +180,13 @@ impl WorkletConfig {
         let reliable_credits = r.narrow()?;
         let bulk_credits = r.narrow()?;
         let telemetry_interval_frames = r.u32()?;
+        let history = shoop_rt_protocol::host::InputHistorySettings {
+            seconds: r.u32()?,
+            audio_take_pages: r.u32()?,
+            midi_pages: r.u32()?,
+            midi_records: r.u32()?,
+            writers: r.u32()?,
+        };
         let records_in_bytes = r.usize()?;
         let records_out_bytes = r.usize()?;
         let midi_in_bytes = r.usize()?;
@@ -204,6 +217,7 @@ impl WorkletConfig {
         }
         Ok(Self {
             engine: EngineDescription {
+                history,
                 sample_rate,
                 max_frames,
                 quantum,

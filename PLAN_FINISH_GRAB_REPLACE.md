@@ -12,13 +12,15 @@ Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 `a068ce72` reconciled on 2026-11-05. The latest
 implementation connects continuous paired writers to resolver transitions, including
 growing prefix Recording, fixed Replacing and reserved complete-cut publication.
-Production preparation and application action routing remain outstanding.
+The normal host constructor now prepares thirty-second shared histories with a
+separate reservation; global per-owner MIDI admission and application action routing
+remain outstanding.
 
 | Stage | Current status |
 | --- | --- |
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
 | F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
-| F2 | Partial: pooled audio/indexed MIDI histories run through the coordinator and ordinary resources; normal host preparation and reserved global capacity remain. |
+| F2 | Partial: normal native/worklet constructors prepare common thirty-second histories with separately budgeted storage; removal/reuse and typed sizing/readiness pass locally. Global retained-owner MIDI admission and measured default callback limits remain. |
 | F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; ordinary-recording entry, channel-window mapping and global admission remain. |
 | F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
@@ -386,6 +388,33 @@ tracing inventory and test-attribute checks pass. This advances F3 without closi
 it: ordinary Recording-to-Replacing, non-default channel windows, globally reserved
 live quotas and normal application routes remain. CI stays deferred in Phase A.
 
+Normal engine preparation now builds one shared audio/indexed MIDI history pool
+for the configured source slots. Host setup version 7 and worklet configuration
+version 4 carry retention, shared audio pages, MIDI pages/records and writer slots.
+The existing ordinary loop-memory allowance is unchanged: preparation adds the
+exact shared reservation to the arena. An allocation-free public sizing API reports
+retention, payload/metadata, source quotas and the portable arena refusal before
+allocation. At application defaults (48 kHz, sixteen stereo sources, 128 loops,
+256 MiB ordinary media), the history rings reserve 256 MiB, shared audio owners
+128 MiB plus 20 KiB transaction scratch, and MIDI payload 16 MiB. Density limits
+can shorten actual MIDI coverage; the default per-source quotas are 2,048 events
+and 512 KiB serialized bytes. These are explicit storage limits, not a claim that
+all simultaneous writers can exhaust every density limit indefinitely.
+
+The normal-constructor guarded scenario captures stopped inputs, verifies real
+samples/packets, retains thirty seconds at the configured rate, wraps with an old
+export held and recovers the complete expanded arena. Dynamic source removal
+resets its history through bounded retirement; slot reuse cannot retarget old
+exports or generation handles. Required idle MIDI maintenance continues after
+sources disappear, independently of optional transfers. Local checks pass for all
+29 shared-media scenarios (one opt-in measurement ignored), engine control and
+structure, the eight native dummy-host cases, host/worklet configuration codecs,
+and backend contracts through real socket and shared-memory child processes.
+Affected warning-denying builds, formatting, tracing and test-attribute checks
+pass. Global per-owner indexed MIDI credit guarantees and actual default callback
+measurements remain open; F2 and application P04/P05 are not complete. CI remains
+deferred until the complete local implementation and acceptance pass.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -408,7 +437,7 @@ the later tree/category/coordinator increments.
 | Layer | Existing support and remaining gap |
 | --- | --- |
 | `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver and explicit coordinator route now support Replacing and prefix Recording with continuous paired writers. Ordinary recording entry, channel windows and global live admission still need integration. One-shot CandidateMidi remains separate. |
-| Production preparation | `shoop_rt_engine::prepare` passes empty `SharedSettings`. Native and worklet hosts use that path. The foundation's short histories and large MIDI metadata reservations are test configurations, not production defaults. |
+| Production preparation | `shoop_rt_engine::prepare` now constructs the common thirty-second source pools with a separate arena allowance, and native/worklet setup carries the same settings. Per-owner MIDI credits and default callback measurements remain open. |
 | Engine protocol / adapter | No negotiated Grab or Replacing capability/operation exists. `shoop_rt_backend::grab_loops` refuses Grab; its mode conversion refuses Replacing. |
 | Service / clients | Grab, AdoptRingbuffers, GrabClicked, default-recording Grab and Replacing remain refused. UI and Lua consequently cannot reach the primitives. Several media/read/cache guards recognize Recording only. |
 | Documentation | P04/P05 correctly remain OPEN. Their remaining-work descriptions must be replaced with actual application evidence before either status changes. |
@@ -682,7 +711,7 @@ host/platform combinations.
 
 ### F3 — Finish the continuous RT writer and mode lifecycle
 
-- [ ] Add fixed-domain/engine Replacing transitions and state without confusing
+- [x] Add fixed-domain/engine Replacing transitions and state without confusing
   them with the existing one-shot content Replace operation. Update cycle/phase,
   sync, repetition, pending transitions and mode-dependent output decisions.
 - [ ] Add growing capture from an adopted prefix, preserving duration/data/state

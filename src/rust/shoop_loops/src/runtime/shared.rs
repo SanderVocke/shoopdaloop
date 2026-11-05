@@ -654,13 +654,63 @@ impl Shared {
         self.write_live(source, frame, q, io)?;
         Ok(())
     }
-    pub fn finish(&mut self, end: Frame, graph: Epoch) {
+    pub fn finish(
+        &mut self,
+        end: Frame,
+        graph: Epoch,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<(), Error> {
         for h in &mut self.histories {
             if h.staged.take() == Some(end) {
                 h.completed = end;
                 h.committed_graph = Some(graph);
+            } else if h.observed < end && h.committed_graph.is_some_and(|old| old != graph) {
+                for job in self
+                    .live
+                    .iter_mut()
+                    .filter_map(|slot| slot.value.as_mut())
+                    .filter(|job| job.source.source == h.settings.source && job.active)
+                {
+                    job.failure.get_or_insert(Error::StaleRevision);
+                }
+                let reset = (|| {
+                    if let Some(source) = h.audio_source {
+                        io.render().audio_source_discontinuity(source, end)?;
+                    }
+                    let initial = MidiState::default();
+                    if let Some(store) = h.midi {
+                        io.render()
+                            .midi_history_discontinuity(store, end, &initial)?;
+                    }
+                    if let Some(source) = h.indexed_midi {
+                        h.indexed_midi = Some(
+                            io.render()
+                                .reset_indexed_midi_source(source, end, &initial)?,
+                        );
+                    }
+                    Ok(())
+                })();
+                match reset {
+                    Ok(()) => {
+                        h.generation = h.generation.checked_add(1).ok_or(Error::Exhausted)?;
+                        if let Some(tracker) = &mut h.tracker {
+                            tracker.reset();
+                        }
+                        h.token = None;
+                        h.midi_token = None;
+                        h.completed = end;
+                        h.observed = end;
+                        h.committed_graph = Some(graph);
+                        h.failure = Some(Error::Busy);
+                    }
+                    Err(Error::Capacity) => {
+                        h.failure = Some(Error::Capacity);
+                    }
+                    Err(error) => return Err(error),
+                }
             }
         }
+        Ok(())
     }
     pub fn grab(
         &mut self,
@@ -1032,6 +1082,9 @@ impl Shared {
             self.callback = Some(callback);
             self.remaining = self.allowance;
             self.work = SharedWork::default();
+            if let Some((pool, false)) = self.midi_pool {
+                io.maintain_indexed_midi_required(pool)?;
+            }
             self.progress_live(callback, io);
         }
         while self.remaining > 0 && self.building > 0 {

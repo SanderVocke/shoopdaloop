@@ -39,6 +39,8 @@ mod buffered_tests;
 mod bulk;
 mod cells;
 mod content;
+mod history;
+pub use history::HistoryCapacity;
 mod description;
 mod endpoint;
 mod family;
@@ -162,8 +164,9 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
     ports.into_boxed_slice()
 }
 
-fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames: usize) -> Config {
-    let (strips, loops) = (pool.strips(), pool.loops());
+fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> Config {
+    let (strips, loops) = (description.strips(), description.loops());
+    let nodes = 1 + 2 * strips + 3 * loops + description.buses as usize;
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
     let buses = description.buses as usize;
@@ -195,7 +198,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         audio_outputs: audio_out,
         midi_inputs: midi_in,
         midi_outputs: midi_out,
-        max_nodes: pool.nodes(),
+        max_nodes: nodes,
         max_ports: ports,
         max_edges: edges.max(1),
         midi_events_per_port: description.midi_events,
@@ -214,7 +217,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
                 + (2 + stream::READ_PAGES) * page_bytes
                 + content::RUNTIME_UPLOAD_BUFFERS
                     * page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES),
-            validation_steps: (3 * pool.nodes() + edges + 2 * loops + 64)
+            validation_steps: (3 * nodes + edges + 2 * loops + 64)
                 .max(page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)),
             publications: slots,
         },
@@ -266,11 +269,11 @@ pub fn prepare(
     description: &EngineDescription,
     driver: DriverStatus,
 ) -> Result<Engine, PrepareError> {
-    prepare_with_shared(
-        description,
-        driver,
-        shoop_loops::runtime::SharedSettings::default(),
-    )
+    let prepared = history::Layout::new(description)?;
+    let mut expanded = description.clone();
+    expanded.resource_pages = prepared.capacity.total_resource_pages;
+    let shared = prepared.settings();
+    prepare_with_shared(&expanded, driver, shared)
 }
 
 /// Prepare optional retrospective input histories and bounded private edit jobs.
@@ -298,7 +301,7 @@ pub fn prepare_with_shared(
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
     let quantum = rt_runtime::Quantum::new(description.quantum)?;
-    let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
+    let config = runtime_capacities(description, quantum.frames()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;

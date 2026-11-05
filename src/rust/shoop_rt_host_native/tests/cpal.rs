@@ -482,7 +482,10 @@ fn stopping_after_the_client_sends_a_midi_reset_and_cleans_up_off_the_audio_thre
     assert_eq!(stopped.media_usage().references, 0);
     assert_eq!(
         stopped.resource_usage().free_pages,
-        description().resource_pages
+        description()
+            .history_capacity()
+            .unwrap()
+            .total_resource_pages
     );
     assert!(stopped.cleanup().is_ok());
     assert_eq!(report.stats.midi_out_failed, 0);

@@ -222,10 +222,49 @@ impl Fixture {
             },
         )
         .unwrap();
+        Self::from_engine(engine, q, partition, &d)
+    }
+    fn new_production(q: usize, partition: usize) -> (Self, crate::HistoryCapacity) {
+        let d = EngineDescription {
+            history: protocol::host::InputHistorySettings {
+                seconds: 30,
+                audio_take_pages: 2048,
+                midi_pages: 1024,
+                midi_records: 4096,
+                writers: 2,
+            },
+            quantum: q,
+            sample_rate: 1000,
+            max_frames: 128,
+            segments: vec![Segment {
+                strips: 2,
+                loops: 2,
+            }],
+            resource_pages: 512,
+            page_bytes: 256,
+            midi_events: 64,
+            midi_bytes: 2048,
+            ramp_frames: 0,
+            smoothing_frames: 0,
+            control_lead_frames: 0,
+            ..EngineDescription::default()
+        };
+        let capacity = d.history_capacity().unwrap();
+        let engine = crate::prepare(
+            &d,
+            DriverStatus {
+                kind: DriverKind::Dummy,
+                state: DriverRunState::Running,
+                sample_rate: 1000,
+                buffer_frames: 128,
+            },
+        )
+        .unwrap();
+        (Self::from_engine(engine, q, partition, &d), capacity)
+    }
+    fn from_engine(engine: Engine, q: usize, partition: usize, d: &EngineDescription) -> Self {
         let outbox = engine.outbox();
-        let transfer_bytes = crate::runtime_capacities(&d, &engine.endpoint.pool, q)
-            .budgets
-            .transfer_bytes;
+        let transfer_bytes = crate::runtime_capacities(d, q).budgets.transfer_bytes;
         let mut h = Self {
             engine,
             outbox,
@@ -652,7 +691,7 @@ fn buffered_production_preparation_accepts_dynamic_host_banks_beyond_sixty_four_
     stopped.cleanup().unwrap();
     assert_eq!(
         stopped.resource_usage().free_pages,
-        description.resource_pages
+        description.history_capacity().unwrap().total_resource_pages
     );
 }
 
@@ -2608,4 +2647,130 @@ fn source_reset_stops_a_live_prefix_at_its_last_complete_paired_cut() {
     );
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, 12288);
+}
+
+#[shoop_test]
+fn normal_preparation_captures_stopped_inputs_for_thirty_seconds_in_common_reserved_pools() {
+    let (mut h, capacity) = Fixture::new_production(32, 7);
+    let (take, _, first) = h.grabs();
+    let audio = h.snapshot(take.audio.unwrap());
+    let midi = h.snapshot(take.midi.unwrap());
+    let data = h.read(audio);
+    assert_eq!(
+        f32::from_le_bytes(data[..4].try_into().unwrap()),
+        (first + 1) as f32
+    );
+    assert_eq!(
+        midi_events(&h.read(midi)),
+        expected_midi(first, take.frames, 32)
+    );
+    let Reply::SharedCapacity(actual) = h.op(Operation::SharedCapacity) else {
+        panic!("prepared pools")
+    };
+    assert_eq!((actual.sources, actual.writers), (2, 2));
+    assert_eq!(
+        actual.reserved_payload_bytes,
+        capacity.history_audio_bytes + capacity.shared_audio_bytes + capacity.midi_payload_bytes
+    );
+    assert_eq!(
+        actual.arena_payload_bytes,
+        capacity.total_resource_pages * 256
+    );
+    for slot in 0..2 {
+        let Reply::State(state) = h.op(Operation::State {
+            target: target(slot),
+        }) else {
+            panic!("stopped loop")
+        };
+        assert_eq!(state.state.mode, shoop_loops::Mode::Stopped);
+    }
+    h.stimulus = None;
+    h.run_to(h.aligned_future(capacity.retention_frames + 64));
+    let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("coverage")
+    };
+    assert_eq!(status.failure, None);
+    assert_eq!(status.end.0 - status.start.0, capacity.retention_frames);
+    assert_eq!(h.read(audio), data);
+    for snapshot in [audio, midi] {
+        h.resource(ResourceRequest::ReleaseSnapshot {
+            snapshot: snapshot.id,
+        });
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn production_source_removal_retires_history_and_slot_reuse_cannot_retarget_retained_grabs() {
+    let (mut h, capacity) = Fixture::new_production(32, 7);
+    let strip = protocol::StripId(protocol::SlotId::new(1, 1));
+    let create = |strip| protocol::Request::CreateStrip {
+        strip,
+        shape: protocol::StripShape {
+            audio_inputs: 2,
+            audio_outputs: 2,
+            midi_input: true,
+            midi_output: true,
+        },
+    };
+    let connect = |strip, kind, index, host| protocol::Request::Connect {
+        port: protocol::EnginePort::Strip(protocol::StripPort { strip, kind, index }),
+        host: protocol::HostPortId(host),
+        connected: true,
+    };
+    h.request(create(strip));
+    for (kind, index, host) in [
+        (protocol::PortKind::AudioIn, 0, 0),
+        (protocol::PortKind::AudioIn, 1, 1),
+        (protocol::PortKind::MidiIn, 0, 4),
+    ] {
+        h.request(connect(strip, kind, index, host));
+    }
+    let Reply::History(before) = h.op(Operation::HistoryStatus { source: 1 }) else {
+        panic!("active source")
+    };
+    assert_eq!(before.failure, None);
+    let at = h.aligned_future(128);
+    let grab = h.send(
+        at,
+        Operation::HistoryGrab {
+            source: before.id,
+            start: Frame(at - 128),
+            end: Frame(at),
+        },
+    );
+    let Reply::Grabbed(take) = h.result(grab) else {
+        panic!("retained source")
+    };
+    let audio = h.snapshot(take.audio.unwrap());
+    let midi = h.snapshot(take.midi.unwrap());
+    let original_audio = h.read(audio);
+    let original_midi = h.read(midi);
+    h.request(protocol::Request::RemoveStrip { strip });
+    let Reply::History(inactive) = h.op(Operation::HistoryStatus { source: 1 }) else {
+        panic!("removed source")
+    };
+    assert_eq!(inactive.failure, Some(Error::Busy));
+    assert_eq!(inactive.start, inactive.end);
+    assert_ne!(inactive.id, before.id);
+    let replacement = protocol::StripId(protocol::SlotId::new(1, 2));
+    h.request(create(replacement));
+    h.request(connect(replacement, protocol::PortKind::AudioIn, 0, 0));
+    h.request(connect(replacement, protocol::PortKind::MidiIn, 0, 4));
+    let Reply::History(after) = h.op(Operation::HistoryStatus { source: 1 }) else {
+        panic!("reused source")
+    };
+    assert_eq!(after.failure, None);
+    assert_ne!(after.id, before.id);
+    assert!(after.start > inactive.end);
+    assert_eq!(h.read(audio), original_audio);
+    assert_eq!(h.read(midi), original_midi);
+    for snapshot in [audio, midi] {
+        h.resource(ResourceRequest::ReleaseSnapshot {
+            snapshot: snapshot.id,
+        });
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
 }

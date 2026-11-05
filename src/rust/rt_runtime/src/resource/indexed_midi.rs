@@ -38,7 +38,7 @@ pub struct Config {
     pub imports: usize,
     pub events_per_tick: usize,
     pub bytes_per_tick: usize,
-    /// Required index/packet cleanup steps per source or writer tick.
+    /// Required cleanup per source/writer tick and idle callback progress.
     pub maintenance_steps_per_tick: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -244,6 +244,7 @@ impl Config {
     pub fn capacity(self, runtime: crate::PreparedConfig, q: Quantum) -> Result<Capacity, Error> {
         self.sources
             .checked_add(self.writers)
+            .and_then(|n| n.checked_add(1))
             .and_then(|n| n.checked_mul(self.maintenance_steps_per_tick))
             .filter(|&n| n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
@@ -1068,6 +1069,13 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn maintain_indexed_midi_required(&mut self, id: StoreId) -> Result<usize, Error> {
+        self.store.with_indexed_midi(id, |resources, pool| {
+            pool.core
+                .maintain(&mut resources.render_io(), pool.maintenance_steps)
+        })
+    }
+
     pub fn seek_indexed_midi_writer(&mut self, id: WriterId, position: u64) -> Result<(), Error> {
         self.store.seek_indexed_midi_writer(id, position)
     }

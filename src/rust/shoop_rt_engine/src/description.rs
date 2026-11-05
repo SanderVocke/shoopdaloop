@@ -46,6 +46,7 @@ impl HostPorts {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
+    pub history: shoop_rt_protocol::host::InputHistorySettings,
     pub sample_rate: u32,
     /// Largest callback the host will render.
     pub max_frames: usize,
@@ -89,6 +90,7 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
+            history: shoop_rt_protocol::host::InputHistorySettings::default(),
             sample_rate: 48_000,
             max_frames: 512,
             quantum: 32,

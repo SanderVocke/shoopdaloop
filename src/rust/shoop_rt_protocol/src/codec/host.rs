@@ -47,6 +47,24 @@ impl Wire for DeviceSelection {
         })
     }
 }
+impl Wire for InputHistorySettings {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.seconds)?;
+        w.u32(self.audio_take_pages)?;
+        w.u32(self.midi_pages)?;
+        w.u32(self.midi_records)?;
+        w.u32(self.writers)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            seconds: r.u32()?,
+            audio_take_pages: r.u32()?,
+            midi_pages: r.u32()?,
+            midi_records: r.u32()?,
+            writers: r.u32()?,
+        })
+    }
+}
 impl Wire for EngineSettings {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u32(self.max_frames)?;
@@ -67,7 +85,7 @@ impl Wire for EngineSettings {
         w.u32(self.reliable_credits)?;
         w.u32(self.bulk_credits)?;
         w.u32(self.telemetry_interval_frames)?;
-        Ok(())
+        self.history.put(w)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
@@ -89,6 +107,7 @@ impl Wire for EngineSettings {
             reliable_credits: r.u32()?,
             bulk_credits: r.u32()?,
             telemetry_interval_frames: r.u32()?,
+            history: InputHistorySettings::get(r)?,
         })
     }
 }
