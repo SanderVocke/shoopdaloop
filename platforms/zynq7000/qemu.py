@@ -7,13 +7,18 @@ import socket
 import subprocess
 import time
 import sys
+import boards
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class Qemu:
-    def __init__(self, elf, directory, forwards, driver=False, boot_nonce=None):
+    def __init__(self, elf, directory, forwards, driver=False, boot_nonce=None, board=None):
+        self.board = board or boards.load()
         self.elf = Path(elf).resolve()
+        manifest = json.loads(self.elf.with_suffix(".json").read_text())
+        if manifest.get("board_sha256") != self.board.manifest()["board_sha256"]:
+            raise ValueError("ELF board contract does not match the emulator")
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.serial = self.directory / "serial.log"
@@ -27,12 +32,16 @@ class Qemu:
         if not 1 <= self.boot_nonce <= (1 << 64)-1:
             raise ValueError("Boot nonce must be a nonzero 64-bit value")
         self.command = [os.environ.get("QEMU", "qemu-system-arm"),
-            "-M", "xilinx-zynq-a9", "-accel", "tcg", "-smp", "1", "-m", "1G",
+            "-M", "xilinx-zynq-a9", "-accel", "tcg", "-smp", "1", "-m", str(self.board.ram // boards.MIB) + "M",
             "-display", "none", "-monitor", "none", "-serial", (f"unix:{self.driver_path},server=on,wait=off" if driver else "null"),
             "-serial", "file:" + str(self.serial), "-qmp", "unix:" + str(self.qmp_path) + ",server=on,wait=off",
             "-device", f"loader,file={self.elf},cpu-num=0", "-netdev", network, "-net", "nic,netdev=lan",
             "-device", f"loader,addr=0x8000,data={self.boot_nonce},data-len=8",
             "-object", f"filter-dump,id=trace,netdev=lan,file={self.directory / 'ethernet.pcap'}"]
+        if self.board.bsp["uart_base"] == 0xe0000000:
+            serials = [i + 1 for i, value in enumerate(self.command) if value == "-serial"]
+            first, second = serials
+            self.command[first], self.command[second] = self.command[second], self.command[first]
         (self.directory / "command.json").write_text(json.dumps(self.command, indent=2) + "\n")
         self.log = open(self.directory / "qemu.log", "w")
         version = subprocess.check_output([self.command[0], "--version"], text=True).splitlines()[0]
@@ -76,7 +85,7 @@ class Qemu:
             if marker in text:
                 memory = self.qmp("query-memory-size-summary")
                 cpus = self.qmp("query-cpus-fast")
-                assert memory["base-memory"] == 1 << 30, memory
+                assert memory["base-memory"] == self.board.ram, memory
                 assert len(cpus) == 1, cpus
                 (self.directory / "machine.json").write_text(json.dumps({"memory": memory, "cpus": cpus}, indent=2) + "\n")
                 return

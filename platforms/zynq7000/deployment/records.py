@@ -21,7 +21,10 @@ def valid(raw, kind):
     return len(raw) == 512 and struct.unpack_from("<4I", raw) == (MAGIC, LAYOUT["version"], kind, 0) and zlib.crc32(raw[:508]) == struct.unpack_from("<I", raw, 508)[0]
 
 
-def configuration(credential, mac, ip, netmask, gateway, server):
+def configuration(credential, mac, ip, netmask, gateway, server, profile=None):
+    profile = (profile or LAYOUT["profile"]).encode("ascii")
+    if not 1 <= len(profile) < 32 or b"\0" in profile:
+        raise ValueError("Board profile must fit its NUL-terminated boot record field")
     if len(credential) != 32 or not any(credential):
         raise ValueError("A nonzero 32-byte credential is required")
     mac_bytes = bytes.fromhex(mac.replace(":", ""))
@@ -29,7 +32,7 @@ def configuration(credential, mac, ip, netmask, gateway, server):
         raise ValueError("A nonzero unicast MAC address is required")
     ipaddress.IPv4Network((ip, netmask), strict=False)
     addresses = b"".join(ipaddress.IPv4Address(a).packed for a in [ip, netmask, gateway, server])
-    return record(1, struct.pack("<6s2x", mac_bytes) + addresses + credential + LAYOUT["profile"].encode().ljust(32, b"\0"))
+    return record(1, struct.pack("<6s2x", mac_bytes) + addresses + credential + profile.ljust(32, b"\0"))
 
 
 def selection(digest, mode=0):

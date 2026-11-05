@@ -1,5 +1,11 @@
 # Zynq SD boot and Ethernet deployment
 
+The commands below default to the 1 GiB QEMU reference. For another board, pass
+the same `--board` to firmware, bootloader, bundle, card and interactive emulator
+commands. See [board profiles](../boards/README.md) for ZedBoard builds, memory
+maps and the final hardware qualification stage. SD geometry is shared; RAM
+windows and deployment identifiers come from the board profile.
+
 This deployment runs the actual FreeRTOS/AMD lwIP Shoop host on one emulated
 Cortex-A9 with **1 GiB PS DDR** and a separate **512 MiB SD card**. Audio/MIDI are
 dummy endpoints. The application Rust dependency graph remains `no_std` + `alloc`.

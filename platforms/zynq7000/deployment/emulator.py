@@ -15,10 +15,12 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from qemu import Qemu, ROOT
+import boards
 
 
 class BootQemu(Qemu):
-    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None, first_stage=False, block_url=None):
+    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None, first_stage=False, block_url=None, board=None):
+        self.board = board or boards.load()
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.serial = self.directory / "serial.log"
@@ -34,6 +36,9 @@ class BootQemu(Qemu):
         patch = ROOT / "platforms/zynq7000/patches/qemu-cadence-watchdog.patch"
         if manifest["patch_sha256"] != hashlib.sha256(patch.read_bytes()).hexdigest() or manifest["binary_sha256"] != hashlib.sha256(binary.read_bytes()).hexdigest():
             raise RuntimeError("Deployment QEMU does not match its watchdog model manifest")
+        board_patch = ROOT / "platforms/zynq7000/patches/qemu-board-phy.patch"
+        if manifest.get("board_patch_sha256") != hashlib.sha256(board_patch.read_bytes()).hexdigest():
+            raise RuntimeError("Deployment QEMU does not match the board PHY model manifest")
         (self.directory / "emulator.json").write_text(json.dumps(manifest, indent=2) + "\n")
         network = f"user,id=lan,hostfwd=tcp:127.0.0.1:{port_base}-10.0.2.15:15400,hostfwd=tcp:127.0.0.1:{port_base+1}-10.0.2.15:15401,hostfwd=udp:127.0.0.1:{updater_port}-10.0.2.15:5554"
         if tftp is not None:
@@ -41,7 +46,7 @@ class BootQemu(Qemu):
         entry = f"loader,file={Path(loader).resolve()},cpu-num=0"
         if not first_stage:
             entry += ",addr=0x04000000"
-        self.command = [str(binary), "-M", "xilinx-zynq-a9,boot-mode=sd", "-accel", "tcg", "-smp", "1", "-m", "1G",
+        self.command = [str(binary), "-M", "xilinx-zynq-a9,boot-mode=sd,phy-address=" + str(self.board.bsp["phy_address"]), "-accel", "tcg", "-smp", "1", "-m", str(self.board.ram // boards.MIB) + "M",
                         "-display", "none", "-monitor", "none", "-serial", "null",
                         "-serial", f"unix:{self.console_path},server=on,wait=on",
                         "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-watchdog-action", "reset",
@@ -112,8 +117,8 @@ class BootQemu(Qemu):
             content = self.serial.read_text(errors="replace") if self.serial.exists() else ""
             if marker in content[after:]:
                 memory, cpus = self.qmp("query-memory-size-summary"), self.qmp("query-cpus-fast")
-                if memory["base-memory"] != 1 << 30 or len(cpus) != 1:
-                    raise RuntimeError("Deployment VM violates the one-core/1 GiB contract")
+                if memory["base-memory"] != self.board.ram or len(cpus) != 1:
+                    raise RuntimeError("Deployment VM violates the board CPU/RAM contract")
                 (self.directory / "machine.json").write_text(json.dumps({"memory": memory, "cpus": cpus}, indent=2) + "\n")
                 return content.index(marker, after)
             if self.process.poll() is not None:
@@ -151,19 +156,25 @@ def main():
     parser.add_argument("--port-base", type=int, default=16400)
     parser.add_argument("--updater-port", type=int, default=16554)
     parser.add_argument("--tftp", type=Path, help="Public bundle directory for an already-provisioned one-shot RAM boot")
+    boards.argument(parser)
     args = parser.parse_args()
+    board = boards.load(args.board)
     if not args.card.is_file() or args.card.stat().st_size != 512 << 20:
         parser.error("--card must be a provisioned 512 MiB regular file")
     if not 1 <= args.port_base < 65535 or not 1 <= args.updater_port <= 65535:
         parser.error("invalid forwarded port")
+    loader_board = json.loads((args.loader.parent / "board.json").read_text())
+    card_board = json.loads(args.card.with_suffix(".json").read_text())
+    if loader_board != board.manifest() or any(card_board.get(k) != v for k, v in board.manifest().items()):
+        parser.error("Loader and SD image must match the selected board")
     directory = args.directory.resolve(); directory.mkdir(parents=True, exist_ok=True)
     stopped = threading.Event()
     signal.signal(signal.SIGTERM, lambda number, frame: stopped.set())
     try:
-        with BootQemu(args.loader, args.card, directory, args.port_base, args.updater_port, tftp=args.tftp) as vm:
+        with BootQemu(args.loader, args.card, directory, args.port_base, args.updater_port, tftp=args.tftp, board=board) as vm:
             memory, cpus = vm.qmp("query-memory-size-summary"), vm.qmp("query-cpus-fast")
-            if memory["base-memory"] != 1 << 30 or len(cpus) != 1:
-                raise RuntimeError("Deployment VM violates the one-core/1 GiB contract")
+            if memory["base-memory"] != board.ram or len(cpus) != 1:
+                raise RuntimeError("Deployment VM violates the board CPU/RAM contract")
             (directory / "machine.json").write_text(json.dumps({"memory": memory, "cpus": cpus}, indent=2) + "\n")
             print("Guest serial:", vm.serial, flush=True)
             print(f"Updater: target/debug/shoop-deploy --updater 127.0.0.1:{args.updater_port} updater-status", flush=True)

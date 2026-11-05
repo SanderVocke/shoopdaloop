@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 import struct
 import subprocess
+import boards
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = Path(__file__).resolve().parent
@@ -37,7 +38,14 @@ def build():
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
     parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker", "handoff-version", "cleanup"])
+    boards.argument(parser)
     args = parser.parse_args()
+    board = boards.load(args.board)
+    global BUILD
+    BUILD = board.build_dir(ROOT)
+    if args.usb and board.firmware["midi"] != "usb-optional":
+        parser.error("USB MIDI wiring has not been qualified for this board")
+    board.generate(BUILD)
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", args.build_id):
         parser.error("--build-id requires 1–40 ASCII letters, digits, dots, dashes or underscores")
     if (args.deployment or args.deployment_test_fault) and args.app != "host":
@@ -65,7 +73,7 @@ def build():
     lwip = SOURCE / "ThirdParty/sw_services/lwip220/src/lwip-2.2.0"
     port = lwip / "contrib/ports/xilinx"
     drivers = SOURCE / "XilinxProcessorIPLib/drivers"
-    includes = [PLATFORM / "include", bsp / "common", bsp / "arm/common",
+    includes = [BUILD, PLATFORM / "include", bsp / "common", bsp / "arm/common",
                 bsp / "arm/common/gcc", bsp / "arm/cortexa9", bsp / "arm/cortexa9/gcc",
                 kernel / "include", kernel / "portable/GCC/ARM_CA9",
                 lwip / "src/include", port / "include", port / "netif"]
@@ -91,6 +99,7 @@ def build():
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
     sources += [PLATFORM / "platform.c", PLATFORM / (args.app + ".c")]
     if args.usb:
+        sources.append(PLATFORM / "boards" / (board.firmware["usb_reset"] + "_usb.c"))
         if args.fetch:
             if not (TINYUSB / ".git").exists():
                 run(["git", "init", TINYUSB])
@@ -150,8 +159,11 @@ def build():
         features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
         if features:
             cargo += ["--features", ",".join(features)]
-        run(cargo, env={**os.environ, "RUSTFLAGS": rust_flags})
-        rust_library = PLATFORM / "firmware/target/armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
+        rust_target = (PLATFORM / "firmware/target" if board.name == boards.DEFAULT else BUILD.parent / "firmware-target")
+        run(cargo, env={**os.environ, "RUSTFLAGS": rust_flags, "CARGO_TARGET_DIR": str(rust_target),
+            "SHOOP_RECORDING_BYTES": str(board.firmware["recording_mib"] * boards.MIB),
+            "SHOOP_MEDIA_BYTES": str(board.firmware["media_mib"] * boards.MIB)})
+        rust_library = rust_target / "armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
     cc = os.environ.get("ARM_CC", "arm-none-eabi-gcc")
     version = subprocess.check_output([cc, "-dumpfullversion"], text=True).strip()
     if version != PINS["gcc"]:
@@ -172,7 +184,7 @@ def build():
 
     def compile_one(source):
         obj = BUILD / (hashlib.sha256(str(source).encode()).hexdigest()[:12] + ".o")
-        warnings = ["-Wall", "-Wextra", "-Werror"] if source.parent in {PLATFORM, PLATFORM / "deployment", PLATFORM / "usb"} else []
+        warnings = ["-Wall", "-Wextra", "-Werror"] if source.parent in {PLATFORM, PLATFORM / "deployment", PLATFORM / "usb", PLATFORM / "boards"} else []
         result = subprocess.run([cc, *flags, *warnings, "-c", str(source), "-o", str(obj)], capture_output=True, text=True)
         if result.returncode:
             return None, str(source.relative_to(ROOT)) + "\n" + result.stderr
@@ -187,7 +199,7 @@ def build():
     elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
     run([cc, *flags[:4], "-nostartfiles", "-Wl,--gc-sections", "-Wl,-z,noexecstack", "-Wl,-Map=" + str(elf.with_suffix(".map")),
-         "-T", PLATFORM / "link.ld", "-o", elf, *objects, *([rust_library] if rust_library else []),
+         "-T", BUILD / "link.ld", "-o", elf, *objects, *([rust_library] if rust_library else []),
          "-Wl,--start-group", "-lc", "-lm", "-lgcc", "-lnosys", "-Wl,--end-group"])
     image = elf.read_bytes()
     nm = subprocess.check_output([cc, "-print-prog-name=nm"], text=True).strip()
@@ -208,8 +220,8 @@ def build():
         if kind != 1:
             continue
         if address != physical or stored > size or not (
-            0x00100000 <= address < address + size <= 0x08000000 or
-            0x08000000 <= address < address + size <= 0x38000000
+            boards.MIB <= address < address + size <= board.platform_end or
+            board.platform_end <= address < address + size <= board.rust_end
         ):
             raise SystemExit(f"Invalid load region {address:#x}+{size:#x}")
         regions.append([address, address + size])
@@ -225,7 +237,7 @@ def build():
         path = ROOT / os.fsdecode(name)
         if path.is_file() and path.suffix in {".rs", ".c", ".h", ".ld", ".py", ".patch", ".toml", ".lock", ".json"}:
             source_hash.update(name + b"\0" + hashlib.sha256(path.read_bytes()).digest())
-    elf.with_suffix(".json").write_text(json.dumps({"embeddedsw": REVISION,
+    elf.with_suffix(".json").write_text(json.dumps({**board.manifest(), "embeddedsw": REVISION,
         "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
@@ -235,7 +247,7 @@ def build():
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
         "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
         "deployment_test_fault": args.deployment_test_fault,
-        "ram_bytes": 1 << 30, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
+        "ram_bytes": board.ram, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     if args.usb:
         elf.with_suffix('.licenses.txt').write_text('TinyUSB ' + PINS['tinyusb'] + '\n\n' + (TINYUSB / 'LICENSE').read_text())
     print(elf)

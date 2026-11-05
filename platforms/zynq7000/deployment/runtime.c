@@ -13,8 +13,8 @@ extern void shoop_halt(void);
 extern const char shoop_build_identity[];
 static XSdPs sd;
 XSdPs_Config XSdPs_ConfigTable[1] = {{
-    .DeviceId = 0, .BaseAddress = 0xe0100000, .InputClockHz = 50000000,
-    .CardDetect = 1, .WriteProtect = 0, .BusWidth = 4, .BankNumber = 1,
+    .DeviceId = 0, .BaseAddress = SHOOP_SD_BASE, .InputClockHz = SHOOP_SD_HZ,
+    .CardDetect = SHOOP_SD_DETECT, .WriteProtect = SHOOP_SD_WP, .BusWidth = 4, .BankNumber = SHOOP_SD_BANK,
 }};
 static uint8_t bounce[512] __attribute__((aligned(64)));
 static struct shoop_handoff handoff;
@@ -26,7 +26,7 @@ static int confirmed, stable_recorded;
 static void watchdog(unsigned seconds) {
     Xil_Out32(0xf8005000, 0xabc000);
     if (seconds) {
-        unsigned count = (uint64_t)seconds * 111111111 / (512 * 4096) + 1;
+        unsigned count = (uint64_t)seconds * SHOOP_WATCHDOG_HZ / (512 * 4096) + 1;
         Xil_Out32(0xf8005004, 0x920000 | (count << 2) | 2);
         Xil_Out32(0xf8005000, 0xabc003);
         Xil_Out32(0xf8005008, 0x1999);
@@ -55,7 +55,7 @@ int shoop_deploy_init(void) {
     handoff.crc = shoop_crc32(&handoff, 508);
 #endif
     if (!shoop_handoff_valid(&handoff) || strcmp(handoff.build, shoop_build_identity)) return 0;
-    if (XSdPs_CfgInitialize(&sd, &XSdPs_ConfigTable[0], 0xe0100000) != XST_SUCCESS ||
+    if (XSdPs_CfgInitialize(&sd, &XSdPs_ConfigTable[0], SHOOP_SD_BASE) != XST_SUCCESS ||
         XSdPs_CardInitialize(&sd) != XST_SUCCESS) {
         xil_printf("SHOOP_SD_INIT_FAILED\r\n"); return 0;
     }
