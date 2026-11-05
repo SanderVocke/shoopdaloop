@@ -139,6 +139,14 @@ pub trait HostPortInventory: Send {
     fn poll(&mut self) -> Option<Vec<HostPortAlias>>;
 }
 
+fn profiling_connection() -> Option<u64> {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    static NEXT: AtomicU32 = AtomicU32::new(1);
+    NEXT.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .ok()
+        .map(u64::from)
+}
+
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
     host_port_inventory: Option<alloc::boxed::Box<dyn HostPortInventory>>,
@@ -147,6 +155,11 @@ pub struct RtBackend<C, K> {
         alloc::collections::BTreeMap<shoop_rt_protocol::HostPortId, alloc::string::String>,
     resource_limits: shoop_app_api::HostResourceLimits,
     profiling: shoop_rt_protocol::profiling::Collector,
+    profiling_groups: (
+        Option<alloc::sync::Arc<shoop_rt_protocol::profiling::Topology>>,
+        alloc::sync::Arc<[shoop_rt_protocol::profiling::Group]>,
+        bool,
+    ),
     client: ProtocolClient<C>,
     clock: K,
     link: Link,
@@ -204,6 +217,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             retired_host_ports: alloc::collections::BTreeMap::new(),
             resource_limits: shoop_app_api::HostResourceLimits::default(),
             profiling: Default::default(),
+            profiling_groups: Default::default(),
             client,
             clock,
             link: Link::Connecting,

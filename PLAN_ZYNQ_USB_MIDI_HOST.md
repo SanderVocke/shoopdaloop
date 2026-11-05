@@ -22,28 +22,41 @@ with the user's assistance in the final qualification stage.
 
 ## Integration with the current backend branch
 
-On 2026-11-05 the user requested integration with the latest
-`feat/backend-replacement`. Merge upstream
+On 2026-11-05 merge `95a3f348` integrated upstream
 `0ef7581b4ac625db19f0a2f5356d5a5a715227f7` into the published USB branch, preserving
-both histories and the existing FreeRTOS/network-deployment work. Retarget the
-unmerged implementation PR to `feat/backend-replacement`.
+both histories and the existing FreeRTOS/network-deployment work. The unmerged
+implementation PR now targets `feat/backend-replacement`.
 
-The combined application schema is version 22, retaining physical port availability
-alongside upstream host graphs, buses, preview and profiling. Native hosts keep
+The backend subsequently advanced to
+`e4b180f660664d643c3f78aa5359c247903abef3` with the interactive profiling graph and
+xrun capture inspection. Integrate that update while preserving the USB identity
+and availability methods, credential admission and both branches' CI coverage.
+
+The combined application schema is version 25, retaining physical port availability
+alongside upstream host graphs, buses, preview, profiling graphs and capture
+inspection. Upstream uses version 24; the USB availability field requires a distinct
+combined schema. Native hosts keep
 keyless discovery. Provisioned Zynq profiles retain explicit credential admission
 and independent deployment-version handling, with no authentication fallback.
 FreeRTOS retains 256-frame callbacks and uses the upstream fixed 32-frame engine
 quantum. Re-run the native, browser and actual-guest integration gates on this
 combined implementation. Physical acceptance remains pending.
 
-Merge checkpoint: all 2777 native Rust tests pass (8 policy skips), all 119
+Previous merge checkpoint (`95a3f348`, schema 22): all 2777 native Rust tests pass
+(8 policy skips), all 119
 Node/Wasm tests in the five affected packages pass, and warning-denying native,
 browser/worklet and ARM firmware builds pass. Chromium core and Web MIDI workflows
 pass with zero xruns. Formatting, test attributes, the 431-module tracing inventory
 and cross-platform dependency boundaries pass. The fresh actual-guest USB run
 passes HS/FS, sixteen cables, nested hubs, four devices, 100 hotplugs and the
-content-mismatch canary. Remaining baseline/deployment and final-head CI evidence
-will be reported on PR #928. No hardware result is claimed.
+content-mismatch canary. All original firmware/deployment suites and all 26
+applicable CI checks also passed on that head.
+
+The profiling merge passes all 2801 native Rust tests (8 policy skips), the
+warning-denying workspace and USB-enabled production ARM builds, and the portable
+TinyUSB ASan/UBSan suite. Formatting, test attributes and the 435-module tracing
+inventory pass. Report fresh actual-guest and final-head CI evidence on PR #928.
+No hardware result is claimed.
 
 ## Goals and scope
 

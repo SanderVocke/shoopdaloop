@@ -94,7 +94,7 @@ MIDIStreaming interface and cable. The board MIO/reset values follow the
 [pinned ZC702 PS initialization](https://github.com/u-boot/u-boot/blob/5508406582f6f7120dce0c4b3059819a41788db2/board/xilinx/zynq/zynq-zc702/ps7_init_gpl.c). Offline ports with saved routes remain visible
 as disconnected and can be disconnected explicitly. New connections require an
 available port. Saved missing-device routes reconnect when that identity returns.
-Firmware and clients must use session protocol version 22 together. The renderer
+Firmware and clients must use session protocol version 25 together. The renderer
 keeps its 256-frame callbacks and uses a fixed 32-frame engine processing quantum.
 Native hosts use keyless discovery; Zynq profiles retain an explicit `credential`
 path and authenticated admission. A failed credential never falls back to keyless

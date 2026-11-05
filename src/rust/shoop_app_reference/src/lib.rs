@@ -1961,6 +1961,9 @@ impl ApplicationModel {
             | AppIntent::RequestLoadSessionSource { .. } => {
                 Err("task-scoped file callbacks require the production session client".to_owned())
             }
+            AppIntent::InspectProfiling(request) => backend
+                .inspect_profiling(request)
+                .map_err(|error| error.to_string()),
             AppIntent::SetProfiling(enabled) => backend
                 .set_profiling(enabled)
                 .map_err(|error| error.to_string()),
