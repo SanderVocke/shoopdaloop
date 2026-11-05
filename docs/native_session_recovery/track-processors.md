@@ -720,3 +720,8 @@ five-frame difference is retained until a new wet take is published. Dry-only
 External takes project their audio alignment. Real rate-conversion fixtures now
 also change Q from 16 to 32: stored take alignment stays zero and current processor
 latency reports 32, with audible playback on the newly prepared host.
+
+Automatic playback after a fixed-cycle recording now follows the owning track's
+default, including dry-through-wet. The wire regression covers both defaults,
+autoplay disabled and explicit wet Play. This corrects the P2 automated review
+finding on `67b2565b` without changing explicit playback requests.

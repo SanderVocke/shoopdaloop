@@ -859,7 +859,7 @@ impl Service {
             self.backend.transition_loop(backend, mode, delay)?;
             if mode == BackendLoopMode::Recording && cycles.unwrap_or(0) > 0 {
                 let next = if self.global.play_after_record {
-                    BackendLoopMode::Playing
+                    self.default_playback(id)?
                 } else {
                     BackendLoopMode::Stopped
                 };

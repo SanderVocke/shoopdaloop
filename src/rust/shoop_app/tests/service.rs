@@ -237,6 +237,153 @@ fn new_track(name: &str, midi: bool) -> Command {
 }
 
 #[shoop_test]
+fn fixed_cycle_recording_resolves_each_tracks_default_post_record_playback() {
+    let mut f = fixture_with_dry_wet(2, true);
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    let run = |f: &mut Fixture, client: &mut Client, value| {
+        let id = submit(&mut f.service, client, connection, value);
+        complete(&mut f.service, client, connection, id, true)
+    };
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let sync = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .clone();
+    let sync_action = |action| Command::Loop {
+        track: sync.id,
+        loop_id: sync.loops[0].id,
+        action,
+    };
+    run(&mut f, &mut client, sync_action(LoopAction::RecordClicked));
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    run(&mut f, &mut client, sync_action(LoopAction::StopClicked));
+    run(&mut f, &mut client, sync_action(LoopAction::PlayClicked));
+    let (track, loops) = created(run(
+        &mut f,
+        &mut client,
+        Command::AddTrack(TrackSpec {
+            name: "Post-record defaults".into(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                default_playback_mode: DefaultPlaybackMode::Regular,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    ));
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(true)),
+    );
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetApplyNCycles(1)),
+    );
+    for (index, (default, autoplay, expected)) in [
+        (DefaultPlaybackMode::Regular, true, LoopMode::Playing),
+        (
+            DefaultPlaybackMode::DryThroughWet,
+            true,
+            LoopMode::PlayingDryThroughWet,
+        ),
+        (DefaultPlaybackMode::DryThroughWet, false, LoopMode::Stopped),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        run(
+            &mut f,
+            &mut client,
+            Command::Track {
+                track,
+                action: TrackAction::DefaultPlaybackModeChanged(default),
+            },
+        );
+        run(
+            &mut f,
+            &mut client,
+            Command::Global(GlobalControlAction::SetPlayAfterRecord(autoplay)),
+        );
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[index],
+                    action: LoopAction::DefaultClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut finished = false;
+        for _ in 0..100 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, true);
+            let state = client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap();
+            let state = &state.loops[index];
+            if !state.empty && state.mode == expected && state.next_transition_delay.is_none() {
+                finished = true;
+                break;
+            }
+        }
+        assert!(finished, "default={default:?} autoplay={autoplay}");
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[index],
+                    action: LoopAction::PlayClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut explicit_wet = false;
+        for _ in 0..100 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, true);
+            let state = client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap();
+            if state.loops[index].mode == LoopMode::Playing {
+                explicit_wet = true;
+                break;
+            }
+        }
+        assert!(explicit_wet);
+    }
+}
+
+#[shoop_test]
 fn dry_wet_service_orders_defaults_and_keeps_explicit_play_wet_over_the_wire() {
     for encoded in [false, true] {
         let mut f = fixture_with_dry_wet(2, true);

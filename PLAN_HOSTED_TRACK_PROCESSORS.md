@@ -661,6 +661,12 @@ metadata after rerecord. Real FX/synth rate conversion now also changes Q=16→3
 proving stored take alignment stays zero while current latency reports 32 frames.
 Focused adapter/service tests and warning-denying builds pass.
 
+Automated review follow-up: fixed-length recording with autoplay now resolves the
+owning track's default playback for its scheduled finish. The service-wire
+regression covers regular/dry defaults, autoplay Off and explicit Play remaining
+wet. The existing default ordering test still passes. This addresses the P2
+finding on `67b2565b`; re-review follows the fix.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or
