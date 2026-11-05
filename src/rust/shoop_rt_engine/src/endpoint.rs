@@ -387,14 +387,26 @@ impl ControlEndpoint {
         self.limits
     }
 
-    pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::PROFILING
+    pub(crate) fn capabilities(&self) -> Capabilities {
+        let mut capabilities = Capabilities::PROFILING
             .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
             .union(Capabilities::WIDE_CONTENT_UPLOAD)
-            .union(Capabilities::LOOP_TIMING)
+            .union(Capabilities::LOOP_TIMING);
+        if self.settings.external_dry_wet || !self.processor_catalog.kinds.is_empty() {
+            capabilities = capabilities
+                .union(Capabilities::DRY_WET)
+                .union(Capabilities::GLOBAL_FX_CONTROL);
+        }
+        if self.settings.external_dry_wet {
+            capabilities = capabilities.union(Capabilities::EXTERNAL_DRY_WET);
+        }
+        if !self.processor_catalog.kinds.is_empty() {
+            capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
+        }
+        capabilities
     }
 
     fn free_pending(&self) -> usize {
@@ -1404,7 +1416,7 @@ impl Endpoint for ControlEndpoint {
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
-                    capabilities: Self::capabilities(),
+                    capabilities: self.capabilities(),
                     limits: self.limits,
                     driver: self.cells.driver(),
                 });

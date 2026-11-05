@@ -6,8 +6,7 @@ use shoop_app_client::Client;
 use shoop_app_protocol::*;
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::{testing::OfflineRender, EngineDescription, HostPorts, Segment};
-use shoop_rt_protocol::{Capabilities, ProcessorKind, ProcessorPolicy, ProcessorSettings};
-use shoop_rt_transport::carrier::Carrier;
+use shoop_rt_protocol::{ProcessorKind, ProcessorPolicy, ProcessorSettings};
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 use std::{cell::RefCell, rc::Rc, time::Duration};
 #[global_allocator]
@@ -30,26 +29,6 @@ impl EngineClock for Clock {
     fn wait(&mut self) -> bool {
         assert_no_heap(|| self.0.borrow_mut().run(16, |port, _| port as f32 + 0.25)).unwrap();
         true
-    }
-}
-struct Foundation<C>(C);
-impl<C: Carrier> Carrier for Foundation<C> {
-    fn send(
-        &mut self,
-        message: shoop_rt_protocol::ClientMessage,
-    ) -> Result<(), shoop_transport::CarrierError> {
-        self.0.send(message)
-    }
-    fn receive(&mut self) -> Option<shoop_rt_protocol::EngineMessage> {
-        let mut message = self.0.receive()?;
-        if let shoop_rt_protocol::EngineMessage::Welcome { capabilities, .. } = &mut message {
-            *capabilities = capabilities
-                .union(Capabilities::DRY_WET)
-                .union(Capabilities::TRACK_PROCESSORS)
-                .union(Capabilities::GLOBAL_FX_CONTROL)
-                .union(Capabilities::EXTERNAL_DRY_WET);
-        }
-        Some(message)
     }
 }
 struct Fixture {
@@ -206,8 +185,6 @@ impl Fixture {
         )
         .unwrap();
         let render = Rc::new(RefCell::new(render));
-        let client =
-            shoop_rt_transport::client::ProtocolClient::new(Foundation(client.into_carrier()));
         let backend = RtBackend::connect(client, Clock(render.clone())).unwrap();
         let mut service = Service::new(
             Box::new(backend),

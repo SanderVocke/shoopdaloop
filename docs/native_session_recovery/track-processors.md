@@ -668,3 +668,9 @@ channel edits. Negative positions are skipped and untouched raw tails remain.
 Admission and live timing edits refuse writes beyond the retained raw extent
 before mutating the take. The independent three-channel-offset regression runs
 under callback heap guards; maximum-width rerecord and real service fixtures pass.
+
+Public admission now derives dry/wet, External, processor and global-control
+capabilities from the actual prepared host. Service and adapter fixtures no longer
+override advertisement. Real wire/archive fixtures, default actions, imported take
+timing/reconnect and minimal-host refusal pass. The startup-policy test checks all
+four combinations against actual host build support and handshake capabilities.

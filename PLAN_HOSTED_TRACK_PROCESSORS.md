@@ -361,7 +361,7 @@ warning-denying product builds and tracing/test inventories pass.
 
 ### 5. Implement dry/wet graph roles, loop modes and latency
 
-- [ ] Extend RT protocol/codecs, engine model/graph/pools and adapter track/port mappings
+- [x] Extend RT protocol/codecs, engine model/graph/pools and adapter track/port mappings
   for distinct dry audio/MIDI, processor input/output and wet capture/playback. Restore
   External sends/returns and native dynamic publication; hosted endpoints stay internal.
   Carry roles through loop creation, content reads/meters and resynchronization.
@@ -449,16 +449,16 @@ writes, grab/candidate interactions and transactional persistence remain open.
 
 ### 6. Restore service operations, editors and track control MIDI
 
-- [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace
+- [x] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace
   unconditional service refusals and empty track catalogs. Restore pending/results,
   confirmed projection and UI/Lua actions for creation/removal/default modes, track
   controls/processor activation/state restore, FX parameters, synth presets/sends/Panic
   and mappings. Editor visibility stays transient; unsupported external-UI/recovery/
   process-log facets must not be advertised for the built-ins.
-- [ ] Reconnect surviving add-track/editor/Connections widgets to the production route.
+- [x] Reconnect surviving add-track/editor/Connections widgets to the production route.
   Restore input/output metering and External port visibility; show effective startup
   availability/limits. Keep Carla and bus FX controls unavailable.
-- [ ] Restore track MIDI Learn and the global FX-control input with reference filtering,
+- [x] Restore track MIDI Learn and the global FX-control input with reference filtering,
   additive routing, idle-value retention and bounded saturation handling. MIDI-origin
   values enter authoritative projection/save state; control-only traffic is not recorded.
 - [ ] Verify actual public UI and Lua default/explicit actions, each editor control class,
@@ -607,6 +607,14 @@ Wet-offset milestone: per-channel COW writes preserve independent wet start
 offsets and raw tails. Extent validation precedes rerecord admission and live edits.
 The heap-guarded three-channel regression, maximum-width rerecord fixture and
 real FX/synth/External service fixtures pass with warning-denying host builds.
+
+Public-admission milestone: capability bits now follow the prepared host catalog
+and External startup policy. All service/adapter capability overrides are removed.
+Real FX/synth/External archive fixtures, service default actions, imported take
+timing/reconnect, minimal-host refusal and the four startup-policy combinations pass
+through actual handshake advertisement. The loop capture path handles logical
+widths below the physical bank width. FreeRTOS host settings explicitly retain
+their default disabled processor policy; cross-target validation remains in CI.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

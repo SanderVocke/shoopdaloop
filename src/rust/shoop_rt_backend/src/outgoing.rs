@@ -1213,9 +1213,6 @@ mod track_role_tests {
             BackendMidiChannelUpdate, BackendMidiEvent,
         };
         let mut stack = stack();
-        stack.capabilities = stack
-            .capabilities
-            .union(shoop_rt_protocol::Capabilities::DRY_WET);
         let created = stack
             .create_track_topology(
                 "windows",
@@ -1345,10 +1342,6 @@ mod track_role_tests {
             ),
         ] {
             let mut stack = stack();
-            // Foundation admission until the service persistence path is enabled.
-            stack.capabilities = stack
-                .capabilities
-                .union(shoop_rt_protocol::Capabilities::EXTERNAL_DRY_WET);
             let created = stack.create_track_topology("media", topology, 1).unwrap();
             stack.wait_idle();
             let id = created.loops[0];

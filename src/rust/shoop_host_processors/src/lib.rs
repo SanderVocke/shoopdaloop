@@ -263,6 +263,76 @@ mod tests {
         }
     }
     #[shoop_test]
+    fn startup_policy_and_public_capabilities_follow_the_host_build() {
+        for fx in [false, true] {
+            for synth in [false, true] {
+                let description = EngineDescription {
+                    external_dry_wet: true,
+                    sample_rate: 8000,
+                    quantum: 16,
+                    max_frames: 16,
+                    strip_channels: 2,
+                    resource_pages: 256,
+                    segments: vec![shoop_rt_engine::Segment {
+                        strips: 1,
+                        loops: 1,
+                    }],
+                    processors: ProcessorSettings {
+                        builtin_fx: if fx {
+                            ProcessorPolicy::Auto
+                        } else {
+                            ProcessorPolicy::Off
+                        },
+                        oxisynth: if synth {
+                            ProcessorPolicy::Auto
+                        } else {
+                            ProcessorPolicy::Off
+                        },
+                        fx_instances: 1,
+                        synth_instances: 1,
+                        memory_mb: 128,
+                    },
+                    ..EngineDescription::default()
+                };
+                let prepared = prepare(&description).unwrap();
+                let fx = fx && cfg!(feature = "builtin-fx");
+                let synth = synth && cfg!(feature = "oxisynth");
+                assert_eq!(prepared.effective.fx_instances, u16::from(fx));
+                assert_eq!(prepared.effective.synth_instances, u16::from(synth));
+                if !fx && !synth {
+                    assert_eq!(prepared.reserved_bytes, 0);
+                }
+                let (mut render, mut client) =
+                    shoop_rt_engine::testing::OfflineRender::new_with_processors(
+                        &description,
+                        prepared,
+                    )
+                    .unwrap();
+                client.connect().unwrap();
+                for _ in 0..100 {
+                    while client.poll().is_some() {}
+                    if client.state() == shoop_rt_transport::client::ClientState::Connected {
+                        break;
+                    }
+                    render.run(16, |_, _| 0.).unwrap();
+                }
+                assert_eq!(
+                    client.state(),
+                    shoop_rt_transport::client::ClientState::Connected
+                );
+                let capabilities = client.capabilities();
+                use shoop_rt_protocol::Capabilities;
+                assert!(capabilities.contains(Capabilities::DRY_WET));
+                assert!(capabilities.contains(Capabilities::EXTERNAL_DRY_WET));
+                assert_eq!(
+                    capabilities.contains(Capabilities::TRACK_PROCESSORS),
+                    fx || synth
+                );
+            }
+        }
+    }
+
+    #[shoop_test]
     fn measured_preparation_peak_fits_the_complete_reserved_bank_budget() {
         for channels in [1, 2, 8] {
             let d = EngineDescription {

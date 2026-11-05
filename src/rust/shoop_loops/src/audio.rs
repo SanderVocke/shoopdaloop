@@ -621,7 +621,7 @@ impl AudioCapture {
         windows: &[crate::windows::ChannelWindow],
         inputs: &AudioPorts<'_>,
     ) -> Result<rt_runtime::Revision, Error> {
-        if windows.len() != self.channels || inputs.input_count() < self.channels {
+        if windows.len() > self.channels || inputs.input_count() < self.channels {
             return Err(Error::InvalidShape);
         }
         if windows.iter().all(|window| window.start_offset == 0) {

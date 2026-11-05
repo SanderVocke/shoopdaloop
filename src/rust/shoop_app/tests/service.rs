@@ -113,7 +113,6 @@ fn fixture_configured(
         refuse: Rc::clone(&refuse_next_loop),
         refuse_bus: Rc::clone(&refuse_next_bus),
         reply: None,
-        dry_wet,
     });
     let mut backend = RtBackend::connect(client, clock).unwrap();
     if let Some(inventory) = inventory {
@@ -1540,7 +1539,6 @@ struct RefuseLoop<C> {
     refuse: Rc<Cell<bool>>,
     refuse_bus: Rc<Cell<bool>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
-    dry_wet: bool,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
     for RefuseLoop<C>
@@ -1586,15 +1584,7 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         self.inner.send(message)
     }
     fn receive(&mut self) -> Option<shoop_rt_protocol::EngineMessage> {
-        let mut message = self.reply.take().or_else(|| self.inner.receive())?;
-        if self.dry_wet {
-            if let shoop_rt_protocol::EngineMessage::Welcome { capabilities, .. } = &mut message {
-                *capabilities = capabilities
-                    .union(shoop_rt_protocol::Capabilities::DRY_WET)
-                    .union(shoop_rt_protocol::Capabilities::EXTERNAL_DRY_WET);
-            }
-        }
-        Some(message)
+        self.reply.take().or_else(|| self.inner.receive())
     }
 }
 
