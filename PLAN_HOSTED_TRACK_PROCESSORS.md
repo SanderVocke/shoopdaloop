@@ -638,6 +638,9 @@ same fixtures inspect required rate conversion, convert 8→16 kHz, rebuild both
 DSP types at the accepted rate, preserve settings/take metadata and produce audio.
 Live timing validation checks both active and prepared wet-edit candidates.
 Selected portable Miri passes in [CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41991644691).
+The complete focused both-DSP Node package now passes locally: four startup/resource,
+eighteen graph and four public service tests, including conversion and 8+8 timing.
+CI captures this package's logs/artifacts when its isolated runner fails.
 Optional native/worklet feature builds and startup tests also pass there; an
 artifact assertion still assumed zero imports. Reconciliation preserves the
 base branch's existing `shoop_profiling.now` import and forbids all others.
@@ -737,7 +740,8 @@ python3 scripts/check_shoop_test_usage.py
 python3 scripts/run_wasm_tests.py --runtime node --profile dev
 ```
 
-Feature-isolated CI jobs prove excluded dependencies/assets and import-free worklets;
+Feature-isolated CI jobs prove excluded dependencies/assets and worklets with only
+the retained profiling-clock import;
 a unified workspace feature build is insufficient for that proof. Platform CI uses
 the README's native transport/persistence, browser and packaging probes with scoped
 FX/synth scenarios. Real-backend jobs omit `SHOOP_ALLOW_MISSING_BACKENDS=1` where

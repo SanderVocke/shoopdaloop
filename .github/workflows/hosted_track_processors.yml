@@ -68,7 +68,18 @@ jobs:
           node --input-type=module -e 'import fs from "node:fs"; const module = new WebAssembly.Module(fs.readFileSync("target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm")); const imports = WebAssembly.Module.imports(module); if (imports.length !== 1 || imports[0].module !== "shoop_profiling" || imports[0].name !== "now" || imports[0].kind !== "function") throw new Error(`unexpected worklet imports: ${JSON.stringify(imports)}`);'
       - name: Run both real DSP backends through Node Wasm
         if: matrix.label == 'both'
-        run: python3 scripts/run_wasm_tests.py --runtime node --package shoop_host_processors --feature builtin-fx --feature oxisynth --trace off
+        run: |
+          if ! python3 scripts/run_wasm_tests.py --runtime node --package shoop_host_processors --feature builtin-fx --feature oxisynth --trace off; then
+            cat target/wasm-tests/dev/reports/node/shoop_host_processors-node.log
+            exit 1
+          fi
+      - name: Upload hosted Wasm test reports
+        if: always() && matrix.label == 'both'
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-processor-wasm-tests-${{ github.run_id }}
+          path: target/wasm-tests/dev/reports/node
+          if-no-files-found: warn
       - name: Record cold startup and reserved memory
         if: matrix.label == 'both'
         run: |
