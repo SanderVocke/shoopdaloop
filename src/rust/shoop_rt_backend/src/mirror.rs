@@ -646,6 +646,21 @@ impl Mirror {
     ) -> BackendLoopState {
         let view = entry.view;
         let timing = entry.timing;
+        let processor_alignment_frames = if roles && channels > 0 && view.length > 0 {
+            let dry = if dry_channels > 0 {
+                Some(timing.windows.audio[0].capture_alignment)
+            } else {
+                midi.then_some(timing.windows.midi.capture_alignment)
+            };
+            dry.and_then(|dry| {
+                timing.windows.audio[dry_channels as usize]
+                    .capture_alignment
+                    .checked_sub(dry)
+                    .and_then(|difference| u32::try_from(difference).ok())
+            })
+        } else {
+            None
+        };
         let channel_timings = (0..(channels + if roles { dry_channels } else { 0 }) as usize)
             .map(|channel| {
                 let window = timing.windows.audio[channel];
@@ -675,7 +690,8 @@ impl Mirror {
             recording_armed: view.recording_armed,
             timing_revision: timing.revision,
             channel_timings,
-            capture_alignment_frames: if channels > 0 {
+            processor_alignment_frames,
+            capture_alignment_frames: if channels > 0 || (roles && dry_channels > 0) {
                 timing.windows.audio[0].capture_alignment
             } else {
                 timing.windows.midi.capture_alignment

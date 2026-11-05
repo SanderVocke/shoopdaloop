@@ -652,6 +652,15 @@ partial mutation. Eight codec checks and the four startup/resource tests pass.
 CI's first optional-feature run exposed a measurement assertion format error and
 an invalid action ref for the pinned Miri toolchain; both are corrected.
 
+Take-alignment correction: projection derives the stored wet-minus-dry alignment
+from committed channel windows, independently of the current processor's buffer
+delay. Source-aligned captures report zero; imported nonzero alignments retain
+their actual difference. Dry-only External metadata uses its first audio lane.
+The imported-take regression checks a five-frame difference and preserved dry
+metadata after rerecord. Real FX/synth rate conversion now also changes Q=16→32,
+proving stored take alignment stays zero while current latency reports 32 frames.
+Focused adapter/service tests and warning-denying builds pass.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or

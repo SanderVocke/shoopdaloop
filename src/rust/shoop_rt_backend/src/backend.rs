@@ -1158,16 +1158,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 continue;
             };
             if entry.confirmed && track.confirmed {
-                let mut state = Mirror::loop_state(
+                let state = Mirror::loop_state(
                     entry,
                     track.audio_channels,
                     track.topology.dry_audio_channels(),
                     track.midi,
                     !matches!(track.topology, BackendTrackTopology::Direct { .. }),
                 );
-                if crate::processor_controls::track_kind(track).is_some() && state.length > 0 {
-                    state.processor_alignment_frames = Some(processor_latency);
-                }
                 loops.insert(*id, state);
             }
         }

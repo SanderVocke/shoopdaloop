@@ -712,3 +712,11 @@ real DSP audio. All four focused service-wire fixtures pass. Portable ownership
 Miri passed at `159771c7` in [the hosted CI run](https://github.com/SanderVocke/shoopdaloop/actions/runs/41991644691).
 The target branch's existing `shoop_profiling.now` is the sole permitted worklet
 import; optional DSP introduces no additional imports.
+
+Take alignment is derived from committed wet/dry channel windows, using the same
+wet-minus-dry interpretation as the reference. It is independent of the current
+processor's buffering. New source-aligned takes therefore report zero; an imported
+five-frame difference is retained until a new wet take is published. Dry-only
+External takes project their audio alignment. Real rate-conversion fixtures now
+also change Q from 16 to 32: stored take alignment stays zero and current processor
+latency reports 32, with audible playback on the newly prepared host.

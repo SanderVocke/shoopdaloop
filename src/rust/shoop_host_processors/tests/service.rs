@@ -182,10 +182,13 @@ impl Fixture {
         Self::with_rate(kind, width, 8000)
     }
     fn with_rate(kind: ProcessorKind, width: u8, rate: u32) -> Self {
+        Self::with_format(kind, width, rate, 16)
+    }
+    fn with_format(kind: ProcessorKind, width: u8, rate: u32, quantum: usize) -> Self {
         let description = EngineDescription {
             external_dry_wet: true,
             sample_rate: rate,
-            quantum: 16,
+            quantum,
             max_frames: 128,
             ramp_frames: 0,
             telemetry_interval_frames: 0,
@@ -591,7 +594,7 @@ fn service_processor(kind: ProcessorKind) {
     f.confirmed(loop_action(LoopAction::StopClicked));
     f.ticks(4);
     assert!(f.track(track).loops[0].has_recorded_fx_state);
-    assert_eq!(f.track(track).loops[0].processor_alignment_frames, Some(16));
+    assert_eq!(f.track(track).loops[0].processor_alignment_frames, Some(0));
     let message = f.client.read_media(loops[0]).unwrap();
     f.service.handle(f.connection, message).unwrap();
     for _ in 0..200 {
@@ -1196,7 +1199,7 @@ fn rate_converted_round_trip(
     };
     let target = ConversionTarget {
         sample_rate: 16000,
-        quantum_frames: 16,
+        quantum_frames: 32,
     };
     let Value::Inspected {
         decoded,
@@ -1231,7 +1234,7 @@ fn rate_converted_round_trip(
     .unwrap() else {
         panic!()
     };
-    let mut host = Fixture::with_rate(kind, 4, 16000);
+    let mut host = Fixture::with_format(kind, 4, 16000, 32);
     host.load(converted, 1);
     let saved = host.capture(2, None);
     let Manifest::Session(before) = &source.manifest else {
@@ -1264,6 +1267,9 @@ fn rate_converted_round_trip(
         .unwrap()
         .clone();
     assert_eq!(loaded.loops[0].mode, LoopMode::Stopped);
+    assert_eq!(loaded.latency.automatic_processor_advance_frames, Some(32));
+    assert_eq!(loaded.loops[0].processor_alignment_frames, Some(0));
+
     host.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
     host.confirmed(Command::Loop {
         track: loaded.id,

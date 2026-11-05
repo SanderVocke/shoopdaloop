@@ -1238,8 +1238,8 @@ mod track_role_tests {
                         .map(|(channel, frames)| BackendAudioChannelUpdate {
                             channel,
                             samples: alloc::vec![channel as f32 + 0.25; frames].into(),
-                            start_offset: Some(if channel == 0 { -3 } else { 0 }),
-                            capture_alignment_frames: Some(0),
+                            start_offset: Some(if channel == 0 { 4 } else { 0 }),
+                            capture_alignment_frames: Some(if channel < 3 { 2 } else { 7 }),
                             preplay: Some(7),
                         })
                         .collect(),
@@ -1259,7 +1259,7 @@ mod track_role_tests {
                         ]
                         .into(),
                         start_offset: Some(2),
-                        capture_alignment_frames: Some(0),
+                        capture_alignment_frames: Some(2),
                         preplay: Some(5),
                     }],
                 },
@@ -1271,6 +1271,10 @@ mod track_role_tests {
         stack.canonical_imports.remove(&id);
         stack.reads.forget(id);
         let before = stack.capture_session().unwrap().tracks[0].loops[0].clone();
+        let metadata = &stack.poll().unwrap().loops[&id];
+        assert_eq!(metadata.capture_alignment_frames, 2);
+        assert_eq!(metadata.processor_alignment_frames, Some(5));
+
         stack
             .transition_loop(id, BackendLoopMode::RecordingDryIntoWet, None)
             .unwrap();
@@ -1300,7 +1304,9 @@ mod track_role_tests {
         assert!(after.recorded_processor_state.is_some());
         let state = stack.poll().unwrap().loops[&id].clone();
         assert_eq!(state.channel_timings.len(), 7);
-        assert_eq!(state.channel_timings[0].start_offset, -3);
+        assert_eq!(state.channel_timings[0].start_offset, 4);
+        assert_eq!(state.capture_alignment_frames, 2);
+        assert_eq!(state.processor_alignment_frames, None);
         assert_eq!(state.channel_timings[6].frames, 96);
     }
 
