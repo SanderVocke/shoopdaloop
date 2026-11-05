@@ -1091,20 +1091,27 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
     let Manifest::Session(session) = &mut padded.manifest else {
         panic!("session")
     };
-    session
+    let content = &mut session
         .tracks
         .iter_mut()
         .find(|track| track.name == "Zynq exact media")
         .unwrap()
-        .loops[0]
-        .frames = 9_000_000;
+        .loops[0];
+    content.frames = 9_000_000;
+    let channel = &mut content.audio[0];
+    channel.frames = content.frames;
+    channel.start_offset = 0;
+    channel.capture_alignment = 0;
+    channel.preplay = 0;
+    let object = channel.object.expect("audio object") as usize - 1;
+    padded.payloads[object] = Payload::Audio(Arc::new(vec![0.25; channel.frames as usize]));
     let staged = stage(client, connection, 501, Arc::new(padded));
     assert!(
         matches!(
             command(client, connection, Command::CommitPersistence(staged)),
             Outcome::Refused { .. }
         ),
-        "replacement exceeded the normalized media budget"
+        "replacement exceeded available recording-pool headroom"
     );
     assert_eq!(client.snapshot().unwrap().persistence_epoch, epoch);
     assert_eq!(

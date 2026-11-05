@@ -6495,6 +6495,9 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    recording_armed: false,
+                    timing_revision: 0,
+                    channel_timings: Vec::new(),
                     sync_source: self
                         .session
                         .primitive_sync_sources()

@@ -700,6 +700,9 @@ pub fn dry_wet_routing_state(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
+    pub recording_armed: bool,
+    pub timing_revision: u64,
+    pub channel_timings: Vec<BackendChannelTimingState>,
     pub content_revision: u64,
     pub sync_source: Option<BackendLoopId>,
     pub mode: BackendLoopMode,
@@ -895,6 +898,16 @@ pub struct BackendLoopContent {
     pub balance: f32,
     pub audio: Vec<BackendAudioContent>,
     pub midi: Vec<BackendMidiContent>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendChannelTimingState {
+    pub channel: usize,
+    pub is_midi: bool,
+    pub frames: u64,
+    pub start_offset: i32,
+    pub capture_alignment_frames: i32,
+    pub preplay: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

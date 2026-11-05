@@ -175,7 +175,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return Err(anyhow!("session exceeds the host MIDI event budget"));
         }
         if self.mirror.loops.values().any(|entry| {
-            entry.view.mode == shoop_rt_protocol::LoopMode::Recording
+            entry.view.recording_armed
+                || entry.view.mode == shoop_rt_protocol::LoopMode::Recording
                 || entry.view.next_mode == Some(shoop_rt_protocol::LoopMode::Recording)
         }) {
             return Err(anyhow!(
@@ -271,7 +272,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             let loop_id = mapping.loops[&content.source_id];
             let canonical = Arc::new(content.clone());
             let mut pair = [None; 2];
-            if content.length > 0 {
+            if content.length > 0
+                || content
+                    .audio
+                    .iter()
+                    .any(|channel| !channel.samples.is_empty())
+                || content.midi.iter().any(|channel| channel.length > 0)
+            {
                 for (medium, midi) in [false, true].into_iter().enumerate() {
                     let token = self.next_persistence;
                     self.next_persistence = token
@@ -297,6 +304,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         upload,
                         begun: false,
                     });
+                    work.push_back(Work::Request(Request::ContentWindow {
+                        id: token,
+                        frames: u64::from(content.length),
+                        windows: crate::prepared::windows(&content),
+                    }));
                 }
             }
             candidate
@@ -305,6 +317,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .expect("candidate loop")
                 .view
                 .length = u64::from(content.length);
+            candidate
+                .loops
+                .get_mut(&loop_id)
+                .expect("candidate loop")
+                .timing = crate::prepared::timing(content, 0, 0);
             sources.insert(loop_id, pair);
             contents.insert(loop_id, canonical);
         }

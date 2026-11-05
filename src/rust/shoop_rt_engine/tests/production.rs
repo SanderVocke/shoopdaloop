@@ -154,7 +154,7 @@ fn record(q: usize, partition: usize) -> (Vec<f32>, Vec<(u64, Vec<u8>)>) {
             id: 100,
             midi: false,
             frames: q as u64 + 1,
-            bytes: (q as u64 + 1) * 8
+            bytes: (q as u64 + 1) * 8 + 1
         })),
         Outcome::Refused(Refusal::InvalidValue)
     );

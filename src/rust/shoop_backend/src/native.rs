@@ -5052,6 +5052,9 @@ impl Backend for NativeBackend {
                 BackendLoopState {
                     sync_source: loop_.sync_source,
                     content_revision: 0,
+                    recording_armed: false,
+                    timing_revision: 0,
+                    channel_timings: Vec::new(),
                     mode: from_native_mode(state.mode),
                     length: state.length,
                     position: state.position,

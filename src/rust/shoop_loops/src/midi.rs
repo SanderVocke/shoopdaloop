@@ -104,6 +104,45 @@ impl MidiRenderer {
         frames: usize,
         output: &mut MidiBuffer,
     ) -> Result<RenderReport, Error> {
+        self.render_range(io, playback, frames, 0, frames, output)
+    }
+
+    pub fn render_windowed(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        mut playback: Playback,
+        position: i64,
+        window: crate::windows::ChannelWindow,
+        lead: bool,
+        frames: usize,
+        output: &mut MidiBuffer,
+    ) -> Result<RenderReport, Error> {
+        let raw_frames = playback
+            .source
+            .map(|index| io.snapshot(index).map(|s| s.description.frames))
+            .transpose()?
+            .unwrap_or(0);
+        let span = crate::windows::span(position, window, lead, frames, raw_frames);
+        playback.position = span.position;
+        if span.frames == 0 {
+            playback.source = None;
+        }
+        if let Some(stream) = self.stream {
+            playback.discontinuity |=
+                playback.source != Some(stream.index) || stream.end_position != span.position;
+        }
+        self.render_range(io, playback, frames, span.offset, span.frames, output)
+    }
+
+    fn render_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        frames: usize,
+        offset: usize,
+        active_frames: usize,
+        output: &mut MidiBuffer,
+    ) -> Result<RenderReport, Error> {
         if frames == 0 {
             return Ok(RenderReport::default());
         }
@@ -117,7 +156,7 @@ impl MidiRenderer {
         let Some(index) = playback.source else {
             if self.active {
                 report.emission(midi_restore::cleanup(&self.state, |packet| {
-                    output.push(0, frames, packet)
+                    output.push(offset.min(frames.saturating_sub(1)) as u32, frames, packet)
                 }));
                 *self.state = MidiState::default();
             }
@@ -131,7 +170,7 @@ impl MidiRenderer {
         }
         let end = playback
             .position
-            .checked_add(frames as u64)
+            .checked_add(active_frames as u64)
             .ok_or(Error::InvalidFrame)?;
         if end > description.frames {
             return Err(Error::InvalidFrame);
@@ -140,7 +179,7 @@ impl MidiRenderer {
             let position = io.midi_seek(index, playback.position)?;
             if self.active {
                 report.emission(midi_restore::cleanup(&self.state, |packet| {
-                    output.push(0, frames, packet)
+                    output.push(offset.min(frames.saturating_sub(1)) as u32, frames, packet)
                 }));
             }
             let prior_error = report.output_error;
@@ -148,7 +187,9 @@ impl MidiRenderer {
                 &position.state,
                 |packet| match prior_error {
                     Some(error) => Err(error),
-                    None => output.push(0, frames, packet),
+                    None => {
+                        output.push(offset.min(frames.saturating_sub(1)) as u32, frames, packet)
+                    }
                 },
             ));
             *self.state = position.state;
@@ -190,7 +231,7 @@ impl MidiRenderer {
             self.state.apply(Message::parse(packet, self.packet.len())?);
             report.packet(
                 output,
-                (event.frame() - playback.position) as u32,
+                (offset as u64 + event.frame() - playback.position) as u32,
                 frames,
                 packet,
             );
@@ -198,6 +239,14 @@ impl MidiRenderer {
         }
         stream.end_position = end;
         self.stream = Some(stream);
+        if offset + active_frames < frames && self.active {
+            report.emission(midi_restore::cleanup(&self.state, |packet| {
+                output.push((offset + active_frames) as u32, frames, packet)
+            }));
+            self.stream = None;
+            self.active = false;
+            *self.state = MidiState::default();
+        }
         report.parameter_history_untracked |= (0..16).any(|channel| {
             self.state
                 .channel(channel)

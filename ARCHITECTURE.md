@@ -228,6 +228,32 @@ External terminal results are exactly Applied, Superseded, Cancelled or Failed a
 an actual frame. Automatic edges/actions use prepared state/journals, not external
 receipt slots. An already terminal action cannot be undone by cancellation.
 
+### Manual timing windows and pre-play
+
+Raw audio/MIDI storage and the shared logical loop period have independent
+lengths. Immutable playback windows retain each channel's raw start offset,
+capture alignment, pre-play, gain and optional raw extent. A displayed start is
+raw start plus capture alignment. Out-of-storage audio is silent; aligned-take
+windows must fit their retained extent. Edits never rewrite raw samples or MIDI
+timestamps, and old export leases retain their original window cut.
+
+A bounded timing transaction fences logical identity, raw-content revision and
+timing revision. The planner validates the whole batch and publishes one reliable
+confirmed header at a settled boundary. Manual period edits preserve the absolute
+position or apply modulo for a shorter nonzero period. They refuse during capture
+or any armed recording. Offset/pre-play edits preserve capture progress and pending
+transitions. Content-family imports retain their separate proportional retiming
+policy. No-op transactions confirm a new timing revision.
+
+An eligible stopped primitive may render a lead-in before its imminent scheduled
+Play. Prediction uses the resolver's existing source pulse/countdown, never a
+renderer clock. Per-channel spans preserve onsets inside a whole quantum. MIDI
+uses indexed prefix state and carries pickup notes through the start; cancellation
+or invalidated prediction releases owned notes. Wraps and seeks do not start new
+pre-play. Logical periods remain Q-aligned; raw windows and MIDI timestamps remain
+frame precise. The editor previews the effective valid period, while nonaligned
+API lengths refuse without rounding.
+
 ### Coincident decisions, pulses and termination
 
 Desired-state intents do not require intermediate zero-duration audio. Settle
@@ -782,8 +808,9 @@ Two descriptors meet at the adapter. The engine's protocol capabilities describe
 engine to the adapter. The application's capability descriptor
 (`BackendCapabilities` in `shoop_app_api`, re-exported by `shoop_backend`) names every
 optional feature outside the core looping workflow; the legacy backends report the
-full set, and the new engine backend reports none except MIDI injection when the
-engine announces it.
+full set. The production adapter projects confirmed engine capabilities, including
+core persistence/import, loop timing, output buses and MIDI injection. Client-local
+features add their own capability when their provider is available.
 
 The application presents unsupported features as unavailable: the UI gates actions
 with the capability's explanation, and refusals and capacity errors

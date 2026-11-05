@@ -29,13 +29,18 @@ implementation PR now targets `feat/backend-replacement`.
 
 The backend subsequently advanced to
 `e4b180f660664d643c3f78aa5359c247903abef3` with the interactive profiling graph and
-xrun capture inspection. Integrate that update while preserving the USB identity
-and availability methods, credential admission and both branches' CI coverage.
+xrun capture inspection. Merge `e648e71e` preserves the USB identity and availability
+methods, credential admission and both branches' CI coverage.
 
-The combined application schema is version 25, retaining physical port availability
+During validation the backend advanced again to
+`e001e2fd1ba24165bb9a33bd2a34eb3b342f51ab`, adding P12 loop and channel timing
+edits. Integrate those changes without dropping physical MIDI availability,
+generation fences, bounded resources or authenticated deployment.
+
+The combined application schema is version 26, retaining physical port availability
 alongside upstream host graphs, buses, preview, profiling graphs and capture
-inspection. Upstream uses version 24; the USB availability field requires a distinct
-combined schema. Native hosts keep
+inspection and timing edits. Upstream uses version 25; the USB availability field
+requires a distinct combined schema. Native hosts keep
 keyless discovery. Provisioned Zynq profiles retain explicit credential admission
 and independent deployment-version handling, with no authentication fallback.
 FreeRTOS retains 256-frame callbacks and uses the upstream fixed 32-frame engine
@@ -52,11 +57,19 @@ passes HS/FS, sixteen cables, nested hubs, four devices, 100 hotplugs and the
 content-mismatch canary. All original firmware/deployment suites and all 26
 applicable CI checks also passed on that head.
 
-The profiling merge passes all 2801 native Rust tests (8 policy skips), the
+The profiling merge (`e648e71e`, schema 25) passes all 2801 native Rust tests
+(8 policy skips), the
 warning-denying workspace and USB-enabled production ARM builds, and the portable
 TinyUSB ASan/UBSan suite. Formatting, test attributes and the 435-module tracing
 inventory pass. Report fresh actual-guest and final-head CI evidence on PR #928.
 No hardware result is claimed.
+
+The timing merge passes all 2821 native Rust tests (8 policy skips), the
+warning-denying workspace and production ARM builds, formatting, test attributes
+and the 440-module tracing inventory. Exhaustion fixtures use actual raw buffer
+sizes independently of logical playback windows; their refusal and live-content
+preservation assertions remain in place. Record actual-guest and final-head CI
+results on PR #928.
 
 ## Goals and scope
 

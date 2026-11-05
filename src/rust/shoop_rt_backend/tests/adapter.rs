@@ -250,6 +250,7 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
             .with(BackendCapability::SessionCapture, true)
             .with(BackendCapability::SessionContentLoad, true)
             .with(BackendCapability::LoopContentImport, true)
+            .with(BackendCapability::LoopTimingEdits, true)
     );
     let created = backend.create_direct_track(track(1, false, 1)).unwrap();
     let loop_id = created.loops[0];
@@ -273,10 +274,6 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
                     initial_loops: 1,
                 })
                 .err(),
-        ),
-        (
-            BackendCapability::LoopTimingEdits,
-            backend.set_loop_length(loop_id, 4).err(),
         ),
     ];
     for (capability, error) in refusals {

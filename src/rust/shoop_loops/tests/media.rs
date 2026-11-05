@@ -337,6 +337,7 @@ fn owner_batch_refusals_preserve_every_input_and_do_not_reserve_generation_or_ca
                 6 => {
                     release_input(&mut store, second);
                     second = copy(View {
+                        windows: None,
                         description: Description {
                             owner: LoopId::from_parts(1, 2).unwrap(),
                             ..first.description
@@ -816,6 +817,7 @@ fn malformed_foreign_duplicate_and_unindexed_inputs_return_owners_without_public
     assert_no_heap(|| {
         let data = input(&mut store, ids, owner(1), 0, Frame(0));
         let original = View {
+            windows: None,
             description: data.description,
             audio: data.audio,
             midi: data.midi,

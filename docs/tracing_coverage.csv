@@ -1,4 +1,9 @@
 path,context,classification,coverage_or_rationale
+src/rust/shoop_app/src/service/commands/timing.rs,app_session,instrumented_indirect,Timing admission runs inside the service command and retained outcome boundary.
+src/rust/shoop_loops/src/windows.rs,portable_loop_library,excluded,Bounded pure window validation and span mapping expose typed failures without a host tracing dependency.
+src/rust/shoop_rt_backend/src/timing.rs,application_ui_and_control,instrumented_indirect,Timing commands and confirmed headers run within traced adapter requests and outcomes.
+src/rust/shoop_rt_engine/src/timing.rs,realtime_engine,excluded,Allocation-free timing execution may run on the audio thread; host and adapter trace admission and outcomes.
+src/rust/shoop_rt_protocol/src/timing.rs,protocol_contracts,excluded,Bounded value contracts and canonical validation have no execution boundary to instrument.
 src/rust/shoop_loops/src/resolver/retime.rs,portable_loop_library,excluded,Fixed-storage atomic timing publication exposes frame-tagged events and typed failures without callback tracing.
 src/rust/shoop_loops/src/media/playback.rs,portable_loop_library,excluded,Prepared playback ownership preflight has no tracing dependency and retains explicit resource ownership accounting.
 src/rust/shoop_loops/src/runtime/family.rs,portable_loop_library,excluded,Prepared family publication exposes typed preflight and execution outcomes without callback tracing.

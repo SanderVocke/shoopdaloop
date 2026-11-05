@@ -138,6 +138,7 @@ impl Track {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoopView {
+    pub recording_armed: bool,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_delay: Option<u32>,
@@ -148,6 +149,7 @@ pub(crate) struct LoopView {
 impl Default for LoopView {
     fn default() -> Self {
         Self {
+            recording_armed: false,
             mode: LoopMode::Stopped,
             next_mode: None,
             next_delay: None,
@@ -158,6 +160,7 @@ impl Default for LoopView {
 }
 
 pub(crate) struct Loop {
+    pub timing: shoop_rt_protocol::TimingState,
     pub slot: LoopSlotId,
     pub track: BackendTrackId,
     pub confirmed: bool,
@@ -587,9 +590,42 @@ impl Mirror {
         }
     }
 
-    pub fn loop_state(entry: &mut Loop, channels: u32) -> BackendLoopState {
+    pub fn loop_state(entry: &mut Loop, channels: u32, midi: bool) -> BackendLoopState {
         let view = entry.view;
+        let timing = entry.timing;
+        let channel_timings = (0..channels as usize)
+            .map(|channel| {
+                let window = timing.windows.audio[channel];
+                shoop_backend::BackendChannelTimingState {
+                    channel,
+                    is_midi: false,
+                    frames: window.raw_frames.unwrap_or(timing.raw_audio_frames),
+                    start_offset: window.start_offset,
+                    capture_alignment_frames: window.capture_alignment,
+                    preplay: window.preplay,
+                }
+            })
+            .chain(midi.then(|| {
+                let window = timing.windows.midi;
+                shoop_backend::BackendChannelTimingState {
+                    channel: 0,
+                    is_midi: true,
+                    frames: window.raw_frames.unwrap_or(timing.raw_midi_frames),
+                    start_offset: window.start_offset,
+                    capture_alignment_frames: window.capture_alignment,
+                    preplay: window.preplay,
+                }
+            }))
+            .collect();
         BackendLoopState {
+            recording_armed: view.recording_armed,
+            timing_revision: timing.revision,
+            channel_timings,
+            capture_alignment_frames: if channels > 0 {
+                timing.windows.audio[0].capture_alignment
+            } else {
+                timing.windows.midi.capture_alignment
+            },
             content_revision: entry.content,
             sync_source: entry.sync,
             mode: app_mode(view.mode),

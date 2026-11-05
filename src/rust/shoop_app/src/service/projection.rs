@@ -127,6 +127,7 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::LoopTimingEdits,
             ]
             .into_iter()
             .fold(BackendCapabilities::NONE, |caps, capability| {
@@ -567,6 +568,28 @@ impl Service {
                 let view = &mut entry.view;
                 view.structural_state = StructuralState::Confirmed;
                 view.content_revision = state.content_revision;
+                view.timing_revision = state.timing_revision;
+                view.channel_timings = state
+                    .channel_timings
+                    .iter()
+                    .map(|channel| {
+                        let index = if channel.is_midi {
+                            channel.channel + 129
+                        } else {
+                            channel.channel + 1
+                        };
+                        LoopChannelTimingState {
+                            id: ChannelId::from_raw((view.id.raw() << 8) | index as u64),
+                            is_midi: channel.is_midi,
+                            data_length: channel.frames,
+                            start_offset: i64::from(channel.start_offset)
+                                + i64::from(channel.capture_alignment_frames),
+                            capture_alignment_frames: i64::from(channel.capture_alignment_frames),
+                            preplay_samples: u64::from(channel.preplay),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
                 view.mode = mode(state.mode);
                 view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);
                 view.next_transition_delay = state.next_transition_delay;

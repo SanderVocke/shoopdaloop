@@ -1681,6 +1681,36 @@ c.register_loop_event_cb(function(event) print('loop-event') end)
     assert_eq!(state.tracks[1].loops[0].gain, 0.25);
     assert!(state.tracks[1].loops[0].selected);
     assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Recording);
+    let details = state
+        .details
+        .as_ref()
+        .expect("recording metadata remains visible");
+    assert_eq!(details.channels.len(), 1);
+    let loop_id = state.tracks[1].loops[0].id;
+    runtime
+        .dispatch(AppIntent::SetLoopChannelTimings {
+            loop_id,
+            updates: vec![ChannelTimelineUpdate {
+                channel_id: details.channels[0].id,
+                start_offset: Some(-7),
+                preplay_samples: Some(5),
+            }],
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime.snapshot();
+    let details = state.details.as_ref().unwrap();
+    assert_eq!(
+        (
+            details.channels[0].start_offset,
+            details.channels[0].preplay_samples
+        ),
+        (-7, 5)
+    );
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Recording
+    );
     runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 2);
     assert!(runtime
@@ -1763,7 +1793,9 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
             state.capabilities.supports(capability),
             matches!(
                 capability,
-                BackendCapability::MidiInjection | BackendCapability::BusManagement
+                BackendCapability::MidiInjection
+                    | BackendCapability::BusManagement
+                    | BackendCapability::LoopTimingEdits
             )
         );
     }
@@ -3763,4 +3795,206 @@ fn session_replacement_retains_publications_until_unpublish_admission_and_comple
             assert_eq!(f.waits.get(), f.initial_waits);
         }
     }
+}
+
+#[shoop_test]
+fn timing_commands_are_atomic_while_recording_and_reconcile_once_after_ui_loss() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 12000, connection, encoded);
+        let (track, loops) = created(command(
+            &mut f.service,
+            &mut client,
+            connection,
+            new_track("Timing", true),
+        ));
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::Global(GlobalControlAction::SetSync(false)),
+        );
+        let target = loops[0];
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .capabilities
+            .supports(BackendCapability::LoopTimingEdits));
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                connection,
+                Command::Loop {
+                    track,
+                    loop_id: target,
+                    action: LoopAction::RecordClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let before = f.service.snapshot().tracks[1].loops[0].clone();
+        assert_eq!(before.mode, LoopMode::Recording);
+        assert_eq!(before.channel_timings.len(), 2);
+        let changes = before
+            .channel_timings
+            .iter()
+            .enumerate()
+            .map(|(index, channel)| ChannelTimelineUpdate {
+                channel_id: channel.id,
+                start_offset: Some(index as i64 - 2),
+                preplay_samples: Some(index as u64 + 1),
+            })
+            .collect::<Vec<_>>();
+        let mut message = client
+            .command(
+                Command::SetLoopChannelTimings {
+                    loop_id: target,
+                    updates: changes.clone(),
+                },
+                None,
+            )
+            .unwrap();
+        if encoded {
+            let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+            let size = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+            let WireMessage::Client(decoded) = codec::decode(&bytes[..size]).unwrap() else {
+                panic!()
+            };
+            message = decoded;
+        }
+        let duplicate = message.clone();
+        f.service.handle(connection, message).unwrap();
+        f.service.handle(connection, duplicate.clone()).unwrap();
+        f.service.detach(connection);
+        for _ in 0..8 {
+            f.service.tick(STEP);
+        }
+        let mut client = attach(&mut f.service, 12001, ConnectionId(2), encoded);
+        let current = client.snapshot().unwrap().tracks[1].loops[0].clone();
+        assert_eq!(current.mode, LoopMode::Recording);
+        assert!(current.length_frames > before.length_frames);
+        assert_eq!(current.timing_revision, before.timing_revision + 1);
+        for (channel, change) in current.channel_timings.iter().zip(&changes) {
+            assert_eq!(Some(channel.start_offset), change.start_offset);
+            assert_eq!(Some(channel.preplay_samples), change.preplay_samples);
+            assert_eq!(channel.capture_alignment_frames, 0);
+        }
+        assert!(f.service.handle(ConnectionId(2), duplicate).is_err());
+        for _ in 0..4 {
+            f.service.tick(STEP);
+        }
+        assert_eq!(
+            f.service.snapshot().tracks[1].loops[0].timing_revision,
+            current.timing_revision
+        );
+        let refused = command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::SetLoopTimeline {
+                loop_id: target,
+                start_offset: Some(50),
+                preplay_samples: Some(50),
+                loop_length: Some(16),
+            },
+        );
+        assert!(matches!(refused, Outcome::Refused { .. }));
+        let unchanged = f.service.snapshot().tracks[1].loops[0].clone();
+        assert_eq!(unchanged.channel_timings, current.channel_timings);
+        assert_eq!(unchanged.timing_revision, current.timing_revision);
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(2),
+                Command::SetLoopChannelTimings {
+                    loop_id: target,
+                    updates: vec![changes[0].clone(), changes[0].clone()]
+                }
+            ),
+            Outcome::Refused { .. }
+        ));
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::Loop {
+                track,
+                loop_id: target,
+                action: LoopAction::StopClicked,
+            },
+        );
+        let revised = command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::SetLoopTimeline {
+                loop_id: target,
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(16),
+            },
+        );
+        assert!(matches!(revised, Outcome::Confirmed { .. }));
+        assert_eq!(f.service.snapshot().tracks[1].loops[0].length_frames, 16);
+        assert_eq!(
+            f.waits.get(),
+            f.initial_waits,
+            "service timing commands must not wait for render"
+        );
+    }
+}
+
+#[shoop_test]
+fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Lengths".into(),
+            audio_channels: 0,
+            midi: true,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    runtime.dispatch(AppIntent::AddScriptSource {
+        name: "lengths.lua".into(), kind: ScriptKind::User, enabled: true,
+        source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); print('started-once'); c.register_loop_event_cb(function() print('length=' .. c.loop_get_length({0,0})[1]) end)"),
+    }).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let id = runtime.snapshot().tracks[1].loops[0].id;
+    runtime
+        .dispatch(AppIntent::SetLoopTimeline {
+            loop_id: id,
+            start_offset: None,
+            preplay_samples: Some(3),
+            loop_length: Some(64),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    let state = runtime.snapshot();
+    assert_eq!(state.tracks[1].loops[0].length_frames, 64);
+    let script = &state.scripting.scripts[0];
+    assert!(script.latest_error.is_none(), "{:?}", script.latest_error);
+    assert_eq!(
+        script
+            .logs
+            .iter()
+            .filter(|line| line.message.contains("started-once"))
+            .count(),
+        1
+    );
+    assert!(
+        script
+            .logs
+            .iter()
+            .any(|line| line.message.contains("length=64")),
+        "{:?}",
+        script.logs
+    );
 }

@@ -71,6 +71,14 @@ fn check(
         }
         let position = midi.seek(&mut store.render_io(), index, frame).unwrap();
         assert_eq!(position.state, expected, "at {frame}");
+        assert_eq!(
+            midi.parameter_history_untracked(&mut store.render_io(), index, frame)
+                .unwrap(),
+            (0..16).any(|channel| expected
+                .channel(channel)
+                .unwrap()
+                .parameter_history_untracked())
+        );
         assert!(position.replayed_events <= EVENTS_PER_CHUNK);
         let mut cursor = position.cursor;
         assert_eq!(
@@ -821,4 +829,48 @@ fn edit_admission_refuses_event_packet_byte_index_and_owner_exhaustion() {
         input.clear();
         cleanup(&mut store, &mut midi);
     });
+}
+
+#[shoop_test]
+fn compact_parameter_history_matches_shifted_checkpoints_and_reset_boundaries() {
+    let (mut store, mut midi, mut input) = setup(8, 64);
+    let packets: &[(u64, &[u8])] = &[
+        (0, &[0xb0, 6, 1]),
+        (3, &[0xff]),
+        (5, &[0xbf, 96, 0]),
+        (6, &[0xbf, 123, 0]),
+        (8, &[0xff]),
+        (9, &[0xb1, 38, 2]),
+    ];
+    for start in [0, 5] {
+        input.clear();
+        for &(frame, packet) in packets
+            .iter()
+            .filter(|(frame, _)| *frame >= start && *frame < start + 5)
+        {
+            input.push((frame - start) as u32, 5, packet).unwrap();
+        }
+        assert_no_heap(|| midi.append(&mut store.render_io(), Frame(start), 5, &input)).unwrap();
+    }
+    let take = assert_no_heap(|| midi.grab(&mut store.render_io(), Frame(1)..Frame(10))).unwrap();
+    let mut initial = MidiState::default();
+    initial.apply_packet(packets[0].1, 48).unwrap();
+    let shifted: Vec<_> = packets[1..]
+        .iter()
+        .map(|(frame, packet)| (frame - 1, *packet))
+        .collect();
+    assert_no_heap(|| check(&mut store, &mut midi, take, 9, &shifted, &initial));
+    let index = midi.take_index(take).unwrap();
+    let copies = midi.work().state_copies;
+    for frame in 0..=9 {
+        assert_no_heap(|| midi.parameter_history_untracked(&mut store.render_io(), index, frame))
+            .unwrap();
+    }
+    assert_eq!(midi.work().state_copies, copies);
+    assert_eq!(
+        midi.parameter_history_untracked(&mut store.render_io(), index, 10),
+        Err(Error::InvalidFrame)
+    );
+    midi.release_take(take).unwrap();
+    cleanup(&mut store, &mut midi);
 }
