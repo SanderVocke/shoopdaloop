@@ -168,6 +168,8 @@ fn core_workflow_runs_on_the_new_engine_backend() {
             .with(BackendCapability::LoopTimingEdits, true)
             .with(BackendCapability::BusManagement, true)
             .with(BackendCapability::CompositeLoops, true)
+            .with(BackendCapability::Grab, true)
+            .with(BackendCapability::ReplacingMode, true)
     );
 
     runtime.dispatch(AppIntent::RequestNewSession).unwrap();

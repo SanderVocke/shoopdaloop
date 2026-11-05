@@ -782,3 +782,9 @@ observation encoders also recognize the library's dry playback/rerecord modes:
 journal/export mode values 3/4, transition event codes 15/16, and bit 4 in the
 compact staging state word (the primitive play/record bits and flags keep their
 existing values). Existing Direct replay records remain byte-identical.
+
+Grab/Replacing reconciliation extends only the observation vocabulary: mode5 is
+Replacing in journals/exports, and compact staging mode3 is Replacing (the
+capture/monitoring flag bits stay unchanged). Transition codes17/18/19 represent
+ReplaceInput, RecordPrefix and Adopt. Adopt also records position at byte40 and
+mode at byte48. Existing primitive replay expectations remain byte-identical.

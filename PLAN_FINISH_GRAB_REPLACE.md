@@ -2,9 +2,9 @@
 
 ## Status and delivery
 
-Current execution phase: finish implementation and local acceptance in this
-environment. Do not inspect or correct CI until that work is complete; then run
-the final iterative CI correction loop described below.
+Current execution phase: Phase A implementation and local acceptance are complete.
+Proceed to Phase B: refresh the target and run the final iterative CI correction
+loop described below. CI was not inspected or corrected during Phase A.
 
 Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
@@ -15,18 +15,18 @@ selectively onto its role-aware planner, shared ownership and processor interfac
 | Stage | Current status |
 | --- | --- |
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
-| F1 | Behavior matrix and public service/keyboard/Lua expectations implemented; final measured limits and application evidence are being completed. |
-| F2 | Normal hosts prepare shared thirty-second histories; bounded owner, live-source, index-workspace and retirement-debt admission now passes sustained record/page-pressure tests. Full-shape acceptance is in progress. |
-| F3 | Continuous fixed/growing paired writers, reserved exits, immutable exports, fault/reset outcomes and self-clocked automatic finish pass local tests. Production-density measurements are in progress. |
-| F4 | Negotiated public transactions, adapter ownership, atomic settlement, cancellation and render-owned musical finishes are implemented and locally exercised. |
-| F5 | Service routes implement selected gestures, exact explicit lists, solo, default Grab, Replacing and persistence guards. Lifecycle acceptance continues. |
-| F6 | Capabilities and button/keyboard/Lua routes are enabled; normal Replacing menu and incomplete-capture projection are implemented. Packaged acceptance continues. |
-| F7 | Save/load and role-aware regressions pass locally. Global MIDI pressure protection is implemented; complete pool/callback measurements and final recovery acceptance continue. |
-| F8 | Outstanding: complete packaged native/browser sequence, final-only CI correction, evidence/parity closure and PR handoff. |
+| F1 | Complete behavior, ownership and capacity contracts; public production tests and measured limits are linked in the acceptance evidence. |
+| F2 | Complete normal host histories, protected global MIDI credits, source/generation lifecycle and default/wide preparation measurements. |
+| F3 | Complete continuous fixed/growing writers, long-recording preparation, reserved exits, fault cleanup and render-owned finishes. |
+| F4 | Complete negotiated public transactions, atomic settlement, cancellation, adapter ownership and coherent pending/completion projection. |
+| F5 | Complete service gesture/exact-list policy, default Grab, solo, lifecycle fencing and persistence/recovery ownership. |
+| F6 | Complete normal UI, keyboard and Lua routes, Replacing menu, capabilities and incomplete-capture projection. |
+| F7 | Complete: lifecycle, exact file round trips, protected resource pressure, native stack/reset corrections and complete pool/callback measurements pass local acceptance. |
+| F8 | Phase A complete: packaged default socket/shared-memory, strict JACK and rebuilt Chromium workflows pass. Phase B target refresh, final CI correction/review and parity closure remain. |
 
 Grab and Replacing are enabled through negotiated application support. P04/P05
 remain OPEN until the complete acceptance and final CI gates pass. No Phase A CI
-inspection or push has occurred.
+inspection or push occurred.
 
 Execution originally started from fixed-runtime head
 `2e19210bdbb5e32510322f8b8344715ce7cbefe5`. Written using
@@ -508,6 +508,51 @@ this deliberately extreme debug run misses every device-time budget. Release and
 representative-density measurements, largest channel shape, complete hosted-bank
 accounting and packaged acceptance remain required. No timing certification is
 inferred from a debug or CI run.
+
+The final application acceptance adds packaged companion/socket/shared-memory and
+Chromium input canaries. The socket canary uses actual default preparation, drops
+the UI/Lua VM during growing capture, reattaches to the render-owned finish, then
+round-trips exact stereo/MIDI files and edits loaded owners again. The browser
+canary stalls its main thread during the finish and continues the existing hosted
+FX, bus, timing and composite workflows. Shared-memory reattachment remains the
+previously accepted recovery exclusion, while its editing/file sequence is covered.
+
+F7 corrections now cancel owned finish records when capture aborts/exhausts,
+cover the target's pending clock delay, and distinguish musical startup padding
+from density eviction/faults. Explicit raw adoption preserves its intentional
+requested padding. Finishing MIDI writers gives back future tick reservations;
+physical page-run boundary slack remains charged until actual retirement. The
+sustained protected-live-credit oracle includes packed events, fragmented SysEx,
+finished immutable writers and zero optional maintenance.
+
+Complete release preparation and callback distributions are recorded in
+[application evidence](docs/native_session_recovery/evidence/grab-replace.md) and
+[raw measurements](docs/native_session_recovery/evidence/grab-replace-measurements.json).
+The default 16-source/128-loop stereo host with optional FX banks peaks at
+3,458,138,693 bytes; eight channels with explicitly configured 512-MiB processor
+budget peaks at 4,080,206,525 bytes. The unchanged 256-MiB processor default refuses
+that wider processor shape. Extreme 256-events-per-source/Q32 input is finite and
+exact but misses every wall-clock deadline here; all tails/misses are preserved.
+The representative 256-frame/eight-event measurements also retain their misses
+under concurrent build/test load. This is not hardware deadline certification.
+
+Full regression exposed native Q1 output queues whose whole-period sizing exceeded
+the portable allocation bound. Dummy/JACK now select a smaller deliverable render
+block when MIDI layout preflight requires it, preserving the physical callback
+period, control lead, input frames and complete event capacities. Dummy explicitly
+renders every sub-block. Host integration cases share a bounded nextest group so
+multiple default prepared hosts and JACK graph mutation tests do not contend with
+each other. Original failures and corrected local acceptance are recorded in the
+final evidence rather than being labelled green retroactively.
+
+A default-pool JACK canary additionally found callback-stack exhaustion during
+Grab. The debug backtrace showed the general-operation dispatch closure retained
+above the MIDI source query. Input/shared operations now bypass that frame,
+gesture preparation no longer recurses, and source Grab reuses its complete media
+value. The complete default JACK sequence passes on the existing 512-KiB callback
+stack with no increased storage or stack setting. The strict JACK acceptance
+script now runs this exact packaged workflow; extracted native archives also run
+the input canary over socket and shared memory.
 
 ## Findings that determine the work
 
@@ -1094,14 +1139,14 @@ legacy production backend is used.
   Include explicit versus selected targets, all global policies, phase/length,
   startup/missing-history padding, empty/no-sync cases, trigger tracks, monitoring,
   pending transitions, wrapping and writer-to-writer mode changes.
-- [ ] Port meaningful reference expectations into production test scenarios:
+- [x] Port meaningful reference expectations into production test scenarios:
   `grab_policy_covers_targeted_selection_solo_and_immediate_completion`,
   `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`,
   relevant `expanded_loop_actions_route_modes_grab_and_balance`,
   `fake_grab_preflights_every_target`, and channel replace/erase/wrap tests.
   Keep unrelated dry/wet expectations under the delivered processor contract;
   dependent composite modes remain P17.
-- [ ] Specify request ownership, requested/effective cuts, preparation/finalization,
+- [x] Specify request ownership, requested/effective cuts, preparation/finalization,
   cancellation, insufficient history, admission failure and pressure outcomes.
   Select production budgets/defaults with a calculation for default and largest
   supported track/channel pools, 30-second retention and loaded MIDI density.
@@ -1140,15 +1185,15 @@ host/platform combinations.
 - [x] Add growing capture from an adopted prefix, preserving duration/data/state
   and consuming the first live tick exactly once. Retain fixed-history, long loaded
   and previously replaced bases through the ordinary resource/media interfaces.
-- [ ] Implement the continuous COW audio/MIDI writer described above. Own every
+- [x] Implement the continuous COW audio/MIDI writer described above. Own every
   admitted tick; handle erasure, wrap, logical-zero projection and suffix state.
   Preserve old views and make complete new views available at valid exit cuts.
-- [ ] Prove bounded preparation debt and guaranteed exit resources. Cover long
+- [x] Prove bounded preparation debt and guaranteed exit resources. Cover long
   loaded MIDI with more suffix events than one optional preparation allowance,
   sustained maximum admitted input, multiple active loops, immediate exit after
   one tick and many wraps. Fix representation/scheduling limits uncovered here;
   do not proceed with a writer that loses input while CandidateStatus is Building.
-- [ ] Handle Stop/Playing/Recording, scheduled cancellation, capture exhaustion,
+- [x] Handle Stop/Playing/Recording, scheduled cancellation, capture exhaustion,
   clear/removal and terminal fault; emit truthful terminal outcomes and release all
   private state. Keep unrelated playback and ordinary recording working.
 
@@ -1167,7 +1212,7 @@ exhausted ordinary transfer budgets, and every cancellation/fault frees its cred
   limits, carrier bounds and malformed/old-peer tests. Keep public control actions
   stable where possible; extend internal backend intent when needed to carry an
   RT-resolved target phase instead of a stale sampled position.
-- [ ] Implement engine admission and settlement for all selected sources/targets
+- [x] Implement engine admission and settlement for all selected sources/targets
   at one cut, including post-mode/position, prefix continuation, finish plans and
   solo effects. Preflight snapshots, writers, media, receipts and transitions;
   rollback the whole refused batch before changing any loop or peer.
@@ -1192,7 +1237,7 @@ socket/shared-memory/MessagePort coverage.
 - [x] Admit Replacing through explicit/triggered/scheduled mode commands; include
   it in the appropriate writer, cancellation, solo, sync and media guards. Keep
   explicit loop lists distinct from selection-aware gestures and preserve ordering.
-- [ ] Fence pending work against deletion, slot reuse, routing/source reset, target
+- [x] Fence pending work against deletion, slot reuse, routing/source reset, target
   length changes and session replacement. Reconcile UI loss after admission and
   before completion without resending or recomputing the accepted operation.
 
@@ -1208,11 +1253,11 @@ iterating; exercise the complete public sequence at F8.
 - [x] Derive each capability from negotiated, implemented host support; remove its
   production service/adapter refusal only after the corresponding route works.
   Keep per-request warmup/capacity errors distinct from unsupported capability.
-- [ ] Wire normal loop/global Grab controls, default-action settings, targeting,
+- [x] Wire normal loop/global Grab controls, default-action settings, targeting,
   keyboard bindings and Lua Grab/AdoptRingbuffers/LoopMode_Replacing through that
   service path. Make Replacing discoverable in the appropriate normal controls;
   show its actual mode, pending transitions, results and media refresh behavior.
-- [ ] Update production UI/runtime tests to assert capabilities and enabled
+- [x] Update production UI/runtime tests to assert capabilities and enabled
   controls after normal startup. Preserve refusal tests for unsupported peers and
   other parity features. Exercise real clicks, bundled keyboard script and public
   Lua functions rather than injecting internal domain operations.
@@ -1228,18 +1273,18 @@ Phase B CI for the remaining required browser/platform execution.
 
 ### F7 — Persistence, recovery and sustained-capacity acceptance
 
-- [ ] Audit active and scheduled Replacing across media reads, save/export,
+- [x] Audit active and scheduled Replacing across media reads, save/export,
   imports, family updates and full session replacement. Pin complete immutable
   exports or refuse according to the existing active-writer policy; never save a
   partial index or stale canonical-import cache as current content.
-- [ ] Round-trip grabbed, prefix-continued and repeatedly replaced media and
+- [x] Round-trip grabbed, prefix-continued and repeatedly replaced media and
   supported default-Grab settings. Reload stopped loops, then grab/replace again.
   Retain old exports during conflicting imports and configuration replacement.
-- [ ] Exercise detach/reconnect, controller loss, abandoned preparation, saturated
+- [x] Exercise detach/reconnect, controller loss, abandoned preparation, saturated
   results, source removal, writer pressure, reset/overflow during partial input,
   runtime fault and final shutdown. Count all pages, versions, MIDI state/index
   slots, jobs, receipts and retirement through sustained simultaneous capture.
-- [ ] Measure prepared memory and complete callbacks at production defaults and
+- [x] Measure prepared memory and complete callbacks at production defaults and
   admitted worst shapes/densities. Preserve tails, maxima, all timing misses and
   output overflow diagnostics; resolve configured work/storage violations without
   undocumented capacity increases or weaker functional assertions.
@@ -1254,7 +1299,7 @@ do not multiply the full workflow across all media/carrier/platform combinations
 
 ### F8 — End-to-end delivery and parity closure
 
-- [ ] Complete Phase A with one representative complete public sequence in a
+- [x] Complete Phase A with one representative complete public sequence in a
   packaged native app here, plus the browser equivalent wherever this environment
   supports it. Required browser coverage is also verified in final Phase B CI:
   stopped input -> selected/targeted Grab -> unsynced prefix continuation ->

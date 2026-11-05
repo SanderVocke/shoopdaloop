@@ -314,7 +314,7 @@ impl LoopPlanner {
         frame: Frame,
         io: &mut ResourceIo<'_>,
     ) -> Result<Transition, Failure> {
-        let entry = self.input_batch.entries[index];
+        let mut entry = self.input_batch.entries[index];
         if let InputAction::Gesture {
             source,
             history,
@@ -361,6 +361,21 @@ impl LoopPlanner {
                 })
                 .transpose()?;
             let gesture = spec.resolve(sync_state.content_length, target)?;
+            let status = self.shared.as_ref().ok_or(Error::InvalidState)?.status(
+                source,
+                self.graph_epoch,
+                io,
+            )?;
+            let window = gesture.window.resolve(
+                status.start..status.end,
+                sync_state.content_length,
+                sync_state.position,
+            )?;
+            if window.frames > window.source.end.0 - window.source.start.0
+                && !status.startup_padding
+            {
+                return Err(Error::Busy.into());
+            }
             self.input_batch.entries[index].finish =
                 gesture.finish.map(|finish| (sync, finish, None));
             let maximum_frames = if let Some(finish) = gesture.finish {
@@ -401,7 +416,7 @@ impl LoopPlanner {
                 mode: gesture.mode,
                 maximum_frames,
             };
-            return self.prepare_grab_entry(index, frame, io);
+            entry = self.input_batch.entries[index];
         }
         let InputAction::Grab {
             source,

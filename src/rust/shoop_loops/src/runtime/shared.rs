@@ -33,6 +33,8 @@ pub struct HistoryId {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HistoryStatus {
+    /// Empty logical content is permitted only before this source's first retained tick.
+    pub startup_padding: bool,
     pub id: HistoryId,
     pub start: Frame,
     pub end: Frame,
@@ -89,6 +91,8 @@ pub struct SharedCapacity {
 }
 struct History {
     committed_graph: Option<Epoch>,
+    startup_origin: Option<Frame>,
+    started: bool,
     settings: HistorySettings,
     audio: Option<AudioStoreId>,
     audio_source: Option<AudioHistoryId>,
@@ -309,6 +313,8 @@ impl Shared {
             lookup[setting.source as usize] = Some(histories.len());
             histories.push(History {
                 committed_graph: None,
+                startup_origin: None,
+                started: false,
                 settings: setting,
                 audio,
                 audio_source,
@@ -521,6 +527,7 @@ impl Shared {
             any = true;
         }
         Ok(HistoryStatus {
+            startup_padding: eligible && h.failure.is_none() && h.startup_origin == Some(start),
             id: HistoryId {
                 scope: self.scope,
                 graph,
@@ -571,6 +578,22 @@ impl Shared {
         }
         let changed = h.token.is_some_and(|old| old != token);
         let midi_changed = h.midi_token.is_some_and(|old| old != midi_token);
+        if !h.started {
+            h.startup_origin = Some(frame);
+            h.started = true;
+        } else if h.restart
+            || h.observed != frame
+            || (changed || midi_changed)
+                && self
+                    .live
+                    .iter()
+                    .filter_map(|slot| slot.value.as_ref())
+                    .any(|job| job.active && job.source.source == source)
+        {
+            h.startup_origin = None;
+        } else if (changed || midi_changed) && h.startup_origin.is_some() {
+            h.startup_origin = Some(frame);
+        }
         if midi_changed {
             if let Some(tracker) = &mut h.tracker {
                 tracker.reset();
@@ -647,6 +670,7 @@ impl Shared {
             }
             Err(error) => {
                 h.restart = true;
+                h.startup_origin = None;
                 h.failure = Some(error);
                 self.work.history_failures = self.work.history_failures.saturating_add(1);
             }
@@ -698,6 +722,8 @@ impl Shared {
                         }
                         h.token = None;
                         h.midi_token = None;
+                        h.startup_origin = None;
+                        h.started = false;
                         h.completed = end;
                         h.observed = end;
                         h.committed_graph = Some(graph);

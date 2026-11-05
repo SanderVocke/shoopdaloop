@@ -4,7 +4,7 @@ use crate::application::{ApplicationHandle, ApplicationRuntime, ApplicationStart
 use shoop_app_protocol::{composite, OperationId};
 use shoop_egui::*;
 
-fn wait_for_controller_release(entry: &HostEntry) -> Result<()> {
+pub(super) fn wait_for_controller_release(entry: &HostEntry) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let reply = connection::management(

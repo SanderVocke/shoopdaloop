@@ -2,6 +2,10 @@
 
 ## Status, baseline and delivery
 
+Application delivery is superseded by [PLAN_FINISH_GRAB_REPLACE.md](PLAN_FINISH_GRAB_REPLACE.md)
+and its [acceptance evidence](docs/native_session_recovery/evidence/grab-replace.md).
+The historical foundation evidence below does not replace application validation.
+
 Implementation and reconciliation are complete through target `df468352`.
 The full matrix passed at `7dad1991`; the final recovery-fix consolidation is
 pushed without another CI waiting round, as the user explicitly requested.

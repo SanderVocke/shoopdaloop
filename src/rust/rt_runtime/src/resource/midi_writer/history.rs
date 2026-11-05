@@ -349,19 +349,8 @@ impl Core {
         self.account(io);
         let root = result?;
 
-        Ok(Media {
-            root,
-            credit: media.credit,
-            retained_events: totals.events - kept.events,
-            retained_pages: totals.pages,
-            categories: media.categories,
-            retained_epoch: self.retirement_epoch,
-            origin: range.start,
-            frames,
-            initial,
-            revision: Revision(0),
-            density_checked: range.start.0 % self.q as u64 == 0,
-        })
+        media.root = root;
+        Ok(media)
     }
     pub fn reset_source(
         &mut self,

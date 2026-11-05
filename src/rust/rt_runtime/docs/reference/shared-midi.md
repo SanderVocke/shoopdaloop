@@ -152,4 +152,10 @@ quantized timing warning and drops realtime reset. Identity conversion and expli
 rate/Q conversion keep separate contracts. See the
 [fixed shared-history contract](../../../shoop_loops/docs/shared-history.md) for
 source generations, watermark faults, callback budgets, cleanup and measurement
-scope. Application P04/P05 mode flags and parity gaps remain open.
+scope. The application delivery adds negotiated Grab/Replacing and normal service/UI/Lua
+routes; see [application evidence](../../../../../docs/native_session_recovery/evidence/grab-replace.md).
+The production semantic index protects live source, staged tick and edit workspace
+credits before retained-owner admission. Hidden clipped roots and retirement debt
+remain charged until actual reclamation. Required maintenance does not consume
+optional transfer budgets. Finished writers release their future input allowance
+while their immutable versions keep actual packet/page charges.

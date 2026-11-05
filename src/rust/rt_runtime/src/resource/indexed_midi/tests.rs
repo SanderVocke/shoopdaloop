@@ -1074,7 +1074,7 @@ fn recording_prefix_import_captures_live_tail_and_cannot_publish_holes() {
 
 #[shoop_test]
 fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance() {
-    for fragmented in [false, true] {
+    for (fragmented, finish_writers) in [(false, false), (true, false), (false, true)] {
         let mut resources = resources();
         let baseline = resources.usage();
         let mut limits = config();
@@ -1097,7 +1097,7 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
         sysex[63] = 0xf7;
         sysex_input.push(0, Q, &sysex).unwrap();
         sysex_input.push(1, Q, &sysex).unwrap();
-        let mut held = [None; 8];
+        let mut held = [None; 7];
         let mut admitted = 0;
         let mut refused = false;
         let mut old = None;
@@ -1109,7 +1109,7 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
                 resources.copy_remaining = 0;
                 resources.steps_remaining = 0;
                 input.clear();
-                for event in 0..if fragmented { 1 } else { 8 } {
+                for event in 0..if fragmented || finish_writers { 1 } else { 8 } {
                     input
                         .push(event, Q, &[0x90, event as u8, (tick % 127 + 1) as u8])
                         .unwrap();
@@ -1139,6 +1139,18 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
                         Q as u64,
                     ) {
                         Ok(resource) => {
+                            if finish_writers {
+                                let writer = admit(&mut resources, resource, WriteKind::Fixed, 0);
+                                resources
+                                    .render_io()
+                                    .write_indexed_midi_tick(
+                                        writer,
+                                        sources[0],
+                                        Frame(tick * Q as u64),
+                                    )
+                                    .unwrap();
+                                resources.finish_indexed_midi_writer(writer).unwrap();
+                            }
                             held[admitted] = Some(resource);
                             admitted += 1;
                             if old.is_none() {
@@ -1165,7 +1177,15 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
                 }
             }
             assert!(admitted > 0);
-            assert!(refused, "owner admission must reserve live source storage");
+            if finish_writers {
+                assert_eq!(
+                    admitted,
+                    held.len(),
+                    "immutable cuts must return future writer workspace"
+                );
+            } else {
+                assert!(refused, "owner admission must reserve live source storage");
+            }
             if fragmented {
                 assert!(
                     resources.indexed_midi_coverage(sources[0]).unwrap().start.0
@@ -1173,7 +1193,7 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
                 );
             }
             let old = old.unwrap();
-            if fragmented {
+            if fragmented || finish_writers {
                 assert_eq!(bytes::<15>(&mut resources, old), expected[..expected_bytes]);
             } else {
                 assert_eq!(bytes::<120>(&mut resources, old), expected);

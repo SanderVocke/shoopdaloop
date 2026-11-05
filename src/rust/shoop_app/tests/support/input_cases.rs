@@ -186,76 +186,77 @@ fn public_grab_selection_exact_lists_solo_replacing_and_reload_share_owned_servi
 #[shoop_test]
 fn bundled_keyboard_and_lua_use_negotiated_grab_and_replacing_through_the_normal_runtime() {
     use shoop_app_client::runtime::{Startup, StartupScript};
-    let mut f = fixture();
-    let (mut runtime, port) = runtime(
-        &mut f.service,
-        Startup::Fresh(vec![StartupScript {
-            name: "keyboard.lua".into(),
-            identity: Some("keyboard.lua".into()),
-            source: include_str!("../../../../../resources/builtins/keyboard.lua").into(),
-            source_path: None,
-            kind: ScriptKind::Bundled,
-            enabled: true,
-        }]),
-    );
-    let sync = runtime.snapshot().tracks[0].clone();
-    for intent in [
-        AppIntent::SetLoopTimeline {
-            loop_id: sync.loops[0].id,
-            start_offset: None,
-            preplay_samples: None,
-            loop_length: Some(512),
-        },
-        AppIntent::Loop {
-            track_id: sync.id,
-            loop_id: sync.loops[0].id,
-            action: LoopAction::PlayClicked,
-        },
-        AppIntent::AddTrack(DirectTrackSpec {
-            name: "Keyboard and Lua".into(),
-            audio_channels: 0,
-            midi: true,
-        }),
-    ] {
-        runtime.dispatch(intent).unwrap();
-        pump_runtime(&mut f.service, &mut runtime, &port, 20);
-    }
-    let track = runtime.snapshot().tracks[1].clone();
-    for intent in [
-        AppIntent::Global(GlobalControlAction::SetSync(true)),
-        AppIntent::Global(GlobalControlAction::SetApplyNCycles(1)),
-        AppIntent::Global(GlobalControlAction::SetPlayAfterRecord(true)),
-        AppIntent::Global(GlobalControlAction::SetDefaultRecordingAction(
-            DefaultRecordingAction::Grab,
-        )),
-        AppIntent::Loop {
-            track_id: track.id,
-            loop_id: track.loops[0].id,
-            action: LoopAction::IconClicked(Default::default()),
-        },
-    ] {
-        runtime.dispatch(intent).unwrap();
-        pump_runtime(&mut f.service, &mut runtime, &port, 4);
-    }
-    runtime
-        .dispatch(AppIntent::KeyEvent(KeyEvent {
-            event_type: KeyEventType::Pressed,
-            key: 32,
-            modifiers: 0,
-        }))
-        .unwrap();
-    pump_runtime(&mut f.service, &mut runtime, &port, 40);
-    let grabbed = &runtime.snapshot().tracks[1].loops[0];
-    assert_eq!(
-        grabbed.mode,
-        LoopMode::Playing,
-        "scripts={:?}, notifications={:?}",
-        runtime.snapshot().scripting,
-        runtime.snapshot().notifications
-    );
-    assert_eq!(grabbed.length_frames, 512);
-    assert!(runtime.snapshot().tracks[1].loops[1].empty);
-    for (name, source, expected) in [
+    for with_midi in [true, false] {
+        let mut f = fixture();
+        let (mut runtime, port) = runtime(
+            &mut f.service,
+            Startup::Fresh(vec![StartupScript {
+                name: "keyboard.lua".into(),
+                identity: Some("keyboard.lua".into()),
+                source: include_str!("../../../../../resources/builtins/keyboard.lua").into(),
+                source_path: None,
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }]),
+        );
+        let sync = runtime.snapshot().tracks[0].clone();
+        for intent in [
+            AppIntent::SetLoopTimeline {
+                loop_id: sync.loops[0].id,
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(512),
+            },
+            AppIntent::Loop {
+                track_id: sync.id,
+                loop_id: sync.loops[0].id,
+                action: LoopAction::PlayClicked,
+            },
+            AppIntent::AddTrack(DirectTrackSpec {
+                name: "Keyboard and Lua".into(),
+                audio_channels: 0,
+                midi: with_midi,
+            }),
+        ] {
+            runtime.dispatch(intent).unwrap();
+            pump_runtime(&mut f.service, &mut runtime, &port, 20);
+        }
+        let track = runtime.snapshot().tracks[1].clone();
+        for intent in [
+            AppIntent::Global(GlobalControlAction::SetSync(true)),
+            AppIntent::Global(GlobalControlAction::SetApplyNCycles(1)),
+            AppIntent::Global(GlobalControlAction::SetPlayAfterRecord(true)),
+            AppIntent::Global(GlobalControlAction::SetDefaultRecordingAction(
+                DefaultRecordingAction::Grab,
+            )),
+            AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[0].id,
+                action: LoopAction::IconClicked(Default::default()),
+            },
+        ] {
+            runtime.dispatch(intent).unwrap();
+            pump_runtime(&mut f.service, &mut runtime, &port, 4);
+        }
+        runtime
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Pressed,
+                key: 32,
+                modifiers: 0,
+            }))
+            .unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 40);
+        let grabbed = &runtime.snapshot().tracks[1].loops[0];
+        assert_eq!(
+            grabbed.mode,
+            LoopMode::Playing,
+            "midi={with_midi}, scripts={:?}, notifications={:?}",
+            runtime.snapshot().scripting,
+            runtime.snapshot().notifications
+        );
+        assert_eq!(grabbed.length_frames, 512);
+        assert!(runtime.snapshot().tracks[1].loops[1].empty);
+        for (name, source, expected) in [
         ("grab.lua", "shoop_announce_api_version(1,0); local c=require('shoop_control'); print('grab-once'); c.loop_trigger_grab({0,1})", LoopMode::Playing),
         ("replace.lua", "shoop_announce_api_version(1,0); local c=require('shoop_control'); print('replace-once'); c.loop_trigger({0,1}, c.constants.LoopMode_Replacing)", LoopMode::Replacing),
     ] {
@@ -266,27 +267,28 @@ fn bundled_keyboard_and_lua_use_negotiated_grab_and_replacing_through_the_normal
         assert_eq!(state.tracks[1].loops[1].mode, expected);
         assert_eq!(state.tracks[1].loops[1].length_frames, 512);
     }
-    runtime
-        .dispatch(AppIntent::Loop {
-            track_id: track.id,
-            loop_id: track.loops[1].id,
-            action: LoopAction::StopClicked,
-        })
-        .unwrap();
-    pump_runtime(&mut f.service, &mut runtime, &port, 40);
-    assert_eq!(
-        runtime.snapshot().tracks[1].loops[1].mode,
-        LoopMode::Stopped
-    );
-    let old = runtime.snapshot().tracks[1].loops[0].content_revision;
-    runtime
-        .dispatch(AppIntent::KeyEvent(KeyEvent {
-            event_type: KeyEventType::Pressed,
-            key: 71,
-            modifiers: 0,
-        }))
-        .unwrap();
-    pump_runtime(&mut f.service, &mut runtime, &port, 40);
-    assert!(runtime.snapshot().tracks[1].loops[0].content_revision > old);
-    assert_eq!(f.waits.get(), f.initial_waits);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[1].id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 40);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[1].mode,
+            LoopMode::Stopped
+        );
+        let old = runtime.snapshot().tracks[1].loops[0].content_revision;
+        runtime
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Pressed,
+                key: 71,
+                modifiers: 0,
+            }))
+            .unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 40);
+        assert!(runtime.snapshot().tracks[1].loops[0].content_revision > old);
+        assert_eq!(f.waits.get(), f.initial_waits);
+    }
 }

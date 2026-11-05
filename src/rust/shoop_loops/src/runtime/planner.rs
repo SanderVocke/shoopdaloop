@@ -1185,38 +1185,71 @@ impl LoopPlanner {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
         self.node_pairs.callback(context.callback_start);
-        let result = (|| -> Result<Disposition<Reply>, Failure> {
-            if matches!(
-                operation,
-                Operation::HistoryStatus { .. }
-                    | Operation::HistoryGrab { .. }
-                    | Operation::HistoryWindow { .. }
-                    | Operation::WriterBegin { .. }
-                    | Operation::WriterPrepareRecording { .. }
-                    | Operation::WriterPrepareReplacing { .. }
-                    | Operation::WriterStatus { .. }
-                    | Operation::WriterCancel { .. }
-                    | Operation::CandidateBegin { .. }
-                    | Operation::CandidateAudio { .. }
-                    | Operation::CandidateMidi { .. }
-                    | Operation::CandidateStatus { .. }
-                    | Operation::CandidateCancel { .. }
-                    | Operation::CandidatePublish { .. }
-                    | Operation::SharedWork
-                    | Operation::SharedCapacity
-            ) {
-                if !context.payload.is_empty() {
-                    return Err(Error::InvalidShape.into());
+        if let Operation::InputBatch {
+            count,
+            timing,
+            graph,
+            topology,
+        } = operation
+        {
+            let result = (|| -> Result<Disposition<Reply>, Failure> {
+                if graph != context.graph_epoch || topology != self.resolver.epoch() {
+                    return Err(Error::StaleEpoch.into());
                 }
-                return self
-                    .shared_operation(
-                        operation,
-                        context.frame,
-                        context.graph_epoch,
-                        &mut context.resources,
-                    )
-                    .map(Disposition::Complete);
+                let slot = self.pending_slot(context.recovery)?;
+                self.begin_input_batch(
+                    count,
+                    timing,
+                    context.payload,
+                    context.requested_frame,
+                    context.token.sequence(),
+                    context.frame,
+                    &mut context.resources,
+                )?;
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::InputBatch,
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            })();
+            return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
+        }
+        if matches!(
+            operation,
+            Operation::HistoryStatus { .. }
+                | Operation::HistoryGrab { .. }
+                | Operation::HistoryWindow { .. }
+                | Operation::WriterBegin { .. }
+                | Operation::WriterPrepareRecording { .. }
+                | Operation::WriterPrepareReplacing { .. }
+                | Operation::WriterStatus { .. }
+                | Operation::WriterCancel { .. }
+                | Operation::CandidateBegin { .. }
+                | Operation::CandidateAudio { .. }
+                | Operation::CandidateMidi { .. }
+                | Operation::CandidateStatus { .. }
+                | Operation::CandidateCancel { .. }
+                | Operation::CandidatePublish { .. }
+                | Operation::SharedWork
+                | Operation::SharedCapacity
+        ) {
+            if !context.payload.is_empty() {
+                return Ok(Disposition::Complete(Reply::Failed(
+                    Error::InvalidShape.into(),
+                )));
             }
+            let result = self
+                .shared_operation(
+                    operation,
+                    context.frame,
+                    context.graph_epoch,
+                    &mut context.resources,
+                )
+                .map(Disposition::Complete);
+            return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
+        }
+        let result = (|| -> Result<Disposition<Reply>, Failure> {
             if !context.payload.is_empty()
                 && !matches!(
                     operation,
@@ -1917,32 +1950,7 @@ impl LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::InputBatch {
-                    count,
-                    timing,
-                    graph,
-                    topology,
-                } => {
-                    if graph != context.graph_epoch || topology != self.resolver.epoch() {
-                        return Err(Error::StaleEpoch.into());
-                    }
-                    let slot = self.pending_slot(context.recovery)?;
-                    self.begin_input_batch(
-                        count,
-                        timing,
-                        context.payload,
-                        context.requested_frame,
-                        context.token.sequence(),
-                        context.frame,
-                        &mut context.resources,
-                    )?;
-                    self.pending[slot] = Some(Pending {
-                        token: context.token,
-                        kind: PendingKind::InputBatch,
-                        forwarded: false,
-                    });
-                    Ok(Disposition::Pending)
-                }
+                Operation::InputBatch { .. } => unreachable!("input operation handled"),
                 Operation::NodePairSourceWindows { .. }
                 | Operation::HistoryStatus { .. }
                 | Operation::HistoryGrab { .. }

@@ -49,6 +49,10 @@ def smoke(archive: Path, platform: str) -> None:
                 cwd=root, env=environment, check=True, timeout=60,
             )
             subprocess.run(
+                [str(app), "--probe-input", "--session-transport", transport],
+                cwd=root, env=environment, check=True, timeout=180,
+            )
+            subprocess.run(
                 [str(app), "--probe-hosted-processors", "--engine-transport", transport],
                 cwd=root, env=environment, check=True, timeout=180,
             )

@@ -45,6 +45,11 @@ fn host_with_driver(
     let real_device = driver.is_some();
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
+            processors: ProcessorSettings {
+                builtin_fx: ProcessorPolicy::Off,
+                oxisynth: ProcessorPolicy::Off,
+                ..Default::default()
+            },
             driver: driver.unwrap_or_default(),
             pools: NewEnginePools {
                 quantum: 1,

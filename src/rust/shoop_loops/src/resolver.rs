@@ -1413,6 +1413,18 @@ impl Boundary<'_> {
 
     fn settle(&mut self, probe: Option<LoopId>) -> Result<(), Error> {
         for observation in self.observations {
+            if let Observation::CaptureAborted { target, .. }
+            | Observation::CaptureExhausted { target } = *observation
+            {
+                for record in self.scratch.records.iter_mut().flatten() {
+                    if record.followup
+                        && record.request.target == target
+                        && record.terminal.is_none()
+                    {
+                        record.terminal = Some(Outcome::Cancelled { frame: self.frame });
+                    }
+                }
+            }
             if let Observation::CaptureAborted { target, reason } = *observation {
                 let state = self.scratch.states[target.slot() as usize]
                     .as_mut()

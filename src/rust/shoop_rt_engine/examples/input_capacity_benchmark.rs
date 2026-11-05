@@ -72,6 +72,8 @@ fn main() {
     let callbacks: usize = args.get(2).map_or(128, |s| s.parse().unwrap());
     let density: usize = args.get(3).map_or(256, |s| s.parse().unwrap());
     assert!(density <= 256);
+    let frames: usize = args.get(4).map_or(32, |s| s.parse().unwrap());
+    assert!(frames > 0 && frames <= 512);
     let d = EngineDescription {
         segments: vec![Segment {
             strips: 16,
@@ -194,7 +196,7 @@ fn main() {
         }
         for index in 0..if phase == 0 { 32 } else { callbacks } {
             for channel in 0..channels as usize {
-                host.input_mut(channel)[..32].fill(0.25);
+                host.input_mut(channel)[..frames].fill(0.25);
             }
             for event in 0..density {
                 let packet = if index % 2 == 0 {
@@ -203,11 +205,11 @@ fn main() {
                     [0x90 | (event / 128) as u8, (event % 128) as u8, 100]
                 };
                 host.midi_input_mut(0)
-                    .push((event * 32 / density) as u32, 32, &packet)
+                    .push((event * frames / density) as u32, frames, &packet)
                     .unwrap();
             }
             let started = Instant::now();
-            assert_no_heap(|| host.process(32)).unwrap();
+            assert_no_heap(|| host.process(frames)).unwrap();
             times.push((phase, started.elapsed().as_nanos()));
             work.push(host.render.resource_work().1.validation_steps);
             assert!(!host.midi_output(0).is_recovery());
@@ -225,12 +227,12 @@ fn main() {
     assert_eq!(usage.reserved_pages, 0);
     let misses = times
         .iter()
-        .filter(|(_, nanos)| *nanos > 32 * 1_000_000_000u128 / 48_000)
+        .filter(|(_, nanos)| *nanos > frames as u128 * 1_000_000_000u128 / 48_000)
         .count();
     let times = times
         .iter()
         .map(|(phase, nanos)| format!("[{phase},{nanos}]"))
         .collect::<Vec<_>>()
         .join(",");
-    println!("{{\"channels\":{channels},\"sources\":16,\"loops\":128,\"quantum\":32,\"host_max\":512,\"events_per_source_tick\":{density},\"prepared_peak\":{},\"prepared_retained\":{},\"preparation_ms\":{preparation_ms},\"callback_misses\":{misses},\"callbacks\":[{times}],\"render_steps\":{work:?},\"all_pages_recovered\":true}}", memory.peak, memory.live);
+    println!("{{\"channels\":{channels},\"sources\":16,\"loops\":128,\"quantum\":32,\"host_max\":512,\"callback_frames\":{frames},\"events_per_source_callback\":{density},\"prepared_peak\":{},\"prepared_retained\":{},\"preparation_ms\":{preparation_ms},\"callback_misses\":{misses},\"callbacks\":[{times}],\"render_steps\":{work:?},\"output_recovery_callbacks\":0,\"guarded_callbacks\":true,\"all_pages_recovered\":true}}", memory.peak, memory.live);
 }

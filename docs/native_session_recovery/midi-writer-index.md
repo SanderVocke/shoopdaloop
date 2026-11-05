@@ -1,11 +1,25 @@
 # Continuous MIDI index design
 
-Design investigation for F2/F3 of [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
-This is not an implementation-complete contract or application parity evidence.
-The existing indexed candidate API remains available. Interval-summary and full
-projection query code have linear packet-oracle tests. Prepared ordered trees,
-shared category versions and packed immutable packet storage now pass targeted
-native tests. Full CI and live writer/application integration remain required.
+Implemented design for F2/F3 of [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
+The persistent semantic index, rolling sources, fixed/growing writers and global
+credit admission are used by normal native/AudioWorklet hosts. The
+[application evidence](evidence/grab-replace.md) records public routes, allocator
+guards, exact packet/state oracles and measured limits. The investigation history
+below explains the representation choices; its intermediate integration caveats
+are superseded by that evidence.
+
+## Global admission and retirement
+
+Admission reserves each source's retained record/page quota, one staged quantum,
+and COW AVL edit workspace before retained users or imports can spend credits.
+Each immutable media version has one owner charge shared by its retained copies.
+Visible packet totals also count physical page runs; lazy clipped categories and
+deferred retirement keep their storage charge until actual reclamation. Finished
+writers reduce their desired charge to complete immutable content, releasing future
+input allowance only after outstanding retirement. Required reclamation runs even
+when optional transfer budgets are zero. A sustained two-source oracle holds cuts,
+refuses excess ownership, checks every packet and then recovers all credits, with
+packed short messages and fragmented SysEx slab variants.
 
 ## Why the continuous writer needs another index
 

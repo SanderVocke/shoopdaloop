@@ -289,6 +289,9 @@ target/debug/shoopdaloop --probe-engine-transport --session-transport shared_mem
 # Separate large-file canaries; the transport canary retains its existing deadline.
 target/debug/shoopdaloop --probe-persistence --session-transport socket
 target/debug/shoopdaloop --probe-persistence --session-transport shared_memory
+# Grab/Replace controls, keyboard/Lua, detached finish and exact file round trip:
+target/debug/shoopdaloop --probe-input --session-transport socket
+target/debug/shoopdaloop --probe-input --session-transport shared_memory
 # Composite Lua/editor, exact recording during client absence and file round trip:
 target/debug/shoopdaloop --probe-composites --session-transport socket
 target/debug/shoopdaloop --probe-composites --session-transport shared_memory

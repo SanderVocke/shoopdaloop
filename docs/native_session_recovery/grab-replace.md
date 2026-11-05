@@ -1,21 +1,22 @@
 # Application Grab and Replacing integration
 
 Implementation contract for [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
-Both P04 and P05 remain **OPEN**. No production capability is enabled by this
-document or the window arithmetic helper. Final application evidence will be
-recorded here as the implementation stages pass.
+Grab and Replacing run through negotiated production capabilities and the normal
+service, adapter, companion and AudioWorklet. P04/P05 closure is tracked in the
+[application acceptance evidence](evidence/grab-replace.md), including exact-media
+checks, measured capacity limits and final validation pins.
 
 ## Layer inventory
 
-| Layer | Required work |
+| Layer | Implementation |
 | --- | --- |
-| Normal host preparation | The normal constructor prepares common thirty-second audio/indexed MIDI pools with a separate reservation. Host setup v7/worklet config v4 carry the limits; typed capacity/readiness and source removal/reuse are covered locally. Final live-credit and default callback gates remain. |
-| Portable domain | Continuous paired writers and a distinct resolver/program Replacing mode support explicit fixed/growing entry, scheduled exit and active exports. Ordinary Recording entry remains; private candidates stay separate. |
-| Kernel resources | Grab roots now retain visible audio pages/MIDI chunks; prepared metadata follows retained credits. Production global pooling, checkpoint-state density and continuous-writer reservations still need completion. |
-| Engine / protocol | Add bounded admission, musical batch settlement, completions and capability/limit negotiation in `shoop_rt_protocol`, `shoop_rt_engine/endpoint`, jobs, model, cells, topology and resync. |
-| Adapter | Implement Grab and Replacing in `shoop_rt_backend/backend`, requests, incoming/mirror, reads, capture, family and persistence. Invalidate canonical-import media on actual committed revisions. |
-| Service | Replace deliberate refusals in `shoop_app/service/commands` and `commands/control`; reconcile media, projection, persistence and family guards with active/scheduled Replacing. |
-| UI / Lua | Enable negotiated actions in loop/global controls and the normal app runtime; preserve script constants and route every action through service ownership. |
+| Normal host preparation | Common thirty-second audio/indexed MIDI histories, independent source generations and a reservation separate from ordinary recording. Native host setup v8 and worklet config v7 carry the limits. |
+| Portable domain | Continuous fixed/growing paired writers, Replacing tag 5, complete-cut exports, reserved exits and render-owned musical finishes. DryPlay/Rerecord retain tags 3/4. |
+| Kernel resources | Persistent audio roots and semantic MIDI indexes share immutable payloads. Global owner admission protects live sources, staging, edit paths and retirement debt. |
+| Engine / protocol | Protocol v23 carries bounded input transactions, effective cuts, status/cancel/completion and negotiated limits. Batch settlement includes targets, solo peers and automatic completion atomically. |
+| Adapter | One owned admitting input job; confirmed mutation identity, pending projection, revision-driven media invalidation and independent processor controls. |
+| Service | Selection-aware gestures, exact explicit Control/Lua lists, targeting, solo, default Grab, apply-N and play-after-record; persistence and topology changes fence accepted work. |
+| UI / Lua | Normal Grab controls, bundled keyboard/default action and public Lua; primitive-loop “Replace input” menu, confirmed mode/pending state and an incomplete-capture warning. Application protocol v30. |
 
 ## Reference policy matrix
 
@@ -37,7 +38,7 @@ authoritative state at settlement, not an earlier UI poll.
 
 The low-level `shoop_loops::grab::WindowSpec` returns a retained source range,
 logical duration, cycle/phase destination and explicit trailing empty duration.
-It implements window arithmetic only. The service/domain must still validate
+It implements window arithmetic only. The service/domain validates
 source continuity, IDs, modes, Q, budgets and admissibility before acquiring or
 publishing media. Its frame coordinates remain u64, including above u32 time.
 Available samples start at logical zero in the legacy adoption path; missing
@@ -50,44 +51,44 @@ grabs, the completion mode/delay. Target membership, solo peers and atomic
 admission remain service/engine responsibilities. The target-membership audit
 found that legacy Control Grab expands selection while raw AdoptRingbuffers is
 exact-list. The user identified selection-dependent explicit scripts as a bug;
-Control/Lua Grab will intentionally use the exact supplied list. UI gesture
+Control/Lua Grab intentionally uses the exact supplied list. UI gesture
 selection semantics remain as shown above.
 
 ## Behavior-to-test matrix
 
-The case IDs below define the production acceptance group to add in F4–F8.
-They are specifications, not claims that those public-route tests already pass.
+The case IDs below map the production contract to complementary public-route and
+resource proofs. The evidence document records their execution and limitations.
 Reference policy comes from `grab_targets_inner`, `grab_window`,
 `adoption_window`, BasicLoop and the direct channel replace/erase scenarios.
 Existing kernel proofs are listed separately so they cannot substitute for the
 service/adapter/UI assertions.
 
-| Cases | Required public route and expected confirmed result | Existing lower-layer proof |
+| Cases | Required public route and expected confirmed result | Production and lower-layer proof |
 | --- | --- | --- |
-| G01–G02 | Grab button with sync enabled: an unselected initiator changes only itself; a selected initiator includes selected peers across source tracks. All targets share one effective cut. | Gesture/window arithmetic; pooled source complete-cut tests. |
-| G03–G04 | Targeted Grab uses the target's rounded sync-cycle period and current cycle at settlement. Without a target, apply-N is clamped to at least one. Both play-after-record settings produce Playing or Stopped, respectively. | `gesture_policy_resolves_target_cycle_and_unsynced_finish_at_the_authoritative_cut`; targeted lookback tests. |
-| G05–G06 | Unsynced button Grab uses only its initiator, retains the prefix through the live cut, continues Recording once, then completes at the target delay or next sync boundary into the configured post-mode. Include pending target transitions. | Gesture finish-delay tests; padded MIDI continuation and wrapped audio-tail oracles. |
-| G07 | A per-loop default action with default-recording Grab targets that loop. The bundled keyboard script may choose its explicit action list; it must not gain another implicit selection expansion in the service. Pending default actions cancel under the reference policy. | Reference `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`; production route pending. |
-| G08 | Control/Lua Grab uses exactly its supplied ordered targets and the global musical policy. AdoptRingbuffers uses its explicit window/position/post-mode arguments. Neither expands selection. | Window arithmetic, including raw adoption above u32; intentional explicit-list correction recorded above. |
-| G09 | Missing sync length refuses UI/default Grab without changing targets or solo peers. Explicit raw adoption without sync retains the available range at position zero. Empty target lists are no-ops; an invalid member refuses a nonempty batch before mutation. | Missing-sync and raw-adoption arithmetic; reference `fake_grab_preflights_every_target`. |
-| G10–G11 | Startup, silent and missing-input histories produce explicitly padded requested durations; sparse MIDI retains complete boundary state. A source failure or discontinuous requested range refuses instead of fabricating startup silence. | Audio discontinuity tests; indexed MIDI padded windows, byte-density eviction and strict-before-cut state tests. |
-| G12 | Solo stops only peers on affected target tracks outside the admitted target set, atomically with Grab. A stale ID, route change, full owner pool or invalid final target changes no target or peer. | Coordinator source-generation/candidate fences; production batch proof pending. |
-| G13 | Audio-only, MIDI-only and mixed tracks share the policy above. Trigger tracks retain meaningful length/phase/transition behavior without requiring sample/packet resources. | Audio/MIDI-only and mixed coordinator tests; trigger production policy pending. |
-| R01–R02 | Immediate and sync-scheduled Playing → Replacing preserve period, phase, cycle scheduling and controls. Replacing advances and repeats while suppressing ordinary loop playback; monitoring remains independently controlled. | Reference BasicLoop playing-mode transition and REPLACE flag tests; fixed writer wrap oracles. |
-| R03 | Every admitted positive tick overwrites all channels and complete MIDI packets. Positive empty MIDI input erases originals; zero-length input performs no edit. Preserve equal-frame order, SysEx and natural suffix-state effects. | Continuous writer packet/state oracle; stereo COW replacement tests. |
-| R04–R05 | Stop exits to complete media and rewinds. Replacing → Playing preserves the playing-mode phase. Replacing → Recording starts a fresh growing recording; Recording → Replacing uses the completed recording as its fixed base. Cancellation before entry changes no media. | Core writer complete exit and immutable export tests; reference transitions; production lifecycle pending. |
+| G01–G02 | Grab button with sync enabled: an unselected initiator changes only itself; a selected initiator includes selected peers across source tracks. All targets share one effective cut. | `public_grab_selection_exact_lists_solo_replacing_and_reload_share_owned_service_outcomes`; packaged native/browser selected cross-track Grab; pooled source complete-cut oracles. |
+| G03–G04 | Targeted Grab uses the target's rounded sync-cycle period and current cycle at settlement. Without a target, apply-N is clamped to at least one. Both play-after-record settings produce Playing or Stopped, respectively. | `gesture_policy_resolves_target_cycle_and_unsynced_finish_at_the_authoritative_cut`; public engine gesture oracle, both post-modes and self-clock; target pending-delay case. |
+| G05–G06 | Unsynced button Grab uses only its initiator, retains the prefix through the live cut, continues Recording once, then completes at the target delay or next sync boundary into the configured post-mode. Include pending target transitions. | `public_gesture_continues_the_prefix_and_finishes_without_controller_polling`; `public_gesture_uses_the_targets_pending_clock_delay_at_its_effective_cut`; native reattachment and browser stall. |
+| G07 | A per-loop default action with default-recording Grab targets that loop. The bundled keyboard script may choose its explicit action list; it must not gain another implicit selection expansion in the service. Pending default actions cancel under the reference policy. | `bundled_keyboard_and_lua_use_negotiated_grab_and_replacing_through_the_normal_runtime`; packaged Space/default-Grab, retained reference fixture. |
+| G08 | Control/Lua Grab uses exactly its supplied ordered targets and the global musical policy. AdoptRingbuffers uses its explicit window/position/post-mode arguments. Neither expands selection. | Public adapter/service exact-list tests and packaged Lua; window arithmetic/raw adoption above u32; intentional explicit-list correction recorded above. |
+| G09 | Missing sync length refuses UI/default Grab without changing targets or solo peers. Explicit raw adoption without sync retains the available range at position zero. Empty target lists are no-ops; an invalid member refuses a nonempty batch before mutation. | Public service invalid-member/solo refusal, engine atomic batch/admission/cancel scenarios and window arithmetic; retained reference preflight fixture. |
+| G10–G11 | Startup, silent and missing-input histories produce explicitly padded requested durations; sparse MIDI retains complete boundary state. A source failure or discontinuous requested range refuses instead of fabricating startup silence. | `public_musical_grab_does_not_pad_density_eviction_as_recorded_history`; public startup gesture, source fault/reset and indexed MIDI strict-before-cut/state oracles. |
+| G12 | Solo stops only peers on affected target tracks outside the admitted target set, atomically with Grab. A stale ID, route change, full owner pool or invalid final target changes no target or peer. | `input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cut`; public service solo/refusal and protocol late-refusal cases. |
+| G13 | Audio-only, MIDI-only and mixed tracks share the policy above. Trigger tracks retain meaningful length/phase/transition behavior without requiring sample/packet resources. | Public bundled keyboard/Lua test parameterizes MIDI-only and trigger shapes; audio-only/mixed coordinator and packaged stereo/MIDI routes. |
+| R01–R02 | Immediate and sync-scheduled Playing → Replacing preserve period, phase, cycle scheduling and controls. Replacing advances and repeats while suppressing ordinary loop playback; monitoring remains independently controlled. | Public protocol scheduled Replacing and adapter pending mutation; `replacing_maps_each_channel_window_and_preserves_raw_tails_manual_period_and_monitoring`; retained reference transition tests. |
+| R03 | Every admitted positive tick overwrites all channels and complete MIDI packets. Positive empty MIDI input erases originals; zero-length input performs no edit. Preserve equal-frame order, SysEx and natural suffix-state effects. | Continuous writer packet/state oracle (including long SysEx), stereo COW replacement, packaged exact file comparison and repeated wraps. |
+| R04–R05 | Stop exits to complete media and rewinds. Replacing → Playing preserves the playing-mode phase. Replacing → Recording starts a fresh growing recording; Recording → Replacing uses the completed recording as its fixed base. Cancellation before entry changes no media. | `prefix_recording_to_replacing_keeps_the_boundary_tick_and_active_exports`; public protocol cancellation/exit and long ordinary Recording-to-Replacing oracle. |
 | R06 | Prefix continuation consumes the first live tick once, grows beyond the history horizon and may subsequently become a fixed replacement base. Old exports and sibling users retain their original bytes/state throughout. | Wrapped-prefix/loaded-PCM continuation and subsequent replacement; shared continuous MIDI resource tests. |
-| R07–R08 | Writer pressure/exhaustion, clear/removal, slot reuse, source reset and terminal faults produce truthful final outcomes and release private owners. Required tick work and accepted exits do not depend on optional transfer credits. Unrelated playback/recording continues. | Source-reset/revision fences, required-work/exit tests and full credit recovery; production job/fault proof pending. |
-| X01–X02 | Active or scheduled writers obey the existing media/save/import/family/session conflict policy. Previously pinned immutable exports remain readable. Save/load persists resulting media/default-Grab settings and reloads loops stopped. | Existing private publication persistence tests; continuous production persistence pending. |
-| X03 | UI detach/reattach and controller loss preserve the service-owned admitted request and its outcome exactly once. Lua is not restarted or replayed. | Existing service recovery contract; new operation recovery proof pending. |
-| X04 | Normal startup negotiates enabled Grab/Replacing only after host, protocol, adapter and service support agree. Unsupported/old peers stay unsupported; warmup and capacity refusal remain per-request outcomes. | Protocol capability/refusal contract; production success gates pending. |
+| R07–R08 | Writer pressure/exhaustion, clear/removal, slot reuse, source reset and terminal faults produce truthful final outcomes and release private owners. Required tick work and accepted exits do not depend on optional transfer credits. Unrelated playback/recording continues. | Public cancellation/source-fault tests, `a_failed_or_cancelled_growing_gesture_cannot_be_restarted_by_its_owned_finish`, sustained global credit stress and teardown. |
+| X01–X02 | Active or scheduled writers obey the existing media/save/import/family/session conflict policy. Previously pinned immutable exports remain readable. Save/load persists resulting media/default-Grab settings and reloads loops stopped. | Public adapter immutable-export test, production service capture/reload/re-edit and packaged exact save/load/save workflows. |
+| X03 | UI detach/reattach and controller loss preserve the service-owned admitted request and its outcome exactly once. Lua is not restarted or replayed. | Native socket canary drops the UI/Lua VM during prefix Recording; host finishes once, reattached UI observes it. Browser stalls the main thread during completion. |
+| X04 | Normal startup negotiates enabled Grab/Replacing only after host, protocol, adapter and service support agree. Unsupported/old peers stay unsupported; warmup and capacity refusal remain per-request outcomes. | Normal native/browser constructors, production keyboard/Lua runtime, UI menu success/refusal tests and version/capability codec tests. |
 
-The service/adapter policy group must port the meaningful expectations from
+The service/adapter policy group ports meaningful expectations from
 `grab_policy_covers_targeted_selection_solo_and_immediate_completion`,
 `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`,
 `expanded_loop_actions_route_modes_grab_and_balance` and
 `fake_grab_preflights_every_target`. Dry/wet assertions remain under P06.
-The final packaged-app sequence must exercise button, bundled keyboard and public
+The packaged-app sequence exercises button, bundled keyboard and public
 Lua routes against real samples/packets, not substitute internal operation calls.
 Requested/effective cuts must include fixed-quantum alignment and any declared
 host buffering. Admission, pending projection, completion, reconnect and resync
@@ -108,17 +109,17 @@ old exports and sibling takes retain their original data.
 
 CandidateMidi remains a bounded one-shot patch interface. The continuous route owns
 source ticks and private roots separately and reserves final publication owners.
-Global retained/live MIDI credits and preparation debt remain acceptance gates;
-publication deadlines and queue growth cannot substitute for those guarantees.
+Global retained/live MIDI credits are checked before owner or writer admission.
+Required index work and deferred retirement run independently of optional transfer
+credits. A complete tick stages audio/MIDI, preflights ordered edits and commits a
+paired cut. Exit consumes reserved owners without repairing an unchanged suffix.
 
-The explicit coordinator writer route now joins a retained prefix to growing
-Recording or overwrites a fixed take in Replacing. Entry requires completed
-admission. Every successful mixed tick stages audio, applies MIDI and commits the
-paired cut; exit consumes reserved immutable owners. Active exports pin complete
-cuts, and source reset terminates capture at the last successful cut with an
-incomplete outcome. Protocol version 12 represents the new confirmed mode.
-The normal application still lacks production preparation and action admission;
-ordinary Recording-to-Replacing remains open. These library/integration tests do not close P04/P05.
+Ordinary recordings prepare a private indexed prefix while the recorder remains
+authoritative and keeps capturing. Premature entry refuses; Stop/cancel releases
+preparation. At the accepted cut the prepared prefix joins the captured tail once.
+A source fault or exhaustion terminates at the last complete cut and publishes
+`capture_incomplete`; it also cancels the request's owned automatic finish. The
+warning remains visible until fresh successful capture clears it.
 
 Fixed writers also retain manual periods and per-channel raw windows. They write
 only each channel's mapped overlap and preserve outside data, gains and preplay.
@@ -128,70 +129,67 @@ complete cut. Switching between Playing and Replacing preserves phase/cycles
 unless an explicit restart is requested. Growing prefix media still requires an
 identity raw mapping; public Grab settlement must establish that new layout.
 
-## Production sizing gate
+## Production capacity and ownership
 
-Normal engine preparation uses a common thirty-second policy. History and shared
-media reservations are additional to the ordinary loop-memory allowance. The
-settings are carried by native child setup version 7 and worklet configuration
-version 4; `EngineDescription::history_capacity` sizes them without allocation.
+The default application prepares sixteen source slots and 128 loops at 48 kHz,
+Q=32, stereo, 4096-byte pages and 256 MiB ordinary loop memory. Histories continue
+while stopped, independently of input monitoring. Each source is observed once.
 
-At 48 kHz with the application's sixteen stereo sources, 128 loops, 4096-byte
-pages and 256 MiB ordinary loop memory:
-
-| Reservation | Prepared amount |
+| Reservation / limit | Default |
 | --- | --- |
 | Ordinary media | 256 MiB, preserved |
-| Thirty-second input audio rings | 256 MiB (raw samples alone are 184,320,000 bytes) |
-| Shared audio owners and write workspace | 128 MiB plus 32 KiB |
-| Shared MIDI packet payload | 16 MiB |
-| Audio pool metadata (native layout) | 37,058,624 bytes |
-| MIDI pool metadata/state (native layout) | 50,699,096 bytes |
-| MIDI packet bodies/records | 65,536 each |
-| MIDI retention quota per source | 2,048 events and 512 KiB serialized bytes |
-| Live writer slots | 8, subject to per-request storage admission |
+| Thirty-second input audio rings | 256 MiB; raw stereo samples alone are 184,320,000 bytes |
+| Shared audio owners and write workspace | 128 MiB + 32 KiB |
+| Shared MIDI payload | 16 MiB; 65,536 bodies and records |
+| Per-source MIDI retention | 2,048 events and 512 KiB serialized bytes, subject also to physical slab pages |
+| Input callback admission | 256 events / 2,048 packet bytes per quantum; complete packets only |
+| Simultaneous writers | Up to eight, with separate resource admission |
+| Admitting application input transactions | One globally; another independent input action receives Busy |
+| Audio history metadata | Less than 40 MiB, checked without allocation |
+| MIDI history metadata/state/workspace | Less than 128 MiB, checked without allocation |
 
-MIDI history advertises its actual retained start; event/byte pressure can evict
-before thirty seconds. Empty input retains the nominal time window. Source slots
-share the pools independently of loop count and monitoring. Source removal queues
-old owners for bounded retirement, and required idle cleanup continues without
-optional transfer credits. A reactivated slot has a new generation and projection;
-old exports remain immutable.
+MIDI density/fragmentation can advance actual retained start before thirty seconds.
+A source may pad legitimate initial warmup; pressure eviction or a broken capture
+epoch cannot be certified as startup silence. A musical gesture beyond available coverage
+then refuses without modifying any target or solo peer. Explicit raw adoption
+keeps its existing requested-duration padding semantics for available continuous
+media; it still refuses a faulted source.
 
-Audio owners charge visible covering pages. Indexed MIDI uses shared packet
-bodies and ordered category trees; uploaded bases remain pinned instead of copied.
-Continuous paired writers prepare before entry, own each successful tick and
-publish through reserved owners. Input/source fences stop further writes after a
-reset while preserving exit from the last complete cut. Competing resource versions
-still refuse stale publication.
+Retained owners charge physical packet-page runs and indexed records, including
+hidden clipped roots and deferred retirement. Credit is refunded only when that
+storage retires. Finishing a writer releases its future tick reservation while
+retaining the immutable cut's actual charge. Shared copies of one version do not
+spend the same owner allowance twice. Protected source/staging/edit-path credits
+keep independent live capture running even when retained snapshots exhaust all
+remaining ownership capacity and optional maintenance is disabled.
 
-The allocator-guarded layout test covers these default amounts and safely refuses
-a 64-source/eight-channel/one-GiB ordinary-media shape before allocation when its
-thirty-second history exceeds the portable arena limit. The normal-constructor
-scenario verifies real stopped input, thirty-second retention, wrap, old exports
-and full teardown at a representative configured rate. Socket/shared-memory child
-hosts and native dummy callbacks pass local regression checks with this preparation.
-Exact metadata amounts exclude allocator overhead and existing ordinary MIDI,
-graph/carrier and coordinator metadata. Full default preparation/callback
-measurements and indexed MIDI retained-owner/live workspace guarantees are still
-required before production acceptance. The budgets above do not establish those
-remaining admission proofs.
+Loaded immutable packets pin ordinary upload bases instead of consuming shared
+packet payload pages. Source generation/routing/reset fences preserve old exports
+and terminate active writers at the last complete cut. Slot removal retires each
+pool once; all credits recover at shutdown.
 
-Raw `HistoryWindow` acquisition still needs public musical batch settlement from
-authoritative sync/target state, including target/solo preflight and final receipts.
-Ordinary Recording-to-Replacing also remains open.
+Whole-host allocator measurements and complete callback distributions are in the
+[evidence](evidence/grab-replace.md). They include existing ordinary MIDI, processor,
+graph and host-buffer costs beyond the history table. High-density deadline misses
+are reported explicitly; finite storage/work admission is not hardware deadline
+certification. Eight-channel processor shapes may need an explicitly larger
+processor budget; the unchanged default refuses shapes that exceed it. Oversized
+64-source/eight-channel histories refuse before allocation at the portable arena
+limit.
 
-## Validation status
+## Persistence and recovery
 
-No application success is claimed yet. Finish implementation and local acceptance
-first; then use the plan's iterative CI correction loop for final broad/platform
-validation. Existing unsupported-backend tests remain valid until negotiated
-support is implemented.
+Active and scheduled Replacing follows the existing writer exclusion for save,
+mutable imports, timing/family/configuration changes. Already pinned immutable
+exports remain readable. Settled media uses existing PCM and exact-MIDI formats;
+no history handles, credits, jobs or writer internals enter session documents.
+Supported default-Grab settings round-trip, with fresh live IDs and stopped loops
+on reload. Revision changes invalidate canonical import caches.
 
-Long ordinary recordings now use a private prefix import that continues to capture
-live MIDI while it builds. The ordinary recorder remains authoritative until a
-complete replacement version is ready; premature entry refuses, and cancellation
-or Stop releases the private work. The accepted cut forks current audio and fixes
-the complete MIDI writer without replaying the intervening tail. Native guarded
-resource and engine oracles cover preparation beyond the history horizon, retry,
-one-tick replacement, immutable old exports and full cleanup. Public entry and
-global owner/live credit admission remain outstanding.
+The socket host retains accepted RT operations when the UI or client-local Lua VM
+is lost. Reattachment observes the original outcome without replay. Automatic
+prefix completion belongs to the render owner and survives a browser main-thread
+stall. Shared-memory editing/file flows are covered; shared-memory reattachment
+remains the established recovery exclusion. Composite authored Replacing and
+FX/dry-wet input editing remain the separately deferred P17 interaction; unrelated
+running composites and processor tracks continue alongside primitive input edits.

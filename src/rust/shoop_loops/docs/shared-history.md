@@ -2,9 +2,10 @@
 
 `LoopPlanner::prepare_shared` installs prepared history stores before the planner
 transfers to a runtime. `shoop_rt_engine::prepare_with_shared` connects them to
-strip input capture feeds in the production graph. The ordinary engine preparation
-uses no histories. These internal library operations add no application capability
-flag, host wire command or continuous Replacing recording mode.
+strip input capture feeds in the production graph. Normal engine preparation installs common thirty-second audio and indexed MIDI
+histories using a separate bounded reservation. Application input transactions and
+continuous fixed/growing writers use these stores; see the
+[application contract](../../../../docs/native_session_recovery/grab-replace.md).
 
 ## Sources and complete cuts
 
@@ -21,7 +22,8 @@ Per-source page/view budgets are then replaced by the common budget. Coverage,
 generation fences and signal routes remain independent. Preparation reports the
 pool once, and shutdown closes it once after every owner has retired. Without a
 common pool, explicit per-source fixture configurations retain their behavior.
-This pooling interface still requires normal production host policy integration.
+Normal host policy installs this common pool; explicit fixtures may still prepare
+independent stores.
 
 The history MIDI tracker observes input once before storage admission. A loop's
 own recording tracker is a separate observer. Storage refusal leaves this tracker
@@ -143,4 +145,7 @@ Means, tails and maxima describe that CI workload, not a physical-device guarant
 [Recorded measurements and functional evidence](../../../../docs/native_session_recovery/evidence/shared-fixed-media.md)
 include every observed timing miss and output overflow. Very short callbacks are
 not established as deadline-safe, and prepared MIDI state can dominate memory.
-Application P04/P05 admission, selection/sync policy and UI remain open.
+Application admission, selection/sync policy, UI/Lua and continuous fixed/growing
+writers are implemented through the normal production path; the
+[acceptance evidence](../../../../docs/native_session_recovery/evidence/grab-replace.md)
+records final validation and capacity limits.

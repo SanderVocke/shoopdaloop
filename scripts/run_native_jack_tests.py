@@ -33,6 +33,7 @@ def main() -> int:
     env["SHOOP_JACK_TEST_BUFFER_CHANGES"] = "1"
     env["SHOOP_JACK_TEST_SERVER_LOSS"] = "1"
     env["RUST_BACKTRACE"] = "1"
+    env["SHOOP_INPUT_PROBE_JACK"] = "1"
     env["SHOOP_PREVIEW_DRIVER_CONFIG"] = str(preview_config)
     env["SHOOP_PREVIEW_LOG_DIR"] = str(args.output)
     commands = [
@@ -43,6 +44,8 @@ def main() -> int:
         ["cargo", "test", "--locked", "-p", "shoop_host", "--test", "recovery", "native_master_preview_device_acceptance", *cargo_args, "--", "--ignored", "--exact", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_process", "native_jack", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoopdaloop", "native_jack_application_start", *cargo_args, "--", "--test-threads=1"],
+        ["cargo", "build", "--locked", "-p", "shoopdaloop", "-p", "shoop_host", *cargo_args],
+        [str(ROOT / "target" / args.profile / "shoopdaloop"), "--probe-input", "--session-transport", "socket"],
     ]
     with (args.output / "server.log").open("w") as log:
         server = subprocess.Popen(["jackd", "--no-realtime", "--name", env["JACK_DEFAULT_SERVER"], "-d", "dummy", "-r", "48000", "-p", "128"], env=env, stdout=log, stderr=subprocess.STDOUT)

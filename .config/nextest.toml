@@ -26,3 +26,14 @@ threads-required = "num-test-threads"
 [[profile.ci.overrides]]
 filter = 'binary_id(=shoop_host::recovery)'
 threads-required = "num-test-threads"
+
+[test-groups.native-hosts]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'binary_id(/^shoop_host::/) | binary_id(=shoop_rt_host_native::jack) | binary_id(=shoop_engine::jack_app_backend)'
+test-group = "native-hosts"
+
+[[profile.ci.overrides]]
+filter = 'binary_id(/^shoop_host::/) | binary_id(=shoop_rt_host_native::jack) | binary_id(=shoop_engine::jack_app_backend)'
+test-group = "native-hosts"

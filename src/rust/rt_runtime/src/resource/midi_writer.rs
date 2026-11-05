@@ -848,7 +848,21 @@ impl Core {
     pub fn snapshot(&mut self, writer: &Writer) -> Result<Media, Error> {
         self.retain(&writer.media)
     }
-    pub fn finish_writer(&self, writer: Writer) -> Media {
+    pub fn finish_writer(&mut self, writer: Writer) -> Media {
+        if let Some(id) = writer.media.credit {
+            let totals = self
+                .indexes
+                .totals(
+                    writer.media.root,
+                    Cut::frame(writer.media.origin),
+                    Cut::frame(Frame(writer.media.origin.0 + writer.media.frames)),
+                    &self.packets,
+                )
+                .expect("complete writer root");
+            let owner = &mut self.credits.as_mut().unwrap().owners[id];
+            owner.desired_events = totals.events;
+            owner.desired_pages = totals.pages;
+        }
         writer.media
     }
     pub fn write_tick(
@@ -975,12 +989,19 @@ impl Core {
             Cut::frame(Frame(writer.media.origin.0 + writer.media.frames)),
             &self.packets,
         )?;
-        let incoming_pages = staged.values[..staged.count]
-            .iter()
-            .try_fold(0usize, |n, &v| {
-                n.checked_add(self.packets.packet_pages(v).0)
-                    .ok_or(Error::Capacity)
-            })?;
+        let mut incoming = Totals::default();
+        for &value in &staged.values[..staged.count] {
+            let offset = (self.packets.point(value).frame.0 - staged.frame.0) as usize;
+            if offset >= span.offset && offset < span.offset + span.frames {
+                incoming = <Totals as crate::midi_state::indexed::tree::Summary<NonZeroU32>>::then(
+                    incoming,
+                    <Totals as crate::midi_state::indexed::tree::Summary<NonZeroU32>>::value(
+                        value,
+                        &self.packets,
+                    ),
+                );
+            }
+        }
         for &value in &staged.values[..staged.count] {
             writer.media.categories |= self.packet_categories(value);
         }
@@ -989,7 +1010,8 @@ impl Core {
         let owned_pages = totals
             .pages
             .checked_add(writer.media.retained_pages)
-            .and_then(|n| n.checked_add(incoming_pages))
+            .and_then(|n| n.checked_add(incoming.pages))
+            .and_then(|n| n.checked_add(2))
             .ok_or(Error::Capacity)?;
         self.owner_credit(&mut writer.media, owned_events, owned_pages)?;
         if selected > self.packets.available_records() {

@@ -25,9 +25,11 @@ Session/audio codecs continue to receive logical samples and metadata, so the
 archive and protocol formats do not encode sharing, page addresses or edit roots.
 Tests cover grabbed and imported sources through adoption, playback, full
 configuration replacement, retained exports and bounded teardown, plus session,
-exact-audio and WAV round trips for original and edited revisions. Existing core
-capability/refusal policies remain in force: this storage integration does not
-restore P04/P05 or enable capture during future replacement recording.
+exact-audio and WAV round trips for original and edited revisions. Application Grab and Replacing use these same formats and immutable owners;
+[application evidence](evidence/grab-replace.md) covers exact save/load/re-edit.
+Active or scheduled Replacing obeys the recording conflict policy. Default Grab
+persists, while histories, accepted input jobs and private writers do not. Reload
+uses fresh identities and stopped loops; old exports retain their original data.
 
 ## Field and capability matrix
 

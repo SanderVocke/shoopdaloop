@@ -4151,3 +4151,214 @@ fn public_gesture_continues_the_prefix_and_finishes_without_controller_polling()
         recover_all(&mut stopped, capacity.total_resource_pages);
     }
 }
+
+#[shoop_test]
+fn a_failed_or_cancelled_growing_gesture_cannot_be_restarted_by_its_owned_finish() {
+    use protocol::{InputEdit, InputIntent, LoopMode, LoopSlotId, Request, SlotId};
+    for reset in [false, true] {
+        let (mut h, capacity) = Fixture::new_production(32, 7);
+        let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+        h.request(Request::LoopTransition {
+            loop_id: id(1),
+            mode: LoopMode::Recording,
+            delay: None,
+        });
+        h.run_to(h.aligned_future(16 * 32));
+        h.request(Request::LoopTransition {
+            loop_id: id(1),
+            mode: LoopMode::Playing,
+            delay: None,
+        });
+        let period = h.engine.endpoint.cells.loops[1].snapshot().unwrap().length;
+        h.public_input(
+            1,
+            &[InputEdit {
+                loop_id: id(0),
+                intent: InputIntent::Gesture {
+                    sync: id(1),
+                    target: None,
+                    synced: false,
+                    cycles: 3,
+                    play_after_record: true,
+                },
+            }],
+            None,
+        );
+        h.run_to(h.aligned_future(32));
+        if reset {
+            h.request(Request::Connect {
+                port: protocol::EnginePort::Strip(protocol::StripPort {
+                    strip: protocol::StripId(SlotId::new(0, 1)),
+                    kind: protocol::PortKind::MidiIn,
+                    index: 0,
+                }),
+                host: protocol::HostPortId(4),
+                connected: false,
+            });
+        } else {
+            h.request(Request::LoopTransition {
+                loop_id: id(0),
+                mode: LoopMode::Stopped,
+                delay: None,
+            });
+        }
+        h.run_to(h.aligned_future(3 * period));
+        let state = h.engine.endpoint.cells.loops[0].snapshot().unwrap();
+        assert_eq!(state.mode, shoop_loops::Mode::Stopped);
+        assert_eq!(state.pending, None);
+        assert_eq!(state.capture_incomplete, reset);
+        let mut stopped = h.engine.render.into_stopped();
+        recover_all(&mut stopped, capacity.total_resource_pages);
+    }
+}
+
+#[shoop_test]
+fn public_musical_grab_does_not_pad_density_eviction_as_recorded_history() {
+    use protocol::{
+        InputEdit, InputIntent, InputPhase, LoopMode, LoopSlotId, Outcome as PublicOutcome,
+        Request, SlotId,
+    };
+    let (mut h, capacity) = Fixture::new_production(32, 7);
+    let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.run_to(h.aligned_future(16 * 32));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    h.drain_protocol();
+    h.run_to(h.aligned_future(640 * 32));
+    let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    assert!(!history.startup_padding);
+    assert!(history.start.0 > h.stimulus.unwrap());
+    let before = h.engine.endpoint.cells.loops[0].snapshot().unwrap();
+    h.prepare_public_input(
+        1,
+        &[InputEdit {
+            loop_id: id(0),
+            intent: InputIntent::Gesture {
+                sync: id(1),
+                target: None,
+                synced: true,
+                cycles: 64,
+                play_after_record: true,
+            },
+        }],
+    );
+    assert!(matches!(
+        h.request_outcome(Request::InputCommit { id: 1, delay: None }),
+        PublicOutcome::Input(protocol::InputProgress {
+            phase: InputPhase::Failed(protocol::Refusal::Busy),
+            ..
+        })
+    ));
+    let after = h.engine.endpoint.cells.loops[0].snapshot().unwrap();
+    assert_eq!(
+        (after.mode, after.length, after.revision),
+        (before.mode, before.length, before.revision)
+    );
+    assert_eq!(after.pending, None);
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn public_gesture_uses_the_targets_pending_clock_delay_at_its_effective_cut() {
+    use protocol::{InputEdit, InputIntent, LoopMode, LoopSlotId, Request, SlotId};
+    let (mut h, capacity) = Fixture::new_production(32, 7);
+    let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.run_to(h.aligned_future(16 * 32));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    h.drain_protocol();
+    let period = h.engine.endpoint.cells.loops[1].snapshot().unwrap().length;
+    assert!(matches!(
+        h.request_outcome(Request::LoopTiming {
+            loop_id: id(0),
+            expected_revision: 0,
+            expected_content: 0,
+            edit: protocol::TimingEdit {
+                length: Some(period),
+                ..Default::default()
+            }
+        }),
+        protocol::Outcome::TimingApplied(_)
+    ));
+    h.request(Request::LoopSync {
+        loop_id: id(0),
+        source: Some(id(1)),
+    });
+    h.request(Request::LoopTransition {
+        loop_id: id(0),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    h.drain_protocol();
+    h.request(Request::LoopTransition {
+        loop_id: id(0),
+        mode: LoopMode::Stopped,
+        delay: Some(4),
+    });
+    for _ in 0..16 {
+        h.engine.endpoint.poll(&mut h.outbox);
+        h.render(32, false);
+        if h.engine.endpoint.cells.loops[0]
+            .snapshot()
+            .unwrap()
+            .pending
+            .is_some()
+        {
+            break;
+        }
+    }
+    let clock = h.engine.endpoint.cells.loops[1].snapshot().unwrap();
+    let target = h.engine.endpoint.cells.loops[0].snapshot().unwrap();
+    let delay = target.pending.expect("old owned target plan").0;
+    let progress = h.public_input(
+        1,
+        &[InputEdit {
+            loop_id: id(0),
+            intent: InputIntent::Gesture {
+                sync: id(1),
+                target: Some(id(0)),
+                synced: false,
+                cycles: 1,
+                play_after_record: true,
+            },
+        }],
+        None,
+    );
+    let cut = progress.effective_frame.unwrap();
+    let edges = (clock.position + cut - clock.frame) / period;
+    let remaining = u64::from(delay).saturating_sub(edges);
+    assert!(remaining > 0);
+    let state = h.engine.endpoint.cells.loops[0].snapshot().unwrap();
+    assert_eq!(state.mode, shoop_loops::Mode::Recording);
+    assert_eq!(
+        state.pending,
+        Some((remaining as u32, shoop_loops::Mode::Playing))
+    );
+    h.drain_protocol();
+    h.run_to(h.aligned_future(6 * period));
+    let state = h.engine.endpoint.cells.loops[0].snapshot().unwrap();
+    assert_eq!(state.mode, shoop_loops::Mode::Playing);
+    assert_eq!(state.pending, None);
+    assert_eq!(state.length, (remaining + 1) * period);
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}

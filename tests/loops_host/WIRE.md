@@ -665,7 +665,7 @@ and Read report next byte position. Node pair validation reports Ready1 or progr
 plus validated frames. Program validation/status reports Ready1 or progress0 plus
 validation steps. Activate reports graph/topology epochs. Transitions report the
 actual applied frame. QueryState metadata is cut frame/captured frames/capture revision/
-state bits/capture error. State bits are mode0 Stopped/1 Playing/2 Recording,
+state bits/capture error. State bits are mode0 Stopped/1 Playing/2 Recording/3 Replacing,
 incomplete4 and monitor-previous8; capture error0 means none,2 means Capacity.
 The query itself remains Applied with header error0. Other metadata is zero.
 
@@ -986,3 +986,9 @@ The codec supports these public event/decision fields; that does not imply the
 primitive browser script has executed composites, replacement or capture failures.
 The native codec tests cover full-width values and optional-field encoding;
 broader actual host scenarios remain separate work.
+
+Grab/Replacing observation extensions preserve existing records: journal/export
+mode5 means Replacing. Event17 is ReplaceInput (flag0 indicates a supplied position,
+a is that position), event18 is RecordPrefix (a is prefix frames), and event19 is
+Adopt (a is length, b is content revision, u64 position at40, mode byte at48).
+Adopt's bytes49–159 are zero; other event tails retain the existing zero rule.

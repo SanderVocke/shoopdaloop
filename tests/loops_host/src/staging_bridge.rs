@@ -608,6 +608,7 @@ impl Staging {
                                 shoop_loops::Mode::Recording => 2,
                                 shoop_loops::Mode::PlayingDryThroughWet => 1 | 16,
                                 shoop_loops::Mode::RecordingDryIntoWet => 2 | 16,
+                                shoop_loops::Mode::Replacing => 3,
                             };
                             put64(
                                 &mut response.0,

@@ -503,3 +503,5 @@ src/rust/shoop_rt_engine/src/monitoring.rs,realtime_engine,excluded,Fixed prepar
 src/rust/shoop_persistence_codec/src/document/processors.rs,client_codec_worker,excluded,Pure portable processor and channel-role conversion; traced frontend persistence orchestration owns the boundary.
 src/rust/shoop_app/src/service/commands/input.rs,app_session,instrumented_indirect,Atomic input policy executes within traced service commands and retained operation outcomes.
 src/rust/rt_buffered/src/midi.rs,portable_buffered_dsp,excluded,Borrowed bounded MIDI merge iterators have no execution or I/O boundary.
+src/rust/shoopdaloop/src/session_probe/input.rs,input_native_probe,instrumented_direct,Public application input controls exercise companion capture client detach file recovery and shutdown.
+src/rust/shoopdaloop/src/browser_rt_self_test/input.rs,input_browser_probe,instrumented_direct,Public input canary traces AudioWorklet ownership during a stalled main thread and exact persistence.
