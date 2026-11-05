@@ -26,10 +26,10 @@ pub struct SharedSettings {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HistoryId {
-    scope: u32,
-    graph: Epoch,
-    source: u32,
-    generation: u64,
+    pub(super) scope: u32,
+    pub(super) graph: Epoch,
+    pub(super) source: u32,
+    pub(super) generation: u64,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HistoryStatus {
@@ -1367,6 +1367,87 @@ impl LoopPlanner {
                 let job = shared.live_job(id)?;
                 Ok(Reply::Writer {
                     id,
+                    status: if job.ready {
+                        CandidateStatus::Ready
+                    } else {
+                        CandidateStatus::Building
+                    },
+                })
+            }
+            Operation::WriterPrepareReplacing { target, source } => {
+                let row = self.row(target)?;
+                let state = self.resolver.state(target)?;
+                if row.prepared.is_some() {
+                    return Err(Error::Busy.into());
+                }
+                if let Some(writer) = row.active.and_then(|take| take.writer) {
+                    let shared = self.shared.as_ref().ok_or(Error::InvalidState)?;
+                    let status = shared.status(source.source, graph, io)?;
+                    if status.id != source {
+                        return Err(Error::InvalidId.into());
+                    }
+                    let job = shared.live_job(writer)?;
+                    if let Some(error) = job.failure.or(status.failure) {
+                        return Err(error.into());
+                    }
+                    if job.source.source != source.source
+                        || job.source.generation != source.generation
+                    {
+                        return Err(Error::StaleRevision.into());
+                    }
+                    return Ok(Reply::ReplacingPrepared {
+                        id: None,
+                        status: CandidateStatus::Ready,
+                    });
+                }
+                if state.mode == Mode::Recording {
+                    let Reply::Writer { id, status } = self.shared_operation(
+                        Operation::WriterPrepareRecording { target, source },
+                        frame,
+                        graph,
+                        io,
+                    )?
+                    else {
+                        return Err(Error::InvalidState.into());
+                    };
+                    return Ok(Reply::ReplacingPrepared {
+                        id: Some(id),
+                        status,
+                    });
+                }
+                let view = self
+                    .ledger
+                    .view(self.ledger.playback(target)?.ok_or(Error::InvalidState)?)?;
+                if (row.binding.channels > 0) != view.audio.is_some()
+                    || row.binding.midi != view.midi.is_some()
+                {
+                    return Err(Error::InvalidShape.into());
+                }
+                let fence = Fence {
+                    timing_revision: row.timing_revision,
+                    target,
+                    revision: state.content_revision,
+                    length: state.content_length,
+                    graph,
+                    topology: self.resolver.epoch(),
+                };
+                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                let id = shared.begin_live_snapshots(
+                    fence,
+                    source,
+                    state.content_length,
+                    [
+                        view.audio.map(|source| source.snapshot),
+                        view.midi.map(|source| source.snapshot),
+                    ],
+                    indexed_midi::WriteKind::Fixed,
+                    row.windows,
+                    frame,
+                    io,
+                )?;
+                let job = shared.live_job(id)?;
+                Ok(Reply::ReplacingPrepared {
+                    id: Some(id),
                     status: if job.ready {
                         CandidateStatus::Ready
                     } else {

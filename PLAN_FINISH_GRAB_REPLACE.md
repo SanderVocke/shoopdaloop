@@ -22,7 +22,8 @@ remain outstanding.
 | F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
 | F2 | Partial: normal native/worklet constructors prepare common thirty-second histories with separately budgeted storage; removal/reuse and typed sizing/readiness pass locally. Global retained-owner MIDI admission and measured default callback limits remain. |
 | F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; long ordinary-recording preparation now follows live input; global admission and final lifecycle acceptance remain. |
-| F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
+| F4 | Partial: atomic paired media staging, current-playback Replacing preparation and source-generation fences; public protocol/controller and adapter remain. |
+| F5–F8 | Outstanding: service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
 Grab and Replacing are still disabled in the normal application. P04/P05 remain
 OPEN. Targeted native tests validate the library increments; fresh applicable CI
@@ -702,6 +703,18 @@ options, tags, padding and size. Twenty loop-library unit tests, all 17 resolver
 and 19 runtime regressions, and 32 shared engine tests pass locally (one callback
 measurement remains ignored). Public protocol/controller staging remains the next
 F4 step; capabilities and P04/P05 remain disabled/OPEN.
+
+Replacing preparation now accepts the loop's retained playback snapshots directly,
+including media whose original resource owners have been removed. Trusted same-pool
+MIDI forks immediately; loaded flat MIDI uses bounded import. Ordinary Recording
+uses the continuously followed prefix path, while an already active shared writer
+needs no controller-owned duplicate preparation. The normal-constructor batch
+scenario now prepares current playback, enters/exits Replacing after one tick,
+checks exact PCM/packets and immutable old exports, then resets the MIDI route and
+verifies a retained source-generation fence refuses the entire later batch. The
+long ordinary-recording scenario also uses this common preparation operation.
+Affected warning-denying builds, the focused scenarios and the shared regression
+group pass locally. This still does not enable application capabilities.
 
 ## Implementation stages
 

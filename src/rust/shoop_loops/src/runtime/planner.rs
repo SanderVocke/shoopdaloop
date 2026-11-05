@@ -897,6 +897,7 @@ impl LoopPlanner {
                     | Operation::HistoryWindow { .. }
                     | Operation::WriterBegin { .. }
                     | Operation::WriterPrepareRecording { .. }
+                    | Operation::WriterPrepareReplacing { .. }
                     | Operation::WriterStatus { .. }
                     | Operation::WriterCancel { .. }
                     | Operation::CandidateBegin { .. }
@@ -1559,6 +1560,7 @@ impl LoopPlanner {
                 | Operation::HistoryWindow { .. }
                 | Operation::WriterBegin { .. }
                 | Operation::WriterPrepareRecording { .. }
+                | Operation::WriterPrepareReplacing { .. }
                 | Operation::WriterStatus { .. }
                 | Operation::WriterCancel { .. }
                 | Operation::CandidateBegin { .. }

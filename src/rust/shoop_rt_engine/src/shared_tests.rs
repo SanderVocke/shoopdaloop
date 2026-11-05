@@ -3042,10 +3042,10 @@ fn long_ordinary_recording_prepares_replacement_without_losing_input_during_buil
     };
     assert_eq!(ordinary.state.mode, shoop_loops::Mode::Recording);
     assert!(!ordinary.state.capture_incomplete);
-    let Reply::Writer {
-        id,
+    let Reply::ReplacingPrepared {
+        id: Some(id),
         status: CandidateStatus::Building,
-    } = h.op(Operation::WriterPrepareRecording {
+    } = h.op(Operation::WriterPrepareReplacing {
         target: target(0),
         source: history.id,
     })
@@ -3229,10 +3229,14 @@ fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cu
         },
     });
     let old_peer = h.export(1);
+    let Reply::History(initial_source) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("initial source")
+    };
     let grab = InputEdit {
         target: target(0),
         action: InputAction::Grab {
             source: 0,
+            history: Some(initial_source.id),
             sync: None,
             window: WindowSpec::default(),
             mode: Mode::Stopped,
@@ -3303,6 +3307,7 @@ fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cu
         target: target(0),
         action: InputAction::Grab {
             source: 0,
+            history: None,
             sync: Some(target(1)),
             window: WindowSpec {
                 cycles_length: Some(2),
@@ -3382,6 +3387,87 @@ fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cu
     );
     assert_eq!(h.read(current.view.audio.unwrap().snapshot), audio);
     assert_eq!(h.read(current.view.midi.unwrap().snapshot), midi);
+    let old_grown_audio = data;
+    let old_grown_midi = h.read(grown.view.midi.unwrap().snapshot);
+    let Reply::History(source) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("source")
+    };
+    let Reply::ReplacingPrepared {
+        id: Some(_),
+        status: CandidateStatus::Ready,
+    } = h.op(Operation::WriterPrepareReplacing {
+        target: target(0),
+        source: source.id,
+    })
+    else {
+        panic!("prepare current immutable playback")
+    };
+    let replace = h.aligned_future(128);
+    let exit = replace + q as u64;
+    let entry = h.input_batch(
+        replace,
+        &[
+            InputEdit {
+                target: target(0),
+                action: InputAction::Mode {
+                    mode: Mode::Replacing,
+                    position: None,
+                },
+            },
+            stop_peer,
+        ],
+    );
+    let stop = h.send(
+        exit,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    assert!(
+        matches!(h.result(entry), Reply::InputBatch { outcome: Outcome::Applied { frame }, .. } if frame == Frame(replace))
+    );
+    h.result(stop);
+    let replaced = h.export(0);
+    let mut replaced_audio = old_grown_audio.clone();
+    for offset in 0..q {
+        let value = (replace + offset as u64 + 1) as f32;
+        replaced_audio[offset * 8..offset * 8 + 4].copy_from_slice(&value.to_le_bytes());
+        replaced_audio[offset * 8 + 4..offset * 8 + 8]
+            .copy_from_slice(&(-2. * value).to_le_bytes());
+    }
+    let mut replaced_midi = expected_midi(replace, q as u64, q);
+    replaced_midi.extend(
+        midi_events(&old_grown_midi)
+            .into_iter()
+            .filter(|(frame, _)| *frame >= q as u64),
+    );
+    assert_eq!(
+        h.read(replaced.view.audio.unwrap().snapshot),
+        replaced_audio
+    );
+    assert_eq!(
+        midi_events(&h.read(replaced.view.midi.unwrap().snapshot)),
+        replaced_midi
+    );
+    assert_eq!(h.read(grown.view.audio.unwrap().snapshot), old_grown_audio);
+    assert_eq!(h.read(grown.view.midi.unwrap().snapshot), old_grown_midi);
+    h.request(protocol::Request::Connect {
+        port: protocol::EnginePort::Strip(protocol::StripPort {
+            strip: protocol::StripId(protocol::SlotId::new(0, 1)),
+            kind: protocol::PortKind::MidiIn,
+            index: 0,
+        }),
+        host: protocol::HostPortId(4),
+        connected: false,
+    });
+    let stale = h.input_batch(h.aligned_future(128), &[grab, stop_peer]);
+    assert_eq!(h.result(stale), failed(Error::StaleRevision));
+    assert_eq!(
+        h.read(replaced.view.audio.unwrap().snapshot),
+        replaced_audio
+    );
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
 }

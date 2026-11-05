@@ -68,6 +68,40 @@ impl Shared {
         frame: Frame,
         io: &mut ResourceIo<'_>,
     ) -> Result<LiveWriterId, Error> {
+        let mut snapshots = [None; 2];
+        let result = (|| {
+            for (member, resource) in [take.audio, take.midi].into_iter().enumerate() {
+                if let Some(resource) = resource {
+                    snapshots[member] = Some(io.snapshot(resource, frame)?);
+                }
+            }
+            self.begin_live_snapshots(
+                fence,
+                source,
+                take.frames,
+                snapshots,
+                kind,
+                windows,
+                frame,
+                io,
+            )
+        })();
+        for snapshot in snapshots.into_iter().flatten() {
+            io.release_snapshot(snapshot.id)?;
+        }
+        result
+    }
+    pub fn begin_live_snapshots(
+        &mut self,
+        fence: Fence,
+        source: HistoryId,
+        frames: u64,
+        snapshots: [Option<Snapshot>; 2],
+        kind: indexed_midi::WriteKind,
+        windows: Windows,
+        frame: Frame,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<LiveWriterId, Error> {
         if self.live_for(fence.target).is_some() {
             return Err(Error::Busy);
         }
@@ -78,19 +112,19 @@ impl Shared {
         if let Some(error) = status.failure {
             return Err(error);
         }
-        if matches!(kind, indexed_midi::WriteKind::Fixed) && take.frames == 0 {
+        if matches!(kind, indexed_midi::WriteKind::Fixed) && frames == 0 {
             return Err(Error::InvalidShape);
         }
         let h = self.source(source.source)?;
         let audio_store = h.audio;
-        let channels = if take.audio.is_some() {
+        let channels = if snapshots[0].is_some() {
             h.settings.audio.map_or(0, |audio| audio.channels as usize)
         } else {
             0
         };
         let midi_store = h.indexed_midi.map(|id| id.store());
-        if take.audio.is_some() && audio_store.is_none()
-            || take.midi.is_some() && midi_store.is_none()
+        if snapshots[0].is_some() && audio_store.is_none()
+            || snapshots[1].is_some() && midi_store.is_none()
         {
             return Err(Error::InvalidShape);
         }
@@ -108,7 +142,7 @@ impl Shared {
             fence,
             source,
             kind,
-            frames: take.frames,
+            frames: frames,
             position: 0,
             windows,
             audio_frames: 0,
@@ -126,22 +160,19 @@ impl Shared {
             failure: None,
         };
         let maximum = match kind {
-            indexed_midi::WriteKind::Fixed => take.frames,
+            indexed_midi::WriteKind::Fixed => frames,
             indexed_midi::WriteKind::Growing { maximum_frames } => maximum_frames,
         };
         let result = (|| {
-            if let Some(resource) = take.audio {
-                let snapshot = io.snapshot(resource, frame)?;
+            if let Some(snapshot) = snapshots[0] {
                 if matches!(kind, indexed_midi::WriteKind::Growing { .. })
-                    && snapshot.description.frames != take.frames
+                    && snapshot.description.frames != frames
                 {
-                    io.release_snapshot(snapshot.id)?;
                     return Err(Error::InvalidShape);
                 }
                 job.audio_frames = snapshot.description.frames;
-                let fork = io.fork_audio(audio_store.ok_or(Error::InvalidShape)?, snapshot.id);
-                io.release_snapshot(snapshot.id)?;
-                let resource = fork?;
+                let resource =
+                    io.fork_audio(audio_store.ok_or(Error::InvalidShape)?, snapshot.id)?;
                 job.audio = Some(resource);
                 job.audio_revision = io.info(resource)?.revision;
                 if matches!(kind, indexed_midi::WriteKind::Growing { .. }) {
@@ -154,29 +185,24 @@ impl Shared {
                 };
                 job.audio_export = Some(io.reserve_snapshot(resource, frame, maximum)?);
             }
-            if let Some(resource) = take.midi {
+            if let Some(snapshot) = snapshots[1] {
                 let store = midi_store.ok_or(Error::InvalidShape)?;
-                let snapshot = io.snapshot(resource, frame)?;
                 if matches!(kind, indexed_midi::WriteKind::Growing { .. })
-                    && snapshot.description.frames != take.frames
+                    && snapshot.description.frames != frames
                 {
-                    io.release_snapshot(snapshot.id)?;
                     return Err(Error::InvalidShape);
                 }
                 job.midi_frames = snapshot.description.frames;
-                let result = (|| {
-                    if take.indexed_midi_store == Some(store) {
-                        io.fork_indexed_midi(store, snapshot.id)
-                            .map(|resource| job.midi = Some(resource))
-                    } else {
+                match io.fork_indexed_midi(store, snapshot.id) {
+                    Ok(resource) => job.midi = Some(resource),
+                    Err(Error::InvalidShape) => {
                         let index = io.read_index(snapshot.id)?;
                         let initial = io.render().midi_seek(index, 0)?.state;
-                        io.prepare_indexed_midi_import(store, snapshot.id, &initial)
-                            .map(|import| job.import = Some(import))
+                        job.import =
+                            Some(io.prepare_indexed_midi_import(store, snapshot.id, &initial)?);
                     }
-                })();
-                io.release_snapshot(snapshot.id)?;
-                result?;
+                    Err(error) => return Err(error),
+                }
             }
             if kind == indexed_midi::WriteKind::Fixed {
                 if channels > crate::windows::MAX_AUDIO_CHANNELS {
@@ -188,7 +214,7 @@ impl Shared {
                         job.midi.is_some() || job.import.is_some(),
                         job.audio_frames,
                         job.midi_frames,
-                        take.frames,
+                        frames,
                     )
                     .map_err(runtime_error)?;
             }

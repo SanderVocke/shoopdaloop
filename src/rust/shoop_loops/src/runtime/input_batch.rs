@@ -13,6 +13,7 @@ pub enum InputAction {
     },
     Grab {
         source: u32,
+        history: Option<HistoryId>,
         sync: Option<LoopId>,
         window: WindowSpec,
         mode: Mode,
@@ -51,6 +52,7 @@ impl InputEdit {
             }
             InputAction::Grab {
                 source,
+                history,
                 sync,
                 window,
                 mode,
@@ -64,6 +66,15 @@ impl InputEdit {
                 bytes[8] = 1;
                 bytes[24..32].copy_from_slice(&maximum_frames.to_le_bytes());
                 bytes[12..16].copy_from_slice(&source.to_le_bytes());
+                if let Some(history) = history {
+                    if history.source != source || history.scope == 0 || history.generation == 0 {
+                        return Err(Error::InvalidId);
+                    }
+                    bytes[10] |= 16;
+                    bytes[44..48].copy_from_slice(&history.scope.to_le_bytes());
+                    bytes[48..56].copy_from_slice(&history.graph.0.to_le_bytes());
+                    bytes[56..64].copy_from_slice(&history.generation.to_le_bytes());
+                }
                 if let Some(sync) = sync {
                     bytes[10] |= 8;
                     bytes[16..20].copy_from_slice(&sync.slot().to_le_bytes());
@@ -90,6 +101,9 @@ impl InputEdit {
         if bytes.len() != INPUT_BATCH_RECORD_BYTES {
             return Err(Error::InvalidShape);
         }
+        if bytes[10] & !31 != 0 {
+            return Err(Error::InvalidEvent);
+        }
         let u32_at = |at| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
         let mode = match bytes[9] {
             0 => Mode::Stopped,
@@ -108,6 +122,16 @@ impl InputEdit {
                 },
                 1 => InputAction::Grab {
                     source: u32_at(12),
+                    history: if bytes[10] & 16 != 0 {
+                        Some(HistoryId {
+                            scope: u32_at(44),
+                            source: u32_at(12),
+                            graph: Epoch(u64::from_le_bytes(bytes[48..56].try_into().unwrap())),
+                            generation: u64::from_le_bytes(bytes[56..64].try_into().unwrap()),
+                        })
+                    } else {
+                        None
+                    },
                     sync: if bytes[10] & 8 != 0 {
                         Some(LoopId::from_parts(u32_at(16), u32_at(20)).map_err(runtime_error)?)
                     } else {
@@ -219,6 +243,7 @@ impl LoopPlanner {
         let entry = self.input_batch.entries[index];
         let InputAction::Grab {
             source,
+            history,
             sync,
             window,
             mode,
@@ -254,6 +279,9 @@ impl LoopPlanner {
         }
         let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
         let status = shared.status(source, self.graph_epoch, io)?;
+        if history.is_some_and(|history| history != status.id) {
+            return Err(Error::StaleRevision.into());
+        }
         if status.end != frame {
             return Err(Error::Busy.into());
         }
@@ -588,6 +616,7 @@ mod tests {
                 target,
                 action: InputAction::Grab {
                     source: u32::MAX,
+                    history: None,
                     sync: Some(LoopId::from_parts(1, 2).unwrap()),
                     window: WindowSpec {
                         reverse_start_cycle: Some(0),

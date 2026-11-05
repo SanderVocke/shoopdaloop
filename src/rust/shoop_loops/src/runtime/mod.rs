@@ -153,6 +153,10 @@ pub enum Operation {
         take: SharedTake,
         kind: indexed_midi::WriteKind,
     },
+    WriterPrepareReplacing {
+        target: LoopId,
+        source: HistoryId,
+    },
     WriterPrepareRecording {
         target: LoopId,
         source: HistoryId,
@@ -381,6 +385,10 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    ReplacingPrepared {
+        id: Option<LiveWriterId>,
+        status: CandidateStatus,
+    },
     InputBatch {
         requested: Frame,
         effective: Frame,
