@@ -20,6 +20,12 @@ Implementation in progress on `feat/p03-composites`. Written using
 - Execution was authorized by the user's goal to complete this plan. The branch
   starts at the inspected base; the planning checkpoint is commit `18f7a5b1`.
 
+PR #941 delivers the direct-track composite core before #946, as agreed with the
+user. Its landing gates are green required CI and resolved review feedback at the
+delivered head. Stage 9 replacing/dry-wet interactions remain follow-up parity
+work; they do not require importing the discarded integration branch into this PR.
+Full P03 remains OPEN until those interactions are implemented and validated.
+
 ## Goals, scope and dependencies
 
 Restore regular and explicit-mode/script composites, UI editing, Lua composition

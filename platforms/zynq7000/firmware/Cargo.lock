@@ -192,6 +192,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_backend",
  "shoop_deployment_protocol",
+ "shoop_loop_plan",
  "shoop_port_graph",
  "tracing",
 ]
@@ -270,10 +271,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_loop_plan"
+version = "0.3.0"
+
+[[package]]
 name = "shoop_loops"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "shoop_loop_plan",
 ]
 
 [[package]]
@@ -291,6 +297,7 @@ dependencies = [
  "libm",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_loop_plan",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "tracing",
