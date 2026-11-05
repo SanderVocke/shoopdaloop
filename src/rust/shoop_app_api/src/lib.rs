@@ -1181,6 +1181,7 @@ pub struct HostPortState {
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
+    pub available: bool,
 }
 
 pub const MASTER_BUS_NAME: &str = "Master";
@@ -3539,6 +3540,7 @@ mod tests {
             name: endpoint.clone(),
             data_type: PortDataType::Audio,
             direction: PortDirection::Output,
+            available: true,
         };
         let pending = PendingConnectionState {
             application_port_id: port_id,
@@ -3791,6 +3793,36 @@ impl ControlOperation {
             | Self::SetBusMuted { buses, .. } => buses.len() <= 128,
             _ => true,
         }
+    }
+}
+
+/// Host-local admission ceilings within the shared protocol limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostResourceLimits {
+    pub media_bytes: u64,
+    pub metadata_bytes: u64,
+    pub objects: u32,
+    pub midi_events: usize,
+}
+
+impl Default for HostResourceLimits {
+    fn default() -> Self {
+        Self {
+            media_bytes: 256 * 1024 * 1024,
+            metadata_bytes: 8 * 1024 * 1024,
+            objects: 4096,
+            midi_events: 1_000_000,
+        }
+    }
+}
+
+impl HostResourceLimits {
+    pub fn is_valid(self) -> bool {
+        let ceiling = Self::default();
+        (1..=ceiling.media_bytes).contains(&self.media_bytes)
+            && (1..=ceiling.metadata_bytes).contains(&self.metadata_bytes)
+            && (1..=ceiling.objects).contains(&self.objects)
+            && (1..=ceiling.midi_events).contains(&self.midi_events)
     }
 }
 

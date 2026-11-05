@@ -15,6 +15,134 @@ use shoop_rt_protocol::{EngineMessage, Request, SlotId, StripId, StripShape};
 use shoop_wasm_test_support::shoop_test;
 use support::*;
 
+struct Inventory(std::sync::Arc<std::sync::Mutex<Option<Vec<shoop_rt_backend::HostPortAlias>>>>);
+
+impl shoop_rt_backend::HostPortInventory for Inventory {
+    fn poll(&mut self) -> Option<Vec<shoop_rt_backend::HostPortAlias>> {
+        self.0.lock().unwrap().take()
+    }
+}
+
+#[shoop_test]
+fn physical_host_ids_route_to_prepared_slots_and_preserve_disconnected_bindings() {
+    use shoop_backend::{BackendPortDataType, BackendPortDirection};
+    use shoop_rt_backend::HostPortAlias;
+    let mut config = description();
+    config.host = shoop_rt_engine::HostPorts::numbered(2, 2, 2);
+    let aliases = |available| {
+        vec![
+            HostPortAlias {
+                slot: "midi_in_2".into(),
+                id: "usb/synth/in/0".into(),
+                name: "Synth input".into(),
+                available,
+            },
+            HostPortAlias {
+                slot: "midi_in_1".into(),
+                id: "usb/keyboard/in/0".into(),
+                name: "Keyboard input".into(),
+                available: true,
+            },
+            HostPortAlias {
+                slot: "midi_out_2".into(),
+                id: String::new(),
+                name: String::new(),
+                available: false,
+            },
+        ]
+    };
+    let state = std::sync::Arc::new(std::sync::Mutex::new(Some(aliases(true))));
+    let mut backend = stack(&config).with_host_port_inventory(Box::new(Inventory(state.clone())));
+    let ports = backend.poll().unwrap().connections.host_ports;
+    assert_eq!(ports["usb/synth/in/0"].name, "Synth input");
+    assert!(ports["usb/synth/in/0"].available);
+    assert!(!ports.contains_key("midi_in_1") && !ports.contains_key("midi_in_2"));
+    assert!(!ports.contains_key("midi_out_2"));
+    let created = backend.create_direct_track(track(1, true, 1)).unwrap();
+    backend.wait_idle();
+    let input = created
+        .ports
+        .iter()
+        .find(|port| {
+            port.data_type == BackendPortDataType::Midi
+                && port.direction == BackendPortDirection::Input
+        })
+        .unwrap()
+        .id;
+    backend
+        .set_port_connected(input, "usb/synth/in/0", true)
+        .unwrap();
+    backend.wait_idle();
+    assert!(backend
+        .poll()
+        .unwrap()
+        .connections
+        .confirmed_links
+        .iter()
+        .any(|link| link.host_port_id == "usb/synth/in/0"));
+    *state.lock().unwrap() = Some(aliases(false));
+    let snapshot = backend.poll().unwrap();
+    assert!(!snapshot.connections.host_ports["usb/synth/in/0"].available);
+    assert!(snapshot
+        .connections
+        .confirmed_links
+        .iter()
+        .any(|link| link.host_port_id == "usb/synth/in/0"));
+    assert!(!backend.release_host_port_identity("usb/synth/in/0"));
+    let mut replacement = aliases(true);
+    replacement[0].id = "usb/replacement/in/0".into();
+    *state.lock().unwrap() = Some(replacement);
+    assert!(backend.poll().is_err(), "a bound slot changed identity");
+    assert!(backend
+        .poll()
+        .unwrap()
+        .connections
+        .host_ports
+        .contains_key("usb/synth/in/0"));
+    assert!(backend
+        .set_port_connected(input, "usb/synth/in/0", true)
+        .is_err());
+    backend
+        .set_port_connected(input, "usb/synth/in/0", false)
+        .unwrap();
+    backend.wait_idle();
+    assert!(backend
+        .poll()
+        .unwrap()
+        .connections
+        .confirmed_links
+        .is_empty());
+    assert!(backend.release_host_port_identity("usb/synth/in/0"));
+    *state.lock().unwrap() = Some(aliases(false));
+    assert!(!backend
+        .poll()
+        .unwrap()
+        .connections
+        .host_ports
+        .contains_key("usb/synth/in/0"));
+    assert!(backend
+        .set_port_connected(input, "usb/synth/in/0", true)
+        .is_err());
+    *state.lock().unwrap() = Some(vec![HostPortAlias {
+        slot: "midi_in_1".into(),
+        id: "usb/synth/in/0".into(),
+        name: "Synth input".into(),
+        available: true,
+    }]);
+    backend.poll().unwrap();
+    backend
+        .set_port_connected(input, "usb/synth/in/0", true)
+        .unwrap();
+    backend.wait_idle();
+    assert!(backend
+        .poll()
+        .unwrap()
+        .connections
+        .confirmed_links
+        .iter()
+        .any(|link| link.host_port_id == "usb/synth/in/0"));
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -533,4 +661,119 @@ fn tracking_capacity_refuses_before_admission_and_returns_after_outcomes_are_con
         shoop_rt_backend::MAX_TRACKED_MUTATIONS
     );
     backend.set_loop_smoothing_ms(0).unwrap();
+}
+
+#[shoop_test]
+fn a_saved_missing_device_reconnects_on_a_different_prepared_slot() {
+    use shoop_backend::{BackendAsyncResult, BackendPortDataType, BackendPortDirection};
+    use shoop_rt_backend::HostPortAlias;
+    let mut config = description();
+    config.host = shoop_rt_engine::HostPorts::numbered(2, 2, 2);
+    let id = "usb0/1:serial/in/0";
+    let inventory = |slot: usize| {
+        (1..=2)
+            .map(|index| HostPortAlias {
+                slot: format!("midi_in_{index}"),
+                id: if index == slot {
+                    id.into()
+                } else {
+                    String::new()
+                },
+                name: if index == slot {
+                    "Synth input".into()
+                } else {
+                    String::new()
+                },
+                available: index == slot,
+            })
+            .collect()
+    };
+    let original = std::sync::Arc::new(std::sync::Mutex::new(Some(inventory(2))));
+    let mut source = stack(&config).with_host_port_inventory(Box::new(Inventory(original)));
+    source.poll().unwrap();
+    let track = source.create_direct_track(track(1, true, 1)).unwrap();
+    source.wait_idle();
+    let input = track
+        .ports
+        .iter()
+        .find(|port| {
+            port.data_type == BackendPortDataType::Midi
+                && port.direction == BackendPortDirection::Input
+        })
+        .unwrap()
+        .id;
+    source.set_port_connected(input, id, true).unwrap();
+    source.wait_idle();
+    let saved = source.capture_session().unwrap();
+    let state = std::sync::Arc::new(std::sync::Mutex::new(Some(inventory(0))));
+    let mut restored = stack(&config).with_host_port_inventory(Box::new(Inventory(state.clone())));
+    restored.poll().unwrap();
+    let mut replacement = None;
+    for _ in 0..2000 {
+        match restored.replace_session_async(&saved).unwrap() {
+            BackendAsyncResult::Ready(mapping) => {
+                replacement = Some(mapping);
+                break;
+            }
+            BackendAsyncResult::Pending(_) => {
+                assert!(
+                    restored.host_port_in_use(id),
+                    "pending replacement lost its device pin"
+                );
+                assert!(!restored.release_host_port_identity(id));
+                restored.clock_mut().render(1);
+            }
+        }
+    }
+    let mapping = replacement.expect("offline session replacement");
+    restored.wait_idle();
+    assert!(
+        restored.host_port_in_use(id),
+        "saved route did not pin its physical identity"
+    );
+    assert!(!restored
+        .poll()
+        .unwrap()
+        .connections
+        .confirmed_links
+        .iter()
+        .any(|link| link.host_port_id == id));
+    *state.lock().unwrap() = Some(inventory(1));
+    restored.poll().unwrap();
+    restored.wait_idle();
+    assert!(restored
+        .poll()
+        .unwrap()
+        .connections
+        .confirmed_links
+        .iter()
+        .any(|link| link.host_port_id == id));
+    let track = mapping.tracks.values().next().unwrap();
+    let output = track
+        .ports
+        .iter()
+        .find(|port| {
+            port.data_type == BackendPortDataType::Midi
+                && port.direction == BackendPortDirection::Output
+        })
+        .unwrap()
+        .id;
+    restored
+        .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+        .unwrap();
+    restored
+        .set_port_connected(output, "midi_out_1", true)
+        .unwrap();
+    restored.wait_idle();
+    let host = &mut restored.clock_mut().offline;
+    host.midi_input_mut(0)
+        .push(0, 16, &[0x90, 60, 100])
+        .unwrap();
+    host.midi_input_mut(1)
+        .push(0, 16, &[0x91, 99, 123])
+        .unwrap();
+    host.process(16).unwrap();
+    let output = host.midi_output(0);
+    assert!((0..output.len()).any(|i| output.get(i).unwrap().1 == [0x90, 60, 100]));
+    assert!(!(0..output.len()).any(|i| output.get(i).unwrap().1 == [0x91, 99, 123]));
 }

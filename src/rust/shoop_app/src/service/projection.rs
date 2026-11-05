@@ -170,6 +170,7 @@ impl Service {
                 name: port.name.clone(),
                 data_type: data_type(port.data_type),
                 direction: direction(port.direction),
+                available: port.available,
             })
             .collect();
         if self.dynamic_ports() {
@@ -183,6 +184,7 @@ impl Service {
                         name: port.name.clone(),
                         data_type: port.data_type,
                         direction: port.direction,
+                        available: true,
                     })
                 })
                 .collect();
@@ -547,6 +549,7 @@ impl Service {
 
     pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
         if observed.connections.revision != self.observed.connections.revision
+            || observed.connections.host_ports != self.observed.connections.host_ports
             || observed.profiling != self.observed.profiling
             || observed.mixer.revision != self.observed.mixer.revision
         {

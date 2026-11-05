@@ -33,6 +33,99 @@ fn fixture() -> (Stack, BackendTrackCreation, BackendSessionData) {
 }
 
 #[shoop_test]
+fn board_media_budget_refuses_replacement_without_changing_live_content() {
+    let limits = shoop_app_api::HostResourceLimits {
+        media_bytes: 32,
+        midi_events: 2,
+        ..Default::default()
+    };
+    let mut backend = stack(&description()).with_resource_limits(limits).unwrap();
+    backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "bounded".into(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 2,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    session.tracks[0].loops[0].length = 4;
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 4].into();
+    loaded(&mut backend, &session).unwrap();
+    let before = backend.capture_session().unwrap();
+    let mut excessive = before.clone();
+    excessive.tracks[0].loops[1].length = 8;
+    excessive.tracks[0].loops[1].audio[0].samples = vec![0.5; 8].into();
+    assert!(loaded(&mut backend, &excessive).is_err());
+    assert_eq!(backend.capture_session().unwrap(), before);
+    assert_eq!(
+        backend.poll().unwrap().status.driver_state,
+        BackendDriverState::Dummy
+    );
+}
+
+#[shoop_test]
+fn recording_export_budget_and_full_pool_preserve_previously_settled_content() {
+    let mut description = description();
+    description.resource_pages = 512;
+    let mut backend = stack(&description)
+        .with_resource_limits(shoop_app_api::HostResourceLimits {
+            media_bytes: 64 * 1024,
+            ..Default::default()
+        })
+        .unwrap();
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "capacity".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let id = track.loops[0];
+    let mut small_replacement = backend.capture_session().unwrap();
+    small_replacement.tracks[0].loops[0].length = 10_000;
+    for channel in &mut small_replacement.tracks[0].loops[0].audio {
+        // Raw media must fit the export budget and exceed old-plus-new pool headroom.
+        channel.samples = vec![0.25; 8_000].into();
+    }
+    backend
+        .transition_loop(id, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().render(9000);
+    backend
+        .transition_loop(id, BackendLoopMode::Stopped, None)
+        .unwrap();
+    backend.wait_idle();
+    let before = backend.poll().unwrap().loops[&id].length;
+    assert!(u64::from(before) * 8 > 64 * 1024);
+    assert!(backend
+        .capture_session()
+        .unwrap_err()
+        .to_string()
+        .contains("budget"));
+    backend
+        .transition_loop(id, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().render(16000);
+    let state = backend.poll().unwrap();
+    assert_ne!(state.loops[&id].mode, BackendLoopMode::Recording);
+    assert_eq!(state.loops[&id].length, before);
+    assert_eq!(state.status.driver_state, BackendDriverState::Dummy);
+    assert!(loaded(&mut backend, &small_replacement).is_err());
+    assert_eq!(backend.poll().unwrap().loops[&id].length, before);
+    assert!(backend
+        .capture_session()
+        .unwrap_err()
+        .to_string()
+        .contains("budget"));
+}
+
+#[shoop_test]
 fn prepared_engine_quantum_is_reported_independently_of_host_buffer_size() {
     for quantum in [1, 16, 32, 64, 128] {
         let mut description = description();

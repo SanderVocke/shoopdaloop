@@ -10694,6 +10694,7 @@ impl ApplicationModel {
                         name: host.name.clone(),
                         data_type: map_port_data_type(host.data_type),
                         direction: map_port_direction(host.direction),
+                        available: true,
                     },
                 )
             })
@@ -10827,6 +10828,7 @@ impl ApplicationModel {
                             name: endpoint.name.clone(),
                             data_type: PortDataType::Midi,
                             direction: host_direction,
+                            available: true,
                         });
                     if endpoint.connected {
                         normalized_links.insert((port_id, host_id));

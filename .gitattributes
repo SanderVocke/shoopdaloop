@@ -6,3 +6,4 @@ resources/builtins/**/*.md text eol=lf
 resources/builtins/catalog.json text eol=lf
 resources/builtins/*.png binary
 resources/builtins/**/*.png binary
+platforms/zynq7000/patches/*.patch -whitespace

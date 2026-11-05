@@ -737,6 +737,7 @@ impl Runtime {
                         name: endpoint.name.clone(),
                         data_type: PortDataType::Midi,
                         direction: host_direction,
+                        available: true,
                     });
                     if endpoint.connected {
                         links.insert((port, host));

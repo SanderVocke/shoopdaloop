@@ -239,6 +239,27 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 }
 
 impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
+    fn release_host_port_identity(&mut self, id: &str) -> bool {
+        if self.replacement.is_some() || self.host_identity_in_use(id) {
+            return false;
+        }
+        let Some((slot, alias)) = self
+            .mirror
+            .host_aliases
+            .iter_mut()
+            .find(|(_, alias)| alias.id == id && !alias.available)
+        else {
+            return false;
+        };
+        let identity = core::mem::take(&mut alias.id);
+        alias.name.clear();
+        self.retired_host_ports.insert(*slot, identity);
+        true
+    }
+
+    fn host_port_in_use(&self, id: &str) -> bool {
+        self.host_identity_in_use(id)
+    }
     fn mutation_cursor(&self) -> u64 {
         self.requests.last_sequence()
     }
@@ -1037,7 +1058,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
+        self.refresh_host_ports()?;
         self.pump();
+        self.reconcile_host_ports()?;
         let driver = self.driver;
         self.status.peaks_fresh = false;
         let status = BackendStatus {

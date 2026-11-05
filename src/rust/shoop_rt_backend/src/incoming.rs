@@ -384,7 +384,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     };
                     links.insert(BackendConfirmedLink {
                         application_port_id: port,
-                        host_port_id: host.name.as_str().to_owned(),
+                        host_port_id: self.mirror.host_key(host).to_owned(),
                     });
                 }
                 StateRecord::Route {

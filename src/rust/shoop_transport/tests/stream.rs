@@ -174,3 +174,44 @@ fn stream_progression_is_heap_free_after_preparation() {
         }
     });
 }
+
+#[shoop_test]
+fn token_handshake_handles_partial_io_and_remaining_deadlines() {
+    use shoop_transport::authenticated::{Error, Handshake};
+    let token = [9; 32];
+    let mut server = Handshake::new(token, true, Duration::from_secs(1));
+    let mut io = Scripted::new(&token);
+    io.interrupt = true;
+    for _ in 0..16 {
+        if server.advance(&mut io, Duration::from_millis(1)).unwrap() {
+            break;
+        }
+    }
+    assert!(server.advance(&mut io, Duration::ZERO).unwrap());
+    assert_eq!(&io.output[..io.written], &[1]);
+    let mut client = Handshake::new(token, false, Duration::from_secs(1));
+    let mut io = Scripted::new(&[1]);
+    for _ in 0..16 {
+        if client.advance(&mut io, Duration::from_millis(1)).unwrap() {
+            break;
+        }
+    }
+    assert!(client.advance(&mut io, Duration::ZERO).unwrap());
+    assert_eq!(&io.output[..io.written], &token);
+    let mut timeout = Handshake::new(token, true, Duration::from_millis(10));
+    assert_eq!(
+        timeout.advance(&mut Scripted::new(&[]), Duration::from_millis(10)),
+        Err(Error::Timeout)
+    );
+    let mut wrong = Handshake::new(token, true, Duration::from_secs(1));
+    let mut io = Scripted::new(&[0; 32]);
+    io.fragment = 32;
+    assert_eq!(
+        wrong.advance(&mut io, Duration::ZERO),
+        Err(Error::Credential)
+    );
+    assert_eq!(
+        wrong.advance(&mut io, Duration::ZERO),
+        Err(Error::Credential)
+    );
+}

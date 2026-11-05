@@ -2510,6 +2510,7 @@ impl EngineBackend {
                             preferred_playback: port.name.starts_with("webaudio:destination_")
                                 || port.name.starts_with("cpal:")
                                     && port.name.contains(":playback_"),
+                            available: true,
                         },
                     ),
                 )
@@ -7609,6 +7610,7 @@ impl FakeBackend {
                             preferred_playback: id.starts_with("system:playback_")
                                 || id.starts_with("webaudio:destination_")
                                 || id.starts_with("cpal:") && id.contains(":playback_"),
+                            available: true,
                         },
                     )
                 })
@@ -14262,6 +14264,7 @@ mod tests {
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
                 preferred_playback: false,
+                available: true,
             },
             BackendHostPortDescriptor {
                 id: "webmidi:sink:controller".to_owned(),
@@ -14269,6 +14272,7 @@ mod tests {
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Input,
                 preferred_playback: false,
+                available: true,
             },
         ];
         backend
@@ -14427,6 +14431,7 @@ mod tests {
             data_type: BackendPortDataType::Midi,
             direction: BackendPortDirection::Output,
             preferred_playback: false,
+            available: true,
         };
         backend
             .configure_web_midi_endpoints(vec![endpoint.clone()])
@@ -14505,6 +14510,7 @@ mod tests {
             data_type: BackendPortDataType::Midi,
             direction: BackendPortDirection::Output,
             preferred_playback: false,
+            available: true,
         };
         backend
             .configure_web_midi_endpoints(vec![endpoint.clone()])
@@ -14553,6 +14559,7 @@ mod tests {
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
                 preferred_playback: false,
+                available: true,
             }])
             .unwrap();
         let mut tracks = Vec::new();
@@ -14618,6 +14625,7 @@ mod tests {
                     data_type: BackendPortDataType::Midi,
                     direction: BackendPortDirection::Output,
                     preferred_playback: false,
+                    available: true,
                 },
                 BackendHostPortDescriptor {
                     id: "webmidi:sink:first".to_owned(),
@@ -14625,6 +14633,7 @@ mod tests {
                     data_type: BackendPortDataType::Midi,
                     direction: BackendPortDirection::Input,
                     preferred_playback: false,
+                    available: true,
                 },
                 BackendHostPortDescriptor {
                     id: "webmidi:sink:second".to_owned(),
@@ -14632,6 +14641,7 @@ mod tests {
                     data_type: BackendPortDataType::Midi,
                     direction: BackendPortDirection::Input,
                     preferred_playback: false,
+                    available: true,
                 },
             ])
             .unwrap();
@@ -14696,6 +14706,7 @@ mod tests {
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
                 preferred_playback: false,
+                available: true,
             }])
             .unwrap();
         let track = backend
@@ -15610,6 +15621,7 @@ mod tests {
                 data_type: BackendPortDataType::Midi,
                 direction: BackendPortDirection::Output,
                 preferred_playback: false,
+                available: true,
             }])
             .unwrap();
         let sync = backend

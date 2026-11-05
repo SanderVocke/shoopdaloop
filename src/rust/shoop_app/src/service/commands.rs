@@ -996,7 +996,8 @@ impl Service {
             .host_ports
             .values()
             .filter(|port| {
-                port.data_type == BackendPortDataType::Audio
+                port.available
+                    && port.data_type == BackendPortDataType::Audio
                     && port.direction == BackendPortDirection::Input
             })
             .cloned()
@@ -1063,7 +1064,8 @@ impl Service {
                 .host_ports
                 .values()
                 .filter(|candidate| {
-                    data_type(candidate.data_type) == kind
+                    candidate.available
+                        && data_type(candidate.data_type) == kind
                         && candidate.direction == BackendPortDirection::Output
                 })
                 .map(|port| port.id.clone())

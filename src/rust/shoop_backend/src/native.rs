@@ -1621,6 +1621,7 @@ impl NativeRuntime {
                         data_type,
                         direction,
                         preferred_playback,
+                        available: true,
                     },
                 ))
             })
@@ -1641,6 +1642,7 @@ impl NativeRuntime {
                         data_type: port.descriptor.data_type,
                         direction: opposite_backend_direction(port.descriptor.direction),
                         preferred_playback: false,
+                        available: true,
                     });
                 if connected {
                     confirmed_links.insert(BackendConfirmedLink {

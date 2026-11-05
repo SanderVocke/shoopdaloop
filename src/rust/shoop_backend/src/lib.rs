@@ -163,6 +163,7 @@ pub struct BackendHostPortDescriptor {
     pub data_type: BackendPortDataType,
     pub direction: BackendPortDirection,
     pub preferred_playback: bool,
+    pub available: bool,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1177,6 +1178,12 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn release_host_port_identity(&mut self, _id: &str) -> bool {
+        false
+    }
+    fn host_port_in_use(&self, _id: &str) -> bool {
+        false
+    }
     fn inspect_profiling(
         &mut self,
         _request: shoop_app_api::profiling_data::CaptureRequest,

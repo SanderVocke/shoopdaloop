@@ -229,6 +229,7 @@ impl Dialog {
             options.advertised_endpoint = Some(format!("{host}:{}", endpoint.port()));
             options.advertised_management = Some(format!("{host}:{}", management.port()));
             RemoteProfile {
+                credential: None,
                 version: shoop_app_protocol::VERSION,
                 name: self.name.clone(),
                 endpoint: options.advertised_endpoint.clone().unwrap(),
