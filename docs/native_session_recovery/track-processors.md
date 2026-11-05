@@ -702,3 +702,13 @@ no hardware xrun count and provide no deadline guarantee. Selected Miri checks
 cover portable host ownership and buffered reset identity; they do not certify
 third-party DSP. Existing archive and browser jobs exercise the new public probes
 on their supported platforms. Delivered-revision results still need recording.
+
+Real service failure/rate checks now cover malformed processor state, startup-
+disabled types, successful subsequent load, New Session instance release, and
+8→16 kHz conversion. Conversion is first reported as required, then applied
+before loading into newly prepared host banks. Settings, roles and recorded-state
+metadata survive, frame lengths scale, loaded loops stop, and dry playback yields
+real DSP audio. All four focused service-wire fixtures pass. Portable ownership
+Miri passed at `159771c7` in [the hosted CI run](https://github.com/SanderVocke/shoopdaloop/actions/runs/41991644691).
+The target branch's existing `shoop_profiling.now` is the sole permitted worklet
+import; optional DSP introduces no additional imports.

@@ -1447,8 +1447,9 @@ impl LoopPlanner {
                     )?;
                     if row
                         .active
-                        .or(row.prepared)
-                        .is_some_and(|take| take.edit.is_some())
+                        .into_iter()
+                        .chain(row.prepared)
+                        .any(|take| take.edit.is_some())
                     {
                         for window in
                             &windows.audio[row.audio_widths[1]..row.audio_widths.iter().sum()]

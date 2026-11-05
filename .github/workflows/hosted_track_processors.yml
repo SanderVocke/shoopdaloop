@@ -55,7 +55,7 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack@0.15.0
-      - name: Verify optional assets and import-free worklet
+      - name: Verify optional assets and sole profiling-clock import
         run: |
           python3 - <<'PYTHON'
           import os
@@ -65,7 +65,7 @@ jobs:
           for name in ['target/debug/shoop_host', 'target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm']:
               assert (font in Path(name).read_bytes()) == synth, name
           PYTHON
-          node --input-type=module -e 'import fs from "node:fs"; const module = new WebAssembly.Module(fs.readFileSync("target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm")); if (WebAssembly.Module.imports(module).length) throw new Error("worklet has imports");'
+          node --input-type=module -e 'import fs from "node:fs"; const module = new WebAssembly.Module(fs.readFileSync("target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm")); const imports = WebAssembly.Module.imports(module); if (imports.length !== 1 || imports[0].module !== "shoop_profiling" || imports[0].name !== "now" || imports[0].kind !== "function") throw new Error(`unexpected worklet imports: ${JSON.stringify(imports)}`);'
       - name: Run both real DSP backends through Node Wasm
         if: matrix.label == 'both'
         run: python3 scripts/run_wasm_tests.py --runtime node --package shoop_host_processors --feature builtin-fx --feature oxisynth --trace off

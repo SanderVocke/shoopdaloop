@@ -339,7 +339,8 @@ Each stage includes its own verification and a commit before moving on.
 - [ ] Verify every build combination and all four startup combinations, explicit
   missing-feature requests, real sample-rate resolution, at-limit and one-over-limit
   admission, disabled startup with zero DSP preparation, client/host build mismatch,
-  config/launch round trips and no Wasm imports or callback heap activity. Measure
+  config/launch round trips, no DSP-related Wasm imports and no callback heap activity.
+  Preserve the target branch's sole `shoop_profiling.now` clock import. Measure
   cold startup time against host readiness deadlines and memory against the complete
   declared bank budget. Commit.
 
@@ -629,6 +630,17 @@ irregular callbacks. Required CI now includes independent native/worklet feature
 builds, both-DSP Node tests, startup/resource and release callback measurements,
 and selected portable ownership Miri tests. Platform/browser execution and final
 review are still pending; verification checkboxes remain open until those gates pass.
+
+Failure/rate milestone: real FX/synth service archives reject malformed settings
+and startup-disabled types without changing the live track, then accept later
+loads. New Session returns instance usage to zero and allows a fresh load. The
+same fixtures inspect required rate conversion, convert 8→16 kHz, rebuild both
+DSP types at the accepted rate, preserve settings/take metadata and produce audio.
+Live timing validation checks both active and prepared wet-edit candidates.
+Selected portable Miri passes in [CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41991644691).
+Optional native/worklet feature builds and startup tests also pass there; an
+artifact assertion still assumed zero imports. Reconciliation preserves the
+base branch's existing `shoop_profiling.now` import and forbids all others.
 
 Final bounds reconciliation: the public timing wire and service now accept one
 atomic update for all sixteen audio channels plus dry MIDI. An 8+8 External

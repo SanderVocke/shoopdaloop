@@ -145,13 +145,46 @@ impl Fixture {
         assert!(ready, "staging stalled");
         self.confirmed(Command::CommitPersistence(key));
     }
+    fn refuse_load(&mut self, image: std::sync::Arc<persistence_image::Image>, transfer: u64) {
+        let key = persistence::Key {
+            transfer: TransferId(transfer),
+            epoch: self.client.snapshot().unwrap().persistence_epoch,
+        };
+        let target = persistence::Target::Session {
+            revision: self.client.snapshot().unwrap().revision,
+        };
+        let mut upload = persistence_transfer::UploadStream::new(image, key, target).unwrap();
+        while let Some(request) = upload.next_request().unwrap() {
+            self.persistence(request);
+        }
+        for _ in 0..100 {
+            self.ticks(1);
+            while let Some(reply) = self.client.take_persistence_reply() {
+                match reply {
+                    persistence::Reply::Refused { .. } => return,
+                    persistence::Reply::Ready { .. } => {
+                        assert!(matches!(
+                            self.run(Command::CommitPersistence(key)),
+                            Outcome::Refused { .. }
+                        ));
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        panic!("invalid candidate did not finish");
+    }
     fn new(kind: ProcessorKind) -> Self {
         Self::with_width(kind, 4)
     }
     fn with_width(kind: ProcessorKind, width: u8) -> Self {
+        Self::with_rate(kind, width, 8000)
+    }
+    fn with_rate(kind: ProcessorKind, width: u8, rate: u32) -> Self {
         let description = EngineDescription {
             external_dry_wet: true,
-            sample_rate: 8000,
+            sample_rate: rate,
             quantum: 16,
             max_frames: 128,
             ramp_frames: 0,
@@ -951,7 +984,67 @@ fn session_file_round_trip(f: &mut Fixture, track: TrackId, kind: ProcessorKind)
             assert_eq!(state.midi_cc_assignments[0].controller, 22)
         }
     }
-    structure_only_round_trip(f, &resaved, &before.name, 130)
+    rate_converted_round_trip(&encoded, &before.name, kind);
+    let unchanged = f.track(loaded.id);
+    let mut invalid = (*encoded).clone();
+    let Manifest::Session(session) = &mut invalid.manifest else {
+        panic!()
+    };
+    session
+        .tracks
+        .iter_mut()
+        .find(|t| t.name == before.name)
+        .unwrap()
+        .processor_state = Some("unsupported processor-state version".into());
+    f.refuse_load(std::sync::Arc::new(invalid), 140);
+    assert_eq!(f.track(loaded.id).fx, unchanged.fx);
+    assert_eq!(f.track(loaded.id).loops[0].id, unchanged.loops[0].id);
+    let mut disabled = Fixture::new(ProcessorKind::External);
+    let own = disabled.capture(141, None);
+    disabled.refuse_load(encoded.clone(), 142);
+    assert!(disabled
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .all(|t| t.is_sync));
+    assert!(disabled
+        .client
+        .snapshot()
+        .unwrap()
+        .track_processors
+        .iter()
+        .filter(|d| d.id.as_str() != TrackProcessorTypeId::EXTERNAL)
+        .all(|d| !d.available && d.unavailable_reason.is_some()));
+    disabled.load(own, 143);
+    structure_only_round_trip(f, &resaved, &before.name, 150);
+    f.confirmed(Command::NewSession);
+    f.ticks(4);
+    assert!(f
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .all(|t| t.is_sync));
+    assert!(f
+        .client
+        .snapshot()
+        .unwrap()
+        .track_processors
+        .iter()
+        .filter_map(|d| d.resources)
+        .all(|r| r.instances_in_use == 0));
+    f.load(resaved, 160);
+    f.client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.name == before.name)
+        .unwrap()
+        .id
 }
 
 fn structure_only_round_trip(
@@ -1072,4 +1165,116 @@ fn maximum_dry_wet_channel_timing_batch_is_atomic_over_the_public_wire() {
         Outcome::Refused { .. }
     ));
     assert_eq!(f.track(track).loops[0].channel_timings, before);
+}
+
+fn rate_converted_round_trip(
+    source: &std::sync::Arc<persistence_image::Image>,
+    name: &str,
+    kind: ProcessorKind,
+) {
+    use persistence_image::Manifest;
+    use shoop_persistence_codec::codec::{Value, Work};
+    let Value::File { bytes, .. } = Work::Encode {
+        image: source.clone(),
+        kind: IoTaskKind::SaveSession,
+        wav: false,
+        standard: false,
+        channels: vec![],
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let Value::Decoded(decoded) = Work::Decode {
+        kind: IoTaskKind::LoadSession,
+        bytes,
+        rate: 16000,
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let target = ConversionTarget {
+        sample_rate: 16000,
+        quantum_frames: 16,
+    };
+    let Value::Inspected {
+        decoded,
+        conversion_required,
+    } = Work::Inspect {
+        decoded,
+        target,
+        mapping: vec![],
+        update_length: true,
+    }
+    .run()
+    .unwrap()
+    else {
+        panic!()
+    };
+    assert!(conversion_required);
+    let Value::Decoded(decoded) = Work::Convert {
+        decoded,
+        target,
+        update_length: true,
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let Value::Image(converted) = Work::Prepare {
+        decoded,
+        mapping: vec![],
+        update_length: true,
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let mut host = Fixture::with_rate(kind, 4, 16000);
+    host.load(converted, 1);
+    let saved = host.capture(2, None);
+    let Manifest::Session(before) = &source.manifest else {
+        panic!()
+    };
+    let Manifest::Session(after) = &saved.manifest else {
+        panic!()
+    };
+    assert_eq!(after.sample_rate, 16000);
+    let before = before.tracks.iter().find(|t| t.name == name).unwrap();
+    let after = after.tracks.iter().find(|t| t.name == name).unwrap();
+    assert_eq!(after.processor_state, before.processor_state);
+    assert_eq!(after.topology, before.topology);
+    assert_eq!(after.loops[0].frames, before.loops[0].frames * 2);
+    assert_eq!(
+        after.loops[0].recorded_processor_state,
+        before.loops[0].recorded_processor_state
+    );
+    for (a, b) in after.loops[0].audio.iter().zip(&before.loops[0].audio) {
+        assert_eq!(a.frames, b.frames * 2);
+        assert_eq!(a.mode, b.mode);
+    }
+    let loaded = host
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.name == name)
+        .unwrap()
+        .clone();
+    assert_eq!(loaded.loops[0].mode, LoopMode::Stopped);
+    host.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
+    host.confirmed(Command::Loop {
+        track: loaded.id,
+        loop_id: loaded.loops[0].id,
+        action: LoopAction::PlayDryClicked,
+    });
+    host.ticks(4);
+    assert!(host
+        .render
+        .borrow()
+        .output(0)
+        .iter()
+        .any(|sample| sample.abs() > 1e-4));
 }
