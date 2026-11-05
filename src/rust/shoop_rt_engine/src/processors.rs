@@ -45,6 +45,7 @@ pub struct ProcessorCatalog {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ProcessorState {
+    pub global_midi: shoop_rt_protocol::processors::GlobalMidiDiagnostics,
     pub kind: ProcessorKind,
     pub frame: Frame,
     pub generation: u32,
@@ -55,6 +56,8 @@ pub struct ProcessorState {
 pub use shoop_rt_protocol::processors::Phase as ProcessorPhase;
 
 pub(crate) struct ProcessorCells {
+    global_counts: [AtomicU64; 4],
+    global_pending: AtomicU32,
     kind: ProcessorKind,
     revision: AtomicU64,
     frame: AtomicU64,
@@ -65,6 +68,8 @@ pub(crate) struct ProcessorCells {
 impl ProcessorCells {
     pub(crate) fn new(kind: ProcessorKind) -> Self {
         Self {
+            global_counts: core::array::from_fn(|_| AtomicU64::new(0)),
+            global_pending: AtomicU32::new(0),
             kind,
             revision: AtomicU64::new(0),
             frame: AtomicU64::new(0),
@@ -73,8 +78,25 @@ impl ProcessorCells {
             values: core::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
-    fn publish(&self, backend: &dyn Backend, frame: Frame, generation: u32, phase: ProcessorPhase) {
+    fn publish(
+        &self,
+        backend: &dyn Backend,
+        frame: Frame,
+        generation: u32,
+        phase: ProcessorPhase,
+        global: shoop_rt_protocol::processors::GlobalMidiDiagnostics,
+    ) {
         self.revision.fetch_add(1, Ordering::SeqCst);
+        for (cell, value) in self.global_counts.iter().zip([
+            global.rejected,
+            global.overwritten,
+            global.deferred,
+            global.drained,
+        ]) {
+            cell.store(value, Ordering::SeqCst);
+        }
+        self.global_pending
+            .store(u32::from(global.pending), Ordering::SeqCst);
         for index in 0..self.kind.scalar_count() {
             if let Some(value) = self
                 .kind
@@ -98,6 +120,13 @@ impl ProcessorCells {
             core::array::from_fn(|index| f32::from_bits(self.values[index].load(Ordering::SeqCst)));
         let frame = Frame(self.frame.load(Ordering::SeqCst));
         let generation = self.generation.load(Ordering::SeqCst);
+        let global_midi = shoop_rt_protocol::processors::GlobalMidiDiagnostics {
+            rejected: self.global_counts[0].load(Ordering::SeqCst),
+            overwritten: self.global_counts[1].load(Ordering::SeqCst),
+            deferred: self.global_counts[2].load(Ordering::SeqCst),
+            drained: self.global_counts[3].load(Ordering::SeqCst),
+            pending: self.global_pending.load(Ordering::SeqCst) as u16,
+        };
         let phase = match self.phase.load(Ordering::SeqCst) {
             0 => ProcessorPhase::Free,
             1 => ProcessorPhase::Owned,
@@ -109,6 +138,7 @@ impl ProcessorCells {
             return None;
         }
         Some(ProcessorState {
+            global_midi,
             kind: self.kind,
             frame,
             generation,
@@ -133,8 +163,15 @@ pub struct HostedProcessor {
     parameters: [(Frame, u32, f32); 64],
     parameter_count: usize,
     manual_active: Option<(u32, bool)>,
+    global: crate::global_midi::GlobalMidi,
 }
 impl HostedProcessor {
+    pub fn additional_prepared_bytes(limits: BufferLimits) -> Result<usize, Error> {
+        crate::global_midi::GlobalMidi::storage_bytes(
+            limits.midi_input.events_per_quantum,
+            limits.midi_input.bytes_per_quantum,
+        )
+    }
     pub(crate) fn new(
         backend: Box<dyn Backend>,
         cells: Arc<ProcessorCells>,
@@ -143,6 +180,13 @@ impl HostedProcessor {
         slot: usize,
         slots: usize,
     ) -> Result<Self, Error> {
+        if backend.ports().midi_inputs > 1 {
+            return Err(Error::InvalidShape);
+        }
+        let global = crate::global_midi::GlobalMidi::new(
+            limits.midi_input.events_per_quantum,
+            limits.midi_input.bytes_per_quantum,
+        )?;
         let mut buffered = BufferedProcessor::with_backend(
             backend,
             quantum,
@@ -152,7 +196,13 @@ impl HostedProcessor {
             },
             limits,
         )?;
-        cells.publish(&**buffered.backend(), Frame(0), 0, ProcessorPhase::Free);
+        cells.publish(
+            &**buffered.backend(),
+            Frame(0),
+            0,
+            ProcessorPhase::Free,
+            Default::default(),
+        );
         buffered.abort(Frame(0))?;
         Ok(Self {
             buffered,
@@ -169,6 +219,7 @@ impl HostedProcessor {
             parameters: [(Frame(0), 0, 0.); 64],
             parameter_count: 0,
             manual_active: None,
+            global,
         })
     }
     pub(crate) fn attach(&mut self, cells: Arc<crate::cells::Cells>) {
@@ -200,6 +251,7 @@ impl HostedProcessor {
             frame,
             self.generation,
             self.phase,
+            self.global.diagnostics(),
         );
     }
     fn check(&self, generation: u32) -> Result<(), Error> {
@@ -369,6 +421,7 @@ impl HostedProcessor {
         self.parameter_count = 0;
         self.binding = None;
         self.manual_active = None;
+        self.global.reset();
         self.pending_binding = None;
         self.phase = ProcessorPhase::Retiring;
         self.cleanup = 0;
@@ -378,6 +431,9 @@ impl HostedProcessor {
     pub(crate) fn ports(&self) -> PortCounts {
         let mut ports = self.buffered.ports();
         ports.audio_outputs *= 2;
+        if ports.midi_inputs == 1 {
+            ports.midi_inputs += 2;
+        }
         ports
     }
     pub(crate) fn process(
@@ -441,8 +497,12 @@ impl HostedProcessor {
         block: &mut ProcessBlock<'_, LoopPlanner>,
         demand: bool,
     ) -> Result<(), Error> {
+        let has_midi = self.buffered.ports().midi_inputs == 1;
         if self.phase == ProcessorPhase::Running
-            && block.midi_inputs.iter().any(|input| input.is_recovery())
+            && block
+                .midi_inputs
+                .first()
+                .is_some_and(|input| input.is_recovery())
         {
             self.suspend(block.frame, self.generation)?;
         }
@@ -450,7 +510,25 @@ impl HostedProcessor {
             self.start(block.frame, self.generation)?;
         }
         if self.phase != ProcessorPhase::Running {
+            if self.phase == ProcessorPhase::Owned && has_midi {
+                self.global.render(
+                    &block.midi_inputs[2],
+                    &block.midi_inputs[0],
+                    block.frames,
+                    false,
+                )?;
+                self.idle_controls(&block.midi_inputs[1], &block.midi_inputs[0])?;
+                self.publish(block.frame.checked_add(block.frames)?);
+            }
             return self.silence(block);
+        }
+        if has_midi {
+            self.global.render(
+                &block.midi_inputs[2],
+                &block.midi_inputs[0],
+                block.frames,
+                demand,
+            )?;
         }
         if !demand {
             self.buffered.begin_drain()?;
@@ -469,7 +547,11 @@ impl HostedProcessor {
                 block.frame,
                 block.quantum,
                 &mut audio,
-                block.midi_inputs,
+                if has_midi {
+                    core::slice::from_ref(self.global.output())
+                } else {
+                    block.midi_inputs
+                },
                 block.midi_outputs,
             )?;
         }
@@ -494,8 +576,45 @@ impl HostedProcessor {
         }
         if !demand {
             self.suspend(block.frame.checked_add(self.quantum)?, self.generation)?;
+            if has_midi {
+                self.idle_controls(&block.midi_inputs[1], &block.midi_inputs[0])?;
+            }
         }
         self.publish(block.frame.checked_add(block.frames)?);
+        Ok(())
+    }
+    fn idle_controls(
+        &mut self,
+        raw: &rt_runtime::buffer::MidiBuffer,
+        ordinary: &rt_runtime::buffer::MidiBuffer,
+    ) -> Result<(), Error> {
+        let routing = self.routing_state();
+        let live = routing & 7 != 0 && routing & 48 == 0;
+        let mut raw_index = if raw.is_recovery() || live {
+            raw.len()
+        } else {
+            0
+        };
+        let mut ordinary_index = if ordinary.is_recovery() {
+            ordinary.len()
+        } else {
+            0
+        };
+        while raw_index < raw.len() || ordinary_index < ordinary.len() {
+            let raw_event = raw.get(raw_index);
+            let ordinary_event = ordinary.get(ordinary_index);
+            let event = if raw_event
+                .is_some_and(|(at, _)| ordinary_event.is_none_or(|(other, _)| at <= other))
+            {
+                raw_index += 1;
+                raw_event
+            } else {
+                ordinary_index += 1;
+                ordinary_event
+            };
+            let (_, data) = event.ok_or(Error::InvalidEvent)?;
+            self.buffered.inactive_backend_mut()?.control_midi(data)?;
+        }
         Ok(())
     }
     fn maintain(&mut self, frame: Frame) -> Result<(), Error> {

@@ -75,6 +75,142 @@ fn looped() -> LoopSlotId {
 }
 #[cfg(feature = "builtin-fx")]
 #[shoop_test]
+fn global_fx_controls_defer_without_dsp_and_merge_with_live_offsets_on_activation() {
+    use processors::{Control, CC_BASE, STAGE_BASE};
+    let mut d = description(1, ProcessorKind::BuiltInFx);
+    d.host = HostPorts::numbered(2, 2, 2);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    for (parameter, value) in [
+        (STAGE_BASE + 5, 0.),
+        (STAGE_BASE + 1, 1.),
+        (7, 0.),
+        (CC_BASE + 8, 7.),
+    ] {
+        done(
+            &mut h,
+            Request::ProcessorControl {
+                strip: strip(),
+                control: Control::Parameter { parameter, value },
+            },
+        );
+    }
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(5),
+            connected: true,
+        },
+    );
+    h.input_mut(0).fill(1.);
+    h.midi_input_mut(0).push(3, 16, &[0xb0, 7, 0]).unwrap();
+    tick(&mut h, 16);
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[8], -18.);
+    h.midi_input_mut(1).push(7, 16, &[0xb0, 7, 127]).unwrap();
+    tick(&mut h, 16);
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[8], -18.);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Owned
+    );
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().global_midi.pending,
+        1
+    );
+    assert_eq!(&h.output(0)[..16], &[0.; 16]);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    for _ in 0..3 {
+        tick(&mut h, 128);
+    }
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[8], 6.);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().global_midi.pending,
+        0
+    );
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().global_midi.drained,
+        1
+    );
+    assert!(h.output(0)[..128]
+        .iter()
+        .all(|sample| (sample - 1.9952623).abs() < 1e-5));
+    h.midi_input_mut(0).push(5, 16, &[0xb0, 7, 0]).unwrap();
+    h.midi_input_mut(1).push(5, 16, &[0xb0, 7, 127]).unwrap();
+    tick(&mut h, 16);
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[8], 6.);
+    h.midi_input_mut(0).push(10, 16, &[0xb0, 7, 0]).unwrap();
+    h.midi_input_mut(1).push(2, 16, &[0xb0, 7, 127]).unwrap();
+    tick(&mut h, 16);
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[8], -18.);
+}
+#[cfg(feature = "oxisynth")]
+#[shoop_test]
+fn global_notes_and_global_overflow_never_trigger_or_reset_ordinary_synth_voices() {
+    let mut d = description(2, ProcessorKind::OxiSynth);
+    d.host = HostPorts::numbered(2, 2, 3);
+    d.midi_events = 32;
+    d.midi_bytes = 256;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 2, ProcessorKind::OxiSynth);
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(6),
+            connected: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(5),
+            connected: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.midi_input_mut(1).push(3, 128, &[0x90, 60, 120]).unwrap();
+    for _ in 0..4 {
+        tick(&mut h, 128);
+    }
+    assert!(h.output(0)[..128].iter().all(|sample| sample.abs() < 1e-5));
+    h.midi_input_mut(0).push(3, 128, &[0x90, 60, 120]).unwrap();
+    for _ in 0..4 {
+        tick(&mut h, 128);
+    }
+    assert!(h.output(0)[..128].iter().any(|sample| sample.abs() > 0.001));
+    for controller in 0..32 {
+        h.midi_input_mut(1)
+            .push(3, 128, &[0xb0, controller, 64])
+            .unwrap();
+    }
+    h.midi_input_mut(2).push(3, 128, &[0xb0, 7, 1]).unwrap();
+    tick(&mut h, 128);
+    tick(&mut h, 128);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Running
+    );
+    assert!(h.output(0)[..128].iter().any(|sample| sample.abs() > 0.001));
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
 fn restored_fx_settings_start_at_one_source_boundary_after_the_declared_delay() {
     use processors::{Control, STAGE_BASE};
     let d = description(1, ProcessorKind::BuiltInFx);

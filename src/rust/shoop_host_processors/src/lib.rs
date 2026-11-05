@@ -98,6 +98,9 @@ fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Resul
         let adapter = limits(d)
             .storage_bytes_for(ports, q, timing)
             .map_err(|_| Error::Capacity)? as u64;
+        let auxiliary = shoop_rt_engine::HostedProcessor::additional_prepared_bytes(limits(d))
+            .map_err(|_| Error::Capacity)? as u64;
+        let adapter = add(adapter, auxiliary)?;
         let backend = if kind == ProcessorKind::BuiltInFx {
             fx_bytes(d)?
         } else {

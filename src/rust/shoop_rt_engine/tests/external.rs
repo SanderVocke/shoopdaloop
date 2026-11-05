@@ -117,6 +117,86 @@ fn mode(h: &mut OfflineHost, mode: LoopMode) {
     );
 }
 #[shoop_test]
+fn global_external_controls_are_additive_and_never_enter_the_recorded_dry_lane() {
+    let mut d = description();
+    d.host.midi_inputs.push(Name::new("global_in").unwrap());
+    let mut h = OfflineHost::new(&d).unwrap();
+    h.connect().unwrap();
+    while h.receive().is_some() {}
+    done(
+        &mut h,
+        Request::CreateProcessedStrip {
+            strip: strip(),
+            kind: ProcessorKind::External,
+            shape: StripShape {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_input: true,
+                midi_output: false,
+            },
+        },
+    );
+    connect(&mut h, PortKind::MidiIn, 0, 32);
+    connect(&mut h, PortKind::MidiSend, 0, 34);
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(32),
+            connected: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(33),
+            connected: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::CreateLoop {
+            strip: strip(),
+            loop_id: looped(),
+        },
+    );
+    mode(&mut h, LoopMode::Recording);
+    h.midi_input_mut(0).push(9, 128, &[0xb0, 7, 64]).unwrap();
+    h.midi_input_mut(1).push(11, 128, &[0xb0, 9, 65]).unwrap();
+    tick(&mut h, 128);
+    let packets: Vec<_> = (0..h.midi_output(0).len())
+        .map(|i| h.midi_output(0).get(i).unwrap())
+        .collect();
+    assert_eq!(
+        packets,
+        [
+            (25, &[0xb0, 7, 64][..]),
+            (25, &[0xb0, 7, 64][..]),
+            (27, &[0xb0, 9, 65][..])
+        ]
+    );
+    mode(&mut h, LoopMode::Stopped);
+    mode(&mut h, LoopMode::PlayingDryThroughWet);
+    let mut recorded = Vec::new();
+    for _ in 0..4 {
+        tick(&mut h, 128);
+        for index in 0..h.midi_output(0).len() {
+            recorded.push(h.midi_output(0).get(index).unwrap().1.to_vec());
+        }
+    }
+    assert!(recorded.iter().any(|data| data == &[0xb0, 7, 64]));
+    assert!(recorded.iter().all(|data| data != &[0xb0, 9, 65]));
+    let cc7 = recorded
+        .iter()
+        .filter(|data| data == &&[0xb0, 7, 64])
+        .count();
+    assert!(
+        cc7 <= 4,
+        "the global copy must not duplicate recorded events"
+    );
+}
+#[shoop_test]
 fn removing_dry_playback_fades_its_send_and_keeps_the_other_loop_and_meter() {
     let mut d = description();
     d.quantum = 1;

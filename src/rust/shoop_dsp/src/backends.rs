@@ -219,6 +219,12 @@ mod fx {
             self.validate_parameter(parameter, value)?;
             self.change(parameter, value)
         }
+        fn control_midi(&mut self, data: &[u8]) -> Result<(), Error> {
+            if let Some(event) = MidiStorageElem::new(0, data) {
+                self.processor.process_midi_controls_only(&[event]);
+            }
+            Ok(())
+        }
         fn suspend(&mut self) -> Result<(), Error> {
             self.processor.reset();
             Ok(())
@@ -413,6 +419,12 @@ mod synth {
         fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
             self.validate_parameter(parameter, value)?;
             self.change(parameter, value)
+        }
+        fn control_midi(&mut self, data: &[u8]) -> Result<(), Error> {
+            if let Some(event) = MidiStorageElem::new(0, data) {
+                self.processor.process_midi_controls_only(&[event]);
+            }
+            Ok(())
         }
         fn suspend(&mut self) -> Result<(), Error> {
             self.processor.reset_for_activation();

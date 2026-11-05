@@ -40,6 +40,11 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(5),
+            connected: true,
+        },
         Request::ProcessorControl {
             strip: strip(0),
             control: processors::Control::Parameter {
@@ -377,6 +382,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             snapshot: processors::Snapshot {
                 source_frame: u64::MAX,
                 phase: processors::Phase::Running,
+                global_midi: processors::GlobalMidiDiagnostics::default(),
                 values: [0.75; processors::STATE_SCALARS],
             },
         }),
@@ -609,7 +615,7 @@ fn malformed_records_are_refused_without_panicking() {
         .position(|bytes| bytes == [1, 0, 0, 0, 0, 1, 0, 0, 0, 7])
         .unwrap();
     let mut record = buf[..len].to_vec();
-    record[tag] = 2;
+    record[tag] = 3;
     assert_eq!(decode_client(&record), Err(CodecError::Invalid));
 }
 

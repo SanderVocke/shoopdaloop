@@ -138,6 +138,15 @@ impl Builder {
                         link(Endpoint::host(PortType::Midi, host as u32), midi(node, 0)),
                     )?;
                 }
+                if strip.processor.is_some() {
+                    for host in bits(model.global_midi) {
+                        push(
+                            &mut self.edges,
+                            &mut count,
+                            link(Endpoint::host(PortType::Midi, host as u32), midi(node, 2)),
+                        )?;
+                    }
+                }
             }
             if strip
                 .processor
@@ -220,6 +229,16 @@ impl Builder {
                         midi(pool.processor(slot), 0),
                     ),
                 )?;
+                for (source, target) in [(0, 1), (3, 2)] {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(
+                            midi(pool.strip_input(strip_slot), source),
+                            midi(pool.processor(slot), target),
+                        ),
+                    )?;
+                }
             }
             self.step(plan, pool.processor(slot), count, &mut end)?;
         }

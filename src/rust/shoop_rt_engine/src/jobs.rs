@@ -840,6 +840,7 @@ impl ControlEndpoint {
             model.loops[slot].map(|l| (l.id, l.sync)) != next.loops[slot].map(|l| (l.id, l.sync))
         });
         job.graph_needed = job.edits > 0
+            || model.global_midi != next.global_midi
             || model.buses != next.buses
             || (0..model.strips.len()).any(|slot| {
                 let shape = |strip: Option<crate::model::Strip>| {

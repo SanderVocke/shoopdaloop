@@ -51,6 +51,10 @@ pub trait Backend: Send {
         let _ = (parameter, value);
         Err(Error::InvalidParameter)
     }
+    /// Update explicit MIDI mappings without rendering audio or creating voices.
+    fn control_midi(&mut self, _data: &[u8]) -> Result<(), Error> {
+        Ok(())
+    }
     /// Clear stream-local history while retaining applied settings and mappings.
     /// Called only after buffered output has been aborted on an inactive owner.
     fn suspend(&mut self) -> Result<(), Error> {
@@ -85,6 +89,9 @@ impl<B: Backend + ?Sized> Backend for Box<B> {
     }
     fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
         (**self).control(parameter, value)
+    }
+    fn control_midi(&mut self, data: &[u8]) -> Result<(), Error> {
+        (**self).control_midi(data)
     }
     fn suspend(&mut self) -> Result<(), Error> {
         (**self).suspend()

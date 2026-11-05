@@ -127,7 +127,16 @@ pub(crate) fn track_fx_state(track: &Track) -> Option<TrackFxState> {
             .map_or(0, |slot| u64::from(slot.generation)),
         deadline_misses: 0,
         stale_completions: 0,
-        status_summary: (snapshot.phase == Phase::Faulted).then(|| "processor faulted".into()),
+        status_summary: if snapshot.phase == Phase::Faulted {
+            Some("processor faulted".into())
+        } else if snapshot.global_midi.pending > 0 {
+            Some(format!(
+                "{} queued MIDI controls",
+                snapshot.global_midi.pending
+            ))
+        } else {
+            None
+        },
         crash_summary: None,
         logs: Arc::from([]),
         editor: Some(editor),

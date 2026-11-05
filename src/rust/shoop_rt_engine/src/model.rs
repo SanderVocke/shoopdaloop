@@ -185,6 +185,10 @@ impl Bus {
 /// A structural change, applied as one activation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Change {
+    ConnectGlobal {
+        host: usize,
+        connected: bool,
+    },
     CreateBus {
         bus: BusId,
         channels: u8,
@@ -235,6 +239,7 @@ pub(crate) enum Change {
 }
 
 pub(crate) struct Model {
+    pub global_midi: HostMask,
     pub strips: Box<[Option<Strip>]>,
     pub loops: Box<[Option<Loop>]>,
     pub strip_generations: Box<[u32]>,
@@ -253,6 +258,7 @@ impl Model {
         master_outputs: Masks,
     ) -> Self {
         let mut model = Self {
+            global_midi: HostMask::EMPTY,
             strips: vec![None; strips].into_boxed_slice(),
             loops: vec![None; loops].into_boxed_slice(),
             strip_generations: vec![0; strips].into_boxed_slice(),
@@ -283,6 +289,7 @@ impl Model {
         }
     }
     pub(crate) fn copy_from(&mut self, other: &Self) {
+        self.global_midi = other.global_midi;
         self.strips.copy_from_slice(&other.strips);
         self.loops.copy_from_slice(&other.loops);
         self.strip_generations
@@ -334,6 +341,7 @@ impl Model {
     /// Apply a validated change.
     pub(crate) fn apply(&mut self, change: Change) {
         match change {
+            Change::ConnectGlobal { host, connected } => self.global_midi.set(host, connected),
             Change::CreateBus { bus, channels } => {
                 let slot = bus.0.index as usize;
                 self.bus_generations[slot] = bus.0.generation;

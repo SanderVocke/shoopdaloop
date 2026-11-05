@@ -46,6 +46,7 @@ impl ControlEndpoint {
             snapshot: shoop_rt_protocol::processors::Snapshot {
                 source_frame: state.frame.0,
                 phase: state.phase,
+                global_midi: state.global_midi,
                 values: state.values,
             },
         })
@@ -73,6 +74,7 @@ impl ControlEndpoint {
                     previous_strip == strip
                         && previous_slot == slot
                         && previous.phase == snapshot.phase
+                        && previous.global_midi == snapshot.global_midi
                         && previous
                             .values
                             .iter()
@@ -180,6 +182,19 @@ impl ControlEndpoint {
                     return Some(StateRecord::Begin {
                         epoch: cursor.epoch,
                     });
+                }
+                12 => {
+                    while cursor.bit < crate::MAX_HOST_PORTS {
+                        let bit = cursor.bit;
+                        cursor.bit += 1;
+                        if self.model.global_midi.contains(bit) {
+                            return Some(StateRecord::Connection {
+                                port: EnginePort::GlobalFxControl,
+                                host: self.host_port_id(PortKind::MidiIn, bit),
+                            });
+                        }
+                    }
+                    cursor.stage = 5;
                 }
                 GENERATIONS => {
                     cursor.stage = 8;
@@ -359,7 +374,8 @@ impl ControlEndpoint {
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
-                        cursor.stage = 5;
+                        cursor.stage = 12;
+                        cursor.bit = 0;
                         continue;
                     };
                     let Some(bus) = slot else {

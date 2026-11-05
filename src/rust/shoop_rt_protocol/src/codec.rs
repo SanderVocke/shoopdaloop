@@ -360,6 +360,7 @@ impl Wire for BusPort {
 impl Wire for EnginePort {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::GlobalFxControl => w.u8(2),
             Self::Strip(port) => {
                 w.u8(0)?;
                 port.put(w)
@@ -374,6 +375,7 @@ impl Wire for EnginePort {
         Ok(match r.u8()? {
             0 => Self::Strip(StripPort::get(r)?),
             1 => Self::Bus(BusPort::get(r)?),
+            2 => Self::GlobalFxControl,
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -455,6 +457,11 @@ impl Wire for crate::processors::Snapshot {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u64(self.source_frame)?;
         self.phase.put(w)?;
+        w.u64(self.global_midi.rejected)?;
+        w.u64(self.global_midi.overwritten)?;
+        w.u64(self.global_midi.deferred)?;
+        w.u64(self.global_midi.drained)?;
+        w.u16(self.global_midi.pending)?;
         for value in self.values {
             w.f32(value)?;
         }
@@ -463,6 +470,16 @@ impl Wire for crate::processors::Snapshot {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let source_frame = r.u64()?;
         let phase = crate::processors::Phase::get(r)?;
+        let global_midi = crate::processors::GlobalMidiDiagnostics {
+            rejected: r.u64()?,
+            overwritten: r.u64()?,
+            deferred: r.u64()?,
+            drained: r.u64()?,
+            pending: r.u16()?,
+        };
+        if usize::from(global_midi.pending) > crate::processors::midi::CONTROL_KEYS {
+            return Err(CodecError::Invalid);
+        }
         let mut values = [0.; crate::processors::STATE_SCALARS];
         for value in &mut values {
             *value = r.f32()?;
@@ -470,6 +487,7 @@ impl Wire for crate::processors::Snapshot {
         Ok(Self {
             source_frame,
             phase,
+            global_midi,
             values,
         })
     }

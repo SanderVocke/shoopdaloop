@@ -42,6 +42,7 @@ mod content;
 mod description;
 mod endpoint;
 mod family;
+mod global_midi;
 mod graph;
 mod jobs;
 mod model;
@@ -187,7 +188,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         + pool.processors() * (3 * channels + 3);
     let edges = strips
         * (channels * (4 * (audio_in + audio_out) + 2 * buses * master_channels)
-            + midi_in
+            + 2 * midi_in
             + 2 * midi_out)
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
@@ -517,6 +518,9 @@ pub fn prepare_with_shared_and_processors(
         planner.prepare_shared(&mut resources, shared_settings)?;
     }
     let settings = NodeSettings {
+        external_midi: description
+            .external_dry_wet
+            .then_some((description.midi_events, description.midi_bytes)),
         cells: cells.clone(),
         channels,
         master_channels,
@@ -703,6 +707,7 @@ pub fn prepare_with_shared_and_processors(
         blocked_loops: vec![false; loops].into_boxed_slice(),
         blocked_buses: vec![false; buses].into_boxed_slice(),
         blocked_all: false,
+        blocked_global: false,
         retired: Ring::new(loops.max(1)),
         fades: vec![pool.bus(0); strips + loops + buses].into_boxed_slice(),
         work,

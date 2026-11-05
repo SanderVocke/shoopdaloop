@@ -403,6 +403,18 @@ Native control/codec, graph and existing regressions pass. Service commands,
 MIDI Learn/global controls, recorded-take state and public capability admission
 are still outstanding, so no Stage 6 checkbox is closed by this milestone.
 
+Global MIDI milestone: protocol v13 gives the global control input an authoritative
+host connection mask and resync records. Hosted and External tracks filter global
+CC/channel-pressure/pitch traffic, keep bounded latest values while inactive, and
+merge deferred, ordinary and current global events in reference order. Global
+traffic is excluded from capture; a source connected to both inputs stays additive.
+Idle dry MIDI updates explicit mappings without rendering DSP or creating voices.
+Global overflow cannot panic ordinary synth voices. External stop cleanup remains
+audible to the peer even when audio demand falls. Prepared banks account for the
+additional fixed storage; snapshots carry bounded retention/saturation counters.
+Native and Wasm graph/adapter/protocol regressions pass. MIDI Learn, service/UI
+commands and persistence admission remain open, so capabilities remain gated.
+
 ### 7. Complete persistence, media and replacement/recovery
 
 - [ ] Extend persistence images/codecs, service capture/mapping and adapter replacement

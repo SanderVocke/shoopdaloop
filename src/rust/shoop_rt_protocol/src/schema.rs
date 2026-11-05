@@ -148,6 +148,7 @@ pub struct BusPort {
 /// An engine port that can be connected to host ports.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EnginePort {
+    GlobalFxControl,
     Strip(StripPort),
     Bus(BusPort),
 }

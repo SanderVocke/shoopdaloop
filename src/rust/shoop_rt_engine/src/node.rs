@@ -208,6 +208,7 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
+    global: Option<crate::global_midi::GlobalMidi>,
     processor: Option<shoop_rt_protocol::ProcessorKind>,
     generation: u32,
     pending_history: Option<(rt_runtime::Epoch, bool)>,
@@ -304,6 +305,7 @@ pub enum EngineNode {
 }
 
 pub(crate) struct NodeSettings {
+    pub external_midi: Option<(usize, usize)>,
     pub cells: Arc<Cells>,
     pub channels: usize,
     pub master_channels: usize,
@@ -313,6 +315,9 @@ pub(crate) struct NodeSettings {
 
 impl StripInput {
     fn reset(&mut self, inputs: u8) {
+        if let Some(global) = &mut self.global {
+            global.reset();
+        }
         self.processor = None;
         self.cells.strips[self.slot]
             .forced_monitor_off
@@ -345,6 +350,9 @@ impl StripInput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            global: settings.external_midi.map(|(events, bytes)| {
+                crate::global_midi::GlobalMidi::new(events, bytes).expect("prepared MIDI capacity")
+            }),
             processor: None,
             generation: 0,
             history_token: 1,
@@ -842,6 +850,13 @@ impl StripInput {
             *self.live_midi = MidiState::default();
             self.live_midi_active = false;
             return Err(Error::Full);
+        }
+        if self.processor == Some(shoop_rt_protocol::ProcessorKind::External) {
+            if let Some(global) = &mut self.global {
+                global.render(&block.midi_inputs[2], send, frames, demand)?;
+                send.clear();
+                copy_midi(global.output(), send, frames)?;
+            }
         }
         if active {
             cells

@@ -497,6 +497,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_port(port_id)
             .ok_or_else(|| anyhow!("unknown port {port_id:?}"))?;
+        if port.target == PortTarget::GlobalFx
+            && !self
+                .capabilities
+                .contains(shoop_rt_protocol::Capabilities::GLOBAL_FX_CONTROL)
+        {
+            return Err(anyhow!(
+                "global FX MIDI control is unavailable in this host"
+            ));
+        }
         let host_port = self
             .mirror
             .host_by_name(host)
@@ -746,6 +755,42 @@ mod track_role_tests {
             assert!(stack.mirror.tracks[&created.track_id]
                 .processor_slot
                 .is_some());
+        }
+    }
+    #[shoop_test]
+    fn global_control_connections_use_the_engine_model_and_survive_resynchronization() {
+        let mut stack = stack();
+        stack
+            .create_track_topology(
+                "fx",
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: shoop_app_api::TrackProcessorTypeId::BUILTIN_FX.into(),
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                1,
+            )
+            .unwrap();
+        stack.wait_idle();
+        stack.capabilities = stack
+            .capabilities
+            .union(shoop_rt_protocol::Capabilities::GLOBAL_FX_CONTROL);
+        let port = shoop_backend::GLOBAL_FX_PORT_ID;
+        assert!(stack.set_port_connected(port, "midi_out_1", true).is_err());
+        for connected in [true, false] {
+            stack
+                .set_port_connected(port, "midi_in_1", connected)
+                .unwrap();
+            stack.wait_idle();
+            assert!(stack.poll().unwrap().mutation_failures.is_empty());
+            let link = shoop_backend::BackendConfirmedLink {
+                application_port_id: port,
+                host_port_id: "midi_in_1".into(),
+            };
+            assert_eq!(stack.mirror.links.contains(&link), connected);
+            refresh(&mut stack);
+            assert_eq!(stack.mirror.links.contains(&link), connected);
         }
     }
     #[shoop_test]

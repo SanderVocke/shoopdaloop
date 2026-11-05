@@ -493,13 +493,14 @@ impl Mirror {
                 bus: self.buses.get(&id)?.slot,
                 index,
             })),
-            PortTarget::GlobalFx => None,
+            PortTarget::GlobalFx => Some(EnginePort::GlobalFxControl),
         }
     }
 
     /// The application port of an engine port.
     pub fn port_of(&self, port: EnginePort) -> Option<BackendPortId> {
         match port {
+            EnginePort::GlobalFxControl => Some(GLOBAL_FX_PORT_ID),
             EnginePort::Strip(port) => {
                 let track = self.tracks.get(self.strip_tracks.get(&port.strip)?)?;
                 track

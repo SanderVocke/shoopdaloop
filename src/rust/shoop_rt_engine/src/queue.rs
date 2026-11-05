@@ -62,6 +62,7 @@ impl ControlEndpoint {
         self.blocked_loops.fill(false);
         self.blocked_buses.fill(false);
         self.blocked_all = false;
+        self.blocked_global = false;
         self.uploads.clear_blocked();
         let mut open = staging;
         for _ in 0..self.queue.len() {
@@ -187,6 +188,10 @@ impl ControlEndpoint {
                 || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::Connect {
+                port: EnginePort::GlobalFxControl,
+                ..
+            } => self.blocked_global,
             Request::ContentFamilyBegin { root, .. } => loop_(root.0.index, SOFT),
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
@@ -262,6 +267,10 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::Connect {
+                port: EnginePort::GlobalFxControl,
+                ..
+            } => self.blocked_global = true,
             Request::ContentFamilyBegin { root, .. } => {
                 if let Some(blocked) = self.blocked_loops.get_mut(root.0.index as usize) {
                     *blocked = true;
@@ -341,6 +350,13 @@ impl ControlEndpoint {
     /// Record what a staged change affects, before it is applied.
     fn touch(&mut self, change: Change) {
         match change {
+            Change::ConnectGlobal { .. } => {
+                for (slot, strip) in self.next.strips.iter().enumerate() {
+                    if strip.is_some_and(|strip| strip.processor.is_some()) {
+                        raise(&mut self.touched_strips[slot], SOFT);
+                    }
+                }
+            }
             Change::CreateBus { bus, .. } | Change::RemoveBus { bus } => {
                 self.touched_buses[bus.0.index as usize] = HARD
             }
@@ -584,6 +600,23 @@ impl ControlEndpoint {
                         host,
                         connected,
                     })
+                }
+            }
+            Request::Connect {
+                port: EnginePort::GlobalFxControl,
+                host,
+                connected,
+            } => {
+                if !self.settings.external_dry_wet && self.processor_cells.is_empty() {
+                    return Staged::Refused(Refusal::Unsupported);
+                }
+                let Some(host) = self.host_index(host, PortKind::MidiIn) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                if next.global_midi.contains(host) == connected {
+                    Staged::Done
+                } else {
+                    Staged::Change(Change::ConnectGlobal { host, connected })
                 }
             }
             Request::Connect {

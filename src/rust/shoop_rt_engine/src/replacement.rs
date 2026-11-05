@@ -75,6 +75,7 @@ impl ControlEndpoint {
                 stage.state = State::Receiving;
                 stage.base_revision = self.model.revision;
                 stage.candidate.copy_from(&self.model);
+                stage.candidate.global_midi = crate::model::HostMask::EMPTY;
                 stage.candidate.strips.fill(None);
                 stage.candidate.loops.fill(None);
                 stage.candidate.buses.fill(None);

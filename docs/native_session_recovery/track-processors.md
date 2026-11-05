@@ -413,3 +413,44 @@ The warning-denying workspace build, four-target production boundaries and the
 429-module tracing inventory pass. Service/UI command wiring, global controls,
 recorded take state, media and transactional persistence remain open; public
 capability bits stay gated.
+
+### Global and idle MIDI milestone
+
+Protocol v13 adds the global control input to the host connection model and
+resynchronization. Its graph edges reach processed track destinations only.
+Hosted processor endpoints stay internal. A fixed cache retains the latest value
+for 1,952 supported control keys: CC 0–119, channel pressure and pitch wheel on
+sixteen channels. Notes, programs and channel-mode controls are excluded from the
+global path. Deferred values precede ordinary and current global traffic at equal
+offsets. Ordinary and current traffic reserve capacity before deferred values;
+overflow retains latest values for later bounded delivery.
+
+Inactive dry MIDI updates explicit mappings without DSP work or voice creation.
+Global controls remain deferred until processing activates. Source time and stable
+equal-time order survive the merge, including additive connections to both lanes.
+Global traffic never enters dry MIDI capture. Global input recovery leaves ordinary
+voices running; ordinary recovery retains its existing cleanup. External MIDI
+note/sustain release still reaches the peer after monitoring stops. Panic retains
+the reference synth's effect tails; sleep, state restore and retirement clear them.
+
+Prepared processor reservations include the additional buffers and control cache.
+Coherent snapshots include rejected, overwritten, deferred, drained and pending
+control counts. Editors can explain retained controls while a processor sleeps.
+Visibility and activation do not depend on a client polling the backend.
+
+Activation policy refinement: the retained native and legacy backend polls apply
+routing again on every UI observation. Reproducing that would let UI polling alter
+explicit activation and violate host ownership and disconnect continuity. The RT
+host instead retains explicit activation until the source's routing demand changes;
+monitoring and current/imminent record or dry-playback changes restore automatic
+routing. Pure observation and global MIDI traffic never activate audio DSP.
+
+Native: 169 targeted runtime, processor, protocol, core and adapter tests pass,
+including existing latency checks; the workspace build passes with warnings denied.
+Wasm Node: 18 host-bank/graph, 78 core, 45 adapter, 18 buffered-adapter, six wire and
+two processor-contract tests pass. Tests prove changed FX audio, inactive mapped
+controls, exact source ordering, synth voice continuity through global overflow,
+External dual routing, capture exclusion and connection resync. Four-target
+production dependency audits, test policy and the 431-module tracing inventory pass.
+Service/UI, MIDI Learn, recorded-take state and media/persistence are still pending;
+this evidence does not enable public feature bits or close those acceptance rows.

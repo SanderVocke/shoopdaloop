@@ -193,6 +193,7 @@ pub struct ControlEndpoint {
     pub(crate) blocked_loops: Box<[bool]>,
     pub(crate) blocked_buses: Box<[bool]>,
     pub(crate) blocked_all: bool,
+    pub(crate) blocked_global: bool,
     /// Initial media of new loops, to release.
     pub(crate) retired: Ring<shoop_loops::media::MediaId>,
     /// Nodes that fade out before an activation.

@@ -4,6 +4,7 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+pub mod midi;
 #[cfg(feature = "alloc")]
 pub mod state;
 
@@ -51,7 +52,17 @@ pub struct Snapshot {
     /// Exclusive source-frame end of the batch represented by these values.
     pub source_frame: u64,
     pub phase: Phase,
+    pub global_midi: GlobalMidiDiagnostics,
     pub values: [f32; STATE_SCALARS],
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GlobalMidiDiagnostics {
+    pub rejected: u64,
+    pub overwritten: u64,
+    pub deferred: u64,
+    pub drained: u64,
+    pub pending: u16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
