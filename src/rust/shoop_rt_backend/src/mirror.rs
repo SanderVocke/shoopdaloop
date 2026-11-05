@@ -133,6 +133,8 @@ pub(crate) struct Track {
     pub midi_in: bool,
     pub midi_out: bool,
     pub latest_input_midi: Option<shoop_backend::BackendLatestMidiMessage>,
+    pub automatic_enabled: bool,
+    pub automatic_monitoring: bool,
 }
 
 impl Track {
@@ -195,7 +197,11 @@ pub(crate) struct Loop {
     pub recorded: Option<(u64, shoop_rt_protocol::RecordedProcessorState)>,
     pub timing: shoop_rt_protocol::TimingState,
     pub slot: LoopSlotId,
-    pub track: BackendTrackId,
+    pub program: Option<shoop_rt_protocol::CompositeDescription>,
+    pub program_spans: Vec<shoop_rt_protocol::CompositeSpan>,
+    pub composite: Option<shoop_rt_protocol::Telemetry>,
+    pub repeat_sync: bool,
+    pub track: Option<BackendTrackId>,
     pub confirmed: bool,
     pub sync: Option<BackendLoopId>,
     pub gain: f32,
@@ -294,6 +300,16 @@ impl Slots {
         self.used[index] = true;
         self.generations[index] = self.generations[index].max(self.floor) + 1;
         Some(SlotId::new(index as u32, self.generations[index]))
+    }
+
+    pub fn bump_generation(&mut self, current: SlotId) -> Option<SlotId> {
+        let index = current.index as usize;
+        if !self.used.get(index).copied().unwrap_or(false) {
+            return None;
+        }
+        let generation = self.generations[index].max(self.floor).checked_add(1)?;
+        self.generations[index] = generation;
+        Some(SlotId::new(current.index, generation))
     }
 
     /// The engine used no generation above `floor` on any slot.
@@ -496,9 +512,11 @@ impl Mirror {
 
     /// A loop whose track exists and is not being removed.
     pub fn live_loop(&self, id: BackendLoopId) -> Option<&Loop> {
-        self.loops
-            .get(&id)
-            .filter(|entry| self.live_track(entry.track).is_some())
+        self.loops.get(&id).filter(|entry| {
+            entry
+                .track
+                .is_none_or(|track| self.live_track(track).is_some())
+        })
     }
 
     /// A port whose owner exists and is not being removed.
@@ -601,7 +619,7 @@ impl Mirror {
         if self.slot_loops.get(&entry.slot) == Some(&id) {
             self.slot_loops.remove(&entry.slot);
         }
-        if let Some(track) = self.tracks.get_mut(&entry.track) {
+        if let Some(track) = entry.track.and_then(|track| self.tracks.get_mut(&track)) {
             track.loops.retain(|candidate| *candidate != id);
         }
         for other in self.loops.values_mut() {
@@ -626,6 +644,8 @@ impl Mirror {
             input_gain_db: controls.input_gain_db,
             input_balance: controls.input_balance,
             input_monitoring: controls.input_monitoring,
+            automatic_monitoring_enabled: track.automatic_enabled,
+            automatic_input_monitoring: track.automatic_enabled && track.automatic_monitoring,
             input_peaks: track
                 .input_meter
                 .take_db(track.topology.dry_audio_channels() as usize),
@@ -687,6 +707,7 @@ impl Mirror {
             .collect();
         BackendLoopState {
             recorded_processor_state: entry.recorded_state(),
+            repeat_sync: entry.repeat_sync,
             recording_armed: view.recording_armed,
             timing_revision: timing.revision,
             channel_timings,

@@ -389,6 +389,10 @@ impl Wire for StripControl {
                 w.u8(4)?;
                 w.f32(v)
             }
+            Self::AutomaticMonitoring(v) => {
+                w.u8(6)?;
+                w.bool(v)
+            }
             Self::OutputMute(v) => {
                 w.u8(5)?;
                 w.bool(v)
@@ -403,6 +407,7 @@ impl Wire for StripControl {
             3 => Self::OutputGain(r.f32()?),
             4 => Self::OutputBalance(r.f32()?),
             5 => Self::OutputMute(r.bool()?),
+            6 => Self::AutomaticMonitoring(r.bool()?),
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -637,6 +642,37 @@ impl Wire for Request {
                 w.u64(expected_content)?;
                 edit.put(w)
             }
+            Self::LoopIteration {
+                loop_id,
+                iteration,
+                retrigger,
+                seek,
+            } => {
+                w.u8(44)?;
+                loop_id.put(w)?;
+                w.u64(iteration)?;
+                w.bool(retrigger)?;
+                w.bool(seek)
+            }
+            Self::ResetComposite { previous, loop_id } => {
+                w.u8(45)?;
+                previous.put(w)?;
+                loop_id.put(w)
+            }
+            Self::CreateComposite { loop_id, strip } => {
+                w.u8(43)?;
+                loop_id.put(w)?;
+                strip.put(w)
+            }
+            Self::Composite(command) => {
+                w.u8(41)?;
+                command.put(w)
+            }
+            Self::LoopRepeatSync { loop_id, enabled } => {
+                w.u8(42)?;
+                loop_id.put(w)?;
+                w.bool(enabled)
+            }
             Self::Profiling(enabled) => {
                 w.u8(35)?;
                 w.bool(enabled)
@@ -862,6 +898,26 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            45 => Self::ResetComposite {
+                previous: LoopSlotId::get(r)?,
+                loop_id: LoopSlotId::get(r)?,
+            },
+            44 => Self::LoopIteration {
+                loop_id: LoopSlotId::get(r)?,
+                iteration: r.u64()?,
+                retrigger: r.bool()?,
+                seek: r.bool()?,
+            },
+            43 => Self::CreateComposite {
+                loop_id: LoopSlotId::get(r)?,
+                strip: Option::get(r)?,
+            },
+            41 => Self::Composite(crate::CompositeCommand::get(r)?),
+            42 => Self::LoopRepeatSync {
+                loop_id: LoopSlotId::get(r)?,
+                enabled: r.bool()?,
+            },
+            35 => Self::Profiling(r.bool()?),
             40 => Self::ContentWindow {
                 id: r.u64()?,
                 frames: r.u64()?,
@@ -873,7 +929,6 @@ impl Wire for Request {
                 expected_content: r.u64()?,
                 edit: TimingEdit::get(r)?,
             },
-            35 => Self::Profiling(r.bool()?),
             31 => Self::ContentFamilyBegin {
                 id: r.u64()?,
                 root: LoopSlotId::get(r)?,
@@ -1031,6 +1086,25 @@ impl Wire for Request {
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Composite(d) => {
+                w.u8(7)?;
+                d.put(w)
+            }
+            Self::CompositeSpan {
+                loop_id,
+                index,
+                span,
+            } => {
+                w.u8(8)?;
+                loop_id.put(w)?;
+                w.u32(index)?;
+                span.put(w)
+            }
+            Self::RepeatSync { loop_id, enabled } => {
+                w.u8(9)?;
+                loop_id.put(w)?;
+                w.bool(enabled)
+            }
             Self::Bus { bus, channels } => {
                 w.u8(5)?;
                 bus.put(w)?;
@@ -1052,6 +1126,7 @@ impl Wire for crate::ReplacementEdit {
                 w.f32(controls.input_gain)?;
                 w.f32(controls.input_balance)?;
                 w.bool(controls.monitoring)?;
+                w.bool(controls.automatic_monitoring)?;
                 w.f32(controls.output_gain)?;
                 w.f32(controls.output_balance)?;
                 w.bool(controls.output_mute)
@@ -1064,7 +1139,7 @@ impl Wire for crate::ReplacementEdit {
                 default_dry,
                 state,
             } => {
-                w.u8(7)?;
+                w.u8(10)?;
                 strip.put(w)?;
                 shape.put(w)?;
                 controls.put(w)?;
@@ -1110,6 +1185,16 @@ impl Wire for crate::ReplacementEdit {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            7 => Self::Composite(crate::CompositeDescription::get(r)?),
+            8 => Self::CompositeSpan {
+                loop_id: LoopSlotId::get(r)?,
+                index: r.u32()?,
+                span: crate::CompositeSpan::get(r)?,
+            },
+            9 => Self::RepeatSync {
+                loop_id: LoopSlotId::get(r)?,
+                enabled: r.bool()?,
+            },
             5 => Self::Bus {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
@@ -1125,6 +1210,7 @@ impl Wire for crate::ReplacementEdit {
                     input_gain: r.f32()?,
                     input_balance: r.f32()?,
                     monitoring: r.bool()?,
+                    automatic_monitoring: r.bool()?,
                     output_gain: r.f32()?,
                     output_balance: r.f32()?,
                     output_mute: r.bool()?,
@@ -1142,7 +1228,7 @@ impl Wire for crate::ReplacementEdit {
                 gain: r.f32()?,
                 balance: r.f32()?,
             },
-            7 => Self::ProcessedStrip {
+            10 => Self::ProcessedStrip {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
                 controls: crate::StripPreset::get(r)?,
@@ -1168,6 +1254,7 @@ impl Wire for crate::StripPreset {
         w.f32(self.input_gain)?;
         w.f32(self.input_balance)?;
         w.bool(self.monitoring)?;
+        w.bool(self.automatic_monitoring)?;
         w.f32(self.output_gain)?;
         w.f32(self.output_balance)?;
         w.bool(self.output_mute)
@@ -1177,6 +1264,7 @@ impl Wire for crate::StripPreset {
             input_gain: r.f32()?,
             input_balance: r.f32()?,
             monitoring: r.bool()?,
+            automatic_monitoring: r.bool()?,
             output_gain: r.f32()?,
             output_balance: r.f32()?,
             output_mute: r.bool()?,
@@ -1187,8 +1275,13 @@ impl Wire for crate::StripPreset {
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
-            Self::TimingApplied(state) => {
+            Self::CompositeApplied { version, frame } => {
                 w.u8(4)?;
+                w.u64(*version)?;
+                w.u64(*frame)
+            }
+            Self::TimingApplied(state) => {
+                w.u8(5)?;
                 state.put(w)
             }
             Self::Done => w.u8(0),
@@ -1208,7 +1301,11 @@ impl Wire for Outcome {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
-            4 => Self::TimingApplied(TimingState::get(r)?),
+            4 => Self::CompositeApplied {
+                version: r.u64()?,
+                frame: r.u64()?,
+            },
+            5 => Self::TimingApplied(TimingState::get(r)?),
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },
             3 => Self::ContentPrepared { revision: r.u64()? },
@@ -1256,6 +1353,9 @@ impl Wire for HostPort {
 
 impl Wire for Limits {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.composite_entries)?;
+        w.u32(self.composite_segments)?;
+        w.u32(self.timing_relations)?;
         w.u16(self.content_chunk_bytes)?;
         w.u32(self.strips)?;
         w.u32(self.loops)?;
@@ -1276,6 +1376,9 @@ impl Wire for Limits {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
+            composite_entries: r.u32()?,
+            composite_segments: r.u32()?,
+            timing_relations: r.u32()?,
             content_chunk_bytes: r.u16()?,
             strips: r.u32()?,
             loops: r.u32()?,
@@ -1300,6 +1403,32 @@ impl Wire for Limits {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Composite {
+                loop_id,
+                frame,
+                mode,
+                position,
+                length,
+                active_version,
+                pending_version,
+                pending_admitted,
+                iteration,
+                passes,
+                waiting_repeat,
+            } => {
+                w.u8(5)?;
+                loop_id.put(w)?;
+                w.u64(*frame)?;
+                mode.put(w)?;
+                w.u64(*position)?;
+                w.u64(*length)?;
+                w.u64(*active_version)?;
+                pending_version.put(w)?;
+                w.bool(*pending_admitted)?;
+                w.u64(*iteration)?;
+                w.u64(*passes)?;
+                w.bool(*waiting_repeat)
+            }
             Self::Preview { request_id } => {
                 w.u8(4)?;
                 w.u64(*request_id)
@@ -1329,6 +1458,7 @@ impl Wire for Telemetry {
                 midi_in,
                 midi_out,
                 latest_input_midi,
+                automatic_monitoring,
             } => {
                 w.u8(1)?;
                 strip.put(w)?;
@@ -1336,7 +1466,8 @@ impl Wire for Telemetry {
                 output_peaks.put(w)?;
                 w.bool(*midi_in)?;
                 w.bool(*midi_out)?;
-                latest_input_midi.put(w)
+                latest_input_midi.put(w)?;
+                w.bool(*automatic_monitoring)
             }
             Self::Loop {
                 loop_id,
@@ -1371,6 +1502,19 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            5 => Self::Composite {
+                loop_id: LoopSlotId::get(r)?,
+                frame: r.u64()?,
+                mode: LoopMode::get(r)?,
+                position: r.u64()?,
+                length: r.u64()?,
+                active_version: r.u64()?,
+                pending_version: Option::get(r)?,
+                pending_admitted: r.bool()?,
+                iteration: r.u64()?,
+                passes: r.u64()?,
+                waiting_repeat: r.bool()?,
+            },
             4 => Self::Preview {
                 request_id: r.u64()?,
             },
@@ -1390,6 +1534,7 @@ impl Wire for Telemetry {
                 midi_in: r.bool()?,
                 midi_out: r.bool()?,
                 latest_input_midi: Option::get(r)?,
+                automatic_monitoring: r.bool()?,
             },
             2 => Self::Loop {
                 loop_id: LoopSlotId::get(r)?,
@@ -1587,6 +1732,59 @@ impl Wire for StateRecord {
                 preset.put(w)
             }
 
+            Self::CompositePending {
+                description,
+                received,
+                committed,
+                admitted,
+            } => {
+                w.u8(23)?;
+                description.put(w)?;
+                w.u32(*received)?;
+                w.bool(*committed)?;
+                w.bool(*admitted)
+            }
+            Self::CompositeStagedSpan { id, index, span } => {
+                w.u8(24)?;
+                w.u64(*id)?;
+                w.u32(*index)?;
+                span.put(w)
+            }
+            Self::CompositeStageFloor { id } => {
+                w.u8(22)?;
+                w.u64(*id)
+            }
+            Self::Composite {
+                description,
+                strip,
+                sync,
+                gain,
+                balance,
+                repeat_sync,
+            } => {
+                w.u8(19)?;
+                description.put(w)?;
+                strip.put(w)?;
+                sync.put(w)?;
+                w.f32(*gain)?;
+                w.f32(*balance)?;
+                w.bool(*repeat_sync)
+            }
+            Self::CompositeSpan {
+                loop_id,
+                index,
+                span,
+            } => {
+                w.u8(20)?;
+                loop_id.put(w)?;
+                w.u32(*index)?;
+                span.put(w)
+            }
+            Self::RepeatSync { loop_id, enabled } => {
+                w.u8(21)?;
+                loop_id.put(w)?;
+                w.bool(*enabled)
+            }
             Self::LoopTiming { loop_id, timing } => {
                 w.u8(18)?;
                 loop_id.put(w)?;
@@ -1687,6 +1885,35 @@ impl Wire for StateRecord {
             12 => Self::Processors(ProcessorLimits::get(r)?),
             13 => Self::ProcessorPreset(ProcessorPreset::get(r)?),
 
+            23 => Self::CompositePending {
+                description: crate::CompositeDescription::get(r)?,
+                received: r.u32()?,
+                committed: r.bool()?,
+                admitted: r.bool()?,
+            },
+            24 => Self::CompositeStagedSpan {
+                id: r.u64()?,
+                index: r.u32()?,
+                span: crate::CompositeSpan::get(r)?,
+            },
+            22 => Self::CompositeStageFloor { id: r.u64()? },
+            19 => Self::Composite {
+                description: crate::CompositeDescription::get(r)?,
+                strip: Option::get(r)?,
+                sync: Option::get(r)?,
+                gain: r.f32()?,
+                balance: r.f32()?,
+                repeat_sync: r.bool()?,
+            },
+            20 => Self::CompositeSpan {
+                loop_id: LoopSlotId::get(r)?,
+                index: r.u32()?,
+                span: crate::CompositeSpan::get(r)?,
+            },
+            21 => Self::RepeatSync {
+                loop_id: LoopSlotId::get(r)?,
+                enabled: r.bool()?,
+            },
             18 => Self::LoopTiming {
                 loop_id: LoopSlotId::get(r)?,
                 timing: TimingState::get(r)?,
@@ -2258,3 +2485,5 @@ pub fn decode_engine(record: &[u8]) -> Result<EngineMessage, CodecError> {
 
 mod host;
 pub use host::{decode_host_reply, decode_host_request, encode_host_reply, encode_host_request};
+
+mod composite;

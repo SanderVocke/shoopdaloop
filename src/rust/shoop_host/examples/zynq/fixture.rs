@@ -1210,7 +1210,7 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
         }
     }
     assert!(
-        final_stats[3] == baseline[3],
+        final_stats[3] <= baseline[3],
         "retained Rust heap growth: {baseline:?} -> {final_stats:?}"
     );
     assert!(final_stats[5] >= baseline[5], "retained C heap growth");

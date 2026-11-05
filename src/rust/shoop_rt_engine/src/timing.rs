@@ -43,6 +43,9 @@ impl ControlEndpoint {
         })
     }
     pub(crate) fn current_timing(&self, entry: crate::model::Loop) -> Option<TimingState> {
+        if entry.program.is_some() {
+            return None;
+        }
         let cells = &self.cells.loops[entry.id.0.index as usize];
         if cells.generation.load(Ordering::Acquire) == entry.id.0.generation
             && cells.content_revision.load(Ordering::Acquire) != entry.timing.content_revision
@@ -56,7 +59,8 @@ impl ControlEndpoint {
             return;
         }
         for entry in self.model.loops.iter().flatten().copied() {
-            if self.current_timing(entry).is_some()
+            if entry.program.is_some()
+                || self.current_timing(entry).is_some()
                 || self
                     .pending
                     .iter()
@@ -148,7 +152,13 @@ impl ControlEndpoint {
             return Err(Refusal::Busy);
         }
         let entry = self.model.find_loop(target).ok_or(Refusal::InvalidId)?;
-        let strip = self.model.strip(entry.strip).ok_or(Refusal::InvalidId)?;
+        if entry.program.is_some() {
+            return Err(Refusal::InvalidValue);
+        }
+        let strip = self
+            .model
+            .strip(entry.strip.ok_or(Refusal::InvalidId)?)
+            .ok_or(Refusal::InvalidId)?;
         let shape = strip.shape;
         let audio_channels = u16::from(shape.audio_outputs)
             + if strip.processor.is_some() {

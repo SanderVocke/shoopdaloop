@@ -54,6 +54,14 @@ pub struct Request {
     pub transition: Transition,
 }
 
+/// An admitted nonterminal transition, observed at a settled boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PendingTransition {
+    pub request: Request,
+    pub effective: Frame,
+    pub remaining_ticks: Option<u64>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
     Applied { frame: Frame },

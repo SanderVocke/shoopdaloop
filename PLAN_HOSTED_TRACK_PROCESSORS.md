@@ -7,9 +7,12 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
 
 Current progress: Stages 1–3 are complete. Stages 4–7 are implemented, with their
 final acceptance gates still open. Stage 8 is validating the delivered integration:
-the dedicated hosted-processor matrix is green at `52e55f84`; broad CI exposed
-upload throughput, delayed topology submission and browser/firmware fixture gaps.
-Targeted fixes and checks below precede the next full CI run. Do not interpret
+the dedicated hosted-processor matrix and firmware workflow are green at
+`2e6ac94d`. Broad native CI isolated a three-poll topology latency regression;
+the focused fix passes without changing its latency assertions. P03 reconciliation
+with target `40db766d` passes the focused DSP/composite, persistence, packaged
+native and Chromium checks below; final integrated CI and review remain pending.
+Do not interpret
 implemented checkboxes as a claim that all required delivery gates have passed.
 
 - Start from `feat/fixed-quantum-runtime`, inspected at `2e19210b`.
@@ -30,7 +33,12 @@ implemented checkboxes as a claim that all required delivery gates have passed.
   board-specific memory budgets and explicitly disabled embedded DSP startup.
   The target also advanced to `9caee9ba` with planning-guideline updates;
   that update is merged without changing product scope.
-  The combined wire is engine v20/application v28. P12 timing requests and records
+  The target then advanced to `40db766d` with the completed P03 Direct-track
+  composite core. Reconcile its prepared plans, repeat intent, monitoring,
+  persistence and public canaries alongside hosted processors. P17 retains the
+  explicitly deferred dry/wet composite interactions; this job does not expand
+  that scope. The combined wire is engine v21/application v29/worklet config v6.
+  Before P03 reconciliation, the combined wire was engine v20/application v28. P12 timing requests and records
   have distinct tags/capability bits; bounded playback windows cover both channel
   banks in canonical dry-first order. Keep P12 timing editing available for Direct
   tracks and extend its validated channel indices to processed tracks.
@@ -786,6 +794,29 @@ publication/refusal tests and test/tracing policy checks pass. Firmware commit
 publication uses the existing persistence-specific 120-second allowance rather
 than the ordinary 30-second command allowance; heartbeat remains five seconds.
 Actual firmware/platform validation and final automated review remain CI gates.
+
+P03 target reconciliation at `40db766d`: the combined protocol allocates distinct
+processor/composite request, replacement and state tags (engine v21, app v29,
+worklet config v6). The shared portable plan vocabulary retains primitive dry
+playback/rerecord modes; only Direct-track composite arrangements are admitted,
+with P17 interactions still refused at service, adapter and RT boundaries. Real
+mixed-session image capture/load preserves processor settings, default playback
+and composite geometry. A syntactically valid image that targets a processed
+child refuses without changing the live session, then a valid load succeeds.
+
+Focused reconciliation checks pass: eighteen real DSP graph tests, five public
+processor/service tests, thirteen composite engine tests, eleven automatic-monitoring
+tests, fifteen composite adapter tests, twenty persistence tests, four RT wire
+and fourteen app wire/image tests. The two packaged native socket canaries pass
+(hosted processors and composites), including actual Lua/editor/file/recovery
+flows. The main application workflow passes with detailed tracing. Rebuilt Chromium
+acceptance with `COMPOSITES=1` passes both composite and FX/synth/External
+workflows, including archive round trips, with zero reported xruns. The prior
+`2e6ac94d` firmware job passes, confirming the persistence deadline/throughput fix.
+Its broad CI found one remaining three-poll latency regression: validation now
+shares the final append's callback, and all three latency assertions pass unchanged.
+Final platform CI must run again after the P03 reconciliation; no old run is a
+substitute for that integration evidence.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

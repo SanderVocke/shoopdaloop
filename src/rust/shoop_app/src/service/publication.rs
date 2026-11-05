@@ -379,6 +379,13 @@ impl Service {
         let mut done = Vec::new();
         for id in ids {
             let pending = &self.pending[&id];
+            if self
+                .composite_structure
+                .as_ref()
+                .is_some_and(|job| job.operation == Some(id) && !job.done())
+            {
+                continue;
+            }
             if matches!(
                 pending.effect,
                 Effect::Persistence(_) | Effect::HostGraph(_)

@@ -33,7 +33,7 @@ impl crate::ControlEndpoint {
         let kind = self
             .model
             .find_loop(id)
-            .and_then(|entry| self.model.strip(entry.strip))
+            .and_then(|entry| entry.strip.and_then(|id| self.model.strip(id)))
             .and_then(|strip| strip.processor)
             .map(|owner| owner.kind);
         self.validate_recorded_kind(kind, recorded)

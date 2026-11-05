@@ -105,6 +105,7 @@ pub enum StripControl {
     InputGain(f32),
     InputBalance(f32),
     Monitoring(bool),
+    AutomaticMonitoring(bool),
     /// Linear output gain.
     OutputGain(f32),
     OutputBalance(f32),
@@ -173,6 +174,21 @@ pub enum Request {
         strip: StripId,
         shape: StripShape,
         kind: crate::ProcessorKind,
+    },
+    CreateComposite {
+        loop_id: LoopSlotId,
+        strip: Option<StripId>,
+    },
+    Composite(crate::CompositeCommand),
+    LoopRepeatSync {
+        loop_id: LoopSlotId,
+        enabled: bool,
+    },
+    LoopIteration {
+        loop_id: LoopSlotId,
+        iteration: u64,
+        retrigger: bool,
+        seek: bool,
     },
     ContentWindow {
         id: u64,
@@ -277,6 +293,10 @@ pub enum Request {
         loop_id: LoopSlotId,
         strip: StripId,
     },
+    ResetComposite {
+        previous: LoopSlotId,
+        loop_id: LoopSlotId,
+    },
     RemoveLoop {
         loop_id: LoopSlotId,
     },
@@ -341,6 +361,7 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    CompositeApplied { version: u64, frame: u64 },
     TimingApplied(crate::TimingState),
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
@@ -426,6 +447,9 @@ impl Capabilities {
 /// Current capacities. They may change during a connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Limits {
+    pub composite_entries: u32,
+    pub composite_segments: u32,
+    pub timing_relations: u32,
     /// Maximum content-upload bytes per request, limited by the prepared page size.
     pub content_chunk_bytes: u16,
     pub strips: u32,
@@ -453,6 +477,19 @@ pub struct Limits {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Telemetry {
+    Composite {
+        loop_id: LoopSlotId,
+        frame: u64,
+        mode: LoopMode,
+        position: u64,
+        length: u64,
+        active_version: u64,
+        pending_version: Option<u64>,
+        pending_admitted: bool,
+        iteration: u64,
+        passes: u64,
+        waiting_repeat: bool,
+    },
     Preview {
         request_id: u64,
     },
@@ -476,6 +513,7 @@ pub enum Telemetry {
         midi_in: bool,
         midi_out: bool,
         latest_input_midi: Option<MidiMessage>,
+        automatic_monitoring: bool,
     },
     Loop {
         loop_id: LoopSlotId,
@@ -547,6 +585,37 @@ pub enum StateRecord {
     },
     Processors(ProcessorLimits),
     ProcessorPreset(ProcessorPreset),
+    CompositePending {
+        description: crate::CompositeDescription,
+        received: u32,
+        committed: bool,
+        admitted: bool,
+    },
+    CompositeStagedSpan {
+        id: u64,
+        index: u32,
+        span: crate::CompositeSpan,
+    },
+    CompositeStageFloor {
+        id: u64,
+    },
+    Composite {
+        description: crate::CompositeDescription,
+        strip: Option<StripId>,
+        sync: Option<LoopSlotId>,
+        gain: f32,
+        balance: f32,
+        repeat_sync: bool,
+    },
+    CompositeSpan {
+        loop_id: LoopSlotId,
+        index: u32,
+        span: crate::CompositeSpan,
+    },
+    RepeatSync {
+        loop_id: LoopSlotId,
+        enabled: bool,
+    },
     LoopTiming {
         loop_id: LoopSlotId,
         timing: crate::TimingState,

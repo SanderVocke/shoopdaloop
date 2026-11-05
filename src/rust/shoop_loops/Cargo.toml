@@ -15,6 +15,7 @@ workspace = true
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_loop_plan = { path = "../shoop_loop_plan" }
 rt_runtime = { path = "../rt_runtime" }
 
 [dev-dependencies]

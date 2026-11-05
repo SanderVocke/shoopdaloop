@@ -91,12 +91,12 @@ impl Builder {
             Ok(())
         };
         for (slot, entry) in model.loops.iter().enumerate() {
-            if entry.is_some() {
+            if entry.is_some_and(|entry| entry.program.is_none()) {
                 self.step(plan, pool.playback(slot), 0, &mut end)?;
             }
         }
         for (slot, entry) in model.loops.iter().enumerate() {
-            if entry.is_none() {
+            if entry.is_none_or(|entry| entry.program.is_some()) {
                 continue;
             }
             let mut count = 0;
@@ -169,7 +169,9 @@ impl Builder {
             }
             if strip.processor.is_some() {
                 for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| entry.strip == strip.id) {
+                    if entry.is_some_and(|entry| {
+                        entry.strip == Some(strip.id) && entry.program.is_none()
+                    }) {
                         for channel in 0..strip.shape.audio_inputs as usize {
                             push(
                                 &mut self.edges,
@@ -243,8 +245,10 @@ impl Builder {
             self.step(plan, pool.processor(slot), count, &mut end)?;
         }
         for (slot, entry) in model.loops.iter().enumerate() {
-            let Some(entry) = entry else { continue };
-            let strip_slot = entry.strip.0.index as usize;
+            let Some(entry) = entry.filter(|entry| entry.program.is_none()) else {
+                continue;
+            };
+            let strip_slot = entry.strip.ok_or(Error::InvalidState)?.0.index as usize;
             let strip = model.strips[strip_slot]
                 .as_ref()
                 .ok_or(Error::InvalidState)?;
@@ -328,7 +332,9 @@ impl Builder {
                     )?;
                 }
                 for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| entry.strip == strip.id) {
+                    if entry.is_some_and(|entry| {
+                        entry.strip == Some(strip.id) && entry.program.is_none()
+                    }) {
                         push(
                             &mut self.edges,
                             &mut count,
@@ -346,7 +352,9 @@ impl Builder {
                     )?;
                 }
                 for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| entry.strip == strip.id) {
+                    if entry.is_some_and(|entry| {
+                        entry.strip == Some(strip.id) && entry.program.is_none()
+                    }) {
                         push(
                             &mut self.edges,
                             &mut count,

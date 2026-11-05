@@ -13,6 +13,9 @@ fn image() -> Arc<Image> {
         manifest: Manifest::Loop {
             sample_rate: 48000,
             content: Loop {
+                composite: None,
+                sync_source: None,
+                repeat_sync: false,
                 id: shoop_app_api::LoopId::from_raw(1),
                 name: "Backpressure".into(),
                 sync: false,

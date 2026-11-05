@@ -41,6 +41,9 @@ fn image(samples: usize) -> Arc<Image> {
             sample_rate: 48000,
             content: Loop {
                 recorded_processor_state: None,
+                composite: None,
+                sync_source: None,
+                repeat_sync: false,
                 id: LoopId::from_raw(1),
                 name: "Music".to_owned(),
                 sync: false,

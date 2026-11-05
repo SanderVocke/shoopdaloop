@@ -160,7 +160,7 @@ settings, Host Manager, CLI and JSON profiles. Obsolete JSON fields are rejected
 Connections are persisted in the session through dynamically published ports.
 
 Driver and capacity changes apply at host startup. Live driver switching is a
-tracked temporary gap, as are FX/synths, composite/grab/dry-wet
+tracked temporary gap, as are FX/synths, grab/dry-wet
 operations, timing/alignment edits and loop duplication.
 The authoritative capability checks refuse unsupported operations.
 
@@ -174,6 +174,10 @@ Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical select
 targets/policies, supported track/bus controls, routes/connections, piano MIDI and
 bounded waveform/MIDI detail reads are available. Configured track/loop/channel/media
 pools are prepared at startup; exhausted capacity produces a refusal.
+Regular and explicit Play/Stop/Record composite arrangements support public Lua
+composition, nesting, editor operations, automatic monitoring and socket recovery.
+Their prepared frame timeline continues through source changes and UI loss.
+Replacing/dry-wet events remain gated under P05/P06/P07; full P03 remains open.
 
 Core session save/load and standalone WAV, loop-audio, exact-MIDI and Standard MIDI
 import/export use the session service. Save while playing is supported; active or
@@ -182,7 +186,9 @@ and asks before resampling or retiming to the prepared sample rate and quantum.
 Live length-changing imports retime retained media and sync dependents in one
 atomic family cut; other playback, recording and controls remain active. Source
 files and the prepared device format are unchanged. Unsupported
-FX/dry-wet/composite/script documents and buses exceeding prepared limits refuse as a whole. Audio mapping, channel
+FX/dry-wet/session-script documents and buses exceeding prepared limits refuse as a whole. Composite
+files preserve authored event IDs, the original basis and frozen frame geometry.
+Audio mapping, channel
 selection, optional import length changes and SMF loss warnings remain explicit.
 Native output replaces its target atomically; browser completion means download
 handoff. Limits and supported fields are in the
@@ -278,6 +284,9 @@ target/debug/shoopdaloop --probe-engine-transport --session-transport shared_mem
 # Separate large-file canaries; the transport canary retains its existing deadline.
 target/debug/shoopdaloop --probe-persistence --session-transport socket
 target/debug/shoopdaloop --probe-persistence --session-transport shared_memory
+# Composite Lua/editor, exact recording during client absence and file round trip:
+target/debug/shoopdaloop --probe-composites --session-transport socket
+target/debug/shoopdaloop --probe-composites --session-transport shared_memory
 ```
 
 Browser core workflow after a Trunk build (Chromium and pinned Node 22.22.2):
@@ -289,6 +298,9 @@ NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket 
 python3 browser_firefox_smoke.py --backend new_engine
 # After a release Trunk build, test the >32 MiB file round-trip through the codec worker and AudioWorklet:
 NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+# Composite public authoring and recording through a blocked browser main thread:
+COMPOSITES=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+COMPOSITES=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
 
 `SELF_CONTAINED_URL` can point the self-contained smoke at an already served HTML

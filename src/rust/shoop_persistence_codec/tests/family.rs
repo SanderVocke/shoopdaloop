@@ -52,6 +52,9 @@ fn capture() -> Arc<image::Image> {
                 restart: index == 0,
                 content: Some(image::Loop {
                     recorded_processor_state: None,
+                    sync_source: None,
+                    repeat_sync: false,
+                    composite: None,
                     id,
                     name: "Chain".into(),
                     sync: false,

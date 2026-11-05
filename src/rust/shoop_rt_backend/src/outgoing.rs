@@ -324,6 +324,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 midi_in: false,
                 midi_out: false,
                 latest_input_midi: None,
+                automatic_enabled: false,
+                automatic_monitoring: false,
             },
         );
         self.mirror.strip_tracks.insert(strip, track_id);
@@ -372,9 +374,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             id,
             Loop {
                 recorded: None,
+                program: None,
+                program_spans: Vec::new(),
+                composite: None,
+                repeat_sync: false,
                 timing: Default::default(),
                 slot,
-                track: track_id,
+                track: Some(track_id),
                 confirmed: false,
                 sync: None,
                 gain: 1.0,

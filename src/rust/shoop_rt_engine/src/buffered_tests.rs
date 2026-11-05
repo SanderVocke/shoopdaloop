@@ -165,6 +165,7 @@ fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
         EngineOp::Reset {
             inputs: 2,
             outputs: 2,
+            generation: 0,
         },
         EngineOp::Gain(0.5),
     ] {

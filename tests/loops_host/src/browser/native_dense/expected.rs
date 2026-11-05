@@ -55,14 +55,15 @@ pub(super) fn semantic(stalled: bool) -> Vec<u8> {
             }
             events.push(event(frame, 1, 9, 0, 0, 0));
             events.push(event(frame, 1, 10, 0, 0, 0));
-            events.push(event(frame, 3, 10, 0, 0, 0));
-            events.push(event(frame, 3, 12, 0, frame % 4, frame / 4));
-            events.push(event(frame, 4, 10, 0, 0, 0));
-            if frame < 4 {
-                events.push(event(frame, 4, 12, 0, frame, 0));
-            } else if frame == 4 {
-                events.push(event(frame, 4, 13, 0, 0, 0));
+            if frame % 4 == 0 {
+                events.push(event(frame, 3, 10, 0, 0, 0));
             }
+            events.push(event(frame, 3, 12, 0, frame % 4, frame / 4));
+            if frame % 4 == 0 {
+                events.push(event(frame, 4, 6, 1, 0, 0));
+                events.push(event(frame, 4, 10, 0, 0, 0));
+            }
+            events.push(event(frame, 4, 12, 0, frame % 4, 0));
             events.push(event(frame, 2, 9, 0, 0, 0));
             events.push(event(frame, 2, 10, 0, 0, 0));
         }
@@ -127,23 +128,23 @@ pub(super) fn semantic(stalled: bool) -> Vec<u8> {
                 3 => (
                     1,
                     56,
-                    [4, 0, 0, 0, 0, 0, frame, frame % 4, frame / 4, frame],
-                ),
-                4 => (
-                    if frame < 4 { 1 } else { 0 },
-                    56,
                     [
                         4,
                         0,
+                        frame % 4,
                         0,
                         0,
                         0,
-                        0,
+                        frame / 4 * 4,
+                        frame % 4,
+                        frame / 4,
                         frame,
-                        if frame < 4 { frame } else { 0 },
-                        u64::from(frame >= 4),
-                        frame.min(4),
                     ],
+                ),
+                4 => (
+                    1,
+                    56,
+                    [4, 0, frame % 4, 0, 0, 0, frame / 4 * 4, frame % 4, 0, frame],
                 ),
                 _ => unreachable!(),
             };

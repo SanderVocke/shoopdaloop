@@ -13,6 +13,36 @@ fn paired(id: StageId, graph: GraphStageId) -> Operation {
         topology_epoch: Epoch(0),
     }
 }
+
+#[shoop_test]
+fn unchanged_program_cannot_publish_changed_routes_before_the_real_restart() {
+    let mut h = live(true, 1024, false);
+    let topology = h.ready(
+        0,
+        &compile(limits(1024), &description(false, false)).unwrap(),
+    );
+    let graph = h.graph(0, 1, true, false);
+    h.op(3, play(0));
+    h.op(3, play(2));
+    let change = h.op(4, paired(topology, graph));
+    h.step(4);
+    h.drain();
+    assert!(!h.replies.iter().any(|reply| reply.sequence == change));
+    assert_eq!(h.engine.next_frame(), Frame(7));
+    assert_eq!(h.engine.diagnostics().epoch, Epoch(1));
+    assert_eq!(
+        h.samples[3..7],
+        [[2., 20.], [4., 40.], [6., 60.], [8., 80.]]
+    );
+    h.step(1);
+    h.drain();
+    let Reply::ProgramGraphChanged { completion, .. } = h.reply(change) else {
+        panic!("paired publication");
+    };
+    assert_eq!(completion.outcome, Outcome::Applied { frame: Frame(7) });
+    assert_eq!(h.samples[7], [4., 40.]);
+    h.finish().unwrap();
+}
 #[shoop_test]
 fn running_program_and_routes_publish_at_one_zero_cut_with_full_independent_reference() {
     for (parts, journal, reverse) in [
@@ -182,7 +212,9 @@ fn running_program_and_routes_publish_at_one_zero_cut_with_full_independent_refe
                         }),
                     );
                 }
-                push(2, Pulse);
+                if [3, 7, 10, 13].contains(&frame) {
+                    push(2, Pulse);
+                }
                 push(
                     2,
                     Iteration {
@@ -279,9 +311,19 @@ fn running_program_and_routes_publish_at_one_zero_cut_with_full_independent_refe
                             Mode::Stopped
                         },
                         if f < 7 { 4 } else { 3 },
+                        if !(3..14).contains(&f) {
+                            0
+                        } else if f < 7 {
+                            (f - 3) as u64
+                        } else {
+                            ((f - 7) % 3) as u64
+                        },
                         0,
-                        0,
-                        (f >= 3).then_some(Frame(f.min(13) as u64)),
+                        (f >= 3).then_some(Frame(if f < 7 {
+                            3
+                        } else {
+                            (7 + (f.min(13) - 7) / 3 * 3) as u64
+                        })),
                         Some(state::CompositeState {
                             iteration: if f < 3 || f == 14 {
                                 0
@@ -295,6 +337,7 @@ fn running_program_and_routes_publish_at_one_zero_cut_with_full_independent_refe
                             } else {
                                 (1 + (f.min(13) - 7) / 3) as u64
                             },
+                            waiting_repeat: false,
                             entered_at: (f >= 3).then_some(Frame(f as u64)),
                         }),
                     ),

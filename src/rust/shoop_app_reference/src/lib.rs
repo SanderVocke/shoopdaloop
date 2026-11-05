@@ -1397,6 +1397,7 @@ fn composite_with_appended_sources(
     serial_step_cycles: &[u64],
 ) -> Result<CompositeDocument, String> {
     let mut composite = existing.cloned().unwrap_or(CompositeDocument {
+        timing: None,
         kind: CompositeKindDocument::Regular,
         instances: Vec::new(),
     });
@@ -2138,6 +2139,9 @@ impl ApplicationModel {
                 target_loop_id,
                 kind,
             } => self.set_composite_kind(backend, target_loop_id, kind),
+            AppIntent::SetCompositeTimingBasis { .. } | AppIntent::CancelCompositeEdit { .. } => {
+                Err("prepared timing edits require the session service".to_owned())
+            }
             AppIntent::SetCompositeEventMode {
                 target_loop_id,
                 event,
@@ -6512,6 +6516,7 @@ impl ApplicationModel {
                     return Err(format!("loop {loop_id} is already a composite"));
                 }
                 let composite = CompositeDocument {
+                    timing: None,
                     kind: CompositeKindDocument::Regular,
                     instances: Vec::new(),
                 };
@@ -11161,6 +11166,7 @@ impl ApplicationModel {
                     });
                 }
                 loops.push(LoopDocument {
+                    execution: None,
                     id: loop_id.raw(),
                     name: model.name.clone(),
                     length_frames: u64::from(model.length),
@@ -12177,6 +12183,8 @@ impl ApplicationModel {
             });
         }
         CompositeDetailsState {
+            timing: None,
+            execution: Default::default(),
             kind: match composite.kind {
                 CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
                 CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
@@ -12777,6 +12785,7 @@ fn new_session_document(sample_rate: u32) -> SessionDocument {
             controls: TrackControlsDocument::default(),
             latency: TrackLatencyDocument::default(),
             loops: vec![LoopDocument {
+                execution: None,
                 id: 1,
                 name: "sync loop".to_owned(),
                 length_frames: 0,
@@ -13852,6 +13861,9 @@ fn session_bundle_to_backend(
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(BackendSessionData {
+        composites: Default::default(),
+        loop_sync: Default::default(),
+        repeat_sync: Default::default(),
         sample_rate: bundle.document.sample_rate,
         tracks,
         buses,
@@ -14311,6 +14323,7 @@ mod tests {
         model.loops.get_mut(&same_track_peer).unwrap().length = 10;
         model.tracks[4].controls.has_input = false;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![
                 CompositeLoopInstanceDocument {
@@ -14546,6 +14559,7 @@ mod tests {
         );
         let dependent = model.tracks[4].loops[0];
         let dependent_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14621,6 +14635,7 @@ mod tests {
 
         let peer = model.tracks[4].loops[0];
         let peer_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14645,6 +14660,7 @@ mod tests {
         let primitive_target_version = global_version + 1;
         model.remember_auto_arm_composite_plan(root, primitive_target_version, &plan_a);
         model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14744,6 +14760,7 @@ mod tests {
         }
         model.loops.get_mut(&nested).unwrap().length = 30;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14754,6 +14771,7 @@ mod tests {
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![
                 CompositeLoopInstanceDocument {
@@ -14809,6 +14827,7 @@ mod tests {
         assert!(model.auto_arm_demanded_tracks().is_empty());
 
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14869,6 +14888,7 @@ mod tests {
         assert!(model.auto_arm_demanded_tracks().is_empty());
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14909,6 +14929,7 @@ mod tests {
             .unwrap()
             .auto_arm_active_target_kinds = BTreeMap::from([(first, true)]);
         model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14943,6 +14964,7 @@ mod tests {
         );
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14964,6 +14986,7 @@ mod tests {
             .active_composite_children
             .clear();
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14991,6 +15014,7 @@ mod tests {
         );
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15001,6 +15025,7 @@ mod tests {
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15035,6 +15060,7 @@ mod tests {
         );
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15054,6 +15080,7 @@ mod tests {
             root_model.auto_arm_active_target_kinds = BTreeMap::from([(nested, true)]);
         }
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15088,6 +15115,7 @@ mod tests {
         model.loops.get_mut(&first).unwrap().composite = None;
         model.loops.get_mut(&first).unwrap().backend_composite = None;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15098,6 +15126,7 @@ mod tests {
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15131,6 +15160,7 @@ mod tests {
         let child = model.tracks[2].loops[0];
         let primitive = model.tracks[3].loops[0];
         let child_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15144,6 +15174,7 @@ mod tests {
             .commit_composite_editor_change(&mut backend, child, child_document)
             .unwrap();
         let parent_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15216,6 +15247,7 @@ mod tests {
         let second_track = model.tracks[3].id;
         for root in [first_root, second_root] {
             model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+                timing: None,
                 kind: CompositeKindDocument::Script,
                 instances: vec![CompositeLoopInstanceDocument {
                     instance_id: 1,
@@ -18317,6 +18349,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model.loops.get_mut(&rhythm_b).unwrap().length = 40;
         model.loops.get_mut(&melody).unwrap().length = 60;
         let composite = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![
                 CompositeLoopInstanceDocument {
@@ -18516,6 +18549,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(updated.instances.iter().all(|event| event.mode.is_none()));
 
         model.loops.get_mut(&target).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: Vec::new(),
         });
@@ -18729,6 +18763,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(
             converted.composite.as_ref().unwrap(),
             &CompositeDocument {
+                timing: None,
                 kind: CompositeKindDocument::Regular,
                 instances: Vec::new(),
             }
@@ -18804,6 +18839,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(model.loops[&target].composite, before);
 
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -19069,6 +19105,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 track.loops[1].length_frames = 100;
                 track.loops[2].length_frames = 200;
                 let composite = CompositeDocument {
+                    timing: None,
                     kind: CompositeKindDocument::Script,
                     instances: vec![
                         CompositeLoopInstanceDocument {
@@ -26825,6 +26862,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let source = track.loops[1].id;
         track.loops[0].channels.clear();
         track.loops[0].composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -26922,6 +26960,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             midi_cc_assignments: Vec::new(),
         };
         let composite = |mode: Option<&str>| CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,

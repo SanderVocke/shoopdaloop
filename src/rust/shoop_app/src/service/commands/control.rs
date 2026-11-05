@@ -15,8 +15,35 @@ impl Service {
                 let mode = control_mode(mode)?;
                 for id in &loops {
                     self.loop_entry(*id)?;
+                    self.require_restored_composite(*id, mode)?;
+                    if self.composites.contains_key(id) {
+                        if mode != BackendLoopMode::Stopped && mode != BackendLoopMode::Playing {
+                            return Err(CommandError::invalid(
+                                "a composite's outer mode is Play or Stop",
+                            ));
+                        }
+                        self.composite_transport_iteration(*id, align_to_sync_at)?;
+                        if align_to_sync_at.is_some() && mode != BackendLoopMode::Playing {
+                            return Err(CommandError::invalid(
+                                "composite iteration alignment requires Play",
+                            ));
+                        }
+                    } else if align_to_sync_at.is_some() {
+                        return Err(CommandError::invalid(
+                            "aligned primitive transitions are unavailable",
+                        ));
+                    }
                 }
                 for id in loops {
+                    if self.composites.contains_key(&id) {
+                        self.transition_authored_composite(
+                            id,
+                            mode,
+                            cycles_delay,
+                            align_to_sync_at,
+                        )?;
+                        continue;
+                    }
                     self.backend.transition_loop_aligned(
                         self.loops[&id].backend,
                         mode,
@@ -89,28 +116,31 @@ impl Service {
             }
             SetTarget { target } => return self.execute(Command::SetTarget(target)),
             ClearLoops { loops } => {
-                for id in &loops {
-                    self.loop_entry(*id)?;
-                }
-                for id in loops {
-                    self.backend.clear_loop(self.loops[&id].backend)?;
-                }
+                return self.clear_composite_slots(loops);
             }
             SetRepeatSync { loops, active } => {
                 for id in &loops {
                     self.loop_entry(*id)?;
                 }
-                let sync = if active { self.sync_backend() } else { None };
                 for id in loops {
                     self.backend
-                        .set_loop_sync_source(self.loops[&id].backend, sync)?;
+                        .set_loop_repeat_sync(self.loops[&id].backend, active)?;
                 }
             }
             Grab { .. } | AdoptRingbuffers { .. } => {
                 return Err(CommandError::unsupported(BackendCapability::Grab))
             }
-            ComposeAddToEnd { .. } => {
-                return Err(CommandError::unsupported(BackendCapability::CompositeLoops))
+            ComposeAddToEnd {
+                target,
+                add,
+                parallel,
+            } => {
+                return self.edit_composite(shoop_app_protocol::composite::Edit::Append {
+                    target,
+                    add,
+                    parallel,
+                    convert_if_empty: true,
+                })
             }
             SetTrackGain { tracks, gain_db } => {
                 self.control_tracks(tracks, TrackAction::OutputGainChanged(gain_db))?

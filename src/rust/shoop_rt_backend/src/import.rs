@@ -135,7 +135,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ok_or_else(|| anyhow!("persistence identity exhausted"))?;
         let mut work = VecDeque::new();
         let mut uploads = Vec::new();
-        let track = &self.mirror.tracks[&self.mirror.loops[&loop_id].track];
+        let track = &self.mirror.tracks[&self.mirror.loops[&loop_id]
+            .track
+            .ok_or_else(|| anyhow!("composites have no media channels"))?];
         let roles = !matches!(track.topology, BackendTrackTopology::Direct { .. });
         let recorded_state = crate::processor_controls::recorded_state(
             &track.topology,

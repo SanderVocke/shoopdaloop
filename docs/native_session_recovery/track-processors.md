@@ -6,6 +6,10 @@ Implementation branch: `feat/hosted-track-processors`, based on
 in [the plan](../../PLAN_HOSTED_TRACK_PROCESSORS.md). This document records the
 contract and delivered implementation. Public native production routes are verified
 locally; the final delivered-revision platform/browser CI gates remain pending.
+PR [#946](https://github.com/SanderVocke/shoopdaloop/pull/946) targets
+`feat/backend-replacement`, reconciled through `40db766d`; the original base above
+is retained as provenance. Current wire versions are engine v21, application v29
+and worklet configuration v6.
 
 ## Host configuration and resource contract
 
@@ -76,7 +80,7 @@ recording global-only traffic. A dual-routed controller remains additive.
 
 ## Ownership, timing and protocol work
 
-| Layer | Existing foundation | Required addition |
+| Layer | Starting foundation | Delivered addition |
 | --- | --- | --- |
 | `rt_buffered` | Exact-Q batching, private inline dummy, source-position release | Public synchronous backend, arbitrary ports, bounded sample-relative controls, live lifetime |
 | Optional DSP packages | Retained FX/synth/state in `shoop_engine` | Extracted reusable code; prepared OxiSynth voices/lazy tables; no legacy production dependency |
@@ -834,3 +838,79 @@ observed FX mean/peak 594/658 us and synth 1,946/2,324 us. Preparation at widths
 1/2/8 was 20/241/359 ms; allocation peaks and reservations match the earlier table.
 These differing observations do not establish a deadline guarantee or erase the
 earlier saturated-synth run that exceeded its block period.
+
+### Validation follow-up at `2e6ac94d`
+
+The [hosted-processor workflow](https://github.com/SanderVocke/shoopdaloop/actions/runs/42025467133)
+passes all four independent feature/startup jobs, Node Wasm, excluded assets and
+the sole profiling-clock import, plus selected Miri ownership checks. Automated
+review reports no major issues for this revision
+([receipt](https://github.com/SanderVocke/shoopdaloop/pull/946#issuecomment-6657764959)).
+The [firmware run](https://github.com/SanderVocke/shoopdaloop/actions/runs/42025467159)
+passes, including firmware, QEMU, board, USB and network deployment checks.
+The [broad platform run](https://github.com/SanderVocke/shoopdaloop/actions/runs/42025466864)
+passes JACK, bare-metal, process inspection, shared media and release browser
+checks; its native test failures isolate the three-poll topology latency regression
+addressed during the reconciliation below. This is not a completed-delivery claim.
+
+The negotiated upload window again reaches 64 requests while legacy peers remain
+at eight, with the bounded/fair pump retained. A deterministic guarded regression
+reproduces late topology chunks exceeding one callback's record budget; it now
+passes with acknowledgment and actual-callback pacing. Nine structural tests,
+eighteen persistence tests, pump fairness and the production application workflow
+pass locally. The legacy lock fixture now confirms graph readiness before
+requesting its sole block, preserving the active lock guard and exact 64-frame
+position oracle; twenty repetitions pass. Both new regressions also pass filtered
+Node Wasm execution. Warning-denying builds, test/tracing inventories and dependency
+boundaries pass.
+
+The rebuilt real Chromium AudioWorklet workflow passes FX, synth and External
+role imports, dry/wet playback and save/load/save with zero reported xruns.
+It acknowledges the existing format-conversion prompt and hosted save dialogs
+through their actual UI contracts. The firmware probe retains its five-second
+heartbeat and uses the existing persistence-specific 120-second publication
+allowance for commits. Its two publication/refusal tests pass locally, and the
+firmware workflow confirms the publication fix.
+
+[Measurement artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42025467133/artifacts/13414696083)
+records PR merge checkout `1d997ba8217ac4b1ecfd8ea99480ae508707d06b`; its tree
+`1ffdcc23d8b119c30a434cfaa87d4ae72196de76` equals `2e6ac94d`'s tree. This runner
+exposes four logical CPUs on an AMD EPYC 9V45 under Microsoft virtualization,
+with rustc 1.99.1 / LLVM 23.1.1. The same measurement configuration observes:
+
+| Processor | Mean microseconds | Peak microseconds | Block period microseconds |
+| --- | ---: | ---: | ---: |
+| Built-in FX | 415 | 577 | 2,666.67 |
+| OxiSynth | 2,465 | 5,706 | 2,666.67 |
+
+Preparation at widths 1/2/8 is 14/173/227 ms; requested peaks, retained storage
+and reservations match the preceding table. The saturated synth again exceeds
+the block period. Shared-runner wall-clock peaks include scheduling variability
+and do not establish CPU execution bounds; maximum-polyphony deadline margin
+remains unproven. Simulated xruns remain unavailable. These results supplement
+the earlier observations, with the same limits on event offsets, simultaneous
+instances and third-party Miri coverage.
+
+### Direct-track composite target reconciliation
+
+The target advanced to `40db766d` with P03. The combined engine/application/worklet
+wire versions are 21/29/6; processor and composite records retain distinct tags.
+Direct-track composites coexist with hosted FX/synth/External tracks in one
+session and archive. P17 dry/wet composite interactions remain refused at service,
+adapter and RT boundaries, including candidate images and processed children.
+Failed candidate loads preserve the live processor state and composite plan;
+subsequent valid loads prove that candidate reservations are released.
+
+Focused checks pass: eighteen real DSP graph tests, five processor service tests,
+thirteen engine composite tests, eleven monitoring tests, fifteen adapter composite
+tests, twenty persistence tests, and the RT/application codec and image tests.
+The guarded late-control regression and retained dry/MIDI-window reconnect test
+pass. Three latency tests retain their existing poll limits: topology validation
+shares the final append's callback while earlier chunks still wait for an actual
+callback boundary. Production packages and the firmware probe build with warnings
+denied; formatting, test/tracing inventories, parity and dependency audits pass.
+
+Both packaged native socket probes pass their actual Lua/editor/media/archive and
+recovery flows. Rebuilt Chromium acceptance with `COMPOSITES=1` passes both Direct
+composites and FX/synth/External dry/wet workflows with zero reported xruns. Final
+cross-platform CI and automated review must validate the integrated revision.

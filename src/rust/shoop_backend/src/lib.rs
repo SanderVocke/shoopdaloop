@@ -32,6 +32,12 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::sync::Arc;
 use anyhow::{anyhow, Result};
 use core::time::Duration;
+mod composite;
+pub use composite::{
+    BackendCompositeLimits, BackendCompositeOperationState, BackendCompositeOutcome,
+    BackendCompositePending, BackendCompositeReceipt, BackendCompositeSpan,
+    BackendPreparedCompositePlan, BackendSessionComposite,
+};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverRuntimeState, ResolvedAudioDriverConfig, TrackFxState,
@@ -563,6 +569,10 @@ pub struct BackendTrackState {
     pub input_balance: f32,
     pub input_monitoring: bool,
     #[serde(default)]
+    pub automatic_input_monitoring: bool,
+    #[serde(default)]
+    pub automatic_monitoring_enabled: bool,
+    #[serde(default)]
     pub latency: BackendTrackLatencyState,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
@@ -701,6 +711,7 @@ pub fn dry_wet_routing_state(
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
     pub recorded_processor_state: Option<String>,
+    pub repeat_sync: bool,
     pub recording_armed: bool,
     pub timing_revision: u64,
     pub channel_timings: Vec<BackendChannelTimingState>,
@@ -756,6 +767,13 @@ pub struct BackendActiveCompositeChild {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BackendCompositeState {
+    pub observed_frame: u64,
+    pub sync_source: Option<BackendLoopId>,
+    pub repeat_sync: bool,
+    pub prepared_unit_frames: u64,
+    pub waiting_repeat: bool,
+    pub pending_stage: Option<BackendCompositePending>,
+    pub active_applied_frame: Option<u64>,
     pub mode: BackendLoopMode,
     pub next_mode: Option<BackendLoopMode>,
     pub next_transition_delay: Option<u32>,
@@ -1000,6 +1018,12 @@ pub struct BackendSessionData {
     pub sample_rate: u32,
     pub tracks: Vec<BackendSessionTrack>,
     #[serde(default)]
+    pub composites: Vec<BackendSessionComposite>,
+    #[serde(default)]
+    pub loop_sync: BTreeMap<u64, u64>,
+    #[serde(default)]
+    pub repeat_sync: Vec<u64>,
+    #[serde(default)]
     pub buses: Vec<BackendSessionBus>,
     #[serde(default)]
     pub mixer_routes: Vec<BackendSessionMixerRoute>,
@@ -1007,6 +1031,19 @@ pub struct BackendSessionData {
     pub global_ports: Vec<BackendSessionPort>,
     #[serde(default)]
     pub use_legacy_browser_default_routes: bool,
+}
+
+impl BackendSessionData {
+    #[cfg(feature = "legacy")]
+    fn require_legacy_timing(&self) -> Result<()> {
+        if !self.composites.is_empty() || !self.loop_sync.is_empty() || !self.repeat_sync.is_empty()
+        {
+            return Err(anyhow!(
+                "prepared composite and repeat timing requires the RT session service"
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Whether any loop in the session carries content, as opposed to a structure-only session.
@@ -1138,6 +1175,8 @@ pub struct BackendMutationCompletion {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
+    pub composite_operations: Vec<BackendCompositeOperationState>,
+    pub composite_receipts: Vec<BackendCompositeReceipt>,
     pub profiling: shoop_app_api::ProfilingView,
     pub status: BackendStatus,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -1271,6 +1310,63 @@ pub trait Backend {
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
         Err(anyhow!("composite loops are unavailable"))
     }
+    fn composite_limits(&self) -> Option<BackendCompositeLimits> {
+        None
+    }
+    fn convert_empty_loop_to_composite(
+        &mut self,
+        _loop_id: BackendLoopId,
+    ) -> Result<BackendCompositeId> {
+        Err(anyhow!(
+            "this backend cannot convert an empty loop to a prepared composite"
+        ))
+    }
+    fn convert_empty_loop_to_prepared_composite(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _plan: &BackendPreparedCompositePlan,
+    ) -> Result<(BackendCompositeId, u64)> {
+        Err(anyhow!(
+            "this backend cannot atomically convert an empty slot with a prepared plan"
+        ))
+    }
+    fn clear_composite_loop(&mut self, _composite: BackendCompositeId) -> Result<BackendLoopId> {
+        Err(anyhow!(
+            "this backend cannot restore a composite slot to an empty loop"
+        ))
+    }
+    fn configure_prepared_composite_loop(
+        &mut self,
+        _composite: BackendCompositeId,
+        _plan: &BackendPreparedCompositePlan,
+    ) -> Result<u64> {
+        Err(anyhow!(
+            "this backend cannot install a prepared frame program"
+        ))
+    }
+    fn cancel_composite_plan(
+        &mut self,
+        _composite: BackendCompositeId,
+        _version: u64,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "this backend cannot cancel a prepared frame program"
+        ))
+    }
+    fn set_loop_repeat_sync(&mut self, _loop_id: BackendLoopId, _enabled: bool) -> Result<()> {
+        Err(anyhow!(
+            "this backend cannot set repeat alignment independently of its source"
+        ))
+    }
+    fn set_composite_repeat_sync(
+        &mut self,
+        _composite: BackendCompositeId,
+        _enabled: bool,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "this backend cannot set composite repeat alignment independently of its source"
+        ))
+    }
     /// Installs a composite configuration and returns its backend-wide plan version.
     fn configure_composite_loop(
         &mut self,
@@ -1325,6 +1421,13 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn set_track_automatic_monitoring(
+        &mut self,
+        _track_id: BackendTrackId,
+        _enabled: bool,
+    ) -> Result<()> {
+        Err(anyhow!("automatic input monitoring is unavailable"))
+    }
     fn set_track_default_playback_mode(
         &mut self,
         _track_id: BackendTrackId,

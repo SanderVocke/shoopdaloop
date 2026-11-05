@@ -810,6 +810,7 @@ impl RemoteWorkletBackend {
                     *loop_id,
                     BackendLoopState {
                         recorded_processor_state: None,
+                        repeat_sync: false,
                         sync_source: None,
                         content_revision: 0,
                         mode: BackendLoopMode::Stopped,
@@ -1296,6 +1297,7 @@ impl RemoteWorkletBackend {
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
                         recorded_processor_state: None,
+                        repeat_sync: false,
                         recording_armed: false,
                         timing_revision: 0,
                         channel_timings: Vec::new(),
@@ -1332,6 +1334,13 @@ impl RemoteWorkletBackend {
                 (
                     BackendCompositeId::from_raw(composite.id),
                     BackendCompositeState {
+                        observed_frame: 0,
+                        sync_source: None,
+                        repeat_sync: false,
+                        prepared_unit_frames: 0,
+                        waiting_repeat: false,
+                        pending_stage: None,
+                        active_applied_frame: None,
                         mode: from_wire_loop_mode(composite.mode),
                         next_mode: composite.next_mode.map(from_wire_loop_mode),
                         next_transition_delay: composite.next_transition_delay,
@@ -5530,6 +5539,9 @@ mod tests {
             .unwrap();
         deliver(&control, 3, 1, Event::Ack);
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),
@@ -5632,6 +5644,9 @@ mod tests {
             .unwrap();
         deliver(&control, 1, 1, Event::Ack);
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),
@@ -5728,6 +5743,9 @@ mod tests {
             external_connections: Vec::new(),
         };
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: vec![shoop_backend::BackendSessionTrack {
                 source_id: 1,
@@ -5841,6 +5859,9 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn fixed_bus_mappings_do_not_advance_the_next_track_port_identity() {
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: vec![shoop_backend::BackendSessionBus {
@@ -6268,6 +6289,9 @@ mod tests {
         deliver(&control, 1, 1, Event::Ack);
         sent.borrow_mut().clear();
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),

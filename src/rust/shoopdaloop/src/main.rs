@@ -3767,6 +3767,7 @@ fn main() {
     if !cli.probe_engine_transport
         && !cli.probe_persistence
         && !cli.probe_hosted_processors
+        && !cli.probe_composites
         && !cli.probe_builtins
         && !cli.tracing_smoke_test
     {
@@ -3780,12 +3781,18 @@ fn main() {
         }
     }
 
-    if cli.probe_engine_transport || cli.probe_persistence || cli.probe_hosted_processors {
+    if cli.probe_engine_transport
+        || cli.probe_persistence
+        || cli.probe_hosted_processors
+        || cli.probe_composites
+    {
         let result = if cli.probe_hosted_processors {
             cli.audio
                 .apply_processors(Default::default())
                 .map_err(anyhow::Error::msg)
                 .and_then(|settings| session_probe::hosted(cli.engine_transport.unwrap(), settings))
+        } else if cli.probe_composites {
+            session_probe::composites(cli.engine_transport.unwrap())
         } else if cli.probe_persistence {
             session_probe::files(cli.engine_transport.unwrap())
         } else {
@@ -3795,7 +3802,9 @@ fn main() {
             Ok(()) => {
                 println!(
                     "Session {} {}: workflow and graceful shutdown passed",
-                    if cli.probe_persistence {
+                    if cli.probe_composites {
+                        "composites"
+                    } else if cli.probe_persistence {
                         "persistence"
                     } else {
                         "transport"
@@ -4838,6 +4847,7 @@ mod tests {
                         .iter()
                         .any(|processor| processor.available),
                 )
+                .with(BackendCapability::CompositeLoops, true)
                 .with(BackendCapability::ClickTrackInsertion, true)
         );
         assert_eq!(

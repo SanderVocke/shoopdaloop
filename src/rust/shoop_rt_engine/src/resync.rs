@@ -36,7 +36,7 @@ impl ControlEndpoint {
         id: shoop_rt_protocol::LoopSlotId,
     ) -> Result<Option<StateRecord>, ()> {
         let entry = self.model.find_loop(id).ok_or(())?;
-        let strip = self.model.strip(entry.strip).ok_or(())?;
+        let strip = self.model.strip(entry.strip.ok_or(())?).ok_or(())?;
         if strip.processor.and_then(|owner| owner.slot).is_none() {
             return Ok(None);
         }
@@ -290,6 +290,38 @@ impl ControlEndpoint {
                         cursor.index += 1;
                         return Some(StateRecord::ProcessorPreset(*preset));
                     }
+                    cursor.stage = 13;
+                }
+                13 => {
+                    cursor.stage = 14;
+                    return Some(StateRecord::CompositeStageFloor {
+                        id: self.composite.last_id,
+                    });
+                }
+                14 => {
+                    cursor.stage = 15;
+                    cursor.index = 0;
+                    if let Some(description) = self.composite.description {
+                        return Some(StateRecord::CompositePending {
+                            description,
+                            received: self.composite.received as u32,
+                            committed: self.composite.committed,
+                            admitted: self.composite.admitted,
+                        });
+                    }
+                }
+                15 => {
+                    if let Some(description) = self.composite.description {
+                        if cursor.index < self.composite.received {
+                            let index = cursor.index;
+                            cursor.index += 1;
+                            return Some(StateRecord::CompositeStagedSpan {
+                                id: description.id,
+                                index: index as u32,
+                                span: self.composite.spans[index],
+                            });
+                        }
+                    }
                     cursor.stage = 1;
                     cursor.index = 0;
                 }
@@ -418,34 +450,76 @@ impl ControlEndpoint {
                         };
                         continue;
                     };
-                    if let Some(entry) = slot {
-                        if cursor.part == 0 {
+                    let Some(entry) = slot else {
+                        cursor.index += 1;
+                        continue;
+                    };
+                    match cursor.part {
+                        0 => {
                             cursor.part = 1;
+                            if let Some(description) = entry.program {
+                                return Some(StateRecord::Composite {
+                                    description,
+                                    strip: entry.strip,
+                                    sync: entry.sync,
+                                    gain: entry.gain,
+                                    balance: entry.balance,
+                                    repeat_sync: entry.repeat_sync,
+                                });
+                            }
                             return Some(StateRecord::Loop {
                                 loop_id: entry.id,
-                                strip: entry.strip,
+                                strip: entry.strip.expect("primitive owner"),
                                 sync: entry.sync,
                                 gain: entry.gain,
                                 balance: entry.balance,
                             });
                         }
-                        if cursor.part == 1 {
-                            let timing = self.current_timing(*entry)?;
+                        1 => {
                             cursor.part = 2;
-                            return Some(StateRecord::LoopTiming {
+                            return Some(StateRecord::RepeatSync {
                                 loop_id: entry.id,
-                                timing,
+                                enabled: entry.repeat_sync,
                             });
                         }
-                        let record = self.recorded_record(entry.id).ok()?;
-                        cursor.index += 1;
-                        cursor.part = 0;
-                        if record.is_some() {
-                            return record;
+                        2 => {
+                            if entry.program.is_none() {
+                                let timing = self.current_timing(*entry)?;
+                                cursor.part = 3;
+                                return Some(StateRecord::LoopTiming {
+                                    loop_id: entry.id,
+                                    timing,
+                                });
+                            }
+                            cursor.part = 3;
                         }
-                        continue;
+                        3 => {
+                            let record = if entry.program.is_none() {
+                                self.recorded_record(entry.id).ok()?
+                            } else {
+                                None
+                            };
+                            cursor.part = 4;
+                            if record.is_some() {
+                                return record;
+                            }
+                        }
+                        _ => {
+                            if let Some(span) =
+                                self.model.program_spans(entry.id).nth(cursor.part - 4)
+                            {
+                                let index = (cursor.part - 4) as u32;
+                                cursor.part += 1;
+                                return Some(StateRecord::CompositeSpan {
+                                    loop_id: entry.id,
+                                    index,
+                                    span,
+                                });
+                            }
+                            cursor.index += 1;
+                            cursor.part = 0;
+                        }
                     }
-                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
@@ -516,7 +590,10 @@ impl ControlEndpoint {
         };
         while out.available(Lane::Reliable) > 0 {
             let before = cursor;
-            let publication = if cursor.stage == 3 && cursor.part == 1 {
+            let publication = if cursor.stage == 3
+                && cursor.part == 2
+                && self.model.loops[cursor.index].is_some_and(|entry| entry.program.is_none())
+            {
                 let cells = &self.cells.loops[cursor.index];
                 let serial = cells.publication.load(core::sync::atomic::Ordering::SeqCst);
                 if serial % 2 != 0

@@ -88,7 +88,7 @@ pub(super) fn semantic(start: u64) -> Vec<u8> {
                 [
                     if slot == 1 { 8 } else { 4 },
                     0,
-                    0,
+                    if slot == 1 && cut == start + 4 { 4 } else { 0 },
                     0,
                     0,
                     0,

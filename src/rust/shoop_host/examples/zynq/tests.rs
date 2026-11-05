@@ -11,6 +11,7 @@ const AUTHORITY: Authority = Authority {
 
 fn snapshot(revision: u64, epoch: u64) -> SessionSnapshot {
     SessionSnapshot {
+        composites: Vec::new(),
         profiling: Default::default(),
         preview: Default::default(),
         preview_bus: None,
@@ -67,53 +68,60 @@ fn ready_client() -> (Client, OperationId) {
 
 #[shoop_test(no_wasm = "the Zynq probe uses native transports")]
 fn a_finished_commit_waits_for_the_complete_snapshot_before_reusing_the_session_epoch() {
-    for snapshot_first in [false, true] {
-        let (mut client, operation) = ready_client();
-        let outcome = Outcome::Confirmed {
+    for outcome in [
+        Outcome::Confirmed {
             revision: Revision(6),
-        };
-        let finished = WireMessage::Finished {
-            authority: AUTHORITY,
-            result: OperationResult {
-                id: operation,
-                outcome: outcome.clone(),
-            },
-        };
-        let bytes = codec::encode_snapshot(&snapshot(6, 2)).unwrap();
-        let mut messages = VecDeque::from([WireMessage::SnapshotBegin {
-            authority: AUTHORITY,
-            transfer: TransferId(1),
+        },
+        Outcome::AncestorsStopped {
             revision: Revision(6),
-            bytes: bytes.len() as u32,
-        }]);
-        for (chunk, bytes) in bytes.chunks(CHUNK_BYTES).enumerate() {
-            messages.push_back(WireMessage::SnapshotChunk {
+            loops: vec![shoop_app_api::LoopId::from_raw(1)],
+        },
+    ] {
+        for snapshot_first in [false, true] {
+            let (mut client, operation) = ready_client();
+            let finished = WireMessage::Finished {
+                authority: AUTHORITY,
+                result: OperationResult {
+                    id: operation,
+                    outcome: outcome.clone(),
+                },
+            };
+            let bytes = codec::encode_snapshot(&snapshot(6, 2)).unwrap();
+            let mut messages = VecDeque::from([WireMessage::SnapshotBegin {
+                authority: AUTHORITY,
                 transfer: TransferId(1),
-                index: chunk as u32,
-                bytes: bytes.to_vec(),
+                revision: Revision(6),
+                bytes: bytes.len() as u32,
+            }]);
+            for (chunk, bytes) in bytes.chunks(CHUNK_BYTES).enumerate() {
+                messages.push_back(WireMessage::SnapshotChunk {
+                    transfer: TransferId(1),
+                    index: chunk as u32,
+                    bytes: bytes.to_vec(),
+                });
+            }
+            messages.push_back(WireMessage::SnapshotEnd {
+                transfer: TransferId(1),
             });
+            if snapshot_first {
+                messages.push_back(finished);
+            } else {
+                messages.push_front(finished);
+            }
+            assert_eq!(
+                wait_for_result(&mut client, operation, true, |client| {
+                    client
+                        .receive_wire(messages.pop_front().expect("publication did not complete"))
+                        .unwrap();
+                }),
+                outcome
+            );
+            assert!(
+                messages.is_empty(),
+                "command returned before structural publication"
+            );
+            assert_eq!(client.snapshot().unwrap().persistence_epoch, 2);
         }
-        messages.push_back(WireMessage::SnapshotEnd {
-            transfer: TransferId(1),
-        });
-        if snapshot_first {
-            messages.push_back(finished);
-        } else {
-            messages.push_front(finished);
-        }
-        assert_eq!(
-            wait_for_result(&mut client, operation, true, |client| {
-                client
-                    .receive_wire(messages.pop_front().expect("publication did not complete"))
-                    .unwrap();
-            }),
-            outcome
-        );
-        assert!(
-            messages.is_empty(),
-            "command returned before structural publication"
-        );
-        assert_eq!(client.snapshot().unwrap().persistence_epoch, 2);
     }
 }
 

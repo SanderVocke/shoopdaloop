@@ -533,7 +533,7 @@ impl Runtime {
             .and_then(|id| self.client.results().get(&id))
             .cloned()
         {
-            let state_ready = !matches!(outcome, Outcome::Confirmed { revision }
+            let state_ready = !matches!(outcome, Outcome::Confirmed { revision } | Outcome::AncestorsStopped { revision, .. }
                 if self.client.state() != State::Lost && self.client.snapshot().is_none_or(|state| state.revision < revision));
             if state_ready {
                 if let Some(task) = &mut self.io_task {
@@ -776,7 +776,9 @@ impl Runtime {
                 .flat_map(|track| &track.loops)
                 .filter(|entry| entry.selected);
             let entry = selected.next()?;
-            if selected.next().is_some() {
+            if selected.next().is_some()
+                || state.composites.iter().any(|view| view.loop_id == entry.id)
+            {
                 return None;
             }
             Some((
@@ -817,6 +819,105 @@ impl Runtime {
             .tracks
             .iter()
             .find(|track| track.loops.iter().any(|item| item.id == entry.id))?;
+        let composite = state
+            .composites
+            .iter()
+            .find(|view| view.loop_id == entry.id)
+            .and_then(|view| {
+                let plan = view.pending.as_ref().or(view.active.as_ref())?;
+                let (document, prepared) = view
+                    .working
+                    .as_ref()
+                    .map(|content| (&content.document, &content.prepared))
+                    .unwrap_or((&plan.document, &plan.prepared));
+                let tracks = state
+                    .tracks
+                    .iter()
+                    .filter(|track| !track.is_sync)
+                    .map(|track| CompositeTrackDetailsState {
+                        id: track.id,
+                        name: track.name.clone(),
+                    })
+                    .collect();
+                let events = document
+                    .instances
+                    .iter()
+                    .zip(&prepared.instances)
+                    .filter_map(|(event, geometry)| {
+                        let (track, child) = state.tracks.iter().find_map(|track| {
+                            track
+                                .loops
+                                .iter()
+                                .find(|child| child.id == event.loop_id)
+                                .map(|child| (track, child))
+                        })?;
+                        Some(CompositeEventDetailsState {
+                            loop_id: event.loop_id,
+                            loop_name: child.name.clone(),
+                            track_id: track.id,
+                            start_frame: geometry.start_frame,
+                            end_frame: geometry.end_frame,
+                            instance_id: event.instance_id,
+                            mode: event.mode.map(|mode| {
+                                match mode {
+                                    LoopMode::Playing => "playing",
+                                    LoopMode::Recording => "recording",
+                                    LoopMode::Stopped => "stopped",
+                                    LoopMode::Replacing => "replacing",
+                                    LoopMode::PlayingDryThroughWet => "playing_dry_through_wet",
+                                    LoopMode::RecordingDryIntoWet => "recording_dry_into_wet",
+                                    LoopMode::Unknown => "unknown",
+                                }
+                                .to_owned()
+                            }),
+                            forced_n_cycles: event.n_cycles,
+                            loop_mode: child.mode,
+                        })
+                    })
+                    .collect();
+                Some(CompositeDetailsState {
+                    kind: document.kind,
+                    timing: Some(CompositeTimingState {
+                        basis_sample_rate: document.basis.sample_rate,
+                        basis_frames: document.basis.unit_frames,
+                        render_sample_rate: prepared.sample_rate,
+                        quantum_frames: prepared.quantum,
+                    }),
+                    execution: CompositeExecutionState {
+                        active_version: view.active.as_ref().map(|active| active.version),
+                        pending_version: view.pending.as_ref().map(|pending| pending.version),
+                        pending_stage: view.pending_stage.map(|stage| {
+                            match stage {
+                                shoop_app_protocol::composite::PendingStage::Queued => "queued",
+                                shoop_app_protocol::composite::PendingStage::Staging => "preparing",
+                                shoop_app_protocol::composite::PendingStage::AwaitingRestart => {
+                                    "waiting for restart"
+                                }
+                                shoop_app_protocol::composite::PendingStage::Confirming => {
+                                    "confirming"
+                                }
+                                shoop_app_protocol::composite::PendingStage::Cancelling => {
+                                    "cancelling"
+                                }
+                            }
+                            .to_owned()
+                        }),
+                        waiting_repeat: view.waiting_repeat,
+                        restoring: view.working.is_some(),
+                        error: view.error.clone(),
+                    },
+                    cycle_length_frames: u64::try_from(
+                        u128::from(document.basis.unit_frames) * u128::from(prepared.sample_rate)
+                            / u128::from(document.basis.sample_rate),
+                    )
+                    .unwrap_or(u64::MAX)
+                    .max(1),
+                    timeline_length_frames: prepared.unit_frames * prepared.iterations,
+                    played_frame: (view.mode == LoopMode::Playing).then_some(view.position_frames),
+                    tracks,
+                    events,
+                })
+            });
         let data = self
             .client
             .media()
@@ -835,8 +936,8 @@ impl Runtime {
             length_frames: entry.length_frames,
             loop_id: entry.id,
             title: entry.name.clone(),
-            loading: data.is_none() && self.client.media().is_none(),
-            midi_loading: data.is_none() && self.client.media().is_none(),
+            loading: composite.is_none() && data.is_none() && self.client.media().is_none(),
+            midi_loading: composite.is_none() && data.is_none() && self.client.media().is_none(),
             channels: if entry.channel_timings.is_empty() {
                 data.map(|data| {
                     data.audio
@@ -924,7 +1025,7 @@ impl Runtime {
                 .find(|track| track.is_sync)
                 .and_then(|track| track.loops.first())
                 .map_or(0, |entry| entry.length_frames),
-            composite: None,
+            composite,
         })
     }
     fn apply_intent(&mut self, intent: AppIntent) -> anyhow::Result<()> {
@@ -1008,6 +1109,85 @@ impl Runtime {
                 action,
             },
             AppIntent::AddLoop { track_id } => Command::AddLoop { track: track_id },
+            AppIntent::ComposeLoopSerial {
+                target_loop_id,
+                source_loop_id,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Append {
+                target: target_loop_id,
+                add: vec![source_loop_id],
+                parallel: false,
+                convert_if_empty: false,
+            }),
+            AppIntent::ComposeLoopAt {
+                target_loop_id,
+                source_loop_id,
+                start_iteration,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Insert {
+                target: target_loop_id,
+                source: source_loop_id,
+                start_cycle: start_iteration,
+            }),
+            AppIntent::DeleteCompositeEvents {
+                target_loop_id,
+                events,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Delete {
+                target: target_loop_id,
+                events: events.into_iter().map(|event| event.instance_id).collect(),
+            }),
+            AppIntent::RelocateCompositeEvents {
+                target_loop_id,
+                events,
+                start_iteration,
+                duplicate,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Relocate {
+                target: target_loop_id,
+                events: events.into_iter().map(|event| event.instance_id).collect(),
+                start_cycle: start_iteration,
+                duplicate,
+            }),
+            AppIntent::SetCompositeLoopCycles {
+                target_loop_id,
+                event,
+                n_cycles,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Duration {
+                target: target_loop_id,
+                event: event.instance_id,
+                n_cycles,
+            }),
+            AppIntent::SetCompositeKind {
+                target_loop_id,
+                kind,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Kind {
+                target: target_loop_id,
+                kind,
+            }),
+            AppIntent::SetCompositeTimingBasis {
+                target_loop_id,
+                sample_rate,
+                unit_frames,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Timing {
+                target: target_loop_id,
+                basis: shoop_app_protocol::composite::TimingBasis {
+                    sample_rate,
+                    unit_frames,
+                },
+            }),
+            AppIntent::CancelCompositeEdit {
+                target_loop_id,
+                version,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Cancel {
+                target: target_loop_id,
+                version,
+            }),
+            AppIntent::SetCompositeEventMode {
+                target_loop_id,
+                event,
+                mode,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Mode {
+                target: target_loop_id,
+                event: event.instance_id,
+                mode,
+            }),
             AppIntent::Global(action) => Command::Global(action),
             AppIntent::Piano(action) => Command::Piano(action),
             AppIntent::SetHostGraphConnected(request) => Command::SetHostGraphConnected(request),
@@ -1198,13 +1378,6 @@ impl Runtime {
                     | AppIntent::SetTakeProcessorAlignment { .. } => {
                         BackendCapability::TakeAlignment
                     }
-                    AppIntent::ComposeLoopSerial { .. }
-                    | AppIntent::ComposeLoopAt { .. }
-                    | AppIntent::DeleteCompositeEvents { .. }
-                    | AppIntent::RelocateCompositeEvents { .. }
-                    | AppIntent::SetCompositeLoopCycles { .. }
-                    | AppIntent::SetCompositeKind { .. }
-                    | AppIntent::SetCompositeEventMode { .. } => BackendCapability::CompositeLoops,
                     AppIntent::RequestAudioDriverSwitch { .. }
                     | AppIntent::RefreshAudioDriverDiscovery { .. }
                     | AppIntent::ConfirmAudioDriverSwitch { .. }

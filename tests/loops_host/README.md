@@ -529,20 +529,21 @@ four normal credits and one independent recovery credit:
 1. Admit Record0, Play1, Seek64 and Seek130 before rendering. A fifth normal request
    refuses Busy10 without consuming a sequence. Record one stereo/MIDI frame;
    playback starts at1 and the same-position seek at64 is a real discontinuity.
-2. A's Record-start pulse starts timing-only B→C in the same frame. B's one-frame
-   clock also drives a regular→explicit composite pair. The regular cursor makes
-   32 complete passes; the explicit cursor ends at4, while C continues playing.
-   This checks the simultaneous trigger/program ordering, not an audible composite
-   stop or a nominal fallback clock.
+2. A's Record-start pulse starts timing-only B→C in the same frame. B's start pulse also starts a regular→explicit composite pair whose prepared
+   units are one rendered frame. The regular cursor makes
+   32 complete passes; the one-pass child reenters at each coincident four-frame
+   parent boundary, while C continues playing under its winning trigger.
+   This checks simultaneous trigger/program ordering and frame progression.
+   Composite edges occur on start/repeat, independently of internal unit boundaries.
 3. Render128 frames and then one more without polling any results. All four normal
    bridge credits remain occupied; successful stop refuses15. Submit recovery Stop
    at129 and render two frames. Stop suppresses A's due wrap and emits MIDI cleanup;
    the already-admitted Seek130 now fails with domain InvalidState261, not a renderer
    fault. B/C and their clocks still progress. All five command credits remain held
    until polling returns all ten admission/execution records.
-4. Compare all131 stereo samples,8449 MIDI packets/126735 bytes and1968 semantic
-   records/314920 bytes against independent scalar/closed-form tables. The journal
-   contains131 boundaries,655 complete decisions and1182 ordered events. Native
+4. Compare all131 stereo samples,8449 MIDI packets/126735 bytes and1930 semantic
+   records/308840 bytes against independent scalar/closed-form tables. The journal
+   contains131 boundaries,655 complete decisions and1144 ordered events. Native
    whole/single/irregular/zero-call partitions and both actor modes agree on every
    report byte. Cleanup recovers256 pages/16 versions/16 snapshots/zero references.
 
@@ -597,7 +598,7 @@ cargo test --locked --manifest-path tests/loops_host/Cargo.toml \
 Add `--release` before `--bin` or the test filter. Native direct/capacity-one and
 Node/Chromium hosts reproduce the engine script with unpolled replies; they do not
 pretend to transfer MessagePort buffers. All seven requests/fourteen replies,
-136 stereo samples,8713 MIDI packets/130695 bytes and2042 semantic records/326760
+136 stereo samples,8713 MIDI packets/130695 bytes and1805 semantic records/288840
 bytes match independent native tables. Actual downstream probes check512 samples
 per channel, including all four marked quanta and zero short-call tails. Offline
 also checks all1280 output samples per channel. Memory capacities stay those of the

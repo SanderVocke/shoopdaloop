@@ -242,7 +242,7 @@ impl ControlEndpoint {
             && self
                 .model
                 .find_loop(read.loop_id)
-                .and_then(|entry| self.model.strip(entry.strip))
+                .and_then(|entry| entry.strip.and_then(|id| self.model.strip(id)))
                 .is_none_or(|strip| strip.processor.is_none())
         {
             Some(Refusal::Unsupported)
@@ -454,7 +454,8 @@ impl ControlEndpoint {
             RuntimeResult::Execution(execution) => match execution_outcome(&execution) {
                 Outcome::Refused(refusal) => Err(refusal),
                 Outcome::Done => Ok(execution.operation_result),
-                Outcome::TimingApplied(_)
+                Outcome::CompositeApplied { .. }
+                | Outcome::TimingApplied(_)
                 | Outcome::ContentApplied { .. }
                 | Outcome::ContentPrepared { .. } => Err(Refusal::Internal),
             },

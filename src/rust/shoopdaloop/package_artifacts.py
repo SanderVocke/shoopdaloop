@@ -225,6 +225,10 @@ def package_native(args: argparse.Namespace) -> list[Path]:
                 [str(staged_executable), "--probe-persistence", "--session-transport", transport],
                 cwd=stage, check=True, timeout=600,
             )
+            subprocess.run(
+                [str(staged_executable), "--probe-composites", "--session-transport", transport],
+                cwd=stage, check=True, timeout=300,
+            )
         for probe, timeout in (("--probe-engine-transport", 60), ("--probe-persistence", 600)):
             subprocess.run(
                 [str(staged_executable), probe, "--session-transport", "socket"],

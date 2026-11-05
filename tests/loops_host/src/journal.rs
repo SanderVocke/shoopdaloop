@@ -399,6 +399,7 @@ mod tests {
         state.composite = Some(CompositeState {
             iteration: u64::MAX - 7,
             passes: u64::MAX - 8,
+            waiting_repeat: false,
             entered_at: Some(Frame(u64::MAX - 9)),
         });
         let mut decision = Decision {

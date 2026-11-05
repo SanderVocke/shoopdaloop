@@ -87,6 +87,7 @@ pub enum EngineOp {
     Reset {
         inputs: u8,
         outputs: u8,
+        generation: u32,
     },
     Gain(f32),
     Balance(f32),
@@ -245,6 +246,7 @@ pub struct StripInput {
     send_weights: Box<[f32]>,
     return_weights: Box<[f32]>,
     monitor: Ramp,
+    manual_monitoring: bool,
     unity: Ramp,
     gains: Gains,
     weights: Box<[f32]>,
@@ -353,6 +355,10 @@ impl StripInput {
         self.send_bank = Ramp::at(0.);
         self.return_bank = Ramp::at(0.);
         self.monitor = Ramp::at(0.);
+        self.manual_monitoring = false;
+        self.cells.strips[self.slot]
+            .automatic_monitoring
+            .store(false, core::sync::atomic::Ordering::Relaxed);
         self.gains.reset();
         self.injected = [None; INJECTED];
         *self.monitored = MidiState::default();
@@ -390,6 +396,7 @@ impl StripInput {
             send_weights: vec![0.; frames].into_boxed_slice(),
             return_weights: vec![0.; frames].into_boxed_slice(),
             monitor: Ramp::at(0.),
+            manual_monitoring: false,
             unity: Ramp::at(1.),
             gains: Gains::new(frames),
             weights: vec![0.; frames].into_boxed_slice(),
@@ -579,6 +586,7 @@ impl EngineNode {
                 node.return_bank = Ramp::at(f32::from(configuration.return_bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
+                node.manual_monitoring = configuration.monitoring;
                 node.monitor = Ramp::at(f32::from(u8::from(configuration.monitoring)));
             }
             Self::StripOutput(node) => {
@@ -715,12 +723,29 @@ impl StripInput {
         let activity = block.domain.source_activity(self.slot as u32);
         let processed = self.processor.is_some();
         let forced_off = processed && (activity.rerecording || activity.pre_rerecording);
-        if forced_off && self.monitor.target() > 0. {
-            self.release = true;
-            self.monitor = Ramp::at(0.);
-            self.cells.strips[self.slot]
-                .forced_monitor_off
-                .store(self.generation, core::sync::atomic::Ordering::Relaxed);
+        let cells = &self.cells.strips[self.slot];
+        if forced_off {
+            self.manual_monitoring = false;
+            if self.monitor.target() > 0. {
+                self.release = true;
+                self.monitor = Ramp::at(0.);
+                cells
+                    .forced_monitor_off
+                    .store(self.generation, core::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        let automatic = !forced_off
+            && cells.policy_enabled(self.generation)
+            && cells
+                .automatic_demand
+                .load(core::sync::atomic::Ordering::Relaxed);
+        cells
+            .automatic_monitoring
+            .store(automatic, core::sync::atomic::Ordering::Relaxed);
+        let target = f32::from(u8::from(self.manual_monitoring || automatic));
+        if self.monitor.target() != target {
+            self.release |= target == 0. && self.monitor.target() > 0.;
+            self.monitor.set(target, self.ramp);
         }
         self.gains.fill(frames, &mut self.unity);
         let cells = &self.cells.strips[self.slot];
@@ -900,7 +925,10 @@ impl StripInput {
 impl StripInput {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
-            EngineOp::Reset { inputs, .. } => {
+            EngineOp::Reset {
+                inputs, generation, ..
+            } => {
+                self.generation = generation;
                 self.pending_history = None;
                 self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 self.midi_history_token = self.midi_history_token.checked_add(1).unwrap_or(0);
@@ -912,8 +940,7 @@ impl StripInput {
                 self.cells.strips[self.slot]
                     .forced_monitor_off
                     .store(0, core::sync::atomic::Ordering::Relaxed);
-                self.release |= !on && self.monitor.target() > 0.;
-                self.monitor.set(f32::from(u8::from(on)), self.ramp)
+                self.manual_monitoring = on;
             }
             EngineOp::CrossfadeSend => self.send_bank.set(1. - self.send_bank.target(), self.ramp),
             EngineOp::CrossfadeReturn => self
@@ -1426,6 +1453,76 @@ mod tests {
         assert_eq!(&gains.plain[4..], &[42.; 4]);
         assert_eq!(&gains.left[4..], &[42.; 4]);
         assert_eq!(&gains.right[4..], &[42.; 4]);
+    }
+
+    #[shoop_test]
+    fn activating_a_prepared_strip_preserves_a_policy_change_confirmed_before_its_first_process() {
+        let cells = Cells::new(
+            1,
+            1,
+            1,
+            32,
+            DriverStatus {
+                kind: DriverKind::Dummy,
+                state: DriverRunState::Running,
+                sample_rate: 1000,
+                buffer_frames: 4,
+            },
+            4,
+        );
+        let settings = NodeSettings {
+            external_midi: None,
+            cells: cells.clone(),
+            channels: 1,
+            master_channels: 1,
+            frames: 4,
+            ramp: 0,
+        };
+        let mut node = EngineNode::StripInput(StripInput::new(0, &settings));
+        let configuration = NodeConfiguration {
+            recorded_state: None,
+            processor: None,
+            send_bank: 0,
+            return_bank: 0,
+            token: 1,
+            epoch: rt_runtime::Epoch(1),
+            inputs: 1,
+            outputs: 1,
+            bank: 0,
+            gain: 1.,
+            balance: 0.,
+            monitoring: false,
+            generation: 1,
+            muted: false,
+        };
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            cells.strips[0].configure_policy(1, 0, true);
+            node.configure(configuration);
+            cells.strips[0].configure_policy(2, 1, false);
+            assert!(cells.strips[0].policy_enabled(1));
+            assert!(!cells.strips[0].policy_enabled(2));
+            assert!(cells.strips[0].set_policy(2, true));
+            node.configure(NodeConfiguration {
+                generation: 2,
+                ..configuration
+            });
+            let EngineNode::StripInput(ref input) = node else {
+                unreachable!()
+            };
+            assert!(cells.strips[0].policy_enabled(input.generation));
+            cells.strips[0].configure_policy(3, 2, true);
+            cells.strips[0].configure_policy(3, 2, false);
+            assert!(cells.strips[0].policy_enabled(2));
+            node.configure(NodeConfiguration {
+                generation: 3,
+                ..configuration
+            });
+            let EngineNode::StripInput(ref input) = node else {
+                unreachable!()
+            };
+            assert!(!cells.strips[0].policy_enabled(input.generation));
+            assert!(!cells.strips[0].set_policy(1, false));
+        });
     }
 
     fn tick(host: &mut OfflineHost) {

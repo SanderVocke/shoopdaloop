@@ -114,7 +114,7 @@ fn reference_events() -> Vec<Event> {
         if let Some(t) = parent {
             push(4, Changed(t));
         }
-        if r != 10 && r != 18 {
+        if [0, 12].contains(&r) {
             push(4, Pulse);
         }
         if !(10..=11).contains(&r) && r != 18 {
@@ -136,7 +136,7 @@ fn reference_events() -> Vec<Event> {
         if let Some(t) = child {
             push(5, Changed(t));
         }
-        if ![0, 10, 17, 18].contains(&r) {
+        if [1, 12].contains(&r) {
             push(5, Pulse);
         }
         if (1..=9).contains(&r) || (12..=16).contains(&r) {
@@ -289,13 +289,10 @@ fn assert_state(frame: usize, state: State) {
                     };
                     let last = if !outer && r == 0 {
                         None
+                    } else if outer {
+                        Some(Frame(if r < 12 { 1 } else { 13 }))
                     } else {
-                        Some(Frame(match (outer, r) {
-                            (_, 10) => 10,
-                            (true, 18) => 18,
-                            (false, 17 | 18) => 17,
-                            _ => r as u64 + 1,
-                        }))
+                        Some(Frame(if r < 12 { 2 } else { 13 }))
                     };
                     (
                         if playing {
@@ -305,7 +302,7 @@ fn assert_state(frame: usize, state: State) {
                         },
                         if outer { 6 } else { 5 },
                         0,
-                        0,
+                        if playing { index } else { 0 },
                         0,
                         0,
                         0,
@@ -313,6 +310,7 @@ fn assert_state(frame: usize, state: State) {
                         Some(shoop_loops::state::CompositeState {
                             iteration: index,
                             passes: 0,
+                            waiting_repeat: false,
                             entered_at: Some(Frame(if r == 11 { 11 } else { frame as u64 })),
                         }),
                     )

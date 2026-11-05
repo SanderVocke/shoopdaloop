@@ -65,10 +65,12 @@ struct Intent {
 enum ProgramAction {
     #[default]
     None,
+    Wrap,
     Snapshot {
         restart: bool,
     },
     Stop,
+    End,
 }
 
 struct Scratch {
@@ -97,11 +99,13 @@ pub struct ProgramBoundary {
 }
 
 impl ProgramBoundary {
-    /// True only on entry to zero, not while an idle source leaves the cursor there.
+    /// True only on entry to zero, excluding an end-of-pass alignment wait.
     pub fn enters_zero(self) -> bool {
         self.state.mode == Mode::Playing
             && self.state.composite.is_some_and(|cursor| {
-                cursor.iteration == 0 && cursor.entered_at == Some(self.frame)
+                !cursor.waiting_repeat
+                    && cursor.iteration == 0
+                    && cursor.entered_at == Some(self.frame)
             })
     }
 }
@@ -258,6 +262,19 @@ impl Resolver {
     pub fn topology(&self) -> &PreparedTopology {
         &self.topology
     }
+    pub fn pending_transitions(&self) -> impl Iterator<Item = PendingTransition> + '_ {
+        self.records.iter().flatten().filter_map(|record| {
+            (record.terminal.is_none() && !matches!(record.request.transition, Transition::Program))
+                .then_some(PendingTransition {
+                    request: record.request,
+                    effective: record.effective,
+                    remaining_ticks: match record.request.timing {
+                        Timing::At => None,
+                        Timing::AfterTicks { .. } => Some(record.remaining),
+                    },
+                })
+        })
+    }
     pub fn state(&self, id: LoopId) -> Result<State, Error> {
         self.states
             .get(id.slot() as usize)
@@ -265,6 +282,24 @@ impl Resolver {
             .flatten()
             .filter(|state| state.id == id)
             .ok_or(Error::InvalidId)
+    }
+    /// Whether a new authored occurrence must enter a program at this boundary.
+    /// A playing regular pass or unfinished one-pass program keeps its own phase.
+    pub fn program_needs_entry_at(&self, id: LoopId, frame: Frame) -> Result<bool, Error> {
+        let program = self.topology.program(id).ok_or(Error::InvalidId)?;
+        Ok(program_needs_entry_at(program, self.state(id)?, frame))
+    }
+    pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
+        if self.quiescent || self.committed {
+            return Err(Error::InvalidState);
+        }
+        self.state(id)?;
+        self.states[id.slot() as usize]
+            .as_mut()
+            .expect("validated state")
+            .repeat_sync = enabled;
+        self.preview = None;
+        Ok(())
     }
     pub(crate) fn reserve_media_revision(
         &mut self,
@@ -693,7 +728,10 @@ impl Resolver {
         }
         let frames = end.0 - self.frame.0;
         for state in self.states.iter_mut().flatten() {
-            if state.plays() {
+            if state.plays()
+                || (state.mode == Mode::Playing
+                    && state.composite.is_some_and(|cursor| !cursor.waiting_repeat))
+            {
                 state.position += frames;
             }
             if state.mode.records() {
@@ -853,6 +891,66 @@ struct Boundary<'a> {
 }
 
 impl Boundary<'_> {
+    fn repeat_ready(&self, id: LoopId) -> Result<bool, Error> {
+        let state = self.scratch.states[id.slot() as usize].ok_or(Error::InvalidId)?;
+        if !state.repeat_sync {
+            return Ok(true);
+        }
+        let Some(source) = self
+            .topology
+            .node(id)?
+            .sync_source
+            .filter(|source| *source != id)
+        else {
+            return Ok(true);
+        };
+        let source_slot = source.slot() as usize;
+        Ok(!self.scratch.states[source_slot]
+            .ok_or(Error::InvalidId)?
+            .mode
+            .playback_mode()
+            || self.scratch.delivered[source_slot])
+    }
+
+    fn natural_boundary(&mut self, id: LoopId) -> Result<(), Error> {
+        let slot = id.slot() as usize;
+        let state = self.scratch.states[slot].ok_or(Error::InvalidId)?;
+        if !(state.mode.playback_mode()
+            || (state.composite.is_none()
+                && state.mode == Mode::Recording
+                && state.monitor_previous))
+            || !self.repeat_ready(id)?
+        {
+            return Ok(());
+        }
+        if let Some(cursor) = state.composite {
+            let program = self.topology.program(id).ok_or(Error::InvalidProgram)?;
+            let timing = self
+                .replaced
+                .filter(|old| old.source == id)
+                .unwrap_or(program);
+            if timing.kind == ProgramKind::Regular
+                && program.iterations != 0
+                && (cursor.waiting_repeat
+                    || (cursor.iteration.checked_add(1) == Some(timing.iterations)
+                        && cursor
+                            .entered_at
+                            .and_then(|at| at.0.checked_add(timing.nominal_unit_frames))
+                            == Some(self.frame.0)))
+            {
+                self.scratch.pulses[slot] = true;
+            }
+        } else if state.content_length != 0 && state.position == state.content_length {
+            let state = self.scratch.states[slot].as_mut().expect("validated state");
+            state.cycles = state.cycles.checked_add(1).ok_or(Error::Exhausted)?;
+            state.position = 0;
+            self.scratch.playback_discontinuities[slot] = true;
+            self.scratch.pulses[slot] = true;
+            self.event(id, EventKind::Wrap);
+        }
+        Ok(())
+    }
+
     fn event(&mut self, target: LoopId, kind: EventKind) {
         if self.scratch.events.len() < self.topology.limits().journal_events {
             self.scratch.events.push(Event {
@@ -945,6 +1043,7 @@ impl Boundary<'_> {
                 &mut state,
                 intent.transition,
                 program.iterations,
+                program.nominal_unit_frames,
                 self.frame,
             )
         } else {
@@ -977,10 +1076,12 @@ impl Boundary<'_> {
                 }
                 if intent.transition == Transition::Stop {
                     self.scratch.masked[target] = true;
+                    self.scratch.pulses[target] = false;
                     if let Priority::Direct(sequence) = intent.priority {
                         for record in self.scratch.records.iter_mut().flatten() {
                             if record.terminal.is_none()
                                 && record.request.target == state.id
+                                && record.request.transition != Transition::Program
                                 && record.request.sequence < sequence
                             {
                                 record.terminal = Some(Outcome::Cancelled { frame: self.frame });
@@ -1047,19 +1148,13 @@ impl Boundary<'_> {
                 if let Some(intent) = self.scratch.intents[slot].take() {
                     self.apply(slot, intent);
                 }
-                let state = self.scratch.states[slot].as_mut().expect("prepared state");
-                if state.plays() && state.position == state.content_length {
-                    state.cycles = state.cycles.checked_add(1).ok_or(Error::Exhausted)?;
-                    state.position = 0;
-                    self.scratch.playback_discontinuities[slot] = true;
-                    self.scratch.pulses[slot] = true;
-                    self.event(id, EventKind::Wrap);
-                }
-                if self
-                    .topology
-                    .node(id)?
-                    .sync_source
-                    .is_some_and(|source| self.scratch.delivered[source.slot() as usize])
+                self.natural_boundary(id)?;
+                if self.scratch.states[slot].is_some_and(|state| state.composite.is_none())
+                    && self
+                        .topology
+                        .node(id)?
+                        .sync_source
+                        .is_some_and(|source| self.scratch.delivered[source.slot() as usize])
                     && !self.scratch.masked[slot]
                 {
                     self.scratch.pulses[slot] = true;
@@ -1070,7 +1165,7 @@ impl Boundary<'_> {
             for id in component.iter().copied() {
                 if let Some(source) = self.topology.node(id)?.sync_source {
                     if self.scratch.delivered[source.slot() as usize] {
-                        self.react(id, source);
+                        self.react(id, source)?;
                     }
                 }
             }
@@ -1088,10 +1183,13 @@ impl Boundary<'_> {
                 for follower in component.iter().copied() {
                     if self.topology.node(follower)?.sync_source == Some(id) {
                         let target = follower.slot() as usize;
-                        if !self.scratch.masked[target] {
+                        if !self.scratch.masked[target]
+                            && self.scratch.states[target]
+                                .is_some_and(|state| state.composite.is_none())
+                        {
                             self.scratch.pulses[target] = true;
                         }
-                        self.react(follower, id);
+                        self.react(follower, id)?;
                     }
                 }
             }
@@ -1142,24 +1240,55 @@ impl Boundary<'_> {
             self.scratch.origins[slot]
         };
         if action == ProgramAction::None {
-            if state.mode != Mode::Playing || !self.scratch.delivered[slot] {
+            if state.mode != Mode::Playing {
                 return Ok(None);
             }
-            cursor.iteration = cursor.iteration.checked_add(1).ok_or(Error::Exhausted)?;
-            cursor.entered_at = Some(self.frame);
             let timing = self
                 .replaced
                 .filter(|old| old.source == id)
                 .unwrap_or(program);
-            if cursor.iteration == timing.iterations {
-                cursor.passes = cursor.passes.checked_add(1).ok_or(Error::Exhausted)?;
+            if cursor.waiting_repeat {
+                if !self.repeat_ready(id)? {
+                    return Ok(None);
+                }
+                cursor.waiting_repeat = false;
                 cursor.iteration = 0;
-                if timing.kind == ProgramKind::Explicit {
-                    state.mode = Mode::Stopped;
-                    action = ProgramAction::Stop;
-                    self.event(id, EventKind::ProgramEnd);
+                state.position = 0;
+                action = ProgramAction::Snapshot { restart: true };
+            } else {
+                let due = cursor
+                    .entered_at
+                    .ok_or(Error::InvalidState)?
+                    .0
+                    .checked_add(timing.nominal_unit_frames)
+                    .ok_or(Error::Exhausted)?;
+                if self.frame.0 < due {
+                    return Ok(None);
+                }
+                if self.frame.0 != due {
+                    return Err(Error::InvalidFrame);
+                }
+                cursor.iteration = cursor.iteration.checked_add(1).ok_or(Error::Exhausted)?;
+                if cursor.iteration == timing.iterations {
+                    cursor.passes = cursor.passes.checked_add(1).ok_or(Error::Exhausted)?;
+                    if timing.kind == ProgramKind::Explicit {
+                        cursor.iteration = 0;
+                        state.position = 0;
+                        state.mode = Mode::Stopped;
+                        action = ProgramAction::Stop;
+                        self.event(id, EventKind::ProgramEnd);
+                    } else if self.repeat_ready(id)? {
+                        cursor.iteration = 0;
+                        state.position = 0;
+                        action = ProgramAction::Wrap;
+                    } else {
+                        cursor.iteration = timing.iterations - 1;
+                        cursor.waiting_repeat = true;
+                        action = ProgramAction::End;
+                    }
                 }
             }
+            cursor.entered_at = Some(self.frame);
         }
         if self.replacement.is_some_and(|change| change.target == id)
             && program.iterations == 0
@@ -1167,9 +1296,11 @@ impl Boundary<'_> {
         {
             state.mode = Mode::Stopped;
             cursor.iteration = 0;
+            cursor.waiting_repeat = false;
+            state.position = 0;
             action = ProgramAction::Stop;
         }
-        if action != ProgramAction::Stop {
+        if !matches!(action, ProgramAction::Stop | ProgramAction::End) {
             self.event(
                 id,
                 EventKind::Iteration {
@@ -1217,17 +1348,24 @@ impl Boundary<'_> {
                     program.kind == ProgramKind::Regular,
                 )
             };
-            let desired = if action == ProgramAction::Stop {
+            let desired = if matches!(action, ProgramAction::Stop | ProgramAction::End) {
                 None
             } else {
                 selected
             };
-            if action == ProgramAction::None
+            let child = self.scratch.states[target.slot() as usize].expect("prepared target");
+            let nested_entry = action == ProgramAction::Wrap
+                && desired.is_some_and(|segment| segment.mode == Mode::Playing)
+                && self
+                    .topology
+                    .program(target)
+                    .is_some_and(|program| program_needs_entry_at(program, child, self.frame));
+            if matches!(action, ProgramAction::None | ProgramAction::Wrap)
+                && !nested_entry
                 && old.map(|segment| segment.mode) == desired.map(|segment| segment.mode)
             {
                 continue;
             }
-            let child = self.scratch.states[target.slot() as usize].expect("prepared target");
             let ordinal = desired
                 .map_or(self.topology.limits().program_entries + index, |segment| {
                     segment.ordinal as usize
@@ -1317,7 +1455,7 @@ impl Boundary<'_> {
         Ok(())
     }
 
-    fn react(&mut self, target: LoopId, source: LoopId) {
+    fn react(&mut self, target: LoopId, source: LoopId) -> Result<(), Error> {
         let target_slot = target.slot() as usize;
         for index in 0..self.scratch.records.len() {
             let Some(record) = self.scratch.records[index].as_mut() else {
@@ -1347,6 +1485,7 @@ impl Boundary<'_> {
         if let Some(intent) = self.scratch.intents[target_slot].take() {
             self.apply(target_slot, intent);
         }
+        self.natural_boundary(target)
     }
 }
 
@@ -1358,17 +1497,46 @@ fn initial_state(node: LoopSpec) -> State {
     state
 }
 
+fn program_needs_entry_at(
+    program: crate::program::CompiledProgram<'_>,
+    child: State,
+    frame: Frame,
+) -> bool {
+    if child.mode != Mode::Playing {
+        return true;
+    }
+    if program.kind != ProgramKind::Explicit {
+        return false;
+    }
+    let Some(cursor) = child.composite else {
+        return true;
+    };
+    cursor
+        .entered_at
+        .and_then(|entered| {
+            program
+                .iterations
+                .checked_sub(cursor.iteration)
+                .and_then(|remaining| remaining.checked_mul(program.nominal_unit_frames))
+                .and_then(|remaining| entered.0.checked_add(remaining))
+        })
+        .is_none_or(|end| frame.0 >= end)
+}
+
 fn composite_transition(
     state: &mut State,
     operation: Transition,
     iterations: u64,
+    unit_frames: u64,
     frame: Frame,
 ) -> Result<(bool, ProgramAction), Error> {
     let mut cursor = state.composite.ok_or(Error::InvalidState)?;
     let (iteration, retrigger, seeking) = match operation {
         Transition::Stop => {
             state.mode = Mode::Stopped;
+            state.position = 0;
             cursor.iteration = 0;
+            cursor.waiting_repeat = false;
             cursor.entered_at = Some(frame);
             state.composite = Some(cursor);
             return Ok((false, ProgramAction::Stop));
@@ -1395,13 +1563,16 @@ fn composite_transition(
     }
     if iterations == 0 && iteration == 0 && !seeking {
         state.mode = Mode::Stopped;
+        state.position = 0;
         return Ok((false, ProgramAction::Stop));
     }
     if iteration >= iterations {
         return Err(Error::InvalidFrame);
     }
     state.mode = Mode::Playing;
+    state.position = iteration.checked_mul(unit_frames).ok_or(Error::Exhausted)?;
     cursor.iteration = iteration;
+    cursor.waiting_repeat = false;
     if !seeking || retrigger {
         cursor.passes = 0;
     }

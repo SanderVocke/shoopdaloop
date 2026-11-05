@@ -768,6 +768,9 @@ mod tests {
                 sample_rate: *sample_rate,
                 content: persistence_image::Loop {
                     recorded_processor_state: None,
+                    sync_source: None,
+                    repeat_sync: false,
+                    composite: None,
                     id: shoop_app_api::LoopId::from_raw(1),
                     name: "Captured audio".into(),
                     sync: false,

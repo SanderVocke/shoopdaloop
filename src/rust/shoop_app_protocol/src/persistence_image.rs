@@ -63,6 +63,12 @@ pub struct Loop {
     pub id: LoopId,
     pub name: String,
     pub sync: bool,
+    #[serde(default)]
+    pub sync_source: Option<LoopId>,
+    #[serde(default)]
+    pub repeat_sync: bool,
+    #[serde(default)]
+    pub composite: Option<crate::composite::Content>,
     pub frames: u64,
     pub gain: f32,
     pub balance: f32,

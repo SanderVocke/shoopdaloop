@@ -17,6 +17,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod composites;
+pub use composites::run as composites;
+
 struct ProbeHost(Child);
 impl Drop for ProbeHost {
     fn drop(&mut self) {

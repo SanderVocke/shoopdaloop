@@ -5,8 +5,8 @@ use alloc::boxed::Box;
 use alloc::vec;
 
 use shoop_rt_protocol::{
-    BusControl, BusId, LoopSlotId, PortKind, StripControl, StripId, StripPort, StripShape,
-    MAX_STRIP_CHANNELS,
+    BusControl, BusId, CompositeDescription, CompositeSpan, LoopSlotId, PortKind, StripControl,
+    StripId, StripPort, StripShape, MAX_STRIP_CHANNELS,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -50,6 +50,7 @@ pub(crate) struct Controls {
     pub input_gain: f32,
     pub input_balance: f32,
     pub monitoring: bool,
+    pub automatic_monitoring: bool,
     pub output_gain: f32,
     pub output_balance: f32,
     pub output_mute: bool,
@@ -60,6 +61,7 @@ impl Default for Controls {
             input_gain: 1.,
             input_balance: 0.,
             monitoring: false,
+            automatic_monitoring: false,
             output_gain: 1.,
             output_balance: 0.,
             output_mute: false,
@@ -72,16 +74,18 @@ impl Controls {
             StripControl::InputGain(value) => self.input_gain = value,
             StripControl::InputBalance(value) => self.input_balance = value,
             StripControl::Monitoring(value) => self.monitoring = value,
+            StripControl::AutomaticMonitoring(value) => self.automatic_monitoring = value,
             StripControl::OutputGain(value) => self.output_gain = value,
             StripControl::OutputBalance(value) => self.output_balance = value,
             StripControl::OutputMute(value) => self.output_mute = value,
         }
     }
-    pub(crate) fn all(&self) -> [StripControl; 6] {
+    pub(crate) fn all(&self) -> [StripControl; 7] {
         [
             StripControl::InputGain(self.input_gain),
             StripControl::InputBalance(self.input_balance),
             StripControl::Monitoring(self.monitoring),
+            StripControl::AutomaticMonitoring(self.automatic_monitoring),
             StripControl::OutputGain(self.output_gain),
             StripControl::OutputBalance(self.output_balance),
             StripControl::OutputMute(self.output_mute),
@@ -143,11 +147,20 @@ pub(crate) struct Strip {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct OwnedSpan {
+    pub source: LoopSlotId,
+    pub span: CompositeSpan,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Loop {
     pub timing: shoop_rt_protocol::TimingState,
     pub id: LoopSlotId,
-    pub strip: StripId,
+    pub strip: Option<StripId>,
     pub sync: Option<LoopSlotId>,
+    pub program: Option<CompositeDescription>,
+    pub seed_frames: u64,
+    pub repeat_sync: bool,
     pub gain: f32,
     pub balance: f32,
 }
@@ -210,6 +223,15 @@ pub(crate) enum Change {
         loop_id: LoopSlotId,
         strip: StripId,
     },
+    CreateComposite {
+        loop_id: LoopSlotId,
+        strip: Option<StripId>,
+        program: CompositeDescription,
+    },
+    ResetComposite {
+        previous: LoopSlotId,
+        loop_id: LoopSlotId,
+    },
     RemoveLoop {
         loop_id: LoopSlotId,
     },
@@ -243,6 +265,7 @@ pub(crate) struct Model {
     pub global_midi: HostMask,
     pub strips: Box<[Option<Strip>]>,
     pub loops: Box<[Option<Loop>]>,
+    pub spans: Box<[Option<OwnedSpan>]>,
     pub strip_generations: Box<[u32]>,
     pub loop_generations: Box<[u32]>,
     pub buses: Box<[Option<Bus>]>,
@@ -257,11 +280,13 @@ impl Model {
         buses: usize,
         master_channels: u8,
         master_outputs: Masks,
+        program_segments: usize,
     ) -> Self {
         let mut model = Self {
             global_midi: HostMask::EMPTY,
             strips: vec![None; strips].into_boxed_slice(),
             loops: vec![None; loops].into_boxed_slice(),
+            spans: vec![None; program_segments].into_boxed_slice(),
             strip_generations: vec![0; strips].into_boxed_slice(),
             loop_generations: vec![0; loops].into_boxed_slice(),
             buses: vec![None; buses].into_boxed_slice(),
@@ -293,6 +318,7 @@ impl Model {
         self.global_midi = other.global_midi;
         self.strips.copy_from_slice(&other.strips);
         self.loops.copy_from_slice(&other.loops);
+        self.spans.copy_from_slice(&other.spans);
         self.strip_generations
             .copy_from_slice(&other.strip_generations);
         self.loop_generations
@@ -387,8 +413,9 @@ impl Model {
             }
             Change::RemoveStrip { strip } => {
                 for slot in 0..self.loops.len() {
-                    if let Some(entry) = self.loops[slot].filter(|l| l.strip == strip) {
+                    if let Some(entry) = self.loops[slot].filter(|l| l.strip == Some(strip)) {
                         self.loops[slot] = None;
+                        self.remove_spans(entry.id);
                         self.clear_sync_to(entry.id);
                     }
                 }
@@ -400,19 +427,61 @@ impl Model {
                 self.loops[slot] = Some(Loop {
                     timing: Default::default(),
                     id: loop_id,
-                    strip,
+                    strip: Some(strip),
                     sync: None,
+                    program: None,
+                    seed_frames: 0,
+                    repeat_sync: false,
                     gain: 1.,
                     balance: 0.,
                 });
             }
+            Change::CreateComposite {
+                loop_id,
+                strip,
+                program,
+            } => {
+                let slot = loop_id.0.index as usize;
+                self.loop_generations[slot] = loop_id.0.generation;
+                self.loops[slot] = Some(Loop {
+                    timing: Default::default(),
+                    id: loop_id,
+                    strip,
+                    sync: None,
+                    program: Some(program),
+                    seed_frames: 0,
+                    repeat_sync: false,
+                    gain: 1.,
+                    balance: 0.,
+                });
+            }
+            Change::ResetComposite { previous, loop_id } => {
+                let entry = self.loops[previous.0.index as usize]
+                    .as_mut()
+                    .expect("validated composite");
+                entry.id = loop_id;
+                entry.timing = Default::default();
+                entry.program = None;
+                entry.seed_frames = 0;
+                self.loop_generations[loop_id.0.index as usize] = loop_id.0.generation;
+                self.remove_spans(previous);
+                for entry in self.loops.iter_mut().flatten() {
+                    if entry.sync == Some(previous) {
+                        entry.sync = Some(loop_id);
+                    }
+                }
+            }
             Change::RemoveLoop { loop_id } => {
                 self.loops[loop_id.0.index as usize] = None;
+                self.remove_spans(loop_id);
                 self.clear_sync_to(loop_id);
             }
             Change::Sync { loop_id, source } => {
                 if let Some(entry) = self.loops[loop_id.0.index as usize].as_mut() {
                     entry.sync = source;
+                    if let Some(program) = &mut entry.program {
+                        program.sync = source;
+                    }
                 }
             }
             Change::Connect {
@@ -460,6 +529,46 @@ impl Model {
                     }
                 }
             }
+        }
+    }
+
+    pub(crate) fn remove_spans(&mut self, source: LoopSlotId) {
+        for span in self.spans.iter_mut() {
+            if span.is_some_and(|s| s.source == source) {
+                *span = None;
+            }
+        }
+    }
+    pub(crate) fn program_spans(
+        &self,
+        source: LoopSlotId,
+    ) -> impl Iterator<Item = CompositeSpan> + '_ {
+        self.spans
+            .iter()
+            .flatten()
+            .filter(move |s| s.source == source)
+            .map(|s| s.span)
+    }
+    pub(crate) fn install_program(
+        &mut self,
+        program: CompositeDescription,
+        spans: &[CompositeSpan],
+    ) {
+        self.remove_spans(program.loop_id);
+        let program = CompositeDescription {
+            previous: None,
+            ..program
+        };
+        self.loops[program.loop_id.0.index as usize]
+            .as_mut()
+            .expect("validated target")
+            .program = Some(program);
+        let mut free = self.spans.iter_mut().filter(|s| s.is_none());
+        for &span in spans {
+            *free.next().expect("validated capacity") = Some(OwnedSpan {
+                source: program.loop_id,
+                span,
+            });
         }
     }
 

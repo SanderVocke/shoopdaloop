@@ -297,7 +297,8 @@ impl Fixture {
         panic!("service command did not finish");
     }
     fn confirmed(&mut self, command: Command) {
-        assert!(matches!(self.run(command), Outcome::Confirmed { .. }));
+        let outcome = self.run(command);
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
     }
     fn track(&self, id: TrackId) -> TrackState {
         self.client
@@ -410,6 +411,155 @@ fn fx_editor_learn_recorded_restore_and_detached_controls_run_through_the_servic
 fn synth_editor_learn_recorded_restore_and_detached_controls_run_through_the_service_wire() {
     service_processor(ProcessorKind::OxiSynth);
 }
+
+#[shoop_test]
+fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_interactions() {
+    #[cfg(feature = "builtin-fx")]
+    let (kind, processor_type) = (ProcessorKind::BuiltInFx, TrackProcessorTypeId::BUILTIN_FX);
+    #[cfg(not(feature = "builtin-fx"))]
+    let (kind, processor_type) = (ProcessorKind::OxiSynth, TrackProcessorTypeId::OXISYNTH);
+    let mut f = Fixture::new(kind);
+    f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
+    let mut add = |name: &str, topology| {
+        let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+            name: name.into(),
+            topology,
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        })) else {
+            panic!("track creation refused")
+        };
+        (track, loops)
+    };
+    let (hosted, hosted_loops) = add(
+        "hosted",
+        TrackSpecTopology::DryWet {
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: true,
+            processor_type: TrackProcessorTypeId::new(processor_type),
+            default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+        },
+    );
+    let (_, direct_loops) = add(
+        "direct",
+        TrackSpecTopology::Direct {
+            audio_channels: 1,
+            midi: false,
+        },
+    );
+    f.confirmed(Command::Composite(composite::Edit::Append {
+        target: direct_loops[0],
+        add: vec![direct_loops[1]],
+        parallel: false,
+        convert_if_empty: true,
+    }));
+    f.ticks(4);
+    let before = f.client.snapshot().unwrap().clone();
+    let active = before.composites[0].active.as_ref().unwrap().clone();
+    for edit in [
+        composite::Edit::Convert {
+            target: hosted_loops[0],
+        },
+        composite::Edit::Append {
+            target: direct_loops[0],
+            add: vec![hosted_loops[1]],
+            parallel: false,
+            convert_if_empty: false,
+        },
+    ] {
+        assert!(matches!(
+            f.run(Command::Composite(edit)),
+            Outcome::Refused { .. }
+        ));
+    }
+    f.ticks(4);
+    let after = f.client.snapshot().unwrap();
+    assert_eq!(after.composites[0].active, Some(active.clone()));
+    assert_eq!(
+        f.track(hosted).fx,
+        before
+            .tracks
+            .iter()
+            .find(|track| track.id == hosted)
+            .unwrap()
+            .fx
+    );
+    let image = f.capture(901, None);
+    let mut unsupported = (*image).clone();
+    let persistence_image::Manifest::Session(session) = &mut unsupported.manifest else {
+        panic!("session capture")
+    };
+    let child = session
+        .tracks
+        .iter()
+        .find(|track| track.name == "hosted")
+        .unwrap()
+        .loops[1]
+        .id;
+    let arrangement = session
+        .tracks
+        .iter_mut()
+        .find(|track| track.name == "direct")
+        .unwrap()
+        .loops[0]
+        .composite
+        .as_mut()
+        .unwrap();
+    for event in &mut arrangement.document.instances {
+        event.loop_id = child;
+    }
+    for span in &mut arrangement.prepared.spans {
+        span.target = child;
+    }
+    unsupported.validate().unwrap();
+    f.refuse_load(std::sync::Arc::new(unsupported), 902);
+    assert_eq!(
+        f.client.snapshot().unwrap().composites[0].active,
+        Some(active.clone())
+    );
+    assert_eq!(
+        f.track(hosted).fx,
+        before
+            .tracks
+            .iter()
+            .find(|track| track.id == hosted)
+            .unwrap()
+            .fx
+    );
+    f.load(image, 903);
+    f.ticks(4);
+    let after = f.client.snapshot().unwrap();
+    assert_eq!(after.composites.len(), 1);
+    let restored = after.composites[0].active.as_ref().unwrap();
+    assert_eq!(restored.prepared.unit_frames, active.prepared.unit_frames);
+    assert_eq!(restored.prepared.iterations, active.prepared.iterations);
+    let restored_hosted = after
+        .tracks
+        .iter()
+        .find(|track| track.name == "hosted")
+        .unwrap();
+    assert_eq!(
+        restored_hosted.default_playback_mode,
+        DefaultPlaybackMode::DryThroughWet
+    );
+    assert_eq!(
+        restored_hosted.fx,
+        before
+            .tracks
+            .iter()
+            .find(|track| track.id == hosted)
+            .unwrap()
+            .fx
+    );
+    assert!(after
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .all(|entry| entry.mode == LoopMode::Stopped));
+}
+
 fn service_processor(kind: ProcessorKind) {
     let mut f = Fixture::new(kind);
     let type_id = if kind == ProcessorKind::BuiltInFx {

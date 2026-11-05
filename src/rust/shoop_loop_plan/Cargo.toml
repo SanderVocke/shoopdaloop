@@ -1,0 +1,8 @@
+[package]
+name = "shoop_loop_plan"
+version.workspace = true
+edition = "2021"
+description = "Portable control-side sparse loop program compilation"
+
+[lints]
+workspace = true

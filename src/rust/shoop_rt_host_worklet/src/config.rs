@@ -1,11 +1,13 @@
 //! The configuration record that prepares the module before its first quantum.
 //!
 //! All numbers are little-endian `u32`, in this order: the record version, the
-//! sample rate, the largest callback, the graph quantum, strip channels, Master channels, smoothing,
+//! sample rate, the largest callback, the graph quantum, strip and Master channels,
+//! bus slots and channels, smoothing,
 //! the smoothing limit, the ramp, the control lead, resource pages, page bytes,
 //! MIDI events and bytes per port, pending transitions, reliable and bulk credits,
 //! the telemetry interval, the record inbox and outbox bytes, the MIDI-in and
-//! MIDI-out lane bytes and the records delivered per quantum. Then come counted
+//! MIDI-out lane bytes, the records delivered per quantum, composite entries,
+//! composite segments and timing relations. Then come counted
 //! lists, each a `u32` count followed by its items: pool segments as strip and
 //! loop counts; initial Master connections as Master channel and host audio
 //! output index; and the names of the host audio inputs, audio outputs, MIDI
@@ -15,7 +17,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 5;
+pub const CONFIG_VERSION: u32 = 6;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -127,6 +129,9 @@ impl WorkletConfig {
             self.midi_in_bytes,
             self.midi_out_bytes,
             self.records_per_quantum,
+            engine.composite_entries,
+            engine.composite_segments,
+            engine.timing_relations,
             engine.segments.len(),
         ] {
             put(&mut out, value)?;
@@ -208,6 +213,9 @@ impl WorkletConfig {
         let midi_in_bytes = r.usize()?;
         let midi_out_bytes = r.usize()?;
         let records_per_quantum = r.usize()?;
+        let composite_entries = r.usize()?;
+        let composite_segments = r.usize()?;
+        let timing_relations = r.usize()?;
         let segments = (0..r.count(MAX_SEGMENTS)?)
             .map(|_| {
                 Ok(Segment {
@@ -235,6 +243,9 @@ impl WorkletConfig {
             engine: EngineDescription {
                 processors,
                 external_dry_wet,
+                composite_entries,
+                composite_segments,
+                timing_relations,
                 sample_rate,
                 max_frames,
                 quantum,

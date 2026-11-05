@@ -3429,6 +3429,9 @@ impl EngineBackend {
             })
             .collect();
         Ok(BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: self.sample_rate,
             tracks,
             buses,
@@ -3442,6 +3445,7 @@ impl EngineBackend {
         &self,
         data: &BackendSessionData,
     ) -> Result<(Self, BackendSessionReplacement)> {
+        data.require_legacy_timing()?;
         if data.sample_rate != self.sample_rate {
             return Err(anyhow!(
                 "prepared session sample rate {} does not match backend {}",
@@ -6433,6 +6437,8 @@ impl Backend for EngineBackend {
             tracks.insert(
                 *id,
                 BackendTrackState {
+                    automatic_input_monitoring: false,
+                    automatic_monitoring_enabled: false,
                     topology: track.topology.clone(),
                     default_playback_mode: track.default_playback_mode,
                     fx: track
@@ -6499,6 +6505,7 @@ impl Backend for EngineBackend {
                 *id,
                 BackendLoopState {
                     recorded_processor_state: None,
+                    repeat_sync: false,
                     recording_armed: false,
                     timing_revision: 0,
                     channel_timings: Vec::new(),
@@ -6592,6 +6599,13 @@ impl Backend for EngineBackend {
                     (
                         *id,
                         BackendCompositeState {
+                            observed_frame: 0,
+                            sync_source: None,
+                            repeat_sync: false,
+                            prepared_unit_frames: 0,
+                            waiting_repeat: false,
+                            pending_stage: None,
+                            active_applied_frame: None,
                             mode: from_engine_mode(state.mode),
                             next_mode: state.next_mode.map(from_engine_mode),
                             next_transition_delay: state.next_mode_delay,
@@ -6608,6 +6622,8 @@ impl Backend for EngineBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            composite_operations: Vec::new(),
+            composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: BackendStatus {
                 dsp_load_percent: 0.0,
@@ -8001,6 +8017,7 @@ impl Backend for FakeBackend {
         self.loops.insert(
             id,
             BackendLoopState {
+                repeat_sync: false,
                 content_revision: 0,
                 mode: BackendLoopMode::Stopped,
                 ..Default::default()
@@ -9692,6 +9709,9 @@ impl Backend for FakeBackend {
             })
             .collect();
         Ok(BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: self.status.sample_rate,
             tracks,
             buses,
@@ -9722,6 +9742,7 @@ impl Backend for FakeBackend {
         if let Some(message) = self.fail_next_session_replace.take() {
             return Err(anyhow!(message));
         }
+        session.require_legacy_timing()?;
         if session_has_loop_content(session) {
             self.require_capability(BackendCapability::SessionContentLoad)?;
         }
@@ -10429,6 +10450,8 @@ impl Backend for FakeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         Ok(BackendSnapshot {
+            composite_operations: Vec::new(),
+            composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: self.status,
             audio_drivers: self.audio_driver_state()?,

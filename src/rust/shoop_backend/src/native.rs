@@ -1903,6 +1903,9 @@ impl NativeRuntime {
             })
             .collect();
         Ok(BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: self.resolved.sample_rate,
             tracks,
             buses,
@@ -1913,6 +1916,7 @@ impl NativeRuntime {
     }
 
     fn restore_session(&mut self, data: &BackendSessionData) -> Result<BackendSessionReplacement> {
+        data.require_legacy_timing()?;
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
         }
@@ -5055,6 +5059,7 @@ impl Backend for NativeBackend {
                 *id,
                 BackendLoopState {
                     recorded_processor_state: None,
+                    repeat_sync: false,
                     sync_source: loop_.sync_source,
                     content_revision: 0,
                     recording_armed: false,
@@ -5144,6 +5149,13 @@ impl Backend for NativeBackend {
                 Some((
                     *id,
                     BackendCompositeState {
+                        observed_frame: 0,
+                        sync_source: None,
+                        repeat_sync: false,
+                        prepared_unit_frames: 0,
+                        waiting_repeat: false,
+                        pending_stage: None,
+                        active_applied_frame: None,
                         mode: from_native_mode(state.mode),
                         next_mode: state.maybe_next_mode.map(from_native_mode),
                         next_transition_delay: state.maybe_next_mode_delay,
@@ -5159,6 +5171,8 @@ impl Backend for NativeBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            composite_operations: Vec::new(),
+            composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,

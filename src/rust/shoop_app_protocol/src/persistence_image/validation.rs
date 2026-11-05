@@ -142,7 +142,13 @@ impl Progress {
                 {
                     return Err(Refusal::Identity);
                 }
-                session.tracks.iter().flat_map(|t| &t.loops).collect()
+                let loops = session
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.loops)
+                    .collect::<Vec<_>>();
+                validate_relations(&loops, session.sample_rate)?;
+                loops
             }
             Manifest::Loop {
                 sample_rate,
@@ -177,7 +183,7 @@ impl Progress {
         };
         for content in loops {
             if !content.id.is_valid()
-                || content.frames > u32::MAX as u64
+                || content.composite.is_none() && content.frames > u32::MAX as u64
                 || !content.gain.is_finite()
                 || !(-1.0..=1.0).contains(&content.balance)
                 || content.name.len() > 128
@@ -219,6 +225,19 @@ impl Progress {
                 })
             {
                 return Err(Refusal::Invalid);
+            }
+            if let Some(composite) = &content.composite {
+                if !composite.valid()
+                    || !content.audio.is_empty()
+                    || !content.midi.is_empty()
+                    || composite
+                        .prepared
+                        .unit_frames
+                        .checked_mul(composite.prepared.iterations)
+                        != Some(content.frames)
+                {
+                    return Err(Refusal::Invalid);
+                }
             }
             for channel in &content.audio {
                 check(channel, false)?;
@@ -326,6 +345,79 @@ impl Progress {
         }
         Ok(self.payload == image.payloads.len())
     }
+}
+
+fn validate_relations(loops: &[&Loop], sample_rate: u32) -> Result<(), Refusal> {
+    use alloc::collections::BTreeMap;
+    let indexed = loops
+        .iter()
+        .map(|content| (content.id, *content))
+        .collect::<BTreeMap<_, _>>();
+    if indexed.len() != loops.len() {
+        return Err(Refusal::Identity);
+    }
+    let mut edges = BTreeMap::<LoopId, BTreeSet<LoopId>>::new();
+    let mut quantum = None;
+    for content in loops {
+        if let Some(source) = content.sync_source {
+            if !indexed.contains_key(&source) {
+                return Err(Refusal::Identity);
+            }
+            edges.entry(source).or_default().insert(content.id);
+        }
+        if let Some(composite) = &content.composite {
+            if composite.prepared.sample_rate != sample_rate
+                || quantum.is_some_and(|q| q != composite.prepared.quantum)
+            {
+                return Err(Refusal::Invalid);
+            }
+            quantum = Some(composite.prepared.quantum);
+            for event in &composite.document.instances {
+                let target = indexed.get(&event.loop_id).ok_or(Refusal::Identity)?;
+                if target.composite.is_some()
+                    && !matches!(
+                        event.mode,
+                        None | Some(LoopMode::Playing | LoopMode::Stopped)
+                    )
+                {
+                    return Err(Refusal::Invalid);
+                }
+                edges.entry(content.id).or_default().insert(event.loop_id);
+            }
+        }
+    }
+    fn visit(
+        id: LoopId,
+        edges: &BTreeMap<LoopId, BTreeSet<LoopId>>,
+        visiting: &mut BTreeSet<LoopId>,
+        visited: &mut BTreeSet<LoopId>,
+    ) -> bool {
+        if visited.contains(&id) {
+            return true;
+        }
+        if !visiting.insert(id) {
+            return false;
+        }
+        if edges.get(&id).is_some_and(|targets| {
+            targets
+                .iter()
+                .any(|id| !visit(*id, edges, visiting, visited))
+        }) {
+            return false;
+        }
+        visiting.remove(&id);
+        visited.insert(id);
+        true
+    }
+    let mut visiting = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    if edges
+        .keys()
+        .any(|id| !visit(*id, &edges, &mut visiting, &mut visited))
+    {
+        return Err(Refusal::Invalid);
+    }
+    Ok(())
 }
 
 pub struct Validation {

@@ -1,5 +1,6 @@
 //! Bounded persistence ingress. File codecs and engine resource ownership stay outside it.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::{Authority, Refusal, Revision, TransferId, CHUNK_BYTES, MAX_SNAPSHOT_BYTES};
@@ -184,6 +185,10 @@ pub enum Reply {
         key: Key,
     },
     Captured(Description),
+    CaptureNotice {
+        key: Key,
+        message: String,
+    },
     Chunk {
         key: Key,
         object: u32,
@@ -203,6 +208,7 @@ impl Reply {
         match self {
             Self::Captured(description) => description.key,
             Self::Begun { key }
+            | Self::CaptureNotice { key, .. }
             | Self::Object { key, .. }
             | Self::Ack { key, .. }
             | Self::Ready { key }
@@ -214,6 +220,7 @@ impl Reply {
     pub fn valid(&self) -> bool {
         self.key().valid()
             && match self {
+                Self::CaptureNotice { message, .. } => !message.is_empty() && message.len() <= 512,
                 Self::Captured(description) => description.valid(),
                 Self::Object { object, .. } => object.valid(),
                 Self::Ack {

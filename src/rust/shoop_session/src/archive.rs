@@ -32,6 +32,7 @@ const PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 9;
 const PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 10;
 const PRE_CURRENT_COMBINED_SESSION_DOCUMENT_VERSION: u16 = 11;
 const PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION: u16 = 12;
+const PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION: u16 = 13;
 const MIN_BUS_GAIN_DB: f32 = -30.0;
 const MAX_BUS_GAIN_DB: f32 = 20.0;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
@@ -309,6 +310,7 @@ fn decode_session_inner(
                 | PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION
                 | PRE_CURRENT_COMBINED_SESSION_DOCUMENT_VERSION
                 | PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION
+                | PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -318,7 +320,7 @@ fn decode_session_inner(
             minor: header.format_version.minor,
         });
     }
-    if header.document_version == SESSION_DOCUMENT_VERSION {
+    if header.document_version >= PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION {
         require_mixer_document_fields(&manifest_value)?;
         require_current_bus_control_fields(&manifest_value)?;
     }
@@ -1606,7 +1608,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                                 loop_.id
                             )));
                         }
-                        if event.start_cycle > u64::from(u32::MAX) {
+                        if composite.timing.is_none() && event.start_cycle > u64::from(u32::MAX) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} has an out-of-range start cycle",
                                 loop_.id
@@ -1660,10 +1662,11 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         let duration = event.n_cycles.map(u64::from).unwrap_or_else(|| {
                             loop_lengths[&event.loop_id].div_ceil(sync_length).max(1)
                         });
-                        if event
-                            .start_cycle
-                            .checked_add(duration)
-                            .is_none_or(|end| end > u64::from(u32::MAX))
+                        if composite.timing.is_none()
+                            && event
+                                .start_cycle
+                                .checked_add(duration)
+                                .is_none_or(|end| end > u64::from(u32::MAX))
                         {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} has an out-of-range instance end cycle",
@@ -1675,6 +1678,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             }
         }
     }
+    crate::composite::validate_composite_documents(&bundle.document)?;
     Ok(())
 }
 

@@ -846,6 +846,8 @@ mod tests {
             loop_id,
             title: "Arrangement".to_owned(),
             composite: Some(CompositeDetailsState {
+                timing: None,
+                execution: Default::default(),
                 kind: CompositeKind::Script,
                 cycle_length_frames: 100,
                 timeline_length_frames: 200,

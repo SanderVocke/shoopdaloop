@@ -329,12 +329,38 @@ impl Work {
                 mapping,
                 update_length,
             } => {
-                let decoded = decoded.select_audio(&mapping)?;
+                let mut decoded = decoded.select_audio(&mapping)?;
                 let conversion_required = decoded.check_conversion_budget(
                     target,
                     update_length,
                     MAX_SESSION_MEDIA_BYTES,
                 )?;
+                if !conversion_required {
+                    if let Decoded::Session(bundle) = &mut decoded {
+                        materialize_composite_timing(&mut bundle.document)?;
+                        for loop_ in bundle
+                            .document
+                            .track_groups
+                            .iter_mut()
+                            .flat_map(|group| &mut group.tracks)
+                            .flat_map(|track| &mut track.loops)
+                        {
+                            if let Some(composite) = &mut loop_.composite {
+                                let timing = composite
+                                    .timing
+                                    .as_ref()
+                                    .ok_or_else(|| anyhow!("missing composite timing"))?
+                                    .converted(target)?;
+                                ensure!(
+                                    timing.unit_frames.checked_mul(timing.iterations)
+                                        == Some(loop_.length_frames),
+                                    "composite metadata normalization changed duration"
+                                );
+                                composite.timing = Some(timing);
+                            }
+                        }
+                    }
+                }
                 Ok(Value::Inspected {
                     decoded,
                     conversion_required,

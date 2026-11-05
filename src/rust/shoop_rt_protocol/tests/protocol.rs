@@ -5,6 +5,9 @@ use shoop_wasm_test_support::shoop_test;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const LIMITS: Limits = Limits {
+    composite_entries: 256,
+    composite_segments: 1024,
+    timing_relations: 512,
     content_chunk_bytes: 1024,
     strips: 4,
     loops: 16,
@@ -36,6 +39,34 @@ fn strip(index: u32) -> StripId {
 
 fn loop_id(index: u32) -> LoopSlotId {
     LoopSlotId(SlotId::new(index, 3))
+}
+
+fn composite_description() -> CompositeDescription {
+    CompositeDescription {
+        id: 42,
+        loop_id: loop_id(3),
+        sync: None,
+        previous: Some(loop_id(2)),
+        expected_version: 0,
+        version: 1,
+        kind: CompositeKind::Explicit,
+        unit_frames: 64,
+        iterations: 9,
+        entries: 2,
+        segments: 1,
+        sample_rate: 48000,
+        quantum: 32,
+    }
+}
+fn composite_span() -> CompositeSpan {
+    CompositeSpan {
+        target: loop_id(1),
+        start: 2,
+        end: 9,
+        occurrence_start: 2,
+        ordinal: 1,
+        mode: LoopMode::Recording,
+    }
 }
 
 fn client_samples() -> Vec<ClientMessage> {
@@ -110,6 +141,47 @@ fn client_samples() -> Vec<ClientMessage> {
             mode: LoopMode::RecordingDryIntoWet,
             delay: Some(2),
         },
+        Request::LoopIteration {
+            loop_id: loop_id(3),
+            iteration: 8,
+            retrigger: true,
+            seek: false,
+        },
+        Request::CreateComposite {
+            loop_id: loop_id(3),
+            strip: None,
+        },
+        Request::ReplacementEdit {
+            id: 4,
+            edit: ReplacementEdit::Composite(composite_description()),
+        },
+        Request::ReplacementEdit {
+            id: 4,
+            edit: ReplacementEdit::CompositeSpan {
+                loop_id: loop_id(3),
+                index: 0,
+                span: composite_span(),
+            },
+        },
+        Request::ReplacementEdit {
+            id: 4,
+            edit: ReplacementEdit::RepeatSync {
+                loop_id: loop_id(3),
+                enabled: true,
+            },
+        },
+        Request::Composite(CompositeCommand::Begin(composite_description())),
+        Request::Composite(CompositeCommand::Span {
+            id: 42,
+            index: 0,
+            span: composite_span(),
+        }),
+        Request::Composite(CompositeCommand::Commit { id: 42 }),
+        Request::Composite(CompositeCommand::Cancel { id: 42 }),
+        Request::LoopRepeatSync {
+            loop_id: loop_id(3),
+            enabled: true,
+        },
         Request::Profiling(false),
         Request::Profiling(true),
         Request::ContentWindow {
@@ -155,6 +227,7 @@ fn client_samples() -> Vec<ClientMessage> {
                     midi_output: true,
                 },
                 controls: StripPreset {
+                    automatic_monitoring: false,
                     input_gain: 0.5,
                     input_balance: -0.25,
                     monitoring: false,
@@ -287,6 +360,7 @@ fn client_samples() -> Vec<ClientMessage> {
                     input_gain: 1.,
                     input_balance: 0.,
                     monitoring: false,
+                    automatic_monitoring: false,
                     output_gain: 0.75,
                     output_balance: 0.,
                     output_mute: false,
@@ -514,6 +588,52 @@ fn engine_samples() -> Vec<EngineMessage> {
             program: 42,
             name: Name::new("Preset").unwrap(),
         })),
+        EngineMessage::State(StateRecord::CompositeStageFloor { id: 42 }),
+        EngineMessage::State(StateRecord::CompositePending {
+            description: composite_description(),
+            received: 1,
+            committed: true,
+            admitted: true,
+        }),
+        EngineMessage::State(StateRecord::CompositeStagedSpan {
+            id: 42,
+            index: 0,
+            span: composite_span(),
+        }),
+        EngineMessage::Result {
+            correlation: 777,
+            outcome: Outcome::ContentApplied { revision: 9 },
+        },
+        EngineMessage::Telemetry(Telemetry::Composite {
+            loop_id: loop_id(3),
+            frame: u64::MAX,
+            mode: LoopMode::Playing,
+            position: 512,
+            length: 512,
+            active_version: 8,
+            pending_version: Some(9),
+            pending_admitted: true,
+            iteration: 5,
+            passes: 3,
+            waiting_repeat: true,
+        }),
+        EngineMessage::State(StateRecord::Composite {
+            description: composite_description(),
+            strip: Some(strip(1)),
+            sync: Some(loop_id(0)),
+            gain: 1.,
+            balance: 0.,
+            repeat_sync: true,
+        }),
+        EngineMessage::State(StateRecord::CompositeSpan {
+            loop_id: loop_id(3),
+            index: 0,
+            span: composite_span(),
+        }),
+        EngineMessage::State(StateRecord::RepeatSync {
+            loop_id: loop_id(3),
+            enabled: false,
+        }),
         EngineMessage::Result {
             correlation: 3,
             outcome: Outcome::TimingApplied(timing),
@@ -535,7 +655,10 @@ fn engine_samples() -> Vec<EngineMessage> {
         },
         EngineMessage::Result {
             correlation: 8,
-            outcome: Outcome::ContentApplied { revision: 9 },
+            outcome: Outcome::CompositeApplied {
+                version: 9,
+                frame: 1234,
+            },
         },
         EngineMessage::Result {
             correlation: u64::MAX,
@@ -548,6 +671,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             midi_in: true,
             midi_out: false,
             latest_input_midi: MidiMessage::new(&[0xb2, 17, 100]),
+            automatic_monitoring: true,
         }),
         EngineMessage::Telemetry(Telemetry::Loop {
             loop_id: loop_id(3),

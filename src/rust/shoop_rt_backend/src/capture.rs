@@ -1,4 +1,5 @@
 //! Capture settled core state while its media cannot be changed by admitted work.
+use alloc::collections::BTreeSet;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -15,6 +16,43 @@ use shoop_rt_protocol::LoopMode;
 use shoop_rt_transport::carrier::Carrier;
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    fn capture_records(
+        &self,
+        id: BackendLoopId,
+        only: Option<BackendLoopId>,
+        visited: &mut BTreeSet<BackendLoopId>,
+    ) -> bool {
+        if !visited.insert(id) {
+            return false;
+        }
+        let records = |target, mode, visited: &mut BTreeSet<BackendLoopId>| {
+            mode == BackendLoopMode::Recording && only.is_none_or(|id| id == target)
+                || mode == BackendLoopMode::Playing && self.capture_records(target, only, visited)
+        };
+        let Some(entry) = self.mirror.loops.get(&id) else {
+            return false;
+        };
+        entry.program_spans.iter().any(|span| {
+            records(
+                self.mirror.slot_loops[&span.target],
+                crate::mirror::app_mode(span.mode),
+                visited,
+            )
+        }) || self
+            .composites
+            .jobs
+            .iter()
+            .filter(|job| job.id == id)
+            .any(|job| {
+                job.plan.spans.iter().any(|span| {
+                    let target = match span.target {
+                        BackendCompositeTarget::Loop(id) => id,
+                        BackendCompositeTarget::Composite(id) => BackendLoopId::from_raw(id.raw()),
+                    };
+                    records(target, span.mode, visited)
+                })
+            })
+    }
     fn capture_pending(
         &self,
         completed: usize,
@@ -36,32 +74,43 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if only.is_some_and(|id| self.mirror.live_loop(id).is_none()) {
             bail!("unknown capture loop");
         }
+        if !self.composites.controls.is_empty()
+            || self
+                .requests
+                .outgoing
+                .iter()
+                .chain(self.requests.in_flight.values())
+                .any(|pending| match pending.request {
+                    shoop_rt_protocol::Request::CreateBus { .. }
+                    | shoop_rt_protocol::Request::RemoveBus { .. }
+                    | shoop_rt_protocol::Request::CreateStrip { .. }
+                    | shoop_rt_protocol::Request::CreateProcessedStrip { .. }
+                    | shoop_rt_protocol::Request::ProcessorControl { .. }
+                    | shoop_rt_protocol::Request::StripDefaultPlayback { .. }
+                    | shoop_rt_protocol::Request::StripControl { .. }
+                    | shoop_rt_protocol::Request::RemoveStrip { .. }
+                    | shoop_rt_protocol::Request::CreateLoop { .. }
+                    | shoop_rt_protocol::Request::CreateComposite { .. }
+                    | shoop_rt_protocol::Request::ResetComposite { .. }
+                    | shoop_rt_protocol::Request::RemoveLoop { .. }
+                    | shoop_rt_protocol::Request::LoopTiming { .. }
+                    | shoop_rt_protocol::Request::LoopClear { .. }
+                    | shoop_rt_protocol::Request::CancelBulk => true,
+                    shoop_rt_protocol::Request::LoopTransition {
+                        loop_id,
+                        mode: LoopMode::Recording | LoopMode::RecordingDryIntoWet,
+                        ..
+                    } => only.is_none_or(|id| self.mirror.loops[&id].slot == loop_id),
+                    _ => false,
+                })
+        {
+            return Ok(self.capture_pending(0, self.mirror.loops.len()));
+        }
         if self
-            .requests
-            .outgoing
+            .composites
+            .jobs
             .iter()
-            .chain(self.requests.in_flight.values())
-            .any(|pending| match pending.request {
-                shoop_rt_protocol::Request::CreateBus { .. }
-                | shoop_rt_protocol::Request::RemoveBus { .. }
-                | shoop_rt_protocol::Request::CreateStrip { .. }
-                | shoop_rt_protocol::Request::CreateProcessedStrip { .. }
-                | shoop_rt_protocol::Request::RemoveStrip { .. }
-                | shoop_rt_protocol::Request::CreateLoop { .. }
-                | shoop_rt_protocol::Request::RemoveLoop { .. }
-                | shoop_rt_protocol::Request::LoopClear { .. }
-                | shoop_rt_protocol::Request::ProcessorControl { .. }
-                | shoop_rt_protocol::Request::StripDefaultPlayback { .. }
-                | shoop_rt_protocol::Request::StripControl { .. }
-                | shoop_rt_protocol::Request::LoopTiming { .. }
-                | shoop_rt_protocol::Request::CancelBulk => true,
-                shoop_rt_protocol::Request::LoopTransition {
-                    loop_id,
-                    mode: LoopMode::Recording | LoopMode::RecordingDryIntoWet,
-                    ..
-                } => only.is_none_or(|id| self.mirror.loops[&id].slot == loop_id),
-                _ => false,
-            })
+            .any(|job| self.mirror.loops[&job.id].program.is_none())
         {
             return Ok(self.capture_pending(0, self.mirror.loops.len()));
         }
@@ -70,7 +119,31 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 && (entry.view.recording_armed
                     || entry.view.mode.records()
                     || entry.view.next_mode.is_some_and(LoopMode::records))
-        }) {
+                || (entry.view.mode == LoopMode::Playing
+                    || entry.view.next_mode == Some(LoopMode::Playing))
+                    && self.capture_records(
+                        *id,
+                        if only == Some(*id) { None } else { only },
+                        &mut BTreeSet::new(),
+                    )
+        }) || self
+            .requests
+            .outgoing
+            .iter()
+            .chain(self.requests.in_flight.values())
+            .any(|pending| match pending.request {
+                shoop_rt_protocol::Request::LoopTransition {
+                    loop_id,
+                    mode: LoopMode::Playing,
+                    ..
+                } => self
+                    .mirror
+                    .slot_loops
+                    .get(&loop_id)
+                    .is_some_and(|id| self.capture_records(*id, only, &mut BTreeSet::new())),
+                _ => false,
+            })
+        {
             bail!("stop recording and settle pending recording transitions before saving or exporting");
         }
         self.canonical_content
@@ -117,13 +190,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 })
             })?;
         for (index, id) in ids.iter().copied().enumerate() {
+            if self.mirror.loops[&id].program.is_some() {
+                continue;
+            }
             if !self.canonical_content.contains_key(&id) {
                 let entry = &self.mirror.loops[&id];
                 if entry.timing.content_revision != entry.rt_content_revision {
                     return Ok(self.capture_pending(index, ids.len()));
                 }
                 let (slot, version, length) = (entry.slot, entry.content, entry.view.length as u32);
-                let track = &self.mirror.tracks[&entry.track];
+                let track = &self.mirror.tracks[&entry
+                    .track
+                    .ok_or_else(|| anyhow!("composites have no media channels"))?];
                 let wet = track.audio_channels as usize;
                 let dry = (!matches!(track.topology, BackendTrackTopology::Direct { .. }))
                     .then_some(track.topology.dry_audio_channels() as usize);
@@ -299,7 +377,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .filter(|id| only.is_none_or(|target| **id == target))
                     .map(|id| {
                         let entry = &self.mirror.loops[id];
-                        let mut content = (*self.canonical_content[id]).clone();
+                        let mut content = if entry.program.is_some() {
+                            BackendLoopContent {
+                                recorded_processor_state: None,
+                                source_id: id.raw(),
+                                length: 0,
+                                gain: entry.gain,
+                                balance: entry.balance,
+                                audio: Vec::new(),
+                                midi: Vec::new(),
+                            }
+                        } else {
+                            (*self.canonical_content[id]).clone()
+                        };
                         content.source_id = id.raw();
                         content.gain = entry.gain;
                         content.balance = entry.balance;
@@ -354,6 +444,76 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             })
             .collect();
         Ok(BackendAsyncResult::Ready(BackendSessionData {
+            composites: self
+                .mirror
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let d = entry.program?;
+                    if only.is_some_and(|target| target != *id) {
+                        return None;
+                    }
+                    Some(BackendSessionComposite {
+                        source_id: id.raw(),
+                        version: d.version,
+                        plan: BackendPreparedCompositePlan {
+                            kind: match d.kind {
+                                shoop_rt_protocol::CompositeKind::Regular => {
+                                    BackendCompositeKind::Regular
+                                }
+                                shoop_rt_protocol::CompositeKind::Explicit => {
+                                    BackendCompositeKind::Script
+                                }
+                            },
+                            sync_source: entry.sync,
+                            unit_frames: d.unit_frames,
+                            iterations: d.iterations,
+                            entries: d.entries,
+                            spans: entry
+                                .program_spans
+                                .iter()
+                                .map(|span| {
+                                    let target = self.mirror.slot_loops[&span.target];
+                                    BackendCompositeSpan {
+                                        target: if self.mirror.loops[&target].program.is_some() {
+                                            BackendCompositeTarget::Composite(
+                                                BackendCompositeId::from_raw(target.raw()),
+                                            )
+                                        } else {
+                                            BackendCompositeTarget::Loop(target)
+                                        },
+                                        start: span.start,
+                                        end: span.end,
+                                        occurrence_start: span.occurrence_start,
+                                        ordinal: span.ordinal,
+                                        mode: crate::mirror::app_mode(span.mode),
+                                    }
+                                })
+                                .collect(),
+                        },
+                    })
+                })
+                .collect(),
+            loop_sync: self
+                .mirror
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    entry
+                        .sync
+                        .filter(|_| only.is_none_or(|target| target == *id))
+                        .map(|source| (id.raw(), source.raw()))
+                })
+                .collect(),
+            repeat_sync: self
+                .mirror
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    (entry.repeat_sync && only.is_none_or(|target| target == *id))
+                        .then_some(id.raw())
+                })
+                .collect(),
             sample_rate: self.driver.map_or(0, |driver| driver.sample_rate),
             tracks,
             buses: self

@@ -70,7 +70,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 {
                     bail!("stop affected recording before replacing family content");
                 }
-                let track = &self.mirror.tracks[&entry.track];
+                let track = &self.mirror.tracks[&entry
+                    .track
+                    .ok_or_else(|| anyhow!("composites have no media channels"))?];
                 let direct = matches!(track.topology, BackendTrackTopology::Direct { .. });
                 let dry = track.topology.dry_audio_channels() as usize;
                 let wet = track.topology.wet_audio_channels() as usize;
@@ -148,7 +150,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }));
         for member in &update.members {
             let entry = &self.mirror.loops[&member.loop_id];
-            let topology = self.mirror.tracks[&entry.track].topology.clone();
+            let topology = self.mirror.tracks[&entry
+                .track
+                .ok_or_else(|| anyhow!("composites have no media channels"))?]
+                .topology
+                .clone();
             let roles = !matches!(topology, BackendTrackTopology::Direct { .. });
             let recorded_state = crate::processor_controls::recorded_state(
                 &topology,

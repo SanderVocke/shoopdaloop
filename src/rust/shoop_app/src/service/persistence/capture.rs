@@ -13,8 +13,21 @@ pub(in crate::service) struct Cut {
     routes: BTreeSet<MixerRouteState>,
     annotations: BTreeMap<(LoopId, bool, u32), (u64, Option<String>)>,
     recorded: BTreeMap<LoopId, Option<String>>,
+    manual_monitoring: BTreeMap<TrackId, bool>,
+    sync: BTreeMap<LoopId, LoopId>,
 }
 impl Cut {
+    pub(super) fn matches_composites(&self, capture: &BackendSessionData) -> bool {
+        self.state.composites.iter().all(|view| {
+            view.active.as_ref().is_none_or(|active| {
+                capture
+                    .composites
+                    .iter()
+                    .find(|c| c.source_id == self.loops[&view.loop_id].raw())
+                    .is_some_and(|c| c.version == active.version)
+            })
+        })
+    }
     pub(super) fn new(service: &Service) -> Self {
         let state = service.snapshot();
         let mut external = BTreeMap::<PortId, BTreeSet<String>>::new();
@@ -60,6 +73,41 @@ impl Cut {
             external,
             routes,
             annotations: service.channel_annotations.clone(),
+            manual_monitoring: service
+                .tracks
+                .iter()
+                .map(|(id, track)| {
+                    (
+                        *id,
+                        service
+                            .observed
+                            .tracks
+                            .get(&track.backend)
+                            .is_some_and(|state| state.input_monitoring),
+                    )
+                })
+                .collect(),
+            sync: service
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let source = service
+                        .observed
+                        .loops
+                        .get(&entry.backend)
+                        .and_then(|state| state.sync_source)
+                        .or_else(|| {
+                            service
+                                .observed
+                                .composites
+                                .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+                                .and_then(|state| state.sync_source)
+                        })?;
+                    service.loops.iter().find_map(|(source_id, source_entry)| {
+                        (source_entry.backend == source).then_some((*id, *source_id))
+                    })
+                })
+                .collect(),
             recorded: service
                 .loops
                 .iter()
@@ -161,10 +209,30 @@ impl Cut {
         }
         Ok(image::Loop {
             recorded_processor_state: self.recorded.get(&state.id).cloned().flatten(),
+            sync_source: self.sync.get(&state.id).copied(),
+            repeat_sync: state.repeat_sync,
+            composite: self
+                .state
+                .composites
+                .iter()
+                .find(|view| view.loop_id == state.id)
+                .and_then(|view| view.active.as_ref())
+                .map(|active| shoop_app_protocol::composite::Content {
+                    document: active.document.clone(),
+                    prepared: active.prepared.clone(),
+                }),
             id: state.id,
             name: state.name.clone(),
             sync: state.sync,
-            frames: u64::from(content.length),
+            frames: self
+                .state
+                .composites
+                .iter()
+                .find(|view| view.loop_id == state.id)
+                .and_then(|view| view.active.as_ref())
+                .map_or(u64::from(content.length), |active| {
+                    active.prepared.unit_frames * active.prepared.iterations
+                }),
             gain: state.gain,
             balance: state.balance,
             audio,
@@ -178,6 +246,22 @@ impl Cut {
     ) -> Result<Arc<image::Image>> {
         let mut payloads = Vec::new();
         let mut tracks = Vec::new();
+        for view in &self.state.composites {
+            if let Some(active) = &view.active {
+                let source = self.loops[&view.loop_id].raw();
+                if capture
+                    .composites
+                    .iter()
+                    .find(|c| c.source_id == source)
+                    .map(|c| c.version)
+                    != Some(active.version)
+                {
+                    return Err(anyhow!(
+                        "an arrangement changed during capture; retry saving its confirmed version"
+                    ));
+                }
+            }
+        }
         for track in &self.state.tracks {
             let backend = self.tracks[&track.id];
             let position = capture
@@ -232,7 +316,7 @@ impl Cut {
                 controls: image::Controls {
                     input_gain_db: controls.input_gain_db,
                     input_balance: controls.input_balance,
-                    monitoring: controls.input_monitoring,
+                    monitoring: self.manual_monitoring[&track.id],
                     output_gain_db: controls.output_gain_db,
                     output_balance: controls.output_balance,
                     muted: controls.output_muted,
