@@ -1458,6 +1458,15 @@ fn production_client_projects_frozen_composite_geometry_without_media_spinner_an
         ),
         Outcome::Confirmed { .. }
     ));
+    let state = f.service.snapshot();
+    let converted = state
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .find(|entry| entry.id == target)
+        .unwrap();
+    assert_eq!(converted.timing_revision, 0);
+    assert!(converted.channel_timings.is_empty());
     f.service.detach(ConnectionId(1));
     let (mut runtime, port) = runtime(
         &mut f.service,

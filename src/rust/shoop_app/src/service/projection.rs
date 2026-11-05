@@ -596,6 +596,10 @@ impl Service {
                     view.composite_kind = active.document.kind;
                     view.selected_composite_kind = active.document.kind;
                     view.content_revision = active.version;
+                    view.timing_revision = 0;
+                    view.channel_timings = Arc::from([]);
+                    view.capture_alignment_frames = 0;
+                    view.processor_alignment_frames = None;
                     view.repeat_sync = state.repeat_sync;
                     view.mode = mode(state.mode);
                     view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);

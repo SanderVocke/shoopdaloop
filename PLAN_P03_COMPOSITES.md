@@ -911,3 +911,11 @@ explicit response to a failure or identified risk, not a default milestone ritua
   bytes (the sampled maximum stayed unchanged). Corrected the non-growth assertion
   to permit released memory while rejecting increases; peak bounds and complete
   owner teardown remain checked. Firmware execution stays delegated to CI.
+- At `8b68ad66`, the full firmware production/UI/recovery/fixture gates passed,
+  including the corrected soak and teardown. Coverage ran **2,906** native tests:
+  **2,905 passed**, with one UI projection failure. Confirmed composite conversion
+  retained primitive channel-timing metadata in the service view. Clear those
+  primitive revisions, channel timings and alignments on confirmed conversion;
+  the strengthened public-client regression and three focused timing/clear cases
+  pass, together with warning-denying application/client builds. A transient TLS
+  failure in deployment toolchain setup requires a fresh CI attempt.
