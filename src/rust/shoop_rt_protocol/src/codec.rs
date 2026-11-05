@@ -1573,6 +1573,8 @@ impl Wire for rt_profiling::Packet {
         w.u64(self.epoch)?;
         w.u64(self.start_ns)?;
         w.u64(self.end_ns)?;
+        w.u64(self.budget_ns)?;
+        w.u32(self.graphs)?;
         w.u32(self.frames)?;
         w.u32(self.index)?;
         w.u32(self.total)?;
@@ -1596,6 +1598,8 @@ impl Wire for rt_profiling::Packet {
             epoch: r.u64()?,
             start_ns: r.u64()?,
             end_ns: r.u64()?,
+            budget_ns: r.u64()?,
+            graphs: r.u32()?,
             frames: r.u32()?,
             index: r.u32()?,
             total: r.u32()?,
@@ -1612,6 +1616,119 @@ impl Wire for rt_profiling::Packet {
             sample.at = r.u64()?;
         }
         Ok(packet)
+    }
+}
+impl Wire for rt_profiling::Port {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.bool(self.node.is_some())?;
+        w.u64(self.node.unwrap_or(0))?;
+        w.u8(self.kind)?;
+        w.u32(self.channel)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let node = r.bool()?;
+        let key = r.u64()?;
+        let kind = r.u8()?;
+        let channel = r.u32()?;
+        if kind > 1
+            || channel > u16::MAX as u32
+            || (node && key >= rt_profiling::MAX_SAMPLES as u64)
+        {
+            return Err(CodecError::Invalid);
+        }
+        Ok(Self {
+            node: node.then_some(key),
+            kind,
+            channel,
+        })
+    }
+}
+impl Wire for rt_profiling::GraphRecord {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        use rt_profiling::GraphRecord::*;
+        match self {
+            Begin {
+                nodes,
+                edges,
+                sample_rate,
+                quantum,
+            } => {
+                w.u8(0)?;
+                w.u32(*nodes)?;
+                w.u32(*edges)?;
+                w.u32(*sample_rate)?;
+                w.u32(*quantum)
+            }
+            Node { index, node } => {
+                w.u8(1)?;
+                w.u32(*index)?;
+                w.u64(node.key)?;
+                w.u8(node.group)?;
+                w.u32(node.slot)?;
+                w.u32(node.owner_generation)
+            }
+            Edge { index, edge } => {
+                w.u8(2)?;
+                w.u32(*index)?;
+                edge.source.put(w)?;
+                edge.destination.put(w)
+            }
+            End => w.u8(3),
+            Unavailable => w.u8(4),
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use rt_profiling::{GraphEdge, GraphNode};
+        Ok(match r.u8()? {
+            0 => {
+                let nodes = r.u32()?;
+                let edges = r.u32()?;
+                if nodes as usize > rt_profiling::MAX_GRAPH_NODES
+                    || edges as usize > rt_profiling::MAX_GRAPH_EDGES
+                {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Begin {
+                    nodes,
+                    edges,
+                    sample_rate: r.u32()?,
+                    quantum: r.u32()?,
+                }
+            }
+            1 => {
+                let index = r.u32()?;
+                let key = r.u64()?;
+                let group = r.u8()?;
+                let slot = r.u32()?;
+                let owner_generation = r.u32()?;
+                if index as usize >= rt_profiling::MAX_GRAPH_NODES
+                    || key >= rt_profiling::MAX_SAMPLES as u64
+                    || group > 3
+                    || (group != 0 && owner_generation == 0)
+                {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Node {
+                    index,
+                    node: GraphNode {
+                        key,
+                        group,
+                        slot,
+                        owner_generation,
+                    },
+                }
+            }
+            2 => Self::Edge {
+                index: r.u32()?,
+                edge: GraphEdge {
+                    source: rt_profiling::Port::get(r)?,
+                    destination: rt_profiling::Port::get(r)?,
+                },
+            },
+            3 => Self::End,
+            4 => Self::Unavailable,
+            _ => return Err(CodecError::Invalid),
+        })
     }
 }
 impl Wire for rt_profiling::Status {
@@ -1644,6 +1761,16 @@ impl Wire for rt_profiling::Status {
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ProfilingGraph {
+                generation,
+                epoch,
+                record,
+            } => {
+                w.u8(11)?;
+                w.u64(*generation)?;
+                w.u64(*epoch)?;
+                record.put(w)
+            }
             Self::ProfilingStatus(status) => {
                 w.u8(8)?;
                 status.put(w)
@@ -1710,6 +1837,11 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            11 => Self::ProfilingGraph {
+                generation: r.u64()?,
+                epoch: r.u64()?,
+                record: rt_profiling::GraphRecord::get(r)?,
+            },
             8 => Self::ProfilingStatus(rt_profiling::Status::get(r)?),
             9 => Self::Profiling(rt_profiling::Packet::get(r)?),
             10 => Self::ProfilingNode {

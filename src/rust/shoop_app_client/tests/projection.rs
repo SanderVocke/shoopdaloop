@@ -30,6 +30,16 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     row.avg_ns = 1250.;
     row.worst_ns = 3000;
     row.stddev_ns = 500.;
+    row.ready_avg_ns = 3250.;
+    row.ready_worst_ns = 6000;
+    row.ready_stddev_ns = 750.;
+    profiling.topology = Some(Arc::new(shoop_app_api::profiling_data::Topology {
+        generation: revision,
+        sample_rate: 48000,
+        quantum: 32,
+        nodes: vec![shoop_app_api::profiling_data::GraphNode::default()],
+        ..Default::default()
+    }));
     Arc::new(SessionSnapshot {
         composites: Vec::new(),
         profiling,
@@ -58,6 +68,72 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
         pending: vec![],
         results: vec![],
     })
+}
+
+#[shoop_test]
+fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_details() {
+    use shoop_app_api::profiling_data::*;
+    let mut state = (*snapshot(3)).clone();
+    state.profiling.capture = Some(Report {
+        capture: 9,
+        ..state.profiling.live.clone()
+    });
+    let callback = TraceSummary {
+        sequence: 1,
+        flags: CALLBACK | HOST,
+        end_ns: 5000,
+        budget_ns: 4000,
+        ..TraceSummary::default()
+    };
+    let tick = TraceSummary {
+        sequence: 2,
+        start_ns: 100,
+        end_ns: 4000,
+        ..TraceSummary::default()
+    };
+    state.profiling.index = Arc::from([callback, tick]);
+    let page = CapturePage {
+        request: CaptureRequest {
+            connection: 0,
+            generation: 3,
+            capture: 9,
+            callback: 1,
+            tick: 2,
+            offset: 0,
+        },
+        callback,
+        tick: Some(tick),
+        nodes: vec![NodeTiming {
+            key: 0,
+            start_ns: 100,
+            end_ns: 3500,
+            ready_ns: 3200,
+        }],
+        total: 1,
+        ..CapturePage::default()
+    };
+    state.profiling.detail = Some(Arc::new(page.clone()));
+    let encoded = codec::encode_snapshot(&state).unwrap();
+    assert!(encoded.len() < MAX_SNAPSHOT_BYTES);
+    let decoded = codec::decode_snapshot(&encoded).unwrap();
+    assert_eq!(decoded.profiling, state.profiling);
+    assert_eq!(decoded.profiling.live.rows[0].ready_worst_ns, 6000);
+    state.profiling.detail = Some(Arc::new(CapturePage {
+        nodes: vec![NodeTiming::default(); DETAIL_NODES + 1],
+        ..page.clone()
+    }));
+    assert!(codec::encode_snapshot(&state).is_err());
+    state.profiling.detail = Some(Arc::new(CapturePage {
+        request: CaptureRequest {
+            generation: 2,
+            ..page.request
+        },
+        ..page
+    }));
+    assert!(codec::encode_snapshot(&state).is_err());
+    state.profiling.detail = None;
+    state.profiling.index = Arc::from(vec![TraceSummary::default(); MAX_CAPTURE_TRACES + 1]);
+    assert!(codec::encode_snapshot(&state).is_err());
 }
 
 fn attaching() -> Client {

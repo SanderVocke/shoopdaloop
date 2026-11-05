@@ -20,14 +20,20 @@ fn profile_setup(host: &mut OfflineHost, mode: &str) -> Profile {
     Collector::default()
 }
 fn profile_message(profile: &mut Profile, message: &EngineMessage) -> usize {
+    let mut wire = [0; MAX_RECORD_BYTES];
+    let size = if message.lane() == Lane::Profiling {
+        codec::encode_engine(message, &mut wire).unwrap()
+    } else {
+        0
+    };
     match *message {
         EngineMessage::ProfilingStatus(status) => {
             profile.status(status);
-            54
+            size
         }
         EngineMessage::Profiling(packet) => {
             profile.receive(packet);
-            96 + usize::from(packet.len) * 16
+            size
         }
         EngineMessage::ProfilingNode {
             generation,
@@ -35,7 +41,15 @@ fn profile_message(profile: &mut Profile, message: &EngineMessage) -> usize {
             name,
         } => {
             profile.name(generation, key, name.as_str());
-            20 + name.as_str().len()
+            size
+        }
+        EngineMessage::ProfilingGraph {
+            generation,
+            epoch,
+            record,
+        } => {
+            profile.graph(generation, epoch, record);
+            size
         }
         _ => 0,
     }

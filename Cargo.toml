@@ -3,6 +3,7 @@
 resolver = "2"
 
 members = ["src/rust/*"]
+exclude = ["third_party/egui_graph"]
 
 [workspace.package]
 version = "0.3.0"

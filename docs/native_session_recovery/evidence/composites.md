@@ -145,6 +145,25 @@ pinned to one CPU (`taskset -c 0`); the shared-memory first-attachment workflow
 passed too. This Linux repetition did not reproduce the macOS timeout and is not
 claimed as its platform acceptance.
 
+Target `eb4287a5` subsequently added profiling graph PR #939. Its integration
+retains composite admission/snapshots/activation receipts alongside profiling
+inspection and graph projection. Combined versions are app protocol **25** and
+engine protocol **12**, with file **14**, native setup **7** and worklet config
+**4** unchanged. The warning-denying workspace build and **14** focused adapter
+cases passed, including playing composite/profiling state across conversion and
+resync. Full native regression passed **2,864 tests / 7 skipped**, along with
+four-target boundaries and Wasm dependency isolation. Native and Wasm builds
+first exhausted disk space; obsolete caches were cleared and the native rerun
+passed. Five Node packages passed; the seven unexecuted packages are being rerun.
+Further merged-source browser/artifact validation is in progress. The prior
+`280c12a9` matrix passed all six native profiles and web release; its remaining
+web-debug job is separate from this newer integration.
+
+The replacing branch advanced to `b6ac9443` at this recheck, but PR #940 still
+explicitly reports application Replacing unavailable. Pooled audio and persistent
+MIDI-index work does not satisfy the dependent-mode gate. No P06/P07 production
+implementation has been supplied and full P03 remains OPEN.
+
 ## Reproduction and limits
 
 Use the repository build/test setup and deny Rust warnings. Native full-feature

@@ -10,7 +10,7 @@ workspace = true
 [dependencies]
 rtrb.workspace = true
 libm.workspace = true
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "rc"] }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

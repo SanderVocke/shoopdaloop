@@ -49,6 +49,16 @@ fn app_control(control: StripControl) -> Option<BackendTrackControl> {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
+            EngineMessage::ProfilingGraph {
+                generation,
+                epoch,
+                record,
+            } => {
+                self.profiling.graph(generation, epoch, record);
+                if record == shoop_rt_protocol::profiling::GraphRecord::End {
+                    self.update_profiling_groups();
+                }
+            }
             EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
             EngineMessage::Profiling(packet) => self.profiling.receive(packet),
             EngineMessage::ProfilingNode {
@@ -74,7 +84,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     ));
                     return;
                 }
-                self.profiling = Default::default();
+                let Some(connection) = crate::profiling_connection() else {
+                    self.lose("profiling connection identities exhausted".into());
+                    return;
+                };
+                self.profiling.set_connection(connection);
                 self.capabilities = capabilities;
                 self.set_limits(limits);
                 self.driver = Some(driver);

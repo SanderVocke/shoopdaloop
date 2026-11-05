@@ -14,6 +14,10 @@ impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
             Command::Composite(edit) => self.edit_composite(edit),
+            Command::InspectProfiling(request) => {
+                self.backend.inspect_profiling(request)?;
+                Ok(Effect::None)
+            }
             Command::SetProfiling(enabled) => {
                 self.backend.set_profiling(enabled)?;
                 Ok(Effect::None)

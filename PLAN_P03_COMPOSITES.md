@@ -789,3 +789,19 @@ and retain the normal/full test groups required before behavioral commits/pushes
   Warning-denying build and shared-memory canary passed; ten complete socket
   runs passed with CI tracing enabled, including five pinned to one CPU. This
   repetition did not reproduce or establish macOS acceptance.
+- Target integration refreshed to `eb4287a5` after profiling graph PR #939 landed.
+  Composite admission/projection, profiling graph projection and allocator guards
+  are retained together. Their combined wire contracts use app protocol **25**
+  and engine protocol **12**; file **14**, native setup **7** and worklet config
+  **4** remain unchanged. The warning-denying workspace build and **14** focused
+  adapter cases passed, including playing composite/profiling conversion and
+  resync. A new profiling fixture explicitly prepares its zero composite-segment
+  budget. Full native regression passed **2,864 tests / 7 skipped**. Four-target
+  boundaries and Wasm dependency isolation passed. Native and Wasm builds first
+  exhausted the workspace disk; obsolete caches were cleared, native checks reran
+  successfully, and the unexecuted Wasm packages are being rerun separately.
+- Dependency readiness was rechecked: `feat/finish-grab-replace` advanced to
+  `b6ac9443`, but PR #940 still explicitly reports normal application Replacing
+  unavailable. The changes provide pooled audio and persistent MIDI-index
+  foundations, not an executable replacing mode. Stage 9 remains blocked; no
+  P06/P07 implementation or narrower user-approved closure has been supplied.

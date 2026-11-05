@@ -16,6 +16,7 @@ shoop_app_api = { path = "../shoop_app_api" }
 shoop_settings = { path = "../shoop_settings" }
 shoop_script_resources = { path = "../shoop_script_resources" }
 egui = { workspace = true }
+egui_graph = { path = "../../../third_party/egui_graph" }
 egui_material_icons = { workspace = true }
 egui_commonmark = { workspace = true }
 image = { workspace = true }
@@ -26,6 +27,7 @@ serde_json = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+eframe = { workspace = true }
 tempfile = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

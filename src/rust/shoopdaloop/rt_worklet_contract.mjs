@@ -124,7 +124,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 11;
+const engineProtocolVersion = 12;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
@@ -198,7 +198,7 @@ function takeEngineRecords(returnCredits = true) {
     }
   }
   if (returnCredits) {
-    const count = records.filter(record => record[2] >= 8 && record[2] <= 10).length;
+    const count = records.filter(record => record[2] >= 8 && record[2] <= 11).length;
     if (count) node.port.deliver({ kind: 'profiling-credit', count });
   }
   return records;
@@ -235,14 +235,15 @@ for (const record of profileRecords) {
   const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
   const start = view.getBigUint64(59, true);
   const end = view.getBigUint64(67, true);
-  for (let index = 0; index < record[87]; index += 1) {
-    const key = view.getBigUint64(96 + index * 16, true);
-    const at = view.getBigUint64(104 + index * 16, true);
+  for (let index = 0; index < record[99]; index += 1) {
+    const key = view.getBigUint64(108 + index * 16, true);
+    const at = view.getBigUint64(116 + index * 16, true);
     if (at < start || at > end) throw new Error('node timing escaped its measured interval');
     if ((key & ((1n << 63n) | (1n << 62n))) === 0n) timedNodes += 1;
   }
 }
 if (!timedNodes) throw new Error('profiling sent no graph node completion timestamps');
+if (!profileRecords.some(record => record[2] === 11 && record[19] === 3)) throw new Error('profiling sent no complete executable topology');
 node.load = 2;
 const captureMessages = [];
 for (let index = 0; index < 64; index += 1) {
@@ -251,13 +252,15 @@ for (let index = 0; index < 64; index += 1) {
 }
 const captureRecords = captureMessages.filter(record => record[2] === 9).map(record =>
   new DataView(record.buffer, record.byteOffset, record.byteLength));
-if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(88, true) & 4))) {
+if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(100, true) & 4))) {
   throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
 }
+if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getBigUint64(75, true) > 0n)) throw new Error('captured host callbacks lost their original budgets');
+if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getUint32(83, true) > 0)) throw new Error('captured host callbacks lost their graph-execution counts');
 let stalledRecords = 0;
 for (let index = 0; index < 512; index += 1) {
   quantum(node, 0.25);
-  stalledRecords += takeEngineRecords(false).filter(record => record[2] >= 8 && record[2] <= 10).length;
+  stalledRecords += takeEngineRecords(false).filter(record => record[2] >= 8 && record[2] <= 11).length;
 }
 if (!stalledRecords || stalledRecords > 256) throw new Error('profiling exceeded its browser credit window');
 profilingRequest(false, 992);

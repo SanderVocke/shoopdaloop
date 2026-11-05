@@ -176,6 +176,9 @@ mod platform {
         }
     }
     impl RecordPort for SharedPort {
+        fn consumed(&mut self, lane: shoop_rt_protocol::Lane) {
+            self.records.consumed(lane);
+        }
         fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
             self.records.post(record)
         }

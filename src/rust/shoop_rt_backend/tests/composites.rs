@@ -146,6 +146,61 @@ fn confirmed_conversion_retains_public_identity_and_exact_activation_receipt() {
 }
 
 #[shoop_test]
+fn profiling_and_playing_composite_state_remain_coherent_across_conversion_and_resync() {
+    std::thread_local! {
+        static TIME: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+    }
+    fn now() -> u64 {
+        TIME.with(|time| {
+            let at = time.get();
+            time.set(at + 10);
+            at
+        })
+    }
+    let (mut backend, ids) = setup();
+    backend
+        .clock_mut()
+        .offline
+        .render
+        .set_profiling_clock(shoop_rt_protocol::profiling::Clock {
+            now,
+            resolution_ns: 10,
+        });
+    backend.set_profiling(true).unwrap();
+    step(&mut backend, 32);
+    let comp = shoop_backend::BackendCompositeId::from_raw(ids[3].raw());
+    let version = backend
+        .configure_prepared_composite_loop(comp, &plan(ids[1], None, 1000))
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_composite_loop(comp, Mode::Playing, None, None)
+        .unwrap();
+    step(&mut backend, 32);
+    let before = backend.poll().unwrap();
+    backend.request_resync().unwrap();
+    step(&mut backend, 128);
+    let after = backend.poll().unwrap();
+    assert!(backend.is_ready());
+    for snapshot in [&before, &after] {
+        let state = &snapshot.composites[&comp];
+        assert_eq!(state.active_plan_version, version);
+        assert_eq!(state.mode, Mode::Playing);
+        assert_eq!(state.length, 2000);
+        assert!(!snapshot.loops.contains_key(&ids[3]));
+        assert!(snapshot.profiling.active);
+        let topology = snapshot.profiling.topology.as_ref().unwrap();
+        assert_eq!(topology.generation, snapshot.profiling.generation);
+        assert!(snapshot
+            .profiling
+            .groups
+            .iter()
+            .any(|group| group.kind == 2 && group.entity == ids[1].raw()));
+    }
+    assert!(after.composites[&comp].observed_frame > before.composites[&comp].observed_frame);
+}
+
+#[shoop_test]
 fn standalone_and_legacy_parallel_serial_compilation_use_frozen_units() {
     let (mut backend, ids) = setup();
     let comp = backend.create_prepared_composite().unwrap();
