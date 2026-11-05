@@ -22,6 +22,7 @@ mod publication;
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::sync::Arc;
 use anyhow::{anyhow, Result};
+use core::cell::RefCell;
 use core::time::Duration;
 use shoop_app_api::*;
 use shoop_app_protocol::*;
@@ -166,6 +167,7 @@ pub struct Service {
     host_settings: Option<HostSettings>,
     host_diagnostics: Vec<String>,
     revision: Revision,
+    connection_view: RefCell<Arc<ConnectionViewState>>,
     generation: u64,
     lease: Option<Lease>,
     last_authority: Option<Authority>,
@@ -255,6 +257,7 @@ impl Service {
             host_settings: None,
             host_diagnostics: Vec::new(),
             revision: Revision(1),
+            connection_view: RefCell::new(Arc::default()),
             generation: 0,
             lease: None,
             last_authority: None,

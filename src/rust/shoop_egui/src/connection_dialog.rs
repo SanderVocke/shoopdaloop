@@ -3015,6 +3015,78 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn unrelated_updates_preserve_drags_and_removed_sources_cancel_them() {
+        for remove_source in [false, true] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let mut state = state();
+            let mut dialog = ConnectionDialog::default();
+            dialog.open(ConnectionScope::AllTracks);
+            assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+            let host = HostPortId::new("device:audio_source");
+            let source = connector(&dialog, &EndpointId::Host(host.clone()), true);
+            assert!(frame(
+                &context,
+                &mut dialog,
+                &state,
+                vec![egui::Event::PointerMoved(source), press(source)]
+            )
+            .is_empty());
+            assert!(frame(
+                &context,
+                &mut dialog,
+                &state,
+                vec![egui::Event::PointerMoved(source + egui::vec2(18.0, 0.0))]
+            )
+            .is_empty());
+            for _ in 0..5 {
+                state.revision += 1;
+                state.global_controls.sync = !state.global_controls.sync;
+                assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+                assert!(dialog.drag.is_some());
+            }
+            if remove_source {
+                let connections = Arc::make_mut(&mut state.connections);
+                connections.host_ports = connections
+                    .host_ports
+                    .iter()
+                    .filter(|port| port.id != host)
+                    .cloned()
+                    .collect();
+                connections.revision += 1;
+                assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+                assert!(dialog.drag.is_none());
+            }
+            let sink = connector(
+                &dialog,
+                &EndpointId::Application(PortId::from_raw(11)),
+                false,
+            );
+            assert!(frame(
+                &context,
+                &mut dialog,
+                &state,
+                vec![egui::Event::PointerMoved(sink)]
+            )
+            .is_empty());
+            let intents = frame(&context, &mut dialog, &state, vec![release(sink)]);
+            if remove_source {
+                assert!(intents.is_empty());
+            } else {
+                assert_eq!(
+                    intents,
+                    [AppIntent::SetPortConnected {
+                        port_id: PortId::from_raw(11),
+                        host_port_id: host,
+                        connected: true,
+                    }]
+                );
+            }
+            assert!(dialog.drag.is_none());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn filter_or_snapshot_change_cancels_an_active_drag() {
         let context = egui::Context::default();
         crate::initialize(&context);
