@@ -110,6 +110,13 @@ Cancellation and teardown retain prepared staging arrays until host destruction.
 An allocation-free sizing API reports this pool's metadata and payload reservation;
 production live/writer credit guarantees and host defaults remain outstanding.
 
+Audio resource views can now reserve a growing tail after a retained wrapped
+prefix, or after immutable loaded PCM, without copying the prefix. The tail has
+separate physical coordinates and may exceed the history horizon. Empty startup
+takes, immutable exports, capacity refusal and later fixed-period edits use the
+ordinary resource boundary. This remains a kernel/resource path; musical settlement,
+loop mode/output behavior and normal host/application integration are not enabled.
+
 ## Validation status
 
 No application success is claimed yet. CI will run the new arithmetic/reference

@@ -112,7 +112,7 @@ fn discontinuity_retains_exports_and_starts_truthful_coverage_without_replay() {
 
 #[shoop_test]
 fn short_wrapping_grabs_pin_only_visible_pages_and_preserve_live_capture_at_owner_limit() {
-    let mut store = store(48, 16, 8);
+    let mut store = store(50, 16, 8);
     let baseline = store.usage();
     let mut media = AudioStore::prepare(
         &mut store,
@@ -120,7 +120,7 @@ fn short_wrapping_grabs_pin_only_visible_pages_and_preserve_live_capture_at_owne
             channels: 1,
             history_frames: 64,
             views: 8,
-            pages: 48,
+            pages: 50,
         },
         Frame(0),
     )
@@ -253,7 +253,7 @@ fn pooled_production_shape_can_be_sized_before_allocating_and_oversized_shapes_r
                 capacity.history_pages,
                 capacity.transaction_pages
             ),
-            (16, 65536, 3)
+            (16, 65536, 5)
         );
         assert!(capacity.metadata_bytes < 40 * 1024 * 1024);
         assert_eq!(audio.capacity(config, 0), Err(Error::InvalidConfig));

@@ -134,7 +134,7 @@ fn shared_source_pool_keeps_histories_independent_and_live_under_global_owner_pr
                 channels: 2,
                 history_frames: 3,
                 views: 8,
-                pages: 10,
+                pages: 14,
             },
             Frame(0),
             2,
@@ -181,7 +181,7 @@ fn shared_source_pool_keeps_histories_independent_and_live_under_global_owner_pr
 
         let unrelated = store.create().unwrap();
         let free = store.usage().free_pages - store.usage().reserved_pages;
-        assert_eq!(free, baseline.free_pages - 10);
+        assert_eq!(free, baseline.free_pages - 14);
         let upload = store
             .begin_upload(
                 unrelated,
@@ -460,5 +460,203 @@ fn scoped_audio_and_export_capacity_fail_without_consuming_generic_credits() {
         store.cleanup_audio_store(audio).unwrap();
         drain(&mut store);
         assert_eq!(store.usage().free_pages, 128);
+    });
+}
+
+#[shoop_test]
+fn wrapped_prefix_grows_beyond_history_then_replaces_across_both_storage_boundaries() {
+    let mut store = ResourceStore::new(
+        crate::Config {
+            max_frames: 8,
+            resource_slots: 24,
+            resource_pages: 512,
+            page_bytes: 24,
+            budgets: crate::Budgets {
+                transfer_bytes: 24,
+                validation_steps: 1,
+                ..crate::Budgets::default()
+            },
+            ..crate::Config::default()
+        }
+        .prepare()
+        .unwrap(),
+        crate::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
+    let baseline = store.usage();
+    let audio = store
+        .prepare_audio_store(
+            shared_audio::Config {
+                channels: 2,
+                history_frames: 8,
+                views: 16,
+                pages: 400,
+            },
+            Frame(0),
+        )
+        .unwrap();
+    let mut oracle = [0f32; 392];
+    let mut input = [0f32; 16];
+    assert_no_heap(|| {
+        for frame in (0..32).step_by(8) {
+            for (i, sample) in input.iter_mut().enumerate() {
+                *sample = (frame * 2 + i) as f32;
+            }
+            store.begin_callback();
+            store
+                .render_io()
+                .append_audio_history(audio, Frame(frame as u64), &input)
+                .unwrap();
+        }
+        for (i, sample) in input[..14].iter_mut().enumerate() {
+            *sample = (64 + i) as f32;
+        }
+        store
+            .render_io()
+            .append_audio_history(audio, Frame(32), &input[..14])
+            .unwrap();
+        let resource = store.grab_audio(audio, Frame(35)..Frame(39)).unwrap();
+        let old = store.snapshot(resource, Frame(39)).unwrap();
+        let original: [u8; 32] =
+            core::array::from_fn(|i| ((70 + i / 4) as f32).to_le_bytes()[i % 4]);
+        assert_eq!(read::<32>(&mut store, old), original);
+        assert_eq!(
+            store.prepare_audio_growth(resource, Revision(1), u64::MAX),
+            Err(Error::Capacity)
+        );
+        store
+            .prepare_audio_growth(resource, Revision(1), 200)
+            .unwrap();
+        assert_eq!(
+            store.prepare_audio_growth(resource, Revision(1), 200),
+            Err(Error::Busy)
+        );
+        for (i, sample) in oracle[..8].iter_mut().enumerate() {
+            *sample = (70 + i) as f32;
+        }
+        let mut revision = Revision(1);
+        for tick in 0..24 {
+            let frame = 39 + tick * 8;
+            for (i, sample) in input.iter_mut().enumerate() {
+                *sample = (frame * 2 + i) as f32;
+            }
+            store.begin_callback();
+            store.copy_remaining = 0;
+            store.steps_remaining = 0;
+            store
+                .render_io()
+                .append_audio_history(audio, Frame(frame as u64), &input)
+                .unwrap();
+            revision = store
+                .render_io()
+                .append_audio_take(resource, revision, &input)
+                .unwrap();
+            oracle[8 + tick * 16..8 + (tick + 1) * 16].copy_from_slice(&input);
+        }
+        let usage = store.usage();
+        assert_eq!(
+            store
+                .render_io()
+                .append_audio_take(resource, revision, &input),
+            Err(Error::Capacity)
+        );
+        assert_eq!(store.usage(), usage);
+        assert_eq!(store.revision(resource), Ok(revision));
+        store.finish_audio_growth(resource, revision).unwrap();
+        assert_eq!(store.copy_remaining(), 0);
+        assert_eq!(store.steps_remaining(), 0);
+        let continued = store.snapshot(resource, Frame(231)).unwrap();
+        let continued_bytes: [u8; 1568] =
+            core::array::from_fn(|i| oracle[i / 4].to_le_bytes()[i % 4]);
+        assert_eq!(continued.description.frames, 196);
+        assert_eq!(read::<1568>(&mut store, continued), continued_bytes);
+        for tick in 0..48 {
+            let position = (193 + tick * 8) % 196;
+            for (i, sample) in input.iter_mut().enumerate() {
+                *sample = -((tick * 16 + i + 1) as f32);
+            }
+            for frame in 0..8 {
+                let local = (position + frame) % 196;
+                oracle[local * 2..local * 2 + 2].copy_from_slice(&input[frame * 2..frame * 2 + 2]);
+            }
+            store.begin_callback();
+            revision = store
+                .render_io()
+                .replace_audio(resource, revision, position as u64, &input)
+                .unwrap();
+        }
+        let current = store.snapshot(resource, Frame(615)).unwrap();
+        let expected: [u8; 1568] = core::array::from_fn(|i| oracle[i / 4].to_le_bytes()[i % 4]);
+        assert_eq!(read::<1568>(&mut store, current), expected);
+        assert_eq!(read::<1568>(&mut store, continued), continued_bytes);
+        assert_eq!(read::<32>(&mut store, old), original);
+        let empty = store.empty_audio(audio).unwrap();
+        let before = store.snapshot(empty, Frame(615)).unwrap();
+        store.prepare_audio_growth(empty, Revision(1), 16).unwrap();
+        let first = store
+            .render_io()
+            .append_audio_take(empty, Revision(1), &input)
+            .unwrap();
+        let last = store
+            .render_io()
+            .append_audio_take(empty, first, &input)
+            .unwrap();
+        store.finish_audio_growth(empty, last).unwrap();
+        assert_eq!(before.description.frames, 0);
+        assert_eq!(store.info(empty).unwrap().description.frames, 16);
+        let uploaded = store.create().unwrap();
+        let upload = store
+            .begin_upload(
+                uploaded,
+                Revision(0),
+                Description {
+                    format: Format::Audio { channels: 2 },
+                    frames: 1,
+                    bytes: 8,
+                },
+            )
+            .unwrap();
+        let loaded_bytes: [u8; 8] =
+            core::array::from_fn(|i| (100f32 + (i / 4) as f32).to_le_bytes()[i % 4]);
+        store.begin_callback();
+        store.write_upload(upload, 0, &loaded_bytes).unwrap();
+        store.finish_upload(upload).unwrap();
+        store.commit(upload).unwrap();
+        let loaded = store.snapshot(uploaded, Frame(615)).unwrap();
+        let growing = store.fork_audio(audio, loaded.id).unwrap();
+        store.release_snapshot(loaded.id).unwrap();
+        store.remove(uploaded).unwrap();
+        store
+            .prepare_audio_growth(growing, Revision(1), 17)
+            .unwrap();
+        let revision = store
+            .render_io()
+            .append_audio_take(growing, Revision(1), &input)
+            .unwrap();
+        let revision = store
+            .render_io()
+            .append_audio_take(growing, revision, &input)
+            .unwrap();
+        store.finish_audio_growth(growing, revision).unwrap();
+        let extended = store.snapshot(growing, Frame(631)).unwrap();
+        let expected: [u8; 136] = core::array::from_fn(|i| {
+            if i < 8 {
+                loaded_bytes[i]
+            } else {
+                input[((i - 8) / 4) % 16].to_le_bytes()[i % 4]
+            }
+        });
+        assert_eq!(read::<136>(&mut store, extended), expected);
+        store.release_snapshot(extended.id).unwrap();
+        store.remove(growing).unwrap();
+        for snapshot in [old, continued, current, before] {
+            store.release_snapshot(snapshot.id).unwrap();
+        }
+        store.remove(resource).unwrap();
+        store.remove(empty).unwrap();
+        drain(&mut store);
+        store.cleanup_audio_store(audio).unwrap();
+        drain(&mut store);
+        assert_eq!(store.usage(), baseline);
     });
 }

@@ -232,6 +232,23 @@ attribute checks. Fresh broad CI remains pending.
 This is the resource boundary for F2/F3, not production quota reservation, loop
 mode/coordinator integration, or application acceptance. P04/P05 remain OPEN.
 
+Audio COW views now support a separately reserved growing tail after a retained
+prefix, including prefixes that cross the physical history-ring boundary. The
+tail uses disjoint linear page coordinates, so continuation can exceed the source
+horizon without sample relocation or overwriting the prefix. Empty takes and
+immutable uploaded PCM bases also grow. Ordinary resource/snapshot descriptions
+track complete lengths/revisions, and growth completion refunds unused credits
+without acquiring exit resources. Fixed replacement of a continued take preserves
+its period across the prefix, ring and loop boundaries. Preparation accounts for
+three retained intervals and additional transaction scratch. Pressure fixtures
+reserve the extra scratch explicitly while preserving their owner-limit assertions.
+The guarded stereo resource oracle covers continuation, subsequent repeated
+replacement, old/current exports, zero-length startup, uploaded bases, capacity
+refusal and exact teardown. All 55 resource tests passed; the extended loaded-base
+case and warning-denying build, formatting, tracing and attribute checks also pass.
+Engine mode/coordinator integration, global production preparation/reservations,
+protocol, service and application delivery remain outstanding.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record

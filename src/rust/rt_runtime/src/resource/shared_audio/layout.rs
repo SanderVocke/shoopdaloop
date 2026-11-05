@@ -55,12 +55,11 @@ impl Layout {
             .and_then(usize::checked_next_power_of_two)
             .ok_or(Error::Capacity)?;
         let max_frames = runtime.limits().max_frames;
-        let transaction_pages = ring_pages.min(
-            max_frames
-                .div_ceil(page_frames)
-                .checked_add(2)
-                .ok_or(Error::Capacity)?,
-        );
+        let transaction_pages = max_frames
+            .div_ceil(page_frames)
+            .min(ring_pages)
+            .checked_add(4)
+            .ok_or(Error::Capacity)?;
         let history_pages = ring_pages.checked_mul(histories).ok_or(Error::Capacity)?;
         let baseline = history_pages
             .checked_add(transaction_pages)
@@ -76,8 +75,8 @@ impl Layout {
         let depth = index_pages.trailing_zeros() as usize;
         let debt_limit = config.pages - baseline;
         let owner_limit = config.views.min(debt_limit);
-        // Clipping leaves at most two intervals: at most two nodes per covered
-        // page plus four boundary paths. Keep a displaced history and write scratch.
+        // A wrapped prefix and its disjoint growing tail occupy at most three
+        // intervals. Keep a displaced history and write scratch as well.
         let history_nodes = ring_pages
             .checked_mul(2)
             .and_then(|n| n.checked_add(depth.checked_mul(4)?))
@@ -86,7 +85,7 @@ impl Layout {
         let node_limit = history_nodes
             .checked_mul(2)
             .and_then(|n| n.checked_add(debt_limit.checked_mul(2)?))
-            .and_then(|n| n.checked_add(owner_limit.checked_mul(depth.checked_mul(4)?)?))
+            .and_then(|n| n.checked_add(owner_limit.checked_mul(depth.checked_mul(6)?)?))
             .and_then(|n| {
                 n.checked_add(
                     transaction_pages

@@ -202,6 +202,45 @@ impl ResourceStore {
         self.audio_resource(Take { store, take })
     }
 
+    pub fn empty_audio(&mut self, store: AudioStoreId) -> Result<ResourceId, Error> {
+        self.audio_resource_credit()?;
+        let take = self.with_audio(store, |_, audio| audio.empty_take())?;
+        self.audio_resource(Take { store, take })
+    }
+    pub fn prepare_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        maximum_frames: u64,
+    ) -> Result<(), Error> {
+        let owner = self.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let take = get(&self.versions, active.slot, active.generation)?
+            .audio
+            .ok_or(Error::InvalidShape)?;
+        self.with_audio(take.store, |_, audio| {
+            audio.reserve_growth(take.take, maximum_frames)
+        })
+    }
+    pub fn finish_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+    ) -> Result<(), Error> {
+        let owner = self.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let take = get(&self.versions, active.slot, active.generation)?
+            .audio
+            .ok_or(Error::InvalidShape)?;
+        self.with_audio(take.store, |_, audio| audio.finish_growth(take.take))
+    }
+
     pub fn cleanup_audio_store(&mut self, id: AudioStoreId) -> Result<(), Error> {
         self.with_audio(id, |_, audio| audio.begin_cleanup())
     }
@@ -370,6 +409,37 @@ impl RenderIo<'_> {
         self.store.with_audio(id, |store, audio| {
             audio.append(&mut store.render_io(), frame, samples)
         })
+    }
+
+    pub fn append_audio_take(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        samples: &[f32],
+    ) -> Result<Revision, Error> {
+        let mut owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let mut version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        let revision = if samples.is_empty() {
+            owner.revision
+        } else {
+            owner.revision.checked_next()?
+        };
+        let info = self.store.with_audio(take.store, |resources, audio| {
+            audio.append_take(&mut resources.render_io(), take.take, samples)?;
+            audio.info(audio.take_index(take.take)?)
+        })?;
+        owner.revision = revision;
+        version.revision = revision;
+        version.description.frames = info.frames;
+        version.description.bytes = info.frames as usize * info.channels as usize * 4;
+        self.store.resources[resource.slot() as usize].value = Some(owner);
+        self.store.versions[active.slot as usize].value = Some(version);
+        Ok(revision)
     }
 
     /// Required COW edit of a resource; immutable generic snapshots stay pinned.
