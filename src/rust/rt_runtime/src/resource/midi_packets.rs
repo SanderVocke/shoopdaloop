@@ -21,6 +21,7 @@ pub(super) struct Config {
     pub bodies: usize,
     pub records: usize,
     pub max_packet: usize,
+    pub bases: usize,
 }
 impl Config {
     pub fn metadata_bytes(self) -> Result<usize, Error> {
@@ -39,6 +40,11 @@ impl Config {
                     .checked_mul(size_of::<Slot<Record>>() + 2 * size_of::<NonZeroU32>())
                     .and_then(|more| bytes.checked_add(more))
             })
+            .and_then(|bytes| {
+                self.bases
+                    .checked_mul(size_of::<Slot<Base>>() + 2 * size_of::<NonZeroU32>())
+                    .and_then(|more| bytes.checked_add(more))
+            })
             .filter(|&bytes| bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)
     }
@@ -53,6 +59,14 @@ struct Handle {
 pub(super) struct BodyId(Handle);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct RecordId(Handle);
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct BaseId(Handle);
+#[derive(Clone, Copy)]
+struct Base {
+    snapshot: super::Snapshot,
+    index: super::ReadIndex,
+    references: u32,
+}
 #[derive(Clone, Copy)]
 struct Slab {
     physical: usize,
@@ -67,6 +81,7 @@ struct Body {
     bytes: usize,
     references: u32,
     packet: Option<StatePacket>,
+    base: Option<NonZeroU32>,
 }
 #[derive(Clone, Copy)]
 struct Record {
@@ -98,7 +113,11 @@ pub(super) struct Packets {
     record_count: usize,
     free_records: Vec<NonZeroU32>,
     retired_records: Vec<NonZeroU32>,
-    cursor: bool,
+    bases: Vec<Slot<Base>>,
+    free_bases: Vec<NonZeroU32>,
+    retired_bases: Vec<NonZeroU32>,
+    base_count: usize,
+    cursor: u8,
 }
 fn slot(id: NonZeroU32) -> usize {
     (id.get() - 1) as usize
@@ -162,7 +181,11 @@ impl Packets {
             record_count: 0,
             free_records: free_ids(config.records),
             retired_records: retired(config.records),
-            cursor: false,
+            bases: slots(config.bases),
+            free_bases: free_ids(config.bases),
+            retired_bases: retired(config.bases),
+            base_count: 0,
+            cursor: 0,
         };
         resources.reserved_pages += config.pages;
         Ok(result)
@@ -204,8 +227,129 @@ impl Packets {
         self.record(id)?;
         Ok(id.0.slot)
     }
+    fn base(&self, id: BaseId) -> Result<Base, Error> {
+        let entry = self.bases.get(slot(id.0.slot)).ok_or(Error::InvalidId)?;
+        if id.0.scope != self.scope || id.0.generation != entry.generation {
+            return Err(Error::InvalidId);
+        }
+        entry
+            .value
+            .filter(|base| base.references > 0)
+            .ok_or(Error::InvalidId)
+    }
+    pub fn pin_base(
+        &mut self,
+        resources: &mut ResourceStore,
+        snapshot: super::SnapshotId,
+    ) -> Result<BaseId, Error> {
+        self.check_store(resources)?;
+        if self.closed {
+            return Err(Error::InvalidState);
+        }
+        let id = *self.free_bases.last().ok_or(Error::Capacity)?;
+        let lease = resources.index_lease(resources.read_index(snapshot)?)?;
+        if lease.audio.is_some()
+            || lease.shared_midi.is_some()
+            || lease.snapshot.description.format != super::Format::Midi
+        {
+            return Err(Error::InvalidShape);
+        }
+        let snapshot = resources.retain_snapshot(snapshot)?;
+        let index = resources.read_index(snapshot.id)?;
+        self.free_bases.pop();
+        self.base_count += 1;
+        self.bases[slot(id)].value = Some(Base {
+            snapshot,
+            index,
+            references: 1,
+        });
+        Ok(BaseId(Handle {
+            scope: self.scope,
+            slot: id,
+            generation: self.bases[slot(id)].generation,
+        }))
+    }
+    pub fn release_base(&mut self, id: BaseId) -> Result<(), Error> {
+        self.base(id)?;
+        self.release_base_slot(id.0.slot);
+        Ok(())
+    }
+    fn release_base_slot(&mut self, id: NonZeroU32) {
+        let base = self.bases[slot(id)].value.as_mut().unwrap();
+        base.references -= 1;
+        if base.references == 0 {
+            self.retired_bases.push(id);
+        }
+    }
+    /// The caller supplies a validated record boundary from this immutable body.
+    pub fn reference_packet(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        id: BaseId,
+        offset: usize,
+        bytes: usize,
+    ) -> Result<BodyId, Error> {
+        self.check_store(io.store)?;
+        if self.closed {
+            return Err(Error::InvalidState);
+        }
+        let base = self.base(id)?;
+        if bytes == 0
+            || offset
+                .checked_add(bytes)
+                .is_none_or(|end| end > base.snapshot.description.bytes)
+        {
+            return Err(Error::InvalidOffset);
+        }
+        if bytes > self.config.max_packet || self.free_bodies.is_empty() {
+            return Err(Error::Capacity);
+        }
+        let references = base.references.checked_add(1).ok_or(Error::Exhausted)?;
+        let mut prefix = [0; 3];
+        let count = bytes.min(3);
+        io.store.charge_work(WorkClass::Render, count, 0)?;
+        io.store
+            .copy_linear_span(base.index, offset, &mut prefix[..count], WorkClass::Render)?;
+        let packet = if matches!(prefix[0], 0x80..=0xef | 0xff) {
+            Event::from_message(
+                Point {
+                    frame: crate::Frame(0),
+                    order: 0,
+                },
+                Message::parse(&prefix[..count], 3)?,
+            )
+            .map(Event::packet)
+        } else {
+            None
+        };
+        let body = self.free_bodies.pop().unwrap();
+        self.bodies[slot(body)].value = Some(Body {
+            first: NonZeroU32::new(1).unwrap(),
+            offset,
+            bytes,
+            references: 1,
+            packet,
+            base: Some(id.0.slot),
+        });
+        self.bases[slot(id.0.slot)]
+            .value
+            .as_mut()
+            .unwrap()
+            .references = references;
+        self.body_count += 1;
+        Ok(self.body_id(body))
+    }
     pub fn available_records(&self) -> usize {
         self.free_records.len()
+    }
+    pub fn apply(&self, value: NonZeroU32, state: &mut crate::midi_state::MidiState) {
+        if let Some(packet) = self.records[slot(value)]
+            .value
+            .expect("owned ordered record")
+            .packet
+        {
+            packet.apply(state);
+        }
     }
     pub fn fork_record(&mut self, value: NonZeroU32, point: Point) -> Result<RecordId, Error> {
         let body = self.records[slot(value)]
@@ -330,6 +474,7 @@ impl Packets {
             bytes: bytes.len(),
             references: 1,
             packet,
+            base: None,
         });
         self.body_count += 1;
         Ok(self.body_id(id))
@@ -404,6 +549,20 @@ impl Packets {
             io.store.note_operation(WorkClass::Render);
             return Ok(0);
         }
+        if let Some(base) = body.base {
+            let base = self.bases[slot(base)]
+                .value
+                .expect("owned immutable MIDI base");
+            io.store.note_operation(WorkClass::Render);
+            io.store.charge_work(WorkClass::Render, count, 0)?;
+            io.store.copy_linear_span(
+                base.index,
+                body.offset + offset,
+                &mut output[..count],
+                WorkClass::Render,
+            )?;
+            return Ok(count);
+        }
         let mut skip = body.offset + offset;
         let mut id = body.first;
         let mut steps = 0;
@@ -464,9 +623,24 @@ impl Packets {
         self.check_store(io.store)?;
         let mut reclaimed = 0;
         while reclaimed < budget {
-            let records_first = self.cursor;
-            self.cursor = !self.cursor;
-            if !self.retired_records.is_empty() && (records_first || self.retired_bodies.is_empty())
+            let records_first = self.cursor == 0;
+            let bases_first = self.cursor == 2;
+            self.cursor = (self.cursor + 1) % 3;
+            if !self.retired_bases.is_empty()
+                && (bases_first
+                    || self.retired_records.is_empty() && self.retired_bodies.is_empty())
+            {
+                let id = self.retired_bases.pop().unwrap();
+                let entry = &mut self.bases[slot(id)];
+                let base = entry.value.take().unwrap();
+                if let Some(generation) = entry.generation.checked_add(1) {
+                    entry.generation = generation;
+                    self.free_bases.push(id);
+                }
+                self.base_count -= 1;
+                io.store.release_snapshot(base.snapshot.id)?;
+            } else if !self.retired_records.is_empty()
+                && (records_first || self.retired_bodies.is_empty())
             {
                 let id = self.retired_records.pop().unwrap();
                 let entry = &mut self.records[slot(id)];
@@ -479,6 +653,20 @@ impl Packets {
                 self.release_body_slot(record.body);
             } else if let Some(&id) = self.retired_bodies.last() {
                 let body = self.bodies[slot(id)].value.unwrap();
+                if let Some(base) = body.base {
+                    self.retired_bodies.pop();
+                    let entry = &mut self.bodies[slot(id)];
+                    entry.value = None;
+                    if let Some(generation) = entry.generation.checked_add(1) {
+                        entry.generation = generation;
+                        self.free_bodies.push(id);
+                    }
+                    self.body_count -= 1;
+                    self.release_base_slot(base);
+                    io.store.charge_work(WorkClass::Render, 0, 1)?;
+                    reclaimed += 1;
+                    continue;
+                }
                 let slab = self.slabs[slot(body.first)].unwrap();
                 let bytes = body.bytes.min(self.page_bytes - body.offset);
                 self.release_slab(io.store, body.first);
@@ -516,7 +704,7 @@ impl Packets {
     }
     pub fn finish_cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         self.check_store(resources)?;
-        if !self.closed || self.body_count != 0 || self.record_count != 0 {
+        if !self.closed || self.body_count != 0 || self.record_count != 0 || self.base_count != 0 {
             return Err(Error::Busy);
         }
         resources.reserved_pages -= self.reserved;

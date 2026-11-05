@@ -66,6 +66,16 @@ pub(crate) struct Event {
 #[derive(Clone, Copy)]
 pub(crate) struct StatePacket([u8; 3]);
 impl StatePacket {
+    pub(crate) fn apply(self, state: &mut MidiState) {
+        let len = match self.0[0] {
+            0xff => 1,
+            0xc0..=0xdf => 2,
+            _ => 3,
+        };
+        state
+            .apply_packet(&self.0[..len], 3)
+            .expect("validated state packet");
+    }
     pub(crate) fn at(self, point: Point) -> Event {
         Event {
             point,

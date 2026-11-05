@@ -21,6 +21,8 @@ use crate::{
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::num::NonZeroU32;
 
+pub(super) mod history;
+
 #[derive(Clone, Copy)]
 pub(super) struct Config {
     pub packets: midi_packets::Config,
@@ -113,12 +115,12 @@ impl Core {
         }
         config
             .events_per_tick
-            .checked_mul(size_of::<NonZeroU32>() * 2 + size_of::<Option<RecordId>>())
+            .checked_mul(size_of::<NonZeroU32>() * 3 + size_of::<Option<RecordId>>())
             .filter(|&bytes| bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
         let indexes = store::Store::prepare(config.indexes)?;
         let packets = Packets::prepare(resources, config.packets)?;
-        let mut removals = vec![NonZeroU32::new(1).unwrap(); config.events_per_tick];
+        let mut removals = vec![NonZeroU32::new(1).unwrap(); config.events_per_tick * 2];
         for value in &mut removals {
             *core::hint::black_box(value) = NonZeroU32::new(1).unwrap();
         }
@@ -209,6 +211,10 @@ impl Core {
         if staged.count != 0 {
             return Err(Error::Busy);
         }
+        frame
+            .0
+            .checked_add(self.q as u64)
+            .ok_or(Error::InvalidFrame)?;
         if input.len() > self.config.events_per_tick
             || input.len() > staged.records.len()
             || input.byte_len() > self.config.bytes_per_tick
@@ -289,6 +295,58 @@ impl Core {
                 &mut self.packets,
             );
             self.packets.release_record(record).unwrap();
+            media.root = result?;
+            Ok(())
+        })();
+        self.account(io);
+        result
+    }
+    pub fn pin_import(
+        &mut self,
+        resources: &mut ResourceStore,
+        snapshot: super::SnapshotId,
+    ) -> Result<midi_packets::BaseId, Error> {
+        self.packets.pin_base(resources, snapshot)
+    }
+    pub fn release_import(&mut self, base: midi_packets::BaseId) -> Result<(), Error> {
+        self.packets.release_base(base)
+    }
+    pub fn import_reference(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        media: &mut Media,
+        base: midi_packets::BaseId,
+        frame: u64,
+        order: u64,
+        offset: usize,
+        bytes: usize,
+    ) -> Result<(), Error> {
+        if frame >= media.frames {
+            return Err(Error::InvalidFrame);
+        }
+        if self.packets.available_records() == 0 {
+            return Err(Error::Capacity);
+        }
+        self.indexes.reset_work();
+        let result = (|| {
+            let body = self.packets.reference_packet(io, base, offset, bytes)?;
+            let row = self
+                .packets
+                .make_record(
+                    body,
+                    Point {
+                        frame: Frame(media.origin.0 + frame),
+                        order,
+                    },
+                )
+                .expect("preflighted imported reference");
+            self.packets.release_body(body).unwrap();
+            let result = self.indexes.insert(
+                media.root,
+                self.packets.value(row).unwrap(),
+                &mut self.packets,
+            );
+            self.packets.release_record(row).unwrap();
             media.root = result?;
             Ok(())
         })();
@@ -553,6 +611,52 @@ impl Core {
         output: &mut [u8],
     ) -> Result<usize, Error> {
         self.packets.read(io, packet.value, offset, output)
+    }
+    pub fn read_bytes(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        media: &Media,
+        offset: usize,
+        output: &mut [u8],
+    ) -> Result<usize, Error> {
+        self.indexes.reset_work();
+        let selected = self.indexes.record_at(media.root, offset, &self.packets);
+        self.account(io);
+        let Some((value, within)) = selected? else {
+            return Ok(0);
+        };
+        if within < 12 {
+            let point = self.packets.point(value);
+            let bytes =
+                u32::try_from(self.packets.packet_len(value)).map_err(|_| Error::Capacity)?;
+            let mut header = [0; 12];
+            header[..8].copy_from_slice(&(point.frame.0 - media.origin.0).to_le_bytes());
+            header[8..].copy_from_slice(&bytes.to_le_bytes());
+            let count = output.len().min(12 - within);
+            output[..count].copy_from_slice(&header[within..within + count]);
+            io.store.charge_work(WorkClass::Render, count, 0)?;
+            return Ok(count);
+        }
+        self.packets.read(io, value, within - 12, output)
+    }
+    pub fn byte_before(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        media: &Media,
+        frame: u64,
+    ) -> Result<usize, Error> {
+        if frame > media.frames {
+            return Err(Error::InvalidFrame);
+        }
+        self.indexes.reset_work();
+        let result = self.indexes.totals(
+            media.root,
+            Cut::frame(media.origin),
+            Cut::frame(Frame(media.origin.0 + frame)),
+            &self.packets,
+        );
+        self.account(io);
+        Ok(result?.bytes)
     }
     pub fn state(
         &mut self,

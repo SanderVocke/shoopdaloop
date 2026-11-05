@@ -63,6 +63,22 @@ needs no suffix finalization. Native tests cover twelve wraps, a growing prefix,
 old/intermediate exports, complete state/order and pressure refusal. Production
 source capture, shared reservation policy, cross-media/graph publication and the
 public application path still need integration and CI acceptance.
+The core also captures independent rolling sources in those global pools. Eviction
+advances a truthful whole-quantum coverage bound and its strict-before-start
+projection. Grabs clip the packet root and initially bound semantic categories;
+an edited category materializes its clipped root on first use. This keeps padded
+regions empty when growing/replacing later, without rebuilding all categories at
+the grab cut. Source views currently charge/pin their remaining category roots,
+including hidden records; production accounting must not charge only visible
+packets while those roots remain owned. A native scenario covers density eviction,
+padded grabs and continuation beyond retention, independent sources and reset.
+The existing tree ownership oracle also covers clipped retained snapshots.
+Loaded packet bodies can now pin immutable ordinary upload snapshots and reference
+their validated packet ranges. Record/version retention preserves these bases
+after removal of their original resource. Ordered byte totals provide serialized
+read and seek offsets without scanning every earlier event. The native writer
+oracle exercises this path with unchanged old exports; integration into the public
+resource and host APIs remains unfinished.
 Sostenuto aggregates can store compact record IDs and map only their result
 markers to ordered points. Subtree ownership keeps those records alive without
 repeating full timestamps in every aggregate.

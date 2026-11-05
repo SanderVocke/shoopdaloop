@@ -111,8 +111,25 @@ fn prepared_ordered_edits_preserve_snapshots_balance_and_exact_value_references(
                 if let Some(old) = snapshots[index] {
                     pool.release(old).unwrap();
                 }
-                snapshots[index] = Some(pool.retain(root).unwrap());
-                saved[index] = expected;
+                let low = if step % 64 == 0 { 0 } else { key / 2 };
+                let high = if step % 96 == 0 { low } else { 128 - key / 2 };
+                let retained = pool.retain(root).unwrap();
+                snapshots[index] = Some(
+                    pool.clip(
+                        retained,
+                        Cut::frame(Frame(origin + low as u64)),
+                        Cut::frame(Frame(origin + high as u64)),
+                        &mut values,
+                    )
+                    .unwrap(),
+                );
+                saved[index] = core::array::from_fn(|key| {
+                    if (low..high).contains(&key) {
+                        expected[key]
+                    } else {
+                        None
+                    }
+                });
             }
             assert!(pool.maintain(3, &mut values) <= 3);
             let mut roots = [None; 9];

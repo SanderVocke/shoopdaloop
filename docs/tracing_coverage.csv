@@ -378,6 +378,7 @@ src/rust/rt_runtime/src/resource/midi_packets.rs,generic_realtime_library,exclud
 src/rust/rt_runtime/src/resource/midi_packets/tests.rs,test_support,excluded,Heap-guarded packet packing SysEx ownership and ordered-version oracles; no production boundary.
 src/rust/rt_runtime/src/resource/midi_writer.rs,generic_realtime_library,excluded,Fixed-tick MIDI writers shared packet staging and bounded admission with required work diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/midi_writer/tests.rs,test_support,excluded,Independent continuous replacement continuation and immutable-export oracles at one representative quantum; no production boundary.
+src/rust/rt_runtime/src/resource/midi_writer/history.rs,generic_realtime_library,excluded,Shared MIDI rolling source cuts density eviction and padded-window ownership; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_audio/layout.rs,generic_realtime_library,excluded,Allocation-free shared source pool sizing and capacity validation; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/storage.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/history.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.

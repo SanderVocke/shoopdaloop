@@ -2,8 +2,25 @@
 
 ## Status and delivery
 
-Execution started on `feat/finish-grab-replace` from fixed-runtime head
-`2e19210bdbb5e32510322f8b8344715ce7cbefe5`. F0 is complete; F1 behavior and capacity proofs are in progress. Written using
+Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
+[PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
+`feat/backend-replacement`, rebased onto merged parent `0ef7581b`. The latest
+implementation adds immutable loaded MIDI bases and indexed serialized reads.
+
+| Stage | Current status |
+| --- | --- |
+| F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
+| F1 | Partial: reference policy/window helpers and contract audit exist; final production limits and public-route matrix remain. |
+| F2 | Partial: pooled audio histories and shared MIDI source-history core exist; normal host preparation, resource integration and reserved global capacity remain. |
+| F3 | Partial: continuous fixed/growing MIDI core passes targeted tests; continuous audio, domain modes and atomic engine publication remain. |
+| F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
+
+Grab and Replacing are still disabled in the normal application. P04/P05 remain
+OPEN. Targeted native tests validate the library increments; fresh applicable CI
+and application acceptance have not been established for the latest implementation.
+
+Execution originally started from fixed-runtime head
+`2e19210bdbb5e32510322f8b8344715ce7cbefe5`. Written using
 [write_plan.md](.agents/prompts/write_plan.md). This plan finishes **P04 and P05
 in the normal application**, including capability advertisement and parity-row
 closure. Completing another internal engine demonstration does not finish it.
@@ -11,13 +28,9 @@ closure. Completing another internal engine demonstration does not finish it.
 Authoring checkout: `f9075999e996ca56cfd30ff561cf85626c0df85d`.
 [Foundation PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927) is merged
 into `feat/fixed-quantum-runtime` at `bfea527b9ed12798c0f05a17606a2c81ad45b5db`.
-Its parent [PR #930](https://github.com/SanderVocke/shoopdaloop/pull/930) is still
-open against `feat/backend-replacement` at inspection. Refresh this information
-before implementation. Create `feat/finish-grab-replace` from the latest fixed
-target, or from `feat/backend-replacement` if that target has landed. Open a new
-PR against the branch containing that architecture; do not reuse closed #927.
-Retarget onto `feat/backend-replacement` after the parent lands, reconciling its
-actual final changes.
+Its parent [PR #930](https://github.com/SanderVocke/shoopdaloop/pull/930) merged
+into `feat/backend-replacement` at `0ef7581b`. This delivery has been rebased onto
+that merged result and its new PR retargeted; closed #927 is not reused.
 
 This plan succeeds [PLAN_RECONCILE_GRAB.md](PLAN_RECONCILE_GRAB.md) and
 [PLAN_SHARED_MIDI.md](PLAN_SHARED_MIDI.md) for application delivery. Retain their
@@ -26,13 +39,13 @@ checks validate the foundation, not completion of this application work.
 
 ## Execution record
 
-F0: refreshed the parent on 2026-11-04. PR #930 remains open; the merged
+F0: initially refreshed the parent on 2026-11-04, when PR #930 was open; the merged
 foundation and BufferedProcessor delivery (#937) are present in target
 `2e19210b`. The buffering layer is additive and leaves the production loop hooks
 unchanged; request/effective-time tests will include its declared timing when used.
 The new branch preserves the untracked plan from the prior checkout. Draft
-[PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets the refreshed
-fixed branch. [The application contract](docs/native_session_recovery/grab-replace.md)
+[PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) initially targeted
+the refreshed fixed branch. [The application contract](docs/native_session_recovery/grab-replace.md)
 records the gate inventory and reference behavior. A checked portable musical
 window resolver pins the cycle/phase, prefix-continuation, explicit padding and
 u64 range semantics before engine settlement uses them. It does not enable a
@@ -161,6 +174,45 @@ versions through edits, logarithmic range work, pressure and complete reclamatio
 Sostenuto summaries can keep 32-byte compact record-marker tables and resolve
 only query-result markers. This tree layer still needs CI and integration into
 the complete category store, payload storage and live writer.
+
+The continuous MIDI core now stages each input packet once, shares immutable
+bodies between users and commits a complete semantic root after each successful
+fixed or growing write. Whole-tick metadata preflight precedes root changes;
+positive empty ticks erase originals, logical-zero state follows the input cut,
+and exit consumes the complete view without suffix repair. Bounded admission
+checks existing quantum density/bytes. Two focused Q=32 native tests cover
+48 ticks/twelve wraps, two replacing users plus a growing prefix, full/equal-time
+packets, old/intermediate exports, complete state, pressure refusal and exit
+without write space. Required index work is accounted. All sixteen focused
+writer/packet/index tests pass with warnings denied. Source-history/coordinator
+publication, reserved production credits and the application stack remain open;
+these core tests do not finish F3 or enable P04/P05.
+
+The first targeted native pass after adopting this strategy passed four packet
+slab tests and ten complete-query/tree/category tests, with warnings denied.
+Tracing inventory and test-attribute checks passed. It includes the type-annotation
+fix for the category oracle found by CI on `2707c466`; fresh broad CI is pending.
+These are library ownership/state proofs, not application acceptance. The new
+packed packet bodies/records are not yet connected to a live writer or host.
+
+The shared MIDI core now also captures independent rolling sources, advances
+truthful density/time coverage with strict-before-start projection, and retains
+immutable grabbed windows across source reset. Packet-root clipping and lazy
+category clipping preserve explicit empty padding through later continuation.
+One representative native scenario covers two sources, padded grab, continuation
+beyond the horizon and source reset; the existing tree ownership oracle now
+includes clipped snapshots. All seventeen focused native writer/packet/index
+tests pass. Ordinary resource access, production quota guarantees, cross-media
+publication and application integration remain open.
+
+The latest implementation adds immutable uploaded MIDI
+bases: semantic records pin existing packet ranges rather than copying loaded
+payloads into history pages. Byte-offset tree queries support ordinary serialized
+reads and seek offsets. The existing continuous-writer oracle now starts from a
+real uploaded resource, removes its original owner, and checks old/current bytes
+and state through repeated writes. All three focused writer/history tests pass
+with warnings denied on this working tree. Broader CI is pending; resource/host
+integration and P04/P05 application completion are still outstanding.
 
 ## Findings that determine the work
 
@@ -323,26 +375,6 @@ reattachment. Physical-device deadline certification is not implied by CI timing
   with success coverage only when that route is implemented.
 
 ## Development verification strategy
-
-The continuous MIDI core now stages each input packet once, shares immutable
-bodies between users and commits a complete semantic root after each successful
-fixed or growing write. Whole-tick metadata preflight precedes root changes;
-positive empty ticks erase originals, logical-zero state follows the input cut,
-and exit consumes the complete view without suffix repair. Bounded admission
-checks existing quantum density/bytes. Two focused Q=32 native tests cover
-48 ticks/twelve wraps, two replacing users plus a growing prefix, full/equal-time
-packets, old/intermediate exports, complete state, pressure refusal and exit
-without write space. Required index work is accounted. All sixteen focused
-writer/packet/index tests pass with warnings denied. Source-history/coordinator
-publication, reserved production credits and the application stack remain open;
-these core tests do not finish F3 or enable P04/P05.
-
-The first targeted native pass after adopting this strategy passed four packet
-slab tests and ten complete-query/tree/category tests, with warnings denied.
-Tracing inventory and test-attribute checks passed. It includes the type-annotation
-fix for the category oracle found by CI on `2707c466`; fresh broad CI is pending.
-These are library ownership/state proofs, not application acceptance. The new
-packed packet bodies/records are not yet connected to a live writer or host.
 
 The user requested this strategy on 2026-11-05 to shorten development cycles.
 It supersedes the earlier CI-only iteration rule and the repository guidance to

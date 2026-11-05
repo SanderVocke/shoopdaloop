@@ -452,6 +452,129 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
     pub(crate) fn remove_credit(&self, root: Root) -> Result<usize, Error> {
         Ok(4 * (usize::from(self.height(self.check(root)?)) + 1) + 8)
     }
+    pub(crate) fn clip_credit(
+        &self,
+        root: Root,
+        after: Cut,
+        cut: Cut,
+        lookup: &impl Lookup<V>,
+    ) -> Result<usize, Error> {
+        let link = self.check(root)?;
+        if after > cut {
+            return Err(Error::InvalidEvent);
+        }
+        if link.is_none() || after == cut {
+            return Ok(0);
+        }
+        let first = self
+            .first(
+                root,
+                Cut::frame(crate::Frame(0)),
+                Cut::at(Point {
+                    frame: crate::Frame(u64::MAX),
+                    order: u64::MAX,
+                }),
+                lookup,
+            )?
+            .unwrap();
+        let last = self
+            .last(
+                root,
+                Cut::at(Point {
+                    frame: crate::Frame(u64::MAX),
+                    order: u64::MAX,
+                }),
+                lookup,
+            )?
+            .unwrap();
+        if !after.includes(lookup.point(first)) && cut.includes(lookup.point(last)) {
+            return Ok(0);
+        }
+        Ok(8 * (usize::from(self.height(link)) + 1).pow(2) + 4)
+    }
+    fn join(
+        &mut self,
+        left: Link,
+        value: V,
+        right: Link,
+        values: &mut impl Values<V>,
+    ) -> NonZeroU32 {
+        let a = self.height(left);
+        let b = self.height(right);
+        if a > b + 1 {
+            let id = self.unique(left.unwrap(), values);
+            let child = self.join(self.node(id).children[1], value, right, values);
+            self.nodes[slot(id)].node.as_mut().unwrap().children[1] = Some(child);
+            self.rebalance(id, values)
+        } else if b > a + 1 {
+            let id = self.unique(right.unwrap(), values);
+            let child = self.join(left, value, self.node(id).children[0], values);
+            self.nodes[slot(id)].node.as_mut().unwrap().children[0] = Some(child);
+            self.rebalance(id, values)
+        } else {
+            let id = self.allocate(
+                Node {
+                    value,
+                    children: [left, right],
+                    summary: S::default(),
+                    count: 0,
+                    references: 1,
+                    height: 1,
+                },
+                values,
+            );
+            self.recalculate(id, values);
+            id
+        }
+    }
+    fn trim_lower(&mut self, link: Link, after: Cut, values: &mut impl Values<V>) -> Link {
+        let node = *self.node(link?);
+        if after.includes(values.point(node.value)) {
+            self.trim_lower(node.children[1], after, values)
+        } else {
+            let left = self.trim_lower(node.children[0], after, values);
+            self.retain_link(node.children[1]);
+            Some(self.join(left, node.value, node.children[1], values))
+        }
+    }
+    fn trim_upper(&mut self, link: Link, cut: Cut, values: &mut impl Values<V>) -> Link {
+        let node = *self.node(link?);
+        if !cut.includes(values.point(node.value)) {
+            self.trim_upper(node.children[0], cut, values)
+        } else {
+            let right = self.trim_upper(node.children[1], cut, values);
+            self.retain_link(node.children[0]);
+            Some(self.join(node.children[0], node.value, right, values))
+        }
+    }
+    pub(crate) fn clip(
+        &mut self,
+        root: Root,
+        after: Cut,
+        cut: Cut,
+        values: &mut impl Values<V>,
+    ) -> Result<Root, Error> {
+        let credit = self.clip_credit(root, after, cut, values)?;
+        if after == cut {
+            self.release(root)?;
+            return Ok(self.empty());
+        }
+        if credit == 0 {
+            return Ok(root);
+        }
+        if self.free_nodes() < credit {
+            return Err(Error::Capacity);
+        }
+        let old = self.check(root)?;
+        let lower = self.trim_lower(old, after, values);
+        let clipped = self.trim_upper(lower, cut, values);
+        self.release_link(lower);
+        self.release(root)?;
+        if clipped.is_some() {
+            self.roots += 1;
+        }
+        Ok(self.root(clipped))
+    }
     pub(crate) fn insert(
         &mut self,
         root: Root,
@@ -690,3 +813,36 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
 
 #[cfg(test)]
 mod tests;
+
+impl<V: Copy> Pool<V, Totals> {
+    pub(crate) fn record_at(
+        &self,
+        root: Root,
+        mut offset: usize,
+        lookup: &impl Lookup<V>,
+    ) -> Result<Option<(V, usize)>, Error> {
+        let mut link = self.check(root)?;
+        while let Some(id) = link {
+            let node = self.node(id);
+            let left = self.summary(node.children[0]);
+            if left.overflow {
+                return Err(Error::Capacity);
+            }
+            if offset < left.bytes {
+                link = node.children[0];
+                continue;
+            }
+            offset -= left.bytes;
+            let bytes = lookup
+                .packet_bytes(node.value)
+                .checked_add(12)
+                .ok_or(Error::Capacity)?;
+            if offset < bytes {
+                return Ok(Some((node.value, offset)));
+            }
+            offset -= bytes;
+            link = node.children[1];
+        }
+        Ok(None)
+    }
+}

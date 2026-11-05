@@ -73,6 +73,7 @@ fn config() -> Config {
             bodies: 512,
             records: 2048,
             max_packet: 64,
+            bases: 4,
         },
         indexes: store::Config {
             leases: 32,
@@ -118,6 +119,7 @@ fn check(core: &mut Core, resources: &mut ResourceStore, media: &Media, oracle: 
         oracle.rows.iter().map(|row| row.len + 12).sum::<usize>()
     );
     let mut packet = None;
+    let mut position = 0;
     for row in &oracle.rows {
         packet = core
             .first(&mut resources.render_io(), media, packet)
@@ -133,12 +135,44 @@ fn check(core: &mut Core, resources: &mut ResourceStore, media: &Media, oracle: 
             Ok(row.len)
         );
         assert_eq!(&bytes[..row.len], &row.bytes[..row.len]);
+        let mut record = [0; 76];
+        let len = super::super::encode_midi_record(row.frame, &row.bytes[..row.len], &mut record)
+            .unwrap();
+        let mut copied = 0;
+        while copied < len {
+            let count = core
+                .read_bytes(
+                    &mut resources.render_io(),
+                    media,
+                    position,
+                    &mut bytes[..17.min(len - copied)],
+                )
+                .unwrap();
+            assert!(count > 0);
+            assert_eq!(&bytes[..count], &record[copied..copied + count]);
+            copied += count;
+            position += count;
+        }
     }
     assert!(core
         .first(&mut resources.render_io(), media, packet)
         .unwrap()
         .is_none());
+    assert_eq!(
+        core.read_bytes(&mut resources.render_io(), media, position, &mut [0; 8]),
+        Ok(0)
+    );
     for frame in [0, 1, 7, 8, Q as u64, oracle.frames] {
+        let offset = oracle
+            .rows
+            .iter()
+            .filter(|row| row.frame < frame)
+            .map(|row| row.len + 12)
+            .sum::<usize>();
+        assert_eq!(
+            core.byte_before(&mut resources.render_io(), media, frame),
+            Ok(offset)
+        );
         let mut expected = oracle.initial;
         for row in oracle.rows.iter().filter(|row| row.frame < frame) {
             expected.apply_packet(&row.bytes[..row.len], 64).unwrap();
@@ -155,6 +189,10 @@ fn cleanup(core: &mut Core, resources: &mut ResourceStore) {
     core.begin_cleanup(&mut resources.render_io()).unwrap();
     while core.maintain(&mut resources.render_io(), 1).unwrap() > 0 {}
     core.finish_cleanup(resources).unwrap();
+    resources.begin_callback();
+    while resources.reclaim() > 0 {
+        resources.begin_callback();
+    }
     assert_eq!(resources.usage().free_pages, 256);
     assert_eq!(resources.usage().reserved_pages, 0);
 }
@@ -177,6 +215,37 @@ fn continuous_ticks_share_full_packets_preserve_snapshots_and_exit_without_suffi
         original(32, 2, &[0x80, 60, 0]),
         original(96, 3, &sysex),
     ];
+    let mut encoded = [0; 256];
+    let mut offsets = [0; 4];
+    let mut count = 0;
+    for (i, row) in rows.iter().enumerate() {
+        offsets[i] = count + 12;
+        count += super::super::encode_midi_record(
+            row.frame,
+            &row.bytes[..row.len],
+            &mut encoded[count..],
+        )
+        .unwrap();
+    }
+    let resource = resources.create().unwrap();
+    let upload = resources
+        .begin_upload(
+            resource,
+            Revision(0),
+            super::super::Description {
+                format: super::super::Format::Midi,
+                frames: 128,
+                bytes: count,
+            },
+        )
+        .unwrap();
+    for (i, chunk) in encoded[..count].chunks(32).enumerate() {
+        resources.begin_callback();
+        resources.write_upload(upload, i * 32, chunk).unwrap();
+    }
+    resources.finish_upload(upload).unwrap();
+    resources.commit(upload).unwrap();
+    let raw = resources.snapshot(resource, Frame(0)).unwrap();
     let mut loaded = core
         .empty(Frame(u64::from(u32::MAX) + 100), 128, &initial)
         .unwrap();
@@ -186,16 +255,24 @@ fn continuous_ticks_share_full_packets_preserve_snapshots_and_exit_without_suffi
     let mut growing_oracle = Oracle::new(&rows, &initial, 128);
     let mut middle_oracle = Oracle::new(&[], &initial, 128);
     assert_no_heap(|| {
-        for row in rows {
-            core.import_packet(
+        let base = core.pin_import(&mut resources, raw.id).unwrap();
+        let available = core.packets.available_pages();
+        for (i, row) in rows.into_iter().enumerate() {
+            core.import_reference(
                 &mut resources.render_io(),
                 &mut loaded,
+                base,
                 row.frame,
                 row.order,
-                &row.bytes[..row.len],
+                offsets[i],
+                row.len,
             )
             .unwrap();
         }
+        assert_eq!(core.packets.available_pages(), available);
+        core.release_import(base).unwrap();
+        resources.release_snapshot(raw.id).unwrap();
+        resources.remove(resource).unwrap();
         let old = core.retain(&loaded).unwrap();
         let second = core.retain(&loaded).unwrap();
         let prefix = core.retain(&loaded).unwrap();
@@ -319,6 +396,142 @@ fn refused_tick_keeps_the_previous_complete_cut_and_stop_needs_no_write_workspac
         check(&mut core, &mut resources, &old, &oracle);
         core.release(stopped).unwrap();
         core.release(old).unwrap();
+        cleanup(&mut core, &mut resources);
+    });
+}
+
+#[shoop_test]
+fn pooled_histories_keep_truthful_cuts_and_padded_grabs_continue_without_hidden_source_events() {
+    let mut resources = resources();
+    let mut core = Core::prepare(&mut resources, Quantum::new(Q).unwrap(), config()).unwrap();
+    let epoch = u64::from(u32::MAX) + 1;
+    let initial = MidiState::default();
+    let mut source = core.begin_source(Frame(epoch), 96, 8, &initial).unwrap();
+    let mut other = core.begin_source(Frame(epoch), 96, 8, &initial).unwrap();
+    let mut staged = Staging::prepare(8).unwrap();
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    let mut other_input = MidiBuffer::new(8, 128).unwrap();
+    let mut observed = Vec::with_capacity(96);
+    let mut expected_source = initial;
+    let mut padded_oracle = Oracle::new(&[], &initial, 96);
+    let mut continued_oracle = Oracle::new(&[], &initial, 96);
+    assert_no_heap(|| {
+        let mut padded = None;
+        let mut writer: Option<Writer> = None;
+        for tick in 0..12 {
+            let frame = Frame(epoch + (tick * Q) as u64);
+            input.clear();
+            let (cc, value) = match tick % 4 {
+                0 => (64, 127),
+                1 => (66, 127),
+                2 => (64, 0),
+                _ => (66, 0),
+            };
+            input.push(0, Q, &[0xb0, cc, value]).unwrap();
+            input
+                .push(7, Q, &[0x90, 60 + tick as u8 % 4, 70 + tick as u8])
+                .unwrap();
+            let note_off = [0x80, 60 + tick as u8 % 4, 0];
+            input
+                .push(
+                    31,
+                    Q,
+                    if tick == 5 {
+                        &[0xf0, 1, 2, 3, 4, 5, 6, 0xf7]
+                    } else {
+                        &note_off
+                    },
+                )
+                .unwrap();
+            core.stage(&mut resources.render_io(), &mut staged, frame, &input)
+                .unwrap();
+            if let Some(writer) = &mut writer {
+                continued_oracle.write(writer.position, false, source.state(), &input);
+                core.write_tick(&mut resources.render_io(), writer, source.state(), &staged)
+                    .unwrap();
+            }
+            core.commit_source(&mut resources.render_io(), &mut source, &staged)
+                .unwrap();
+            core.clear_stage(&mut staged).unwrap();
+            for i in 0..input.len() {
+                let (offset, bytes) = input.get(i).unwrap();
+                observed.push(original(frame.0 + u64::from(offset), i as u64, bytes));
+                expected_source.apply_packet(bytes, 64).unwrap();
+            }
+            assert_eq!(source.state(), &expected_source);
+            let coverage = source.coverage();
+            assert_eq!(coverage.end, Frame(frame.0 + Q as u64));
+            assert!(coverage.start >= Frame(coverage.end.0.saturating_sub(96)));
+            if tick == 2 {
+                assert_eq!(coverage.start, Frame(epoch + 32));
+                let end = Frame(coverage.start.0 + 32);
+                let grabbed = core
+                    .grab_source(&mut resources.render_io(), &source, coverage.start..end, 96)
+                    .unwrap();
+                for row in observed.iter().filter(|row| row.frame < coverage.start.0) {
+                    padded_oracle
+                        .initial
+                        .apply_packet(&row.bytes[..row.len], 64)
+                        .unwrap();
+                }
+                for row in observed
+                    .iter()
+                    .filter(|row| (coverage.start.0..end.0).contains(&row.frame))
+                {
+                    let mut local = *row;
+                    local.frame -= coverage.start.0;
+                    padded_oracle.rows.push(local);
+                }
+                continued_oracle.rows.extend_from_slice(&padded_oracle.rows);
+                continued_oracle.initial = padded_oracle.initial;
+                padded = Some(core.retain(&grabbed).unwrap());
+                writer = Some(admit(
+                    &mut core,
+                    &mut resources,
+                    grabbed,
+                    Kind::Growing {
+                        maximum_frames: 384,
+                    },
+                    96,
+                ));
+                check(
+                    &mut core,
+                    &mut resources,
+                    padded.as_ref().unwrap(),
+                    &padded_oracle,
+                );
+            }
+            other_input.clear();
+            other_input.push(0, Q, &[0xb1, 7, tick as u8]).unwrap();
+            core.stage(&mut resources.render_io(), &mut staged, frame, &other_input)
+                .unwrap();
+            core.commit_source(&mut resources.render_io(), &mut other, &staged)
+                .unwrap();
+            core.clear_stage(&mut staged).unwrap();
+            core.maintain(&mut resources.render_io(), 512).unwrap();
+        }
+        let continued = core.finish_writer(writer.take().unwrap());
+        check(&mut core, &mut resources, &continued, &continued_oracle);
+        check(
+            &mut core,
+            &mut resources,
+            padded.as_ref().unwrap(),
+            &padded_oracle,
+        );
+        assert_eq!(continued.frames, 384);
+        let other_coverage = other.coverage();
+        let other_state = *other.state();
+        let reset = Frame(epoch + 12 * Q as u64);
+        core.reset_source(&mut source, reset, &initial).unwrap();
+        assert_eq!(source.coverage(), reset..reset);
+        assert_eq!(source.state(), &initial);
+        assert_eq!(other.coverage(), other_coverage);
+        assert_eq!(other.state(), &other_state);
+        check(&mut core, &mut resources, &continued, &continued_oracle);
+        core.release(continued).unwrap();
+        core.release(padded.take().unwrap()).unwrap();
+        core.release_source(source).unwrap();
+        core.release_source(other).unwrap();
         cleanup(&mut core, &mut resources);
     });
 }

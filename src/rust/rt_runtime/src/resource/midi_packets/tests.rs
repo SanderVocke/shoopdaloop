@@ -27,6 +27,7 @@ fn config() -> Config {
         bodies: 1024,
         records: 64,
         max_packet: 512,
+        bases: 4,
     }
 }
 fn cleanup(resources: &mut ResourceStore, packets: &mut Packets) {
@@ -149,6 +150,7 @@ fn packet_limits_and_foreign_owners_refuse_before_copy_or_descriptor_mutation() 
             bodies: 4,
             records: 2,
             max_packet: 64,
+            bases: 4,
         };
         match limit {
             0 => config.pages = 1,

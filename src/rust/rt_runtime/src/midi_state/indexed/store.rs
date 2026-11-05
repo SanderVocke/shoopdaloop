@@ -98,6 +98,8 @@ struct Table {
     references: u32,
     packets: Root,
     pages: [Option<NonZeroU32>; LEAVES],
+    bounds: Option<(Cut, Cut)>,
+    bound_id: u64,
 }
 #[derive(Clone, Copy)]
 struct TableSlot {
@@ -109,6 +111,7 @@ struct CategoryPage {
     references: u32,
     base: u16,
     roots: [Root; LEAF],
+    bounds: [u64; LEAF],
 }
 #[derive(Clone, Copy)]
 enum Kind {
@@ -184,6 +187,7 @@ pub(crate) struct Store<V: Copy> {
     holds: Pool<V, HoldSummary>,
     sostenuto: Pool<V, SostenutoIndex<V>>,
     cursor: usize,
+    next_bounds: u64,
     work: Cell<Work>,
 }
 fn slot(id: NonZeroU32) -> usize {
@@ -243,6 +247,7 @@ impl<V: Copy> Store<V> {
             holds: Pool::prepare(config.hold_nodes)?,
             sostenuto: Pool::prepare(config.sostenuto_nodes)?,
             cursor: 0,
+            next_bounds: 1,
             work: Cell::new(Work::default()),
         })
     }
@@ -276,6 +281,8 @@ impl<V: Copy> Store<V> {
             references: 1,
             packets: self.packets.empty(),
             pages: [None; LEAVES],
+            bounds: None,
+            bound_id: 0,
         });
         self.leases += 1;
         Ok(self.version(id))
@@ -316,6 +323,75 @@ impl<V: Copy> Store<V> {
             || self.empty_root(Kind::category(key)),
             |page| self.pages[slot(page)].unwrap().roots[key % LEAF],
         )
+    }
+    fn category_bounds(&self, table: &Table, key: usize) -> Option<(Cut, Cut)> {
+        let bounded = table.pages[key / LEAF]
+            .is_some_and(|id| self.pages[slot(id)].unwrap().bounds[key % LEAF] == table.bound_id);
+        table.bounds.filter(|_| !bounded)
+    }
+    fn clip_credit(
+        &self,
+        kind: Kind,
+        root: Root,
+        bounds: (Cut, Cut),
+        values: &impl Lookup<V>,
+    ) -> Result<usize, Error> {
+        match kind {
+            Kind::Packet => self.packets.clip_credit(root, bounds.0, bounds.1, values),
+            Kind::Scalar => self.scalars.clip_credit(root, bounds.0, bounds.1, values),
+            Kind::Hold => self.holds.clip_credit(root, bounds.0, bounds.1, values),
+            Kind::Sostenuto => self.sostenuto.clip_credit(root, bounds.0, bounds.1, values),
+        }
+    }
+    fn clip_root(
+        &mut self,
+        kind: Kind,
+        root: Root,
+        bounds: (Cut, Cut),
+        values: &mut impl Values<V>,
+    ) -> Root {
+        match kind {
+            Kind::Packet => self.packets.clip(root, bounds.0, bounds.1, values),
+            Kind::Scalar => self.scalars.clip(root, bounds.0, bounds.1, values),
+            Kind::Hold => self.holds.clip(root, bounds.0, bounds.1, values),
+            Kind::Sostenuto => self.sostenuto.clip(root, bounds.0, bounds.1, values),
+        }
+        .expect("preflighted category clipping")
+    }
+    /// Consume an owned source-version lease. Its source has no previous window;
+    /// category boundaries materialize only when that category is first edited.
+    pub(crate) fn window(
+        &mut self,
+        version: Version,
+        after: Cut,
+        cut: Cut,
+        values: &mut impl Values<V>,
+    ) -> Result<Version, Error> {
+        let table = self.table(version)?;
+        if table.bounds.is_some() {
+            return Err(Error::InvalidState);
+        }
+        if table.references > 1
+            && (self.free_tables.is_empty() || self.packets.available_roots() == 0)
+        {
+            return Err(Error::Capacity);
+        }
+        let next = self.next_bounds.checked_add(1).ok_or(Error::Exhausted)?;
+        let credit = self
+            .packets
+            .clip_credit(table.packets, after, cut, values)?;
+        if credit > self.packets.free_nodes() {
+            return Err(Error::Capacity);
+        }
+        let version = self.unique_table(version);
+        let root = self.table(version)?.packets;
+        let root = self.clip_root(Kind::Packet, root, (after, cut), values);
+        let table = self.tables[slot(version.slot)].table.as_mut().unwrap();
+        table.packets = root;
+        table.bounds = Some((after, cut));
+        table.bound_id = self.next_bounds;
+        self.next_bounds = next;
+        Ok(version)
     }
     fn root_len(&self, kind: Kind, root: Root) -> usize {
         match kind {
@@ -393,7 +469,8 @@ impl<V: Copy> Store<V> {
         for (kind, root, force_shared) in core::iter::once((Kind::Packet, table.packets, shared))
             .chain(keys.into_iter().flatten().map(|key| {
                 let key = key.slot();
-                let force_shared = shared
+                let force_shared = self.category_bounds(table, key).is_some()
+                    || shared
                     || table.pages[key / LEAF]
                         .is_some_and(|id| self.pages[slot(id)].unwrap().references > 1);
                 (
@@ -426,6 +503,14 @@ impl<V: Copy> Store<V> {
                     Kind::Hold => self.holds.remove_credit(root),
                     Kind::Sostenuto => self.sostenuto.remove_credit(root),
                 }?;
+            }
+        }
+        for key in keys.into_iter().flatten() {
+            let key = key.slot();
+            if let Some(bounds) = self.category_bounds(table, key) {
+                let kind = Kind::category(key);
+                nodes[kind.index()] +=
+                    self.clip_credit(kind, self.category_root(table, key), bounds, values)?;
             }
         }
         let available_nodes = [
@@ -474,7 +559,7 @@ impl<V: Copy> Store<V> {
                 return id;
             }
         }
-        let roots = if let Some(id) = old {
+        let (roots, bounds) = if let Some(id) = old {
             let roots = self.pages[slot(id)].unwrap().roots;
             for (offset, root) in roots.into_iter().enumerate() {
                 self.retain_root(Kind::category(page * LEAF + offset), root);
@@ -483,15 +568,21 @@ impl<V: Copy> Store<V> {
             let mut work = self.work.get();
             work.add(0, 1, 0, 0, 0);
             self.work.set(work);
-            roots
+            (roots, self.pages[slot(id)].unwrap().bounds)
         } else {
-            core::array::from_fn(|offset| self.empty_root(Kind::category(page * LEAF + offset)))
+            (
+                core::array::from_fn(|offset| {
+                    self.empty_root(Kind::category(page * LEAF + offset))
+                }),
+                [0; LEAF],
+            )
         };
         let id = self.free_pages.pop().expect("preflighted category credit");
         self.pages[slot(id)] = Some(CategoryPage {
             references: 1,
             base: (page * LEAF) as u16,
             roots,
+            bounds,
         });
         self.tables[slot(version.slot)]
             .table
@@ -540,8 +631,14 @@ impl<V: Copy> Store<V> {
             .packets = root;
         for key in keys.into_iter().flatten() {
             let key = key.slot();
+            let bounds = self.category_bounds(self.table(version).unwrap(), key);
             let page = self.unique_page(version, key / LEAF);
-            let root = self.pages[slot(page)].unwrap().roots[key % LEAF];
+            let mut root = self.pages[slot(page)].unwrap().roots[key % LEAF];
+            if let Some(bounds) = bounds {
+                root = self.clip_root(Kind::category(key), root, bounds, values);
+                let bound_id = self.table(version).unwrap().bound_id;
+                self.pages[slot(page)].as_mut().unwrap().bounds[key % LEAF] = bound_id;
+            }
             let root = self.edit_root(Kind::category(key), root, value, inserting, values);
             self.pages[slot(page)].as_mut().unwrap().roots[key % LEAF] = root;
         }
@@ -615,15 +712,22 @@ impl<V: Copy> Store<V> {
         if shared && self.free_tables.is_empty() {
             return Err(Error::Capacity);
         }
-        let upper_count = self
-            .len(version)?
-            .checked_add(insertions.len())
-            .and_then(|n| n.checked_add(1))
-            .ok_or(Error::Capacity)?;
+        let upper_count = [
+            self.config.packet_nodes,
+            self.config.scalar_nodes,
+            self.config.hold_nodes,
+            self.config.sostenuto_nodes,
+        ]
+        .into_iter()
+        .max()
+        .unwrap()
+        .checked_add(1)
+        .ok_or(Error::Capacity)?;
         let height = 2 * upper_count.ilog2() as usize + 2;
         let mut nodes = [0usize; 4];
         let mut roots = [0usize; 4];
         let mut affected = [false; LEAVES];
+        let mut clipped = [0u64; KEYS.div_ceil(64)];
         for (records, inserting) in [(removals, false), (insertions, true)] {
             for &value in records {
                 let credit = if inserting {
@@ -641,6 +745,20 @@ impl<V: Copy> Store<V> {
                 {
                     let key = key.slot();
                     let kind = Kind::category(key).index();
+                    if let Some(bounds) = self.category_bounds(table, key) {
+                        let bit = 1u64 << (key % 64);
+                        if clipped[key / 64] & bit == 0 {
+                            clipped[key / 64] |= bit;
+                            nodes[kind] = nodes[kind]
+                                .checked_add(self.clip_credit(
+                                    Kind::category(key),
+                                    self.category_root(table, key),
+                                    bounds,
+                                    values,
+                                )?)
+                                .ok_or(Error::Capacity)?;
+                        }
+                    }
                     affected[key / LEAF] = true;
                     nodes[kind] = nodes[kind].checked_add(credit).ok_or(Error::Capacity)?;
                     roots[kind] += usize::from(inserting);
@@ -744,6 +862,15 @@ impl<V: Copy> Store<V> {
     pub(crate) fn leases(&self) -> usize {
         self.leases
     }
+    pub(crate) fn record_at(
+        &self,
+        version: Version,
+        offset: usize,
+        values: &impl Lookup<V>,
+    ) -> Result<Option<(V, usize)>, Error> {
+        self.packets
+            .record_at(self.table(version)?.packets, offset, values)
+    }
     pub(crate) fn timeline<'a, L: Lookup<V>>(
         &'a self,
         version: Version,
@@ -843,8 +970,21 @@ pub(crate) struct Reader<'a, V: Copy, L> {
     table: &'a Table,
     values: &'a L,
 }
+impl<V: Copy, L> Reader<'_, V, L> {
+    fn cuts(&self, key: Key, after: Cut, cut: Cut) -> (Cut, Cut) {
+        self.store
+            .category_bounds(self.table, key.slot())
+            .map_or((after, cut), |bounds| {
+                (after.max(bounds.0), cut.min(bounds.1))
+            })
+    }
+}
 impl<V: Copy, L: Lookup<V>> Timeline for Reader<'_, V, L> {
     fn last(&self, key: Key, cut: Cut) -> Option<Event> {
+        let (after, cut) = self.cuts(key, Cut::frame(crate::Frame(0)), cut);
+        if after >= cut {
+            return None;
+        }
         let root = self.store.category_root(self.table, key.slot());
         let value = match Kind::category(key.slot()) {
             Kind::Hold => self.store.holds.last(root, cut, self.values),
@@ -852,9 +992,15 @@ impl<V: Copy, L: Lookup<V>> Timeline for Reader<'_, V, L> {
             _ => self.store.scalars.last(root, cut, self.values),
         }
         .expect("owned query root")?;
-        self.values.event(value)
+        self.values
+            .event(value)
+            .filter(|event| !after.includes(event.point))
     }
     fn first(&self, key: Key, after: Cut, cut: Cut) -> Option<Event> {
+        let (after, cut) = self.cuts(key, after, cut);
+        if after >= cut {
+            return None;
+        }
         let root = self.store.category_root(self.table, key.slot());
         let value = match Kind::category(key.slot()) {
             Kind::Hold => self.store.holds.first(root, after, cut, self.values),
@@ -865,6 +1011,7 @@ impl<V: Copy, L: Lookup<V>> Timeline for Reader<'_, V, L> {
         self.values.event(value)
     }
     fn holds(&self, ch: u8, after: Cut, cut: Cut) -> HoldSummary {
+        let (after, cut) = self.cuts(Key::Hold(ch), after, cut);
         self.store
             .holds
             .interval(
@@ -876,6 +1023,7 @@ impl<V: Copy, L: Lookup<V>> Timeline for Reader<'_, V, L> {
             .expect("owned hold root")
     }
     fn sostenuto(&self, ch: u8, after: Cut, cut: Cut) -> SostenutoSummary {
+        let (after, cut) = self.cuts(Key::Sostenuto(ch), after, cut);
         self.store
             .sostenuto
             .interval(
