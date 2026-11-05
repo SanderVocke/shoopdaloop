@@ -919,3 +919,9 @@ explicit response to a failure or identified risk, not a default milestone ritua
   the strengthened public-client regression and three focused timing/clear cases
   pass, together with warning-denying application/client builds. A transient TLS
   failure in deployment toolchain setup requires a fresh CI attempt.
+- Firmware at `148dea4e` exposed a probe ordering race after session replacement:
+  the confirmed command result can arrive before the snapshot carrying the new
+  persistence epoch. The next capture sent epoch 1 and correctly received an
+  Identity refusal. The Zynq probe now waits for a snapshot at least as new as the
+  revision in each successful command outcome before deriving subsequent IDs or
+  transfer keys. Its warning-denying native build passes; CI owns emulator checks.

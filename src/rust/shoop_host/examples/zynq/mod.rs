@@ -53,7 +53,24 @@ fn finish(client: &mut Client, connection: &mut Connection, message: ClientMessa
         assert!(Instant::now() < deadline, "command timeout");
         pump(client, connection);
     }
-    client.results()[&operation].clone()
+    let outcome = client.results()[&operation].clone();
+    let revision = match outcome {
+        Outcome::Confirmed { revision }
+        | Outcome::AncestorsStopped { revision, .. }
+        | Outcome::TrackCreated { revision, .. }
+        | Outcome::LoopCreated { revision, .. } => Some(revision),
+        Outcome::Refused { .. } => None,
+    };
+    if let Some(revision) = revision {
+        while !client
+            .snapshot()
+            .is_some_and(|snapshot| snapshot.revision >= revision)
+        {
+            assert!(Instant::now() < deadline, "confirmed snapshot timeout");
+            pump(client, connection);
+        }
+    }
+    outcome
 }
 pub fn run() {
     let path = std::env::args().nth(1).expect("remote profile path");
