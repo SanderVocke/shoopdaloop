@@ -34,8 +34,11 @@ insert restoration messages.
 
 Use a persistent ordered event tree plus category indexes for note on/off, key
 pressure, individual controllers, program/channel pressure/pitch and channel/global
-resets. A COW radix table can hold category roots: retaining a complete root is
-constant work and changing a category copies only a bounded path. Ordered trees
+resets. The prepared version layer holds category roots in sparse 128-root pages
+under a 66-entry directory. Retaining a version is constant work; an edit forks
+the shared directory and at most three affected pages, then tree paths. Admission
+checks every tree, root, directory and page credit before changing any index.
+Ordered trees
 should mutate exclusive staging paths after their initial copy. Stage owned input
 and reserve the whole write before graph execution, then commit after all other
 fallible tick work succeeds. If mutation happens earlier, retain a complete
@@ -45,7 +48,10 @@ complete audio/MIDI cut, not merely the content before writer entry.
 The prepared tree layer is implemented with COW AVL paths, cached interval
 summaries and deferred node/value release. Tests check snapshots, reference
 counts, balance, pressure and range-query work. These tests still need fresh CI;
-the category/version store and packet slabs are not implemented by that layer.
+the packet slabs and live writer are not implemented by that layer. The separate
+category/version layer now has complete projection and packet-order oracles,
+including all six metadata-pressure paths and deferred ownership recovery. These
+new tests still need CI; this does not constitute a production writer.
 Sostenuto aggregates can store compact record IDs and map only their result
 markers to ordered points. Subtree ownership keeps those records alive without
 repeating full timestamps in every aggregate.

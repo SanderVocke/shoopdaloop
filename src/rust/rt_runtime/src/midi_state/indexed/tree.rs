@@ -119,7 +119,6 @@ pub(crate) struct Pool<V, S> {
     free: Vec<NonZeroU32>,
     retired: Vec<NonZeroU32>,
     roots: usize,
-    exhausted: bool,
     work: Cell<Work>,
 }
 fn slot(id: NonZeroU32) -> usize {
@@ -131,10 +130,7 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
         if capacity == 0 {
             return Err(Error::InvalidConfig);
         }
-        capacity
-            .checked_mul(size_of::<Slot<V, S>>() + 2 * size_of::<NonZeroU32>())
-            .filter(|&bytes| bytes <= i32::MAX as usize)
-            .ok_or(Error::Capacity)?;
+        Self::prepared_bytes(capacity)?;
         let scope = NEXT_SCOPE
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
@@ -167,7 +163,6 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
                 .collect(),
             retired,
             roots: 0,
-            exhausted: false,
             work: Cell::new(Work::default()),
         })
     }
@@ -180,6 +175,15 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
     }
     pub(crate) fn free_nodes(&self) -> usize {
         self.free.len()
+    }
+    pub(crate) fn prepared_bytes(capacity: usize) -> Result<usize, Error> {
+        capacity
+            .checked_mul(size_of::<Slot<V, S>>() + 2 * size_of::<NonZeroU32>())
+            .filter(|&bytes| bytes <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
+    pub(crate) fn available_roots(&self) -> usize {
+        self.nodes.len() - self.roots
     }
     pub(crate) fn root_references(&self) -> usize {
         self.roots
@@ -278,7 +282,7 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
                 entry.generation = generation;
                 self.free.push(id);
             }
-            None => self.exhausted = true,
+            None => (),
         }
         self.add_work(0, 0, 0, 1);
     }
@@ -389,9 +393,14 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
         }
         self.rotate(id, side, values)
     }
-    fn insertion_credit(&self, mut link: Link, point: Point, lookup: &impl Lookup<V>) -> usize {
+    fn insertion_credit(
+        &self,
+        mut link: Link,
+        point: Point,
+        lookup: &impl Lookup<V>,
+        mut copying: bool,
+    ) -> usize {
         let mut required = 0;
-        let mut copying = false;
         while let Some(id) = link {
             let node = self.node(id);
             copying |= node.references > 1;
@@ -403,6 +412,18 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
         }
         required + 1
     }
+    pub(crate) fn insert_credit(
+        &self,
+        root: Root,
+        point: Point,
+        lookup: &impl Lookup<V>,
+        shared: bool,
+    ) -> Result<usize, Error> {
+        Ok(self.insertion_credit(self.check(root)?, point, lookup, shared))
+    }
+    pub(crate) fn remove_credit(&self, root: Root) -> Result<usize, Error> {
+        Ok(4 * (usize::from(self.height(self.check(root)?)) + 1) + 8)
+    }
     pub(crate) fn insert(
         &mut self,
         root: Root,
@@ -410,10 +431,7 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
         values: &mut impl Values<V>,
     ) -> Result<Root, Error> {
         let link = self.check(root)?;
-        if self.exhausted {
-            return Err(Error::Exhausted);
-        }
-        if self.insertion_credit(link, values.point(value), values) > self.free.len()
+        if self.insertion_credit(link, values.point(value), values, false) > self.free.len()
             || (link.is_none() && self.roots == self.nodes.len())
         {
             return Err(Error::Capacity);
@@ -474,9 +492,6 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
             .is_none_or(|value| values.point(value) != point)
         {
             return Ok(root);
-        }
-        if self.exhausted {
-            return Err(Error::Exhausted);
         }
         if self.free.len() < 4 * (usize::from(self.height(link)) + 1) + 8 {
             return Err(Error::Capacity);

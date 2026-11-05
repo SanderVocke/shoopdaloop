@@ -163,6 +163,23 @@ the complete category store, payload storage and live writer.
 
 ## Findings that determine the work
 
+The semantic index now has a shared category/version store with compact record
+IDs, sparse category pages and preflight across all affected indexes before any
+mutation. Immutable versions retain one handle; edits fork shared directories,
+category pages and ordered paths. Tests compare full projection and original
+packet order through repeated edits and retained versions, exercise each
+metadata limit before mutation, and recover every prepared owner. These tests
+need fresh CI. Payload slabs, continuous writers and application integration
+remain unfinished.
+
+On 2026-11-05, the parent #930 was observed merged at `0ef7581b` into
+`feat/backend-replacement`. The delivery branch is being consolidated onto that
+actual merged head and its PR retargeted. CI on `b6ac9443` exposed duplicate test
+allocators in GitHub's combination with the updated parent; consolidation removes
+the duplicate before fresh validation. Focused shared-media and native jobs on
+`0d2f525f` passed, validating the complete query and pooled audio kernel but not
+the later tree/category/coordinator increments.
+
 | Layer | Existing support and remaining gap |
 | --- | --- |
 | `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver has Stopped/Playing/Recording only. A private MIDI candidate must become Ready before another patch; suffix preparation is callback-budgeted. This is not a continuous replacement writer. |

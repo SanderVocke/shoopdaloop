@@ -3,6 +3,7 @@
 use super::{interval::*, ChannelState, MidiState, ParameterFamily};
 use crate::{midi::Message, Frame};
 
+pub(crate) mod store;
 mod tree;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
