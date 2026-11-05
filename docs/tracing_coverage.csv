@@ -433,3 +433,5 @@ src/rust/shoop_app/src/service/composites/mod.rs,app_session,instrumented_indire
 src/rust/shoop_app/src/service/composites/prepare.rs,app_session,excluded,Pure checked endpoint conversion and sparse compilation have no execution or I/O boundary.
 src/rust/shoop_app/src/service/composites/structure.rs,app_session,instrumented_direct,Dependent lifecycle preparation records target and stopped-parent counts without document or media payloads.
 src/rust/shoop_rt_backend/src/composites/control.rs,application_ui_and_control,instrumented_direct,Deferred stable-slot controls trace their logical mutation identity through kind conversion.
+src/rust/shoop_app/src/service/monitoring.rs,app_session,instrumented_direct,Service-owned automatic monitoring policy records deferred reconciliation without scheduling musical phase.
+src/rust/shoop_rt_engine/src/monitoring.rs,realtime_engine,excluded,Fixed prepared recording-demand traversal executes at settled render boundaries without allocation or callback tracing.

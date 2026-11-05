@@ -391,6 +391,7 @@ impl Service {
                 }
             }
         }
+        self.set_automatic_monitoring_policy(id, self.global.auto_arm_track_inputs)?;
         self.connect_track_inputs(id)?;
         for name in &spec.initial_output_bus_names {
             self.route_track_to_bus(id, name)?;
@@ -772,7 +773,19 @@ impl Service {
                 self.global.auto_mute_other_track_inputs = value
             }
             GlobalControlAction::SetAutoArmTrackInputs(value) => {
-                self.global.auto_arm_track_inputs = value
+                let tracks = self
+                    .tracks
+                    .iter()
+                    .filter_map(|(id, track)| {
+                        (!track.view.is_sync
+                            && track.view.structural_state != StructuralState::Removing)
+                            .then_some(*id)
+                    })
+                    .collect::<Vec<_>>();
+                for id in tracks {
+                    self.set_automatic_monitoring_policy(id, value)?;
+                }
+                self.global.auto_arm_track_inputs = value;
             }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }

@@ -998,6 +998,23 @@ impl ControlEndpoint {
     ) -> Result<Option<Outcome>, Refusal> {
         let slot = strip.0.index as usize;
         self.model.strip(strip).ok_or(Refusal::InvalidId)?;
+        if let StripControl::AutomaticMonitoring(enabled) = control {
+            if !self.cells.strips[slot].set_policy(strip.0.generation, enabled) {
+                return Err(Refusal::InvalidId);
+            }
+            self.model
+                .strip_mut(strip)
+                .expect("validated strip")
+                .controls
+                .apply(control);
+            self.model.revision += 1;
+            if self.job.is_some() {
+                if let Some(entry) = self.next.strip_mut(strip) {
+                    entry.controls.apply(control);
+                }
+            }
+            return Ok(Some(Outcome::Done));
+        }
         let (node, operation) = match control {
             StripControl::InputGain(value) if value.is_finite() => {
                 (self.pool.strip_input(slot), EngineOp::Gain(value))
@@ -1130,6 +1147,7 @@ impl ControlEndpoint {
                     output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
                     midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
                     midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
+                    automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
                 }));
             }
             for (slot, bus) in self.model.buses.iter().enumerate() {

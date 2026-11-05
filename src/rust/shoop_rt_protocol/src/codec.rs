@@ -282,6 +282,10 @@ impl Wire for StripControl {
                 w.u8(4)?;
                 w.f32(v)
             }
+            Self::AutomaticMonitoring(v) => {
+                w.u8(6)?;
+                w.bool(v)
+            }
             Self::OutputMute(v) => {
                 w.u8(5)?;
                 w.bool(v)
@@ -296,6 +300,7 @@ impl Wire for StripControl {
             3 => Self::OutputGain(r.f32()?),
             4 => Self::OutputBalance(r.f32()?),
             5 => Self::OutputMute(r.bool()?),
+            6 => Self::AutomaticMonitoring(r.bool()?),
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -1113,13 +1118,15 @@ impl Wire for Telemetry {
                 output_peaks,
                 midi_in,
                 midi_out,
+                automatic_monitoring,
             } => {
                 w.u8(1)?;
                 strip.put(w)?;
                 input_peaks.put(w)?;
                 output_peaks.put(w)?;
                 w.bool(*midi_in)?;
-                w.bool(*midi_out)
+                w.bool(*midi_out)?;
+                w.bool(*automatic_monitoring)
             }
             Self::Loop {
                 loop_id,
@@ -1181,6 +1188,7 @@ impl Wire for Telemetry {
                 output_peaks: Peaks::get(r)?,
                 midi_in: r.bool()?,
                 midi_out: r.bool()?,
+                automatic_monitoring: r.bool()?,
             },
             2 => Self::Loop {
                 loop_id: LoopSlotId::get(r)?,

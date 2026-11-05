@@ -261,6 +261,19 @@ impl Resolver {
     pub fn topology(&self) -> &PreparedTopology {
         &self.topology
     }
+    pub fn pending_transitions(&self) -> impl Iterator<Item = PendingTransition> + '_ {
+        self.records.iter().flatten().filter_map(|record| {
+            (record.terminal.is_none() && !matches!(record.request.transition, Transition::Program))
+                .then_some(PendingTransition {
+                    request: record.request,
+                    effective: record.effective,
+                    remaining_ticks: match record.request.timing {
+                        Timing::At => None,
+                        Timing::AfterTicks { .. } => Some(record.remaining),
+                    },
+                })
+        })
+    }
     pub fn state(&self, id: LoopId) -> Result<State, Error> {
         self.states
             .get(id.slot() as usize)

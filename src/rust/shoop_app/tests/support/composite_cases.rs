@@ -1236,3 +1236,229 @@ fn shutdown_settles_a_waiting_owned_edit_after_stopping_the_composite() {
     f.service.complete_shutdown(Ok(()));
     assert_eq!(f.waits.get(), f.initial_waits);
 }
+
+#[shoop_test]
+fn automatic_monitoring_and_recording_finish_without_ui_or_service_polling() {
+    let (mut f, mut client, track, loops) = setup_composites(false);
+    let target = loops[2];
+    let child = loops[0];
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            edit(target, vec![child], false)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let event = f.service.snapshot().composites[0]
+        .active
+        .as_ref()
+        .unwrap()
+        .document
+        .instances[0]
+        .instance_id;
+    for edit in [
+        arrangement::Edit::Kind {
+            target,
+            kind: CompositeKind::Script,
+        },
+        arrangement::Edit::Duration {
+            target,
+            event,
+            n_cycles: Some(4),
+        },
+        arrangement::Edit::Mode {
+            target,
+            event,
+            mode: LoopMode::Recording,
+        },
+    ] {
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Composite(edit)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    f.advance.set(false);
+    let start = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        transition(vec![target], LoopMode::Playing),
+    );
+    f.service.tick(Duration::ZERO);
+    f.service.detach(ConnectionId(1));
+    let mut output = Vec::new();
+    for _ in 0..64 {
+        let mut render = f.render.borrow_mut();
+        render.input_mut(0).fill(0.5);
+        render.process(1).unwrap();
+        output.push(render.output(0)[0]);
+    }
+    assert!(output[..4].iter().any(|sample| *sample > 0.01));
+    assert!(output[12..].iter().all(|sample| sample.abs() < 0.00001));
+    f.service.tick(Duration::ZERO);
+    let recovered = attach(&mut f.service, 7003, ConnectionId(2), true);
+    let snapshot = recovered.snapshot().unwrap();
+    assert!(snapshot.valid());
+    assert!(matches!(
+        &snapshot
+            .results
+            .iter()
+            .find(|result| result.id == start)
+            .unwrap()
+            .outcome,
+        Outcome::Confirmed { .. }
+    ));
+    assert!(snapshot.pending.is_empty());
+    let view = snapshot
+        .tracks
+        .iter()
+        .find(|entry| entry.id == track)
+        .unwrap();
+    assert!(!view.controls.input_monitoring);
+    assert_eq!(
+        view.loops
+            .iter()
+            .find(|entry| entry.id == child)
+            .unwrap()
+            .length_frames,
+        4
+    );
+    assert_eq!(snapshot.composites[0].mode, LoopMode::Stopped);
+    f.advance.set(true);
+    let authority = recovered.authority().unwrap();
+    let mut audio = None;
+    for _ in 0..100 {
+        audio = f
+            .service
+            .read_audio(ConnectionId(2), authority, child)
+            .unwrap()
+            .or(audio);
+        if audio.is_some() {
+            break;
+        }
+        f.service.tick(STEP);
+    }
+    assert_eq!(
+        audio.expect("recorded audio").channels[0]
+            .samples
+            .as_slice(),
+        &[0.5; 4]
+    );
+    assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+#[shoop_test]
+fn refused_automatic_policy_is_reconciled_without_losing_manual_monitoring_or_recording() {
+    let (mut f, mut client, track, loops) = setup_composites(false);
+    let manual = |enabled| Command::Track {
+        track,
+        action: TrackAction::InputMonitoringChanged {
+            enabled,
+            respect_auto_mute: false,
+        },
+    };
+    assert!(matches!(
+        command(&mut f.service, &mut client, ConnectionId(1), manual(true)),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            transition(vec![loops[4]], LoopMode::Recording)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    f.refuse_next_monitoring.set(true);
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Global(GlobalControlAction::SetAutoArmTrackInputs(false))
+        ),
+        Outcome::Refused { .. }
+    ));
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    assert!(
+        f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|entry| entry.id == track)
+            .unwrap()
+            .controls
+            .input_monitoring
+    );
+    assert!(matches!(
+        command(&mut f.service, &mut client, ConnectionId(1), manual(false)),
+        Outcome::Confirmed { .. }
+    ));
+    let state = f.service.snapshot();
+    let entry = state.tracks.iter().find(|entry| entry.id == track).unwrap();
+    assert!(!entry.controls.input_monitoring);
+    assert_eq!(
+        entry
+            .loops
+            .iter()
+            .find(|entry| entry.id == loops[4])
+            .unwrap()
+            .mode,
+        LoopMode::Recording
+    );
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Global(GlobalControlAction::SetAutoArmTrackInputs(true))
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    for _ in 0..4 {
+        f.service.tick(STEP);
+    }
+    assert!(
+        f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|entry| entry.id == track)
+            .unwrap()
+            .controls
+            .input_monitoring
+    );
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            transition(vec![loops[4]], LoopMode::Stopped)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    for _ in 0..4 {
+        f.service.tick(STEP);
+    }
+    assert!(
+        !f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|entry| entry.id == track)
+            .unwrap()
+            .controls
+            .input_monitoring
+    );
+    assert_eq!(f.waits.get(), f.initial_waits);
+}

@@ -46,6 +46,7 @@ mod family;
 mod graph;
 mod jobs;
 mod model;
+mod monitoring;
 mod node;
 mod pool;
 mod preview;
@@ -391,7 +392,7 @@ pub fn prepare_with_shared(
                 sources: 2 * loops + 2,
                 source_packets_per_callback: 64,
             },
-            observer: Some(Box::new(Observer(cells.clone(), Epoch(0)))),
+            observer: Some(Box::new(Observer::new(cells.clone()))),
         },
     )?;
     if !shared_settings.histories.is_empty() || shared_settings.candidates != 0 {

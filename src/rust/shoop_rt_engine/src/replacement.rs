@@ -280,6 +280,7 @@ impl ControlEndpoint {
                     input_gain: controls.input_gain,
                     input_balance: controls.input_balance,
                     monitoring: controls.monitoring,
+                    automatic_monitoring: false,
                     output_gain: controls.output_gain,
                     output_balance: controls.output_balance,
                     output_mute: controls.output_mute,

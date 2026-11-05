@@ -516,3 +516,38 @@ fn clear_then_record_in_one_control_turn_binds_the_restored_primitive_generation
     backend.wait_idle();
     assert!(backend.poll().unwrap().loops[&ids[3]].length >= 8);
 }
+
+#[shoop_test]
+fn automatic_monitoring_policy_and_actual_demand_survive_active_plan_resync() {
+    let (mut backend, ids) = setup();
+    let track = *backend.poll().unwrap().tracks.keys().next().unwrap();
+    backend.set_track_automatic_monitoring(track, true).unwrap();
+    let comp = shoop_backend::BackendCompositeId::from_raw(ids[3].raw());
+    let mut recording = plan(ids[1], None, 1000);
+    recording.kind = BackendCompositeKind::Script;
+    recording.spans[0].mode = Mode::Recording;
+    backend
+        .configure_prepared_composite_loop(comp, &recording)
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_composite_loop(comp, Mode::Playing, None, None)
+        .unwrap();
+    step(&mut backend, 4);
+    let before = backend.poll().unwrap();
+    assert!(before.tracks[&track].automatic_monitoring_enabled);
+    assert!(before.tracks[&track].automatic_input_monitoring);
+    assert!(!before.tracks[&track].input_monitoring);
+    backend.request_resync().unwrap();
+    step(&mut backend, 10);
+    assert!(backend.is_ready());
+    let after = backend.poll().unwrap();
+    assert!(after.tracks[&track].automatic_monitoring_enabled);
+    assert!(after.tracks[&track].automatic_input_monitoring);
+    assert!(!after.tracks[&track].input_monitoring);
+    backend
+        .transition_composite_loop(comp, Mode::Stopped, None, None)
+        .unwrap();
+    step(&mut backend, 4);
+    assert!(!backend.poll().unwrap().tracks[&track].automatic_input_monitoring);
+}

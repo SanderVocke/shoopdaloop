@@ -742,6 +742,7 @@ impl Service {
     }
 
     pub(super) fn forget_track(&mut self, id: TrackId) {
+        self.automatic_monitoring_intent.remove(&id);
         self.tracks.remove(&id);
         self.track_order.retain(|track| *track != id);
         self.loops.retain(|_, entry| entry.track != id);
@@ -826,7 +827,7 @@ fn controls(state: &BackendTrackState) -> TrackControlState {
         output_stereo: stereo,
         input_gain_db: state.input_gain_db,
         input_balance: state.input_balance,
-        input_monitoring: state.input_monitoring,
+        input_monitoring: state.input_monitoring || state.automatic_input_monitoring,
         output_gain_db: state.output_gain_db,
         output_balance: state.output_balance,
         output_muted: state.output_muted,

@@ -413,12 +413,12 @@ timing contract separately. Do not enable the capability yet.
 
 ### Stage 6 — composite-aware automatic monitoring
 
-- [ ] Move automatic-monitoring ownership/reconciliation into the service, using
+- [x] Move automatic-monitoring ownership/reconciliation into the service, using
   confirmed active/pending plans, frame phase and recording demand. Aggregate
   nested/overlapping parents and independent primitive recording demand.
-- [ ] Preserve manual/prearmed monitoring and other input policies; release only
+- [x] Preserve manual/prearmed monitoring and other input policies; release only
   automatic demand after section/pass completion, waits, Stop, removal or replacement.
-- [ ] Arrange required first-quantum monitoring changes through bounded host/RT work
+- [x] Arrange required first-quantum monitoring changes through bounded host/RT work
   when necessary. Correctness must not depend on a UI/Lua poll arriving before a
   recording boundary. Reconcile failed changes and reconnect from actual state.
 
@@ -656,3 +656,32 @@ and retain the normal/full test groups required before behavioral commits/pushes
 - Focused production service composite checks: **16 passed**, covering these
   lifecycle paths, refusal/retry, UI loss and unrelated recording. The full
   integrated-head regression gates follow this checkpoint.
+
+- Integrated service checkpoint `a5d0f681` passed the warning-denying full-feature
+  build and complete native suite: **2,810 passed / 7 skipped**. Node and Chrome
+  both passed app **53**, client **11**, app protocol **17**, editor **234**,
+  adapter **49**, engine **81**, worklet host **17** and engine protocol **6**.
+- Automatic monitoring implementation: the service owns global policy and manual
+  intent; a bounded RT boundary observer reads the resolver's committed topology,
+  actual recording states and admitted pending transitions. It aggregates current
+  and upcoming recording demand, nested initial sections and overlapping parents.
+  A fixed queue visits each anticipated composite once; it does not compile a
+  second program book or advance any musical cursor.
+- Two prepared generation banks retain loop-to-strip ownership and strip policy.
+  Private candidates cannot affect active monitoring. A confirmed policy change
+  arriving before a new strip's first process survives its prepared configuration.
+  Input processors combine manual and automatic intent, preserving existing ramps
+  and releasing held MIDI notes only when combined demand ends. Protocol v10 adds
+  automatic policy control and actual monitoring telemetry; app protocol stays v22.
+- Guarded monitoring scenarios cover all five supported quanta, partial and zero
+  callbacks, exact first-quantum audio/MIDI, pending countdowns, nested phase,
+  repeat waits/source release, direct child Stop, manual prearming, overlapping
+  recorders, staged edits, private preparation/cancellation and active-plan resync.
+  Production service tests pause both UI and service polling across an entire
+  recording section, verify exact captured media on recovery, and reconcile a
+  refused policy change without losing manual monitoring or recording.
+- Selected existing app/adapter/engine tests **197 passed / 1 skipped**; subsequent
+  policy-bank regression **1 passed**, guarded monitoring **9 passed**, and service
+  pause/refusal cases **2 passed**. Complete milestone checks are being run before
+  the automatic monitoring checkpoint is pushed. Files and the public capability
+  remain gated; the full P03 dependency gate remains open.

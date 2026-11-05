@@ -34,15 +34,16 @@ pub(crate) fn refusal_text(refusal: Refusal) -> &'static str {
     }
 }
 
-fn app_control(control: StripControl) -> BackendTrackControl {
-    match control {
+fn app_control(control: StripControl) -> Option<BackendTrackControl> {
+    Some(match control {
+        StripControl::AutomaticMonitoring(_) => return None,
         StripControl::InputGain(value) => BackendTrackControl::InputGainDb(amplitude_db(value)),
         StripControl::InputBalance(value) => BackendTrackControl::InputBalance(value),
         StripControl::Monitoring(value) => BackendTrackControl::InputMonitoring(value),
         StripControl::OutputGain(value) => BackendTrackControl::OutputGainDb(amplitude_db(value)),
         StripControl::OutputBalance(value) => BackendTrackControl::OutputBalance(value),
         StripControl::OutputMute(value) => BackendTrackControl::OutputMute(value),
-    }
+    })
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
@@ -163,6 +164,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 output_peaks,
                 midi_in,
                 midi_out,
+                automatic_monitoring,
             } => {
                 let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                     return;
@@ -172,6 +174,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     track.output_meter.record(output_peaks.as_slice());
                     track.midi_in |= midi_in;
                     track.midi_out |= midi_out;
+                    track.automatic_monitoring = automatic_monitoring;
                 }
             }
             Telemetry::Loop {
@@ -409,7 +412,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         continue;
                     };
                     if let Some(track) = self.mirror.tracks.get_mut(id) {
-                        track.controls.apply(app_control(control));
+                        if let Some(control) = app_control(control) {
+                            track.controls.apply(control);
+                        } else if let StripControl::AutomaticMonitoring(enabled) = control {
+                            track.automatic_enabled = enabled;
+                        }
                     }
                 }
                 StateRecord::Loop {
@@ -696,6 +703,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     }
                 }
             }
+            (Purpose::AutomaticMonitoring(id, enabled), None) => {
+                if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                    track.automatic_enabled = enabled;
+                }
+            }
+            (Purpose::AutomaticMonitoring(id, _), Some(refusal)) => self.failure(
+                BackendMutationKind::TrackControl,
+                Some(id.raw()),
+                None,
+                format!(
+                    "automatic input monitoring was refused: {}",
+                    refusal_text(refusal)
+                ),
+            ),
             (Purpose::StripControl(id, control), None) => {
                 if let Some(track) = self.mirror.tracks.get_mut(&id) {
                     track.controls.apply(control);

@@ -6429,6 +6429,8 @@ impl Backend for EngineBackend {
             tracks.insert(
                 *id,
                 BackendTrackState {
+                    automatic_input_monitoring: false,
+                    automatic_monitoring_enabled: false,
                     topology: track.topology.clone(),
                     default_playback_mode: track.default_playback_mode,
                     fx: track

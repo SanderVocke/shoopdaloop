@@ -568,6 +568,10 @@ pub struct BackendTrackState {
     pub input_balance: f32,
     pub input_monitoring: bool,
     #[serde(default)]
+    pub automatic_input_monitoring: bool,
+    #[serde(default)]
+    pub automatic_monitoring_enabled: bool,
+    #[serde(default)]
     pub latency: BackendTrackLatencyState,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
@@ -1396,6 +1400,13 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn set_track_automatic_monitoring(
+        &mut self,
+        _track_id: BackendTrackId,
+        _enabled: bool,
+    ) -> Result<()> {
+        Err(anyhow!("automatic input monitoring is unavailable"))
+    }
     fn set_track_default_playback_mode(
         &mut self,
         _track_id: BackendTrackId,

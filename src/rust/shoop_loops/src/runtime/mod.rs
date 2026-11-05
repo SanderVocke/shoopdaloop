@@ -508,10 +508,12 @@ struct Pending {
     forwarded: bool,
 }
 
-/// Optional bounded diagnostic observer. Called once after each settled boundary,
+/// Optional bounded observer. Called once after each settled boundary,
 /// before rendering. Implementations obey the same no-heap/nonblocking contract
 /// as processors; journal loss must not affect musical execution.
 pub trait BoundaryObserver: Send {
+    /// The exact committed topology and admitted transitions before graph processing.
+    fn settled(&mut self, _resolver: &crate::Resolver) {}
     /// The topology owning the following settled boundary.
     fn topology_epoch(&mut self, _epoch: Epoch) {}
     fn boundary(

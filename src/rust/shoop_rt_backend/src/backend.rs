@@ -436,6 +436,26 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
 
+    fn set_track_automatic_monitoring(
+        &mut self,
+        track_id: BackendTrackId,
+        enabled: bool,
+    ) -> Result<()> {
+        self.ready()?;
+        let strip = self
+            .mirror
+            .live_track(track_id)
+            .ok_or_else(|| anyhow!("unknown track"))?
+            .strip;
+        self.requests.push(
+            Request::StripControl {
+                strip,
+                control: shoop_rt_protocol::StripControl::AutomaticMonitoring(enabled),
+            },
+            Purpose::AutomaticMonitoring(track_id, enabled),
+        );
+        Ok(())
+    }
     fn set_track_default_playback_mode(
         &mut self,
         track_id: BackendTrackId,

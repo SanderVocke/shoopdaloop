@@ -41,7 +41,9 @@ pub mod runtime;
 pub mod state;
 pub mod topology;
 
-pub use command::{CancelResult, Completion, Outcome, Request, Timing, Transition};
+pub use command::{
+    CancelResult, Completion, Outcome, PendingTransition, Request, Timing, Transition,
+};
 pub use config::Limits;
 pub use decision::{Decision, Event, EventKind, Interval, Observation};
 pub use ids::{LoopId, RequestId};

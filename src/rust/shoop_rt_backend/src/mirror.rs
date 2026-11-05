@@ -119,6 +119,8 @@ pub(crate) struct Track {
     pub output_meter: Meter,
     pub midi_in: bool,
     pub midi_out: bool,
+    pub automatic_enabled: bool,
+    pub automatic_monitoring: bool,
 }
 
 impl Track {
@@ -580,6 +582,8 @@ impl Mirror {
             input_gain_db: controls.input_gain_db,
             input_balance: controls.input_balance,
             input_monitoring: controls.input_monitoring,
+            automatic_monitoring_enabled: track.automatic_enabled,
+            automatic_input_monitoring: track.automatic_enabled && track.automatic_monitoring,
             input_peaks: track.input_meter.take_db(channels),
             output_peaks: track.output_meter.take_db(channels),
             input_midi_activity: core::mem::take(&mut track.midi_in),

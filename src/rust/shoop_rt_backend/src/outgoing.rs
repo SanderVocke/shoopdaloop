@@ -146,6 +146,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 output_meter: Default::default(),
                 midi_in: false,
                 midi_out: false,
+                automatic_enabled: false,
+                automatic_monitoring: false,
             },
         );
         self.mirror.strip_tracks.insert(strip, track_id);

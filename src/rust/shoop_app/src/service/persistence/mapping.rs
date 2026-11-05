@@ -661,6 +661,7 @@ impl Candidate {
         service.preview_bus = self.preview_bus;
         service.tracks = self.tracks;
         service.track_order = self.order;
+        service.automatic_monitoring_intent.clear();
         service.composites.clear();
         service.loops = self.loops;
         service.ports = self.ports;

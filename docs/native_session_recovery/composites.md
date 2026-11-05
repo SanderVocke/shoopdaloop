@@ -163,3 +163,27 @@ Clear retires a track-owned composite's timing identity, stops its authored chil
 occurrences, and installs an empty primitive with a fresh runtime generation. Its
 public backend identity remains stable. Public feature publication remains gated
 until the service, editor, monitoring and persistence paths are complete.
+
+## Automatic monitoring
+
+The service owns the automatic monitoring policy and preserves manual monitoring
+separately. The render owner derives demand from actual primitive recording,
+admitted starts whose countdown reached zero, and upcoming recording sections of
+the active prepared program. Nested starts inspect their initial sections; a
+continuous nested Play keeps its own phase. An accepted pending edit contributes
+automatic demand only after it becomes the active program.
+
+Recording onset and release do not depend on application polling. A direct child
+Stop releases its automatic demand while the parent clock continues. Other
+recorders on that track retain their demand, and manually monitored tracks remain
+on. Repeat waiting ends outgoing recording demand; an actual restart establishes
+new demand. Disabling the automatic policy changes monitoring while capture keeps
+following its own transport.
+
+Demand traversal uses prepared slot-sized arrays and a fixed queue, with at most
+one queued inspection per composite. Loop ownership and strip policies use two
+generation banks. Preparing a private replacement preserves active ownership;
+activation selects the new generation without overwriting a policy already
+confirmed for it. No render allocation, journal replay or application timer drives
+this policy. The backend retains manual intent for capture and publishes automatic
+monitoring from rendered state. Composite file support remains gated separately.

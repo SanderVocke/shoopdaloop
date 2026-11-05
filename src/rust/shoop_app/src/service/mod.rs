@@ -11,6 +11,7 @@ mod commands;
 mod composites;
 mod management;
 mod media;
+mod monitoring;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
 mod preview;
@@ -173,6 +174,7 @@ pub struct Service {
     loops: BTreeMap<LoopId, Loop>,
     composites: BTreeMap<LoopId, composites::Owner>,
     next_composite_event: u64,
+    automatic_monitoring_intent: BTreeMap<TrackId, u64>,
     composite_structure: Option<composites::structure::Job>,
     ports: BTreeMap<PortId, Port>,
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
@@ -243,6 +245,7 @@ impl Service {
             loops: BTreeMap::new(),
             composites: BTreeMap::new(),
             next_composite_event: 1,
+            automatic_monitoring_intent: BTreeMap::new(),
             composite_structure: None,
             ports: BTreeMap::new(),
             channels: BTreeMap::new(),
@@ -976,6 +979,8 @@ impl Service {
                 self.apply_observation(observed);
                 self.refresh_natural_composites();
                 for completion in completions {
+                    self.automatic_monitoring_intent
+                        .retain(|_, sequence| *sequence != completion.sequence);
                     publication::engine_complete(&mut self.publications, &completion);
                     for track in self.tracks.values_mut() {
                         if track
@@ -1013,6 +1018,7 @@ impl Service {
                     }
                 }
                 self.advance_composite_structure();
+                self.reconcile_monitoring_policy();
                 self.advance_publications();
                 self.advance_graph_connections();
                 let done = self.completed_operations();

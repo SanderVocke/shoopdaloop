@@ -449,6 +449,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             output_peaks: Peaks::default(),
             midi_in: true,
             midi_out: false,
+            automatic_monitoring: true,
         }),
         EngineMessage::Telemetry(Telemetry::Loop {
             loop_id: loop_id(3),

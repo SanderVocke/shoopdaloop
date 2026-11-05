@@ -98,6 +98,7 @@ pub enum StripControl {
     InputGain(f32),
     InputBalance(f32),
     Monitoring(bool),
+    AutomaticMonitoring(bool),
     /// Linear output gain.
     OutputGain(f32),
     OutputBalance(f32),
@@ -468,6 +469,7 @@ pub enum Telemetry {
         output_peaks: Peaks,
         midi_in: bool,
         midi_out: bool,
+        automatic_monitoring: bool,
     },
     Loop {
         loop_id: LoopSlotId,

@@ -50,6 +50,7 @@ pub(crate) struct Controls {
     pub input_gain: f32,
     pub input_balance: f32,
     pub monitoring: bool,
+    pub automatic_monitoring: bool,
     pub output_gain: f32,
     pub output_balance: f32,
     pub output_mute: bool,
@@ -60,6 +61,7 @@ impl Default for Controls {
             input_gain: 1.,
             input_balance: 0.,
             monitoring: false,
+            automatic_monitoring: false,
             output_gain: 1.,
             output_balance: 0.,
             output_mute: false,
@@ -72,16 +74,18 @@ impl Controls {
             StripControl::InputGain(value) => self.input_gain = value,
             StripControl::InputBalance(value) => self.input_balance = value,
             StripControl::Monitoring(value) => self.monitoring = value,
+            StripControl::AutomaticMonitoring(value) => self.automatic_monitoring = value,
             StripControl::OutputGain(value) => self.output_gain = value,
             StripControl::OutputBalance(value) => self.output_balance = value,
             StripControl::OutputMute(value) => self.output_mute = value,
         }
     }
-    pub(crate) fn all(&self) -> [StripControl; 6] {
+    pub(crate) fn all(&self) -> [StripControl; 7] {
         [
             StripControl::InputGain(self.input_gain),
             StripControl::InputBalance(self.input_balance),
             StripControl::Monitoring(self.monitoring),
+            StripControl::AutomaticMonitoring(self.automatic_monitoring),
             StripControl::OutputGain(self.output_gain),
             StripControl::OutputBalance(self.output_balance),
             StripControl::OutputMute(self.output_mute),

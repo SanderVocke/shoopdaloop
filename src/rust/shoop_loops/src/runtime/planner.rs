@@ -1424,6 +1424,7 @@ impl LoopPlanner {
                 self.resolver.events(),
                 self.resolver.dropped_events(),
             );
+            self.observer.settled(&self.resolver);
             return Ok(interval.end);
         }
     }

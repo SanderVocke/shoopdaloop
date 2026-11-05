@@ -23,6 +23,7 @@ pub(crate) enum Purpose {
     RemoveStrip(BackendTrackId),
     CreateLoop(BackendLoopId),
     StripControl(BackendTrackId, BackendTrackControl),
+    AutomaticMonitoring(BackendTrackId, bool),
     LoopSync(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId),
     Clear(BackendLoopId),

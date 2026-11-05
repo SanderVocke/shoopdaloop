@@ -269,6 +269,7 @@ impl ControlEndpoint {
             gain: 1.,
             balance: 0.,
             monitoring: false,
+            generation: 0,
             muted: false,
         };
         job.configured = true;
@@ -286,6 +287,7 @@ impl ControlEndpoint {
                     gain: controls.input_gain,
                     balance: controls.input_balance,
                     monitoring: controls.monitoring,
+                    generation: strip.id.0.generation,
                     ..base
                 },
             );
@@ -763,6 +765,32 @@ impl ControlEndpoint {
         if !self.room(3) {
             return false;
         }
+        for entry in self.next.strips.iter().flatten() {
+            let active = self.model.strips[entry.id.0.index as usize]
+                .map_or(0, |strip| strip.id.0.generation);
+            self.cells.strips[entry.id.0.index as usize].configure_policy(
+                entry.id.0.generation,
+                active,
+                entry.controls.automatic_monitoring,
+            );
+        }
+        for entry in self
+            .next
+            .loops
+            .iter()
+            .flatten()
+            .filter(|entry| entry.program.is_none())
+        {
+            if let Some(strip) = entry.strip {
+                let active = self.model.loops[entry.id.0.index as usize]
+                    .map_or(0, |entry| entry.id.0.generation);
+                self.cells.loops[entry.id.0.index as usize].configure_owner(
+                    entry.id.0.generation,
+                    strip.0.index,
+                    active,
+                );
+            }
+        }
         let (model, next) = (&self.model, &self.next);
         job.edits = (0..model.loops.len())
             .filter(|&slot| {
@@ -1136,6 +1164,7 @@ impl ControlEndpoint {
             let reset = EngineOp::Reset {
                 inputs: strip.shape.audio_inputs,
                 outputs: strip.shape.audio_outputs,
+                generation: strip.id.0.generation,
             };
             for node in [self.pool.strip_input(slot), self.pool.strip_output(slot)] {
                 self.submit_job_op(job, Frame(base), node, reset);
@@ -1149,6 +1178,7 @@ impl ControlEndpoint {
                 let reset = EngineOp::Reset {
                     inputs: 0,
                     outputs: 0,
+                    generation: 0,
                 };
                 self.submit_job_op(job, Frame(base), self.pool.fader(slot), reset);
             }
@@ -1243,6 +1273,7 @@ impl ControlEndpoint {
                     EngineOp::Reset {
                         inputs: 0,
                         outputs: bus.channels,
+                        generation: 0,
                     },
                 );
             }

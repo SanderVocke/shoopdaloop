@@ -40,15 +40,64 @@ impl Peak {
 }
 
 #[derive(Default)]
+struct MonitoringPolicy {
+    generation: AtomicU32,
+    enabled: AtomicBool,
+}
+
+#[derive(Default)]
 pub(crate) struct StripCells {
     pub input: Peak,
     pub output: Peak,
     pub midi_in: AtomicBool,
     pub midi_out: AtomicBool,
+    policies: [MonitoringPolicy; 2],
+    pub automatic_demand: AtomicBool,
+    pub automatic_monitoring: AtomicBool,
+}
+
+impl StripCells {
+    pub(crate) fn configure_policy(&self, generation: u32, active_generation: u32, enabled: bool) {
+        if generation == active_generation {
+            return;
+        }
+        let bank =
+            usize::from(self.policies[0].generation.load(Ordering::Acquire) == active_generation);
+        let policy = &self.policies[bank];
+        policy.generation.store(0, Ordering::Release);
+        policy.enabled.store(enabled, Ordering::Relaxed);
+        policy.generation.store(generation, Ordering::Release);
+    }
+    pub(crate) fn set_policy(&self, generation: u32, enabled: bool) -> bool {
+        if let Some(policy) = self
+            .policies
+            .iter()
+            .find(|policy| policy.generation.load(Ordering::Acquire) == generation)
+        {
+            policy.enabled.store(enabled, Ordering::Release);
+            true
+        } else {
+            false
+        }
+    }
+    pub(crate) fn policy_enabled(&self, generation: u32) -> bool {
+        generation != 0
+            && self.policies.iter().any(|policy| {
+                policy.generation.load(Ordering::Acquire) == generation
+                    && policy.enabled.load(Ordering::Acquire)
+            })
+    }
+}
+
+#[derive(Default)]
+struct MonitoringOwner {
+    generation: AtomicU32,
+    strip: AtomicU32,
 }
 
 #[derive(Default)]
 pub(crate) struct LoopCells {
+    owners: [MonitoringOwner; 2],
     publication: AtomicU64,
     epoch: AtomicU64,
     frame: AtomicU64,
@@ -79,6 +128,23 @@ pub(crate) struct LoopSnapshot {
     pub waiting_repeat: bool,
 }
 impl LoopCells {
+    pub(crate) fn configure_owner(&self, generation: u32, strip: u32, active_generation: u32) {
+        if generation == active_generation {
+            return;
+        }
+        let bank =
+            usize::from(self.owners[0].generation.load(Ordering::Acquire) == active_generation);
+        let owner = &self.owners[bank];
+        owner.generation.store(0, Ordering::Release);
+        owner.strip.store(strip, Ordering::Relaxed);
+        owner.generation.store(generation, Ordering::Release);
+    }
+    fn owner(&self, generation: u32) -> Option<usize> {
+        self.owners.iter().find_map(|owner| {
+            (owner.generation.load(Ordering::Acquire) == generation)
+                .then(|| owner.strip.load(Ordering::Relaxed) as usize)
+        })
+    }
     pub(crate) fn snapshot(&self) -> Option<LoopSnapshot> {
         let before = self.publication.load(Ordering::Acquire);
         if before & 1 != 0 {
@@ -244,9 +310,35 @@ impl HostStatus {
 }
 
 /// Publishes settled loop state at every boundary.
-pub(crate) struct Observer(pub Arc<Cells>, pub rt_runtime::Epoch);
+pub(crate) struct Observer(
+    pub Arc<Cells>,
+    pub rt_runtime::Epoch,
+    pub(crate) super::monitoring::Demand,
+);
+impl Observer {
+    pub(crate) fn new(cells: Arc<Cells>) -> Self {
+        let demand = super::monitoring::Demand::new(cells.loops.len());
+        Self(cells, rt_runtime::Epoch(0), demand)
+    }
+}
 
 impl BoundaryObserver for Observer {
+    fn settled(&mut self, resolver: &shoop_loops::Resolver) {
+        self.2.update(resolver);
+        for strip in &self.0.strips {
+            strip.automatic_demand.store(false, Ordering::Relaxed);
+        }
+        for node in resolver.topology().nodes() {
+            if self.2.recording(node.id.slot() as usize) {
+                if let Some(strip) = self.0.loops[node.id.slot() as usize]
+                    .owner(node.id.generation())
+                    .and_then(|strip| self.0.strips.get(strip))
+                {
+                    strip.automatic_demand.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    }
     fn topology_epoch(&mut self, epoch: rt_runtime::Epoch) {
         self.1 = epoch;
     }
@@ -291,5 +383,30 @@ impl BoundaryObserver for Observer {
     }
     fn as_any(&self) -> &dyn core::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod monitoring_tests {
+    use super::*;
+    use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
+
+    #[shoop_test]
+    fn monitoring_owner_banks_follow_the_confirmed_model_even_when_observation_lags_or_a_candidate_reuses_its_id(
+    ) {
+        let cells = LoopCells::default();
+        assert_no_heap(|| {
+            cells.configure_owner(1, 0, 0);
+            cells.configure_owner(2, 1, 1);
+            assert_eq!(cells.owner(1), Some(0));
+            assert_eq!(cells.owner(2), Some(1));
+            cells.configure_owner(2, 2, 1);
+            assert_eq!(cells.owner(1), Some(0));
+            assert_eq!(cells.owner(2), Some(2));
+            cells.configure_owner(3, 3, 2);
+            assert_eq!(cells.owner(1), None);
+            assert_eq!(cells.owner(2), Some(2));
+            assert_eq!(cells.owner(3), Some(3));
+        });
     }
 }
