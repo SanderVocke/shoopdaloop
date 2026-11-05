@@ -83,13 +83,21 @@ or mismatched topology retains the generic processor label.
 Zoom in to read inline node labels; very small overview nodes retain their colors
 and full hover details.
 
-Node colors represent step duration; link colors represent readiness. Their
+Processor node colors represent step duration; link colors represent readiness. Their
 separate numeric legends use the selected Avg/Worst/Stddev metric and µs or
 percentage of the original quantum period. Gray means unavailable. A bundled
 link uses the maximum displayed source metric for its color; its tooltip lists
 its actual member statistics. Host input links use a labeled zero graph-start
 baseline. Links to host outputs still show source readiness, not completed output
 routing or device playback latency; host-to-host bypass timing is unavailable.
+
+Callback entry and exit remain neutral gray and do not contribute to the processor
+color scale. Their percentages use the full callback buffer's time allowance,
+while processor percentages use one quantum. Entry, exit and between-execution
+percentages are normalized against each callback's original budget before computing
+Avg/Worst/Stddev, including when callback sizes vary. A missing callback budget
+leaves percentages unavailable; microsecond durations remain available. These
+budget-relative statistics are carried by application protocol version 30.
 
 **Latest xrun** initially shows statistics over the actual retained capture
 interval. The callback selector switches to a recorded callback; the tick selector

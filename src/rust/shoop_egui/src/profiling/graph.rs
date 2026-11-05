@@ -17,6 +17,14 @@ enum Metric {
     Stddev,
 }
 impl Metric {
+    fn statistic(self, stats: &profiling::Statistics) -> Option<f64> {
+        (stats.count != 0).then(|| match self {
+            Self::Average => stats.mean,
+            Self::Worst => stats.worst as f64,
+            Self::Stddev => stats.stddev(),
+        })
+    }
+
     fn value(self, row: &Row, ready: bool) -> f64 {
         match (self, ready) {
             (Self::Average, false) => row.avg_ns,
@@ -44,6 +52,10 @@ struct VisualNode {
 }
 const ENTRY: u64 = (1 << 61) | 1;
 const EXIT: u64 = (1 << 61) | 2;
+
+fn is_wrapper(key: u64) -> bool {
+    key == ENTRY || key == EXIT
+}
 
 struct VisualEdge {
     context: bool,
@@ -239,7 +251,7 @@ impl State {
         self.fit = true;
     }
     fn value(&self, key: u64, report: &Report, ready: bool) -> Option<f64> {
-        if key == ENTRY || key == EXIT {
+        if is_wrapper(key) {
             if ready {
                 return None;
             }
@@ -257,11 +269,7 @@ impl State {
             } else {
                 &report.wrapping.after
             };
-            return (stats.count != 0).then(|| match self.metric {
-                Metric::Average => stats.mean,
-                Metric::Worst => stats.worst as f64,
-                Metric::Stddev => stats.stddev(),
-            });
+            return self.metric.statistic(stats);
         }
         if self.callback != 0 {
             self.actual.get(&key).map(|n| if ready { n.ready_ns } else { n.end_ns - n.start_ns } as f64)
@@ -270,6 +278,52 @@ impl State {
                 .get(&key)
                 .filter(|r| r.samples > 0)
                 .map(|r| self.metric.value(r, ready))
+        }
+    }
+    fn wrapper_budget(&self) -> Option<f64> {
+        if self.callback == 0 {
+            Some(profiling::WrappingStats::BUDGET_SCALE as f64)
+        } else {
+            self.page
+                .as_ref()
+                .map(|page| page.callback.budget_ns)
+                .filter(|budget| *budget != 0)
+                .map(|budget| budget as f64)
+        }
+    }
+    fn wrapper_value(&self, key: u64, report: &Report, units: Units) -> Option<f64> {
+        if self.callback != 0 || units == Units::Microseconds {
+            self.value(key, report, false)
+        } else {
+            self.metric.statistic(if key == ENTRY {
+                &report.wrapping.before_budget
+            } else {
+                &report.wrapping.after_budget
+            })
+        }
+    }
+    fn duration_max(&self, report: &Report) -> f64 {
+        self.nodes
+            .values()
+            .filter(|n| !is_wrapper(n.id))
+            .filter_map(|n| {
+                self.value(
+                    if n.members.len() == 1 {
+                        n.members[0]
+                    } else {
+                        n.id
+                    },
+                    report,
+                    false,
+                )
+            })
+            .fold(0., f64::max)
+    }
+    fn node_color(&self, node: &VisualNode, value: Option<f64>, max: f64) -> egui::Color32 {
+        if is_wrapper(node.id) {
+            egui::Color32::from_gray(150)
+        } else {
+            color(value, max)
         }
     }
     fn host_baseline(&self) -> Option<f64> {
@@ -374,8 +428,8 @@ impl State {
         budget: Option<f64>,
     ) {
         ui.strong(self.label(node, report));
-        if node.id == ENTRY || node.id == EXIT {
-            self.wrapper_details(ui, node.id, report, units, budget);
+        if is_wrapper(node.id) {
+            self.wrapper_details(ui, node.id, report, units);
             return;
         }
         if node.members.is_empty() {
@@ -408,14 +462,8 @@ impl State {
         }
         ui.small("Elapsed step includes incoming routing, recovery and preemption.");
     }
-    fn wrapper_details(
-        &self,
-        ui: &mut egui::Ui,
-        id: u64,
-        report: &Report,
-        units: Units,
-        budget: Option<f64>,
-    ) {
+    fn wrapper_details(&self, ui: &mut egui::Ui, id: u64, report: &Report, units: Units) {
+        let budget = self.wrapper_budget();
         ui.label(if id == ENTRY {
             "Callback entry to first graph start, including input preparation."
         } else {
@@ -424,14 +472,15 @@ impl State {
         if self.callback != 0 {
             ui.label(format!(
                 "Actual whole callback: {}",
-                self.value(id, report, false)
+                self.wrapper_value(id, report, units)
                     .map_or_else(|| "unavailable".into(), |v| units.format(v, budget))
             ));
         } else {
-            let s = if id == ENTRY {
-                &report.wrapping.before
-            } else {
-                &report.wrapping.after
+            let s = match (id == ENTRY, units) {
+                (true, Units::Microseconds) => &report.wrapping.before,
+                (false, Units::Microseconds) => &report.wrapping.after,
+                (true, Units::Budget) => &report.wrapping.before_budget,
+                (false, Units::Budget) => &report.wrapping.after_budget,
             };
             if s.count == 0 {
                 ui.label("No complete callback samples");
@@ -445,7 +494,7 @@ impl State {
                 ));
             }
         }
-        ui.small("Wrapper durations are per callback; processor durations are per graph execution. Between-execution work is accounted separately. Missing graph boundaries remain unknown.");
+        ui.small("Wrapper percentages use each callback's full buffer budget; processor percentages use one quantum. Wrappers are excluded from node colors. Between-execution work is accounted separately. Missing graph boundaries remain unknown.");
     }
     fn edge_details(
         &self,
@@ -468,7 +517,6 @@ impl State {
                 },
                 report,
                 units,
-                budget,
             );
             return;
         }
@@ -821,21 +869,7 @@ impl State {
             self.rebuild(&t, ui.style());
         }
         self.topology = Some(t.clone());
-        let duration_max = self
-            .nodes
-            .values()
-            .filter_map(|n| {
-                self.value(
-                    if n.members.len() == 1 {
-                        n.members[0]
-                    } else {
-                        n.id
-                    },
-                    report,
-                    false,
-                )
-            })
-            .fold(0., f64::max);
+        let duration_max = self.duration_max(report);
         let ready_max = self
             .edges
             .iter()
@@ -861,7 +895,7 @@ impl State {
                     ),
                 );
             }
-            ui.weak("Gray: unavailable");
+            ui.weak("Gray: callback wrappers or unavailable");
         });
         let between = if self.callback != 0 {
             self.page
@@ -870,14 +904,13 @@ impl State {
                 .and_then(|e| e.between_ns)
                 .map(|v| v as f64)
         } else {
-            let s = &report.wrapping.between;
-            (s.count != 0).then(|| match self.metric {
-                Metric::Average => s.mean,
-                Metric::Worst => s.worst as f64,
-                Metric::Stddev => s.stddev(),
+            self.metric.statistic(if units == Units::Budget {
+                &report.wrapping.between_budget
+            } else {
+                &report.wrapping.between
             })
         };
-        ui.small(format!("Dotted: callback context · wrappers per callback · processors per tick · between graph executions: {}", between.map_or_else(|| "unavailable".into(), |v| units.format(v, budget))));
+        ui.small(format!("Dotted: callback context · wrappers use callback budget · processors use quantum budget · between graph executions: {}", between.map_or_else(|| "unavailable".into(), |v| units.format(v, self.wrapper_budget()))));
         ui.small("Readiness is elapsed since graph start. Hover traces influence; click pins details. Ctrl/Cmd+scroll to zoom; middle-drag to pan.");
         if let Some(focus) = self.pinned {
             egui::CollapsingHeader::new("Pinned details")
@@ -937,13 +970,14 @@ impl State {
                                 report,
                                 false,
                             );
+                            let node_color = self.node_color(node, value, duration_max);
                             let stroke = if related.contains(&node.id) {
                                 egui::Stroke::new(2.5, colors::FOREGROUND)
                             } else {
-                                egui::Stroke::new(1., color(value, duration_max))
+                                egui::Stroke::new(1., node_color)
                             };
                             let frame = egui::Frame::group(ui.style())
-                                .fill(color(value, duration_max).gamma_multiply(0.25))
+                                .fill(node_color.gamma_multiply(0.25))
                                 .stroke(stroke);
                             let response = Node::from_id(NodeId(node.id))
                                 .inputs(node.inputs.len())
@@ -974,6 +1008,14 @@ impl State {
                                                     .truncate(),
                                                 );
                                             }
+                                            let (value, budget) = if is_wrapper(node.id) {
+                                                (
+                                                    self.wrapper_value(node.id, report, units),
+                                                    self.wrapper_budget(),
+                                                )
+                                            } else {
+                                                (value, budget)
+                                            };
                                             ui.monospace(value.map_or_else(
                                                 || "—".into(),
                                                 |v| units.format(v, budget),
@@ -1306,6 +1348,75 @@ mod tests {
         state.page = Some(Arc::new(CapturePage::default()));
         assert_eq!(state.value(ENTRY, &view.live, false), None);
         assert_eq!(state.value(EXIT, &view.live, false), None);
+    }
+
+    #[shoop_test]
+    fn wrappers_use_callback_percentages_and_do_not_affect_processor_colors() {
+        let mut view = fixture();
+        view.live.wrapping.before.add(800_000);
+        view.live.wrapping.after.add(400_000);
+        view.live.wrapping.before_budget.add(300_000_000);
+        view.live.wrapping.after_budget.add(150_000_000);
+        let context = egui::Context::default();
+        let mut state = State::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        let budget = view.topology.as_ref().unwrap().budget_ns();
+        let text = |state: &State, key, units: Units| {
+            units.format(
+                state.wrapper_value(key, &view.live, units).unwrap(),
+                state.wrapper_budget(),
+            )
+        };
+        assert_eq!(text(&state, ENTRY, Units::Budget), "30.00");
+        assert_eq!(text(&state, EXIT, Units::Budget), "15.00");
+        assert_eq!(text(&state, ENTRY, Units::Microseconds), "800.000");
+        assert_eq!(
+            Units::Budget.format(state.value(1, &view.live, false).unwrap(), budget),
+            "0.15"
+        );
+        assert_eq!(state.duration_max(&view.live), 1000.);
+        for id in [ENTRY, EXIT] {
+            assert_eq!(
+                state.node_color(&state.nodes[&id], Some(800_000.), 1000.),
+                egui::Color32::from_gray(150)
+            );
+        }
+        assert_eq!(
+            state.node_color(
+                &state.nodes[&1],
+                Some(1000.),
+                state.duration_max(&view.live)
+            ),
+            color(Some(1000.), 1000.)
+        );
+
+        state.callback = 91;
+        state.tick = 52;
+        state.page = Some(Arc::new(CapturePage {
+            callback: TraceSummary {
+                frames: 128,
+                budget_ns: 2_666_667,
+                ..TraceSummary::default()
+            },
+            wrapping: Some(profiling::Envelope {
+                before_ns: Some(800_000),
+                after_ns: Some(400_000),
+                graphs: 4,
+                ..profiling::Envelope::default()
+            }),
+            ..CapturePage::default()
+        }));
+        assert_eq!(text(&state, ENTRY, Units::Budget), "30.00");
+        assert_eq!(text(&state, EXIT, Units::Budget), "15.00");
+        state.tick = 53;
+        assert_eq!(text(&state, ENTRY, Units::Budget), "30.00");
+        Arc::make_mut(state.page.as_mut().unwrap())
+            .callback
+            .budget_ns = 0;
+        assert_eq!(text(&state, ENTRY, Units::Budget), "—");
+        assert_eq!(text(&state, ENTRY, Units::Microseconds), "800.000");
     }
 
     #[shoop_test]

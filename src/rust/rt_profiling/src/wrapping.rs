@@ -62,18 +62,35 @@ pub struct WrappingStats {
     pub before: Statistics,
     pub after: Statistics,
     pub between: Statistics,
+    pub before_budget: Statistics,
+    pub after_budget: Statistics,
+    pub between_budget: Statistics,
     pub total: Statistics,
     pub without_graph: u64,
     pub incomplete: u64,
 }
 impl WrappingStats {
+    /// Budget-relative durations, scaled to nanoseconds of a one-second allowance.
+    pub const BUDGET_SCALE: u64 = 1_000_000_000;
+
     pub fn valid(&self) -> bool {
-        [&self.before, &self.after, &self.between, &self.total]
-            .into_iter()
-            .all(|s| s.mean.is_finite() && s.m2.is_finite())
+        [
+            &self.before,
+            &self.after,
+            &self.between,
+            &self.total,
+            &self.before_budget,
+            &self.after_budget,
+            &self.between_budget,
+        ]
+        .into_iter()
+        .all(|s| s.mean.is_finite() && s.m2.is_finite())
             && self.before.count <= self.total.count
             && self.after.count <= self.total.count
             && self.between.count <= self.total.count
+            && self.before_budget.count <= self.before.count
+            && self.after_budget.count <= self.after.count
+            && self.between_budget.count <= self.between.count
     }
 }
 
@@ -108,6 +125,16 @@ impl Wrapping {
                 self.stats.before.add(before);
                 self.stats.after.add(after);
                 self.stats.between.add(between);
+                if trace.budget_ns != 0 {
+                    let normalized = |ns: u64| {
+                        (u128::from(ns) * u128::from(WrappingStats::BUDGET_SCALE)
+                            / u128::from(trace.budget_ns))
+                        .min(u128::from(u64::MAX)) as u64
+                    };
+                    self.stats.before_budget.add(normalized(before));
+                    self.stats.after_budget.add(normalized(after));
+                    self.stats.between_budget.add(normalized(between));
+                }
             }
         }
         self.pending.retain(|t| t.end_ns > trace.end_ns);
@@ -217,5 +244,57 @@ mod tests {
         assert_eq!(wrapping.stats.before.stddev(), 30.);
         assert_eq!(wrapping.stats.after.mean, 20.);
         assert_eq!(wrapping.stats.between.worst, 0);
+    }
+
+    #[shoop_test]
+    fn wrapper_budget_statistics_normalize_each_callback_before_aggregation() {
+        let mut wrapping = Wrapping::default();
+        for (offset, frames, budget_ns, before, between, after) in [
+            (0, 32, 1000, 100, 50, 200),
+            (10000, 128, 4000, 200, 200, 400),
+        ] {
+            let first = offset + before;
+            let second = first + 20 + between;
+            wrapping.accept(tick(first, first + 20, first, first + 20));
+            wrapping.accept(tick(second, second + 20, second, second + 20));
+            wrapping.accept(TraceSummary {
+                epoch: 1,
+                start_ns: offset,
+                end_ns: second + 20 + after,
+                frames,
+                budget_ns,
+                graphs: 2,
+                flags: CALLBACK,
+                ..TraceSummary::default()
+            });
+        }
+        let s = &wrapping.stats;
+        assert_eq!(s.before.mean, 150.);
+        assert_eq!(s.before_budget.count, 2);
+        assert_eq!(s.before_budget.mean, 75_000_000.);
+        assert_eq!(s.before_budget.worst, 100_000_000);
+        assert_eq!(s.before_budget.stddev(), 25_000_000.);
+        assert_eq!(s.after_budget.mean, 150_000_000.);
+        assert_eq!(s.after_budget.worst, 200_000_000);
+        assert_eq!(s.after_budget.stddev(), 50_000_000.);
+        assert_eq!(s.between_budget.mean, 50_000_000.);
+        assert_eq!(s.between_budget.stddev(), 0.);
+        assert!(s.valid());
+    }
+
+    #[shoop_test]
+    fn missing_callback_budget_keeps_durations_without_inventing_percentages() {
+        let mut wrapping = Wrapping::default();
+        for t in [tick(120, 250, 150, 220), tick(280, 430, 310, 400)] {
+            wrapping.accept(t);
+        }
+        wrapping.accept(callback());
+        assert_eq!(wrapping.stats.before.mean, 50.);
+        assert_eq!(wrapping.stats.before_budget.count, 0);
+        assert_eq!(wrapping.stats.after_budget.count, 0);
+        assert_eq!(wrapping.stats.between_budget.count, 0);
+        assert!(wrapping.stats.valid());
+        wrapping.stats.before_budget.mean = f64::NAN;
+        assert!(!wrapping.stats.valid());
     }
 }

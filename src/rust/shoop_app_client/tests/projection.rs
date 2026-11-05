@@ -74,6 +74,14 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
 fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_details() {
     use shoop_app_api::profiling_data::*;
     let mut state = (*snapshot(3)).clone();
+    let wrapping = &mut state.profiling.live.wrapping;
+    wrapping.total.add(800);
+    wrapping.before.add(100);
+    wrapping.after.add(200);
+    wrapping.between.add(50);
+    wrapping.before_budget.add(100_000_000);
+    wrapping.after_budget.add(200_000_000);
+    wrapping.between_budget.add(50_000_000);
     state.profiling.capture = Some(Report {
         capture: 9,
         ..state.profiling.live.clone()
@@ -118,6 +126,10 @@ fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_deta
     let decoded = codec::decode_snapshot(&encoded).unwrap();
     assert_eq!(decoded.profiling, state.profiling);
     assert_eq!(decoded.profiling.live.rows[0].ready_worst_ns, 6000);
+    assert_eq!(
+        decoded.profiling.live.wrapping.before_budget.mean,
+        100_000_000.
+    );
     state.profiling.detail = Some(Arc::new(CapturePage {
         nodes: vec![NodeTiming::default(); DETAIL_NODES + 1],
         ..page.clone()
