@@ -139,6 +139,7 @@ impl ResourceStore {
             midi: None,
             audio: Some(audio),
             shared_midi: None,
+            indexed_midi: None,
         });
         self.resources[resource.slot() as usize].value = Some(Resource {
             active: Some(active),
@@ -252,6 +253,13 @@ impl ResourceStore {
                     index: store.export_index(export)?,
                 })
             })?);
+        } else if let Some(take) = lease.indexed_midi {
+            lease.indexed_midi = Some(self.with_indexed_midi(take.store, |_, pool| {
+                pool.retain(take.media).map(|media| indexed_midi::Take {
+                    store: take.store,
+                    media,
+                })
+            })?);
         } else if let Some(tail) = lease.private_tail {
             let used = self.pages[tail].used;
             if self.free_pages.len() <= self.reserved_pages {
@@ -289,7 +297,7 @@ impl ResourceStore {
         class: WorkClass,
     ) -> Result<(), Error> {
         let lease = self.index_lease(index)?;
-        if lease.audio.is_some() || lease.shared_midi.is_some() {
+        if lease.audio.is_some() || lease.shared_midi.is_some() || lease.indexed_midi.is_some() {
             return Err(Error::InvalidShape);
         }
         if offset

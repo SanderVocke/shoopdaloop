@@ -250,6 +250,7 @@ impl Packets {
         let lease = resources.index_lease(resources.read_index(snapshot)?)?;
         if lease.audio.is_some()
             || lease.shared_midi.is_some()
+            || lease.indexed_midi.is_some()
             || lease.snapshot.description.format != super::Format::Midi
         {
             return Err(Error::InvalidShape);
@@ -539,6 +540,7 @@ impl Packets {
         body: Body,
         offset: usize,
         output: &mut [u8],
+        class: WorkClass,
     ) -> Result<usize, Error> {
         self.check_store(io.store)?;
         if offset > body.bytes {
@@ -546,20 +548,20 @@ impl Packets {
         }
         let count = output.len().min(body.bytes - offset);
         if count == 0 {
-            io.store.note_operation(WorkClass::Render);
+            io.store.note_operation(class);
             return Ok(0);
         }
         if let Some(base) = body.base {
             let base = self.bases[slot(base)]
                 .value
                 .expect("owned immutable MIDI base");
-            io.store.note_operation(WorkClass::Render);
-            io.store.charge_work(WorkClass::Render, count, 0)?;
+            io.store.note_operation(class);
+            io.store.charge_work(class, count, 0)?;
             io.store.copy_linear_span(
                 base.index,
                 body.offset + offset,
                 &mut output[..count],
-                WorkClass::Render,
+                class,
             )?;
             return Ok(count);
         }
@@ -574,6 +576,17 @@ impl Packets {
             skip -= self.page_bytes;
             steps += 1;
         }
+        let spans = (skip + count).div_ceil(self.page_bytes);
+        io.store.note_operation(class);
+        io.store.charge_work(
+            class,
+            count,
+            if class == WorkClass::Render {
+                steps + spans
+            } else {
+                0
+            },
+        )?;
         let mut copied = 0;
         while copied < count {
             let slab = self.slabs[slot(id)].expect("owned packet slab");
@@ -581,14 +594,11 @@ impl Packets {
             let start = slab.physical * self.page_bytes + skip;
             output[copied..copied + n].copy_from_slice(&io.store.data[start..start + n]);
             copied += n;
-            steps += 1;
             if copied < count {
                 id = slab.next.expect("owned packet continuation");
                 skip = 0;
             }
         }
-        io.store.note_operation(WorkClass::Render);
-        io.store.charge_work(WorkClass::Render, count, steps)?;
         Ok(count)
     }
     pub fn read(
@@ -597,6 +607,16 @@ impl Packets {
         value: NonZeroU32,
         offset: usize,
         output: &mut [u8],
+    ) -> Result<usize, Error> {
+        self.read_with(io, value, offset, output, WorkClass::Render)
+    }
+    pub fn read_with(
+        &self,
+        io: &mut RenderIo<'_>,
+        value: NonZeroU32,
+        offset: usize,
+        output: &mut [u8],
+        class: WorkClass,
     ) -> Result<usize, Error> {
         let record = self.records[slot(value)]
             .value
@@ -608,6 +628,7 @@ impl Packets {
                 .expect("owned packet body"),
             offset,
             output,
+            class,
         )
     }
     pub fn read_retained_body(
@@ -617,7 +638,7 @@ impl Packets {
         offset: usize,
         output: &mut [u8],
     ) -> Result<usize, Error> {
-        self.read_body(io, self.body(id)?, offset, output)
+        self.read_body(io, self.body(id)?, offset, output, WorkClass::Render)
     }
     pub fn maintain(&mut self, io: &mut RenderIo<'_>, budget: usize) -> Result<usize, Error> {
         self.check_store(io.store)?;

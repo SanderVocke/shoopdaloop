@@ -37,14 +37,17 @@ pub(super) struct Staging {
     frame: Frame,
 }
 impl Staging {
-    pub fn prepare(events: usize) -> Result<Self, Error> {
+    pub fn prepared_bytes(events: usize) -> Result<usize, Error> {
         if events == 0 {
             return Err(Error::InvalidConfig);
         }
         events
             .checked_mul(size_of::<Option<RecordId>>() + size_of::<NonZeroU32>())
             .filter(|&bytes| bytes <= i32::MAX as usize)
-            .ok_or(Error::Capacity)?;
+            .ok_or(Error::Capacity)
+    }
+    pub fn prepare(events: usize) -> Result<Self, Error> {
+        Self::prepared_bytes(events)?;
         let mut records = vec![None; events].into_boxed_slice();
         for record in &mut records {
             *core::hint::black_box(record) = None;
@@ -105,6 +108,19 @@ pub(super) struct Core {
     records: Box<[Option<RecordId>]>,
 }
 impl Core {
+    pub fn prepared_bytes(config: Config) -> Result<usize, Error> {
+        let scratch = config
+            .events_per_tick
+            .checked_mul(size_of::<NonZeroU32>() * 3 + size_of::<Option<RecordId>>())
+            .ok_or(Error::Capacity)?;
+        config
+            .packets
+            .metadata_bytes()?
+            .checked_add(config.indexes.prepared_bytes::<NonZeroU32>()?)
+            .and_then(|bytes| bytes.checked_add(scratch))
+            .filter(|&bytes| bytes <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
     pub fn prepare(
         resources: &mut ResourceStore,
         q: Quantum,
@@ -452,6 +468,13 @@ impl Core {
             position,
         })
     }
+    pub fn writer_totals(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        writer: &Writer,
+    ) -> Result<Totals, Error> {
+        self.totals(io, &writer.media)
+    }
     pub fn snapshot(&mut self, writer: &Writer) -> Result<Media, Error> {
         self.retain(&writer.media)
     }
@@ -619,6 +642,16 @@ impl Core {
         offset: usize,
         output: &mut [u8],
     ) -> Result<usize, Error> {
+        self.read_bytes_with(io, media, offset, output, WorkClass::Render)
+    }
+    pub fn read_bytes_with(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        media: &Media,
+        offset: usize,
+        output: &mut [u8],
+        class: WorkClass,
+    ) -> Result<usize, Error> {
         self.indexes.reset_work();
         let selected = self.indexes.record_at(media.root, offset, &self.packets);
         self.account(io);
@@ -633,11 +666,12 @@ impl Core {
             header[..8].copy_from_slice(&(point.frame.0 - media.origin.0).to_le_bytes());
             header[8..].copy_from_slice(&bytes.to_le_bytes());
             let count = output.len().min(12 - within);
+            io.store.charge_work(class, count, 0)?;
             output[..count].copy_from_slice(&header[within..within + count]);
-            io.store.charge_work(WorkClass::Render, count, 0)?;
             return Ok(count);
         }
-        self.packets.read(io, value, within - 12, output)
+        self.packets
+            .read_with(io, value, within - 12, output, class)
     }
     pub fn byte_before(
         &mut self,

@@ -438,3 +438,5 @@ src/rust/rt_runtime/src/quantum.rs,generic_realtime_library,excluded,Validated p
 src/rust/rt_runtime/src/host_buffer.rs,generic_realtime_library,excluded,Prepared quantum buffering and bounded MIDI recovery must not trace during rendering.
 src/rust/rt_profiling/src/unsupported.rs,generic_realtime_library,excluded,Targets without lock-free 64-bit atomics preserve the portable API and report profiling unavailable.
 src/rust/shoop_rt_engine/src/buffered_tests.rs,test_support,excluded,Test-only processor composition and heap guards.
+src/rust/rt_runtime/src/resource/indexed_midi.rs,rt_runtime prepared MIDI resource boundary,excluded,Portable fixed-storage media ownership and required work counters; host spans cover application operations
+src/rust/rt_runtime/src/resource/indexed_midi/tests.rs,test_support,excluded,Heap-guarded ordinary resource exports continuous writer exit source reset and admission pressure oracles; no production boundary.

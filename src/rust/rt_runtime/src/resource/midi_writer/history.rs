@@ -8,10 +8,10 @@ pub(in crate::resource) struct Source {
     current: MidiState,
 }
 impl Source {
-    pub(super) fn coverage(&self) -> Range<Frame> {
+    pub(in crate::resource) fn coverage(&self) -> Range<Frame> {
         self.media.origin..Frame(self.media.origin.0 + self.media.frames)
     }
-    pub(super) fn state(&self) -> &MidiState {
+    pub(in crate::resource) fn state(&self) -> &MidiState {
         &self.current
     }
 }

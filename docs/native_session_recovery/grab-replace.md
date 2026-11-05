@@ -100,6 +100,16 @@ per-source reservations and continuous-writer debt
 still require the remaining production work; this change does not establish a
 default application budget or enable either capability.
 
+The semantic continuous MIDI pool now has ordinary resource/snapshot backing.
+Uploaded packet bases are pinned by bounded import jobs; multiple fixed/growing
+writers share source tick bodies and publish complete revisions without a fresh
+exit allocation. Byte reads, seek/state reconstruction and independent retained
+exports use the same public resource interfaces as existing media. Generation,
+source-reset and content-revision fences prevent stale jobs from publishing.
+Cancellation and teardown retain prepared staging arrays until host destruction.
+An allocation-free sizing API reports this pool's metadata and payload reservation;
+production live/writer credit guarantees and host defaults remain outstanding.
+
 ## Validation status
 
 No application success is claimed yet. CI will run the new arithmetic/reference

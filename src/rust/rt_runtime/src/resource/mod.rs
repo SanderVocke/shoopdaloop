@@ -22,6 +22,7 @@ pub use midi_index::{MidiIndexConfig, MidiIndexInfo, MidiIndexUsage, MidiIndexWo
 use midi_index::{MidiOwner, MidiPool};
 pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod audio_backing;
+pub mod indexed_midi;
 mod midi_backing;
 pub use midi_backing::{MidiEditId, MidiImportId, MidiStoreId};
 #[allow(dead_code)] // Continuous shared MIDI storage is integrated in stages.
@@ -128,6 +129,7 @@ struct Version {
     midi: Option<MidiOwner>,
     audio: Option<audio_backing::Take>,
     shared_midi: Option<midi_backing::Take>,
+    indexed_midi: Option<indexed_midi::Take>,
 }
 #[derive(Clone, Copy)]
 struct Lease {
@@ -137,6 +139,7 @@ struct Lease {
     tail_start: usize,
     audio: Option<audio_backing::Export>,
     shared_midi: Option<midi_backing::Export>,
+    indexed_midi: Option<indexed_midi::Take>,
 }
 #[derive(Clone, Copy, Default)]
 struct Page {
@@ -185,6 +188,8 @@ pub struct ResourceStore {
     audio_maintenance: usize,
     midi_stores: Vec<Option<Box<shared_midi::MidiStore>>>,
     midi_maintenance: usize,
+    indexed_midi_stores: Vec<Option<Box<indexed_midi::Store>>>,
+    indexed_midi_maintenance: usize,
     maintenance_kind: usize,
 }
 fn retirement_stack(count: usize) -> Vec<usize> {
@@ -257,6 +262,8 @@ impl ResourceStore {
             audio_maintenance: 0,
             midi_stores: Vec::with_capacity(limits.resource_slots),
             midi_maintenance: 0,
+            indexed_midi_stores: Vec::with_capacity(limits.resource_slots),
+            indexed_midi_maintenance: 0,
             maintenance_kind: 0,
             resources: slots(limits.resource_slots),
             free_resources: (0..limits.resource_slots).rev().collect(),
@@ -430,6 +437,7 @@ impl ResourceStore {
             midi: None,
             audio: None,
             shared_midi: None,
+            indexed_midi: None,
         });
         Ok(UploadId {
             slot: index as u32,
@@ -593,6 +601,9 @@ impl ResourceStore {
             if let Some(take) = version.shared_midi.take() {
                 self.with_midi(take.store, |_, midi| midi.release_take(take.take))?;
             }
+            if let Some(take) = version.indexed_midi.take() {
+                self.with_indexed_midi(take.store, |_, pool| pool.release(take.media))?;
+            }
             version.state = State::Retiring;
             if let Some(owner) = version.midi.take() {
                 self.midi_indexes.release(owner);
@@ -642,6 +653,17 @@ impl ResourceStore {
             })?),
             None => None,
         };
+        let indexed_midi = version
+            .indexed_midi
+            .map(|take| {
+                self.with_indexed_midi(take.store, |_, pool| {
+                    pool.retain(take.media).map(|media| indexed_midi::Take {
+                        store: take.store,
+                        media,
+                    })
+                })
+            })
+            .transpose()?;
         let mutable_tail = version.tail.filter(|&page| {
             version.state == State::Capturing
                 && self.pages[page].used < self.config.limits().page_bytes
@@ -688,6 +710,7 @@ impl ResourceStore {
                 * self.config.limits().page_bytes,
             audio,
             shared_midi,
+            indexed_midi,
         });
         version.references = refs;
         self.versions[active.slot as usize].value = Some(version);
@@ -748,6 +771,11 @@ impl ResourceStore {
         if cursor.position == lease.snapshot.description.bytes || output.is_empty() {
             return Ok(0);
         }
+        if let Some(take) = lease.indexed_midi {
+            let count = self.read_indexed_midi(take, cursor.position, output, class)?;
+            cursor.position += count;
+            return Ok(count);
+        }
         if let Some(midi) = lease.shared_midi {
             let count = self.with_midi(midi.store, |store, midi_store| {
                 midi_store.read_bytes(store, midi.index, cursor.position, output, class)
@@ -807,6 +835,9 @@ impl ResourceStore {
         if let Some(midi) = lease.shared_midi {
             self.with_midi(midi.store, |_, store| store.release_export(midi.export))?;
         }
+        if let Some(take) = lease.indexed_midi {
+            self.with_indexed_midi(take.store, |_, pool| pool.release(take.media))?;
+        }
         if let Some(page) = lease.private_tail {
             self.retired_pages.push(page);
         }
@@ -824,12 +855,13 @@ impl ResourceStore {
         let mut steps = 0;
         while self.steps_remaining() > 0 {
             let mut advanced = false;
-            for _ in 0..3 {
+            for _ in 0..4 {
                 let kind = self.maintenance_kind;
-                self.maintenance_kind = (kind + 1) % 3;
+                self.maintenance_kind = (kind + 1) % 4;
                 advanced = match kind {
                     0 => self.maintain_audio(),
                     1 => self.maintain_midi(),
+                    2 => self.maintain_indexed_midi(),
                     _ => self.reclaim_linear_step(),
                 };
                 if advanced {

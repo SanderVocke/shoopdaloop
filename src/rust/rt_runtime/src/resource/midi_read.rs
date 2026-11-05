@@ -35,7 +35,7 @@ pub struct MidiPosition {
 }
 
 impl ResourceStore {
-    fn midi_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
+    pub(super) fn midi_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
         let lease = self.index_lease(index)?;
         if lease.snapshot.description.format != Format::Midi {
             return Err(Error::InvalidShape);
@@ -123,6 +123,20 @@ impl ResourceStore {
         let lease = self.midi_lease(index)?;
         if frame > lease.snapshot.description.frames {
             return Err(Error::InvalidFrame);
+        }
+        if let Some(take) = lease.indexed_midi {
+            return self.with_indexed_midi(take.store, |store, pool| {
+                let media = pool.views.get(take.media)?;
+                let state = pool.core.state(&mut store.render_io(), media, frame)?;
+                let offset = pool
+                    .core
+                    .byte_before(&mut store.render_io(), media, frame)?;
+                Ok(MidiPosition {
+                    cursor: MidiCursor { index, offset },
+                    state,
+                    replayed_events: 0,
+                })
+            });
         }
         if let Some(midi) = lease.shared_midi {
             return self.with_midi(midi.store, |store, midi_store| {

@@ -5,7 +5,8 @@
 Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
 `feat/backend-replacement`, rebased onto merged parent `0ef7581b`. The latest
-implementation adds immutable loaded MIDI bases and indexed serialized reads.
+implementation connects continuous MIDI sources/writers to ordinary resource and
+snapshot IDs, including immutable loaded bases and indexed serialized reads.
 
 | Stage | Current status |
 | --- | --- |
@@ -213,6 +214,23 @@ real uploaded resource, removes its original owner, and checks old/current bytes
 and state through repeated writes. All three focused writer/history tests pass
 with warnings denied on this working tree. Broader CI is pending; resource/host
 integration and P04/P05 application completion are still outstanding.
+
+The continuous MIDI pool is now exposed through ordinary resource and snapshot
+leases. Bounded imports retain uploaded packet bases, source ticks can feed
+multiple private fixed/growing writers, and exit publishes a complete resource
+revision without acquiring a new view, snapshot or version credit. Generic byte
+cursors and MIDI seek read the retained semantic version. Source resets, duplicate
+or skipped ticks, competing uploads and resource generations fence stale jobs;
+imports and writers have explicit cancellation. Allocation-free pool sizing covers
+the prepared owners, packet/index arrays and staging buffers. Three new guarded
+resource scenarios cover repeated wraps, simultaneous writers, continuation beyond
+the history horizon, uploaded SysEx/equal-frame packets, old exports, exhausted
+view/transfer capacity at exit, reset, competing uploads and exact teardown credit
+recovery. All 54 native resource tests and 16 loop-library unit tests pass with warnings
+denied, as do the affected library build, formatting, tracing inventory and test
+attribute checks. Fresh broad CI remains pending.
+This is the resource boundary for F2/F3, not production quota reservation, loop
+mode/coordinator integration, or application acceptance. P04/P05 remain OPEN.
 
 ## Findings that determine the work
 

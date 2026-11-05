@@ -1,0 +1,913 @@
+//! Continuous MIDI media exposed through ordinary resource and snapshot leases.
+
+use super::{midi_packets, midi_writer as writer, *};
+use crate::{
+    buffer::MidiBuffer,
+    midi_state::{indexed::store, MidiState},
+};
+
+#[derive(Clone, Copy, Debug)]
+pub struct PacketLimits {
+    pub pages: usize,
+    pub bodies: usize,
+    pub records: usize,
+    pub max_packet: usize,
+    pub bases: usize,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct IndexLimits {
+    pub leases: usize,
+    pub versions: usize,
+    pub category_pages: usize,
+    pub packet_nodes: usize,
+    pub scalar_nodes: usize,
+    pub hold_nodes: usize,
+    pub sostenuto_nodes: usize,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Config {
+    pub packets: PacketLimits,
+    pub indexes: IndexLimits,
+    pub sources: usize,
+    pub history_frames: u64,
+    pub history_events: usize,
+    pub views: usize,
+    pub writers: usize,
+    pub imports: usize,
+    pub events_per_tick: usize,
+    pub bytes_per_tick: usize,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StoreId {
+    scope: u32,
+    slot: usize,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct Key {
+    slot: usize,
+    generation: u64,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceId {
+    store: StoreId,
+    key: Key,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WriterId {
+    store: StoreId,
+    key: Key,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ImportId {
+    store: StoreId,
+    key: Key,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WriteKind {
+    Fixed,
+    Growing { maximum_frames: u64 },
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Status {
+    Building,
+    Ready,
+}
+#[derive(Clone, Copy)]
+pub(super) struct Take {
+    pub store: StoreId,
+    pub(super) media: Key,
+}
+struct Entry<T> {
+    generation: u64,
+    value: Option<T>,
+}
+pub(super) struct Arena<T> {
+    entries: Box<[Entry<T>]>,
+}
+impl<T> Arena<T> {
+    fn prepare(count: usize) -> Result<Self, Error> {
+        count
+            .checked_mul(size_of::<Entry<T>>())
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)?;
+        Ok(Self {
+            entries: (0..count)
+                .map(|_| Entry {
+                    generation: 1,
+                    value: None,
+                })
+                .collect(),
+        })
+    }
+    fn available(&self) -> Result<(), Error> {
+        if self
+            .entries
+            .iter()
+            .any(|e| e.value.is_none() && e.generation != u64::MAX)
+        {
+            Ok(())
+        } else {
+            Err(Error::Capacity)
+        }
+    }
+    fn insert(&mut self, value: T) -> Key {
+        let slot = self
+            .entries
+            .iter()
+            .position(|e| e.value.is_none() && e.generation != u64::MAX)
+            .expect("preflighted owner credit");
+        self.entries[slot].value = Some(value);
+        Key {
+            slot,
+            generation: self.entries[slot].generation,
+        }
+    }
+    pub(super) fn get(&self, key: Key) -> Result<&T, Error> {
+        self.entries
+            .get(key.slot)
+            .filter(|e| e.generation == key.generation)
+            .and_then(|e| e.value.as_ref())
+            .ok_or(Error::InvalidId)
+    }
+    fn get_mut(&mut self, key: Key) -> Result<&mut T, Error> {
+        self.entries
+            .get_mut(key.slot)
+            .filter(|e| e.generation == key.generation)
+            .and_then(|e| e.value.as_mut())
+            .ok_or(Error::InvalidId)
+    }
+    fn remove(&mut self, key: Key) -> Result<T, Error> {
+        self.get(key)?;
+        let entry = &mut self.entries[key.slot];
+        entry.generation += 1;
+        Ok(entry.value.take().expect("validated owner"))
+    }
+    fn empty(&self) -> bool {
+        self.entries.iter().all(|e| e.value.is_none())
+    }
+}
+struct Source {
+    history: Option<writer::history::Source>,
+    staged: writer::Staging,
+    before: MidiState,
+    cut: Option<Frame>,
+}
+struct Job {
+    resource: ResourceId,
+    expected: Revision,
+    original: Key,
+    admission: Option<writer::Admission>,
+    writer: Option<writer::Writer>,
+    source: Option<SourceId>,
+    next: Option<Frame>,
+}
+struct Import {
+    snapshot: SnapshotId,
+    cursor: MidiCursor,
+    base: midi_packets::BaseId,
+    media: writer::Media,
+    order: u64,
+    ready: bool,
+}
+pub(super) struct Store {
+    pub(super) core: writer::Core,
+    pub(super) views: Arena<writer::Media>,
+    sources: Arena<Source>,
+    writers: Arena<Job>,
+    imports: Arena<Import>,
+    closed: bool,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Capacity {
+    /// Prepared arrays and scratch, excluding allocator and common arena overhead.
+    pub metadata_bytes: usize,
+    pub reserved_payload_bytes: usize,
+    pub history_frames: u64,
+}
+impl Config {
+    fn core(self) -> writer::Config {
+        writer::Config {
+            packets: midi_packets::Config {
+                pages: self.packets.pages,
+                bodies: self.packets.bodies,
+                records: self.packets.records,
+                max_packet: self.packets.max_packet,
+                bases: self.packets.bases,
+            },
+            indexes: store::Config {
+                leases: self.indexes.leases,
+                versions: self.indexes.versions,
+                category_pages: self.indexes.category_pages,
+                packet_nodes: self.indexes.packet_nodes,
+                scalar_nodes: self.indexes.scalar_nodes,
+                hold_nodes: self.indexes.hold_nodes,
+                sostenuto_nodes: self.indexes.sostenuto_nodes,
+            },
+            events_per_tick: self.events_per_tick,
+            bytes_per_tick: self.bytes_per_tick,
+        }
+    }
+    /// Allocation-free sizing; production history and writer reservations require additional admission policy.
+    pub fn capacity(self, runtime: crate::PreparedConfig, q: Quantum) -> Result<Capacity, Error> {
+        if self.views == 0
+            || self.events_per_tick == 0
+            || self.bytes_per_tick == 0
+            || self.events_per_tick > runtime.limits().midi_events_per_port
+            || self.bytes_per_tick > runtime.limits().midi_bytes_per_port
+            || q.frames() > runtime.limits().max_frames
+            || self.packets.pages > runtime.limits().resource_pages
+            || self.sources > self.indexes.versions
+            || self.sources > self.indexes.leases
+            || self.sources > 0
+                && (self.history_frames == 0 || self.history_events < self.events_per_tick)
+        {
+            return Err(Error::InvalidConfig);
+        }
+        let mut bytes = size_of::<Store>()
+            .checked_add(writer::Core::prepared_bytes(self.core())?)
+            .ok_or(Error::Capacity)?;
+        for (count, size) in [
+            (self.views, size_of::<Entry<writer::Media>>()),
+            (
+                self.sources,
+                size_of::<Entry<Source>>()
+                    .checked_add(writer::Staging::prepared_bytes(self.events_per_tick)?)
+                    .ok_or(Error::Capacity)?,
+            ),
+            (self.writers, size_of::<Entry<Job>>()),
+            (self.imports, size_of::<Entry<Import>>()),
+        ] {
+            bytes = count
+                .checked_mul(size)
+                .and_then(|more| bytes.checked_add(more))
+                .filter(|&n| n <= i32::MAX as usize)
+                .ok_or(Error::Capacity)?;
+        }
+        Ok(Capacity {
+            metadata_bytes: bytes,
+            reserved_payload_bytes: self
+                .packets
+                .pages
+                .checked_mul(runtime.limits().page_bytes)
+                .ok_or(Error::Capacity)?,
+            history_frames: q.ceil(Frame(self.history_frames))?.0,
+        })
+    }
+}
+impl Store {
+    fn prepare(resources: &mut ResourceStore, config: Config) -> Result<Self, Error> {
+        config.capacity(resources.config, resources.quantum)?;
+        let mut views = Arena::prepare(config.views)?;
+        let mut sources = Arena::prepare(config.sources)?;
+        let writers = Arena::prepare(config.writers)?;
+        let imports = Arena::prepare(config.imports)?;
+        let q = resources.quantum;
+        let mut core = writer::Core::prepare(resources, q, config.core())?;
+        for _ in 0..config.sources {
+            sources.insert(Source {
+                history: Some(core.begin_source(
+                    Frame(0),
+                    config.history_frames,
+                    config.history_events,
+                    &MidiState::default(),
+                )?),
+                staged: writer::Staging::prepare(config.events_per_tick)?,
+                before: MidiState::default(),
+                cut: None,
+            });
+        }
+        // Touch the prepared view array before handing it to rendering.
+        for entry in &mut views.entries {
+            core::hint::black_box(entry);
+        }
+        Ok(Self {
+            core,
+            views,
+            sources,
+            writers,
+            imports,
+            closed: false,
+        })
+    }
+    pub(super) fn retain(&mut self, key: Key) -> Result<Key, Error> {
+        self.views.available()?;
+        let media = self.core.retain(self.views.get(key)?)?;
+        Ok(self.views.insert(media))
+    }
+    pub(super) fn release(&mut self, key: Key) -> Result<(), Error> {
+        self.core.release(self.views.remove(key)?)
+    }
+}
+
+impl ResourceStore {
+    pub fn prepare_indexed_midi_store(&mut self, config: Config) -> Result<StoreId, Error> {
+        if self.indexed_midi_stores.len() == self.config.limits().resource_slots {
+            return Err(Error::Capacity);
+        }
+        let pool = Store::prepare(self, config)?;
+        let id = StoreId {
+            scope: self.scope,
+            slot: self.indexed_midi_stores.len(),
+        };
+        self.indexed_midi_stores.push(Some(Box::new(pool)));
+        Ok(id)
+    }
+    pub(super) fn with_indexed_midi<T>(
+        &mut self,
+        id: StoreId,
+        operation: impl FnOnce(&mut ResourceStore, &mut Store) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        if id.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        let mut pool = self
+            .indexed_midi_stores
+            .get_mut(id.slot)
+            .and_then(Option::take)
+            .ok_or(Error::InvalidId)?;
+        let result = operation(self, &mut pool);
+        self.indexed_midi_stores[id.slot] = Some(pool);
+        result
+    }
+    pub fn indexed_midi_source(&self, id: StoreId, slot: usize) -> Result<SourceId, Error> {
+        if id.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        let pool = self
+            .indexed_midi_stores
+            .get(id.slot)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?;
+        if pool.closed {
+            return Err(Error::InvalidState);
+        }
+        let entry = pool.sources.entries.get(slot).ok_or(Error::InvalidId)?;
+        let key = Key {
+            slot,
+            generation: entry.generation,
+        };
+        pool.sources.get(key)?;
+        Ok(SourceId { store: id, key })
+    }
+    pub fn indexed_midi_coverage(
+        &mut self,
+        source: SourceId,
+    ) -> Result<core::ops::Range<Frame>, Error> {
+        self.with_indexed_midi(source.store, |_, pool| {
+            Ok(pool
+                .sources
+                .get(source.key)?
+                .history
+                .as_ref()
+                .ok_or(Error::InvalidState)?
+                .coverage())
+        })
+    }
+    fn indexed_midi_resource(&mut self, take: Take) -> Result<ResourceId, Error> {
+        let description = self.with_indexed_midi(take.store, |resources, pool| {
+            let media = pool.views.get(take.media)?;
+            let totals = pool.core.totals(&mut resources.render_io(), media)?;
+            Ok(Description {
+                format: Format::Midi,
+                frames: media.frames,
+                bytes: totals.bytes,
+            })
+        })?;
+        let resource = self.create()?;
+        let slot = self.free_versions.pop().expect("preflighted version");
+        let active = UploadId {
+            slot: slot as u32,
+            generation: self.versions[slot].generation,
+        };
+        let revision = Revision(1);
+        self.versions[slot].value = Some(Version {
+            resource,
+            expected_revision: Revision(0),
+            revision,
+            description,
+            written: 0,
+            reserved: 0,
+            head: None,
+            tail: None,
+            references: 1,
+            parser: Parser::default(),
+            state: State::Active,
+            capture: None,
+            index: VersionIndex::default(),
+            midi: None,
+            audio: None,
+            shared_midi: None,
+            indexed_midi: Some(take),
+        });
+        self.resources[resource.slot() as usize].value = Some(Resource {
+            active: Some(active),
+            revision,
+            claim: None,
+        });
+        Ok(resource)
+    }
+    fn indexed_midi_credit(&self) -> Result<(), Error> {
+        if self.free_resources.is_empty() || self.free_versions.is_empty() {
+            Err(Error::Capacity)
+        } else {
+            Ok(())
+        }
+    }
+    pub fn grab_indexed_midi(
+        &mut self,
+        source: SourceId,
+        range: core::ops::Range<Frame>,
+        frames: u64,
+    ) -> Result<ResourceId, Error> {
+        self.indexed_midi_credit()?;
+        let media = self.with_indexed_midi(source.store, |resources, pool| {
+            pool.views.available()?;
+            let history = pool
+                .sources
+                .get(source.key)?
+                .history
+                .as_ref()
+                .ok_or(Error::InvalidState)?;
+            let media =
+                pool.core
+                    .grab_source(&mut resources.render_io(), history, range, frames)?;
+            Ok(pool.views.insert(media))
+        })?;
+        self.indexed_midi_resource(Take {
+            store: source.store,
+            media,
+        })
+    }
+    pub fn fork_indexed_midi(
+        &mut self,
+        id: StoreId,
+        snapshot: SnapshotId,
+    ) -> Result<ResourceId, Error> {
+        self.indexed_midi_credit()?;
+        let source = get(&self.snapshots, snapshot.slot, snapshot.generation)?
+            .indexed_midi
+            .ok_or(Error::InvalidShape)?;
+        if source.store != id {
+            return Err(Error::InvalidShape);
+        }
+        let media = self.with_indexed_midi(id, |_, pool| pool.retain(source.media))?;
+        self.indexed_midi_resource(Take { store: id, media })
+    }
+    pub fn prepare_indexed_midi_import(
+        &mut self,
+        id: StoreId,
+        snapshot: SnapshotId,
+        initial: &MidiState,
+    ) -> Result<ImportId, Error> {
+        self.with_indexed_midi(id, |resources, pool| {
+            if pool.closed {
+                return Err(Error::InvalidState);
+            }
+            pool.imports.available()?;
+            let index = resources.read_index(snapshot)?;
+            let lease = resources.midi_lease(index)?;
+            if lease.indexed_midi.is_some() || lease.shared_midi.is_some() {
+                return Err(Error::InvalidShape);
+            }
+            let retained = resources.retain_snapshot(snapshot)?;
+            let base = match pool.core.pin_import(resources, retained.id) {
+                Ok(base) => base,
+                Err(error) => {
+                    resources.release_snapshot(retained.id)?;
+                    return Err(error);
+                }
+            };
+            let media = match pool
+                .core
+                .empty(Frame(0), retained.description.frames, initial)
+            {
+                Ok(media) => media,
+                Err(error) => {
+                    pool.core.release_import(base)?;
+                    resources.release_snapshot(retained.id)?;
+                    return Err(error);
+                }
+            };
+            let cursor = resources.midi_cursor_impl(resources.read_index(retained.id)?)?;
+            Ok(ImportId {
+                store: id,
+                key: pool.imports.insert(Import {
+                    snapshot: retained.id,
+                    cursor,
+                    base,
+                    media,
+                    order: 0,
+                    ready: false,
+                }),
+            })
+        })
+    }
+    pub fn progress_indexed_midi_import(
+        &mut self,
+        id: ImportId,
+        events: usize,
+    ) -> Result<Status, Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.imports.get_mut(id.key)?;
+            for _ in 0..events {
+                let mut next = job.cursor;
+                let Some(event) = resources.midi_next_impl(&mut next)? else {
+                    job.ready = true;
+                    break;
+                };
+                let order = job.order.checked_add(1).ok_or(Error::Exhausted)?;
+                pool.core.import_reference(
+                    &mut resources.render_io(),
+                    &mut job.media,
+                    job.base,
+                    event.frame(),
+                    job.order,
+                    job.cursor.byte_position() + 12,
+                    event.byte_len(),
+                )?;
+                job.cursor = next;
+                job.order = order;
+            }
+            Ok(if job.ready {
+                Status::Ready
+            } else {
+                Status::Building
+            })
+        })
+    }
+    pub fn cancel_indexed_midi_import(&mut self, id: ImportId) -> Result<(), Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.imports.remove(id.key)?;
+            pool.core.release(job.media)?;
+            pool.core.release_import(job.base)?;
+            resources.release_snapshot(job.snapshot)
+        })
+    }
+    pub fn finish_indexed_midi_import(&mut self, id: ImportId) -> Result<ResourceId, Error> {
+        self.indexed_midi_credit()?;
+        let media = self.with_indexed_midi(id.store, |resources, pool| {
+            pool.views.available()?;
+            if !pool.imports.get(id.key)?.ready {
+                return Err(Error::Busy);
+            }
+            let job = pool.imports.remove(id.key)?;
+            pool.core.release_import(job.base)?;
+            resources.release_snapshot(job.snapshot)?;
+            Ok(pool.views.insert(job.media))
+        })?;
+        self.indexed_midi_resource(Take {
+            store: id.store,
+            media,
+        })
+    }
+    pub fn prepare_indexed_midi_writer(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        kind: WriteKind,
+    ) -> Result<WriterId, Error> {
+        let owner = self.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let version = get(
+            &self.versions,
+            owner.active.ok_or(Error::InvalidState)?.slot,
+            owner.active.unwrap().generation,
+        )?;
+        let take = version.indexed_midi.ok_or(Error::InvalidShape)?;
+        self.with_indexed_midi(take.store, |_, pool| {
+            pool.writers.available()?;
+            if pool
+                .writers
+                .entries
+                .iter()
+                .filter_map(|e| e.value.as_ref())
+                .any(|j| j.resource == resource)
+            {
+                return Err(Error::Busy);
+            }
+            let media = pool.core.retain(pool.views.get(take.media)?)?;
+            let kind = match kind {
+                WriteKind::Fixed => writer::Kind::Fixed,
+                WriteKind::Growing { maximum_frames } => writer::Kind::Growing { maximum_frames },
+            };
+            let admission = match pool.core.begin_writer(media, kind) {
+                Ok(admission) => admission,
+                Err((error, media)) => {
+                    pool.core.release(media)?;
+                    return Err(error);
+                }
+            };
+            Ok(WriterId {
+                store: take.store,
+                key: pool.writers.insert(Job {
+                    resource,
+                    expected,
+                    original: take.media,
+                    admission: Some(admission),
+                    writer: None,
+                    source: None,
+                    next: None,
+                }),
+            })
+        })
+    }
+    pub fn progress_indexed_midi_writer(
+        &mut self,
+        id: WriterId,
+        events: usize,
+    ) -> Result<Status, Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.writers.get_mut(id.key)?;
+            let owner = resources.check_writer(job.resource, None)?;
+            if owner.revision != job.expected {
+                return Err(Error::StaleRevision);
+            }
+            if job.writer.is_some() {
+                return Ok(Status::Ready);
+            }
+            let ready = pool.core.progress_writer(
+                &mut resources.render_io(),
+                job.admission.as_mut().ok_or(Error::InvalidState)?,
+                events,
+            )?;
+            Ok(if ready {
+                Status::Ready
+            } else {
+                Status::Building
+            })
+        })
+    }
+    pub fn start_indexed_midi_writer(&mut self, id: WriterId, position: u64) -> Result<(), Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.writers.get_mut(id.key)?;
+            if resources.revision(job.resource)? != job.expected {
+                return Err(Error::StaleRevision);
+            }
+            let admission = job.admission.take().ok_or(Error::InvalidState)?;
+            match pool.core.finish_admission(admission, position) {
+                Ok(writer) => {
+                    job.writer = Some(writer);
+                    Ok(())
+                }
+                Err((error, admission)) => {
+                    job.admission = Some(admission);
+                    Err(error)
+                }
+            }
+        })
+    }
+    pub fn cancel_indexed_midi_writer(&mut self, id: WriterId) -> Result<(), Error> {
+        self.with_indexed_midi(id.store, |_, pool| {
+            let job = pool.writers.remove(id.key)?;
+            if let Some(admission) = job.admission {
+                pool.core.cancel_writer(admission)?;
+            }
+            if let Some(writer) = job.writer {
+                let media = pool.core.finish_writer(writer);
+                pool.core.release(media)?;
+            }
+            Ok(())
+        })
+    }
+    /// Publishes a complete view using the existing resource/version credit.
+    pub fn finish_indexed_midi_writer(&mut self, id: WriterId) -> Result<Revision, Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.writers.get(id.key)?;
+            let mut owner = resources.check_writer(job.resource, None)?;
+            if owner.revision != job.expected {
+                return Err(Error::StaleRevision);
+            }
+            let active = owner.active.ok_or(Error::InvalidState)?;
+            let mut version = get(&resources.versions, active.slot, active.generation)?;
+            let take = version.indexed_midi.ok_or(Error::InvalidShape)?;
+            if take.store != id.store || take.media != job.original {
+                return Err(Error::StaleRevision);
+            }
+            let revision = owner.revision.checked_next()?;
+            if let Some(source) = job.source {
+                pool.sources.get(source.key)?;
+            }
+            let writer = job.writer.as_ref().ok_or(Error::Busy)?;
+            let totals = pool
+                .core
+                .writer_totals(&mut resources.render_io(), writer)?;
+            let job = pool.writers.remove(id.key)?;
+            let media = pool
+                .core
+                .finish_writer(job.writer.expect("validated writer"));
+            version.description = Description {
+                format: Format::Midi,
+                frames: media.frames,
+                bytes: totals.bytes,
+            };
+            let old = core::mem::replace(pool.views.get_mut(job.original)?, media);
+            pool.core.release(old)?;
+            owner.revision = revision;
+            version.revision = revision;
+            resources.resources[job.resource.slot() as usize].value = Some(owner);
+            resources.versions[active.slot as usize].value = Some(version);
+            Ok(revision)
+        })
+    }
+    pub(super) fn read_indexed_midi(
+        &mut self,
+        take: Take,
+        offset: usize,
+        output: &mut [u8],
+        class: WorkClass,
+    ) -> Result<usize, Error> {
+        // Bound background transfers before index lookup; required index work stays separately visible.
+        let limit = if class == WorkClass::Background {
+            output.len().min(self.copy_remaining())
+        } else {
+            output.len()
+        };
+        if limit == 0 {
+            return Err(Error::Budget);
+        }
+        self.with_indexed_midi(take.store, |resources, pool| {
+            pool.core.read_bytes_with(
+                &mut resources.render_io(),
+                pool.views.get(take.media)?,
+                offset,
+                &mut output[..limit],
+                class,
+            )
+        })
+    }
+    pub fn cleanup_indexed_midi_store(&mut self, id: StoreId) -> Result<(), Error> {
+        self.with_indexed_midi(id, |resources, pool| {
+            if pool.closed {
+                return Err(Error::InvalidState);
+            }
+            if !pool.views.empty() || !pool.writers.empty() || !pool.imports.empty() {
+                return Err(Error::Busy);
+            }
+            for slot in 0..pool.sources.entries.len() {
+                let source = pool.sources.entries[slot]
+                    .value
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?;
+                pool.core.clear_stage(&mut source.staged)?;
+                pool.core
+                    .release_source(source.history.take().ok_or(Error::InvalidState)?)?;
+            }
+            pool.core.begin_cleanup(&mut resources.render_io())?;
+            pool.closed = true;
+            Ok(())
+        })
+    }
+    pub(super) fn maintain_indexed_midi(&mut self) -> bool {
+        let count = self.indexed_midi_stores.len();
+        for _ in 0..count {
+            let slot = self.indexed_midi_maintenance;
+            self.indexed_midi_maintenance = (slot + 1) % count;
+            if self.indexed_midi_stores[slot].is_some() {
+                let progressed = self
+                    .with_indexed_midi(
+                        StoreId {
+                            scope: self.scope,
+                            slot,
+                        },
+                        |resources, pool| {
+                            let steps = pool.core.maintain(&mut resources.render_io(), 1)?;
+                            if steps > 0 {
+                                resources.charge_external(0, 1)?;
+                            }
+                            if pool.closed {
+                                match pool.core.finish_cleanup(resources) {
+                                    Ok(()) | Err(Error::Busy) => {}
+                                    Err(error) => return Err(error),
+                                }
+                            }
+                            Ok(steps > 0)
+                        },
+                    )
+                    .expect("prepared indexed MIDI store");
+                if progressed {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+impl RenderIo<'_> {
+    pub fn append_indexed_midi_source(
+        &mut self,
+        id: SourceId,
+        frame: Frame,
+        input: &MidiBuffer,
+    ) -> Result<(), Error> {
+        self.store.with_indexed_midi(id.store, |resources, pool| {
+            if pool.closed {
+                return Err(Error::InvalidState);
+            }
+            let source = pool.sources.get_mut(id.key)?;
+            if source
+                .history
+                .as_ref()
+                .ok_or(Error::InvalidState)?
+                .coverage()
+                .end
+                != frame
+            {
+                return Err(Error::InvalidFrame);
+            }
+            pool.core.clear_stage(&mut source.staged)?;
+            source.cut = None;
+            pool.core
+                .stage(&mut resources.render_io(), &mut source.staged, frame, input)?;
+            let before = *source.history.as_ref().ok_or(Error::InvalidState)?.state();
+            if let Err(error) = pool.core.commit_source(
+                &mut resources.render_io(),
+                source.history.as_mut().ok_or(Error::InvalidState)?,
+                &source.staged,
+            ) {
+                pool.core.clear_stage(&mut source.staged)?;
+                return Err(error);
+            }
+            source.before = before;
+            source.cut = Some(frame);
+            Ok(())
+        })
+    }
+    pub fn reset_indexed_midi_source(
+        &mut self,
+        id: SourceId,
+        frame: Frame,
+        initial: &MidiState,
+    ) -> Result<SourceId, Error> {
+        self.store.with_indexed_midi(id.store, |_, pool| {
+            let source = pool.sources.get_mut(id.key)?;
+            if id.key.generation == u64::MAX - 1 {
+                return Err(Error::Exhausted);
+            }
+            if frame
+                < source
+                    .history
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .coverage()
+                    .end
+            {
+                return Err(Error::InvalidFrame);
+            }
+            pool.core.reset_source(
+                source.history.as_mut().ok_or(Error::InvalidState)?,
+                frame,
+                initial,
+            )?;
+            pool.core.clear_stage(&mut source.staged)?;
+            source.cut = None;
+            source.before = *initial;
+            pool.sources.entries[id.key.slot].generation += 1;
+            Ok(SourceId {
+                store: id.store,
+                key: Key {
+                    slot: id.key.slot,
+                    generation: id.key.generation + 1,
+                },
+            })
+        })
+    }
+    pub fn write_indexed_midi_tick(
+        &mut self,
+        id: WriterId,
+        input: SourceId,
+        frame: Frame,
+    ) -> Result<u64, Error> {
+        if id.store != input.store {
+            return Err(Error::InvalidShape);
+        }
+        self.store.with_indexed_midi(id.store, |resources, pool| {
+            let source = pool.sources.get(input.key)?;
+            let job = pool.writers.get_mut(id.key)?;
+            if resources.revision(job.resource)? != job.expected {
+                return Err(Error::StaleRevision);
+            }
+            if source.cut != Some(frame)
+                || job.next.is_some_and(|next| next != frame)
+                || job.source.is_some_and(|source| source != input)
+            {
+                return Err(Error::InvalidFrame);
+            }
+            let next = frame.checked_add(resources.quantum.frames())?;
+            let writer = job.writer.as_mut().ok_or(Error::Busy)?;
+            pool.core.write_tick(
+                &mut resources.render_io(),
+                writer,
+                &source.before,
+                &source.staged,
+            )?;
+            job.source = Some(input);
+            job.next = Some(next);
+            Ok(writer.position)
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests;

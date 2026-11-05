@@ -155,6 +155,7 @@ impl ResourceStore {
             midi: None,
             audio: None,
             shared_midi: Some(take),
+            indexed_midi: None,
         });
         self.resources[resource.slot() as usize].value = Some(Resource {
             active: Some(active),
