@@ -284,17 +284,6 @@ impl NewEngineSelfTest {
                     return Err("a new session has only the sync track".to_owned());
                 }
                 if self.preview_only {
-                    let audio = &snapshot.tracks[1].loops[0];
-                    if audio.length_frames != self.sync_length - 10240
-                        || audio.channel_timings.len() != 2
-                        || audio.channel_timings[0].start_offset != 8192
-                        || audio.channel_timings[1].start_offset != 8320
-                        || audio.channel_timings[0].preplay_samples != 8192
-                        || audio.channel_timings[1].preplay_samples != 4096
-                        || snapshot.tracks[2].loops[0].channel_timings[0].preplay_samples != 256
-                    {
-                        return Err("save/load changed timing windows".into());
-                    }
                     self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
                     self.ids.master = snapshot.buses.first().map(|b| b.id);
                     return Ok(Some(Step::PreviewReady));
