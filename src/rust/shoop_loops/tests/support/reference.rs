@@ -188,6 +188,41 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                         candidate.monitor = false;
                     }
                 }
+                Transition::Adopt {
+                    length,
+                    revision,
+                    position,
+                    mode,
+                } => {
+                    if position > length {
+                        failure = Some(Error::InvalidFrame);
+                    } else if length == 0 && matches!(mode, Mode::Playing | Mode::Replacing) {
+                        failure = Some(Error::EmptyContent);
+                    } else if matches!(mode, Mode::Playing | Mode::Replacing) && position >= length
+                    {
+                        failure = Some(Error::InvalidFrame);
+                    } else {
+                        candidate.length = length;
+                        candidate.revision = revision.0;
+                        candidate.watermark = candidate.watermark.max(revision.0);
+                        candidate.head = position;
+                        candidate.turns = 0;
+                        candidate.monitor = false;
+                        if matches!(mode, Mode::Recording | Mode::Replacing) {
+                            if let Some(revision) = candidate.watermark.checked_add(1) {
+                                candidate.watermark = revision;
+                                candidate.take = revision;
+                                candidate.captured = length;
+                            } else {
+                                failure = Some(Error::Exhausted);
+                            }
+                        }
+                        candidate.mode = mode;
+                        pulse = mode == Mode::Playing
+                            || mode == Mode::Recording
+                            || mode == Mode::Replacing && position == 0;
+                    }
+                }
                 Transition::Replace {
                     length,
                     revision,

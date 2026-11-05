@@ -63,7 +63,7 @@ fn seeded_primitive_execution_matches_scalar_reference_across_partitions() {
         for sequence in 1..=32 {
             let position = random(&mut seed) % 9;
             let flag = random(&mut seed) % 2 == 0;
-            let transition = match random(&mut seed) % 7 {
+            let transition = match random(&mut seed) % 8 {
                 0 => Transition::Play {
                     position,
                     retrigger: flag,
@@ -80,6 +80,17 @@ fn seeded_primitive_execution_matches_scalar_reference_across_partitions() {
                     position: flag.then_some(position),
                 },
                 5 => Transition::RecordPrefix { frames: position },
+                6 => Transition::Adopt {
+                    length: position,
+                    revision: Revision(sequence),
+                    position: random(&mut seed) % 9,
+                    mode: match random(&mut seed) % 4 {
+                        0 => Mode::Stopped,
+                        1 => Mode::Playing,
+                        2 => Mode::Recording,
+                        _ => Mode::Replacing,
+                    },
+                },
                 _ => Transition::Replace {
                     length: position,
                     revision: Revision(sequence),

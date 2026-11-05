@@ -235,6 +235,9 @@ impl LoopPlanner {
         if frame.checked_add(self.resolver.quantum().frames())? != end {
             return Err(Error::InvalidFrame);
         }
+        if !self.preflight_input_batch()? {
+            return Ok(false);
+        }
         for slot in 0..self.rows.len() {
             let Some(mut row) = self.rows[slot].filter(|row| row.assigned) else {
                 continue;
@@ -409,6 +412,15 @@ impl LoopPlanner {
                 }
             }
             if let Some(origin) = decision.origin {
+                if let Some(pin) = self.input_batch_pin(origin) {
+                    let media = self.ledger.pinned(pin)?;
+                    self.ledger
+                        .set_playback(io, row.binding.target, Some(media))?;
+                    let windows = self.ledger.view(media)?.windows.unwrap_or_default();
+                    let row = self.rows[slot].as_mut().expect("validated batch row");
+                    row.windows = windows;
+                    row.length_override = None;
+                }
                 for pending in self.pending.iter().flatten() {
                     if let PendingKind::Transition {
                         request,
@@ -679,6 +691,7 @@ impl LoopPlanner {
                 continue;
             }
             let reply = match pending.kind {
+                PendingKind::InputBatch => self.input_batch_reply()?,
                 PendingKind::Program {
                     id, request, graph, ..
                 } => self
@@ -767,6 +780,7 @@ impl LoopPlanner {
                 }
             }
         }
+        self.release_input_batch(&mut resources.io())?;
         self.ledger.release_all(&mut resources.io())?;
         for row in self.rows.iter_mut().flatten() {
             for bank in 0..2 {
@@ -909,7 +923,8 @@ impl LoopPlanner {
             if !context.payload.is_empty()
                 && !matches!(
                     operation,
-                    Operation::TopologyBegin { .. }
+                    Operation::InputBatch { .. }
+                        | Operation::TopologyBegin { .. }
                         | Operation::TopologyAppend { .. }
                         | Operation::SelectFamily { .. }
                 )
@@ -1478,7 +1493,9 @@ impl LoopPlanner {
                         Operation::Transition { transition, .. } => {
                             if matches!(
                                 transition,
-                                Transition::Program | Transition::Replace { .. }
+                                Transition::Program
+                                    | Transition::Replace { .. }
+                                    | Transition::Adopt { .. }
                             ) {
                                 return Err(Error::InvalidEvent.into());
                             }
@@ -1508,6 +1525,30 @@ impl LoopPlanner {
                             pin,
                             clear: false,
                         },
+                        forwarded: false,
+                    });
+                    Ok(Disposition::Pending)
+                }
+                Operation::InputBatch {
+                    count,
+                    graph,
+                    topology,
+                } => {
+                    if graph != context.graph_epoch || topology != self.resolver.epoch() {
+                        return Err(Error::StaleEpoch.into());
+                    }
+                    let slot = self.pending_slot(context.recovery)?;
+                    self.begin_input_batch(
+                        count,
+                        context.payload,
+                        context.requested_frame,
+                        context.token.sequence(),
+                        context.frame,
+                        &mut context.resources,
+                    )?;
+                    self.pending[slot] = Some(Pending {
+                        token: context.token,
+                        kind: PendingKind::InputBatch,
                         forwarded: false,
                     });
                     Ok(Disposition::Pending)
@@ -1683,6 +1724,9 @@ impl LoopPlanner {
         }
         for index in 0..self.pending.len() {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
+                if let PendingKind::InputBatch = pending.kind {
+                    self.collect_input_batch(&mut context.resources)?;
+                }
                 if let PendingKind::Transition { request, pin, .. } = pending.kind {
                     self.resolver
                         .take_completion(request)

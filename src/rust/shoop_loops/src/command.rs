@@ -1,6 +1,6 @@
 //! Plain-data musical operations; transport ownership stays with the host runtime.
 
-use crate::{Error, Frame, LoopId, RequestId, Revision, Sequence};
+use crate::{Error, Frame, LoopId, Mode, RequestId, Revision, Sequence};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Timing {
@@ -40,6 +40,13 @@ pub enum Transition {
     Seek {
         position: u64,
         retrigger: bool,
+    },
+    /// Select already prepared input media and its post-mode at one boundary.
+    Adopt {
+        length: u64,
+        revision: Revision,
+        position: u64,
+        mode: Mode,
     },
     Replace {
         length: u64,

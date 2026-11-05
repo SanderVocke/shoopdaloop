@@ -460,6 +460,34 @@ impl Fixture {
         .unwrap_or_else(|e| panic!("{:?}", e.error))
         .sequence()
     }
+    fn input_batch(&mut self, at: u64, edits: &[shoop_loops::runtime::InputEdit]) -> Sequence {
+        use shoop_loops::runtime::INPUT_BATCH_RECORD_BYTES;
+        self.drain_protocol();
+        let mut payload = vec![0; edits.len() * INPUT_BATCH_RECORD_BYTES].into_boxed_slice();
+        for (edit, bytes) in edits
+            .iter()
+            .zip(payload.chunks_exact_mut(INPUT_BATCH_RECORD_BYTES))
+        {
+            edit.encode(bytes).unwrap();
+        }
+        let command = self.engine.endpoint.loops.command_with_payload(
+            Frame(at),
+            Operation::InputBatch {
+                count: edits.len(),
+                graph: self.engine.endpoint.graph_epoch,
+                topology: self.engine.endpoint.topology_epoch,
+            },
+            payload,
+        );
+        assert_no_heap(|| {
+            self.engine
+                .endpoint
+                .control
+                .submit_prepared(Lane::Normal, command)
+        })
+        .unwrap_or_else(|error| panic!("{:?}", error.error))
+        .sequence()
+    }
     fn result(&mut self, sequence: Sequence) -> Reply {
         for _ in 0..10000 {
             if let Some(i) = self.executions.iter().position(|e| e.sequence == sequence) {
@@ -3177,4 +3205,183 @@ fn long_ordinary_recording_prepares_replacement_without_losing_input_during_buil
         initial
     );
     recover_all(&mut stopped, 12288);
+}
+
+#[shoop_test]
+fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cut() {
+    use shoop_loops::{
+        grab::WindowSpec,
+        runtime::{InputAction, InputEdit},
+        Mode, Outcome,
+    };
+    let q = 32;
+    let (mut h, capacity) = Fixture::new_production(q, 7);
+    h.drain_protocol();
+    h.run_to(h.aligned_future(40 * q as u64));
+    let (take, _, _) = h.grabs();
+    h.adopt(1, take);
+    h.op(Operation::Transition {
+        target: target(1),
+        timing: Timing::At,
+        transition: Transition::Play {
+            position: 0,
+            retrigger: true,
+        },
+    });
+    let old_peer = h.export(1);
+    let grab = InputEdit {
+        target: target(0),
+        action: InputAction::Grab {
+            source: 0,
+            sync: None,
+            window: WindowSpec::default(),
+            mode: Mode::Stopped,
+            maximum_frames: 0,
+        },
+    };
+    let stop_peer = InputEdit {
+        target: target(1),
+        action: InputAction::Mode {
+            mode: Mode::Stopped,
+            position: None,
+        },
+    };
+    let invalid = h.input_batch(
+        h.aligned_future(128),
+        &[
+            grab,
+            InputEdit {
+                target: LoopId::from_parts(1, 2).unwrap(),
+                ..stop_peer
+            },
+        ],
+    );
+    assert_eq!(h.result(invalid), failed(Error::InvalidId));
+    let Reply::State(peer) = h.op(Operation::State { target: target(1) }) else {
+        panic!("peer")
+    };
+    assert_eq!(peer.state.mode, Mode::Playing);
+    let cut = h.aligned_future(128);
+    let batch = h.input_batch(cut, &[grab, stop_peer]);
+    let result = h.result(batch);
+    assert!(
+        matches!(result, Reply::InputBatch { effective, targets: 2, outcome: Outcome::Applied { frame }, .. } if effective == Frame(cut) && frame == Frame(cut)),
+        "{result:?}"
+    );
+    let current = h.export(0);
+    let frames = current.view.description.frames;
+    let first = cut - frames;
+    assert!(frames > 0);
+    let audio = h.read(current.view.audio.unwrap().snapshot);
+    for (offset, bytes) in audio.chunks_exact(8).enumerate() {
+        let sample = if first + offset as u64 >= h.stimulus.unwrap() {
+            (first + offset as u64 + 1) as f32
+        } else {
+            0.
+        };
+        assert_eq!(f32::from_le_bytes(bytes[..4].try_into().unwrap()), sample);
+        assert_eq!(
+            f32::from_le_bytes(bytes[4..].try_into().unwrap()),
+            -2. * sample
+        );
+    }
+    let midi = h.read(current.view.midi.unwrap().snapshot);
+    let expected: Vec<_> = expected_midi(
+        first.max(h.stimulus.unwrap()),
+        cut - first.max(h.stimulus.unwrap()),
+        q,
+    )
+    .into_iter()
+    .map(|(frame, packet)| (frame + first.max(h.stimulus.unwrap()) - first, packet))
+    .collect();
+    assert_eq!(midi_events(&midi), expected);
+    let Reply::State(peer) = h.op(Operation::State { target: target(1) }) else {
+        panic!("stopped peer")
+    };
+    assert_eq!(peer.state.mode, Mode::Stopped);
+    let prefix = InputEdit {
+        target: target(0),
+        action: InputAction::Grab {
+            source: 0,
+            sync: Some(target(1)),
+            window: WindowSpec {
+                cycles_length: Some(2),
+                go_to_cycle: Some(1),
+                continue_recording: true,
+                ..Default::default()
+            },
+            mode: Mode::Recording,
+            maximum_frames: 4096,
+        },
+    };
+    let failed_cut = h.aligned_future(128);
+    let batch = h.input_batch(
+        failed_cut,
+        &[
+            prefix,
+            InputEdit {
+                target: target(1),
+                action: InputAction::Mode {
+                    mode: Mode::Replacing,
+                    position: None,
+                },
+            },
+        ],
+    );
+    let result = h.result(batch);
+    assert!(
+        matches!(
+            result,
+            Reply::InputBatch {
+                outcome: Outcome::Failed { .. },
+                ..
+            }
+        ),
+        "{result:?}"
+    );
+    let Reply::State(unchanged) = h.op(Operation::State { target: target(0) }) else {
+        panic!("refused target")
+    };
+    assert_eq!(unchanged.state.mode, Mode::Stopped);
+    assert_eq!(
+        unchanged.state.content_revision,
+        current.view.description.revision
+    );
+    assert_eq!(h.read(current.view.audio.unwrap().snapshot), audio);
+    let cut = h.aligned_future(128);
+    let end = cut + 40 * q as u64;
+    let batch = h.input_batch(cut, &[prefix, stop_peer]);
+    let exit = h.send(
+        end,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    let result = h.result(batch);
+    assert!(
+        matches!(result, Reply::InputBatch { outcome: Outcome::Applied { frame }, .. } if frame == Frame(cut)),
+        "{result:?}"
+    );
+    h.result(exit);
+    let grown = h.export(0);
+    let prefix_frames = old_peer.view.description.frames;
+    let first = cut - prefix_frames;
+    assert_eq!(grown.view.description.frames, prefix_frames + end - cut);
+    let data = h.read(grown.view.audio.unwrap().snapshot);
+    for (offset, bytes) in data.chunks_exact(8).enumerate() {
+        assert_eq!(
+            f32::from_le_bytes(bytes[..4].try_into().unwrap()),
+            (first + offset as u64 + 1) as f32
+        );
+    }
+    assert_eq!(
+        midi_events(&h.read(grown.view.midi.unwrap().snapshot)),
+        expected_midi(first, end - first, q)
+    );
+    assert_eq!(h.read(current.view.audio.unwrap().snapshot), audio);
+    assert_eq!(h.read(current.view.midi.unwrap().snapshot), midi);
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
 }

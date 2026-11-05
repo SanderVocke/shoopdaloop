@@ -690,6 +690,19 @@ a slot. A guarded three-loop scenario and all 17 scalar resolver regressions pas
 locally. This is the settlement foundation for F4; protocol, resource staging and
 application admission are not yet connected.
 
+Paired input batch staging now acquires every target's immutable media, writer,
+final snapshot reservations and ledger pins before submitting the atomic resolver
+batch. The same cut resolves sync phase from RT state; retained dependency states
+are fenced through preflight. Grab establishes a new identity channel layout while
+preserving gain/preplay. A normal-constructor engine scenario verifies raw Grab,
+atomic solo Stop, invalid last-target refusal, refusal after the first target has
+prepared a growing writer, exact prefix continuation beyond the rolling horizon,
+old exports and full cleanup. The bounded internal record codec rejects noncanonical
+options, tags, padding and size. Twenty loop-library unit tests, all 17 resolver
+and 19 runtime regressions, and 32 shared engine tests pass locally (one callback
+measurement remains ignored). Public protocol/controller staging remains the next
+F4 step; capabilities and P04/P05 remain disabled/OPEN.
+
 ## Implementation stages
 
 Dependencies: F0 -> F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8.

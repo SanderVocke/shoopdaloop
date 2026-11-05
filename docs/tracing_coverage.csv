@@ -462,3 +462,4 @@ src/rust/rt_runtime/src/resource/reservation.rs,generic_realtime_library,exclude
 src/rust/rt_runtime/src/resource/reservation/tests.rs,test_support,excluded,Heap-guarded paired publication under saturated metadata and cancellation fences; no production boundary.
 src/rust/shoop_loops/src/runtime/shared/writer.rs,portable_loop_library,excluded,Prepared live writer admission and complete-cut publication expose typed outcomes and bounded counters without callback tracing.
 src/rust/shoop_rt_engine/src/history.rs,realtime_engine,excluded,Off-render preparation sizes bounded shared reservations and exposes typed capacities without callback tracing.
+src/rust/shoop_loops/src/runtime/input_batch.rs,rt,instrumented_indirect,Planner operation and boundary scopes cover bounded batch admission and settlement.

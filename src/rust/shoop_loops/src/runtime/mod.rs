@@ -22,6 +22,8 @@ use rt_runtime::{
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod configuration;
+mod input_batch;
+pub use input_batch::{InputAction, InputEdit, INPUT_BATCH_RECORD_BYTES};
 mod family;
 mod shared;
 pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
@@ -111,6 +113,11 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    InputBatch {
+        count: usize,
+        graph: Epoch,
+        topology: Epoch,
+    },
     NodePairSourceWindows {
         id: NodePairSourceId,
         frames: u64,
@@ -374,6 +381,12 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    InputBatch {
+        requested: Frame,
+        effective: Frame,
+        targets: usize,
+        outcome: crate::Outcome,
+    },
     Writer {
         id: LiveWriterId,
         status: CandidateStatus,
@@ -534,6 +547,7 @@ struct Row {
 }
 #[derive(Clone, Copy)]
 enum PendingKind {
+    InputBatch,
     Program {
         id: StageId,
         request: RequestId,
@@ -595,6 +609,7 @@ pub struct LoopPlanner {
     views: Box<[View]>,
     pending: Box<[Option<Pending>]>,
     failures: Vec<crate::Observation>,
+    input_batch: input_batch::InputBatch,
     family: Vec<family::Selection>,
 }
 
@@ -934,6 +949,7 @@ impl LoopPlanner {
             views,
             pending: vec![None; settings.normal_requests + 1].into_boxed_slice(),
             failures,
+            input_batch: input_batch::InputBatch::prepare(slots, dummy)?,
             family: family::prepare(slots, dummy),
         };
         Ok(Prepared {

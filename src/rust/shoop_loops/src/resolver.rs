@@ -383,6 +383,9 @@ impl Resolver {
                 | Transition::ReplaceInput {
                     position: Some(position),
                 } => position % q.frames() as u64 == 0,
+                Transition::Adopt {
+                    length, position, ..
+                } => length % q.frames() as u64 == 0 && position % q.frames() as u64 == 0,
                 Transition::Replace { length, .. } => length % q.frames() as u64 == 0,
                 Transition::RecordPrefix { frames } => frames % q.frames() as u64 == 0,
                 _ => true,
@@ -1611,7 +1614,7 @@ fn playback_discontinuity(before: State, after: State, operation: Transition) ->
         return true;
     }
     match operation {
-        Transition::Seek { .. } | Transition::Replace { .. } => true,
+        Transition::Seek { .. } | Transition::Replace { .. } | Transition::Adopt { .. } => true,
         Transition::Play { retrigger, .. } => retrigger || before.mode != Mode::Playing,
         _ => false,
     }
@@ -1743,6 +1746,40 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
                 state.cycles = 0;
             }
             Ok(retrigger)
+        }
+        Transition::Adopt {
+            length,
+            revision,
+            position,
+            mode,
+        } => {
+            if position > length {
+                return Err(Error::InvalidFrame);
+            }
+            state.content_length = length;
+            state.content_revision = revision;
+            state.revision_watermark = state.revision_watermark.max(revision);
+            state.mode = Mode::Stopped;
+            state.position = position;
+            state.cycles = 0;
+            state.monitor_previous = false;
+            match mode {
+                Mode::Stopped => Ok(false),
+                Mode::Playing => transition(
+                    state,
+                    Transition::Play {
+                        position,
+                        retrigger: true,
+                    },
+                ),
+                Mode::Recording => transition(state, Transition::RecordPrefix { frames: length }),
+                Mode::Replacing => transition(
+                    state,
+                    Transition::ReplaceInput {
+                        position: Some(position),
+                    },
+                ),
+            }
         }
         Transition::Replace {
             length,

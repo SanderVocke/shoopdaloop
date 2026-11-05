@@ -763,7 +763,7 @@ impl Shared {
         self.track(take);
         Ok(take)
     }
-    fn grab_window(
+    pub(super) fn grab_window(
         &mut self,
         id: HistoryId,
         window: &crate::grab::Window,
