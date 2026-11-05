@@ -87,4 +87,5 @@ pub(crate) struct Record {
     pub effective: Frame,
     pub remaining: u64,
     pub terminal: Option<Outcome>,
+    pub batch: Option<RequestId>,
 }

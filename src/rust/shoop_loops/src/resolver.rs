@@ -83,6 +83,7 @@ struct Scratch {
     delivered: Vec<bool>,
     masked: Vec<bool>,
     eligible: Vec<bool>,
+    batch_failures: Vec<Option<Error>>,
     decisions: Vec<Decision>,
     events: Vec<Event>,
     dropped: u64,
@@ -144,7 +145,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
         ),
         (
             limits.pending_requests,
-            2 * size_of::<Option<Record>>() + size_of::<u32>() + 1,
+            2 * size_of::<Option<Record>>() + size_of::<u32>() + size_of::<Option<Error>>() + 1,
         ),
         (limits.journal_events, 2 * size_of::<Event>()),
     ] {
@@ -208,6 +209,7 @@ impl Resolver {
                 delivered: prepared(limits.loop_slots, false),
                 masked: prepared(limits.loop_slots, false),
                 eligible: prepared(limits.pending_requests, false),
+                batch_failures: prepared(limits.pending_requests, None),
                 decisions,
                 events: preview_events,
                 dropped: 0,
@@ -313,7 +315,63 @@ impl Resolver {
         self.submit_record(request)
     }
 
+    /// Admit distinct targets at one cut, with all-or-nothing settlement.
+    pub fn submit_batch(
+        &mut self,
+        requests: &[Request],
+        output: &mut [Option<RequestId>],
+    ) -> Result<(), Error> {
+        if requests.is_empty() || output.len() != requests.len() {
+            return Err(Error::InvalidConfig);
+        }
+        if requests.iter().enumerate().any(|(i, request)| {
+            request.at != requests[0].at
+                || request.timing != Timing::At
+                || request.sequence != requests[0].sequence
+                || request.transition == Transition::Program
+                || requests[..i].iter().any(|old| old.target == request.target)
+        }) {
+            return Err(Error::InvalidConfig);
+        }
+        if requests.len()
+            > self
+                .records
+                .iter()
+                .enumerate()
+                .filter(|(i, record)| record.is_none() && self.request_generations[*i] != 0)
+                .count()
+        {
+            return Err(Error::Capacity);
+        }
+        let slot = self
+            .records
+            .iter()
+            .enumerate()
+            .position(|(i, record)| record.is_none() && self.request_generations[i] != 0)
+            .ok_or(Error::Capacity)?;
+        let batch = RequestId::from_parts(slot as u32, self.request_generations[slot])?;
+        output.fill(None);
+        for (i, request) in requests.iter().enumerate() {
+            match self.submit_record_group(*request, Some(batch)) {
+                Ok(id) => output[i] = Some(id),
+                Err(error) => {
+                    for id in output.iter_mut().filter_map(Option::take) {
+                        self.records[id.slot() as usize] = None;
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
+    }
     fn submit_record(&mut self, request: Request) -> Result<RequestId, Error> {
+        self.submit_record_group(request, None)
+    }
+    fn submit_record_group(
+        &mut self,
+        request: Request,
+        batch: Option<RequestId>,
+    ) -> Result<RequestId, Error> {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
@@ -340,12 +398,10 @@ impl Resolver {
                 return Err(Error::MissingSync);
             }
         }
-        if self
-            .records
-            .iter()
-            .flatten()
-            .any(|record| record.request.sequence == request.sequence)
-        {
+        if self.records.iter().flatten().any(|record| {
+            record.request.sequence == request.sequence
+                && (batch.is_none() || record.batch != batch)
+        }) {
             return Err(Error::DuplicateId);
         }
         let slot = self
@@ -367,6 +423,7 @@ impl Resolver {
                 Timing::AfterTicks { skip, .. } => skip,
             },
             terminal: None,
+            batch,
         });
         self.preview = None;
         Ok(id)
@@ -419,10 +476,11 @@ impl Resolver {
         if record.terminal.is_some() {
             return Ok(CancelResult::AlreadyTerminal);
         }
-        self.records[id.slot() as usize]
-            .as_mut()
-            .expect("validated receipt")
-            .terminal = Some(Outcome::Cancelled { frame: self.frame });
+        for target in self.records.iter_mut().flatten() {
+            if target.id == id || record.batch.is_some() && target.batch == record.batch {
+                target.terminal = Some(Outcome::Cancelled { frame: self.frame });
+            }
+        }
         self.preview = None;
         Ok(CancelResult::Cancelled)
     }
@@ -437,22 +495,14 @@ impl Resolver {
         target: LoopId,
         observations: &[Observation],
     ) -> Result<ProgramBoundary, Error> {
-        self.begin_preview(
-            Frame(self.frame.0.saturating_add(self.quantum.frames() as u64)),
-            observations,
-        )?;
         if self.topology.node(target)?.kind != LoopKind::Composite {
             return Err(Error::InvalidProgram);
         }
-        Boundary {
-            topology: &self.topology,
-            replacement: None,
-            replaced: None,
-            scratch: &mut self.scratch,
-            frame: self.frame,
+        self.settle_preview(
+            Frame(self.frame.0.saturating_add(self.quantum.frames() as u64)),
             observations,
-        }
-        .settle(Some(target))?;
+            Some(target),
+        )?;
         Ok(ProgramBoundary {
             frame: self.frame,
             topology_epoch: self.epoch,
@@ -523,6 +573,16 @@ impl Resolver {
         let scratch = &mut self.scratch;
         scratch.states.copy_from_slice(&self.states);
         scratch.records.copy_from_slice(&self.records);
+        for record in scratch.records.iter_mut().flatten() {
+            if let Some(reason) = scratch.batch_failures[record.id.slot() as usize] {
+                if record.terminal.is_none() {
+                    record.terminal = Some(Outcome::Failed {
+                        frame: self.frame,
+                        reason,
+                    });
+                }
+            }
+        }
         scratch.intents.fill(None);
         scratch.program_actions.fill(ProgramAction::None);
         scratch.protected.fill(None);
@@ -558,6 +618,99 @@ impl Resolver {
         Ok(())
     }
 
+    fn refuse_batch(&mut self, batch: RequestId, reason: Error) -> bool {
+        let mut changed = false;
+        for record in self
+            .records
+            .iter()
+            .flatten()
+            .filter(|record| record.batch == Some(batch))
+        {
+            let failure = &mut self.scratch.batch_failures[record.id.slot() as usize];
+            if failure.is_none() {
+                *failure = Some(reason);
+                changed = true;
+            }
+        }
+        changed
+    }
+    fn settle_preview(
+        &mut self,
+        end: Frame,
+        observations: &[Observation],
+        probe: Option<LoopId>,
+    ) -> Result<Option<Replacement>, Error> {
+        self.scratch.batch_failures.fill(None);
+        for slot in 0..self.records.len() {
+            let Some(record) = self.records[slot] else {
+                continue;
+            };
+            if let (Some(batch), Some(outcome)) = (record.batch, record.terminal) {
+                let reason = match outcome {
+                    Outcome::Applied { .. } => continue,
+                    Outcome::Failed { reason, .. } => reason,
+                    _ => Error::InvalidState,
+                };
+                self.refuse_batch(batch, reason);
+            }
+        }
+        for observation in observations {
+            if let Observation::Refused { request, reason } = *observation {
+                if let Some(batch) = self.record(request)?.batch {
+                    self.refuse_batch(batch, reason);
+                }
+            }
+        }
+        loop {
+            self.begin_preview(end, observations)?;
+            let replacement = if probe.is_none() {
+                self.select_program(end, observations)?
+            } else {
+                None
+            };
+            let replaced =
+                replacement.map(|c| self.topology.program(c.target).expect("validated program"));
+            let topology = if replacement.is_some() {
+                &self
+                    .program_change
+                    .as_ref()
+                    .expect("selected owner")
+                    .candidate
+            } else {
+                &self.topology
+            };
+            Boundary {
+                topology,
+                replacement,
+                replaced,
+                scratch: &mut self.scratch,
+                frame: self.frame,
+                observations,
+            }
+            .settle(probe)?;
+            let mut retry = false;
+            for slot in 0..self.records.len() {
+                let Some(before) = self.records[slot].filter(|record| record.terminal.is_none())
+                else {
+                    continue;
+                };
+                let Some(batch) = before.batch else { continue };
+                let Some(outcome) = self.scratch.records[slot].and_then(|record| record.terminal)
+                else {
+                    continue;
+                };
+                let reason = match outcome {
+                    Outcome::Applied { .. } => continue,
+                    Outcome::Failed { reason, .. } => reason,
+                    _ => Error::InvalidState,
+                };
+                retry |= self.refuse_batch(batch, reason);
+            }
+            if !retry {
+                return Ok(replacement);
+            }
+        }
+    }
     /// All preflight retries start from committed state and the same retained inputs.
     /// Whole-tick transactional settlement. No future boundary search is performed.
     pub fn preview_tick(&mut self, observations: &[Observation]) -> Result<Interval, Error> {
@@ -566,10 +719,7 @@ impl Resolver {
             .frame
             .checked_add(quantum.frames())
             .map_err(|_| Error::Exhausted)?;
-        self.begin_preview(end, observations)?;
-        let replacement = self.select_program(end, observations)?;
-        let replaced =
-            replacement.map(|c| self.topology.program(c.target).expect("validated program"));
+        let replacement = self.settle_preview(end, observations, None)?;
         let topology = if replacement.is_some() {
             &self
                 .program_change
@@ -579,19 +729,10 @@ impl Resolver {
         } else {
             &self.topology
         };
-        let mut boundary = Boundary {
-            topology,
-            replacement,
-            replaced,
-            scratch: &mut self.scratch,
-            frame: self.frame,
-            observations,
-        };
-        boundary.settle(None)?;
         let q = quantum.frames() as u64;
         for node in topology.nodes() {
             let slot = node.id.slot() as usize;
-            let state = boundary.scratch.states[slot].ok_or(Error::InvalidState)?;
+            let state = self.scratch.states[slot].ok_or(Error::InvalidState)?;
             if state.content_length % q != 0
                 || state.position % q != 0
                 || state.capture_frames % q != 0
@@ -607,11 +748,11 @@ impl Resolver {
                 .capture_frames
                 .checked_add(if state.mode == Mode::Recording { q } else { 0 })
                 .ok_or(Error::Exhausted)?;
-            boundary.scratch.decisions.push(Decision {
+            self.scratch.decisions.push(Decision {
                 state,
                 playback_discontinuity: state.plays()
-                    && boundary.scratch.playback_discontinuities[slot],
-                origin: boundary.scratch.origins[slot],
+                    && self.scratch.playback_discontinuities[slot],
+                origin: self.scratch.origins[slot],
             });
         }
         let interval = Interval {
@@ -867,6 +1008,21 @@ impl Boundary<'_> {
         }
     }
     fn offer(&mut self, target: usize, intent: Intent) {
+        if let Some(reason) = intent
+            .origin
+            .and_then(|id| self.scratch.records[id.slot() as usize])
+            .and_then(|record| self.scratch.batch_failures[record.id.slot() as usize])
+        {
+            self.terminal(
+                intent.request,
+                Outcome::Failed {
+                    frame: self.frame,
+                    reason,
+                },
+            );
+            return;
+        }
+
         if let Some(previous) = self.scratch.intents[target] {
             if !intent.priority.beats(previous.priority) {
                 self.terminal(intent.request, Outcome::Superseded { frame: self.frame });
@@ -886,6 +1042,21 @@ impl Boundary<'_> {
         }
     }
     fn apply(&mut self, target: usize, intent: Intent) {
+        if let Some(reason) = intent
+            .origin
+            .and_then(|id| self.scratch.records[id.slot() as usize])
+            .and_then(|record| self.scratch.batch_failures[record.id.slot() as usize])
+        {
+            self.terminal(
+                intent.request,
+                Outcome::Failed {
+                    frame: self.frame,
+                    reason,
+                },
+            );
+            return;
+        }
+
         if self.scratch.protected[target].is_some_and(|previous| !intent.priority.beats(previous)) {
             self.terminal(intent.request, Outcome::Superseded { frame: self.frame });
             return;
@@ -974,12 +1145,22 @@ impl Boundary<'_> {
                 if intent.transition == Transition::Stop {
                     self.scratch.masked[target] = true;
                     if let Priority::Direct(sequence) = intent.priority {
-                        for record in self.scratch.records.iter_mut().flatten() {
+                        for index in 0..self.scratch.records.len() {
+                            let Some(record) = self.scratch.records[index] else {
+                                continue;
+                            };
                             if record.terminal.is_none()
                                 && record.request.target == state.id
                                 && record.request.sequence < sequence
                             {
-                                record.terminal = Some(Outcome::Cancelled { frame: self.frame });
+                                for old in self.scratch.records.iter_mut().flatten() {
+                                    if old.id == record.id
+                                        || record.batch.is_some() && old.batch == record.batch
+                                    {
+                                        old.terminal =
+                                            Some(Outcome::Cancelled { frame: self.frame });
+                                    }
+                                }
                             }
                         }
                     }

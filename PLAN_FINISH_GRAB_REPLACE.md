@@ -681,6 +681,15 @@ All eight indexed-MIDI resource tests and 31 shared engine tests pass locally;
 one opt-in callback measurement remains unrun. Global retained/live MIDI admission,
 public protocol/service/client delivery and final acceptance are still open.
 
+Atomic resolver admission now accepts distinct loop targets at one exact cut and
+rolls the whole batch back before commitment when any member is invalid, refused
+by resource preflight or superseded by a competing request. Clock pulses and
+trigger effects are retried from committed state as well. Cancellation covers
+all members, and retained terminal receipts cannot affect a new batch that reuses
+a slot. A guarded three-loop scenario and all 17 scalar resolver regressions pass
+locally. This is the settlement foundation for F4; protocol, resource staging and
+application admission are not yet connected.
+
 ## Implementation stages
 
 Dependencies: F0 -> F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8.

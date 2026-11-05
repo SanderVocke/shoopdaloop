@@ -261,3 +261,194 @@ fn replacing_preserves_playing_phase_wraps_sync_and_commits_one_content_revision
         assert!(!state.capture_incomplete);
     });
 }
+
+#[shoop_test]
+fn batches_settle_all_targets_or_refuse_all_with_no_state_or_pulse_leak() {
+    let id = |slot| LoopId::from_parts(slot, 1).unwrap();
+    let description = TopologyDescription {
+        loops: (0..3)
+            .map(|slot| LoopSpec {
+                id: id(slot),
+                kind: LoopKind::Primitive,
+                length: 64,
+                sync_source: None,
+            })
+            .collect(),
+        programs: vec![],
+        triggers: vec![Trigger {
+            source: id(0),
+            target: id(2),
+            mode: Mode::Playing,
+        }],
+    };
+    let mut resolver = Resolver::prepare(
+        compile(Limits::default(), &description).unwrap(),
+        rt_runtime::Quantum::new(32).unwrap(),
+    )
+    .unwrap();
+    let request = |slot, sequence, at, transition| Request {
+        target: id(slot),
+        sequence: Sequence(sequence),
+        at: Frame(at),
+        timing: Timing::At,
+        transition,
+    };
+    let play = Transition::Play {
+        position: 0,
+        retrigger: true,
+    };
+    assert_no_heap(|| {
+        let mut receipts = [None; 2];
+        assert_eq!(
+            resolver.submit_batch(
+                &[request(0, 1, 0, play), request(99, 1, 0, play),],
+                &mut receipts
+            ),
+            Err(Error::InvalidId)
+        );
+        assert_eq!(receipts, [None; 2]);
+        assert_eq!(resolver.retained_requests(), 0);
+        for scenario in 0..3 {
+            let frame = scenario * 32;
+            resolver
+                .submit_batch(
+                    &[
+                        request(0, 2 + scenario * 2, frame, play),
+                        request(
+                            1,
+                            2 + scenario * 2,
+                            frame,
+                            if scenario == 0 {
+                                Transition::Play {
+                                    position: 128,
+                                    retrigger: true,
+                                }
+                            } else {
+                                play
+                            },
+                        ),
+                    ],
+                    &mut receipts,
+                )
+                .unwrap();
+            let independent = if scenario == 2 {
+                Some(
+                    resolver
+                        .submit(request(1, 3 + scenario * 2, frame, Transition::Stop))
+                        .unwrap(),
+                )
+            } else {
+                None
+            };
+            let refused = [Observation::Refused {
+                request: receipts[0].unwrap(),
+                reason: Error::Capacity,
+            }];
+            resolver
+                .preview_tick(if scenario == 1 { &refused } else { &[] })
+                .unwrap();
+            resolver.commit().unwrap();
+            for slot in 0..3 {
+                assert_eq!(resolver.state(id(slot)).unwrap().mode, Mode::Stopped);
+            }
+            assert!(!resolver
+                .events()
+                .iter()
+                .any(|event| event.kind == EventKind::Pulse));
+            resolver.finish().unwrap();
+            for receipt in receipts.into_iter().flatten() {
+                assert!(matches!(
+                    resolver.take_completion(receipt).unwrap().unwrap().outcome,
+                    Outcome::Failed { .. }
+                ));
+            }
+            if let Some(receipt) = independent {
+                assert!(matches!(
+                    resolver.take_completion(receipt).unwrap().unwrap().outcome,
+                    Outcome::Applied { .. }
+                ));
+            }
+        }
+        resolver
+            .submit_batch(
+                &[
+                    request(0, 9, 96, play),
+                    request(
+                        1,
+                        9,
+                        96,
+                        Transition::Record {
+                            monitor_previous: false,
+                        },
+                    ),
+                ],
+                &mut receipts,
+            )
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        assert_eq!(resolver.state(id(0)).unwrap().mode, Mode::Playing);
+        assert_eq!(resolver.state(id(1)).unwrap().mode, Mode::Recording);
+        assert_eq!(resolver.state(id(2)).unwrap().mode, Mode::Playing);
+        resolver.finish().unwrap();
+        for receipt in receipts.into_iter().flatten() {
+            assert_eq!(
+                resolver.take_completion(receipt).unwrap().unwrap().outcome,
+                Outcome::Applied { frame: Frame(96) }
+            );
+        }
+        resolver
+            .submit_batch(
+                &[
+                    request(0, 10, 256, Transition::Stop),
+                    request(1, 10, 256, Transition::Stop),
+                ],
+                &mut receipts,
+            )
+            .unwrap();
+        resolver.cancel(receipts[1].unwrap()).unwrap();
+        for receipt in receipts.into_iter().flatten() {
+            assert_eq!(
+                resolver.take_completion(receipt).unwrap().unwrap().outcome,
+                Outcome::Cancelled { frame: Frame(128) }
+            );
+        }
+        resolver
+            .submit_batch(
+                &[
+                    request(0, 11, 256, Transition::Stop),
+                    request(1, 11, 256, Transition::Stop),
+                ],
+                &mut receipts,
+            )
+            .unwrap();
+        resolver.cancel(receipts[0].unwrap()).unwrap();
+        let old = receipts[1].unwrap();
+        resolver
+            .take_completion(receipts[0].unwrap())
+            .unwrap()
+            .unwrap();
+        resolver
+            .submit_batch(
+                &[request(0, 12, 128, play), request(1, 12, 128, play)],
+                &mut receipts,
+            )
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        assert_eq!(resolver.state(id(0)).unwrap().mode, Mode::Playing);
+        assert_eq!(resolver.state(id(1)).unwrap().mode, Mode::Playing);
+        resolver.finish().unwrap();
+        assert_eq!(
+            resolver.take_completion(old).unwrap().unwrap().outcome,
+            Outcome::Cancelled { frame: Frame(128) }
+        );
+        for receipt in receipts.into_iter().flatten() {
+            assert_eq!(
+                resolver.take_completion(receipt).unwrap().unwrap().outcome,
+                Outcome::Applied { frame: Frame(128) }
+            );
+        }
+        assert_eq!(resolver.retained_requests(), 0);
+    });
+}
