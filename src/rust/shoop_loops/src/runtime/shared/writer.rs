@@ -874,6 +874,7 @@ impl LoopPlanner {
             }
         }
         Ok(Some(Take {
+            windows: job.windows,
             writer: Some(id),
             revision: decision.state.capture_revision,
             media,

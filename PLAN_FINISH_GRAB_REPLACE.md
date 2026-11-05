@@ -716,6 +716,17 @@ long ordinary-recording scenario also uses this common preparation operation.
 Affected warning-denying builds, the focused scenarios and the shared regression
 group pass locally. This still does not enable application capabilities.
 
+Capture takes now own their channel windows independently of monitored playback.
+A fresh ordinary recording resets raw origins while retaining gain/preplay; an
+old manually shifted take keeps its own windows during monitor-previous playback.
+Publishing or exporting the new capture uses the capture layout, and selecting it
+clears the displaced manual period override. The focused normal-constructor
+scenario verifies exact monitored samples at the old offsets, identity new PCM/MIDI,
+Replacing preparation/cancellation during that recording, preserved preplay and
+complete resource recovery. All 19 loop runtime regressions and 32 shared engine
+regressions pass locally, as does the new focused scenario; the opt-in measurement
+remains unrun. Public protocol/controller work is still outstanding.
+
 ## Implementation stages
 
 Dependencies: F0 -> F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8.

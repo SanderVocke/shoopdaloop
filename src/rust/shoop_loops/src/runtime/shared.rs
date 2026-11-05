@@ -1491,7 +1491,7 @@ impl LoopPlanner {
                         source,
                         state.capture_revision,
                         state.capture_frames,
-                        row.windows,
+                        take.windows,
                         midi,
                         frame,
                         io,

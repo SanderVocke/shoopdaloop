@@ -528,6 +528,7 @@ pub struct View {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    windows: Windows,
     writer: Option<LiveWriterId>,
     revision: Revision,
     media: media::MediaId,

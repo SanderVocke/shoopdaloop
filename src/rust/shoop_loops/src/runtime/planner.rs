@@ -173,7 +173,18 @@ impl LoopPlanner {
         } else {
             None
         };
+        let mut windows = row.windows;
+        for channel in windows
+            .audio
+            .iter_mut()
+            .chain(core::iter::once(&mut windows.midi))
+        {
+            channel.start_offset = 0;
+            channel.capture_alignment = 0;
+            channel.raw_frames = None;
+        }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            windows,
             writer: None,
             revision: decision.state.capture_revision,
             media: id,
@@ -380,16 +391,9 @@ impl LoopPlanner {
             .map_err(runtime_error)?
             .capture_frames;
         let input = self.input_from_frozen(slot, take, frames, io)?;
-        if take.writer.is_some() {
-            self.ledger
-                .publish_windowed(io, take.media, input, row.windows)
-                .map_err(|e| e.error)?;
-            self.rows[slot].as_mut().unwrap().length_override = None;
-        } else {
-            self.ledger
-                .publish(io, take.media, input)
-                .map_err(|e| e.error)?;
-        }
+        self.ledger
+            .publish_windowed(io, take.media, input, take.windows)
+            .map_err(|e| e.error)?;
         self.rows[slot].as_mut().expect("row").frozen = [None; 2];
         self.ledger
             .set_latest(io, row.binding.target, Some(take.media))?;
@@ -408,6 +412,9 @@ impl LoopPlanner {
                     if decision.state.content_revision == take.revision {
                         self.ledger
                             .set_playback(io, row.binding.target, Some(media))?;
+                        let row = self.rows[slot].as_mut().expect("completed capture");
+                        row.windows = take.windows;
+                        row.length_override = None;
                     }
                 }
             }
@@ -468,15 +475,8 @@ impl LoopPlanner {
                     io.capture().activate(token, frame)?;
                 }
                 let row = self.rows[slot].as_mut().expect("row");
-                for window in row
-                    .windows
-                    .audio
-                    .iter_mut()
-                    .chain(core::iter::once(&mut row.windows.midi))
-                {
-                    if decision.state.mode == Mode::Recording {
-                        window.raw_frames = None;
-                    }
+                if decision.state.mode == Mode::Recording && !decision.state.monitor_previous {
+                    row.windows = take.windows;
                 }
                 row.active = Some(take);
                 row.prepared = None;
@@ -630,13 +630,9 @@ impl LoopPlanner {
                 audio,
                 midi,
             };
-            if take.writer.is_some() {
-                self.ledger
-                    .publish_windowed(io, id, input, row.windows)
-                    .map_err(|e| e.error)?;
-            } else {
-                self.ledger.publish(io, id, input).map_err(|e| e.error)?;
-            }
+            self.ledger
+                .publish_windowed(io, id, input, take.windows)
+                .map_err(|e| e.error)?;
             sources = [None; 2];
             self.ledger.export(id, frame)
         })();

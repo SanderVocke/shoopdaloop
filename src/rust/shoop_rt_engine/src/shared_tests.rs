@@ -3471,3 +3471,148 @@ fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cu
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
 }
+
+#[shoop_test]
+fn fresh_recording_has_identity_media_while_monitoring_previous_channel_windows() {
+    use shoop_loops::windows::{ChannelUpdate, Edit};
+    let q = 32;
+    let (mut h, capacity) = Fixture::new_production(q, 7);
+    let (take, _, first) = h.grabs();
+    h.adopt(0, take);
+    let old = h.export(0);
+    let Reply::Timing(period) = h.op(Operation::EditWindows {
+        target: target(0),
+        expected_revision: 0,
+        expected_content: old.view.description.revision,
+        edit: Edit {
+            length: Some(96),
+            ..Default::default()
+        },
+    }) else {
+        panic!("period")
+    };
+    let mut edit = Edit {
+        count: 3,
+        ..Default::default()
+    };
+    for (destination, (channel, midi, offset)) in
+        edit.channels
+            .iter_mut()
+            .zip([(0, false, 3), (1, false, -5), (0, true, -3)])
+    {
+        *destination = ChannelUpdate {
+            channel,
+            midi,
+            start_offset: Some(offset),
+            preplay: Some(5),
+        };
+    }
+    h.op(Operation::EditWindows {
+        target: target(0),
+        expected_revision: period.timing_revision,
+        expected_content: old.view.description.revision,
+        edit,
+    });
+    let Reply::History(source) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("source")
+    };
+    let play = h.aligned_future(128);
+    let record = play + q as u64;
+    let stop = record + 4 * q as u64;
+    let playing = h.send(
+        play,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Play {
+                position: 32,
+                retrigger: true,
+            },
+        },
+    );
+    let recording = h.send(
+        record,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Record {
+                monitor_previous: true,
+            },
+        },
+    );
+    let preparing = h.send(
+        record + q as u64,
+        Operation::WriterPrepareReplacing {
+            target: target(0),
+            source: source.id,
+        },
+    );
+    let ending = h.send(
+        stop,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    h.result(playing);
+    h.result(recording);
+    let Reply::ReplacingPrepared {
+        id: Some(id),
+        status,
+    } = h.result(preparing)
+    else {
+        panic!("identity capture preparation")
+    };
+    assert!(matches!(
+        status,
+        CandidateStatus::Ready | CandidateStatus::Building
+    ));
+    let cancellation = h.send(record + 2 * q as u64, Operation::WriterCancel { id });
+    assert_eq!(h.result(cancellation), Reply::Done);
+    h.result(ending);
+    let fresh = h.export(0);
+    assert_eq!(fresh.view.description.frames, 4 * q as u64);
+    let audio = h.read(fresh.view.audio.unwrap().snapshot);
+    for (offset, bytes) in audio.chunks_exact(8).enumerate() {
+        let sample = (record + offset as u64 + 1) as f32;
+        assert_eq!(f32::from_le_bytes(bytes[..4].try_into().unwrap()), sample);
+        assert_eq!(
+            f32::from_le_bytes(bytes[4..].try_into().unwrap()),
+            -2. * sample
+        );
+    }
+    assert_eq!(
+        midi_events(&h.read(fresh.view.midi.unwrap().snapshot)),
+        expected_midi(record, 4 * q as u64, q)
+    );
+    let Reply::State(state) = h.op(Operation::State { target: target(0) }) else {
+        panic!("fresh layout")
+    };
+    assert_eq!(state.state.content_length, 4 * q as u64);
+    for channel in state
+        .windows
+        .audio
+        .iter()
+        .take(2)
+        .chain(core::iter::once(&state.windows.midi))
+    {
+        assert_eq!(channel.origin(), 0);
+        assert_eq!(channel.preplay, 5);
+    }
+    for offset in 0..q {
+        let audible = (record + q as u64) as usize + offset;
+        assert_eq!(
+            h.samples[0][audible],
+            (first + 64 + 3 + offset as u64 + 1) as f32
+        );
+        assert_eq!(
+            h.samples[1][audible],
+            -2. * (first + 64 - 5 + offset as u64 + 1) as f32
+        );
+    }
+    let old_midi = h.read(old.view.midi.unwrap().snapshot);
+    assert_eq!(midi_events(&old_midi), expected_midi(first, take.frames, q));
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
