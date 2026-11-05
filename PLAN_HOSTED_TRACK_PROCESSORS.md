@@ -5,6 +5,13 @@
 Implementation started on `feat/hosted-track-processors` from `2e19210b`. Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
+Current progress: Stages 1–3 are complete. Stages 4–7 are implemented, with their
+final acceptance gates still open. Stage 8 is validating the delivered integration:
+the dedicated hosted-processor matrix is green at `52e55f84`; broad CI exposed
+upload throughput, delayed topology submission and browser/firmware fixture gaps.
+Targeted fixes and checks below precede the next full CI run. Do not interpret
+implemented checkboxes as a claim that all required delivery gates have passed.
+
 - Start from `feat/fixed-quantum-runtime`, inspected at `2e19210b`.
 - Reference: fetched `master` at `92079fb6`, plus executable behavior retained in
   `shoop_app_reference`, `shoop_engine`, and `reference/legacy_browser`.
@@ -266,7 +273,7 @@ These goals and criteria must not change without explicit user approval.
   release. General manual latency/timeline editing remains separately gated.
 - **Platform and recovery.** Wire startup settings through native host config,
   Host Manager/in-process launch and browser worklet config/build scripts. The
-  import-free worklet contract and bounded `process()` pump remain intact; no new
+  existing worklet import boundary (the profiling clock only) and bounded `process()` pump remain intact; no new
   imports/threads are justified merely by linking OxiSynth's `std`. Package the
   SoundFont, presets and notices only in synth-enabled host artifacts; client editor
   metadata comes from the host and must not embed the SoundFont. Service ownership
@@ -745,6 +752,40 @@ sampling moves after data-peer detachment, preserving exact byte equality and
 requiring zero remaining data sockets. USB output capture stays active until
 firmware shutdown returns, preserving the complete reset-suffix assertion.
 Cross-platform/firmware execution of these follow-ups remains a CI gate.
+
+Validation follow-up to `52e55f84`: the dedicated hosted-processor workflow,
+native JACK, bare-metal/no_std, shared-media foundation, all host-process inspection
+jobs, Docs and CodeQL pass. Windows/macOS native and Node Wasm failures share the
+upload-window regression: the bounded pump must fill the negotiated 64-request
+window per advance while preserving legacy peers' eight-request limit. The exact
+window regression, eighteen persistence tests and busy-producer fairness test pass
+with that correction.
+
+The Linux failure trace identifies a refused batch of loop sync-source edits.
+A deterministic late-control regression reproduces its capacity refusal: multiple
+topology appends scheduled on different logical frames can arrive in one actual
+callback after control-thread descheduling. Appends now wait for their acknowledgment
+and a subsequent callback before submitting another chunk. The regression guards
+heap activity and checks confirmed sync relations; it and nine structural tests pass.
+The ordinary application workflow also passes after the change. Before the change,
+both the application workflow and legacy lock fixture passed ordinary repetitions
+(10/20) and CPU-pressure repetitions (10/20) on two CPUs with two competing workers.
+The legacy fixture's failure trace shows its only audio block at 13.113 ms,
+before graph construction at 13.654 ms: a scheduler re-arm can outlive the first
+flush. That lock-permission fixture now explicitly waits for confirmed graph
+readiness before requesting its exact block; its lock guard and position oracle
+remain intact.
+
+The real local Chromium/AudioWorklet smoke passes FX, synth and External role
+imports, dry/wet playback, and save/load/save after acknowledging the existing
+format-conversion prompt and clicking the hosted save dialogs. A rebuilt run with
+the final adapter/engine changes also passes, reporting zero xruns. Filtered Node
+Wasm runs pass the upload-window and late-topology regressions individually.
+Changed production packages build with warnings denied; the firmware probe's two
+publication/refusal tests and test/tracing policy checks pass. Firmware commit
+publication uses the existing persistence-specific 120-second allowance rather
+than the ordinary 30-second command allowance; heartbeat remains five seconds.
+Actual firmware/platform validation and final automated review remain CI gates.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

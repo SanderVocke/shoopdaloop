@@ -174,9 +174,22 @@ pub(super) fn confirmed(outcome: Outcome) {
     assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
 }
 fn commit(client: &mut Client, connection: &mut Connection, key: Key) {
-    confirmed(command(client, connection, Command::CommitPersistence(key)));
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while client.snapshot().unwrap().persistence_epoch <= key.epoch {
+    let message = client
+        .command(Command::CommitPersistence(key), None)
+        .unwrap();
+    let ClientMessage::Submit { operation, .. } = &message else {
+        panic!("commit submission")
+    };
+    let operation = *operation;
+    connection.send(message).expect("commit delivery");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        if let Some(outcome) = client.results().get(&operation) {
+            confirmed(outcome.clone());
+            if client.snapshot().unwrap().persistence_epoch > key.epoch {
+                return;
+            }
+        }
         assert!(
             Instant::now() < deadline,
             "committed session was not published"

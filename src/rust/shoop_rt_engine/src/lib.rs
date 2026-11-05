@@ -695,7 +695,6 @@ pub fn prepare_with_shared_and_processors(
             master_channels,
             host: counts,
             records_per_append: RECORDS_PER_APPEND,
-            frames: description.max_frames as u32,
             command_slots: slots,
             max_reliable: description.reliable_credits,
             max_bulk: description.bulk_credits,
@@ -776,7 +775,90 @@ pub fn prepare_with_shared_and_processors(
 
 #[cfg(test)]
 mod tests {
+    use core::sync::atomic::Ordering;
+    use shoop_rt_protocol::{LoopSlotId, Outcome, Request, SlotId, StripId, StripShape};
+    use shoop_wasm_test_support::heap::assert_no_heap;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn late_control_topology_appends_respect_each_render_callback_budget() {
+        let mut host = super::testing::OfflineHost::new(&super::EngineDescription {
+            max_frames: 16,
+            quantum: 16,
+            segments: alloc::vec![super::Segment {
+                strips: 1,
+                loops: 20,
+            }],
+            ..super::EngineDescription::default()
+        })
+        .unwrap();
+        host.connect().unwrap();
+        fn finish(host: &mut super::testing::OfflineHost, count: usize, late: bool) {
+            let mut completed = 0;
+            for _ in 0..2_000 {
+                assert_no_heap(|| host.process(16)).unwrap();
+                loop {
+                    if late && completed < count {
+                        // The render can advance while a control submission is descheduled.
+                        host.endpoint().cells.next_frame.store(0, Ordering::Relaxed);
+                    }
+                    let Some(message) = assert_no_heap(|| host.receive()) else {
+                        break;
+                    };
+                    if let shoop_rt_protocol::EngineMessage::Result { outcome, .. } = message {
+                        assert_eq!(outcome, Outcome::Done);
+                        completed += 1;
+                    }
+                }
+                let frame = host.next_frame();
+                host.endpoint()
+                    .cells
+                    .next_frame
+                    .store(frame, Ordering::Relaxed);
+                if completed == count && host.endpoint().is_idle() {
+                    return;
+                }
+            }
+            panic!("topology transaction did not finish: {completed}/{count}");
+        }
+        finish(&mut host, 0, false);
+        let strip = StripId(SlotId::new(0, 1));
+        host.request(Request::CreateStrip {
+            strip,
+            shape: StripShape {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_input: false,
+                midi_output: false,
+            },
+        })
+        .unwrap();
+        finish(&mut host, 1, false);
+        let source = LoopSlotId(SlotId::new(0, 1));
+        for index in 0..20 {
+            host.request(Request::CreateLoop {
+                loop_id: LoopSlotId(SlotId::new(index, 1)),
+                strip,
+            })
+            .unwrap();
+        }
+        finish(&mut host, 20, false);
+        for index in 1..20 {
+            host.request(Request::LoopSync {
+                loop_id: LoopSlotId(SlotId::new(index, 1)),
+                source: Some(source),
+            })
+            .unwrap();
+        }
+        finish(&mut host, 19, true);
+        for index in 1..20 {
+            let id = LoopSlotId(SlotId::new(index, 1));
+            assert_eq!(
+                host.endpoint().model.find_loop(id).unwrap().sync,
+                Some(source)
+            );
+        }
+    }
 
     #[shoop_test]
     fn offline_minimal_host_resolves_auto_policy_without_implementations() {

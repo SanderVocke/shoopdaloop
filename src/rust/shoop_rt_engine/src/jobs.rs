@@ -12,6 +12,7 @@
 //! the displaced owners are recycled into their prepared slots.
 
 use alloc::boxed::Box;
+use core::sync::atomic::Ordering;
 
 use crate::endpoint::{
     completion_refusal, execution_outcome, loop_id, ControlEndpoint, Purpose, RuntimeResult,
@@ -114,6 +115,7 @@ pub(crate) struct Job {
     topology: Option<StageId>,
     records: usize,
     sent: usize,
+    topology_callback: Option<u64>,
     ready: bool,
     graph: Option<GraphStageId>,
     faded: bool,
@@ -143,6 +145,7 @@ impl Job {
             topology: None,
             records: 0,
             sent: 0,
+            topology_callback: None,
             ready: false,
             graph: None,
             faded: false,
@@ -1184,41 +1187,28 @@ impl ControlEndpoint {
                 return true;
             };
             let per_append = self.settings.records_per_append;
-            let chunks = (job.records - job.sent).div_ceil(per_append);
-            if !self.room(chunks + 1) {
+            if !self.room(1)
+                || job.topology_callback == Some(self.cells.callbacks.load(Ordering::Relaxed))
+            {
                 return false;
             }
-            let first = self.at().0;
-            let spacing = u64::from(self.settings.frames);
-            let mut at = first;
-            while job.sent < job.records {
-                let chunk = (job.records - job.sent).min(per_append);
-                let Some(mut payload) = self.work.take_payload(chunk) else {
-                    break;
-                };
-                let start = RECORD_BYTES * (1 + job.sent);
-                payload.copy_from_slice(&self.work.image[start..start + chunk * RECORD_BYTES]);
-                let command = self.loops.command_with_payload(
-                    Frame(at),
-                    Operation::TopologyAppend {
-                        id,
-                        first_record: job.sent,
-                    },
-                    payload,
-                );
-                self.submit_job(job, command, Step::TopologyAppend, true);
-                job.sent += chunk;
-                at += spacing;
-            }
-            if job.sent < job.records {
-                return true;
-            }
-            self.submit_job_loop(
-                job,
-                Frame(at.saturating_sub(spacing).max(first)),
-                Operation::TopologyValidate { id },
-                Step::TopologyValidate,
+            let chunk = (job.records - job.sent).min(per_append);
+            let Some(mut payload) = self.work.take_payload(chunk) else {
+                return false;
+            };
+            let start = RECORD_BYTES * (1 + job.sent);
+            payload.copy_from_slice(&self.work.image[start..start + chunk * RECORD_BYTES]);
+            let command = self.loops.command_with_payload(
+                self.at(),
+                Operation::TopologyAppend {
+                    id,
+                    first_record: job.sent,
+                },
+                payload,
             );
+            self.submit_job(job, command, Step::TopologyAppend, true);
+            job.sent += chunk;
+            return true;
         }
         job.phase = Phase::Validate;
         true
@@ -1723,6 +1713,9 @@ impl ControlEndpoint {
                 }
                 (Step::TopologyBegin, Some(Reply::TopologyStatus { id, .. })) => {
                     job.topology = Some(id)
+                }
+                (Step::TopologyAppend, Some(Reply::TopologyStatus { .. })) => {
+                    job.topology_callback = Some(self.cells.callbacks.load(Ordering::Relaxed));
                 }
                 (Step::TopologyValidate, Some(Reply::TopologyProgress { progress, .. })) => {
                     job.ready = progress.ready;

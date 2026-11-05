@@ -337,15 +337,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .map_or(1, |limits| usize::from(limits.reliable_credits)),
         )
         .max(1);
-        match replacement
-            .job
-            .next(chunk_bytes, self.status.callbacks, window)
-        {
-            Ok(Some(request)) => {
-                self.requests.push(request, Purpose::Persistence);
+        for _ in 0..window {
+            match replacement
+                .job
+                .next(chunk_bytes, self.status.callbacks, window)
+            {
+                Ok(Some(request)) => {
+                    self.requests.push(request, Purpose::Persistence);
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    replacement.job.fail(error.to_string());
+                    break;
+                }
             }
-            Ok(None) => {}
-            Err(error) => replacement.job.fail(error.to_string()),
         }
         if replacement.job.finished && replacement.job.error.is_none() && !replacement.published {
             replacement.published = true;

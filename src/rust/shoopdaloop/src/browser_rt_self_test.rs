@@ -84,6 +84,7 @@ enum Step {
     HostedCreated,
     HostedMapping,
     HostedAudio,
+    HostedAudioConverting,
     HostedMidi,
     HostedDry,
     HostedWet,
@@ -1450,8 +1451,20 @@ impl NewEngineSelfTest {
                 })?;
                 Step::HostedAudio
             }
-            Step::HostedAudio => {
+            Step::HostedAudio | Step::HostedAudioConverting => {
                 use shoop_session::*;
+                if self.step == Step::HostedAudio {
+                    if let Some(task) = snapshot.io_task.as_ref().filter(|task| {
+                        task.status
+                            == shoop_egui::IoTaskStatus::AwaitingFormatConversionConfirmation
+                    }) {
+                        send(AppIntent::ConfirmFormatConversion {
+                            task_id: task.id,
+                            accept: true,
+                        })?;
+                        return Ok(Some(Step::HostedAudioConverting));
+                    }
+                }
                 if !io_completed(snapshot, shoop_egui::IoTaskKind::ImportLoopAudio) {
                     return Ok(None);
                 }

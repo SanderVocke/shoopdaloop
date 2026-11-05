@@ -54,8 +54,6 @@ pub(crate) struct Settings {
     /// Audio inputs, audio outputs, MIDI inputs, MIDI outputs.
     pub host: [usize; 4],
     pub records_per_append: usize,
-    /// The largest callback, which separates scheduled topology appends.
-    pub frames: u32,
     pub command_slots: usize,
     pub max_reliable: u16,
     pub max_bulk: u16,
