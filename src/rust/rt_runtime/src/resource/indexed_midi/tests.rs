@@ -383,7 +383,7 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
     assert_eq!(capacity.reserved_payload_bytes, 128 * 64);
     let pool = resources.prepare_indexed_midi_store(limits).unwrap();
     let mut encoded = [0; 15];
-    encode_midi_record(0, &[0xb0, 1, 90], &mut encoded).unwrap();
+    encode_midi_record(0, &[0xb0, 96, 90], &mut encoded).unwrap();
     let loaded = upload(&mut resources, &encoded, 64);
     resources.begin_callback();
     let source = resources.snapshot(loaded, Frame(0)).unwrap();
@@ -409,6 +409,20 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
         drain(&mut resources);
         let take = import(&mut resources, pool, source, &MidiState::default());
         let snapshot = resources.snapshot(take, Frame(0)).unwrap();
+        let index = resources.read_index(snapshot.id).unwrap();
+        assert_eq!(
+            resources
+                .render_io()
+                .midi_parameter_history_untracked(index, 0),
+            Ok(false)
+        );
+        assert_eq!(
+            resources
+                .render_io()
+                .midi_parameter_history_untracked(index, 1),
+            Ok(true)
+        );
+
         let pinned = resources.usage();
         assert_eq!(resources.snapshot(take, Frame(0)), Err(Error::Capacity));
         assert_eq!(resources.retain_snapshot(snapshot.id), Err(Error::Capacity));

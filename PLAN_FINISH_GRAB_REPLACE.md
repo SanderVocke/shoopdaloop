@@ -4,7 +4,8 @@
 
 Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
-`feat/backend-replacement`, rebased onto merged parent `0ef7581b`. The latest
+`feat/backend-replacement`, with merged parent `0ef7581b` and refreshed target
+`a068ce72` reconciled on 2026-11-05. The latest
 implementation connects continuous MIDI sources/writers to ordinary resource and
 snapshot IDs, including immutable loaded bases and indexed serialized reads.
 
@@ -248,6 +249,17 @@ refusal and exact teardown. All 55 resource tests passed; the extended loaded-ba
 case and warning-denying build, formatting, tracing and attribute checks also pass.
 Engine mode/coordinator integration, global production preparation/reservations,
 protocol, service and application delivery remain outstanding.
+
+The target advanced during this delivery through profiling, P12 timing and Zynq
+host support. Reconciliation with `a068ce72` retains both tracing inventories and
+adds the new parameter-history query to indexed MIDI resources. The query uses
+the complete semantic state and preserves strict-before-frame behavior. Its
+resource scenario distinguishes selector/data history at frames zero and one.
+The PR was observed unmergeable before this reconciliation; no fresh workflow run
+was available for the earlier pushed milestone. Combined-tree validation passed 76 runtime, 17 loop and 27 engine unit tests
+with warnings denied; the CI release measurement was intentionally ignored locally.
+A missing tracing-inventory entry for the new FreeRTOS build script is reconciled.
+Fresh broad CI and application acceptance remain pending.
 
 ## Findings that determine the work
 

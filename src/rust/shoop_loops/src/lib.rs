@@ -41,6 +41,7 @@ pub mod resolver;
 pub mod runtime;
 pub mod state;
 pub mod topology;
+pub mod windows;
 
 pub use command::{CancelResult, Completion, Outcome, Request, Timing, Transition};
 pub use config::Limits;

@@ -1,4 +1,9 @@
 path,context,classification,coverage_or_rationale
+src/rust/shoop_app/src/service/commands/timing.rs,app_session,instrumented_indirect,Timing admission runs inside the service command and retained outcome boundary.
+src/rust/shoop_loops/src/windows.rs,portable_loop_library,excluded,Bounded pure window validation and span mapping expose typed failures without a host tracing dependency.
+src/rust/shoop_rt_backend/src/timing.rs,application_ui_and_control,instrumented_indirect,Timing commands and confirmed headers run within traced adapter requests and outcomes.
+src/rust/shoop_rt_engine/src/timing.rs,realtime_engine,excluded,Allocation-free timing execution may run on the audio thread; host and adapter trace admission and outcomes.
+src/rust/shoop_rt_protocol/src/timing.rs,protocol_contracts,excluded,Bounded value contracts and canonical validation have no execution boundary to instrument.
 src/rust/shoop_loops/src/resolver/retime.rs,portable_loop_library,excluded,Fixed-storage atomic timing publication exposes frame-tagged events and typed failures without callback tracing.
 src/rust/shoop_loops/src/media/playback.rs,portable_loop_library,excluded,Prepared playback ownership preflight has no tracing dependency and retains explicit resource ownership accounting.
 src/rust/shoop_loops/src/runtime/family.rs,portable_loop_library,excluded,Prepared family publication exposes typed preflight and execution outcomes without callback tracing.
@@ -316,6 +321,8 @@ src/rust/shoop_app_protocol/src/stream.rs,app_session,excluded,Incremental bound
 src/rust/shoopdaloop/src/application.rs,application_ui_and_control,instrumented_indirect,Composition schedules the traced service and client turns.
 src/rust/shoop_app/src/service/management.rs,app_session,instrumented_indirect,Management operations use the authoritative service admission and shutdown boundaries.
 src/rust/shoop_host/src/lib.rs,app_session,excluded,Native composition exports.
+src/rust/shoop_host_freertos/src/lib.rs,embedded_host,excluded,no_std platform composition exports and finite board profile constants.
+src/rust/shoop_host_freertos/src/embedded.rs,embedded_host,excluded,UART lifecycle and heap diagnostics at the platform boundary; the render owner must not trace or allocate and portable service instrumentation remains available independently.
 src/rust/shoop_host/src/main.rs,app_session,instrumented_indirect,CLI configuration enters the traced host session boundary.
 src/rust/shoop_host/src/audio_args.rs,app_session,excluded,Parses and validates native startup overrides before the traced host boundary.
 src/rust/shoop_host/src/config.rs,app_session,excluded,Bounded host configuration validation.
@@ -364,6 +371,10 @@ src/rust/shoop_app_connection/src/heartbeat.rs,app_session,excluded,Injected-clo
 src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Generic connection progression calls traced service handling and tick boundaries; native composition owns transport diagnostics.
 src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
 src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.
+src/rust/shoop_host/src/deployment.rs,native_host,instrumented_direct,Bounded updater transport and artifact entry points instrumented with skip_all; no payload or credential fields.
+src/rust/shoop_host/src/bin/shoop-deploy.rs,native_host,instrumented_indirect,CLI dispatch enters instrumented deployment operations.
+src/rust/shoop_deployment_protocol/src/lib.rs,generic_wire_protocol,excluded,Bounded no_std deployment schema and codec; callers instrument authenticated operations.
+src/rust/shoop_app/src/service/deployment.rs,application_service,instrumented_direct,Deployment capability and operation admission instrumented with skip_all.
 src/rust/rt_runtime/src/resource/shared_midi/mod.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/layout.rs,generic_realtime_library,excluded,Allocation-free prepared MIDI capacity validation; no host tracing dependency.
 src/rust/rt_runtime/src/midi_state/interval.rs,generic_realtime_library,excluded,Composable fixed MIDI pedal interval state; no execution or ownership boundary.
@@ -437,6 +448,13 @@ src/rust/shoopdaloop/src/persistence_io/preview.rs,application_ui_and_control,in
 src/rust/rt_runtime/src/quantum.rs,generic_realtime_library,excluded,Validated processing quantum and checked frame alignment have no execution boundary.
 src/rust/rt_runtime/src/host_buffer.rs,generic_realtime_library,excluded,Prepared quantum buffering and bounded MIDI recovery must not trace during rendering.
 src/rust/rt_profiling/src/unsupported.rs,generic_realtime_library,excluded,Targets without lock-free 64-bit atomics preserve the portable API and report profiling unavailable.
+src/rust/rt_profiling/src/graph.rs,portable_profiling,excluded,Bounded metadata assembly and pure topology validation outside rendering; profiling data is its own observability channel.
+src/rust/rt_profiling/src/capture.rs,portable_profiling,excluded,Pure capture value types and clock-domain containment with no side effects or tracing dependency.
+src/rust/shoop_egui/src/profiling/graph.rs,egui_ui,excluded,Frame-rate graph drawing and hover rendering use profiling data directly; avoid per-frame tracing overhead.
 src/rust/shoop_rt_engine/src/buffered_tests.rs,test_support,excluded,Test-only processor composition and heap guards.
 src/rust/rt_runtime/src/resource/indexed_midi.rs,rt_runtime prepared MIDI resource boundary,excluded,Portable fixed-storage media ownership and required work counters; host spans cover application operations
 src/rust/rt_runtime/src/resource/indexed_midi/tests.rs,test_support,excluded,Heap-guarded ordinary resource exports continuous writer exit source reset and admission pressure oracles; no production boundary.
+src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.
+src/rust/shoop_transport/src/authenticated.rs,session_transport,excluded,Bounded credential admission for provisioned embedded hosts; failures return to connection owners without tracing credentials.
+src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.
+src/rust/shoop_host_freertos/build.rs,build_support,excluded,Compile-time embedded target and generated board configuration; no application execution boundary.

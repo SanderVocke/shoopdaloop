@@ -224,6 +224,23 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         &mut connection,
         Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
     )?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(-3),
+            preplay_samples: Some(17),
+            loop_length: None,
+        },
+    )?;
+    ensure!(
+        client.snapshot().unwrap().tracks[1].loops[0]
+            .channel_timings
+            .iter()
+            .all(|channel| channel.start_offset == -3 && channel.preplay_samples == 17),
+        "recording timing was not confirmed"
+    );
     wait(&mut client, &mut connection, |client| {
         client
             .snapshot()
@@ -233,6 +250,26 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             .rows
             .iter()
             .any(|row| row.samples > 0)
+    })?;
+    wait(&mut client, &mut connection, |client| {
+        let view = &client.snapshot().unwrap().profiling;
+        view.topology.as_ref().is_some_and(|t| {
+            t.generation == view.generation && t.epoch == view.live.epoch && t.valid()
+        }) && view
+            .groups
+            .iter()
+            .any(|g| g.kind == 1 && g.name == "Packaged session")
+            && view
+                .groups
+                .iter()
+                .any(|g| g.kind == 2 && g.name.starts_with("Packaged session / "))
+    })?;
+    wait(&mut client, &mut connection, |client| {
+        let wrapping = &client.snapshot().unwrap().profiling.live.wrapping;
+        wrapping.before.count > 0
+            && wrapping.before.count == wrapping.after.count
+            && wrapping.before.count == wrapping.between.count
+            && wrapping.valid()
     })?;
     let profile_generation = client.snapshot().unwrap().profiling.generation;
     ensure!(
@@ -264,6 +301,10 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         );
         ensure!(
             state.tracks[1].loops[0].mode == LoopMode::Recording
+                && state.tracks[1].loops[0]
+                    .channel_timings
+                    .iter()
+                    .all(|channel| channel.start_offset == -3 && channel.preplay_samples == 17)
                 && state.status.processed_frames > before,
             "recording did not survive UI loss"
         );
@@ -300,6 +341,49 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             && !media.audio[0].samples.is_empty()
             && media.midi[0].events.len() == 2,
         "recorded audio/MIDI was not preserved"
+    );
+    let length = client.snapshot().unwrap().tracks[1].loops[0].length_frames;
+    let retained = media.audio[0].samples.len();
+    command(
+        &mut client,
+        &mut connection,
+        Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(1),
+            preplay_samples: Some(31),
+            loop_length: Some((length / 64).max(1) * 32),
+        },
+    )?;
+    let state = &client.snapshot().unwrap().tracks[1].loops[0];
+    ensure!(
+        state.length_frames == (length / 64).max(1) * 32
+            && state
+                .channel_timings
+                .iter()
+                .all(|channel| channel.start_offset == 1 && channel.preplay_samples == 31),
+        "playing timing did not settle"
+    );
+    connection
+        .send(
+            client
+                .read_media(loops[0])
+                .map_err(|error| anyhow!("{error:?}"))?,
+        )
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.media().is_some()
+    })?;
+    ensure!(
+        client
+            .media()
+            .unwrap()
+            .as_ref()
+            .map_err(|error| anyhow!("{error:?}"))?
+            .audio[0]
+            .samples
+            .len()
+            == retained,
+        "timing truncated raw media"
     );
     ensure!(
         client.snapshot().unwrap().profiling.generation >= profile_generation,
@@ -367,7 +451,7 @@ fn file_wait(
         std::thread::sleep(Duration::from_millis(2));
     }
 }
-fn file_done(
+pub(crate) fn file_done(
     handle: &crate::application::ApplicationHandle,
     kind: shoop_egui::IoTaskKind,
 ) -> Result<std::sync::Arc<shoop_egui::AppSnapshot>> {
@@ -386,7 +470,7 @@ fn file_done(
     println!("Persistence file task: {kind:?} confirmed");
     Ok(state)
 }
-fn file_save(
+pub(crate) fn file_save(
     handle: &crate::application::ApplicationHandle,
     path: &std::path::Path,
 ) -> Result<shoop_session::SessionBundle> {

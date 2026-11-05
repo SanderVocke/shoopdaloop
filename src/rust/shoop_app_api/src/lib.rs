@@ -1004,9 +1004,22 @@ pub enum StructuralState {
     Removing,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LoopChannelTimingState {
+    pub id: ChannelId,
+    pub is_midi: bool,
+    pub data_length: u64,
+    pub start_offset: i64,
+    pub capture_alignment_frames: i64,
+    pub preplay_samples: u64,
+}
+
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
+    pub timing_revision: u64,
+    pub channel_timings: Arc<[LoopChannelTimingState]>,
     pub content_revision: u64,
     pub id: LoopId,
     pub name: String,
@@ -1043,6 +1056,8 @@ pub struct LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         Self {
+            timing_revision: 0,
+            channel_timings: Arc::from([]),
             content_revision: 0,
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
@@ -1166,6 +1181,7 @@ pub struct HostPortState {
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
+    pub available: bool,
 }
 
 pub const MASTER_BUS_NAME: &str = "Master";
@@ -1454,6 +1470,8 @@ pub struct CompositeDetailsState {
 
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
+    pub quantum_frames: u32,
+    pub length_frames: u64,
     pub generation: u64,
     pub loop_id: LoopId,
     pub title: String,
@@ -2004,6 +2022,7 @@ pub struct AppNotification {
     pub message: String,
 }
 
+pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 
 #[derive(Clone, Debug, Default)]
@@ -2409,6 +2428,7 @@ pub enum PianoAction {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChannelTimelineUpdate {
     pub channel_id: ChannelId,
     pub start_offset: Option<i64>,
@@ -2418,6 +2438,7 @@ pub struct ChannelTimelineUpdate {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
     SetProfiling(bool),
+    InspectProfiling(profiling_data::CaptureRequest),
     SetLoopSmoothingMs(u32),
     SetMasterAutoConnect(bool),
     SetLoopTimeline {
@@ -2810,7 +2831,7 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::SetProfiling(_) => "developer.profiling",
+            Self::SetProfiling(_) | Self::InspectProfiling(_) => "developer.profiling",
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
             Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",
@@ -3519,6 +3540,7 @@ mod tests {
             name: endpoint.clone(),
             data_type: PortDataType::Audio,
             direction: PortDirection::Output,
+            available: true,
         };
         let pending = PendingConnectionState {
             application_port_id: port_id,
@@ -3771,6 +3793,36 @@ impl ControlOperation {
             | Self::SetBusMuted { buses, .. } => buses.len() <= 128,
             _ => true,
         }
+    }
+}
+
+/// Host-local admission ceilings within the shared protocol limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostResourceLimits {
+    pub media_bytes: u64,
+    pub metadata_bytes: u64,
+    pub objects: u32,
+    pub midi_events: usize,
+}
+
+impl Default for HostResourceLimits {
+    fn default() -> Self {
+        Self {
+            media_bytes: 256 * 1024 * 1024,
+            metadata_bytes: 8 * 1024 * 1024,
+            objects: 4096,
+            midi_events: 1_000_000,
+        }
+    }
+}
+
+impl HostResourceLimits {
+    pub fn is_valid(self) -> bool {
+        let ceiling = Self::default();
+        (1..=ceiling.media_bytes).contains(&self.media_bytes)
+            && (1..=ceiling.metadata_bytes).contains(&self.metadata_bytes)
+            && (1..=ceiling.objects).contains(&self.objects)
+            && (1..=ceiling.midi_events).contains(&self.midi_events)
     }
 }
 

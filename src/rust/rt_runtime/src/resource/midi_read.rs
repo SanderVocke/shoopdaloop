@@ -115,6 +115,51 @@ impl ResourceStore {
         self.read_exact_indexed(event.index, event.offset, &mut output[..event.bytes])?;
         Ok(event.bytes)
     }
+    fn midi_history_impl(&mut self, index: ReadIndex, frame: u64) -> Result<bool, Error> {
+        let lease = self.midi_lease(index)?;
+        if frame > lease.snapshot.description.frames {
+            return Err(Error::InvalidFrame);
+        }
+        if let Some(take) = lease.indexed_midi {
+            return self.with_indexed_midi(take.store, |store, pool| {
+                let state =
+                    pool.core
+                        .state(&mut store.render_io(), pool.views.get(take.media)?, frame)?;
+                Ok((0..16).any(|channel| {
+                    state
+                        .channel(channel)
+                        .expect("MIDI channel")
+                        .parameter_history_untracked()
+                }))
+            });
+        }
+        if let Some(midi) = lease.shared_midi {
+            return self.with_midi(midi.store, |store, midi_store| {
+                midi_store.parameter_history_untracked(&mut store.render_io(), midi.index, frame)
+            });
+        }
+        let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
+        let (mut history, offset, span) = self.midi_indexes.history_before(
+            version.midi.ok_or(Error::InvalidState)?,
+            lease.version,
+            frame,
+            lease.snapshot.description.bytes,
+        )?;
+        let mut cursor = MidiCursor { index, offset };
+        for _ in 0..span {
+            let Some(event) = self.midi_next_impl(&mut cursor)? else {
+                return Ok(history != 0);
+            };
+            if event.frame >= frame {
+                return Ok(history != 0);
+            }
+            let mut short = [0; 3];
+            let count = event.bytes.min(3);
+            self.read_exact_indexed(index, event.offset, &mut short[..count])?;
+            self.midi_indexes.replay_history(&mut history, short);
+        }
+        Err(Error::InvalidState)
+    }
     pub(super) fn midi_seek_impl(
         &mut self,
         index: ReadIndex,
@@ -192,6 +237,14 @@ impl RenderIo<'_> {
     }
     pub fn midi_read(&mut self, event: MidiEvent, output: &mut [u8]) -> Result<usize, Error> {
         self.store.midi_read_impl(event, output)
+    }
+    /// Query the bounded indexed prefix without copying its full channel state.
+    pub fn midi_parameter_history_untracked(
+        &mut self,
+        index: ReadIndex,
+        frame: u64,
+    ) -> Result<bool, Error> {
+        self.store.midi_history_impl(index, frame)
     }
     pub fn midi_seek(&mut self, index: ReadIndex, frame: u64) -> Result<MidiPosition, Error> {
         self.store.midi_seek_impl(index, frame)

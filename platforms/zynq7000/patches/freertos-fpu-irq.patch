@@ -1,0 +1,11 @@
+--- a/ThirdParty/bsp/freertos10_xilinx/src/Source/portable/GCC/ARM_CA9/portZynq7000.c
++++ b/ThirdParty/bsp/freertos10_xilinx/src/Source/portable/GCC/ARM_CA9/portZynq7000.c
+@@ -188,7 +188,7 @@
+ #endif
+ /*-----------------------------------------------------------*/
+ 
+-void vApplicationIRQHandler( uint32_t ulICCIAR )
++void vApplicationFPUSafeIRQHandler( uint32_t ulICCIAR )
+ {
+ extern XScuGic_Config XScuGic_ConfigTable[];
+ static const XScuGic_VectorTableEntry *pxVectorTable = XScuGic_ConfigTable[ XPAR_SCUGIC_SINGLE_DEVICE_ID ].HandlerTable;

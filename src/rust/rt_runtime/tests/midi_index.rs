@@ -652,3 +652,40 @@ fn preparation_bounds_and_legacy_unindexed_media_are_explicit() {
         assert_eq!(store.render_io().midi_next(&mut cursor), Ok(None));
     });
 }
+
+#[shoop_test]
+fn indexed_parameter_history_matches_prefix_state_without_full_state_copies() {
+    for span in [1, 2, 8] {
+        let mut store = store(4, 32, span, 32, 2);
+        let records = vec![
+            (0, vec![0xb0, 7, 90]),
+            (1, vec![0xb0, 6, 1]),
+            (2, vec![0xb1, 96, 0]),
+            (4, vec![0xff]),
+            (5, vec![0xb2, 38, 1]),
+        ];
+        let snapshot = upload(&mut store, &records, 8, &MidiState::default());
+        let index = assert_no_heap(|| store.read_index(snapshot.id)).unwrap();
+        for frame in 0..=8 {
+            let copies = store.midi_index_work().state_copies;
+            let history = assert_no_heap(|| {
+                store
+                    .render_io()
+                    .midi_parameter_history_untracked(index, frame)
+            })
+            .unwrap();
+            assert_eq!(store.midi_index_work().state_copies, copies);
+            assert_eq!(history, matches!(frame, 2..=4 | 6..=8));
+            let state = assert_no_heap(|| store.render_io().midi_seek(index, frame))
+                .unwrap()
+                .state;
+            assert_eq!(
+                history,
+                (0..16).any(|channel| state
+                    .channel(channel)
+                    .unwrap()
+                    .parameter_history_untracked())
+            );
+        }
+    }
+}

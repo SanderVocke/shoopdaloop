@@ -198,7 +198,8 @@ impl ControlEndpoint {
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => false,
             Request::ContentBegin(_) => false,
-            Request::ContentWrite { id, .. }
+            Request::ContentWindow { id, .. }
+            | Request::ContentWrite { id, .. }
             | Request::ContentInitial { id, .. }
             | Request::ContentFinish { id }
             | Request::ContentRelease { id } => self.uploads.blocked(id),
@@ -216,9 +217,9 @@ impl ControlEndpoint {
                 loop_(loop_id.0.index, if delay.is_some() { SOFT } else { HARD })
                     || owner.is_some_and(|index| strip(index, SOFT))
             }
-            Request::LoopGain { loop_id, .. } | Request::LoopBalance { loop_id, .. } => {
-                loop_(loop_id.0.index, HARD)
-            }
+            Request::LoopTiming { loop_id, .. }
+            | Request::LoopGain { loop_id, .. }
+            | Request::LoopBalance { loop_id, .. } => loop_(loop_id.0.index, HARD),
             Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
                 loop_(loop_id.0.index, SOFT)
             }
@@ -283,7 +284,8 @@ impl ControlEndpoint {
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {}
             Request::ContentBegin(_) => {}
-            Request::ContentWrite { id, .. }
+            Request::ContentWindow { id, .. }
+            | Request::ContentWrite { id, .. }
             | Request::ContentInitial { id, .. }
             | Request::ContentFinish { id }
             | Request::ContentRelease { id } => self.uploads.block(id),
@@ -323,6 +325,7 @@ impl ControlEndpoint {
             | Request::RemoveLoop { loop_id }
             | Request::LoopSync { loop_id, .. }
             | Request::LoopTransition { loop_id, .. }
+            | Request::LoopTiming { loop_id, .. }
             | Request::LoopGain { loop_id, .. }
             | Request::LoopBalance { loop_id, .. }
             | Request::ContentApply { loop_id, .. }

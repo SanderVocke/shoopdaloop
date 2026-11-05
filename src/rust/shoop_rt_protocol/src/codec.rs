@@ -8,6 +8,7 @@
 use crate::ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 use crate::message::{ClientMessage, DisconnectReason, EngineMessage};
 use crate::schema::*;
+use crate::timing::*;
 use crate::{
     BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_NAME_BYTES, MAX_RECORD_BYTES,
     MAX_STRIP_CHANNELS,
@@ -190,6 +191,111 @@ impl<T: Wire> Wire for Option<T> {
             1 => Ok(Some(T::get(r)?)),
             _ => Err(CodecError::Invalid),
         }
+    }
+}
+
+impl Wire for i32 {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(*self as u32)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(r.u32()? as i32)
+    }
+}
+impl Wire for ChannelWindow {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.gain_bits)?;
+        self.start_offset.put(w)?;
+        self.capture_alignment.put(w)?;
+        w.u32(self.preplay)?;
+        self.raw_frames.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            gain_bits: r.u32()?,
+            start_offset: i32::get(r)?,
+            capture_alignment: i32::get(r)?,
+            preplay: r.u32()?,
+            raw_frames: Option::get(r)?,
+        })
+    }
+}
+impl Wire for PlaybackWindows {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        for channel in &self.audio {
+            channel.put(w)?;
+        }
+        self.midi.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut value = Self::default();
+        for channel in &mut value.audio {
+            *channel = ChannelWindow::get(r)?;
+        }
+        value.midi = ChannelWindow::get(r)?;
+        Ok(value)
+    }
+}
+impl Wire for TimingEdit {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.canonical() {
+            return Err(CodecError::Invalid);
+        }
+        self.length.put(w)?;
+        self.start_offset.put(w)?;
+        self.preplay.put(w)?;
+        w.u8(self.count)?;
+        for channel in &self.channels[..usize::from(self.count)] {
+            w.u8(channel.channel)?;
+            w.bool(channel.midi)?;
+            channel.start_offset.put(w)?;
+            channel.preplay.put(w)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut value = Self {
+            length: Option::get(r)?,
+            start_offset: Option::get(r)?,
+            preplay: Option::get(r)?,
+            count: r.u8()?,
+            ..Self::default()
+        };
+        if usize::from(value.count) > MAX_TIMING_UPDATES {
+            return Err(CodecError::Invalid);
+        }
+        for channel in &mut value.channels[..usize::from(value.count)] {
+            *channel = ChannelTimingUpdate {
+                channel: r.u8()?,
+                midi: r.bool()?,
+                start_offset: Option::get(r)?,
+                preplay: Option::get(r)?,
+            };
+        }
+        if !value.canonical() {
+            return Err(CodecError::Invalid);
+        }
+        Ok(value)
+    }
+}
+impl Wire for TimingState {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.revision)?;
+        w.u64(self.content_revision)?;
+        w.u64(self.length)?;
+        w.u64(self.raw_audio_frames)?;
+        w.u64(self.raw_midi_frames)?;
+        self.windows.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            revision: r.u64()?,
+            content_revision: r.u64()?,
+            length: r.u64()?,
+            raw_audio_frames: r.u64()?,
+            raw_midi_frames: r.u64()?,
+            windows: PlaybackWindows::get(r)?,
+        })
     }
 }
 
@@ -398,6 +504,28 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::ContentWindow {
+                id,
+                frames,
+                windows,
+            } => {
+                w.u8(37)?;
+                w.u64(id)?;
+                w.u64(frames)?;
+                windows.put(w)
+            }
+            Self::LoopTiming {
+                loop_id,
+                expected_revision,
+                expected_content,
+                edit,
+            } => {
+                w.u8(36)?;
+                loop_id.put(w)?;
+                w.u64(expected_revision)?;
+                w.u64(expected_content)?;
+                edit.put(w)
+            }
             Self::Profiling(enabled) => {
                 w.u8(35)?;
                 w.bool(enabled)
@@ -611,6 +739,17 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            37 => Self::ContentWindow {
+                id: r.u64()?,
+                frames: r.u64()?,
+                windows: PlaybackWindows::get(r)?,
+            },
+            36 => Self::LoopTiming {
+                loop_id: LoopSlotId::get(r)?,
+                expected_revision: r.u64()?,
+                expected_content: r.u64()?,
+                edit: TimingEdit::get(r)?,
+            },
             35 => Self::Profiling(r.bool()?),
             31 => Self::ContentFamilyBegin {
                 id: r.u64()?,
@@ -857,6 +996,10 @@ impl Wire for crate::ReplacementEdit {
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::TimingApplied(state) => {
+                w.u8(4)?;
+                state.put(w)
+            }
             Self::Done => w.u8(0),
             Self::ContentApplied { revision } => {
                 w.u8(2)?;
@@ -874,6 +1017,7 @@ impl Wire for Outcome {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            4 => Self::TimingApplied(TimingState::get(r)?),
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },
             3 => Self::ContentPrepared { revision: r.u64()? },
@@ -1007,6 +1151,8 @@ impl Wire for Telemetry {
                 next_mode,
                 next_delay,
                 content_revision,
+                recording_armed,
+                timing_revision,
                 length,
                 position,
                 peaks,
@@ -1017,6 +1163,8 @@ impl Wire for Telemetry {
                 next_mode.put(w)?;
                 next_delay.put(w)?;
                 w.u64(*content_revision)?;
+                w.bool(*recording_armed)?;
+                w.u64(*timing_revision)?;
                 w.u64(*length)?;
                 w.u64(*position)?;
                 peaks.put(w)
@@ -1055,6 +1203,8 @@ impl Wire for Telemetry {
                 next_mode: Option::get(r)?,
                 next_delay: Option::get(r)?,
                 content_revision: r.u64()?,
+                recording_armed: r.bool()?,
+                timing_revision: r.u64()?,
                 length: r.u64()?,
                 position: r.u64()?,
                 peaks: Peaks::get(r)?,
@@ -1071,6 +1221,11 @@ impl Wire for Telemetry {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::LoopTiming { loop_id, timing } => {
+                w.u8(12)?;
+                loop_id.put(w)?;
+                timing.put(w)
+            }
             Self::BusShape { bus, channels } => {
                 w.u8(10)?;
                 bus.put(w)?;
@@ -1140,6 +1295,10 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            12 => Self::LoopTiming {
+                loop_id: LoopSlotId::get(r)?,
+                timing: TimingState::get(r)?,
+            },
             10 => Self::BusShape {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
@@ -1348,6 +1507,8 @@ impl Wire for rt_profiling::Packet {
         w.u64(self.epoch)?;
         w.u64(self.start_ns)?;
         w.u64(self.end_ns)?;
+        w.u64(self.budget_ns)?;
+        w.u32(self.graphs)?;
         w.u32(self.frames)?;
         w.u32(self.index)?;
         w.u32(self.total)?;
@@ -1371,6 +1532,8 @@ impl Wire for rt_profiling::Packet {
             epoch: r.u64()?,
             start_ns: r.u64()?,
             end_ns: r.u64()?,
+            budget_ns: r.u64()?,
+            graphs: r.u32()?,
             frames: r.u32()?,
             index: r.u32()?,
             total: r.u32()?,
@@ -1387,6 +1550,119 @@ impl Wire for rt_profiling::Packet {
             sample.at = r.u64()?;
         }
         Ok(packet)
+    }
+}
+impl Wire for rt_profiling::Port {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.bool(self.node.is_some())?;
+        w.u64(self.node.unwrap_or(0))?;
+        w.u8(self.kind)?;
+        w.u32(self.channel)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let node = r.bool()?;
+        let key = r.u64()?;
+        let kind = r.u8()?;
+        let channel = r.u32()?;
+        if kind > 1
+            || channel > u16::MAX as u32
+            || (node && key >= rt_profiling::MAX_SAMPLES as u64)
+        {
+            return Err(CodecError::Invalid);
+        }
+        Ok(Self {
+            node: node.then_some(key),
+            kind,
+            channel,
+        })
+    }
+}
+impl Wire for rt_profiling::GraphRecord {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        use rt_profiling::GraphRecord::*;
+        match self {
+            Begin {
+                nodes,
+                edges,
+                sample_rate,
+                quantum,
+            } => {
+                w.u8(0)?;
+                w.u32(*nodes)?;
+                w.u32(*edges)?;
+                w.u32(*sample_rate)?;
+                w.u32(*quantum)
+            }
+            Node { index, node } => {
+                w.u8(1)?;
+                w.u32(*index)?;
+                w.u64(node.key)?;
+                w.u8(node.group)?;
+                w.u32(node.slot)?;
+                w.u32(node.owner_generation)
+            }
+            Edge { index, edge } => {
+                w.u8(2)?;
+                w.u32(*index)?;
+                edge.source.put(w)?;
+                edge.destination.put(w)
+            }
+            End => w.u8(3),
+            Unavailable => w.u8(4),
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use rt_profiling::{GraphEdge, GraphNode};
+        Ok(match r.u8()? {
+            0 => {
+                let nodes = r.u32()?;
+                let edges = r.u32()?;
+                if nodes as usize > rt_profiling::MAX_GRAPH_NODES
+                    || edges as usize > rt_profiling::MAX_GRAPH_EDGES
+                {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Begin {
+                    nodes,
+                    edges,
+                    sample_rate: r.u32()?,
+                    quantum: r.u32()?,
+                }
+            }
+            1 => {
+                let index = r.u32()?;
+                let key = r.u64()?;
+                let group = r.u8()?;
+                let slot = r.u32()?;
+                let owner_generation = r.u32()?;
+                if index as usize >= rt_profiling::MAX_GRAPH_NODES
+                    || key >= rt_profiling::MAX_SAMPLES as u64
+                    || group > 3
+                    || (group != 0 && owner_generation == 0)
+                {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Node {
+                    index,
+                    node: GraphNode {
+                        key,
+                        group,
+                        slot,
+                        owner_generation,
+                    },
+                }
+            }
+            2 => Self::Edge {
+                index: r.u32()?,
+                edge: GraphEdge {
+                    source: rt_profiling::Port::get(r)?,
+                    destination: rt_profiling::Port::get(r)?,
+                },
+            },
+            3 => Self::End,
+            4 => Self::Unavailable,
+            _ => return Err(CodecError::Invalid),
+        })
     }
 }
 impl Wire for rt_profiling::Status {
@@ -1419,6 +1695,16 @@ impl Wire for rt_profiling::Status {
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ProfilingGraph {
+                generation,
+                epoch,
+                record,
+            } => {
+                w.u8(11)?;
+                w.u64(*generation)?;
+                w.u64(*epoch)?;
+                record.put(w)
+            }
             Self::ProfilingStatus(status) => {
                 w.u8(8)?;
                 status.put(w)
@@ -1485,6 +1771,11 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            11 => Self::ProfilingGraph {
+                generation: r.u64()?,
+                epoch: r.u64()?,
+                record: rt_profiling::GraphRecord::get(r)?,
+            },
             8 => Self::ProfilingStatus(rt_profiling::Status::get(r)?),
             9 => Self::Profiling(rt_profiling::Packet::get(r)?),
             10 => Self::ProfilingNode {

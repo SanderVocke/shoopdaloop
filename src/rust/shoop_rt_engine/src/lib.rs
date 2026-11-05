@@ -55,6 +55,7 @@ mod replacement;
 mod resync;
 mod ring;
 mod stream;
+mod timing;
 mod topology;
 
 #[cfg(feature = "testing")]
@@ -493,6 +494,12 @@ pub fn prepare_with_shared(
         profile_names: pool.profiling_names(),
         profile_generation: 0,
         profile_status: None,
+        profile_layout: profiling::Layouts::new(
+            &pool,
+            config.limits().max_edges,
+            description.sample_rate,
+            quantum.frames() as u32,
+        ),
         control,
         loops: client,
         shape: Shape {

@@ -54,7 +54,44 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
-            profiling: self.observed.profiling.clone(),
+            profiling: {
+                let mut profiling = self.observed.profiling.clone();
+                profiling.groups = profiling
+                    .groups
+                    .iter()
+                    .cloned()
+                    .map(|mut group| {
+                        let name = match group.kind {
+                            1 => self
+                                .tracks
+                                .values()
+                                .find(|t| t.backend.raw() == group.entity)
+                                .map(|t| t.view.name.clone()),
+                            2 => self
+                                .loops
+                                .values()
+                                .find(|l| l.backend.raw() == group.entity)
+                                .and_then(|l| {
+                                    self.tracks
+                                        .get(&l.track)
+                                        .map(|t| format!("{} / {}", t.view.name, l.view.name))
+                                }),
+                            3 => self
+                                .buses
+                                .values()
+                                .find(|b| b.backend.raw() == group.entity)
+                                .map(|b| b.view.name.clone()),
+                            _ => None,
+                        };
+                        if let Some(name) = name {
+                            group.name = name.chars().take(512).collect();
+                        }
+                        group
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
+                profiling
+            },
             preview: {
                 let mut state = self.preview.clone();
                 state.master_preview_available = self.backend.supports_audio_preview()
@@ -90,6 +127,7 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::LoopTimingEdits,
             ]
             .into_iter()
             .fold(BackendCapabilities::NONE, |caps, capability| {
@@ -132,6 +170,7 @@ impl Service {
                 name: port.name.clone(),
                 data_type: data_type(port.data_type),
                 direction: direction(port.direction),
+                available: port.available,
             })
             .collect();
         if self.dynamic_ports() {
@@ -145,6 +184,7 @@ impl Service {
                         name: port.name.clone(),
                         data_type: port.data_type,
                         direction: port.direction,
+                        available: true,
                     })
                 })
                 .collect();
@@ -509,6 +549,7 @@ impl Service {
 
     pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
         if observed.connections.revision != self.observed.connections.revision
+            || observed.connections.host_ports != self.observed.connections.host_ports
             || observed.profiling != self.observed.profiling
             || observed.mixer.revision != self.observed.mixer.revision
         {
@@ -527,6 +568,28 @@ impl Service {
                 let view = &mut entry.view;
                 view.structural_state = StructuralState::Confirmed;
                 view.content_revision = state.content_revision;
+                view.timing_revision = state.timing_revision;
+                view.channel_timings = state
+                    .channel_timings
+                    .iter()
+                    .map(|channel| {
+                        let index = if channel.is_midi {
+                            channel.channel + 129
+                        } else {
+                            channel.channel + 1
+                        };
+                        LoopChannelTimingState {
+                            id: ChannelId::from_raw((view.id.raw() << 8) | index as u64),
+                            is_midi: channel.is_midi,
+                            data_length: channel.frames,
+                            start_offset: i64::from(channel.start_offset)
+                                + i64::from(channel.capture_alignment_frames),
+                            capture_alignment_frames: i64::from(channel.capture_alignment_frames),
+                            preplay_samples: u64::from(channel.preplay),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
                 view.mode = mode(state.mode);
                 view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);
                 view.next_transition_delay = state.next_transition_delay;

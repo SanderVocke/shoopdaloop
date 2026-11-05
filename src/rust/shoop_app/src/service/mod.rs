@@ -8,6 +8,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 mod commands;
+mod deployment;
 mod management;
 mod media;
 #[path = "persistence/mod.rs"]
@@ -156,6 +157,7 @@ pub struct Service {
     preview_bus: Option<BusId>,
     preview_stage: Option<preview::Stage>,
     options: ServiceOptions,
+    resource_limits: HostResourceLimits,
     host_settings: Option<HostSettings>,
     host_diagnostics: Vec<String>,
     revision: Revision,
@@ -188,6 +190,8 @@ pub struct Service {
     init_through: u64,
     init_error: Option<String>,
     shutdown: Option<OperationId>,
+    deployment: Option<shoop_deployment_protocol::Info>,
+    updater_operation: Option<OperationId>,
     shutdown_ready: bool,
     closed: bool,
     xruns: u32,
@@ -204,7 +208,18 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(mut backend: Box<dyn Backend>, options: ServiceOptions) -> Result<Self> {
+    pub fn new(backend: Box<dyn Backend>, options: ServiceOptions) -> Result<Self> {
+        Self::new_with_resource_limits(backend, options, HostResourceLimits::default())
+    }
+
+    pub fn new_with_resource_limits(
+        mut backend: Box<dyn Backend>,
+        options: ServiceOptions,
+        resource_limits: HostResourceLimits,
+    ) -> Result<Self> {
+        if !resource_limits.is_valid() {
+            return Err(anyhow!("invalid host resource limits"));
+        }
         let observed = backend.poll()?;
         if !observed.tracks.is_empty() || !observed.loops.is_empty() {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
@@ -220,6 +235,7 @@ impl Service {
             preview_bus: None,
             preview_stage: None,
             options,
+            resource_limits,
             host_settings: None,
             host_diagnostics: Vec::new(),
             revision: Revision(1),
@@ -228,9 +244,9 @@ impl Service {
             last_authority: None,
             engine_closed: false,
             actors: BTreeMap::new(),
-            updates: VecDeque::new(),
+            updates: VecDeque::with_capacity(QUEUE_CAPACITY),
             pending: BTreeMap::new(),
-            results: VecDeque::new(),
+            results: VecDeque::with_capacity(MAX_RETAINED_RESULTS),
             tracks: BTreeMap::new(),
             track_order: Vec::new(),
             loops: BTreeMap::new(),
@@ -252,6 +268,8 @@ impl Service {
             init_through: 0,
             init_error: None,
             shutdown: None,
+            deployment: None,
+            updater_operation: None,
             shutdown_ready: false,
             closed: false,
             xruns: 0,
@@ -389,6 +407,29 @@ impl Service {
             .collect();
         Ok(())
     }
+    pub fn release_host_port_identity(&mut self, id: &str) -> bool {
+        self.observed
+            .connections
+            .host_ports
+            .get(id)
+            .is_some_and(|port| !port.available)
+            && !self.host_port_in_use(id)
+            && self.backend.release_host_port_identity(id)
+    }
+
+    pub fn host_port_in_use(&self, id: &str) -> bool {
+        self.backend.host_port_in_use(id)
+            || self.connection_intent.iter().any(|((_, host), intent)| {
+                host == id && (intent.connected || intent.pending.is_some())
+            })
+            || self
+                .observed
+                .connections
+                .confirmed_links
+                .iter()
+                .any(|link| link.host_port_id == id)
+    }
+
     pub fn host_report(&self) -> HostReport {
         HostReport {
             requested: self.host_settings.clone(),

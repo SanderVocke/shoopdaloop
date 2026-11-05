@@ -1,0 +1,530 @@
+# Plan: P12 loop timing parity
+
+Status: COMPLETE on `feat/p12-loop-timing`. Written under
+[write_plan.md](.agents/prompts/write_plan.md).
+
+- Original implementation base: **`feat/fixed-quantum-runtime`**, inspected at
+  `df4683527dbde0ec7483c3e522fc3873e39a81c8`; reconciled with target
+  `2e19210bdbb5e32510322f8b8344715ce7cbefe5`, then
+  `a192b0ce77325bc8bb55b7b749e8d68b324f0a43` before final validation.
+- Implementation branch: `feat/p12-loop-timing`, created from the inspected
+  target; remote head was unchanged when implementation began.
+- Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, including
+  range editing from #895 and its preserved `shoop_app_reference`/legacy fixtures.
+- Current PR target: **`feat/backend-replacement`**, retargeted at the user's
+  explicit request after initial closure. See the retarget reconciliation below.
+  Do not target `master` or merge the PR without instructions.
+
+## Goals and scope
+
+Close **P12 in full** in the [feature parity ledger](docs/native_session_recovery/feature-parity.md):
+loop length, start offset, pre-play and timeline edits through the production
+client/service/RT stack, including persistence and UI recovery. A length/offset-only
+implementation is an intermediate milestone, not completion.
+
+Cover every currently supported primitive audio, MIDI, mixed-media and timing-only
+loop, including Sync, stopped/playing loops, active recording and scheduled
+transitions. Preserve the newer range editor and per-channel tools; keep track
+alignment/latency controls under their existing gates. Test Lua observations/events
+against the same confirmed state; a new Lua timing-setter API is not required where
+master has none.
+
+Retain the integration branch's accepted quantum and capacity contracts in
+[ARCHITECTURE.md](ARCHITECTURE.md) and
+[PLAN_FIXED_QUANTUM_CLEANUP.md](PLAN_FIXED_QUANTUM_CLEANUP.md): immutable
+Q in `1, 16, 32, 64, 128`, default 32, one whole-quantum graph traversal and
+quantum-aligned logical loop periods. Q=1 provides exact-frame master comparisons;
+at larger Q, nonaligned length requests refuse explicitly and the editor previews
+the valid effective length. Raw offsets, media and MIDI timestamps retain frame
+precision. Document this existing precision qualification in completion evidence;
+do not claim arbitrary-frame loop periods at Q>1 or silently round API requests.
+
+Other parity rows retain their scope: do not enable composites, replacing/dry-wet
+modes, latency/take-alignment controls, grab or wider track topologies as a side
+effect. Preserve their fields and integration points. P12 must supply the MIDI
+window/seek/pickup-state behavior it needs rather than defer pre-play to P11.
+Unrelated P11 import/initial-state limitations remain explicit. No host-crash disk
+durability, Lua-VM recovery, shared-memory reattachment or multi-client expansion.
+
+## Immutable acceptance criteria
+
+Goals and these criteria require explicit user approval to change.
+
+1. **Editor and intent parity:** both `SetLoopTimeline` and
+   `SetLoopChannelTimings` execute through production. Single edits affect only
+   the addressed channel; all-channel timeline start edits preserve relative
+   offsets; loop end/length remains shared. Scalar timing edits retain their
+   reference semantics. Grid/snap, preview and zoom/fit remain usable. Invalid end
+   clicks do not collapse a loop.
+2. **State-dependent admission:** length changes work while stopped/playing and
+   refuse if recording is active or any recording transition is armed. Offset and
+   pre-play edits retain reference admission while recording/armed; they do not
+   move the capture clock, rewrite capture alignment, stop recording or cancel
+   pending transitions. A request combining a forbidden length change with other
+   fields refuses entirely. Validate again at the actual execution cut.
+3. **Playback and sync:** a manual length edit retains absolute play position,
+   applying modulo when it reaches or exceeds a nonzero new length. It never
+   proportionally scales position or media. Offset/pre-play edits preserve period
+   and transport.
+   Sync-source edits update future pulse timing without stretching followers or
+   inventing pulses/cycles; pending cycle counts and unrelated playback survive.
+   Zero length and empty media have defined, tested outcomes under the existing
+   empty-loop contract; no infinite wrap or unintended recording results.
+4. **Real pre-play:** an eligible stopped loop with imminent scheduled playback
+   emits retained material before the start, then continues into normal playback.
+   Match master eligibility and absence of a new lead-in on ordinary wraps/seeks/
+   retriggers. Cancellation, supersession, Stop, source changes and prediction
+   invalidation terminate/recompute lead-in coherently. Audio is continuous;
+   MIDI restores needed state and carries pickup notes across the start without
+   duplicate attacks or stuck notes. Test different pre-play values per channel.
+5. **Atomic ownership and truthful results:** prevalidate the entire single/all
+   channel transaction, including identity, ranges, alignment, capacity and
+   revisions. Publish one complete timing/media state at a settled boundary, or
+   leave every field, owner and pending operation unchanged. Queue acceptance is
+   not execution confirmation. UI loss after admission retains service-owned work;
+   reconnection reconciles its result without replay. Stale generations cannot
+   modify a new loop/session reusing a slot.
+6. **Retained media and persistence:** timing edits preserve raw PCM/MIDI and
+   permit moving the window again. Displayed coordinates consistently account for
+   capture alignment, while alignment itself stays unchanged. Out-of-media audio
+   is silent; valid aligned-take constraints still apply. Save/load/save preserves
+   per-channel timing, shared length and exact raw media at unchanged sample rate.
+   Export honors existing exact/raw versus logical-window format semantics.
+   Nonzero pre-play loads and plays. Failed loads preserve the running session;
+   playing saves use coherent cuts and recording saves retain their busy refusal.
+7. **Fixed-quantum and RT safety:** satisfy the precision contract above at every
+   supported Q and arbitrary host callback partitioning. No adaptive graph
+   intervals, second musical clock, callback allocation/free/locks/waits/I/O,
+   unbounded payloads or media-sized timing-edit transfers. Preserve finite
+   recording/resource budgets and off-render retirement, including failure paths.
+8. **Deployment:** identical admitted semantics through typed local delivery,
+   encoded native socket and supported shared-memory delivery, and browser
+   main-thread service/AudioWorklet. Verify socket reattachment, native host
+   output, and actual hosted/self-contained browser UI and audio/MIDI output.
+9. **Evidence and closure:** preserved reference fixtures and new production
+   tests pass. Link acceptance evidence for every criterion before marking P12
+   COMPLETE; enable `LoopTimingEdits` only when all production paths are ready.
+   Final-head CI runs and passes for the requested PR base.
+
+## Baseline findings and design rules
+
+- Existing UI is retained in `shoop_egui/src/{details_pane,waveform_widget,
+  midi_sequence_widget}.rs`; only mutation is capability-gated. Contracts already
+  exist in `shoop_app_api`. `shoop_app_client/src/runtime.rs` refuses both intents,
+  `shoop_app_protocol::Command` has neither, the service does not project the
+  capability, and `shoop_rt_backend` refuses timing setters. Add the complete route.
+- Use `shoop_app_reference::set_loop_timeline`/`set_loop_channel_timings`, legacy
+  `channel_timing_contract`, native armed-recording refusal tests, and engine
+  `audio_preplay`/`midi_preplay` as behavioral anchors. The older
+  [loop assessment](LOOP_FEATURES_ASSESSMENT.md) is proposal/history, not current
+  authority: it predates per-channel editing and overgeneralizes recording refusal.
+- The service owns validation, session/channel identity and admitted work. The
+  adapter maps to engine identities; the resolver/planner owns timing and the
+  actual cut. Use bounded asynchronous completion, existing operation IDs,
+  generation/revision fences and retained results. Do not wait synchronously for
+  render progress on the service/browser thread.
+- Distinguish raw start offset, capture alignment and displayed start. Per-channel
+  requests subtract that channel's alignment. Preserve scalar reference-alignment
+  behavior separately from the range editor's explicit per-channel delta batch.
+  Resolve channel IDs against live service-owned topology, never trust a client
+  index or synthesize authority from cached media.
+- Add versioned per-channel playback-window metadata over immutable raw snapshots.
+  Raw storage length and logical loop length are different. Reuse leases/indexes;
+  metadata edits share media instead of copying/re-uploading it. Retain old versions
+  for in-flight reads/exports and retire off render. Validate aligned-take windows
+  without requiring every ordinary window to lie inside raw storage.
+- Current `shoop_rt_backend/src/prepared.rs` renders offsets into a normalized
+  loop-length upload; newly recorded reads report zero timing. Extend preparation,
+  capture/read, resync and replacement to carry authoritative raw media plus
+  windows. Do not make the adapter's canonical import cache the sole timing owner.
+- `ContentRetime`/content-family activation currently scales positions and refuses
+  recording. Provide a distinct manual timing-edit policy/path; preserve existing
+  import/sample-rate family-retiming semantics and tests. Do not replace the whole
+  session, rebuild physical nodes or stop playback for an ordinary timing edit.
+- Derive lead-in from resolver-owned scheduled-start predictions. Publish explicit
+  per-channel render spans/masks, including a pre-play onset inside a quantum,
+  while processing the graph once per tick. Preserve sample/event positions and
+  avoid a second clock or speculative renderer-owned transport. Pre-play may be
+  audible before a subsequently cancelled start, as on master; clean it up at the
+  cancellation's effective boundary. Never replay an already emitted pickup.
+- Timing metadata remains available during recording even though the existing
+  media-read path declines active captures. Separate metadata projection from
+  optional waveform/MIDI reads; finalize captures with the latest accepted timing
+  without publishing mutable raw storage or freezing capture to service a view.
+- Prepare finite channel-edit/window/receipt capacity and validate checked signed
+  arithmetic and legacy field bounds before promising success. Version changed
+  app/RT layouts, host/worklet handshakes and fixture codecs as needed. Preserve
+  `no_std`, safe Rust and existing dependency boundaries. The worklet accepts only
+  the target branch's audited `shoop_profiling.now` elapsed-clock import; no other
+  imports or service/render dependency expansion are permitted.
+- Preserve UI/Lua ownership, current recording limits and other parity gates.
+  Reuse `shoop_session` document fields; introduce a file-format migration only if
+  demonstrably needed. P12 does not require undo or new transport modes.
+
+## Implementation checkpoints
+
+- Stage 0 complete: branch/base verified, reference matrix recorded in
+  [loop timing evidence](docs/native_session_recovery/evidence/loop-timing.md),
+  18 baseline fixtures and all runtime/loop/production dependency boundaries pass.
+- First core milestone: bounded per-channel windows, manual absolute/modulo period
+  edits and resolver-owned stopped pre-play are implemented in `shoop_loops`.
+  Seventeen runtime scenarios (including three new integration oracles), library
+  unit tests, warning-denying workspace check/build and test-attribute checks pass.
+  Production commands, persistence and capability enablement remain unfinished.
+- Application contract milestone: app protocol version 21 carries both timing
+  commands and bounded channel batches. The service validates channel identity and
+  alignment, and snapshots have independent timing revisions/metadata. Client and
+  service capability gates remain enforced. All 28 app-client/protocol tests and
+  warning-denying workspace check/build pass; RT wire/execution remains next.
+- RT transaction milestone: protocol version 8 carries bounded timing edits,
+  confirmed window states and resync metadata. The engine validates live strip
+  channels and fences raw/timing revisions at execution; loop telemetry publishes
+  coherent state without spinning. The adapter maps results into service snapshots.
+  All 88 engine/adapter regressions, protocol/loop checks, the all-Q timing/output
+  scenario and the warning-denying workspace build pass. Capabilities remain off
+  until raw-media persistence and UI acceptance are finished.
+- Ordering refinement: implement the core window semantics before fixing the wire
+  layout, then finish Stage 1 alongside production integration. The accepted
+  behavior matrix and completion criteria are unchanged.
+- Window versions are copied into immutable settled/export cuts with their own
+  checked timing revision. Existing ledger/export leases retain raw snapshots;
+  metadata edits do not need a new media allocation or mutate earlier export cuts.
+
+- Raw-media/persistence milestone: uploads now retain original interleaved PCM,
+  channel gains and exact MIDI timestamps. A bounded private-source window header
+  separates logical periods from raw extents without changing family/replacement
+  transaction records. Imported metadata and later edits share immutable media.
+  Shorten/zero/re-extend and nonzero pre-play replacement round trips pass.
+- Timing edits serialize with persistence preparation/capture; a settled reliable
+  result publishes the whole header. No-op and empty batches confirm a new timing
+  revision without changing raw media. Active/all-armed recording is checked again
+  before any length-containing transaction publishes.
+- Editor projection uses authoritative timing even without media, including active
+  recording. End previews use effective Q-aligned periods; API calls never round.
+  Engine/backend/service capability advertisement is now enabled for integration
+  acceptance. Other parity gates remain unchanged.
+- Validation checkpoint: native loop-host direct/wire/threaded debug and release
+  replay and bare-metal builds pass. Three selected Miri timing cases pass. Both
+  packaged transports pass live edits; final browser/full-suite/CI gates remain open.
+
+- Deployment/RT checkpoint: hosted Chromium and isolated self-contained HTML
+  both pass timing edits, stopped audible pre-play and save/load/save with zero
+  xruns. Actual JACK samples/MIDI pass through local and independent hosts, live
+  edits, socket recovery and persistence. Validation-only MIDI queries now avoid
+  full channel-state copies on callback stacks; a 512 KiB stack regression passes.
+- All armed recording is now explicit telemetry, including Record behind an earlier
+  Stop. Capture/replacement and length edits refuse that state; offsets still work.
+- The existing two-thread transport stress watchdog used render-iteration count,
+  which reproduced one failure in twelve isolated runs under contention. It now
+  uses a 30-second elapsed-time watchdog, retaining the same 10,000 operations,
+  sequence/publication assertions and callback allocation guard.
+
+- Target reconciliation: merged the shared fixed-media foundation and buffered
+  processor updates from `2e19210b`. Window reads support stored and shared audio;
+  shared MIDI validation uses bounded checkpoint queries without full state copies.
+  Timing revisions fence prepared shared candidates. New all-Q/host-partition
+  sample tests preserve the raw history and exported old owners. Consolidated the
+  engine test allocator after the two upstream test modules introduced duplicate
+  global allocator declarations. P04/P05 application gates remain unchanged.
+
+- Final integration checkpoint: 2,753 native tests, debug/release loop-host replay,
+  Cortex-M/Cortex-A no-std builds, actual JACK and both packaged transports pass.
+  Four timing Miri cases plus the shared MIDI checkpoint/reset oracle pass on
+  `6c0ab030`. Browser diagnostics exposed serial initial-state packet upload under
+  load; the existing negotiated 8/64-credit window now includes ordered MIDI
+  initial packets. Private window acknowledgment leaves replacement cancellable.
+  All 42 adapter regressions pass, including exact initial-state retention and
+  bounded in-flight counts for old/wide peers. Final browser/Node/CI remain open.
+
+- Local acceptance complete on production source `846ae91f`: 2,755 native tests
+  and 847 executions across ten affected Wasm/Node packages pass. Both actual
+  browser deployments pass timing, stopped pickups, exact save/load/save, resumed
+  playback and bus workflows with zero xruns. Final strict JACK and both native
+  transport probes pass. The hashed validation inventory and nine-criterion
+  evidence map are written; only PR CI/review and ledger closure remain.
+
+- Second target reconciliation: target advanced to `a192b0ce` with runtime
+  profiling and audio/MIDI hot-path optimizations. Preserve those approved target
+  features while combining P12. Allocate separate profiling/timing capability bits
+  and request tags; bump app protocol to 22 and RT protocol to 9 for the combined
+  layouts. The worklet design rule now preserves upstream's single audited
+  profiling-clock import, rather than removing that feature. Goals and immutable
+  acceptance criteria are unchanged. Earlier report hashes remain checkpoint
+  evidence; combined final validation and CI must be rerun before closure.
+
+- Reconciled local acceptance complete on `1e2faf74`, target `a192b0ce`: all
+  2,778 native tests and 904 Wasm/Node executions across fifteen packages pass.
+  Worklet clock/import/protocol contracts, hosted/isolated browser workflows with
+  zero xruns, full strict JACK acceptance, both transports and large-file probes,
+  debug/release loop-host replay, all five selected Miri cases and no-std/boundary
+  gates pass. The current source/hash inventory supersedes earlier checkpoints.
+  Final-head PR CI, review inspection and ledger closure remain.
+
+- CI/browser correction on `5fd75d5c`: remove duplicate reload assertions from
+  preview-only New Session setup, where audio/MIDI tracks do not yet exist;
+  retain the actual Loaded timing assertions. Output-only, rejected/pending
+  resume, hosted/isolated normal and >32 MiB workflows all pass with zero xruns.
+  Runtime code remains unchanged from `1e2faf74`. Fresh Build/Docs/CodeQL runs
+  pass on this acceptance correction.
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Staged implementation
+
+Execute in order. Stages 1–4 establish contracts and loop mechanisms; Stage 5
+connects production execution/recovery; Stage 6 completes persistence; Stage 7
+enables the editor/capability. Stages 8–9 validate and deliver the complete feature.
+Each stage's verification must pass before its dependent stage is closed.
+
+### Stage 0 — branch, reference matrix and baseline
+
+- [x] Fetch the latest `feat/fixed-quantum-runtime`, preserve local work, create
+  `feat/p12-loop-timing`, and record the actual base SHA and reference master SHA.
+  Reconcile intervening changes before carrying this plan forward.
+- [x] Add this plan to the work branch. Record a behavior matrix for scalar versus
+  per-channel edits, recording/armed refusals, zero length, signed offsets,
+  alignment, sync-source edits and pre-play cancellation/continuity. Add focused
+  reference assertions where behavior is not yet pinned; do not weaken fixtures.
+- [x] Check PR workflow filters: `build_and_test.yml`, `docs.yml` and `codeql.yml`
+  currently omit `feat/fixed-quantum-runtime`. Add the target or arrange equivalent
+  final-head runs so a PR to the correct base receives actual checks.
+- [x] Verify: run the relevant existing reference/backend/editor fixtures and
+  parity/dependency checks; record baseline failures independently of P12 changes.
+
+### Stage 1 — timing transaction and projection contracts
+
+- [x] Extend application/backend/RT contracts for scalar and bounded channel-batch
+  edits, explicit optional fields, expected identity/revisions, reliable outcomes,
+  and authoritative per-channel timing projection. Define metadata visibility for
+  empty and recording loops and its relationship to raw-media revisions.
+- [x] Specify one atomic publication cut, conflicts with capture/clear/import/load/
+  removal, no-op/empty-batch outcomes and queue ordering. Reserve staging/result
+  credits before admission; revalidate active and all armed recording at execution.
+- [x] Define quantum length validation and effective-frame reporting. Carry Q to
+  editor validation; preserve frame-precision offsets/pre-play and MIDI timestamps.
+- [x] Verify: typed/wire codec round-trips, version refusal, oversized/duplicate/
+  foreign/stale channels, integer overflow, nonaligned lengths and protocol bounds.
+
+### Stage 2 — retained raw media and channel windows
+
+- [x] Extend the loop media ledger, planner views, audio/MIDI renderers and export
+  descriptors to distinguish raw data duration from logical window duration,
+  with independent audio-channel offsets and MIDI start/pre-play metadata.
+- [x] Implement prepared immutable window versions sharing existing media leases,
+  transactional activation and off-render retirement. Preserve raw data beyond a
+  shortened logical loop and in-flight exports of previous versions.
+- [x] Apply signed raw-position mapping with silence outside audio bounds and
+  correct MIDI indexed seek/restore. Keep timing-only/empty-MIDI duration valid.
+- [x] Verify: Q=1 and larger-Q render oracles for negative/positive/different-channel
+  offsets, shorten/re-extend, empty media, aligned-take rejection, raw export
+  retention, saturation/stale sources and heap-guarded publication/cleanup.
+
+### Stage 3 — manual length and live timing execution
+
+- [x] Add the manual timing transaction to resolver/planner execution: preserve
+  position or modulo it, update period without scaling media, retain pending
+  transitions, and recalculate source pulse prediction without retiming followers.
+- [x] Apply whole-loop and channel-batch fields atomically. Permit reference-valid
+  offset/pre-play changes during capture/armed recording while keeping capture
+  progress/alignment fixed; refuse length-containing transactions in those states.
+- [x] Integrate capture start/restart/finalization and clear with timing generations;
+  prevent a completing take or stale queued edit from restoring old metadata.
+- [x] Verify: stopped/playing/recording/armed matrix; position inside/outside new
+  length; zero length; multiple pending transitions; source/follower sync; coincident
+  Stop/Record/clear; unrelated-loop continuity; refusal with no partial changes.
+  Retain existing proportional import/family-retiming regression results.
+
+### Stage 4 — complete audio/MIDI pre-play
+
+- [x] Implement resolver-owned imminent-start prediction and per-channel lead-in
+  views, preserving logical Stopped state and emitting no early pulse/cycle. Render
+  available raw lead-in, silence outside retained audio and start exactly at the
+  published effective boundary; do not fabricate missing capture history.
+- [x] Handle edits during lead-in, different channel pre-play values, source
+  stop/length/sync changes, replaced starts, cancellation, mute and explicit Stop.
+  Preserve continuity into playback and cleanup when prediction becomes invalid.
+- [x] Extend bounded MIDI window/seek state handling as needed for note, sustain,
+  controller/program/pitch state and ordered packet playback. Preserve pickup
+  notes across start and release audible state on cancellation/removal/disconnect.
+- [x] Verify: port `audio_preplay`, `midi_preplay` and pickup-note corner cases to
+  independent production-loop oracles. Test onset within a whole quantum,
+  callback partitions/zero callbacks, long lead-in, no new lead-in on wraps/seeks/
+  retriggers, cancellation after output, supersession and exhausted resource/MIDI
+  capacity without partial audio/MIDI publication or callback heap activity.
+
+### Stage 5 — production commands, confirmation and recovery
+
+- [x] Implement RT request handling, reliable publication/results and full state/
+  resync metadata; implement backend timing setters with bounded asynchronous
+  completion and generation-safe cache invalidation rather than media re-upload.
+- [x] Add service admission/handlers and client intent routing for both intents.
+  Validate alignment-adjusted channel coordinates against authoritative topology,
+  including newly recorded loops and requests without selected media loaded.
+- [x] Reconcile pending results and snapshots by confirmed revisions. Keep all
+  admitted work owned by the service after UI loss; abandon unadmitted preparation
+  safely. Stop/clear/removal/session replacement fence stale work and raw reads.
+- [x] Verify: typed and encoded production client/service/adapter/engine tests for
+  success, RT refusal, backpressure, lost acknowledgment, duplicate operation IDs,
+  stale generations, slot reuse and disconnect before/after admission. Socket
+  reattach must recover state/results without double edits or replayed pickup notes;
+  shared memory exercises supported single attachment and normal cleanup.
+
+### Stage 6 — persistence, import/export and coherent capture
+
+- [x] Carry timing and raw lengths through RT capture/read descriptors, service
+  persistence images/mappings, adapter preparation/replacement and portable codecs.
+  Remove only P12 pre-play refusals in document, image and prepared validation;
+  retain unrelated channel-mode/latency/unsupported-MIDI diagnostics.
+- [x] Save/load edited media and timing as one immutable cut; fence pending edits
+  against capture/import/load, retain fresh live IDs and stopped loops on load.
+  Preserve existing sample-rate consent, resampling, exact/raw exports and logical
+  WAV/SMF window rules, including lead-in metadata in formats that represent it.
+- [x] Verify: save/load/save with independent channel timing, signed/aligned offsets,
+  nonzero pre-play and shortened/re-expanded raw takes; rendered output after load;
+  audio/MIDI import preserving opposite media/timing; sample-rate conversion;
+  malformed/out-of-range data, capacity/cancellation and stale commit refusal.
+  Exercise coherent playing-save and recording/armed-save refusal without stopping
+  capture, plus UI-loss reconciliation during accepted persistence work.
+
+### Stage 7 — editor integration and capability enablement
+
+- [x] Supply confirmed channel timing independently of optional media reads, with
+  consistent audio/MIDI alignment coordinates and stable generation-safe IDs.
+  Preserve lanes or metadata controls during active recording; loading a waveform
+  is not a prerequisite for a valid timing command.
+- [x] Connect existing start/pre-play/end tools and metadata controls. Preserve
+  single/all scope, relative starts, shared length, grid/snap anchoring and preview.
+  Preview valid quantum-aligned periods and show actual refusals/pending outcomes;
+  never present an unconfirmed edit as authoritative or silently quantize an API call.
+- [x] Enable `LoopTimingEdits` consistently in engine/backend, service projection
+  and client/UI only after Stages 1–6 pass. Keep unrelated capabilities disabled.
+- [x] Verify: real production UI events reach service commands, change output and
+  refresh confirmed markers/lengths. Cover mixed audio/MIDI lanes, active recording,
+  armed-length refusal, stale data/refusal restoration and unavailable backends.
+  Verify existing Lua length getters/change events and scheduling use confirmed
+  edited state; no direct script-to-backend bypass or automatic script restart.
+
+### Stage 8 — final end-to-end validation and evidence
+
+- [x] Run formatting, warning-denying workspace build and the full reference plus
+  production suite per `.agents/info/build.md` and `.agents/info/test.md`:
+
+  ```sh
+  cargo fmt --all -- --check
+  RUSTFLAGS='-D warnings' cargo build --locked --workspace
+  SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+  python3 scripts/check_shoop_test_usage.py
+  python3 scripts/check_tracing_coverage.py --require-closed
+  python3 scripts/check_feature_parity.py
+  python3 scripts/check_rt_runtime_boundary.py
+  python3 scripts/check_loops_boundary.py
+  python3 scripts/check_rt_engine_boundary.py
+  ```
+
+- [x] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
+  heap guards and selected Miri cases covering shared raw leases, window activation,
+  active-capture edits, MIDI pickup cancellation and refusal/retirement. Update
+  inventories and keep hashed reports, source SHAs and seeds.
+- [x] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
+  codec artifact contracts using existing runners. Exercise all Q values and
+  awkward host partitions, especially Q=1 exact reference cases and default Q=32.
+- [x] Exercise packaged native client/host paths on sockets/shared memory and a
+  native output fixture (JACK/dummy loopback as appropriate), including recording,
+  live edits, scheduled pre-play, persistence and socket reattachment. Validate
+  samples/MIDI and transport state, not just rendered labels or acknowledgments.
+- [x] Extend/run actual hosted and isolated self-contained browser acceptance
+  through the production AudioWorklet: edit audio/MIDI, play pickups, cancel/rearm,
+  save/load/save and resume. Measure output/packet continuity and check errors,
+  xruns and unchanged core/bus/preview workflows. Use existing browser runners and
+  packaging contracts; compilation/Node execution cannot replace browser evidence.
+- [x] Write `docs/native_session_recovery/evidence/loop-timing.md` mapping all nine
+  criteria to tests, native/browser artifacts, Q qualification and final CI runs.
+  Update architecture/usage docs and the P12 row/capability disposition, removing
+  stale P12 refusals and updating OPEN counts. Mark COMPLETE only after full
+  pre-play, persistence, recovery and production UI acceptance; preserve other rows.
+
+### Stage 9 — PR, CI and automated review
+
+- [x] Commit each completed milestone, push `feat/p12-loop-timing`, and create a
+  PR with base **`feat/fixed-quantum-runtime`**. Describe final behavior, quantum
+  precision, validation and evidence links for a reviewer without this discussion.
+- [x] Verify the requested base actually triggers build/platform, browser, docs,
+  coverage and CodeQL checks. Inspect failures using `.agents/info/ci-debug.md`,
+  fix causes, and repeat affected validation until final-head checks are green.
+- [x] Check automated review comments/threads as they arrive; address applicable
+  feedback, explain evidence-backed disagreements, and repeat review/fixes until
+  the reviewer approves. Record explicitly if no automated review is provided.
+- [x] Keep this plan and acceptance evidence current, verify clean intended scope
+  and passing checks on the final head, and report the PR ready to merge into
+  `feat/fixed-quantum-runtime`. Leave the merge to a separate instruction.
+
+## Closure
+
+P12 is complete on the reconciled production source `5fd75d5c`, based on target
+`a192b0ce`. All nine acceptance criteria have linked evidence. The original
+goals and immutable criteria are unchanged. The final documentation changes
+update the acceptance record and ledger; they do not change production code.
+
+- [PR #943](https://github.com/SanderVocke/shoopdaloop/pull/943) targets
+  `feat/fixed-quantum-runtime`.
+- [Passing implementation matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606480),
+  [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606641)
+  and [docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606481)
+  identify the validated production source. The PR's
+  [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+  verify the final documentation head.
+- Local acceptance: 2,778 native tests, 904 Node executions across fifteen
+  packages, strict JACK, both native transports/large-file workflows,
+  hosted/isolated browser output with zero xruns, debug/release loop-host replay,
+  five selected Miri cases, no-std and policy/dependency checks all pass.
+- PR reviews, inline feedback and comments were inspected. No automated code
+  review was provided. The informational Codecov report was reviewed: 90.97%
+  patch coverage exceeds the configured 80% floor; CLI and browser acceptance
+  run separately from native coverage. No base coverage delta is claimed.
+  The PR is delivered ready for review/merge. Merging remains a separate instruction.
+
+## Follow-up target integration
+
+The target advanced to `eb4287a5` with interactive profiling graphs and xrun tick
+inspection after P12 closure. Merged that target into the P12 branch, preserving
+both timing command handlers/bounds and profiling inspection. The combined wire
+layouts use app protocol **25** and RT protocol **11**, with updated canonical
+fixtures and built-worklet handshake; neither parent's incompatible version is
+reused. P12 request tags and timing/recording rules remain intact.
+
+Local reconciliation validation passes: **2,802 native tests** (seven intentional
+skips), **2,322 Node passes across 35 packages** (two opt-in failure canaries skipped), worklet contracts,
+hosted/preview/isolated browser workflows with zero xruns, both native transport
+probes and all runtime/loop/engine dependency boundaries. The loop/runtime core
+files are unchanged from `a2f82af0`, retaining the existing selected Miri evidence.
+The [inventory](docs/native_session_recovery/evidence/loop-timing-validation.json)
+records the merge parents, source-index hash and new report/artifact hashes.
+The PR's [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+verify this integration head. Original goals and acceptance criteria are unchanged.
+
+## Backend replacement retarget reconciliation
+
+The user retargeted PR #943 to `feat/backend-replacement`. Its fixed-quantum work
+was squash-integrated in `0ef7581b`, so Git initially selected the much older
+`a6e2554c` merge base despite equivalent runtime content. The profiling graph
+patches in `eb4287a5` and `e4b180f6` are identical. Against the original runtime
+snapshot, target `32179102` differs only in Host Manager branding and updated
+mandates.
+
+Join the target ancestry with the validated P12 head `a3dfff10`, preserving that
+head's complete P12 implementation and copying both target-only files exactly.
+The Host Manager includes the target logo, header rendering and background. App/RT
+protocols remain **25/11**. The warning-denying workspace build and all **33 Linux
+Host Manager/process tests** pass, including rendering, real process inspection
+and reattachment. Formatting, tracing inventory and parity policy checks pass.
+Testing is targeted under the updated mandates: P12/runtime code is unchanged,
+so the previous full native, Node and browser evidence retains its actual source.
+
+The PR's [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+identify CI for the new target. Merging the PR remains a separate instruction.

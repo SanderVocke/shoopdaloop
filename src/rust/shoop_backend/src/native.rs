@@ -1621,6 +1621,7 @@ impl NativeRuntime {
                         data_type,
                         direction,
                         preferred_playback,
+                        available: true,
                     },
                 ))
             })
@@ -1641,6 +1642,7 @@ impl NativeRuntime {
                         data_type: port.descriptor.data_type,
                         direction: opposite_backend_direction(port.descriptor.direction),
                         preferred_playback: false,
+                        available: true,
                     });
                 if connected {
                     confirmed_links.insert(BackendConfirmedLink {
@@ -5050,6 +5052,9 @@ impl Backend for NativeBackend {
                 BackendLoopState {
                     sync_source: loop_.sync_source,
                     content_revision: 0,
+                    recording_armed: false,
+                    timing_revision: 0,
+                    channel_timings: Vec::new(),
                     mode: from_native_mode(state.mode),
                     length: state.length,
                     position: state.position,

@@ -214,6 +214,15 @@ impl LoopPlanner {
         self.resolver
             .retime_content(self.family.iter().filter_map(|selection| selection.retime))?;
         activation.commit();
+        for selection in &self.family {
+            if let Some(media) = selection.entry.media {
+                let row = self.rows[selection.entry.target.slot() as usize]
+                    .as_mut()
+                    .ok_or(Error::InvalidId)?;
+                row.windows = self.ledger.view(media)?.windows.unwrap_or_default();
+                row.length_override = None;
+            }
+        }
         Ok(())
     }
 }

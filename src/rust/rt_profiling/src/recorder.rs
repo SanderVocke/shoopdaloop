@@ -30,6 +30,9 @@ struct Shared {
     ready_frame: AtomicU64,
     ready_callback_frame: AtomicU64,
     ready_frames: AtomicU32,
+    ready_budget: AtomicU64,
+    host_graphs: AtomicU32,
+    ready_graphs: AtomicU32,
     ready_start: AtomicU64,
     ready_input: AtomicU64,
     ready_generation: AtomicU64,
@@ -61,6 +64,7 @@ impl Control {
             .host_callback_frame
             .store(callback_frame, Ordering::Relaxed);
         self.0.host_frames.store(frames, Ordering::Relaxed);
+        self.0.host_graphs.store(0, Ordering::Relaxed);
         self.0.host_start.store(at, Ordering::Relaxed);
         self.0.host_input.store(at, Ordering::Relaxed);
         self.0.host_open.store(true, Ordering::Release);
@@ -102,6 +106,11 @@ impl Control {
             .store(self.0.host_input.load(Ordering::Relaxed), Ordering::Relaxed);
         self.0.ready_generation.store(
             self.0.host_generation.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        self.0.ready_budget.store(budget_ns, Ordering::Relaxed);
+        self.0.ready_graphs.store(
+            self.0.host_graphs.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
         self.0.host_end.store(at, Ordering::Release);
@@ -269,6 +278,7 @@ pub struct Recorder {
     sequence: u64,
     callback_frame: u64,
     callback_frames: u32,
+    callback_graphs: u32,
     tick_frames: u32,
     callback_at: u64,
     budget: u64,
@@ -287,6 +297,7 @@ impl Default for Recorder {
             sequence: 0,
             callback_frame: 0,
             callback_frames: 0,
+            callback_graphs: 0,
             tick_frames: 0,
             callback_at: 0,
             budget: 0,
@@ -341,6 +352,9 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
         ready_frame: AtomicU64::new(0),
         ready_callback_frame: AtomicU64::new(0),
         ready_frames: AtomicU32::new(0),
+        ready_budget: AtomicU64::new(0),
+        host_graphs: AtomicU32::new(0),
+        ready_graphs: AtomicU32::new(0),
         ready_start: AtomicU64::new(0),
         ready_input: AtomicU64::new(0),
         ready_generation: AtomicU64::new(0),
@@ -410,6 +424,11 @@ impl Recorder {
         self.sequence = self.sequence.wrapping_add(1);
         Packet {
             generation: self.generation,
+            budget_ns: if flags & CALLBACK != 0 {
+                self.budget
+            } else {
+                0
+            },
             sequence: self.sequence,
             callback: self.callback,
             callback_frame: self.callback_frame,
@@ -417,7 +436,17 @@ impl Recorder {
             epoch: self.epoch,
             start_ns: at,
             end_ns: at,
-            flags,
+            flags: flags
+                | if flags & CALLBACK != 0
+                    && self
+                        .storage
+                        .as_ref()
+                        .is_some_and(|s| s.control.0.outer_budget.load(Ordering::Relaxed))
+                {
+                    crate::PART
+                } else {
+                    0
+                },
             ..Packet::default()
         }
     }
@@ -483,6 +512,8 @@ impl Recorder {
                     epoch: self.epoch,
                     start_ns: start,
                     end_ns: end,
+                    budget_ns: shared.ready_budget.load(Ordering::Relaxed),
+                    graphs: shared.ready_graphs.load(Ordering::Relaxed),
                     flags: CALLBACK | crate::HOST,
                     ..Packet::default()
                 });
@@ -498,6 +529,7 @@ impl Recorder {
                 storage.completed();
             }
         }
+        self.callback_graphs = 0;
         self.callback = self.callback.wrapping_add(1);
         self.callback_frame = frame;
         self.callback_frames = frames;
@@ -562,12 +594,15 @@ impl Recorder {
                 return;
             }
             let at = self.now();
-            let mut header = self.header(self.callback_frame, at, CALLBACK);
+            let mut header = self.header(self.callback_frame, at, CALLBACK | crate::PART);
             header.frames = self.callback_frames;
             if let Some(storage) = &mut self.storage {
                 storage.callback.begin(header);
             }
             self.begin_tick(frame, self.tick_frames);
+        }
+        if self.enabled {
+            self.callback_graphs = self.callback_graphs.saturating_add(1);
         }
         self.phase(Phase::GraphStart);
     }
@@ -662,6 +697,17 @@ impl Recorder {
         if let Some(storage) = &mut self.storage {
             storage.callback.push(PHASE | Phase::CallbackEnd as u64, at);
             storage.callback.header.end_ns = at;
+            storage.callback.header.graphs = self.callback_graphs;
+            if storage.control.0.outer_budget.load(Ordering::Relaxed)
+                && storage.control.0.host_open.load(Ordering::Relaxed)
+                && storage.control.0.host_generation.load(Ordering::Relaxed) == self.generation
+            {
+                storage
+                    .control
+                    .0
+                    .host_graphs
+                    .fetch_add(self.callback_graphs, Ordering::Relaxed);
+            }
             if !complete {
                 storage.callback.header.flags |= FAULT;
             }
@@ -984,7 +1030,7 @@ mod tests {
 
     #[shoop_test]
     fn split_engine_parts_do_not_create_independent_driver_deadlines() {
-        let (control, mut recorder, _reader) = prepare(4).unwrap();
+        let (control, mut recorder, mut reader) = prepare(4).unwrap();
         recorder.set_clock(Clock {
             now,
             resolution_ns: 10,
@@ -998,11 +1044,32 @@ mod tests {
             recorder.begin_tick(frame, 1);
             recorder.graph_start(0, frame);
             recorder.node_ready(3);
+            recorder.phase(Phase::OutputRouting);
             recorder.end_tick(true);
             recorder.end_callback(true);
         }
         control.host_end(now(), 10_000);
         assert_eq!(control.0.trigger.load(Ordering::Relaxed), 0);
+        recorder.begin_callback(3, 0, 1, 1);
+        recorder.end_callback(true);
+        let mut collector = crate::Collector::default();
+        collector.status(control.status());
+        let mut host_graphs = None;
+        while let Some(packet) = reader.next_packet() {
+            if packet.flags & crate::HOST != 0 {
+                host_graphs = Some(packet.graphs);
+            } else if packet.flags & CALLBACK != 0 {
+                assert_ne!(packet.flags & crate::PART, 0);
+            }
+            collector.receive(packet);
+        }
+        assert_eq!(host_graphs, Some(2));
+        let wrapping = collector.view().live.wrapping;
+        assert_eq!(wrapping.before.count, 1);
+        assert!(wrapping.before.mean > 0.);
+        assert!(wrapping.after.mean > 0.);
+        assert!(wrapping.between.mean > 0.);
+        assert_eq!(wrapping.incomplete, 0);
         control.host_begin(3, 1, now());
         control.host_end(now() + 100, 10);
         assert_eq!(control.0.trigger.load(Ordering::Relaxed), DEADLINE);

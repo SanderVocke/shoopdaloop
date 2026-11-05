@@ -7,12 +7,26 @@ use alloc::vec::Vec;
 use super::*;
 
 mod control;
+mod timing;
 
 type CommandResult = core::result::Result<Effect, CommandError>;
 
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            } => self.set_loop_timeline(loop_id, start_offset, preplay_samples, loop_length),
+            Command::SetLoopChannelTimings { loop_id, updates } => {
+                self.set_loop_channel_timings(loop_id, &updates)
+            }
+            Command::InspectProfiling(request) => {
+                self.backend.inspect_profiling(request)?;
+                Ok(Effect::None)
+            }
             Command::SetProfiling(enabled) => {
                 self.backend.set_profiling(enabled)?;
                 Ok(Effect::None)
@@ -982,7 +996,8 @@ impl Service {
             .host_ports
             .values()
             .filter(|port| {
-                port.data_type == BackendPortDataType::Audio
+                port.available
+                    && port.data_type == BackendPortDataType::Audio
                     && port.direction == BackendPortDirection::Input
             })
             .cloned()
@@ -1049,7 +1064,8 @@ impl Service {
                 .host_ports
                 .values()
                 .filter(|candidate| {
-                    data_type(candidate.data_type) == kind
+                    candidate.available
+                        && data_type(candidate.data_type) == kind
                         && candidate.direction == BackendPortDirection::Output
                 })
                 .map(|port| port.id.clone())

@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::{
     mirror::Mirror,
-    prepared::{Validation, MAX_MEDIA_BYTES},
+    prepared::Validation,
     reads::{empty_audio, empty_midi, Outcome},
     EngineClock, RtBackend,
 };
@@ -49,6 +49,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | shoop_rt_protocol::Request::CreateLoop { .. }
                 | shoop_rt_protocol::Request::RemoveLoop { .. }
                 | shoop_rt_protocol::Request::LoopClear { .. }
+                | shoop_rt_protocol::Request::LoopTiming { .. }
                 | shoop_rt_protocol::Request::CancelBulk => true,
                 shoop_rt_protocol::Request::LoopTransition {
                     loop_id,
@@ -62,7 +63,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         if self.mirror.loops.iter().any(|(id, entry)| {
             only.is_none_or(|target| target == *id)
-                && (entry.view.mode == LoopMode::Recording
+                && (entry.view.recording_armed
+                    || entry.view.mode == LoopMode::Recording
                     || entry.view.next_mode == Some(LoopMode::Recording))
         }) {
             bail!("stop recording and settle pending recording transitions before saving or exporting");
@@ -85,30 +87,56 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .copied()
             .filter(|id| only.is_none_or(|target| *id == target))
             .collect::<Vec<_>>();
-        let mut bytes = 0u64;
+        let mut bytes = self
+            .canonical_imports
+            .iter()
+            .filter(|id| only.is_some_and(|target| target != **id))
+            .try_fold(0u64, |total, id| {
+                total
+                    .checked_add(
+                        self.prepared_content
+                            .get(id)
+                            .ok_or_else(|| anyhow!("retained content lacks a validation proof"))?
+                            .bytes(),
+                    )
+                    .ok_or_else(|| anyhow!("retained capture size overflow"))
+            })?;
+        let mut event_count = self
+            .canonical_content
+            .iter()
+            .filter(|(id, _)| only.is_some_and(|target| target != **id))
+            .try_fold(0usize, |total, (_, content)| {
+                content.midi.iter().try_fold(total, |total, channel| {
+                    total
+                        .checked_add(channel.events.len())
+                        .ok_or_else(|| anyhow!("retained MIDI event count overflow"))
+                })
+            })?;
         for (index, id) in ids.iter().copied().enumerate() {
             if !self.canonical_content.contains_key(&id) {
                 let entry = &self.mirror.loops[&id];
                 let (slot, version, length) = (entry.slot, entry.content, entry.view.length as u32);
                 let track = &self.mirror.tracks[&entry.track];
                 let (channels, midi) = (track.audio_channels as usize, track.midi);
-                let audio_bytes = u64::from(length)
+                let audio_bytes = entry
+                    .timing
+                    .raw_audio_frames
                     .checked_mul(channels as u64 * 4)
                     .ok_or_else(|| anyhow!("audio size overflow"))?;
-                if audio_bytes > MAX_MEDIA_BYTES.saturating_sub(bytes) {
-                    bail!("session capture exceeds the remaining 256 MiB budget");
+                if audio_bytes > self.resource_limits.media_bytes.saturating_sub(bytes) {
+                    bail!("session capture exceeds the remaining host media budget");
                 }
-                let audio = if length == 0 || channels == 0 {
+                let audio = if entry.timing.raw_audio_frames == 0 || channels == 0 {
                     empty_audio(channels)
                 } else {
                     match self.reads.audio(id, version, slot, channels) {
-                        Outcome::Done(audio) => audio,
+                        Outcome::Done(audio) => self.audio_timing(id, audio),
                         Outcome::Reading => return Ok(self.capture_pending(index, ids.len())),
                         Outcome::Failed(message) => bail!(message),
                     }
                 };
                 let mut initial = Vec::new();
-                if length > 0 && midi {
+                if entry.timing.raw_midi_frames > 0 && midi {
                     for channel in 0..16 {
                         match self.reads.initial(id, version, slot, channel) {
                             Outcome::Done(mut packets) => initial.append(&mut packets),
@@ -121,18 +149,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     bail!("MIDI initial state exceeds its bounded packet count");
                 }
                 let initial_bytes = initial.iter().map(|p| p.len() as u64 + 4).sum::<u64>();
-                let midi_limit = MAX_MEDIA_BYTES
+                let midi_limit = self
+                    .resource_limits
+                    .media_bytes
                     .checked_sub(bytes)
                     .and_then(|n| n.checked_sub(audio_bytes))
                     .and_then(|n| n.checked_sub(initial_bytes))
                     .ok_or_else(|| {
-                        anyhow!("session capture exceeds the remaining 256 MiB budget")
+                        anyhow!("session capture exceeds the remaining host media budget")
                     })?;
-                let events = if length == 0 || !midi {
+                let events = if entry.timing.raw_midi_frames == 0 || !midi {
                     empty_midi(version, midi)
                 } else {
                     match self.reads.midi_limited(id, version, slot, midi_limit) {
-                        Outcome::Done(midi) => midi,
+                        Outcome::Done(midi) => self.midi_timing(id, midi),
                         Outcome::Reading => return Ok(self.capture_pending(index, ids.len())),
                         Outcome::Failed(message) => bail!(message),
                     }
@@ -146,13 +176,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     audio: audio
                         .channels
                         .into_iter()
-                        .map(|channel| BackendAudioContent {
+                        .enumerate()
+                        .map(|(index, channel)| BackendAudioContent {
                             mode: BackendChannelMode::Direct,
                             samples: channel.samples,
-                            gain: 1.,
-                            start_offset: channel.start_offset,
-                            capture_alignment_frames: channel.capture_alignment_frames,
-                            preplay: channel.preplay,
+                            gain: f32::from_bits(entry.timing.windows.audio[index].gain_bits),
+                            start_offset: entry.timing.windows.audio[index].start_offset,
+                            capture_alignment_frames: entry.timing.windows.audio[index]
+                                .capture_alignment,
+                            preplay: entry.timing.windows.audio[index].preplay,
                         })
                         .collect(),
                     midi: events
@@ -163,9 +195,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             length: channel.length,
                             start_state: initial.clone(),
                             events: channel.events,
-                            start_offset: channel.start_offset,
-                            capture_alignment_frames: channel.capture_alignment_frames,
-                            preplay: channel.preplay,
+                            start_offset: entry.timing.windows.midi.start_offset,
+                            capture_alignment_frames: entry.timing.windows.midi.capture_alignment,
+                            preplay: entry.timing.windows.midi.preplay,
                         })
                         .collect(),
                 };
@@ -173,6 +205,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.reads.forget(id);
             }
             let image = Arc::clone(&self.canonical_content[&id]);
+            event_count = image.midi.iter().try_fold(event_count, |count, channel| {
+                count
+                    .checked_add(channel.events.len())
+                    .ok_or_else(|| anyhow!("MIDI event count overflow"))
+            })?;
+            if event_count > self.resource_limits.midi_events {
+                bail!("capture exceeds host MIDI event capacity");
+            }
             if !self
                 .prepared_content
                 .get(&id)
@@ -197,8 +237,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             bytes = bytes
                 .checked_add(self.prepared_content[&id].bytes())
                 .ok_or_else(|| anyhow!("capture size overflow"))?;
-            if bytes > MAX_MEDIA_BYTES {
-                bail!("session capture exceeds the 256 MiB media budget");
+            if bytes > self.resource_limits.media_bytes {
+                bail!("session capture exceeds the host media budget");
             }
         }
         let port = |id: BackendPortId| -> BackendSessionPort {

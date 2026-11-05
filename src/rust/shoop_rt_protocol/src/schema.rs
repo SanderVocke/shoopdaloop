@@ -154,6 +154,17 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ContentWindow {
+        id: u64,
+        frames: u64,
+        windows: crate::PlaybackWindows,
+    },
+    LoopTiming {
+        loop_id: LoopSlotId,
+        expected_revision: u64,
+        expected_content: u64,
+        edit: crate::TimingEdit,
+    },
     Profiling(bool),
     ContentFamilyBegin {
         id: u64,
@@ -304,6 +315,7 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    TimingApplied(crate::TimingState),
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
     Done,
@@ -365,6 +377,7 @@ pub struct Capabilities(pub u32);
 impl Capabilities {
     pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
+    pub const LOOP_TIMING: Self = Self(1 << 7);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
     pub const CONTENT_UPLOAD: Self = Self(1 << 3);
@@ -439,6 +452,8 @@ pub enum Telemetry {
         next_mode: Option<LoopMode>,
         next_delay: Option<u32>,
         content_revision: u64,
+        recording_armed: bool,
+        timing_revision: u64,
         length: u64,
         position: u64,
         peaks: Peaks,
@@ -452,6 +467,10 @@ pub enum Telemetry {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    LoopTiming {
+        loop_id: LoopSlotId,
+        timing: crate::TimingState,
+    },
     BusShape {
         bus: BusId,
         channels: u8,
