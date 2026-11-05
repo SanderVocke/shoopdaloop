@@ -521,3 +521,35 @@ real-DSP service fixtures pass. The warning-denying workspace build passes. Wasm
 passes backend 46, core 80 and protocol 6 tests. All 22 both-DSP host Wasm tests,
 including the service media reads, pass. Writes and session replacement/persistence remain pending, so protocol
 capability admission remains gated.
+
+### External zero sides and continuous dry MIDI
+
+The production graph now covers External 0/8 audio, 8/0 audio and MIDI-only shapes
+through record, regular wet play, dry play and wet rerecord. Default dry playback
+requires a wet side; explicit dry playback remains available for the other valid
+shapes. Dry media survives rerecording in each case.
+
+A wet-take commit retains the immutable dry MIDI prefix under another lease.
+Returning directly to dry playback must hand the cached cursor to that equivalent
+prefix, including a prefetched next event. The renderer checks resource/revision,
+description, capture cut and capture metadata, then resumes at the previous record
+boundary. It retains its live state and emits no cleanup, restored controls or
+duplicate note-ons. Different content still requires a discontinuity. A focused
+heap-guarded fixture releases the original lease while a note is held and verifies
+that the retained prefix emits exactly its one pending note-off, then reclaims all
+resources. The zero-side graph fixtures also exercise this path through rerecord.
+
+Loop meters now project the selected role's logical width rather than the prepared
+capacity or the other role's width. Reading a narrower meter discards unreported
+lanes, preventing stale peaks after a later role switch. Stereo-balance controls
+keep the reference's wet-side width policy; non-stereo input/output/loop meters
+show the loudest logical channel. An unequal 2-dry/1-wet fixture checks dry, wet and
+rerecord meter values. Real FX N=3 service fixtures use different amplitudes on
+each input and verify the non-stereo projection and ordered dry/wet samples.
+
+Recording-start detection runs once per processor block; control/MIDI segment
+observations reuse that result. Native regressions pass 610 tests, plus all 22
+host-processor tests after this refinement. The warning-denying workspace build
+and test/tracing inventories pass. Wasm passes the retained-prefix fixture,
+core 83, backend 46 and both-DSP host 22 tests. Public capability admission remains
+gated pending complete writes and session persistence/replacement.

@@ -600,7 +600,7 @@ impl Mirror {
         }
     }
 
-    pub fn loop_state(entry: &mut Loop, channels: u32) -> BackendLoopState {
+    pub fn loop_state(entry: &mut Loop, channels: u32, dry_channels: u32) -> BackendLoopState {
         let view = entry.view;
         BackendLoopState {
             recorded_processor_state: entry
@@ -622,7 +622,17 @@ impl Mirror {
             stereo: channels == 2,
             gain: entry.gain,
             balance: entry.balance,
-            audio_peaks: entry.meter.take_db(channels as usize),
+            audio_peaks: entry.meter.take_db(
+                if matches!(
+                    view.mode,
+                    shoop_rt_protocol::LoopMode::PlayingDryThroughWet
+                        | shoop_rt_protocol::LoopMode::RecordingDryIntoWet
+                ) {
+                    dry_channels as usize
+                } else {
+                    channels as usize
+                },
+            ),
             ..Default::default()
         }
     }

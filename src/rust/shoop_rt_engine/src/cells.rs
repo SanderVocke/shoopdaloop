@@ -27,7 +27,7 @@ impl Peak {
     pub(crate) fn take(&self, channels: usize) -> Peaks {
         let mut values = [0.; MAX_STRIP_CHANNELS];
         let channels = channels.min(MAX_STRIP_CHANNELS);
-        for (value, cell) in values.iter_mut().zip(&self.0).take(channels) {
+        for (value, cell) in values.iter_mut().zip(&self.0) {
             *value = f32::from_bits(cell.swap(0, Ordering::Relaxed));
         }
         Peaks::new(&values[..channels]).expect("bounded channels")
@@ -269,5 +269,21 @@ impl BoundaryObserver for Observer {
     }
     fn as_any(&self) -> &dyn core::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn shrinking_meter_width_discards_unreported_channels() {
+        let peak = Peak::default();
+        peak.raise(0, 0.25);
+        peak.raise(1, 0.75);
+        assert_eq!(peak.take(1).as_slice(), &[0.25]);
+        assert_eq!(peak.take(2).as_slice(), &[0., 0.]);
+        peak.raise(1, 0.5);
+        assert!(peak.take(0).as_slice().is_empty());
+        assert_eq!(peak.take(2).as_slice(), &[0., 0.]);
     }
 }

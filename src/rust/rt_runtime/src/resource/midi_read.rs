@@ -26,6 +26,10 @@ impl MidiEvent {
     pub fn byte_len(self) -> usize {
         self.bytes
     }
+    /// Header position of this validated record in its immutable MIDI prefix.
+    pub fn byte_position(self) -> usize {
+        self.offset - 12
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiPosition {
@@ -67,8 +71,14 @@ impl ResourceStore {
         Ok(())
     }
     pub(super) fn midi_cursor_impl(&self, index: ReadIndex) -> Result<MidiCursor, Error> {
-        self.midi_lease(index)?;
-        Ok(MidiCursor { index, offset: 0 })
+        self.midi_cursor_at_impl(index, 0)
+    }
+    fn midi_cursor_at_impl(&self, index: ReadIndex, offset: usize) -> Result<MidiCursor, Error> {
+        let lease = self.midi_lease(index)?;
+        if offset > lease.snapshot.description.bytes {
+            return Err(Error::InvalidOffset);
+        }
+        Ok(MidiCursor { index, offset })
     }
     pub(super) fn midi_next_impl(
         &mut self,
@@ -172,6 +182,11 @@ impl ResourceStore {
 impl RenderIo<'_> {
     pub fn midi_cursor(&self, index: ReadIndex) -> Result<MidiCursor, Error> {
         self.store.midi_cursor_impl(index)
+    }
+    /// Resume at a previously obtained record boundary without replaying state.
+    /// Subsequent reads still validate the lease, headers and packet bounds.
+    pub fn midi_cursor_at(&self, index: ReadIndex, offset: usize) -> Result<MidiCursor, Error> {
+        self.store.midi_cursor_at_impl(index, offset)
     }
     pub fn midi_next(&mut self, cursor: &mut MidiCursor) -> Result<Option<MidiEvent>, Error> {
         self.store.midi_next_impl(cursor)

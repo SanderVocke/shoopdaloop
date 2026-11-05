@@ -100,13 +100,8 @@ pub(crate) struct TakeObserver<'a> {
 }
 impl SourceObserver for TakeObserver<'_> {
     fn next(&self, start: Frame, end: Frame) -> Option<Frame> {
-        (!self.done
-            && self.frame >= start
-            && self.frame < end
-            && self
-                .source
-                .is_some_and(|source| self.domain.recording_starts(source).next().is_some()))
-        .then_some(self.frame)
+        (!self.done && self.frame >= start && self.frame < end && self.source.is_some())
+            .then_some(self.frame)
     }
     fn observe(&mut self, frame: Frame, backend: &dyn Backend) -> Result<(), Error> {
         self.done = true;

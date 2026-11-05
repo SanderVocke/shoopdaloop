@@ -550,10 +550,14 @@ impl HostedProcessor {
             let mut audio = block
                 .audio
                 .subset(0..ports.audio_inputs, 0..ports.audio_outputs)?;
+            let capture_source = self
+                .binding
+                .map(|(source, _)| source as u32)
+                .filter(|source| block.domain.recording_starts(*source).next().is_some());
             let mut observer = crate::recorded::TakeObserver {
                 domain: block.domain,
                 cells: self.signal.as_deref(),
-                source: self.binding.map(|(source, _)| source as u32),
+                source: capture_source,
                 kind: self.cells.kind,
                 frame: block.frame,
                 done: false,

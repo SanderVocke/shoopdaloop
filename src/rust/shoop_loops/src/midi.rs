@@ -6,7 +6,7 @@ use rt_runtime::{
     buffer::MidiBuffer,
     midi::{Message, ResetState},
     midi_state::MidiState,
-    resource::{CaptureTickId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo},
+    resource::{CaptureTickId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo, Snapshot},
     Error,
 };
 
@@ -43,6 +43,7 @@ impl RenderReport {
 #[derive(Clone, Copy)]
 struct Stream {
     index: ReadIndex,
+    snapshot: Snapshot,
     cursor: MidiCursor,
     next: Option<MidiEvent>,
     end_position: u64,
@@ -125,7 +126,8 @@ impl MidiRenderer {
             *self.state = MidiState::default();
             return Ok(report);
         };
-        let description = io.snapshot(index)?.description;
+        let snapshot = io.snapshot(index)?;
+        let description = snapshot.description;
         if description.format != Format::Midi {
             return Err(Error::InvalidShape);
         }
@@ -155,14 +157,30 @@ impl MidiRenderer {
             self.active = true;
             Stream {
                 index,
+                snapshot,
                 cursor: position.cursor,
                 next: None,
                 end_position: playback.position,
             }
         } else {
-            let stream = self.stream.expect("active stream");
+            let mut stream = self.stream.expect("active stream");
             if stream.index != index {
-                return Err(Error::InvalidState);
+                let old = stream.snapshot;
+                if old.resource != snapshot.resource
+                    || old.revision != snapshot.revision
+                    || old.description != snapshot.description
+                    || old.cut_frame != snapshot.cut_frame
+                    || old.capture != snapshot.capture
+                {
+                    return Err(Error::InvalidState);
+                }
+                let offset = stream
+                    .next
+                    .map_or(stream.cursor.byte_position(), MidiEvent::byte_position);
+                stream.cursor = io.midi_cursor_at(index, offset)?;
+                stream.index = index;
+                stream.snapshot = snapshot;
+                stream.next = None;
             }
             if stream.end_position != playback.position {
                 return Err(Error::InvalidFrame);

@@ -117,6 +117,116 @@ fn mode(h: &mut OfflineHost, mode: LoopMode) {
     );
 }
 #[shoop_test]
+fn external_zero_sides_and_midi_only_preserve_playback_roles_and_dry_media() {
+    for (dry, wet, midi) in [(0, 8, false), (8, 0, false), (0, 0, true)] {
+        let mut h = OfflineHost::new(&description()).unwrap();
+        create(&mut h, dry, wet, midi);
+        for channel in 0..8 {
+            h.input_mut(channel).fill(channel as f32 + 0.25);
+            h.input_mut(8 + channel).fill(channel as f32 + 100.5);
+        }
+        let default = request(
+            &mut h,
+            Request::StripDefaultPlayback {
+                strip: strip(),
+                dry_through_wet: true,
+            },
+        );
+        assert_eq!(
+            default,
+            if wet > 0 {
+                Outcome::Done
+            } else {
+                Outcome::Refused(Refusal::Unsupported)
+            }
+        );
+        mode(&mut h, LoopMode::Recording);
+        if midi {
+            h.midi_input_mut(0).push(3, 64, &[0x90, 60, 100]).unwrap();
+            h.midi_input_mut(0).push(11, 64, &[0x80, 60, 0]).unwrap();
+        }
+        tick(&mut h, 64);
+        mode(&mut h, LoopMode::Stopped);
+        for channel in 0..16 {
+            h.input_mut(channel).fill(0.);
+        }
+        mode(&mut h, LoopMode::Playing);
+        tick(&mut h, 128);
+        for channel in 0..wet as usize {
+            assert_eq!(&h.output(channel)[32..128], &[channel as f32 + 100.5; 96]);
+        }
+        for value in [
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+            LoopMode::PlayingDryThroughWet,
+        ] {
+            mode(&mut h, value);
+            tick(&mut h, 128);
+            for channel in 0..dry as usize {
+                assert_eq!(
+                    &h.output(8 + channel)[32..128],
+                    &[channel as f32 + 0.25; 96]
+                );
+            }
+            if midi {
+                let output = h.midi_output(0);
+                assert!(
+                    (0..output.len()).any(|index| output.get(index).unwrap().1 == [0x90, 60, 100])
+                );
+            }
+        }
+        mode(&mut h, LoopMode::Playing);
+        tick(&mut h, 128);
+        for channel in 0..16 {
+            assert!(h.output(channel)[32..128]
+                .iter()
+                .all(|sample| *sample == 0.));
+        }
+    }
+}
+
+#[shoop_test]
+fn loop_meter_observes_the_selected_role_width_in_an_unequal_external_track() {
+    let mut d = description();
+    d.telemetry_interval_frames = 0;
+    let mut h = OfflineHost::new(&d).unwrap();
+    create(&mut h, 2, 1, false);
+    h.input_mut(0).fill(0.25);
+    h.input_mut(1).fill(0.5);
+    h.input_mut(8).fill(0.75);
+    mode(&mut h, LoopMode::Recording);
+    tick(&mut h, 64);
+    mode(&mut h, LoopMode::Stopped);
+    for channel in 0..16 {
+        h.input_mut(channel).fill(0.);
+    }
+    for (value, expected) in [
+        (LoopMode::Playing, &[0.75][..]),
+        (LoopMode::PlayingDryThroughWet, &[0.25, 0.5][..]),
+        (LoopMode::RecordingDryIntoWet, &[0.25, 0.5][..]),
+        (LoopMode::Playing, &[0.][..]),
+    ] {
+        mode(&mut h, value);
+        tick(&mut h, 64);
+        let mut peaks = None;
+        while let Some(message) = assert_no_heap(|| h.receive()) {
+            if let EngineMessage::Telemetry(Telemetry::Loop {
+                loop_id,
+                mode,
+                peaks: current,
+                ..
+            }) = message
+            {
+                if loop_id == looped() && mode == value {
+                    peaks = Some(current);
+                }
+            }
+        }
+        assert_eq!(peaks.unwrap().as_slice(), expected, "{value:?}");
+    }
+}
+
+#[shoop_test]
 fn bulk_audio_roles_pin_both_eight_channel_sides_through_clear_and_small_copy_budgets() {
     for page_bytes in [32, 512] {
         let mut d = description();

@@ -1279,13 +1279,17 @@ impl ControlEndpoint {
             .flatten()
             .map(|planned| (self.remaining(planned), planned.mode))
             .min_by_key(|(remaining, _)| *remaining);
-        let channels = self
-            .model
-            .strip(entry.strip)
-            .map_or(0, |strip| strip.shape.audio_outputs as usize);
+        let mode = self.observed_mode(entry.id);
+        let channels = self.model.strip(entry.strip).map_or(0, |strip| {
+            if mode.dry_playback() {
+                strip.shape.audio_inputs as usize
+            } else {
+                strip.shape.audio_outputs as usize
+            }
+        });
         Some(Telemetry::Loop {
             loop_id: entry.id,
-            mode: protocol_mode(self.observed_mode(entry.id)),
+            mode: protocol_mode(mode),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
             content_revision: if current {

@@ -998,7 +998,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 continue;
             };
             if entry.confirmed && track.confirmed {
-                loops.insert(*id, Mirror::loop_state(entry, track.audio_channels));
+                loops.insert(
+                    *id,
+                    Mirror::loop_state(
+                        entry,
+                        track.audio_channels,
+                        track.topology.dry_audio_channels(),
+                    ),
+                );
             }
         }
         let connections = BackendConnectionSnapshot {

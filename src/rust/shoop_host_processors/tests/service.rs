@@ -20,10 +20,15 @@ const STEP: Duration = Duration::from_millis(16);
 struct Clock(Rc<RefCell<OfflineRender>>);
 impl EngineClock for Clock {
     fn advance(&mut self, elapsed: Duration) {
-        assert_no_heap(|| self.0.borrow_mut().run_for(elapsed, |_, _| 0.25)).unwrap();
+        assert_no_heap(|| {
+            self.0
+                .borrow_mut()
+                .run_for(elapsed, |port, _| port as f32 + 0.25)
+        })
+        .unwrap();
     }
     fn wait(&mut self) -> bool {
-        assert_no_heap(|| self.0.borrow_mut().run(16, |_, _| 0.25)).unwrap();
+        assert_no_heap(|| self.0.borrow_mut().run(16, |port, _| port as f32 + 0.25)).unwrap();
         true
     }
 }
@@ -295,6 +300,20 @@ fn service_processor(kind: ProcessorKind) {
         DefaultPlaybackMode::DryThroughWet
     );
     assert_eq!(state.controls.input_stereo, channels == 2);
+    assert_eq!(state.loops[0].stereo, channels == 2);
+    if channels != 2 {
+        let expected = 20. * (channels as f32 - 0.75).log10();
+        assert!((state.controls.input_peak_left_db - expected).abs() < 1e-4);
+        assert_eq!(
+            state.controls.input_peak_left_db,
+            state.controls.input_peak_right_db
+        );
+        assert_eq!(
+            state.controls.output_peak_left_db,
+            state.controls.output_peak_right_db
+        );
+    }
+
     assert!(state.fx.as_ref().unwrap().active && state.fx.as_ref().unwrap().visible);
     assert!(f.render.borrow().output(0)[64..128]
         .iter()
@@ -336,9 +355,12 @@ fn service_processor(kind: ProcessorKind) {
     }
     let media = f.client.media().unwrap().as_ref().unwrap().clone();
     assert_eq!(media.audio.len(), channels as usize * 2);
-    for dry in &media.audio[..channels as usize] {
+    for (channel, dry) in media.audio[..channels as usize].iter().enumerate() {
         assert!(dry.samples.len() >= 128);
-        assert!(dry.samples.iter().all(|sample| *sample == 0.25));
+        assert!(dry
+            .samples
+            .iter()
+            .all(|sample| *sample == channel as f32 + 0.25));
     }
     if kind == ProcessorKind::BuiltInFx {
         let expected = 0.25 * 10.0_f32.powf(-18. / 20.);

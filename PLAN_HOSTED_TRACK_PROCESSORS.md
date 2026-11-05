@@ -368,6 +368,18 @@ execution, retry reliable projection when the outbox is full, and survive resync
 This remains internal foundation work: capabilities are still gated pending
 public controls, media/persistence and end-to-end validation.
 
+Shape and continuity milestone: External 0/8, 8/0 and MIDI-only tracks now have
+executable record/wet-play/dry-play/rerecord coverage. It exposed a general cursor
+handoff bug when rerecord committed a retained dry MIDI prefix and returned directly
+to dry playback. The MIDI renderer now resumes the equivalent retained prefix at
+its exact record boundary, without cleanup, controller restore or note retrigger;
+changed content still requires a discontinuity. Loop meters use the active role's
+logical width and clear unreported lanes. Stereo-balance availability remains tied
+to the wet side as in the reference; non-stereo meters show the loudest channel.
+Native 610-test regressions and real-DSP service fixtures pass. Wasm covers the
+retained-prefix case, core 83, backend 46 and both-DSP host 22 tests. General media
+writes, grab/candidate interactions and transactional persistence remain open.
+
 ### 6. Restore service operations, editors and track control MIDI
 
 - [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace

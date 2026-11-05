@@ -562,12 +562,9 @@ impl Service {
                 view.gain = state.gain;
                 view.balance = state.balance;
                 view.midi_activity = state.midi_activity;
-                view.peak_left_db = state.audio_peaks.first().copied().unwrap_or(-200.0);
-                view.peak_right_db = state
-                    .audio_peaks
-                    .get(1)
-                    .copied()
-                    .unwrap_or(view.peak_left_db);
+                view.stereo = state.stereo;
+                (view.peak_left_db, view.peak_right_db) =
+                    display_peaks(&state.audio_peaks, view.stereo);
                 view.has_recorded_fx_state = state.recorded_processor_state.is_some();
                 view.capture_alignment_frames = state.capture_alignment_frames;
                 view.processor_alignment_frames = state.processor_alignment_frames;
@@ -779,6 +776,16 @@ fn track_topology(topology: &BackendTrackTopology) -> TrackTopology {
     }
 }
 
+fn display_peaks(peaks: &[f32], stereo: bool) -> (f32, f32) {
+    if stereo {
+        let left = peaks.first().copied().unwrap_or(-200.);
+        (left, peaks.get(1).copied().unwrap_or(left))
+    } else {
+        let peak = peaks.iter().copied().fold(-200., f32::max);
+        (peak, peak)
+    }
+}
+
 fn controls(state: &BackendTrackState) -> TrackControlState {
     let direct = matches!(state.topology, BackendTrackTopology::Direct { .. });
     let dry = if direct {
@@ -792,6 +799,8 @@ fn controls(state: &BackendTrackState) -> TrackControlState {
         state.topology.wet_audio_channels()
     };
     let wet_midi = state.midi && direct;
+    let (input_left, input_right) = display_peaks(&state.input_peaks, dry == 2);
+    let (output_left, output_right) = display_peaks(&state.output_peaks, wet == 2);
     TrackControlState {
         has_input: dry > 0 || state.midi,
         has_output: wet > 0 || wet_midi,
@@ -810,9 +819,9 @@ fn controls(state: &BackendTrackState) -> TrackControlState {
         latest_input_midi_message: state
             .latest_input_midi_message
             .and_then(|message| LatestMidiMessage::new(message.bytes, message.len)),
-        input_peak_left_db: state.input_peaks.first().copied().unwrap_or(-200.0),
-        input_peak_right_db: state.input_peaks.get(1).copied().unwrap_or(-200.0),
-        output_peak_left_db: state.output_peaks.first().copied().unwrap_or(-200.0),
-        output_peak_right_db: state.output_peaks.get(1).copied().unwrap_or(-200.0),
+        input_peak_left_db: input_left,
+        input_peak_right_db: input_right,
+        output_peak_left_db: output_left,
+        output_peak_right_db: output_right,
     }
 }

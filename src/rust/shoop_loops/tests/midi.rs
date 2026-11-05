@@ -134,6 +134,60 @@ fn default_restore(initial_note: Option<(u8, u8)>) -> Vec<(u64, Vec<u8>)> {
     result
 }
 #[shoop_test]
+fn a_retained_midi_prefix_changes_lease_without_cleanup_restore_or_note_retrigger() {
+    let mut store = store();
+    let original = upload(
+        &mut store,
+        &[(0, vec![0x90, 60, 100]), (6, vec![0x80, 60, 0])],
+        8,
+        &MidiState::default(),
+    );
+    store.begin_callback();
+    let retained = assert_no_heap(|| store.retain_snapshot(original.id)).unwrap();
+    let old = store.read_index(original.id).unwrap();
+    let new = store.read_index(retained.id).unwrap();
+    let mut renderer = MidiRenderer::prepare(4, 2048).unwrap();
+    let mut output = MidiBuffer::new(512, 2048).unwrap();
+    assert_no_heap(|| {
+        renderer.render(
+            &mut store.render_io(),
+            Playback {
+                source: Some(old),
+                position: 0,
+                discontinuity: true,
+            },
+            4,
+            &mut output,
+        )
+    })
+    .unwrap();
+    output.clear();
+    assert_no_heap(|| store.release_snapshot(original.id)).unwrap();
+    assert_no_heap(|| {
+        renderer.render(
+            &mut store.render_io(),
+            Playback {
+                source: Some(new),
+                position: 4,
+                discontinuity: false,
+            },
+            4,
+            &mut output,
+        )
+    })
+    .unwrap();
+    assert_eq!(output.len(), 1);
+    assert_eq!(output.get(0), Some((2, &[0x80, 60, 0][..])));
+    assert_eq!(
+        store
+            .render_io()
+            .midi_cursor_at(new, retained.description.bytes + 1),
+        Err(Error::InvalidOffset)
+    );
+    cleanup(&mut store, &[retained]);
+}
+
+#[shoop_test]
 fn indexed_packets_sysex_equal_times_and_trailing_silence_match_absolute_oracle() {
     let mut sysex = vec![0xf0];
     sysex.extend((0..255).map(|n| (n % 128) as u8));
