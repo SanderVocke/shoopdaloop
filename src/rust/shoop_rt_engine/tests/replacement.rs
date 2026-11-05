@@ -70,6 +70,125 @@ fn old_playback(h: &mut Harness) -> LoopSlotId {
 }
 
 #[shoop_test]
+fn replacement_refuses_processed_composite_owners_without_interrupting_old_playback() {
+    let mut d = description();
+    d.external_dry_wet = true;
+    let mut h = Harness::new(&d);
+    let old = old_playback(&mut h);
+    let from = h.outputs[0].len();
+    for (id, processed) in [(1, true), (2, false)] {
+        h.done(Request::ReplacementBegin { id });
+        let owner = strip(0, 2);
+        let direct = strip(1, 1);
+        let parent = loop_id(0, 2);
+        let child = loop_id(1, 1);
+        edit(
+            &mut h,
+            id,
+            if processed {
+                ReplacementEdit::ProcessedStrip {
+                    strip: owner,
+                    shape: shape(1, 1, false),
+                    controls: preset(1.),
+                    kind: ProcessorKind::External,
+                    default_dry: false,
+                    state: None,
+                }
+            } else {
+                ReplacementEdit::Strip {
+                    strip: owner,
+                    shape: shape(1, 1, false),
+                    controls: preset(1.),
+                }
+            },
+        );
+        edit(
+            &mut h,
+            id,
+            ReplacementEdit::Strip {
+                strip: direct,
+                shape: shape(1, 1, false),
+                controls: preset(1.),
+            },
+        );
+        for (loop_id, strip) in [(parent, owner), (child, direct)] {
+            edit(
+                &mut h,
+                id,
+                ReplacementEdit::Loop {
+                    loop_id,
+                    strip,
+                    sync: None,
+                    frames: 0,
+                    dry_audio: None,
+                    recorded_state: None,
+                    audio: None,
+                    midi: None,
+                    gain: 1.,
+                    balance: 0.,
+                },
+            );
+        }
+        edit(
+            &mut h,
+            id,
+            ReplacementEdit::Composite(CompositeDescription {
+                id,
+                loop_id: parent,
+                sync: None,
+                previous: None,
+                expected_version: 0,
+                version: 1,
+                kind: CompositeKind::Explicit,
+                unit_frames: 1,
+                iterations: 2,
+                entries: 1,
+                segments: 1,
+                sample_rate: 1000,
+                quantum: 1,
+            }),
+        );
+        edit(
+            &mut h,
+            id,
+            ReplacementEdit::CompositeSpan {
+                loop_id: parent,
+                index: 0,
+                span: CompositeSpan {
+                    target: child,
+                    start: 0,
+                    end: 2,
+                    occurrence_start: 0,
+                    ordinal: 0,
+                    mode: LoopMode::Recording,
+                },
+            },
+        );
+        assert_eq!(
+            h.apply(Request::ReplacementPrepare { id }),
+            if processed {
+                Outcome::Refused(Refusal::Unsupported)
+            } else {
+                Outcome::Done
+            }
+        );
+        h.done(Request::ReplacementCancel { id });
+    }
+    h.run(16, 4);
+    assert!(h.outputs[0][from..].iter().all(|&sample| sample == 1.));
+    assert!(matches!(
+        h.last_loop(old),
+        Some((
+            _,
+            Telemetry::Loop {
+                mode: LoopMode::Playing,
+                ..
+            }
+        ))
+    ));
+}
+
+#[shoop_test]
 fn complete_content_and_controls_publish_together_while_old_playback_survives_preparation() {
     let mut h = Harness::new(&description());
     let old = old_playback(&mut h);

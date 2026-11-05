@@ -501,6 +501,9 @@ impl ControlEndpoint {
                 return Err(Refusal::InvalidValue);
             }
             if let Some(d) = entry.program {
+                if kind.is_some() {
+                    return Err(Refusal::Unsupported);
+                }
                 if initial.frames != 0
                     || initial.audio.is_some()
                     || initial.midi.is_some()

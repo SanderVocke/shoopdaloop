@@ -828,6 +828,14 @@ restores the actual worklet contract locally, including clocks, node timestamps,
 xrun capture, runtime toggle and unchanged memory assertions. Final CI is rerun
 after that fixture correction.
 
+Automated review also identifies an RT-only replacement admission gap: an empty
+processed primitive can be converted to a composite inside a candidate, bypassing
+ordinary creation. Final replacement validation now refuses any processor-owned
+composite. A heap-guarded direct-protocol regression fails before the fix, then
+passes with uninterrupted old audio and a subsequent valid Direct candidate.
+All eleven replacement tests pass with the existing assertions; changed engine
+and host products build with warnings denied. P17 scope stays deferred.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or

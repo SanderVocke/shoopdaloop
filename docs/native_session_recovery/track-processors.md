@@ -923,3 +923,10 @@ Debug web CI finds the fixture's inherited profiling tag 40; the combined wire u
 35. Correcting that tag passes the actual artifact's profiling clocks, timestamps,
 xrun capture, toggle and memory checks locally. The production codec is unchanged;
 the final matrix must validate the fixture correction.
+
+Automated review catches the direct RT candidate path that can convert an empty
+processed primitive into a composite. Replacement validation now rejects that
+processor-owned program before preparation. The guarded direct-protocol regression
+demonstrates acceptance before the fix and refusal afterward, unchanged playing
+audio, candidate cancellation and successful preparation of a valid Direct retry.
+All eleven replacement tests pass; warning-denying engine/host builds pass.
