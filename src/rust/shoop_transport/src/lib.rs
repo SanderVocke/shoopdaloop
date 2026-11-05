@@ -21,6 +21,8 @@ pub const MAX_RECORD_BYTES: usize = 1280;
 /// Capacity class of a message.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Lane {
+    /// Bounded diagnostic traffic with independent admission.
+    Profiling,
     /// Requests, results, lifecycle and state: never dropped.
     Reliable,
     /// Latest values: a newer record supersedes an undelivered older one.
@@ -61,6 +63,8 @@ pub trait RecordPort {
     fn post_on_lane(&mut self, record: &[u8], _lane: Lane) -> Result<(), CarrierError> {
         self.post(record)
     }
+    /// A decoded record was consumed by the client.
+    fn consumed(&mut self, _lane: Lane) {}
     /// Terminal carrier failure, distinct from an idle receive.
     fn failure(&mut self) -> Option<CarrierError> {
         None

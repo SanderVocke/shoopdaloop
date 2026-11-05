@@ -1124,6 +1124,7 @@ pub struct BackendMutationCompletion {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
+    pub profiling: shoop_app_api::ProfilingView,
     pub status: BackendStatus,
     pub audio_drivers: AudioDriverRuntimeState,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
@@ -1137,6 +1138,21 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn inspect_profiling(
+        &mut self,
+        _request: shoop_app_api::profiling_data::CaptureRequest,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Profiling captures are unavailable on this backend"
+        ))
+    }
+    fn set_profiling(&mut self, enabled: bool) -> Result<()> {
+        if enabled {
+            Err(anyhow!("Runtime profiling is unavailable on this backend"))
+        } else {
+            Ok(())
+        }
+    }
     fn bus_limits(&self) -> shoop_app_api::BusLimits {
         shoop_app_api::BusLimits::default()
     }

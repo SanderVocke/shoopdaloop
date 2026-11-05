@@ -139,8 +139,8 @@ impl Host {
     }
 }
 
-const BACKGROUND: egui::Color32 = egui::Color32::from_rgb(20, 23, 29);
-const SIDEBAR: egui::Color32 = egui::Color32::from_rgb(16, 19, 24);
+const BACKGROUND: egui::Color32 = egui::Color32::from_rgb(28, 27, 31);
+const SIDEBAR: egui::Color32 = BACKGROUND;
 const SURFACE: egui::Color32 = egui::Color32::from_rgb(28, 33, 41);
 const BORDER: egui::Color32 = egui::Color32::from_rgb(46, 54, 65);
 const TEXT: egui::Color32 = egui::Color32::from_rgb(230, 235, 242);
@@ -181,6 +181,7 @@ enum Event {
     Started(Result<Host, String>),
 }
 struct Manager {
+    logo: Option<egui::TextureHandle>,
     sources: Vec<String>,
     generation: u64,
     address_dialog: Option<String>,
@@ -220,6 +221,7 @@ impl Manager {
             ),
         };
         Self {
+            logo: None,
             sources,
             generation: 0,
             address_dialog: None,
@@ -533,6 +535,21 @@ impl Manager {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    let logo = self.logo.get_or_insert_with(|| {
+                        let image = eframe::icon_data::from_png_bytes(include_bytes!(
+                            "../../../../resources/logo-small.png"
+                        ))
+                        .expect("embedded logo must be valid PNG");
+                        ui.ctx().load_texture(
+                            "shoopdaloop_logo",
+                            egui::ColorImage::from_rgba_unmultiplied(
+                                [image.width as usize, image.height as usize],
+                                &image.rgba,
+                            ),
+                            egui::TextureOptions::LINEAR,
+                        )
+                    });
+                    ui.add(egui::Image::new(&*logo).fit_to_exact_size(egui::vec2(40.0, 20.4)));
                     ui.label(egui::RichText::new("Host Manager").size(17.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui

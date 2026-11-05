@@ -199,6 +199,14 @@ impl Gains {
     }
     /// Fill the per-sample gains, scaled by a further ramp.
     fn fill(&mut self, frames: usize, scale: &mut Ramp) {
+        if self.gain.remaining == 0 && self.balance.remaining == 0 && scale.remaining == 0 {
+            let gain = self.gain.value * scale.value;
+            let [left, right] = balance_factors(self.balance.value);
+            self.plain[..frames].fill(gain);
+            self.left[..frames].fill(gain * left);
+            self.right[..frames].fill(gain * right);
+            return;
+        }
         for i in 0..frames {
             let gain = self.gain.next() * scale.next();
             let [left, right] = balance_factors(self.balance.next());
@@ -1080,18 +1088,34 @@ impl LoopFader {
             let mut presence = self.presence;
             let (input, output) = block.audio.pair(port, port).ok_or(Error::InvalidShape)?;
             let mut peak = 0f32;
-            for i in 0..frames {
-                let sample = if delayed && !auxiliary {
+            if delayed && !auxiliary {
+                for i in 0..frames {
                     let index = channel * quantum + (self.position + i) % quantum;
-                    let old = self.delay[index];
+                    let sample = self.delay[index];
                     self.delay[index] = input[i];
-                    old
+                    let value = sample * presence.next();
+                    output[i] = value;
+                    peak = peak.max(value.abs());
+                }
+            } else if presence.remaining == 0 {
+                let gain = presence.value;
+                if gain == 1. {
+                    output[..frames].copy_from_slice(&input[..frames]);
+                    for sample in &input[..frames] {
+                        peak = peak.max(sample.abs());
+                    }
                 } else {
-                    input[i]
-                };
-                let value = sample * presence.next();
-                output[i] = value;
-                peak = peak.max(value.abs());
+                    for (sample, value) in input[..frames].iter().zip(output[..frames].iter_mut()) {
+                        *value = *sample * gain;
+                        peak = peak.max(value.abs());
+                    }
+                }
+            } else {
+                for i in 0..frames {
+                    let value = input[i] * presence.next();
+                    output[i] = value;
+                    peak = peak.max(value.abs());
+                }
             }
             if auxiliary == dry {
                 peaks.raise(channel, peak);
@@ -1376,6 +1400,33 @@ mod tests {
     use crate::{testing::OfflineHost, EngineDescription, Segment};
     use shoop_rt_protocol::*;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn gain_blocks_preserve_ramps_balance_and_unwritten_suffixes() {
+        let mut gains = Gains::new(8);
+        let mut scale = Ramp::at(1.);
+        gains.plain.fill(42.);
+        gains.left.fill(42.);
+        gains.right.fill(42.);
+        gains.fill(4, &mut scale);
+        assert_eq!(&gains.plain[..4], &[1.; 4]);
+        assert_eq!(&gains.left[..4], &[1.; 4]);
+        assert_eq!(&gains.right[..4], &[1.; 4]);
+        gains.gain.set(0.5, 2);
+        gains.balance.set(1., 2);
+        scale.set(0.5, 2);
+        gains.fill(4, &mut scale);
+        assert_eq!(&gains.plain[..4], &[0.5625, 0.25, 0.25, 0.25]);
+        assert_eq!(&gains.left[..4], &[0.28125, 0., 0., 0.]);
+        assert_eq!(&gains.right[..4], &[0.5625, 0.25, 0.25, 0.25]);
+        gains.fill(4, &mut scale);
+        assert_eq!(&gains.plain[..4], &[0.25; 4]);
+        assert_eq!(&gains.left[..4], &[0.; 4]);
+        assert_eq!(&gains.right[..4], &[0.25; 4]);
+        assert_eq!(&gains.plain[4..], &[42.; 4]);
+        assert_eq!(&gains.left[4..], &[42.; 4]);
+        assert_eq!(&gains.right[4..], &[42.; 4]);
+    }
 
     fn tick(host: &mut OfflineHost) {
         host.input_mut(0).fill(1.);

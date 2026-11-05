@@ -599,6 +599,7 @@ impl Runtime {
             .client
             .snapshot()
             .map(|state| AppSnapshot {
+                profiling: state.profiling.clone(),
                 bus_limits: state.bus_limits,
                 tracks: state.tracks.clone(),
                 buses: Arc::clone(&state.buses),
@@ -613,6 +614,10 @@ impl Runtime {
                 ..Default::default()
             })
             .unwrap_or_default();
+        if let Some(authority) = self.client.authority() {
+            view.profiling.lease = authority.lease.0;
+            view.profiling.attachment = authority.generation.0;
+        }
         view.details = self.details();
         view.io_task = self.io_task.clone();
         if let Some(provider) = &self.persistence_io {
@@ -964,6 +969,8 @@ impl Runtime {
                 destination: destination_channel_id,
                 connected,
             },
+            AppIntent::SetProfiling(value) => Command::SetProfiling(value),
+            AppIntent::InspectProfiling(request) => Command::InspectProfiling(request),
             AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
             AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
             AppIntent::ResetXruns => Command::ResetXruns,

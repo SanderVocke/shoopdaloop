@@ -13,6 +13,14 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::InspectProfiling(request) => {
+                self.backend.inspect_profiling(request)?;
+                Ok(Effect::None)
+            }
+            Command::SetProfiling(enabled) => {
+                self.backend.set_profiling(enabled)?;
+                Ok(Effect::None)
+            }
             Command::SetHostGraphConnected(request) => {
                 let controller =
                     self.host_graph_controller

@@ -288,7 +288,7 @@ impl Processor<LoopPlanner> for CaptureNode {
                     )
                 }),
             )?;
-            block.domain.inputs[slot] = *midi.state();
+            midi.publish_state(&mut block.domain.inputs[slot]);
         }
         Ok(())
     }

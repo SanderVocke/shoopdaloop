@@ -2,11 +2,12 @@
 name = "shoop_rt_host_worklet"
 version.workspace = true
 edition = "2021"
-description = "The new engine backend's browser host: an import-free AudioWorklet module around the engine"
+description = "The new engine backend's browser host: an AudioWorklet module with host-provided profiling time around the engine"
 
 [package.metadata.shoop-wasm-test]
 enabled = true
 browser-feature = "wasm-test-browser"
+no-default-features = true
 
 [lints]
 workspace = true

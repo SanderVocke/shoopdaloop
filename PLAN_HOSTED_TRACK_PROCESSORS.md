@@ -10,8 +10,11 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   `shoop_app_reference`, `shoop_engine`, and `reference/legacy_browser`.
 - Implementation branch: create `feat/hosted-track-processors` from the current
   `feat/fixed-quantum-runtime`; record its actual base before implementation.
-  Open its PR against **`feat/fixed-quantum-runtime`**, not `master`. If the base
-  branch has merged, use its integration successor and record the change.
+  Initial base: `feat/fixed-quantum-runtime`. At the user's request, PR
+  [#946](https://github.com/SanderVocke/shoopdaloop/pull/946) is now retargeted to
+  **`feat/backend-replacement`**. Reconcile the implementation with that target
+  (inspected at `32179102`), including its runtime profiling and host-manager changes.
+  Keep the original `2e19210b` implementation base as provenance.
 - Follow `AGENTS.md`, `.agents/index.md`, `.agents/rules/{mandates,style}.md` and
   `.agents/info/{build,test}.md` during execution. No merge is authorized here.
 

@@ -185,7 +185,24 @@ impl Shared {
         counter.fetch_add(amount, Ordering::Relaxed);
     }
 
+    pub fn begin_profiling(&self, frame: u64, frames: usize) {
+        if let Some(control) = self.host.profiling().filter(|c| c.recording()) {
+            control.host_begin(frame, frames as u32, profiling_now());
+        }
+    }
+    pub fn profile_input(&self) {
+        if let Some(control) = self.host.profiling().filter(|c| c.recording()) {
+            control.host_input(profiling_now());
+        }
+    }
     pub fn set_load(&self, load: f32) {
+        if let Some(control) = self.host.profiling().filter(|c| c.recording()) {
+            let frames = self.buffer_frames.load(Ordering::Relaxed);
+            control.host_end(
+                profiling_now(),
+                u64::from(frames) * 1_000_000_000 / u64::from(self.sample_rate),
+            );
+        }
         self.load.store(load.to_bits(), Ordering::Relaxed);
         self.host.set_load(load);
     }
@@ -229,4 +246,31 @@ impl Shared {
             load: f32::from_bits(self.load.load(Ordering::Relaxed)),
         }
     }
+}
+
+pub(crate) fn profiling_clock() -> rt_runtime::profiling::Clock {
+    PROFILE_EPOCH.get_or_init(Instant::now);
+    let mut previous = profiling_now();
+    let mut resolution = u64::MAX;
+    for _ in 0..256 {
+        let next = profiling_now();
+        if next > previous {
+            resolution = resolution.min(next - previous);
+        }
+        previous = next;
+    }
+    rt_runtime::profiling::Clock {
+        now: profiling_now,
+        resolution_ns: if resolution == u64::MAX {
+            0
+        } else {
+            resolution
+        },
+    }
+}
+static PROFILE_EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+fn profiling_now() -> u64 {
+    PROFILE_EPOCH.get().map_or(0, |epoch| {
+        epoch.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    })
 }

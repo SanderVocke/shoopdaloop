@@ -165,6 +165,12 @@ pub struct ControlEndpoint {
             shoop_rt_protocol::processors::Snapshot,
         )>],
     >,
+    pub(crate) profiling: Option<rt_runtime::profiling::Reader>,
+    pub(crate) profile_named: Box<[bool]>,
+    pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
+    pub(crate) profile_generation: u64,
+    pub(crate) profile_status: Option<rt_runtime::profiling::Status>,
+    pub(crate) profile_layout: crate::profiling::Layouts,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
@@ -376,7 +382,8 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::MIDI_INJECTION
+        Capabilities::PROFILING
+            .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
@@ -821,6 +828,13 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::Profiling(enabled) => match &self.profiling {
+                Some(reader) => {
+                    reader.control().set_enabled(enabled);
+                    Ok(Some(Outcome::Done))
+                }
+                _ => Err(Refusal::Unsupported),
+            },
             Request::PreviewStart {
                 request_id,
                 bus,
@@ -1341,6 +1355,9 @@ impl Endpoint for ControlEndpoint {
                 self.reset_connection();
                 self.connected = true;
                 self.telemetry_frame = None;
+                self.profile_status = None;
+                self.profile_generation = 0;
+                self.profile_layout.rewind();
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
@@ -1379,6 +1396,8 @@ impl Endpoint for ControlEndpoint {
             ClientMessage::Resync => {
                 if self.connected {
                     self.resync = Some(Resync::default());
+                    self.profile_generation = 0;
+                    self.profile_layout.rewind();
                 }
             }
             ClientMessage::Bulk(read) => self.deliver_bulk(read, out),
@@ -1417,6 +1436,7 @@ impl Endpoint for ControlEndpoint {
         self.project_processors(out);
         self.project_recorded(out);
         self.telemetry(out);
+        self.forward_profiling(out);
     }
 }
 

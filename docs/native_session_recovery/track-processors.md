@@ -585,3 +585,19 @@ boundary audits pass. Node/Wasm passes backend 47, core 83, protocol 6 and the
 both-DSP host package's 22 tests. Post-commit resynchronization retains canonical
 dB controls when their amplitude matches exactly, preventing save/load rounding
 drift while still adopting changed engine controls.
+
+### Backend replacement reconciliation
+
+PR #946 now targets `feat/backend-replacement` at the user's request. The combined
+wire uses engine protocol v18 and application protocol v25, retaining the target's
+profiling requests, graph inspection and hot-path optimizations. Hosted strip
+creation has its own request tag; profiling and processor capabilities have
+separate bits. The fader keeps the target's steady-gain fast path while preserving
+the hosted wet delay and independent dry-role processing. The target's host-manager
+and updated testing mandates are retained.
+
+Focused native checks pass: protocol round trips, real-host media/replacement,
+public admission gating, profiling topology, and real FX monitoring/capture/both
+playback paths across all widths. Warning-denying builds of the affected host,
+worklet, app and Host Manager pass; tracing and test-attribute inventories pass.
+Broader platform/regression validation is delegated to PR CI under the updated plan.

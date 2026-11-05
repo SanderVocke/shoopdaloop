@@ -5151,6 +5151,7 @@ impl Backend for NativeBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            profiling: Default::default(),
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,
                 xruns: driver.xruns_since_last,

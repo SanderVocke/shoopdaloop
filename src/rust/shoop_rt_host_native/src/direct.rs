@@ -18,6 +18,7 @@ impl Cycle {
             return;
         }
         let started = Instant::now();
+        self.shared.begin_profiling(self.next_frame(), frames);
         Shared::count(&self.shared.counters.callbacks, 1);
         self.shared.set_buffer_frames(frames as u32);
         if frames > self.max_frames {

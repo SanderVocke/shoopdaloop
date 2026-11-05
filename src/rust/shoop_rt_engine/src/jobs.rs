@@ -976,6 +976,9 @@ impl ControlEndpoint {
                 job.fail(Refusal::Internal);
                 return true;
             };
+            if let Some(control) = &self.cells.profiling {
+                control.reset();
+            }
             if let Err(error) =
                 self.work
                     .builder
@@ -989,6 +992,7 @@ impl ControlEndpoint {
                 });
                 return true;
             }
+            self.profile_layout.stage(plan.descriptor(), &self.next);
             let epoch = self.graph_epoch;
             self.submit_job(
                 job,
@@ -1702,6 +1706,9 @@ impl ControlEndpoint {
             }
         }
         if let Some((graph_epoch, topology_epoch)) = epochs {
+            if graph_epoch != self.graph_epoch {
+                self.profile_layout.activate();
+            }
             self.graph_epoch = graph_epoch;
             self.topology_epoch = topology_epoch;
         }

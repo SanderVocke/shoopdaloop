@@ -197,7 +197,7 @@ impl ControlEndpoint {
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
             Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
             Request::PreviewStart { bus: id, .. } => bus(id, HARD),
-            Request::PreviewStop | Request::CancelBulk => false,
+            Request::Profiling(_) | Request::PreviewStop | Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -285,7 +285,10 @@ impl ControlEndpoint {
                 }
             }
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => {}
-            Request::PreviewStart { .. } | Request::PreviewStop | Request::CancelBulk => {}
+            Request::PreviewStart { .. }
+            | Request::Profiling(_)
+            | Request::PreviewStop
+            | Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }

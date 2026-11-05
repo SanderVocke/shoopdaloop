@@ -21,17 +21,17 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
-#[cfg(test)]
-#[global_allocator]
-static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
-    shoop_wasm_test_support::heap::TrackingAllocator;
-
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+#[cfg(test)]
+#[global_allocator]
+static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
+    shoop_wasm_test_support::heap::TrackingAllocator;
 
 #[cfg(test)]
 mod buffered_tests;
@@ -50,6 +50,7 @@ mod node;
 mod pool;
 mod preview;
 mod processors;
+mod profiling;
 mod queue;
 mod recorded;
 mod render;
@@ -436,7 +437,12 @@ pub fn prepare_with_shared_and_processors(
         journal_events: 0,
     };
     let topology = compile(loop_limits, &TopologyDescription::default())?;
-    let cells = Cells::new(
+    let profile = rt_runtime::profiling::prepare(pool.nodes());
+    let (profile_control, profile_recorder, profile_reader) = match profile {
+        Some((control, recorder, reader)) => (Some(control), Some(recorder), Some(reader)),
+        None => (None, None, None),
+    };
+    let mut cells = Cells::new(
         strips,
         loops,
         buses,
@@ -444,6 +450,9 @@ pub fn prepare_with_shared_and_processors(
         driver,
         quantum.frames(),
     );
+    if let Some(cells) = alloc::sync::Arc::get_mut(&mut cells) {
+        cells.profiling = profile_control;
+    }
     let smoothing = match description.smoothing_frames {
         0 => Smoothing::None,
         frames => Smoothing::LinearRestart { frames },
@@ -589,6 +598,9 @@ pub fn prepare_with_shared_and_processors(
         planner,
         resources,
     )?;
+    if let Some(recorder) = profile_recorder {
+        runtime.set_profiling(recorder);
+    }
     if quantum.frames() > 1 {
         runtime.prepare_host_buffering()?;
     }
@@ -652,6 +664,17 @@ pub fn prepare_with_shared_and_processors(
         projected_recorded: vec![None; loops].into_boxed_slice(),
         processor_catalog,
         processor_cells,
+        profiling: profile_reader,
+        profile_named: vec![false; pool.nodes()].into_boxed_slice(),
+        profile_names: pool.profiling_names(),
+        profile_generation: 0,
+        profile_status: None,
+        profile_layout: profiling::Layouts::new(
+            &pool,
+            config.limits().max_edges,
+            description.sample_rate,
+            quantum.frames() as u32,
+        ),
         control,
         loops: client,
         shape: Shape {

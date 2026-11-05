@@ -1,4 +1,4 @@
-// AudioWorkletProcessor for the new engine's import-free Wasm module. It copies
+// AudioWorkletProcessor with an optional elapsed-time clock for profiling. It copies
 // samples and posted bytes in and out; the module owns all behaviour.
 const RECORDS_IN = 0;
 const RECORDS_OUT = 1;
@@ -30,7 +30,13 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
     this.port.onmessage = event => this.receive(event.data);
     try {
       const { wasmModule, config } = options.processorOptions;
-      this.wasm = new WebAssembly.Instance(wasmModule, {}).exports;
+      const timer = globalThis.performance;
+      this.wasm = new WebAssembly.Instance(wasmModule, {
+        shoop_profiling: { now: () => timer ? timer.now() * 1e6 : 0 },
+      }).exports;
+      if (typeof this.wasm.shoop_rt_worklet_profiling_credit !== 'function') {
+        throw new TypeError('the worklet module lacks profiling flow control');
+      }
       const record = bytesOf(config);
       const pointer = this.wasm.shoop_rt_worklet_config_buffer(record.length) >>> 0;
       if (!pointer) throw new RangeError('the configuration record is empty or too large');
@@ -39,6 +45,16 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       if (code !== PREPARED) {
         this.fail('prepare', code, 'the module refused its configuration');
         return;
+      }
+      if (timer && Number.isFinite(timer.now())) {
+        let previous = timer.now();
+        let resolution = Infinity;
+        for (let i = 0; i < 128; i += 1) {
+          const next = timer.now();
+          if (next > previous) resolution = Math.min(resolution, next - previous);
+          previous = next;
+        }
+        this.wasm.shoop_rt_worklet_profiling_clock(Number.isFinite(resolution) ? Math.max(1, Math.ceil(resolution * 1e6)) : 0);
       }
       this.maxFrames = this.wasm.shoop_rt_worklet_max_frames();
       this.audioInputs = this.wasm.shoop_rt_worklet_audio_inputs();
@@ -74,6 +90,9 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'midi':
         this.inbound[MIDI_IN].push(bytesOf(data.bytes));
+        break;
+      case 'profiling-credit':
+        this.wasm.shoop_rt_worklet_profiling_credit(data.count >>> 0);
         break;
       case 'status':
         this.port.postMessage({ kind: 'status', counters: this.counters() });
@@ -136,6 +155,7 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
     const input = inputs[0] || [];
     const output = outputs[0] || [];
     const frames = output[0]?.length || input[0]?.length || 128;
+    let profiling = false;
     try {
       if (this.wasm.memory.buffer !== this.memory) this.views();
       this.feed(RECORDS_IN);
@@ -144,6 +164,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       for (let channel = 0; channel < inputChannels; channel += 1) {
         this.input.set(input[channel], channel * this.maxFrames);
       }
+      profiling = timer && this.wasm.shoop_rt_worklet_profiling_active();
+      if (profiling) this.wasm.shoop_rt_worklet_profiling_begin(currentFrame, started * 1e6, timer.now() * 1e6, frames);
       const code = this.wasm.shoop_rt_worklet_process(
         frames,
         inputChannels,
@@ -164,7 +186,11 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
     } catch (error) {
       return this.fail('process', 0, String(error?.stack || error));
     }
-    if (timer) this.load = ((timer.now() - started) * sampleRate) / (1000 * frames);
+    if (timer) {
+      const ended = timer.now();
+      this.load = ((ended - started) * sampleRate) / (1000 * frames);
+      if (profiling) this.wasm.shoop_rt_worklet_profiling_end(ended * 1e6, frames);
+    }
     return true;
   }
 }

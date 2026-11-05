@@ -231,6 +231,7 @@ impl Running {
             std::thread::sleep(Duration::from_millis(1));
         }
         let cycle = self.driver.stop();
+        // The final callback may finish while joining the driver.
         let mut midi_reset = shared.phase() != RenderPhase::Running;
         if shared.driver().kind == DriverKind::Jack {
             midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
@@ -416,7 +417,14 @@ impl Prepared {
         };
         let processors =
             shoop_host_processors::prepare(&description).map_err(StartError::Processors)?;
-        let engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
+        let mut engine =
+            shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
+        engine
+            .render
+            .set_profiling_clock(crate::status::profiling_clock());
+        if let Some(control) = engine.host.profiling() {
+            control.use_outer_callback_budget();
+        }
         let outbox = engine.outbox();
         let shared = Arc::new(Shared::new(engine.host, driver));
         Ok(Self {
