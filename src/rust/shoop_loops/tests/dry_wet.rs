@@ -328,6 +328,87 @@ fn wet_rerecord_preserves_unequal_dry_audio_and_midi_playback_windows() {
 }
 
 #[shoop_test]
+fn wet_rerecord_writes_independent_channel_offsets_and_retains_raw_tails() {
+    let mut h = Harness::with_shape(3, 1, 16, 1024);
+    for (channel, input) in h.inputs.iter_mut().enumerate() {
+        input.fill(channel as f32 + 0.25);
+    }
+    h.transition(Transition::Record {
+        monitor_previous: false,
+    });
+    for _ in 0..4 {
+        h.step();
+    }
+    h.transition(Transition::Stop);
+    let original = h.export();
+    let mut changes = windows::Edit {
+        count: 2,
+        ..Default::default()
+    };
+    for (index, offset) in [-3, -11].into_iter().enumerate() {
+        changes.channels[index] = windows::ChannelUpdate {
+            channel: (index + 1) as u8,
+            midi: false,
+            start_offset: Some(offset),
+            preplay: None,
+        };
+    }
+    h.send(Operation::EditWindows {
+        target: id(),
+        expected_revision: 0,
+        expected_content: original.view.description.revision,
+        edit: changes,
+    });
+    h.step();
+    for channel in 0..3 {
+        h.inputs[channel].fill(100. + channel as f32);
+    }
+    h.transition(Transition::Rerecord);
+    for _ in 0..6 {
+        h.step();
+    }
+    h.transition(Transition::Stop);
+    let edited = h.export();
+    assert_ne!(
+        edited.view.audio.unwrap().snapshot.resource,
+        original.view.audio.unwrap().snapshot.resource
+    );
+    assert_eq!(
+        edited.view.auxiliary.unwrap().snapshot.resource,
+        original.view.auxiliary.unwrap().snapshot.resource
+    );
+    let (_, mut resources) = h.runtime.into_planner_and_resources();
+    for (source, changed) in [
+        (original.view.audio.unwrap(), false),
+        (edited.view.audio.unwrap(), true),
+    ] {
+        let mut cursor = resources.cursor(source.snapshot.id).unwrap();
+        let mut bytes = vec![0; 64 * 3 * 4];
+        let mut read = 0;
+        while read < bytes.len() {
+            resources.begin_callback();
+            let end = (read + 256).min(bytes.len());
+            read += resources.read(&mut cursor, &mut bytes[read..end]).unwrap();
+        }
+        for frame in 0..64 {
+            for (channel, untouched_tail) in [3, 11, 0].into_iter().enumerate() {
+                let offset = (frame * 3 + channel) * 4;
+                let sample = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                let expected = if changed && frame < 64 - untouched_tail {
+                    100. + channel as f32
+                } else {
+                    channel as f32 + 0.25
+                };
+                assert_eq!(
+                    sample, expected,
+                    "changed={changed} frame={frame} channel={channel}"
+                );
+            }
+        }
+    }
+}
+
+#[shoop_test]
 fn independent_maximum_dry_and_wet_sources_survive_wrapping_wet_rerecord() {
     for channels in [1, 2, 8] {
         for q in [1, 16, 32, 64, 128] {

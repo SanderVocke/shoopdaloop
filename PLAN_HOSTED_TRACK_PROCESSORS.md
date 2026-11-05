@@ -603,6 +603,11 @@ cover unequal roles, imported raw media with different lengths, P12 edits during
 recording, and actual JACK replacement on all carriers. Newly merged Zynq examples
 and timing/family test fixtures now use the extended channel fields and bounds.
 
+Wet-offset milestone: per-channel COW writes preserve independent wet start
+offsets and raw tails. Extent validation precedes rerecord admission and live edits.
+The heap-guarded three-channel regression, maximum-width rerecord fixture and
+real FX/synth/External service fixtures pass with warning-denying host builds.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or

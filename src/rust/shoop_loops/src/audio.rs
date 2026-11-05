@@ -611,6 +611,51 @@ impl AudioCapture {
         )
     }
 
+    pub fn replace_windowed_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        resource: rt_runtime::ResourceId,
+        mut revision: rt_runtime::Revision,
+        position: u64,
+        raw_frames: u64,
+        windows: &[crate::windows::ChannelWindow],
+        inputs: &AudioPorts<'_>,
+    ) -> Result<rt_runtime::Revision, Error> {
+        if windows.len() != self.channels || inputs.input_count() < self.channels {
+            return Err(Error::InvalidShape);
+        }
+        if windows.iter().all(|window| window.start_offset == 0) {
+            return self.replace_ports(io, resource, revision, position, inputs);
+        }
+        let raw_frames = windows
+            .iter()
+            .filter_map(|window| window.raw_frames)
+            .fold(raw_frames, u64::max);
+        for (channel, window) in windows.iter().copied().enumerate() {
+            let input = inputs.input(channel).ok_or(Error::InvalidShape)?;
+            let span = crate::windows::span(
+                i64::try_from(position).map_err(|_| Error::InvalidFrame)?,
+                crate::windows::ChannelWindow {
+                    capture_alignment: 0,
+                    ..window
+                },
+                false,
+                input.len(),
+                raw_frames,
+            );
+            if span.frames > 0 {
+                revision = io.replace_audio_channel(
+                    resource,
+                    revision,
+                    channel,
+                    span.position,
+                    &input[span.offset..span.offset + span.frames],
+                )?;
+            }
+        }
+        Ok(revision)
+    }
+
     fn stage_input(
         &mut self,
         io: &mut RenderIo<'_>,

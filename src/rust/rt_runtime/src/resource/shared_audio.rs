@@ -619,8 +619,14 @@ impl AudioStore {
         wrapping: bool,
         modulus: usize,
         base: Option<usize>,
+        selected_channel: Option<usize>,
     ) -> Result<Option<usize>, Error> {
-        let count = samples.len() / self.channels;
+        let stride = if selected_channel.is_some() {
+            1
+        } else {
+            self.channels
+        };
+        let count = samples.len() / stride;
         self.generation = self.generation.checked_add(1).ok_or(Error::Exhausted)?;
         self.plans.clear();
         for frame in 0..count {
@@ -679,9 +685,11 @@ impl AudioStore {
             let plan = self.marks[physical / self.page_frames].1;
             let destination =
                 plan * self.page_bytes + physical % self.page_frames * self.channels * 4;
-            for channel in 0..self.channels {
+            let channels =
+                selected_channel.map_or(0..self.channels, |channel| channel..channel + 1);
+            for (source, channel) in channels.enumerate() {
                 self.scratch[destination + channel * 4..destination + channel * 4 + 4]
-                    .copy_from_slice(&samples[frame * self.channels + channel].to_le_bytes());
+                    .copy_from_slice(&samples[frame * stride + source].to_le_bytes());
             }
         }
         store
@@ -741,6 +749,7 @@ impl AudioStore {
             false,
             self.ring_frames(),
             None,
+            None,
         )?;
         let old = core::mem::replace(&mut self.history, root);
         self.release_immediate(io.store, old);
@@ -781,6 +790,52 @@ impl AudioStore {
             true,
             view.modulus,
             view.base,
+            None,
+        )?;
+        self.release_immediate(io.store, view.root);
+        view.root = root;
+        view.revision = revision;
+        self.views[take.0.slot as usize].value = Some(view);
+        Ok(revision)
+    }
+
+    pub fn replace_channel(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        take: TakeId,
+        channel: usize,
+        position: u64,
+        samples: &[f32],
+    ) -> Result<Revision, Error> {
+        self.check(io.store)?;
+        let mut view = self.view(take.0)?;
+        if !view.writable {
+            return Err(Error::InvalidState);
+        }
+        if channel >= self.channels || samples.len() > self.max_frames {
+            return Err(Error::InvalidShape);
+        }
+        if position
+            .checked_add(samples.len() as u64)
+            .is_none_or(|end| end > view.frames as u64)
+        {
+            return Err(Error::InvalidOffset);
+        }
+        if samples.is_empty() {
+            return Ok(view.revision);
+        }
+        let revision = view.revision.checked_next()?;
+        let root = self.stage(
+            io.store,
+            view.root,
+            view.first,
+            view.frames,
+            position as usize,
+            samples,
+            false,
+            view.modulus,
+            view.base,
+            Some(channel),
         )?;
         self.release_immediate(io.store, view.root);
         view.root = root;

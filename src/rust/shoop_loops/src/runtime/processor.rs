@@ -274,11 +274,14 @@ impl Processor<LoopPlanner> for CaptureNode {
             )?;
         }
         if let (Some(audio), Some((resource, revision))) = (&mut self.audio, view.replace) {
-            match audio.replace_ports(
+            match audio.replace_windowed_ports(
                 &mut block.resources.render(),
                 resource,
                 revision,
                 view.decision.state.position,
+                view.decision.state.content_length,
+                &view.windows.audio
+                    [view.audio_widths[1]..view.audio_widths[1] + view.audio_widths[0]],
                 &block.audio,
             ) {
                 Ok(revision) => {

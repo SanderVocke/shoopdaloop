@@ -171,6 +171,15 @@ impl LoopPlanner {
         for window in
             &mut windows.audio[row.audio_widths[1]..row.audio_widths[1] + row.audio_widths[0]]
         {
+            if i128::from(window.start_offset) + i128::from(decision.state.content_length)
+                > i128::from(
+                    window
+                        .raw_frames
+                        .unwrap_or(audio.snapshot.description.frames),
+                )
+            {
+                return Err(Error::InvalidShape);
+            }
             window.capture_alignment = 0;
         }
         let credit = io.reserve_snapshot()?;
@@ -1436,6 +1445,22 @@ impl LoopPlanner {
                         midi_frames,
                         edit.length.unwrap_or(state.content_length),
                     )?;
+                    if row
+                        .active
+                        .or(row.prepared)
+                        .is_some_and(|take| take.edit.is_some())
+                    {
+                        for window in
+                            &windows.audio[row.audio_widths[1]..row.audio_widths.iter().sum()]
+                        {
+                            if i128::from(window.start_offset)
+                                + i128::from(edit.length.unwrap_or(state.content_length))
+                                > i128::from(window.raw_frames.unwrap_or(audio_frames))
+                            {
+                                return Err(Error::InvalidShape.into());
+                            }
+                        }
+                    }
                     if let Some(source) = media.and_then(|view| view.midi) {
                         validate_midi_window(
                             &mut context.resources,

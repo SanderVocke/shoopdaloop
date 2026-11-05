@@ -662,3 +662,9 @@ add-track dialog displays usage, and service snapshots carry automatic processor
 advance and loop alignment. Both real DSP service fixtures assert capacity changes
 and the 16-frame test delay. Focused dialog tests, warning-denying native product
 builds and tracing/test-attribute checks pass.
+
+Wet rerecord writes each wet lane at its own start offset using bounded COW
+channel edits. Negative positions are skipped and untouched raw tails remain.
+Admission and live timing edits refuse writes beyond the retained raw extent
+before mutating the take. The independent three-channel-offset regression runs
+under callback heap guards; maximum-width rerecord and real service fixtures pass.
