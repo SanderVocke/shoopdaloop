@@ -165,14 +165,27 @@ web-debug job is separate from this newer integration.
 
 The replacing branch advanced to `b6ac9443` at this recheck, but PR #940 still
 explicitly reports application Replacing unavailable. Pooled audio and persistent
-MIDI-index work does not satisfy the dependent-mode gate. No P06/P07 production
-implementation has been supplied and full P03 remains OPEN.
+MIDI-index work does not satisfy the dependent-mode gate. A later recheck found
+PR #940 rebased to `2707c466`, with application Replacing still unavailable.
+New [PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946) at `ac70645e`
+provides concrete loop/RT dry-wet modes and processor foundations, while public
+admission and service/session-file persistence remain gated. It is now the
+integration candidate; full P03 remains OPEN.
 
 The user revised P03's testing strategy on 2026-11-05: small targeted local checks,
 with broad regression and cross-platform/browser/artifact validation supplied by
 CI. The plan records this split and risk-based Miri selection; the completed broad
 local runs above are historical evidence, not mandatory repeats before each push.
 Further merged-head Chrome/browser/artifact results await CI.
+
+An integration review exposed a resync defect in the existing core: per-loop span
+indexes 10/11 entered snapshot-stage branches, preventing completion after the
+seventh span. The new production adapter regression
+`resync_preserves_a_playing_plan_with_more_than_seven_sparse_spans` reproduces the
+hang with 20 spans; its pre-fix run was interrupted after exceeding 120 seconds.
+Stage transitions now remain in the outer snapshot cursor. The affected packages
+built with warnings denied and all four focused composite resync cases passed,
+including pending versions, automatic monitoring and profiling coexistence.
 
 ## Reproduction and limits
 

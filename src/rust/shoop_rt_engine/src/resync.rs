@@ -269,33 +269,6 @@ impl ControlEndpoint {
                                 balance: entry.balance,
                             });
                         }
-                        10 => {
-                            cursor.stage = 11;
-                            cursor.index = 0;
-                            if let Some(description) = self.composite.description {
-                                return Some(StateRecord::CompositePending {
-                                    description,
-                                    received: self.composite.received as u32,
-                                    committed: self.composite.committed,
-                                    admitted: self.composite.admitted,
-                                });
-                            }
-                        }
-                        11 => {
-                            if let Some(description) = self.composite.description {
-                                if cursor.index < self.composite.received {
-                                    let index = cursor.index;
-                                    cursor.index += 1;
-                                    return Some(StateRecord::CompositeStagedSpan {
-                                        id: description.id,
-                                        index: index as u32,
-                                        span: self.composite.spans[index],
-                                    });
-                                }
-                            }
-                            cursor.stage = 1;
-                            cursor.index = 0;
-                        }
                         1 => {
                             cursor.part = 2;
                             return Some(StateRecord::RepeatSync {

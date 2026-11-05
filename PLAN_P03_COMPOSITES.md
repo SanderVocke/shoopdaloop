@@ -867,3 +867,15 @@ explicit response to a failure or identified risk, not a default milestone ritua
   `c98ee1e1`, all 12 selected Node packages, both native composite workflows and
   five selected Miri cases passed. Broad Chrome/browser/artifact checks are
   delegated to CI under the revised strategy; Stage 9 remains unchanged.
+- PR #946 (`feat/hosted-track-processors`, `ac70645e`) now supplies a concrete
+  P06/P07 loop/RT foundation. Public admission and service/session-file persistence
+  remain gated. An isolated dry/wet integration branch is being prepared against
+  that kernel; this does not satisfy the full dependent-mode gate. Replacing
+  PR #940 was rebased to `2707c466` and still reports application mode unavailable.
+- Integration review found a current-core recovery bug: per-loop span cursor values
+  10/11 accidentally executed outer snapshot-stage branches. Resync of a playing
+  20-span plan hung; the reproducer was interrupted after exceeding 120 seconds.
+  Removing those misplaced branches leaves stage transitions in the outer cursor
+  and streams every span normally. The warning-denying affected-package build and
+  four focused active/pending/monitoring/profiling resync cases passed. Broad
+  platform and Wasm coverage is delegated to CI.

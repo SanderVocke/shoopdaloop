@@ -444,6 +444,47 @@ fn resync_of_active_and_waiting_versions_preserves_identity_and_frozen_spans() {
 }
 
 #[shoop_test]
+fn resync_preserves_a_playing_plan_with_more_than_seven_sparse_spans() {
+    let (mut backend, ids) = setup();
+    let comp = shoop_backend::BackendCompositeId::from_raw(ids[3].raw());
+    let mut prepared = plan(ids[1], None, 39);
+    prepared.entries = 20;
+    prepared.spans = (0..20)
+        .map(|i| BackendCompositeSpan {
+            target: BackendCompositeTarget::Loop(ids[1]),
+            start: i * 2,
+            end: i * 2 + 1,
+            occurrence_start: i * 2,
+            ordinal: i as u32,
+            mode: Mode::Playing,
+        })
+        .collect();
+    let version = backend
+        .configure_prepared_composite_loop(comp, &prepared)
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_composite_loop(comp, Mode::Playing, None, None)
+        .unwrap();
+    step(&mut backend, 3);
+    let before = backend.poll().unwrap();
+    backend.request_resync().unwrap();
+    step(&mut backend, 128);
+    assert!(
+        backend.is_ready(),
+        "large composite resync did not complete"
+    );
+    let after = backend.poll().unwrap();
+    let state = &after.composites[&comp];
+    assert_eq!(state.active_plan_version, version);
+    assert_eq!(state.mode, Mode::Playing);
+    assert_eq!(state.length, 78);
+    assert_eq!(state.prepared_unit_frames, 2);
+    assert!(state.observed_frame > before.composites[&comp].observed_frame);
+    assert!(after.mutation_failures.is_empty());
+}
+
+#[shoop_test]
 fn at_limit_sparse_plan_streams_beyond_mutation_tracking_capacity_as_one_logical_edit() {
     let mut d = description();
     d.composite_entries = 8192;
