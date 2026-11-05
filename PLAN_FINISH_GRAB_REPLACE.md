@@ -2,6 +2,10 @@
 
 ## Status and delivery
 
+Current execution phase: finish implementation and local acceptance in this
+environment. Do not inspect or correct CI until that work is complete; then run
+the final iterative CI correction loop described below.
+
 Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
 `feat/backend-replacement`, with merged parent `0ef7581b` and refreshed target
@@ -54,8 +58,9 @@ u64 range semantics before engine settlement uses them. It does not enable a
 capability or publish resources. F1 remains open until production routes and the
 capacity/admission policy are verified. Initially builds and tests ran only in CI.
 The user's 2026-11-05 testing-strategy update supersedes that routing: use limited,
-targeted native checks during development and CI for broad/cross-platform coverage,
-as specified below. P04/P05 remain OPEN during implementation.
+targeted native checks during development. The later 2026-11-05 strategy update
+below defers all CI inspection/correction until implementation and local acceptance
+are complete. P04/P05 remain OPEN during implementation.
 
 The production sizing investigation exposed checkpoint arrays multiplied by view
 slots that the page budget could never admit. MIDI preparation now estimates its
@@ -484,10 +489,28 @@ reattachment. Physical-device deadline certification is not implied by CI timing
 
 ## Development verification strategy
 
-The user requested this strategy on 2026-11-05 to shorten development cycles.
-It supersedes the earlier CI-only iteration rule and the repository guidance to
-run complete gates before every behavior commit. Feature scope and acceptance
-criteria remain unchanged.
+The user's latest 2026-11-05 instruction establishes two sequential phases:
+complete the implementation and local acceptance in this environment first;
+only then start an iterative CI correction loop. This supersedes the earlier
+milestone-push/CI-monitoring strategy, historical CI-routing instructions in the
+execution record, and repository guidance to run complete gates before every
+behavior commit. Feature scope and final acceptance criteria remain unchanged.
+
+**Phase A — Complete the work locally.** Carry F1–F7 and all locally executable
+F8 acceptance work through to completion in this environment. Use targeted local
+checks while iterating, then broaden to the applicable local integration,
+production-capacity, packaged-application and regression gates as the finished
+implementation requires. Milestones are commit points, not reasons to stop
+implementation or switch to CI monitoring. Keep implementing until the normal
+application workflows and local acceptance evidence are complete.
+
+**Phase B — Correct and validate with CI.** After Phase A is complete, reconcile
+the target, run affected local checks, push the complete implementation and begin
+the final CI/review loop. Inspect required failures and artifacts, fix their
+causes here, run affected local checks, push corrections and rerun affected CI.
+Repeat until fresh applicable CI and the final acceptance gates pass on the
+actual delivered source/base. CI findings that require implementation changes
+reopen the affected local work before that correction is pushed.
 
 - For each meaningful increment, run the smallest relevant native package/test
   filter. Reuse existing fixtures and independent media/state oracles. Add a test
@@ -495,8 +518,9 @@ criteria remain unchanged.
   assertion at every layer or add tests that merely mirror implementation details.
 - Use Q=32 and one representative callback partition for the main development
   path. Add a boundary quantum/partition only when the changed logic depends on
-  it. Keep the broader quantum, callback, carrier and platform combinations in CI;
-  do not build a Cartesian product into every new test.
+  it. Reserve the broad cross-platform combinations for Phase B; exercise relevant
+  combinations locally when needed to complete or verify the implementation.
+  Do not build a Cartesian product into every new test.
 - Storage/writer increments need the directly affected correctness test and,
   where ownership or admission changes, a focused heap/pressure/retirement test.
   Protocol increments need the affected codec/admission case. Service and client
@@ -506,19 +530,23 @@ criteria remain unchanged.
   target. Run the relevant tracing/test-attribute/parity checks when their inputs
   change. Do not run a workspace build, full native suite, browser packaging or
   benchmark suite as a routine pre-commit step.
-- Push meaningful milestones. Let CI supply Windows/macOS, Wasm/Node/browser,
-  native-driver/carrier and broad regression coverage. Continue independent work
-  while CI runs; a full matrix result is not a dependency for the next increment.
-  Inspect failures as they arrive and rerun only affected failed checks after a
-  fix. Broaden local checks only for a failure or a specific unresolved risk.
+- Commit meaningful milestones locally. Defer CI-driven pushes, CI status checks,
+  log/artifact inspection and reruns until Phase A is complete. Do not poll CI at
+  startup, after a milestone, or between implementation steps during Phase A.
+  Existing or automatically triggered runs may finish unobserved; they do not
+  redirect this implementation phase. In Phase B, use CI for required
+  Windows/macOS, Wasm/Node/browser, native-driver/carrier and broad regression
+  coverage, and rerun affected failed checks after each verified correction.
 - Perform production-capacity measurements when the writer/pool design is usable
   and again if that design or its limits change. Do not remeasure unchanged
   foundations after every edit. Use a representative native end-to-end path at
   integration milestones and reserve packaged native/browser acceptance for F8.
-- At final delivery, require fresh applicable CI and the public application
-  evidence below before closing P04/P05. Record exact source/base, failures and
-  skips. Pending or unrun checks are never described as green; do not rerun
-  successful checks without a relevant change or unresolved concern.
+- Start Phase B only after the complete implementation and applicable local
+  acceptance pass, not after an internal kernel milestone. At final delivery,
+  require fresh applicable CI and the public application evidence below before
+  closing P04/P05. Record exact source/base, failures and skips. Pending or unrun
+  checks are never described as green; do not rerun successful checks without a
+  relevant change or unresolved concern.
 
 For example, a category-index change should start with the
 `rt_runtime` `midi_state::indexed::store::tests` filter; packet-storage changes
@@ -529,8 +557,9 @@ replacement for the final production-route acceptance tests.
 ## Implementation stages
 
 Dependencies: F0 -> F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8.
-Verify each used interface with targeted checks before building its dependent
-layer; do not wait for unrelated CI jobs. P04/P05 flags may
+Verify each used interface with targeted local checks before building its
+dependent layer. Complete implementation in this environment before inspecting
+or correcting CI, following the two-phase strategy above. P04/P05 flags may
 be enabled separately after their own public-route gates pass; final completion
 requires both. Keep the checklist and evidence current throughout execution.
 
@@ -538,7 +567,8 @@ requires both. Keep the checklist and evidence current throughout execution.
 
 - [x] Refresh the merged foundation, target instructions and parent status; record
   actual source/base SHAs. Create the new feature branch and open/push its PR as
-  described above, preserving unrelated work. Establish CI on the actual base.
+  described above, preserving unrelated work. Retain the actual base for final
+  Phase B CI validation; historical early CI is not a new monitoring requirement.
 - [x] Inventory every refusal, capability gate, mode conversion and production
   constructor named above; include service media/persistence guards, adapter
   canonical-import caches and configuration/family capture exclusions.
@@ -612,9 +642,9 @@ host/platform combinations.
   private state. Keep unrelated playback and ordinary recording working.
 
 Verification: develop against a focused allocator-guarded fixed-execution group
-with independent samples/packets/state at Q=32 and one callback partition. CI
-covers Q=1/16/32/64/128 and whole/one-frame/irregular callbacks; add a targeted
-boundary case locally when a change depends on that boundary.
+with independent samples/packets/state at Q=32 and one callback partition. Add a
+targeted boundary case locally when a change depends on that boundary. Final
+Phase B CI covers Q=1/16/32/64/128 and whole/one-frame/irregular callbacks.
 Replacing output matches reference monitoring semantics. Prefix continuation grows
 beyond the history horizon; replacement stays fixed-length. Required work survives
 exhausted ordinary transfer budgets, and every cancellation/fault frees its credits.
@@ -639,7 +669,8 @@ One invalid/stale/full target leaves every target and solo peer unchanged. Admis
 completion and resync agree on mode, next mode, phase, length, revision and cut.
 Old peers remain correctly unsupported; messages never exceed negotiated bounds.
 Use one native carrier for development integration and focused codec/admission
-tests for changed messages; CI verifies socket/shared-memory/MessagePort coverage.
+tests for changed messages; final Phase B CI verifies the remaining required
+socket/shared-memory/MessagePort coverage.
 
 ### F5 — Restore authoritative service policy
 
@@ -681,7 +712,8 @@ Equivalent UI, keyboard and Lua actions produce equivalent confirmed data/state.
 No test manually installs histories or changes the capability map to pass.
 Test action routing with existing client/service fixtures. Reuse the production
 media oracle instead of repeating long media scenarios for every input method;
-leave browser/platform execution to CI and the F8 acceptance pass.
+complete locally supported browser/application acceptance in F8 and use final
+Phase B CI for the remaining required browser/platform execution.
 
 ### F7 — Persistence, recovery and sustained-capacity acceptance
 
@@ -711,8 +743,9 @@ do not multiply the full workflow across all media/carrier/platform combinations
 
 ### F8 — End-to-end delivery and parity closure
 
-- [ ] Run one representative complete public sequence in a packaged native app
-  and cover the browser equivalent in CI:
+- [ ] Complete Phase A with one representative complete public sequence in a
+  packaged native app here, plus the browser equivalent wherever this environment
+  supports it. Required browser coverage is also verified in final Phase B CI:
   stopped input -> selected/targeted Grab -> unsynced prefix continuation ->
   playback -> continuous audio/MIDI Replacing across wraps -> scheduled exit ->
   old/current exports -> save/load -> repeat edit -> UI detach/reattach -> teardown.
@@ -720,12 +753,16 @@ do not multiply the full workflow across all media/carrier/platform combinations
   tracks and multiple sources/users across a small complementary set of scenarios;
   do not rerun the entire sequence for every combination. Verify actual
   packets/samples and outcomes.
-- [ ] Obtain fresh applicable CI on the final
+- [ ] Only after the complete implementation and local acceptance are finished,
+  start Phase B: refresh/reconcile the target, run affected local checks and push
+  the complete implementation. Obtain fresh applicable CI on the final
   source/base: warnings denied, full Rust suites, native hosts/drivers/carriers,
   required Node and Chrome libraries, real session/AudioWorklet/browser workflows,
   portable builds, formatting, tracing, test-attribute, parity and dependency gates.
-  Inspect failures/artifacts and fix causes. Refresh/reconcile the target before
-  final validation; distinguish any later unvalidated consolidation explicitly.
+  Inspect failures/artifacts and fix causes in an iterative correction loop:
+  reproduce or explain each required failure, implement the correction here, run
+  affected local checks, push and rerun affected CI until the required gates pass.
+  Distinguish any later unvalidated consolidation explicitly.
 - [ ] Inspect incoming automated reviews; address applicable feedback and rerun
   affected checks until approval. If no review arrives, record that without claiming
   approval. Resolve threads and align PR title/body with the final application work.
@@ -739,11 +776,12 @@ do not multiply the full workflow across all media/carrier/platform combinations
   the delivered tree. Record final head/base, CI/review status, honest skips and
   remaining unrelated parity items. Leave the PR unmerged for the user.
 
-Verification routing: follow the targeted-development strategy above. CI owns
-broad and cross-platform checks; full CI waiting is reserved for final delivery,
-not each increment. Honor standing user validation/waiver preferences where
-applicable and record actual outcomes. Prior foundation CI does not establish
-application acceptance. No pending or unexecuted check is labelled green.
+Verification routing: finish implementation and local acceptance in Phase A
+without CI polling or correction detours. Only then enter Phase B's iterative CI
+correction loop for final broad/cross-platform validation. Honor standing user
+validation/waiver preferences where applicable and record actual outcomes. Prior
+foundation CI does not establish application acceptance. No pending or unexecuted
+check is labelled green.
 
 P04/P05 must remain OPEN until their respective application acceptance gates pass.
 Finish all stages before reporting full integration; partial RT progress must be
@@ -752,7 +790,8 @@ reported as partial progress, with the remaining user-facing behavior explicit.
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
-- Commit each completed stage or meaningful milestone.
+- Commit each completed stage or meaningful milestone locally; keep implementing
+  through local completion before starting CI inspection/correction.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
