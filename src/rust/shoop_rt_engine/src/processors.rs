@@ -52,15 +52,7 @@ pub struct ProcessorState {
     pub values: [f32; STATE_SCALARS],
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum ProcessorPhase {
-    Free,
-    Owned,
-    Running,
-    Retiring,
-    Faulted,
-}
+pub use shoop_rt_protocol::processors::Phase as ProcessorPhase;
 
 pub(crate) struct ProcessorCells {
     kind: ProcessorKind,
@@ -140,6 +132,7 @@ pub struct HostedProcessor {
     pending_binding: Option<(rt_runtime::Epoch, usize, u32)>,
     parameters: [(Frame, u32, f32); 64],
     parameter_count: usize,
+    manual_active: Option<(u32, bool)>,
 }
 impl HostedProcessor {
     pub(crate) fn new(
@@ -175,6 +168,7 @@ impl HostedProcessor {
             pending_binding: None,
             parameters: [(Frame(0), 0, 0.); 64],
             parameter_count: 0,
+            manual_active: None,
         })
     }
     pub(crate) fn attach(&mut self, cells: Arc<crate::cells::Cells>) {
@@ -284,6 +278,86 @@ impl HostedProcessor {
         self.publish(frame);
         Ok(())
     }
+    pub(crate) fn control(
+        &mut self,
+        frame: Frame,
+        generation: u32,
+        control: shoop_rt_protocol::processors::Control,
+    ) -> Result<(), Error> {
+        use shoop_rt_protocol::processors::{Control, CC_BASE, CLEAR_CC, RESET, WIDTH};
+        self.check(generation)?;
+        if let Control::Active(on) = control {
+            self.manual_active = Some((self.routing_state(), on));
+            if !on {
+                self.suspend(frame, generation)?;
+            }
+            return Ok(());
+        }
+        let Control::Restore {
+            values,
+            replace_mappings,
+        } = control
+        else {
+            let Control::Parameter { parameter, value } = control else {
+                unreachable!()
+            };
+            if parameter == WIDTH {
+                return Err(Error::InvalidParameter);
+            }
+            return self.parameter(frame, generation, parameter, value);
+        };
+        let kind = self.cells.kind;
+        let mut changes = [(frame, 0, 0.); STATE_SCALARS];
+        self.buffered.backend().validate_parameter(RESET, 0.)?;
+        let mut count = 0;
+        if replace_mappings {
+            self.buffered.backend().validate_parameter(CLEAR_CC, 0.)?;
+            changes[count] = (frame, CLEAR_CC, 0.);
+            count += 1;
+        }
+        for (index, &value) in values.iter().enumerate().take(kind.scalar_count()) {
+            let id = kind.scalar_id(index).ok_or(Error::InvalidParameter)?;
+            if id == WIDTH {
+                if self.buffered.backend().parameter(id) != Some(value) {
+                    return Err(Error::InvalidShape);
+                }
+                continue;
+            }
+            if id >= CC_BASE {
+                if !replace_mappings {
+                    continue;
+                }
+                if value >= 0.
+                    && (0..index).any(|previous| {
+                        kind.scalar_id(previous)
+                            .is_some_and(|id| id >= CC_BASE && id < WIDTH)
+                            && values[previous] == value
+                    })
+                {
+                    return Err(Error::InvalidParameter);
+                }
+            }
+            self.buffered.backend().validate_parameter(id, value)?;
+            changes[count] = (frame, id, value);
+            count += 1;
+        }
+        changes[count] = (frame, RESET, 0.);
+        count += 1;
+        if self.phase == ProcessorPhase::Running {
+            if count > self.parameters.len() - self.parameter_count {
+                return Err(Error::Capacity);
+            }
+            self.parameters[self.parameter_count..self.parameter_count + count]
+                .copy_from_slice(&changes[..count]);
+            self.parameter_count += count;
+        } else {
+            for &(_, id, value) in &changes[..count] {
+                self.buffered.inactive_backend_mut()?.control(id, value)?;
+            }
+            self.publish(frame);
+        }
+        Ok(())
+    }
     pub(crate) fn retire(&mut self, frame: Frame, generation: u32) -> Result<(), Error> {
         if generation != self.generation {
             return Err(Error::InvalidId);
@@ -294,6 +368,7 @@ impl HostedProcessor {
         self.buffered.abort(frame)?;
         self.parameter_count = 0;
         self.binding = None;
+        self.manual_active = None;
         self.pending_binding = None;
         self.phase = ProcessorPhase::Retiring;
         self.cleanup = 0;
@@ -315,7 +390,7 @@ impl HostedProcessor {
         {
             self.binding = Some((source, generation));
         }
-        let demand = match self.binding {
+        let mut demand = match self.binding {
             Some((source, generation)) => self.signal.as_ref().is_some_and(|cells| {
                 let signal = &cells.strips[source];
                 signal.owner_generation.load(Ordering::Relaxed) == generation
@@ -323,6 +398,13 @@ impl HostedProcessor {
             }),
             None => self.phase == ProcessorPhase::Running,
         };
+        if let Some((routing, active)) = self.manual_active {
+            if routing == self.routing_state() {
+                demand = active;
+            } else {
+                self.manual_active = None;
+            }
+        }
         let result = self.render(block, demand);
         if result.is_err() {
             self.phase = ProcessorPhase::Faulted;
@@ -344,6 +426,15 @@ impl HostedProcessor {
             output.clear();
         }
         Ok(())
+    }
+    fn routing_state(&self) -> u32 {
+        self.binding
+            .and_then(|(source, _)| {
+                self.signal
+                    .as_ref()
+                    .map(|cells| cells.strips[source].routing_state.load(Ordering::Relaxed))
+            })
+            .unwrap_or(0)
     }
     fn render(
         &mut self,
@@ -404,7 +495,7 @@ impl HostedProcessor {
         if !demand {
             self.suspend(block.frame.checked_add(self.quantum)?, self.generation)?;
         }
-        self.publish(block.frame);
+        self.publish(block.frame.checked_add(block.frames)?);
         Ok(())
     }
     fn maintain(&mut self, frame: Frame) -> Result<(), Error> {

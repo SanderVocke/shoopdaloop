@@ -4,7 +4,7 @@ use rt_buffered::{Backend, Batch};
 use rt_runtime::{graph::PortCounts, Error};
 
 pub use shoop_processor_protocol::{
-    CC_BASE, CLEAR_CC, DRIVE_TYPE, MODULATION_TYPE, REVERB_TYPE, STAGE_BASE, SYNTH_PANIC,
+    CC_BASE, CLEAR_CC, DRIVE_TYPE, MODULATION_TYPE, RESET, REVERB_TYPE, STAGE_BASE, SYNTH_PANIC,
     SYNTH_PRESET, WIDTH,
 };
 
@@ -162,7 +162,7 @@ mod fx {
                 integer(value, 0, 2)
             } else if (CC_BASE..CC_BASE + 23).contains(&id) {
                 value == -1. || integer(value, 0, 2047)
-            } else if id == CLEAR_CC {
+            } else if id == CLEAR_CC || id == RESET {
                 value == 0.
             } else if id == WIDTH {
                 integer(value, 1, self.channels as u32)
@@ -299,6 +299,8 @@ mod fx {
                 } else {
                     self.processor.remove_midi_cc(*parameter);
                 }
+            } else if id == RESET {
+                self.processor.finish_restore();
             } else if id == CLEAR_CC {
                 self.processor.clear_midi_cc_assignments();
             } else if id == WIDTH {
@@ -368,7 +370,7 @@ mod synth {
                         program: (value as u32 % 128) as u8,
                     })
                     .is_some()
-            } else if id == SYNTH_PANIC || id == CLEAR_CC {
+            } else if id == SYNTH_PANIC || id == CLEAR_CC || id == RESET {
                 value == 0.
             } else if (CC_BASE..CC_BASE + 2).contains(&id) {
                 value == -1. || integer(value, 0, 2047)
@@ -462,6 +464,7 @@ mod synth {
                     })
                     .map_err(|_| Error::InvalidParameter)?,
                 SYNTH_PANIC => self.processor.panic(),
+                RESET => self.suspend()?,
                 CLEAR_CC => self.processor.clear_midi_cc_assignments(),
                 _ => {
                     let parameter = OxiSynthParameter::ALL

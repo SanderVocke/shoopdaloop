@@ -386,15 +386,23 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         mode: BackendDefaultPlaybackMode,
     ) -> Result<()> {
         self.ready()?;
-        self.mirror
+        let track = self
+            .mirror
             .live_track(track_id)
             .ok_or_else(|| anyhow!("unknown track {track_id:?}"))?;
-        match mode {
-            BackendDefaultPlaybackMode::Regular => Ok(()),
-            BackendDefaultPlaybackMode::DryThroughWet => {
-                Err(unavailable(BackendCapability::DryWetModes))
-            }
+        if mode == BackendDefaultPlaybackMode::DryThroughWet
+            && matches!(track.topology, BackendTrackTopology::Direct { .. })
+        {
+            return Err(unavailable(BackendCapability::DryWetModes));
         }
+        self.requests.push(
+            Request::StripDefaultPlayback {
+                strip: track.strip,
+                dry_through_wet: mode == BackendDefaultPlaybackMode::DryThroughWet,
+            },
+            Purpose::DefaultPlayback(track_id, mode),
+        );
+        Ok(())
     }
 
     fn set_track_latency(
@@ -464,10 +472,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn set_track_fx_control(
         &mut self,
-        _track_id: BackendTrackId,
-        _control: BackendTrackFxControl,
+        track_id: BackendTrackId,
+        control: BackendTrackFxControl,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::TrackFx))
+        self.processor_control(track_id, control)
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {

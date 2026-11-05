@@ -203,9 +203,10 @@ impl ControlEndpoint {
             | Request::ContentInitial { id, .. }
             | Request::ContentFinish { id }
             | Request::ContentRelease { id } => self.uploads.blocked(id),
-            Request::StripControl { strip: id, .. } | Request::InjectMidi { strip: id, .. } => {
-                strip(id.0.index, HARD)
-            }
+            Request::StripControl { strip: id, .. }
+            | Request::StripDefaultPlayback { strip: id, .. }
+            | Request::ProcessorControl { strip: id, .. }
+            | Request::InjectMidi { strip: id, .. } => strip(id.0.index, HARD),
             Request::LoopTransition { loop_id, delay, .. } => {
                 let owner = self
                     .model
@@ -287,6 +288,8 @@ impl ControlEndpoint {
             | Request::ContentFinish { id }
             | Request::ContentRelease { id } => self.uploads.block(id),
             Request::StripControl { strip: id, .. }
+            | Request::StripDefaultPlayback { strip: id, .. }
+            | Request::ProcessorControl { strip: id, .. }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. }

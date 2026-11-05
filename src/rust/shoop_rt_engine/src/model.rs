@@ -128,6 +128,7 @@ pub(crate) struct ProcessorOwner {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Strip {
+    pub default_dry: bool,
     pub id: StripId,
     pub shape: StripShape,
     pub processor: Option<ProcessorOwner>,
@@ -361,6 +362,7 @@ impl Model {
                 let slot = strip.0.index as usize;
                 self.strip_generations[slot] = strip.0.generation;
                 self.strips[slot] = Some(Strip {
+                    default_dry: false,
                     id: strip,
                     shape,
                     processor,

@@ -164,6 +164,10 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ProcessorControl {
+        strip: StripId,
+        control: crate::processors::Control,
+    },
     CreateProcessedStrip {
         strip: StripId,
         shape: StripShape,
@@ -249,6 +253,10 @@ pub enum Request {
     StripControl {
         strip: StripId,
         control: StripControl,
+    },
+    StripDefaultPlayback {
+        strip: StripId,
+        dry_through_wet: bool,
     },
     CreateLoop {
         loop_id: LoopSlotId,
@@ -489,6 +497,15 @@ pub struct ProcessorLimits {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    ProcessorState {
+        strip: StripId,
+        slot: ProcessorSlot,
+        snapshot: crate::processors::Snapshot,
+    },
+    StripDefaultPlayback {
+        strip: StripId,
+        dry_through_wet: bool,
+    },
     StripProcessor {
         strip: StripId,
         kind: crate::ProcessorKind,

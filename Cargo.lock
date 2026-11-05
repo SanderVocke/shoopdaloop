@@ -5192,6 +5192,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_backend",
  "shoop_host_processors",
+ "shoop_processor_protocol",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",

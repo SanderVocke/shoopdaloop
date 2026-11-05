@@ -13,6 +13,7 @@ browser-feature = "wasm-test-browser"
 
 [features]
 default = []
+alloc = []
 serde = ["dep:serde"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 

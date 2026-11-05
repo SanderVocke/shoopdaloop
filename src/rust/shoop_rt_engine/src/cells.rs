@@ -46,6 +46,7 @@ pub(crate) struct StripCells {
     pub midi_out: AtomicBool,
     pub owner_generation: AtomicU32,
     pub processor_demand: AtomicBool,
+    pub routing_state: AtomicU32,
     pub forced_monitor_off: AtomicU32,
     pub wet_gate: Box<[AtomicU32]>,
 }
@@ -58,6 +59,7 @@ impl StripCells {
             midi_out: AtomicBool::new(false),
             owner_generation: AtomicU32::new(0),
             processor_demand: AtomicBool::new(false),
+            routing_state: AtomicU32::new(0),
             forced_monitor_off: AtomicU32::new(0),
             wet_gate: (0..frames).map(|_| AtomicU32::new(0)).collect(),
         }

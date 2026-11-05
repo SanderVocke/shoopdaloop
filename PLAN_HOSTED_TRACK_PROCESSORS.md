@@ -388,6 +388,21 @@ public controls, media/persistence and end-to-end validation.
   to detect cross-instance state leaks. Test attach/reconnect during an admitted
   create/control/remove and prove continuing DSP and one terminal outcome; commit.
 
+Processor control milestone: protocol v12 adds authoritative default playback
+selection, bounded scalar/full-state controls and coherent applied-state records.
+The adapter projects editor values, mappings, actual processing phase and slot
+generation from host state. FX controls affect production audio; mapped MIDI
+changes and synth host-preset selection survive resynchronization. Editor visibility
+is transient. Manual activation clears stream state on deactivation and yields to
+subsequent automatic routing changes. Full restores preflight values, shape,
+mapping uniqueness and queue capacity before changing DSP; canonical envelope
+restore preserves live mappings. DSP encoders and DSP-free clients share the
+portable state envelope encoder. Valid restores reset histories and start new
+settings at one source boundary, including parameter smoothing initialization.
+Native control/codec, graph and existing regressions pass. Service commands,
+MIDI Learn/global controls, recorded-take state and public capability admission
+are still outstanding, so no Stage 6 checkbox is closed by this milestone.
+
 ### 7. Complete persistence, media and replacement/recovery
 
 - [ ] Extend persistence images/codecs, service capture/mapping and adapter replacement

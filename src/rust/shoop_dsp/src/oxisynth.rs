@@ -364,14 +364,14 @@ impl OxiSynthControlState {
     }
 
     pub fn encode(&self) -> String {
+        use shoop_processor_protocol::{state::State, Kind};
         let state = self.current_state();
-        format!(
-            "{STATE_FORMAT}:{STATE_VERSION}:{SOUNDFONT_ID}:{}:{}:{:08x}:{:08x}",
-            state.preset.bank,
-            state.preset.program,
-            state.reverb_send.to_bits(),
-            state.chorus_send.to_bits()
-        )
+        let mut scalar = State::new(Kind::OxiSynth).expect("built-in kind");
+        scalar.values[0] = state.reverb_send;
+        scalar.values[1] = state.chorus_send;
+        scalar.values[2] =
+            (u32::from(state.preset.bank) * 128 + u32::from(state.preset.program)) as f32;
+        scalar.encode()
     }
 
     pub fn prepare_processor(

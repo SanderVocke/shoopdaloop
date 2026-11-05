@@ -20,7 +20,7 @@ oxisynth = ["dep:oxisynth", "dep:soundfont", "dep:anyhow", "dep:rt_buffered", "d
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-shoop_processor_protocol = { path = "../shoop_processor_protocol" }
+shoop_processor_protocol = { path = "../shoop_processor_protocol", features = ["alloc"] }
 thiserror = { workspace = true, features = ["std"] }
 anyhow = { workspace = true, features = ["std"], optional = true }
 fundsp = { workspace = true, optional = true, features = ["realtime-reset"] }

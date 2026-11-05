@@ -40,6 +40,24 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::ProcessorControl {
+            strip: strip(0),
+            control: processors::Control::Parameter {
+                parameter: 21,
+                value: 0.75,
+            },
+        },
+        Request::ProcessorControl {
+            strip: strip(0),
+            control: processors::Control::Restore {
+                values: [0.25; processors::STATE_SCALARS],
+                replace_mappings: true,
+            },
+        },
+        Request::StripDefaultPlayback {
+            strip: strip(0),
+            dry_through_wet: true,
+        },
         Request::Connect {
             port: EnginePort::Strip(StripPort {
                 strip: strip(0),
@@ -350,6 +368,22 @@ fn engine_samples() -> Vec<EngineMessage> {
     let peaks = Peaks::new(&[0.5; MAX_STRIP_CHANNELS]).unwrap();
     let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
     vec![
+        EngineMessage::State(StateRecord::ProcessorState {
+            strip: strip(0),
+            slot: ProcessorSlot {
+                index: 63,
+                generation: 123,
+            },
+            snapshot: processors::Snapshot {
+                source_frame: u64::MAX,
+                phase: processors::Phase::Running,
+                values: [0.75; processors::STATE_SCALARS],
+            },
+        }),
+        EngineMessage::State(StateRecord::StripDefaultPlayback {
+            strip: strip(0),
+            dry_through_wet: true,
+        }),
         EngineMessage::State(StateRecord::StripProcessor {
             strip: strip(0),
             kind: ProcessorKind::BuiltInFx,

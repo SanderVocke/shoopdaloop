@@ -213,6 +213,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn state_record(&mut self, record: StateRecord) {
         if self.resync.is_none() {
+            if let StateRecord::ProcessorState {
+                strip,
+                slot,
+                snapshot,
+            } = record
+            {
+                self.processor_snapshot(strip, slot, snapshot);
+            }
             if let StateRecord::StripControl { strip, control } = record {
                 if let Some(id) = self.mirror.strip_tracks.get(&strip).copied() {
                     if let Some(track) = self.mirror.tracks.get_mut(&id) {
@@ -237,6 +245,32 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             record => records.push(record),
         }
+    }
+
+    fn processor_snapshot(
+        &mut self,
+        strip: shoop_rt_protocol::StripId,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        snapshot: shoop_rt_protocol::processors::Snapshot,
+    ) {
+        let Some(id) = self.mirror.strip_tracks.get(&strip) else {
+            return;
+        };
+        let Some(track) = self.mirror.tracks.get_mut(id) else {
+            return;
+        };
+        if !matches!(
+            track.topology,
+            shoop_backend::BackendTrackTopology::DryWetProcessor { .. }
+        ) || track.removing
+            || track
+                .processor_slot
+                .is_some_and(|expected| expected != slot)
+        {
+            return;
+        }
+        track.processor_slot = Some(slot);
+        track.processor_snapshot = Some(snapshot);
     }
 
     /// Reconciles known mappings without deleting engine-owned session objects.
@@ -356,6 +390,25 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         for record in records {
             match record {
+                StateRecord::ProcessorState {
+                    strip,
+                    slot,
+                    snapshot,
+                } => self.processor_snapshot(strip, slot, snapshot),
+                StateRecord::StripDefaultPlayback {
+                    strip,
+                    dry_through_wet,
+                } => {
+                    if let Some(id) = self.mirror.strip_tracks.get(&strip) {
+                        if let Some(track) = self.mirror.tracks.get_mut(id) {
+                            track.default_playback_mode = if dry_through_wet {
+                                shoop_backend::BackendDefaultPlaybackMode::DryThroughWet
+                            } else {
+                                shoop_backend::BackendDefaultPlaybackMode::Regular
+                            };
+                        }
+                    }
+                }
                 StateRecord::StripProcessor { strip, kind, slot } => {
                     let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                         continue;
@@ -633,6 +686,35 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             format!("adding a loop was refused: {}", refusal_text(refusal)),
                         );
                     }
+                }
+            }
+            (Purpose::ProcessorControl(_, _), None) => {}
+            (Purpose::ProcessorControl(id, control), Some(refusal)) => {
+                if self.mirror.tracks.contains_key(&id) {
+                    self.failure(
+                        BackendMutationKind::TrackFxControl,
+                        Some(id.raw()),
+                        Some(BackendMutationDetail::TrackFxControl(control)),
+                        format!("processor control was refused: {}", refusal_text(refusal)),
+                    );
+                }
+            }
+            (Purpose::DefaultPlayback(id, mode), None) => {
+                if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                    track.default_playback_mode = mode;
+                }
+            }
+            (Purpose::DefaultPlayback(id, mode), Some(refusal)) => {
+                if self.mirror.tracks.contains_key(&id) {
+                    self.failure(
+                        BackendMutationKind::TrackControl,
+                        Some(id.raw()),
+                        Some(BackendMutationDetail::TrackDefaultPlaybackMode(mode)),
+                        format!(
+                            "default playback mode was refused: {}",
+                            refusal_text(refusal)
+                        ),
+                    );
                 }
             }
             (Purpose::StripControl(id, control), None) => {

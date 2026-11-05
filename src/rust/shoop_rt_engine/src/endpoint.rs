@@ -157,6 +157,13 @@ impl Work {
 pub struct ControlEndpoint {
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
+    pub(crate) projected_processors: Box<
+        [Option<(
+            StripId,
+            shoop_rt_protocol::ProcessorSlot,
+            shoop_rt_protocol::processors::Snapshot,
+        )>],
+    >,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
@@ -479,6 +486,7 @@ impl ControlEndpoint {
         self.results.clear();
         self.unanswered = 0;
         self.resync = None;
+        self.projected_processors.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
         for pending in self.pending.iter_mut().flatten() {
@@ -870,6 +878,45 @@ impl ControlEndpoint {
             }
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
+            }
+            Request::ProcessorControl { strip, control } => {
+                match self.model.strip(strip).ok_or(Refusal::InvalidId) {
+                    Ok(entry) => match entry.processor.and_then(|owner| owner.slot) {
+                        Some(slot) => self
+                            .submit_op(
+                                self.at(),
+                                self.pool.processor(slot.index as usize),
+                                EngineOp::ProcessorControl {
+                                    generation: slot.generation,
+                                    control,
+                                },
+                                Purpose::Reply(Some(correlation)),
+                            )
+                            .map(|()| None),
+                        None => Err(Refusal::Unsupported),
+                    },
+                    Err(error) => Err(error),
+                }
+            }
+            Request::StripDefaultPlayback {
+                strip,
+                dry_through_wet,
+            } => {
+                let entry = self.model.strip_mut(strip).ok_or(Refusal::InvalidId);
+                match entry {
+                    Ok(entry) if !dry_through_wet || entry.processor.is_some() => {
+                        entry.default_dry = dry_through_wet;
+                        self.model.revision += 1;
+                        if self.job.is_some() {
+                            if let Some(entry) = self.next.strip_mut(strip) {
+                                entry.default_dry = dry_through_wet;
+                            }
+                        }
+                        Ok(Some(Outcome::Done))
+                    }
+                    Ok(_) => Err(Refusal::Unsupported),
+                    Err(refusal) => Err(refusal),
+                }
             }
             Request::LoopTransition {
                 loop_id,
@@ -1324,6 +1371,7 @@ impl Endpoint for ControlEndpoint {
         if self.connected {
             self.forced_monitoring(Some(out));
         }
+        self.project_processors(out);
         self.telemetry(out);
     }
 }

@@ -396,9 +396,101 @@ impl Wire for StripShape {
     }
 }
 
+tags!(crate::processors::Phase {
+    0 => crate::processors::Phase::Free,
+    1 => crate::processors::Phase::Owned,
+    2 => crate::processors::Phase::Running,
+    3 => crate::processors::Phase::Retiring,
+    4 => crate::processors::Phase::Faulted,
+});
+
+impl Wire for crate::processors::Control {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Active(on) => {
+                w.u8(2)?;
+                w.bool(*on)
+            }
+            Self::Parameter { parameter, value } => {
+                w.u8(0)?;
+                w.u32(*parameter)?;
+                w.f32(*value)
+            }
+            Self::Restore {
+                values,
+                replace_mappings,
+            } => {
+                w.u8(1)?;
+                w.bool(*replace_mappings)?;
+                for value in values {
+                    w.f32(*value)?;
+                }
+                Ok(())
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        match r.u8()? {
+            2 => Ok(Self::Active(r.bool()?)),
+            0 => Ok(Self::Parameter {
+                parameter: r.u32()?,
+                value: r.f32()?,
+            }),
+            1 => {
+                let replace_mappings = r.bool()?;
+                let mut values = [0.; crate::processors::STATE_SCALARS];
+                for value in &mut values {
+                    *value = r.f32()?;
+                }
+                Ok(Self::Restore {
+                    values,
+                    replace_mappings,
+                })
+            }
+            _ => Err(CodecError::Invalid),
+        }
+    }
+}
+impl Wire for crate::processors::Snapshot {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.source_frame)?;
+        self.phase.put(w)?;
+        for value in self.values {
+            w.f32(value)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let source_frame = r.u64()?;
+        let phase = crate::processors::Phase::get(r)?;
+        let mut values = [0.; crate::processors::STATE_SCALARS];
+        for value in &mut values {
+            *value = r.f32()?;
+        }
+        Ok(Self {
+            source_frame,
+            phase,
+            values,
+        })
+    }
+}
+
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::ProcessorControl { strip, control } => {
+                w.u8(37)?;
+                strip.put(w)?;
+                control.put(w)
+            }
+            Self::StripDefaultPlayback {
+                strip,
+                dry_through_wet,
+            } => {
+                w.u8(36)?;
+                strip.put(w)?;
+                w.bool(dry_through_wet)
+            }
             Self::ContentFamilyBegin {
                 id,
                 root,
@@ -656,6 +748,14 @@ impl Wire for Request {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
                 kind: ProcessorKind::get(r)?,
+            },
+            37 => Self::ProcessorControl {
+                strip: StripId::get(r)?,
+                control: crate::processors::Control::get(r)?,
+            },
+            36 => Self::StripDefaultPlayback {
+                strip: StripId::get(r)?,
+                dry_through_wet: r.bool()?,
             },
             0 => Self::CreateStrip {
                 strip: StripId::get(r)?,
@@ -1177,6 +1277,24 @@ impl Wire for ProcessorPreset {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ProcessorState {
+                strip,
+                slot,
+                snapshot,
+            } => {
+                w.u8(16)?;
+                strip.put(w)?;
+                slot.put(w)?;
+                snapshot.put(w)
+            }
+            Self::StripDefaultPlayback {
+                strip,
+                dry_through_wet,
+            } => {
+                w.u8(15)?;
+                strip.put(w)?;
+                w.bool(*dry_through_wet)
+            }
             Self::StripProcessor { strip, kind, slot } => {
                 if (*kind == ProcessorKind::External) != slot.is_none() {
                     return Err(CodecError::Invalid);
@@ -1264,6 +1382,15 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            16 => Self::ProcessorState {
+                strip: StripId::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                snapshot: crate::processors::Snapshot::get(r)?,
+            },
+            15 => Self::StripDefaultPlayback {
+                strip: StripId::get(r)?,
+                dry_through_wet: r.bool()?,
+            },
             14 => {
                 let strip = StripId::get(r)?;
                 let kind = ProcessorKind::get(r)?;

@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend", default-features = false }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+shoop_processor_protocol = { path = "../shoop_processor_protocol", features = ["alloc"] }
 tracing = { workspace = true }
 
 [dev-dependencies]

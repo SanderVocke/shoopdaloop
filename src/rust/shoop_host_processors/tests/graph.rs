@@ -73,6 +73,176 @@ fn strip() -> StripId {
 fn looped() -> LoopSlotId {
     LoopSlotId(SlotId::new(0, 1))
 }
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn restored_fx_settings_start_at_one_source_boundary_after_the_declared_delay() {
+    use processors::{Control, STAGE_BASE};
+    let d = description(1, ProcessorKind::BuiltInFx);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    done(
+        &mut h,
+        Request::ProcessorControl {
+            strip: strip(),
+            control: Control::Parameter {
+                parameter: STAGE_BASE + 5,
+                value: 0.,
+            },
+        },
+    );
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.input_mut(0).fill(1.);
+    tick(&mut h, 128);
+    assert_eq!(&h.output(0)[32..128], &[1.; 96]);
+    let mut values = h.endpoint().processor_state(0).unwrap().values;
+    values[24] = 1.;
+    values[7] = 0.;
+    values[8] = -6.;
+    let id = assert_no_heap(|| {
+        h.request(Request::ProcessorControl {
+            strip: strip(),
+            control: Control::Restore {
+                values,
+                replace_mappings: false,
+            },
+        })
+    })
+    .unwrap();
+    let mut samples = Vec::new();
+    let mut applied = false;
+    for _ in 0..5 {
+        tick(&mut h, 16);
+        samples.extend_from_slice(&h.output(0)[..16]);
+        while let Some(message) = assert_no_heap(|| h.receive()) {
+            if let EngineMessage::Result {
+                correlation,
+                outcome,
+            } = message
+            {
+                if correlation == id {
+                    assert_eq!(outcome, Outcome::Done);
+                    applied = true;
+                }
+            }
+        }
+    }
+    assert!(applied);
+    assert_eq!(&samples[..32], &[1.; 32]);
+    assert!(samples[32..]
+        .iter()
+        .all(|sample| (sample - 0.5011872).abs() < 1e-5));
+}
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn bounded_state_restore_preflights_every_value_and_mapping_before_changing_dsp() {
+    use processors::{Control, CC_BASE};
+    let d = description(1, ProcessorKind::BuiltInFx);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    let change = |control| Request::ProcessorControl {
+        strip: strip(),
+        control,
+    };
+    done(
+        &mut h,
+        change(Control::Parameter {
+            parameter: 5,
+            value: 18.,
+        }),
+    );
+    done(
+        &mut h,
+        change(Control::Parameter {
+            parameter: CC_BASE + 5,
+            value: 7.,
+        }),
+    );
+    let before = h.endpoint().processor_state(0).unwrap().values;
+    for invalid in [31, 55] {
+        let mut values = before;
+        values[0] = -12.;
+        values[invalid] = 99.;
+        assert!(matches!(
+            request(
+                &mut h,
+                change(Control::Restore {
+                    values,
+                    replace_mappings: true
+                })
+            ),
+            Outcome::Refused(_)
+        ));
+        assert_eq!(h.endpoint().processor_state(0).unwrap().values, before);
+    }
+    let mut duplicate = before;
+    duplicate[32] = 7.;
+    assert!(matches!(
+        request(
+            &mut h,
+            change(Control::Restore {
+                values: duplicate,
+                replace_mappings: true
+            })
+        ),
+        Outcome::Refused(_)
+    ));
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values, before);
+    let mut values = before;
+    values[5] = 24.;
+    values[37] = -1.;
+    done(
+        &mut h,
+        change(Control::Restore {
+            values,
+            replace_mappings: false,
+        }),
+    );
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[5], 24.);
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[37], 7.);
+    done(
+        &mut h,
+        change(Control::Restore {
+            values,
+            replace_mappings: true,
+        }),
+    );
+    assert_eq!(h.endpoint().processor_state(0).unwrap().values[37], -1.);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.input_mut(0).fill(0.5);
+    tick(&mut h, 64);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Running
+    );
+    let mut changed = h.endpoint().processor_state(0).unwrap().values;
+    changed[5] = 3.;
+    done(
+        &mut h,
+        change(Control::Restore {
+            values: changed,
+            replace_mappings: true,
+        }),
+    );
+    tick(&mut h, 64);
+    let state = h.endpoint().processor_state(0).unwrap();
+    assert_eq!(state.values[5], 3.);
+    assert_eq!(state.frame.0, h.next_frame());
+    assert_eq!(&h.output(0)[16..64], &[0.5; 48]);
+}
 fn create(h: &mut OfflineHost, channels: u8, kind: ProcessorKind) {
     create_with_host_width(h, channels, kind, channels.max(2));
 }

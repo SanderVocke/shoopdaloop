@@ -41,6 +41,10 @@ pub struct NodeConfiguration {
 /// immediately before their frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineOp {
+    ProcessorControl {
+        generation: u32,
+        control: shoop_rt_protocol::processors::Control,
+    },
     ProcessorClaim {
         generation: u32,
     },
@@ -332,6 +336,7 @@ impl StripInput {
         self.live_midi_active = false;
         self.release = false;
         let cells = &self.cells.strips[self.slot];
+        cells.routing_state.store(0, Ordering::Relaxed);
         cells.input.clear();
         cells
             .midi_in
@@ -625,6 +630,10 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
                     parameter,
                     value,
                 } => node.parameter(context.frame, generation, parameter, value),
+                EngineOp::ProcessorControl {
+                    generation,
+                    control,
+                } => node.control(context.frame, generation, control),
                 _ => Err(Error::InvalidEvent),
             };
         }
@@ -682,6 +691,15 @@ impl StripInput {
         }
         self.gains.fill(frames, &mut self.unity);
         let cells = &self.cells.strips[self.slot];
+        cells.routing_state.store(
+            u32::from(self.monitor.target() > 0.)
+                | (u32::from(activity.recording) << 1)
+                | (u32::from(activity.pre_recording) << 2)
+                | (u32::from(activity.playing_dry) << 3)
+                | (u32::from(activity.rerecording) << 4)
+                | (u32::from(activity.pre_rerecording) << 5),
+            Ordering::Relaxed,
+        );
         let live_record = activity.recording || activity.pre_recording;
         let dry_play = activity.playing_dry || activity.rerecording || activity.pre_rerecording;
         let mut demand = live_record || dry_play;
@@ -883,7 +901,8 @@ impl StripInput {
             | EngineOp::ProcessorStart { .. }
             | EngineOp::ProcessorSuspend { .. }
             | EngineOp::ProcessorRetire { .. }
-            | EngineOp::ProcessorParameter { .. } => return Err(Error::InvalidParameter),
+            | EngineOp::ProcessorParameter { .. }
+            | EngineOp::ProcessorControl { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -993,7 +1012,8 @@ impl StripOutput {
             | EngineOp::ProcessorStart { .. }
             | EngineOp::ProcessorSuspend { .. }
             | EngineOp::ProcessorRetire { .. }
-            | EngineOp::ProcessorParameter { .. } => return Err(Error::InvalidParameter),
+            | EngineOp::ProcessorParameter { .. }
+            | EngineOp::ProcessorControl { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }

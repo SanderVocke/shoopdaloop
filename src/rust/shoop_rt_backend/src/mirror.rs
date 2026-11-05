@@ -105,6 +105,9 @@ impl Controls {
 }
 
 pub(crate) struct Track {
+    pub processor_visible: bool,
+    pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
+    pub default_playback_mode: shoop_backend::BackendDefaultPlaybackMode,
     pub port_name_base: String,
     pub topology: BackendTrackTopology,
     pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
@@ -572,6 +575,8 @@ impl Mirror {
         let channels = track.audio_channels as usize;
         let controls = track.controls;
         BackendTrackState {
+            fx: crate::processor_controls::track_fx_state(track),
+            default_playback_mode: track.default_playback_mode,
             topology: track.topology.clone(),
             audio_channels: track.audio_channels,
             midi: track.midi,

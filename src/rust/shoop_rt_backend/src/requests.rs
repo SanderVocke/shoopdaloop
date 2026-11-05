@@ -18,6 +18,8 @@ pub(crate) enum Purpose {
     RemoveStrip(BackendTrackId),
     CreateLoop(BackendLoopId),
     StripControl(BackendTrackId, BackendTrackControl),
+    DefaultPlayback(BackendTrackId, shoop_backend::BackendDefaultPlaybackMode),
+    ProcessorControl(BackendTrackId, shoop_backend::BackendTrackFxControl),
     LoopSync(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId),
     Clear(BackendLoopId),

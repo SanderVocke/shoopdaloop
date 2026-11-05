@@ -305,6 +305,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.tracks.insert(
             track_id,
             Track {
+                processor_visible: false,
+                processor_snapshot: None,
+                default_playback_mode: Default::default(),
                 port_name_base: port_name_base.to_owned(),
                 topology: topology.clone(),
                 processor_slot: None,
@@ -744,6 +747,313 @@ mod track_role_tests {
                 .processor_slot
                 .is_some());
         }
+    }
+    #[shoop_test]
+    fn fx_editor_controls_drive_real_audio_and_project_midi_changes_without_client_dsp() {
+        use shoop_app_api::{
+            BuiltInFxControl as Fx, BuiltInFxMidiCcAssignment, BuiltInFxParameter as Parameter,
+            BuiltInFxStage, TrackProcessorEditorState,
+        };
+        use shoop_backend::BackendTrackFxControl as Control;
+        let mut stack = stack();
+        let created = stack
+            .create_track_topology(
+                "fx",
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: shoop_app_api::TrackProcessorTypeId::BUILTIN_FX.into(),
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                1,
+            )
+            .unwrap();
+        stack.wait_idle();
+        for (port, host) in [
+            (created.ports[0].id, "audio_in_1"),
+            (created.ports[1].id, "audio_out_1"),
+            (created.ports[2].id, "midi_in_1"),
+        ] {
+            stack.set_port_connected(port, host, true).unwrap();
+        }
+        for control in [
+            Fx::SetReverbEnabled(false),
+            Fx::SetStageEnabled(BuiltInFxStage::Drive, true),
+            Fx::SetParameter(Parameter::DriveMix, 0.),
+            Fx::SetParameter(Parameter::DriveOutput, -6.),
+            Fx::AssignMidiCc(BuiltInFxMidiCcAssignment {
+                parameter: Parameter::Drive,
+                channel: 0,
+                controller: 7,
+            }),
+        ] {
+            stack
+                .set_track_fx_control(created.track_id, Control::BuiltInFx(control))
+                .unwrap();
+        }
+        stack
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        stack.clock.0.input_mut(0).fill(1.);
+        stack.wait_idle();
+        for _ in 0..16 {
+            stack.clock.wait();
+            stack.pump();
+        }
+        assert!(stack.clock.0.output(0)[..16]
+            .iter()
+            .all(|&sample| (sample - 0.5011872).abs() < 1e-5));
+        stack
+            .clock
+            .0
+            .midi_input_mut(0)
+            .push(3, 16, &[0xb0, 7, 127])
+            .unwrap();
+        for _ in 0..8 {
+            stack.clock.wait();
+            stack.pump();
+        }
+        let mut snapshot = stack.poll().unwrap();
+        assert!(snapshot.mutation_failures.is_empty());
+        let fx = snapshot
+            .tracks
+            .remove(&created.track_id)
+            .unwrap()
+            .fx
+            .unwrap();
+        let Some(TrackProcessorEditorState::BuiltInFx(editor)) = fx.editor else {
+            panic!("FX editor");
+        };
+        assert!(fx.active);
+        assert_eq!(editor.drive_db, 36.);
+        assert_eq!(editor.drive_output_db, -6.);
+        assert_eq!(editor.midi_cc_assignments.len(), 1);
+        stack
+            .set_track_fx_control(created.track_id, Control::SetActive(false))
+            .unwrap();
+        stack.wait_idle();
+        for _ in 0..8 {
+            stack.clock.wait();
+            stack.pump();
+        }
+        assert_eq!(&stack.clock.0.output(0)[..16], &[0.; 16]);
+        assert!(
+            !stack.poll().unwrap().tracks[&created.track_id]
+                .fx
+                .as_ref()
+                .unwrap()
+                .active
+        );
+        stack
+            .set_track_fx_control(created.track_id, Control::SetActive(true))
+            .unwrap();
+        stack.wait_idle();
+        for _ in 0..8 {
+            stack.clock.wait();
+            stack.pump();
+        }
+        assert!(stack.clock.0.output(0)[..16]
+            .iter()
+            .any(|&sample| sample > 0.4));
+        refresh(&mut stack);
+        assert_eq!(
+            stack.mirror.tracks[&created.track_id]
+                .processor_snapshot
+                .unwrap()
+                .values[5],
+            36.
+        );
+        let mut state =
+            shoop_processor_protocol::state::State::new(shoop_processor_protocol::Kind::BuiltInFx)
+                .unwrap();
+        state.values[5] = 9.;
+        state.values[28] = 0.;
+        stack
+            .set_track_fx_control(created.track_id, Control::RestoreState(state.encode()))
+            .unwrap();
+        stack.wait_idle();
+        let values = stack.mirror.tracks[&created.track_id]
+            .processor_snapshot
+            .unwrap()
+            .values;
+        assert_eq!(values[5], 9.);
+        assert_eq!(values[37], 7., "envelope restoration keeps live mappings");
+        assert!(stack
+            .set_track_fx_control(
+                created.track_id,
+                Control::BuiltInFx(Fx::SetParameter(Parameter::Drive, f32::NAN))
+            )
+            .is_err());
+        assert!(stack
+            .set_track_fx_control(created.track_id, Control::RestoreState("broken".into()))
+            .is_err());
+        stack
+            .set_track_fx_control(created.track_id, Control::SetVisible(true))
+            .unwrap();
+        assert!(
+            stack.poll().unwrap().tracks[&created.track_id]
+                .fx
+                .as_ref()
+                .unwrap()
+                .visible
+        );
+        stack
+            .set_track_fx_control(
+                created.track_id,
+                Control::BuiltInFx(Fx::RemoveMidiCc(Parameter::Drive)),
+            )
+            .unwrap();
+        stack.wait_idle();
+        assert_eq!(
+            stack.mirror.tracks[&created.track_id]
+                .processor_snapshot
+                .unwrap()
+                .values[37],
+            -1.
+        );
+    }
+    #[shoop_test]
+    fn synth_editor_uses_host_presets_and_confirms_sends_mappings_and_panic() {
+        use shoop_app_api::{
+            OxiSynthControl as Synth, OxiSynthMidiCcAssignment, OxiSynthParameter,
+            TrackProcessorEditorState,
+        };
+        use shoop_backend::BackendTrackFxControl as Control;
+        let mut stack = stack();
+        let created = stack
+            .create_track_topology(
+                "synth",
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: shoop_app_api::TrackProcessorTypeId::OXISYNTH.into(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                1,
+            )
+            .unwrap();
+        stack.wait_idle();
+        let preset = *stack.processor_presets.last().unwrap();
+        for control in [
+            Synth::SelectPreset(format!("{}:{}", preset.bank, preset.program)),
+            Synth::SetReverbSend(0.75),
+            Synth::SetChorusSend(0.25),
+            Synth::AssignMidiCc(OxiSynthMidiCcAssignment {
+                parameter: OxiSynthParameter::ChorusSend,
+                channel: 15,
+                controller: 127,
+            }),
+            Synth::Panic,
+        ] {
+            stack
+                .set_track_fx_control(created.track_id, Control::OxiSynth(control))
+                .unwrap();
+            stack.wait_idle();
+        }
+        let mut snapshot = stack.poll().unwrap();
+        assert!(snapshot.mutation_failures.is_empty());
+        let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot
+            .tracks
+            .remove(&created.track_id)
+            .unwrap()
+            .fx
+            .unwrap()
+            .editor
+        else {
+            panic!("synth editor");
+        };
+        assert_eq!(
+            editor.selected_preset_id,
+            format!("{}:{}", preset.bank, preset.program)
+        );
+        assert_eq!(editor.reverb_send, 0.75);
+        assert_eq!(editor.chorus_send, 0.25);
+        assert_eq!(editor.midi_cc_assignments.len(), 1);
+        assert!(stack
+            .set_track_fx_control(
+                created.track_id,
+                Control::OxiSynth(Synth::SelectPreset("unknown".into()))
+            )
+            .is_err());
+        assert!(stack
+            .set_track_fx_control(
+                created.track_id,
+                Control::OxiSynth(Synth::SetReverbSend(-1.))
+            )
+            .is_err());
+        assert!(stack
+            .set_track_fx_control(
+                created.track_id,
+                Control::BuiltInFx(shoop_app_api::BuiltInFxControl::SetReverbEnabled(false))
+            )
+            .is_err());
+        stack
+            .set_track_fx_control(
+                created.track_id,
+                Control::OxiSynth(Synth::ClearMidiCcAssignments),
+            )
+            .unwrap();
+        stack.wait_idle();
+        refresh(&mut stack);
+        assert_eq!(
+            stack.mirror.tracks[&created.track_id]
+                .processor_snapshot
+                .unwrap()
+                .values[4],
+            -1.
+        );
+    }
+    #[shoop_test]
+    fn processed_default_playback_is_confirmed_resynced_and_independent_of_loop_mode() {
+        use shoop_backend::BackendDefaultPlaybackMode;
+        let mut stack = stack();
+        let created = stack
+            .create_track_topology(
+                "external",
+                BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                },
+                1,
+            )
+            .unwrap();
+        stack.wait_idle();
+        for mode in [
+            BackendDefaultPlaybackMode::DryThroughWet,
+            BackendDefaultPlaybackMode::Regular,
+        ] {
+            stack
+                .set_track_default_playback_mode(created.track_id, mode)
+                .unwrap();
+            stack.wait_idle();
+            assert!(stack.poll().unwrap().mutation_failures.is_empty());
+            assert_eq!(
+                stack.mirror.tracks[&created.track_id].default_playback_mode,
+                mode
+            );
+            refresh(&mut stack);
+            assert_eq!(
+                stack.mirror.tracks[&created.track_id].default_playback_mode,
+                mode
+            );
+            assert_eq!(
+                stack.mirror.loops[&created.loops[0]].view.mode,
+                shoop_rt_protocol::LoopMode::Stopped
+            );
+        }
+        let direct = stack.create_strip("direct", 1, false, 1).unwrap();
+        stack.wait_idle();
+        assert!(stack
+            .set_track_default_playback_mode(
+                direct.track_id,
+                BackendDefaultPlaybackMode::DryThroughWet
+            )
+            .is_err());
+        assert_eq!(
+            stack.mirror.tracks[&direct.track_id].default_playback_mode,
+            BackendDefaultPlaybackMode::Regular
+        );
     }
     #[shoop_test]
     fn rerecord_monitoring_is_confirmed_and_survives_resync_and_a_later_user_change() {

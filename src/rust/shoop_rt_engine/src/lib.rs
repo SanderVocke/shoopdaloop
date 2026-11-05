@@ -636,6 +636,7 @@ pub fn prepare_with_shared_and_processors(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        projected_processors: vec![None; strips].into_boxed_slice(),
         processor_catalog,
         processor_cells,
         control,

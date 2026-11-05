@@ -31,6 +31,70 @@ const PORT_KINDS: [PortKind; 7] = [
 ];
 
 impl ControlEndpoint {
+    pub(crate) fn processor_record(
+        &self,
+        strip: shoop_rt_protocol::StripId,
+    ) -> Option<StateRecord> {
+        let owner = self.model.strip(strip)?.processor?.slot?;
+        let state = self.processor_cells.get(owner.index as usize)?.read()?;
+        if state.generation != owner.generation {
+            return None;
+        }
+        Some(StateRecord::ProcessorState {
+            strip,
+            slot: owner,
+            snapshot: shoop_rt_protocol::processors::Snapshot {
+                source_frame: state.frame.0,
+                phase: state.phase,
+                values: state.values,
+            },
+        })
+    }
+
+    pub(crate) fn project_processors(&mut self, out: &mut Outbox) {
+        if !self.connected || self.resync.is_some() {
+            return;
+        }
+        for index in 0..self.model.strips.len() {
+            let Some(strip) = self.model.strips[index] else {
+                self.projected_processors[index] = None;
+                continue;
+            };
+            let Some(StateRecord::ProcessorState {
+                strip,
+                slot,
+                snapshot,
+            }) = self.processor_record(strip.id)
+            else {
+                continue;
+            };
+            if self.projected_processors[index].is_some_and(
+                |(previous_strip, previous_slot, previous)| {
+                    previous_strip == strip
+                        && previous_slot == slot
+                        && previous.phase == snapshot.phase
+                        && previous
+                            .values
+                            .iter()
+                            .zip(snapshot.values)
+                            .all(|(a, b)| a.to_bits() == b.to_bits())
+                },
+            ) {
+                continue;
+            }
+            if out
+                .push(EngineMessage::State(StateRecord::ProcessorState {
+                    strip,
+                    slot,
+                    snapshot,
+                }))
+                .is_err()
+            {
+                return;
+            }
+            self.projected_processors[index] = Some((strip, slot, snapshot));
+        }
+    }
     fn host_port_id(&self, kind: PortKind, index: usize) -> HostPortId {
         let [audio_in, audio_out, midi_in, _] = self.settings.host;
         let first = match kind {
@@ -238,14 +302,29 @@ impl ControlEndpoint {
                                 });
                             }
                         }
+                        part if part == controls.len() + 3 => {
+                            cursor.part += 1;
+                            return Some(StateRecord::StripDefaultPlayback {
+                                strip: strip.id,
+                                dry_through_wet: strip.default_dry,
+                            });
+                        }
+                        part if part == controls.len() + 4 => {
+                            if strip.processor.and_then(|owner| owner.slot).is_some() {
+                                let record = self.processor_record(strip.id)?;
+                                cursor.part += 1;
+                                return Some(record);
+                            }
+                            cursor.part += 1;
+                        }
                         _ => {
                             let mut connections = Resync {
                                 index: cursor.index,
-                                part: cursor.part - controls.len() - 3,
+                                part: cursor.part - controls.len() - 5,
                                 ..*cursor
                             };
                             let record = self.next_connection(&mut connections);
-                            cursor.part = connections.part + controls.len() + 3;
+                            cursor.part = connections.part + controls.len() + 5;
                             cursor.channel = connections.channel;
                             cursor.bit = connections.bit;
                             if record.is_some() {
@@ -350,7 +429,7 @@ impl ControlEndpoint {
                     let _ = out.push(EngineMessage::State(record));
                 }
                 None => {
-                    self.resync = None;
+                    self.resync = (cursor.stage < 6).then_some(cursor);
                     return;
                 }
             }

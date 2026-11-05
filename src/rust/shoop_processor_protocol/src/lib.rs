@@ -2,6 +2,11 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+#[cfg(feature = "alloc")]
+pub mod state;
+
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -12,10 +17,42 @@ pub const REVERB_TYPE: u32 = 0x202;
 pub const CC_BASE: u32 = 0x1000;
 pub const CLEAR_CC: u32 = 0x3000;
 pub const WIDTH: u32 = 0x4000;
+pub const RESET: u32 = 0x4001;
 pub const SYNTH_PRESET: u32 = 2;
 pub const SYNTH_PANIC: u32 = 3;
 pub const MAX_INSTANCES: u16 = 64;
 pub const STATE_SCALARS: usize = 64;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Control {
+    Active(bool),
+    Parameter {
+        parameter: u32,
+        value: f32,
+    },
+    Restore {
+        values: [f32; STATE_SCALARS],
+        replace_mappings: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum Phase {
+    Free,
+    Owned,
+    Running,
+    Retiring,
+    Faulted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Snapshot {
+    /// Exclusive source-frame end of the batch represented by these values.
+    pub source_frame: u64,
+    pub phase: Phase,
+    pub values: [f32; STATE_SCALARS],
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

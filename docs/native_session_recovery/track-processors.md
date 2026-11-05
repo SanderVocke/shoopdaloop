@@ -376,3 +376,40 @@ dry-role meters, monitoring/resync and existing latency regressions. The workspa
 build passes with warnings denied; test-attribute and four-target production
 boundary audits pass. Public feature bits remain gated while controls, media and
 persistence work continues.
+
+### Host-confirmed processor control milestone
+
+Protocol v12 carries a strip's default wet/dry playback choice independently of
+loop mode. It also carries bounded parameter, activation and atomic full-state
+requests plus reliable applied-state snapshots. Snapshots include the processor
+slot generation, phase, scalar/mapping values and their exclusive source-frame
+end. Projection retries under backpressure and compares float bits. Resync waits
+for a coherent atomic read rather than completing with a missing processor record.
+
+The production adapter converts these records into the existing FX/synth editors
+without importing DSP code. Real controls cover stages, types, continuous values,
+synth host-advertised presets, sends, Panic and assign/remove/clear mappings.
+Visibility remains transient. Activation aborts stale sound on deactivation;
+automatic routing changes regain control of processing demand. Global MIDI and
+idle mapped-control handling still require the next integration milestone.
+
+Full-state application preflights all affected values, actual width, mapping
+uniqueness and the complete pending-event capacity before mutation. Envelope-only
+restore preserves live mappings. A successful restore resets processor histories
+and initializes restored FX smoothing targets at its source boundary. The node
+and host delays remain separate and unchanged. Canonical built-in envelopes now
+share a portable encoder with the concrete DSP implementation; legacy FX v1 and
+current FX/synth v2 remain supported. Concrete synth admission still validates the
+selected preset against the prepared host resources.
+
+Native evidence: 194 regression tests across DSP, processor contracts, wire
+protocol, host banks, core and adapter pass; an additional real-graph fixture
+proves the restored gain changes exactly after the declared two-Q combined delay,
+with no smoothing ramp or early samples. Compatibility checks cover every FX type
+combination, canonical float bits and every packaged synth preset. Public backend
+control tests prove changed audio, mapped-MIDI projection and resync, activation,
+invalid-state preservation, synth sends/presets/Panic and default playback state.
+The warning-denying workspace build, four-target production boundaries and the
+429-module tracing inventory pass. Service/UI command wiring, global controls,
+recorded take state, media and transactional persistence remain open; public
+capability bits stay gated.

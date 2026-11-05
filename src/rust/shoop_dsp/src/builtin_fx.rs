@@ -62,15 +62,6 @@ pub enum DriveType {
 }
 
 impl DriveType {
-    const fn tag(self) -> &'static str {
-        match self {
-            Self::Saturation => "saturation",
-            Self::Overdrive => "overdrive",
-            Self::Distortion => "distortion",
-            Self::Fuzz => "fuzz",
-        }
-    }
-
     fn decode(value: &str) -> Option<Self> {
         match value {
             "saturation" => Some(Self::Saturation),
@@ -91,14 +82,6 @@ pub enum ModulationType {
 }
 
 impl ModulationType {
-    const fn tag(self) -> &'static str {
-        match self {
-            Self::Tremolo => "tremolo",
-            Self::Flanger => "flanger",
-            Self::Phaser => "phaser",
-        }
-    }
-
     fn decode(value: &str) -> Option<Self> {
         match value {
             "tremolo" => Some(Self::Tremolo),
@@ -118,14 +101,6 @@ pub enum ReverbType {
 }
 
 impl ReverbType {
-    const fn tag(self) -> &'static str {
-        match self {
-            Self::Room => "room",
-            Self::Hall => "hall",
-            Self::Plate => "plate",
-        }
-    }
-
     fn decode(value: &str) -> Option<Self> {
         match value {
             "room" => Some(Self::Room),
@@ -443,43 +418,33 @@ impl Default for BuiltInFxState {
 }
 
 impl BuiltInFxState {
+    pub fn scalar_state(self) -> shoop_processor_protocol::state::State {
+        use shoop_processor_protocol::{state::State, Kind};
+        let mut scalar = State::new(Kind::BuiltInFx).expect("built-in kind");
+        for (index, parameter) in BuiltInFxParameter::ALL.iter().enumerate() {
+            scalar.values[index] = parameter.value(self);
+        }
+        for (index, enabled) in [
+            self.compressor_enabled,
+            self.drive_enabled,
+            self.eq_enabled,
+            self.chorus_enabled,
+            self.modulation_enabled,
+            self.reverb_enabled,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            scalar.values[23 + index] = u8::from(enabled) as f32;
+        }
+        scalar.values[29] = self.drive_type as u8 as f32;
+        scalar.values[30] = self.modulation_type as u8 as f32;
+        scalar.values[31] = self.reverb_type as u8 as f32;
+        scalar
+    }
+
     pub fn encode(self) -> String {
-        let mut fields = Vec::with_capacity(34);
-        fields.push(STATE_FORMAT.to_owned());
-        fields.push(STATE_VERSION.to_owned());
-        fields.push(encode_bool(self.compressor_enabled).to_owned());
-        push_float(&mut fields, self.compressor_threshold_db);
-        push_float(&mut fields, self.compressor_ratio);
-        push_float(&mut fields, self.compressor_attack_ms);
-        push_float(&mut fields, self.compressor_release_ms);
-        push_float(&mut fields, self.compressor_makeup_db);
-        fields.push(encode_bool(self.drive_enabled).to_owned());
-        fields.push(self.drive_type.tag().to_owned());
-        push_float(&mut fields, self.drive_db);
-        push_float(&mut fields, self.drive_tone);
-        push_float(&mut fields, self.drive_mix);
-        push_float(&mut fields, self.drive_output_db);
-        fields.push(encode_bool(self.eq_enabled).to_owned());
-        push_float(&mut fields, self.eq_low_db);
-        push_float(&mut fields, self.eq_mid_db);
-        push_float(&mut fields, self.eq_high_db);
-        fields.push(encode_bool(self.chorus_enabled).to_owned());
-        push_float(&mut fields, self.chorus_rate_hz);
-        push_float(&mut fields, self.chorus_depth);
-        push_float(&mut fields, self.chorus_mix);
-        push_float(&mut fields, self.chorus_width);
-        fields.push(encode_bool(self.modulation_enabled).to_owned());
-        fields.push(self.modulation_type.tag().to_owned());
-        push_float(&mut fields, self.modulation_rate_hz);
-        push_float(&mut fields, self.modulation_depth);
-        push_float(&mut fields, self.modulation_mix);
-        push_float(&mut fields, self.modulation_feedback);
-        push_float(&mut fields, self.modulation_spread);
-        fields.push(encode_bool(self.reverb_enabled).to_owned());
-        fields.push(self.reverb_type.tag().to_owned());
-        push_float(&mut fields, self.reverb_amount);
-        push_float(&mut fields, self.reverb_tone);
-        fields.join(":")
+        self.scalar_state().encode()
     }
 
     pub fn decode(encoded: &str) -> Result<Self, BuiltInFxStateError> {
@@ -617,10 +582,6 @@ fn encode_bool(value: bool) -> &'static str {
     } else {
         "0"
     }
-}
-
-fn push_float(fields: &mut Vec<String>, value: f32) {
-    fields.push(format!("{:08x}", value.to_bits()));
 }
 
 fn required<'a>(
@@ -1195,6 +1156,14 @@ impl BuiltInFxProcessor {
         self.chorus.reset();
         self.modulation.reset();
         self.reverb.reset();
+    }
+
+    pub(crate) fn finish_restore(&mut self) {
+        self.synchronize_runtime_values();
+        self.reset();
+        self.smoothers = std::array::from_fn(|index| {
+            ParameterSmoother::new(BuiltInFxParameter::ALL[index].value(self.state))
+        });
     }
 
     pub fn process(&mut self, frames: usize) {
