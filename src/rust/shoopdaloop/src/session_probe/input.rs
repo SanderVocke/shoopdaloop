@@ -96,14 +96,35 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     } else {
         launch(transport, 16)?
     };
+    let builtins_root = shoop_egui::default_builtins_location();
+    let catalog = shoop_script_resources::scan_builtin_directory(
+        std::path::Path::new(&builtins_root),
+        1,
+        shoop_script_resources::ResourceLimits::default(),
+    )?;
+    ensure!(
+        catalog.diagnostics.is_empty(),
+        "built-in script diagnostics: {:?}",
+        catalog.diagnostics
+    );
+    let keyboard = catalog
+        .entries
+        .into_iter()
+        .find(|entry| entry.identity.as_str() == "keyboard.lua")
+        .ok_or_else(|| anyhow!("bundled keyboard.lua missing from {builtins_root}"))?;
     let options = ApplicationStartOptions {
         master_auto_connect: false,
         loop_smoothing_ms: 0,
         startup_scripts: vec![StartupScript {
             name: "keyboard.lua".into(),
             identity: Some("keyboard.lua".into()),
-            source: include_str!("../../../../../resources/builtins/keyboard.lua").into(),
-            source_path: None,
+            source: keyboard.source.to_string(),
+            source_path: Some(
+                std::path::Path::new(&builtins_root)
+                    .join("keyboard.lua")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
             kind: ScriptKind::Bundled,
             enabled: true,
         }],

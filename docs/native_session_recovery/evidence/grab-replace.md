@@ -76,9 +76,9 @@ uses direct-track normal engine preparation without hosted processors.
 
 | Prepared shape (16 sources / 128 loops / Q32) | Processor budget | Processor bytes | Complete peak bytes | Preparation ms |
 | --- | --- | --- | --- | --- |
-| 2 ch / host max 512 | 256 MiB | 198,959,872 | 3,458,138,693 | 4322 |
-| 2 ch / host max 128 | 256 MiB | 198,959,872 | 3,128,407,109 | 4759 |
-| 8 ch / host max 128 | 512 MiB | 346,440,448 | 4,080,206,525 | 4737 |
+| 2 ch / host max 512 | 256 MiB | 198,959,872 | 3,458,138,693 | 1468 |
+| 2 ch / host max 128 | 256 MiB | 198,959,872 | 3,128,407,109 | 1373 |
+| 8 ch / host max 128 | 512 MiB | 346,440,448 | 4,080,206,525 | 2187 |
 
 All listed prepared callbacks pass the heap guard and teardown recovers all pages.
 The eight-channel processor shape explicitly uses a 512-MiB processor budget;
@@ -95,13 +95,15 @@ Deadlines at 48 kHz are 5.333 ms and 0.667 ms respectively.
 
 | Shape | p50 ms | p99 ms | Max ms | Misses | Max accounted validation steps |
 | --- | --- | --- | --- | --- | --- |
-| 2 ch / 256 frames / 8 events | 3.220 | 8.372 | 21.056 | 6/160 | 157,518 |
-| 8 ch / 256 frames / 8 events | 3.790 | 26.562 | 31.253 | 25/160 | 157,902 |
-| 2 ch / 32 frames / 256 events | 35.665 | 140.157 | 175.125 | 160/160 | 4,808,984 |
+| 2 ch / 256 frames / 8 events | 2.503 | 13.017 | 13.608 | 4/160 | 157,518 |
+| 8 ch / 256 frames / 8 events | 3.358 | 5.005 | 5.342 | 1/160 | 157,902 |
+| 2 ch / 32 frames / 256 events | 14.018 | 37.622 | 39.222 | 160/160 | 4,808,984 |
 
-The table is the final post-correction measurement round. Both measurement rounds
-are retained in the raw JSON, with configuration source hashes. These runs
-overlapped other local tests/builds. Every miss and tail is retained in
+The table is the delivery measurement round at `2ec4abcb` on target `273853aa`,
+before the optional idle-live-queue scan correction. All three measurement rounds
+remain in the raw JSON, with configuration source hashes. Earlier loaded rounds
+include an extreme-density maximum of 175.125 ms and are retained in full. These
+runs overlapped other local tests/builds. Every miss and tail is retained in
 [raw measurements](grab-replace-measurements.json); they are not discarded as
 outliers. Extreme density is finite and allocator-safe but exceeds the available
 wall-clock budget in this environment. This is not physical-device deadline
@@ -173,5 +175,17 @@ replay against the retained real-worklet journal; warning-
 denied workspace build, formatting, attributes, tracing, parity and dependency/DSP
 isolation. The full 3,094-test run exposed the legacy latency and reset issues
 above; both were corrected and passed their focused/strict reruns. Final source/
-base CI is the remaining Phase B gate. No pending check is claimed green. Draft
+base CI is the remaining Phase B gate. No pending check is claimed green. Ready-for-review
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) remains unmerged.
+
+The first final-source [Build/Test round](https://github.com/SanderVocke/shoopdaloop/actions/runs/42085353425)
+found four independent correction causes: idle live-admission scans exceeded the
+existing optional scan bound; the new native canary embedded a bundled Lua script;
+the raw JS worklet fixture still encoded the old configuration/protocol; and the
+JACK coverage launcher ignored Cargo's target directory. The correction preserves
+all original functional and work-budget assertions, uses the external bundled
+catalog, updates the fixture layout, and resolves Cargo's actual build output.
+Local release measurement covers all twenty Q/partition combinations; 39 focused
+shared-engine cases, the raw worklet/profiling contract and five trace-transport
+cases pass. The fresh binary also passes the archive's compiled-script rejection
+check. Final CI is required for the corrected source before closing P04/P05.

@@ -28,6 +28,13 @@ pub(in crate::runtime) struct LiveJob {
     pub following_recording: Option<Revision>,
     pub failure: Option<Error>,
 }
+impl LiveJob {
+    pub(super) fn preparing(&self) -> bool {
+        !self.ready
+            && (!self.active || self.following_recording.is_some())
+            && self.failure.is_none()
+    }
+}
 pub(super) struct LiveSlot {
     pub generation: u32,
     pub value: Option<LiveJob>,
@@ -242,6 +249,7 @@ impl Shared {
             }
             Self::progress_live_job(&mut job, frame, 1, io)
         })();
+        self.live_building += usize::from(job.preparing());
         self.live[slot].value = Some(job);
         if let Err(error) = result {
             self.cancel_live(id, io)?;
@@ -337,6 +345,7 @@ impl Shared {
             }
             Ok(())
         })();
+        self.live_building += usize::from(job.preparing());
         self.live[slot].value = Some(job);
         if let Err(error) = result {
             self.cancel_live(id, io)?;
@@ -431,32 +440,37 @@ impl Shared {
         Ok(())
     }
     pub fn progress_live(&mut self, frame: Frame, io: &mut ResourceIo<'_>) {
+        if self.live_building == 0 {
+            return;
+        }
         let budget = if self.building > 0 {
             self.remaining.div_ceil(2)
         } else {
             self.remaining
         };
         for _ in 0..budget {
+            if self.live_building == 0 {
+                break;
+            }
             let mut selected = None;
             for _ in 0..self.live.len() {
                 let slot = self.live_turn;
                 self.live_turn = (slot + 1) % self.live.len();
                 self.work.jobs_scanned = self.work.jobs_scanned.saturating_add(1);
-                if self.live[slot].value.is_some_and(|job| {
-                    !job.ready
-                        && (!job.active || job.following_recording.is_some())
-                        && job.failure.is_none()
-                }) {
+                if self.live[slot].value.is_some_and(|job| job.preparing()) {
                     selected = Some(slot);
                     break;
                 }
             }
-            let Some(slot) = selected else { break };
+            let slot = selected.expect("counted live admission");
             self.remaining -= 1;
             self.work.edit_steps += 1;
             let job = self.live[slot].value.as_mut().unwrap();
             if let Err(error) = Self::progress_live_job(job, frame, 1, io) {
                 job.failure = Some(error);
+            }
+            if !job.preparing() {
+                self.live_building -= 1;
             }
         }
     }
@@ -607,6 +621,7 @@ impl Shared {
                 Ok(())
             })();
             if let Err(error) = result {
+                self.live_building -= usize::from(job.preparing());
                 job.failure = Some(error);
                 self.work.writer_failures = self.work.writer_failures.saturating_add(1);
             }
@@ -748,6 +763,7 @@ impl Shared {
         for resource in [job.audio, job.midi].into_iter().flatten() {
             io.remove(resource)?;
         }
+        self.live_building -= usize::from(job.preparing());
         let slot = &mut self.live[id.slot as usize];
         slot.value = None;
         slot.generation = slot.generation.checked_add(1).unwrap_or(0);

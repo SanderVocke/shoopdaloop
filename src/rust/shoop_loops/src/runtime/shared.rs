@@ -148,6 +148,7 @@ pub(super) struct Shared {
     jobs: Box<[Job]>,
     live: Box<[LiveSlot]>,
     live_turn: usize,
+    live_building: usize,
     owned: Box<[Option<rt_runtime::ResourceId>]>,
     building: usize,
     turn: usize,
@@ -352,6 +353,7 @@ impl Shared {
                 })
                 .collect(),
             live_turn: 0,
+            live_building: 0,
             live: (0..settings.candidates)
                 .map(|_| LiveSlot {
                     generation: 1,
@@ -695,6 +697,7 @@ impl Shared {
                     .filter_map(|slot| slot.value.as_mut())
                     .filter(|job| job.source.source == h.settings.source && job.active)
                 {
+                    self.live_building -= usize::from(job.preparing());
                     job.failure.get_or_insert(Error::StaleRevision);
                 }
                 let reset = (|| {

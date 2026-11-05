@@ -3,10 +3,10 @@
 ## Status and delivery
 
 Current execution phase: Phase A implementation and local acceptance are complete.
-Proceed to Phase B: refresh the target and run the final iterative CI correction
-loop described below. CI was not inspected or corrected during Phase A.
+Phase B is active: the target is reconciled and the final iterative CI correction
+loop is running. CI was not inspected or corrected during Phase A.
 
-Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
+Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; ready-for-review
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
 `feat/backend-replacement`. Phase A implementation/acceptance is committed as
 `b53ed797`, following FX/composite reconciliation `e5b87190`. The Phase B target
@@ -565,6 +565,20 @@ combined schema is version31 with updated canonical codec bytes. RT protocol23,
 host setup8 and worklet configuration7 remain unchanged. Affected verification
 covers profiling/wrapping, service connection identity, public input workflows,
 codec/client projection and UI drag/graph behavior before the first Phase B push.
+
+The first final-source CI round (Build/Test run42085353425, head `2ec4abcb`)
+found four correction causes. The release shared-media matrix counted two idle
+live-queue scans in addition to its sixteen optional candidate scans. A tracked
+preparing-live-job count now avoids scanning an empty admission queue; the
+original eight-edit/sixteen-scan bounds remain unchanged. All twenty Q/partition
+measurement combinations and 39 focused shared-engine tests pass locally.
+The packaged input canary now loads the external keyboard catalog rather than
+compiling an application Lua payload. The raw JS worklet fixture now encodes
+configuration7's five history fields and RT protocol23; its profiling/record/MIDI
+assertions and all five trace transport cases pass unchanged. The strict JACK
+launcher resolves Cargo's actual target directory so coverage instrumentation
+runs its newly built executable instead of a nonexistent default-target binary.
+These corrections do not waive any CI gates. Fresh source/base CI remains required.
 
 ## Findings that determine the work
 

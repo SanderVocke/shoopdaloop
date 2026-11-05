@@ -62,7 +62,11 @@ fn fixed_shared_callback_measurements() {
                     let Reply::SharedWork(work) = h.op(Operation::SharedWork) else {
                         panic!("work")
                     };
-                    assert!(work.edit_steps <= 8 && work.jobs_scanned <= 16);
+                    assert!(
+                        work.edit_steps <= 8 && work.jobs_scanned <= 16,
+                        "Q={q} partition={partition} phase={} work={work:?}",
+                        h.measure_phase
+                    );
                     if matches!(
                         h.op(Operation::CandidateStatus { id }),
                         Reply::Candidate {
