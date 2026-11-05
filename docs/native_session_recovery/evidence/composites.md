@@ -154,8 +154,12 @@ cases passed, including playing composite/profiling state across conversion and
 resync. Full native regression passed **2,864 tests / 7 skipped**, along with
 four-target boundaries and Wasm dependency isolation. Native and Wasm builds
 first exhausted disk space; obsolete caches were cleared and the native rerun
-passed. Five Node packages passed; the seven unexecuted packages are being rerun.
-Further merged-source browser/artifact validation is in progress. The prior
+passed. The seven unexecuted Node packages passed on rerun, completing all twelve:
+app **61**, client **12**, app protocol **17**, legacy backend **87**, editor **244**,
+loops **191**, codec **21**, adapter **55**, engine **95**, worklet **17**, engine
+protocol **6**, session **54**. Actual socket/shared-memory composite workflows
+passed. At integration commit `c98ee1e1`, pinned Miri seed 0 passed three boundary
+and two client-projection cases. The prior
 `280c12a9` matrix passed all six native profiles and web release; its remaining
 web-debug job is separate from this newer integration.
 
@@ -163,6 +167,12 @@ The replacing branch advanced to `b6ac9443` at this recheck, but PR #940 still
 explicitly reports application Replacing unavailable. Pooled audio and persistent
 MIDI-index work does not satisfy the dependent-mode gate. No P06/P07 production
 implementation has been supplied and full P03 remains OPEN.
+
+The user revised P03's testing strategy on 2026-11-05: small targeted local checks,
+with broad regression and cross-platform/browser/artifact validation supplied by
+CI. The plan records this split and risk-based Miri selection; the completed broad
+local runs above are historical evidence, not mandatory repeats before each push.
+Further merged-head Chrome/browser/artifact results await CI.
 
 ## Reproduction and limits
 

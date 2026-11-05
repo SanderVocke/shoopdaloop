@@ -272,6 +272,48 @@ diagnostics, active-recording save refusal and private atomic replacement stagin
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
 
+### Testing strategy — targeted local checks, broad CI coverage
+
+User-approved revision on 2026-11-05: optimize the development loop for small,
+targeted checks and rely on CI for broad regression and cross-platform coverage.
+For P03 this supersedes earlier requirements in this plan and the general testing
+guide to run all gates locally before each behavior commit/push. The immutable
+behavioral acceptance criteria and Stage 9 dependency gate are unchanged.
+
+- For each change, identify the failure or contract at risk and run the smallest
+  relevant test selection. Usually use a few named cases in the changed package
+  and, when needed, one integration case at the next boundary. A cheap parameterized
+  case may cover several quanta without requiring a whole-package matrix.
+- Build the affected Rust package/consumer with warnings denied and format before
+  committing. Run the fast attribute/parity/tracing checks when their surfaces
+  change. Run dependency/no-std audits when dependencies, features or portable
+  boundaries change, rather than for every ordinary edit.
+- Do not routinely run the full workspace, all packages in Node and Chrome,
+  hosted plus self-contained browser scenarios, both native carriers, or extended
+  Miri batches locally. Use one relevant production probe only when the change
+  crosses that boundary or a CI failure needs reproduction.
+- Push coherent, locally checked checkpoints promptly. Let the existing build/test
+  workflow run native debug/release platform profiles, full regression suites,
+  Wasm/browser/worklet/artifact checks, independent hosts and portable boundaries.
+  Continue independent implementation while CI runs; do not serialize development
+  behind a complete local copy of that matrix.
+- Inspect CI failures before expanding local testing. Reproduce the failing case
+  or boundary, fix it, rerun that selection and push. Retry only affected CI jobs
+  when source has not changed and evidence identifies an infrastructure failure.
+- Keep heap guards in the focused tests. Miri is risk-based for unsafe or resource-
+  lifetime changes and concrete ownership failures. Select a small case, preferably
+  in a targeted CI job; the current build workflow tests the Miri runners but does
+  not itself interpret the Miri inventory. Record that distinction and any missing
+  facility; do not claim an automatic Miri gate or block every checkpoint on a
+  broad local batch.
+- Final acceptance still requires green required CI checks at the delivered head
+  and review of their evidence. Record source pins and distinguish local results,
+  CI results, inherited unchanged-code evidence and checks not run.
+
+The stage verification lists below describe required behavioral coverage. Apply
+this local/CI split to them; they are not instructions to rerun every listed case
+locally at each stage.
+
 ## Staged implementation
 
 Execute in order. Stages 1-3 establish library/engine contracts; Stages 4-6 add
@@ -321,13 +363,14 @@ while waiting. Review every immutable criterion against a stage/test destination
 - [x] Update affected new-library fixtures, independent loop hosts/examples and
   current guides. Record intentional contract differences; keep historical fixtures.
 
-Verification: debug/release `shoop_loops` composites, program changes/boundaries,
+Verification coverage: `shoop_loops` composites, program changes/boundaries,
 runtime/configuration, capture and graph tests. Compare state, audio/MIDI and ordered
 actions with the scalar oracle across whole/single/irregular callbacks, all supported
 quanta, nonaligned host partitions and zero callbacks. Cover nested/multiple parents,
 direct child override, recording across source changes, alignment gaps, pending
 commands, candidate refusal/retry and stale generations under active heap guards.
-Run the affected independent native and Wasm/Node/browser loop scenarios. No
+Use focused native cases locally; CI runs debug/release, independent hosts and
+Wasm/Node/browser scenarios. No
 callback-size-dependent expected values or unexplained media rebaselines are allowed.
 
 ### Stage 3 — RT protocol and production engine
@@ -348,8 +391,9 @@ callback-size-dependent expected values or unexplained media rebaselines are all
 Verification: typed/binary codec equivalence, invalid/count/size/version/epoch cases;
 guarded engine creation/conversion/control/edit/removal tests; at-limit and excess
 capacity; live and staged ownership pressure; simultaneous graph edits and recording;
-audio/MIDI output and complete resync. Exercise native and actual worklet record
-delivery. Confirm unchanged callback-wide budgets and generic dependency boundaries.
+audio/MIDI output and complete resync. Select local codec/engine cases for the
+changed contract; CI exercises actual worklet delivery and portable boundaries.
+Confirm unchanged callback-wide budgets and generic dependency boundaries.
 
 ### Stage 4 — RT backend adapter and confirmed mappings
 
@@ -467,8 +511,9 @@ documents, exported child media and preserved old-session output after refusal.
 
 Verification: production client/service/UI tests and native typed/socket workflows;
 supported shared-memory first-attachment delivery without adding reattachment.
-Run hosted and self-contained browser/AudioWorklet editor/Lua/audio-MIDI/save-load
-scenarios. Test source stop/resume/resize mid-pass and callbacks continuing while
+CI runs hosted and self-contained browser/AudioWorklet editor/Lua/audio-MIDI/save-load
+scenarios. Use a local probe only for a changed boundary or a concrete failure.
+Test source stop/resume/resize mid-pass and callbacks continuing while
 the client is absent; check state and audible/rendered output, not only enabled UI.
 
 ### Stage 9 — dependent mode integration and full-parity gate
@@ -484,15 +529,17 @@ the client is absent; check state and audible/rendered output, not only enabled 
   intentional timing changes. Record remaining dependencies as partial scope;
   keep P03 OPEN until this gate is satisfied or narrower closure is user-approved.
 
-Verification: dependent feature suites plus production composite interaction tests,
-including whole-document refusal until support exists. No processor/track feature
+Verification: focused local composite interaction cases; CI runs the dependent
+feature suites, including whole-document refusal until support exists. No processor/track feature
 is advertised solely because its mode tag can be encoded.
 
 ### Stage 10 — final end-to-end validation, evidence and delivery
 
-- [ ] Run the complete regression gates below and final-head native platform matrix,
-  Node/Wasm suites, actual browser/worklet scenarios and selected ownership/capture
-  Miri cases. Record exact source pins, commands, profiles, capacities and limits.
+- [ ] Obtain green required CI checks at the final head: complete regression gates,
+  native platform matrix, Node/Wasm suites and actual browser/worklet scenarios.
+  Use targeted ownership/Miri checks when the risk warrants them. Record exact
+  source pins, commands, profiles, capacities and limits without duplicating the
+  full CI matrix locally.
 - [x] Run a production scenario that records/imports children, authors a nested
   regular and explicit recording arrangement through UI/Lua, resizes/stops/restarts
   the source, waits/repeats, edits live, disconnects/reattaches the UI, saves, loads
@@ -512,35 +559,44 @@ Verification: final evidence distinguishes tests actually run from inherited
 reference evidence and unavailable facilities. Compile-only or model-only success
 cannot replace public production, recovery, file and actual worklet acceptance.
 
-## Regression gates and evidence
+## Check selection and final evidence
 
 Use [.agents/info/build.md](.agents/info/build.md) to choose the toolchain environment
-and [.agents/info/test.md](.agents/info/test.md) for current gates. At execution time,
-recheck the workflow, native/browser runners and Miri inventory instead of relying
-on historical commands in evidence. Omit missing-backend allowances for checks that
-require real facilities.
+and [.agents/info/test.md](.agents/info/test.md) to locate tests, subject to the
+user-approved P03 strategy above. Select tests by the changed boundary:
+
+| Change | Normal local check | Broader CI coverage |
+| --- | --- | --- |
+| Frame timing, repeat waits, arbitration or plan activation | A few named resolver/engine cases covering the changed behavior and refusal/retry | Full oracle, partition, quantum, stress and independent-host suites |
+| Protocol, generation mapping or projection | A codec case plus one relevant adapter/service integration case | Native carriers, resync/lifetime suites, Wasm codec and actual artifact contracts |
+| Editor/Lua or monitoring | One focused service/public-intent case; a guarded recording case when needed | Retained UI suites, public production workflows and stalled-client AudioWorklet scenarios |
+| Persistence or migration | A relevant round trip or atomic refusal case | Full formats/media/platform matrix and actual browser file workflows |
+| Unsafe/resource ownership | A guarded regression; one selected Miri case if it resolves the specific risk | Broader ownership/stress coverage and explicitly arranged Miri checks when needed |
+| Plan/docs only | Link/whitespace checks | Documentation CI; no unrelated runtime rerun |
+
+For example, an adapter/projection edit can use the following focused selection;
+replace the package, target and filter with those relevant to the actual change:
 
 ```sh
 cargo fmt --all -- --check
-RUSTFLAGS="-D warnings" cargo build --workspace
-SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
-python3 scripts/check_shoop_test_usage.py
-python3 scripts/check_feature_parity.py
-python3 scripts/check_tracing_coverage.py --require-closed
-python3 scripts/check_rt_runtime_boundary.py
-python3 scripts/check_loops_boundary.py
-python3 scripts/check_rt_engine_boundary.py
-python3 scripts/check_wasm_test_dependencies.py --package shoop_loops --package shoop_rt_protocol --package shoop_rt_engine --package shoop_rt_backend --package shoop_rt_host_worklet
+RUSTFLAGS="-D warnings" cargo build --locked -p shoop_rt_backend
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked -p shoop_rt_backend --test composites --profile ci -E 'test(profiling_and_playing_composite_state_remain_coherent_across_conversion_and_resync)'
+git diff --check
 ```
 
-Run the relevant standalone loop host manifests/runners and documentation/example
-checks in addition to the workspace suite. Build `shoopdaloop` and
-`shoop_rt_host_worklet` for `wasm32-unknown-unknown`; run current Node and actual
-browser/worklet acceptance commands from their maintained guides. Preserve the
-existing no-default-feature/no-std target checks. Run focused Miri cases for
-candidate swaps/returns, repeat waits with capture preflight, conversion/slot reuse
-and reconnect ownership under the pinned repository setup. Keep heap guards active
-and retain the normal/full test groups required before behavioral commits/pushes.
+Fast policy checks remain `check_shoop_test_usage.py`, `check_feature_parity.py`
+and `check_tracing_coverage.py --require-closed` when applicable. Existing boundary
+and Wasm dependency-isolation scripts remain available for affected dependency
+changes and focused reproductions. Omit missing-backend allowances when a check
+requires real host facilities.
+
+The [build/test workflow](.github/workflows/build_and_test.yml) is authoritative
+for the full workspace and cross-platform/native-carrier/browser matrix. Inspect
+its current commands, profiles and uploaded reports rather than copying that matrix
+into a local pre-push checklist. Actual artifact and AudioWorklet evidence remains
+required for acceptance; CI may supply it. Keep existing no-default-feature/no-std,
+heap-guard, media and independent-oracle coverage in CI. Broader local runs are an
+explicit response to a failure or identified risk, not a default milestone ritual.
 
 ## Execution evidence
 
@@ -805,3 +861,9 @@ and retain the normal/full test groups required before behavioral commits/pushes
   unavailable. The changes provide pooled audio and persistent MIDI-index
   foundations, not an executable replacing mode. Stage 9 remains blocked; no
   P06/P07 implementation or narrower user-approved closure has been supplied.
+- The user revised the testing strategy on 2026-11-05: focused, limited local
+  checks and broad/cross-platform validation in CI. Full local runs above remain
+  historical evidence, not a repeated pre-push requirement. At integration
+  `c98ee1e1`, all 12 selected Node packages, both native composite workflows and
+  five selected Miri cases passed. Broad Chrome/browser/artifact checks are
+  delegated to CI under the revised strategy; Stage 9 remains unchanged.
