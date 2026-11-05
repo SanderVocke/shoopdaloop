@@ -10,6 +10,38 @@ for upcoming parity work. Recovery is independent of disk persistence.
 
 For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
 
+## Hosted track processors
+
+Default native and browser worklet builds include `builtin-fx` and `oxisynth`.
+Native `--no-default-features` builds include neither; add either Cargo feature
+independently to the app/host packages. For browser worklets, `build_worklet.py
+--no-default-features --features builtin-fx` includes only FX. The UI reads the
+connected host catalog, including unavailable reasons, widths and instance usage.
+
+Host launch settings and the Host Manager expose independent `auto`/`on`/`off`
+policies. CLI equivalents are `--builtin-fx`, `--oxisynth`, `--fx-instances`,
+`--synth-instances` and `--processor-memory-mb`. Defaults allow two instances of
+each type within 256 MiB, with another complete bank reserved for session loads.
+Off prepares no instances; On fails clearly when unsupported; Auto enables each
+compiled implementation at supported rates. Settings apply to a newly started
+host. Existing hosts keep their own configuration.
+
+Built-in FX accepts matching mono/N dry and wet sides up to the host limit.
+OxiSynth uses two dry/two wet audio channels and dry MIDI. Both run synchronously
+in the host render graph with one quantum of processor buffering; host buffering
+is reported separately. Regular playback uses the recorded wet take. Dry playback
+feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
+and preserves dry media. Embedded editors, MIDI Learn, track-only global control
+MIDI, recorded-state restoration and role-aware files use the production service.
+External supports independent side widths; Carla and bus FX remain unavailable.
+
+The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
+UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The native
+archive smoke runs it over socket/shared memory and independent startup policies.
+Browser acceptance includes the corresponding AudioWorklet workflow. See the
+[processor contract and evidence](../../../docs/native_session_recovery/track-processors.md)
+for resource, timing and platform limits.
+
 ## Native roles and delivery
 
 ```sh

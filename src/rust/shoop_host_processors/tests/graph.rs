@@ -1189,3 +1189,241 @@ fn stereo_loop_balance_uses_logical_roles_in_an_eight_channel_prepared_host() {
         assert_eq!(&h.output(1)[64..128], &[0.; 64], "{mode_value:?}");
     }
 }
+
+#[shoop_test(no_wasm = "wall-clock callback measurement is a native CI artifact")]
+#[ignore = "representative release measurement in CI"]
+fn hosted_callback_measurement_at_admitted_channel_voice_and_midi_limits() {
+    use std::time::{Duration, Instant};
+    for (kind, channels) in [(ProcessorKind::BuiltInFx, 8), (ProcessorKind::OxiSynth, 2)] {
+        if (kind == ProcessorKind::BuiltInFx && !cfg!(feature = "builtin-fx"))
+            || (kind == ProcessorKind::OxiSynth && !cfg!(feature = "oxisynth"))
+        {
+            continue;
+        }
+        let mut d = description(channels, kind);
+        d.sample_rate = 48000;
+        d.quantum = 128;
+        d.midi_events = 1024;
+        d.midi_bytes = 4096;
+        d.processors.memory_mb = 512;
+        let mut h =
+            OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap())
+                .unwrap();
+        create(&mut h, channels, kind);
+        if kind == ProcessorKind::BuiltInFx {
+            for stage in 0..6 {
+                done(
+                    &mut h,
+                    Request::ProcessorControl {
+                        strip: strip(),
+                        control: processors::Control::Parameter {
+                            parameter: processors::STAGE_BASE + stage,
+                            value: 1.,
+                        },
+                    },
+                );
+            }
+        }
+        done(
+            &mut h,
+            Request::ProcessorControl {
+                strip: strip(),
+                control: processors::Control::Parameter {
+                    parameter: processors::CC_BASE,
+                    value: 7.,
+                },
+            },
+        );
+        done(
+            &mut h,
+            Request::StripControl {
+                strip: strip(),
+                control: StripControl::Monitoring(true),
+            },
+        );
+        for channel in 0..channels as usize {
+            h.input_mut(channel).fill(0.25);
+        }
+        let (mut maximum, mut total) = (Duration::ZERO, Duration::ZERO);
+        for callback in 0..256 {
+            for event in 0..d.midi_events {
+                let message = if kind == ProcessorKind::OxiSynth && event < 256 {
+                    [0x90 | (event / 128) as u8, (event % 128) as u8, 100]
+                } else {
+                    [0xb0, 7, (event % 128) as u8]
+                };
+                h.midi_input_mut(0).push(0, 128, &message).unwrap();
+            }
+            let started = Instant::now();
+            tick(&mut h, 128);
+            let elapsed = started.elapsed();
+            maximum = maximum.max(elapsed);
+            total += elapsed;
+            assert_eq!(
+                h.endpoint().processor_state(0).unwrap().phase,
+                shoop_rt_engine::ProcessorPhase::Running,
+                "callback={callback}"
+            );
+        }
+        println!("kind={kind:?} channels={channels} polyphony_limit=256 midi_events_per_callback={} callbacks=256 rate={} quantum={} peak_us={} mean_us={} callback_period_us={} simulated_xruns=unavailable; non-real-time wall clock, no deadline guarantee", d.midi_events, d.sample_rate, d.quantum, maximum.as_micros(), total.as_micros() / 256, 128_000_000 / d.sample_rate);
+    }
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn scheduled_dry_pickup_wakes_real_fx_before_the_playback_transition() {
+    let mut d = description(2, ProcessorKind::BuiltInFx);
+    d.telemetry_interval_frames = 0;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    let source = LoopSlotId(SlotId::new(1, 1));
+    done(
+        &mut h,
+        Request::CreateLoop {
+            loop_id: source,
+            strip: strip(),
+        },
+    );
+    for (id, value) in [(1, 1f32), (2, 0f32)] {
+        let bytes: Vec<_> = (0..129 * 2).flat_map(|_| value.to_le_bytes()).collect();
+        done(
+            &mut h,
+            Request::ContentBegin(ContentDescription {
+                id,
+                midi: false,
+                frames: 129,
+                bytes: bytes.len() as u64,
+            }),
+        );
+        let chunk = usize::from(h.endpoint().limits().content_chunk_bytes);
+        for (index, data) in bytes.chunks(chunk).enumerate() {
+            done(
+                &mut h,
+                Request::ContentWrite {
+                    id,
+                    offset: (index * chunk) as u64,
+                    data: ContentChunk::new(data).unwrap(),
+                },
+            );
+        }
+        done(&mut h, Request::ContentFinish { id });
+        let mut windows = PlaybackWindows::default();
+        windows.audio[0].start_offset = 65;
+        windows.audio[0].preplay = 49;
+        windows.audio[1].start_offset = 65;
+        windows.audio[1].preplay = 49;
+        done(
+            &mut h,
+            Request::ContentWindow {
+                id,
+                frames: 64,
+                windows,
+            },
+        );
+    }
+    done(
+        &mut h,
+        Request::ContentBegin(ContentDescription {
+            id: 3,
+            midi: true,
+            frames: 129,
+            bytes: 0,
+        }),
+    );
+    done(&mut h, Request::ContentFinish { id: 3 });
+    let mut windows = PlaybackWindows::default();
+    for window in &mut windows.audio[..2] {
+        window.start_offset = 65;
+        window.preplay = 49;
+    }
+    done(
+        &mut h,
+        Request::ContentWindow {
+            id: 3,
+            frames: 64,
+            windows,
+        },
+    );
+    let imported = request(
+        &mut h,
+        Request::ContentApply {
+            loop_id: looped(),
+            frames: 64,
+            dry_audio: Some(1),
+            audio: Some(2),
+            midi: Some(3),
+            recorded_state: None,
+        },
+    );
+    assert!(
+        matches!(imported, Outcome::ContentApplied { .. }),
+        "{imported:?}"
+    );
+    assert!(matches!(
+        request(
+            &mut h,
+            Request::LoopTiming {
+                loop_id: source,
+                expected_revision: 0,
+                expected_content: 0,
+                edit: TimingEdit {
+                    length: Some(256),
+                    ..Default::default()
+                }
+            }
+        ),
+        Outcome::TimingApplied(_)
+    ));
+    done(
+        &mut h,
+        Request::LoopSync {
+            loop_id: looped(),
+            source: Some(source),
+        },
+    );
+    done(
+        &mut h,
+        Request::LoopTransition {
+            loop_id: source,
+            mode: LoopMode::Playing,
+            delay: None,
+        },
+    );
+    done(
+        &mut h,
+        Request::LoopTransition {
+            loop_id: looped(),
+            mode: LoopMode::PlayingDryThroughWet,
+            delay: Some(0),
+        },
+    );
+    let mut early = false;
+    let mut played = false;
+    for _ in 0..32 {
+        tick(&mut h, 7);
+        let first = h.output(0)[..7].iter().any(|v| *v > 0.9);
+        tick(&mut h, 9);
+        let audible = first || h.output(0)[..9].iter().any(|v| *v > 0.9);
+        while let Some(message) = h.receive() {
+            if let EngineMessage::Telemetry(Telemetry::Loop { loop_id, mode, .. }) = message {
+                if loop_id == looped() {
+                    early |= mode == LoopMode::Stopped && audible;
+                    played |= mode == LoopMode::PlayingDryThroughWet;
+                }
+            }
+        }
+        if played {
+            break;
+        }
+    }
+    assert!(
+        early,
+        "49 source frames of pickup must precede the transition after the 32-frame node/host delay"
+    );
+    assert!(played);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Running
+    );
+}

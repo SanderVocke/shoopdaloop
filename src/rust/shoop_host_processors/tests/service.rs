@@ -358,6 +358,7 @@ fn external_unequal_roles_survive_the_service_and_session_archive() {
         assert_eq!(samples(&saved, a.object), samples(&resaved, b.object));
     }
     assert_eq!(after.midi[0].initial, take.midi[0].initial);
+    structure_only_round_trip(&mut f, &resaved, &before.name, 120);
 }
 
 #[cfg(feature = "builtin-fx")]
@@ -947,5 +948,71 @@ fn session_file_round_trip(f: &mut Fixture, track: TrackId, kind: ProcessorKind)
             assert_eq!(state.midi_cc_assignments[0].controller, 22)
         }
     }
-    loaded.id
+    structure_only_round_trip(f, &resaved, &before.name, 130)
+}
+
+fn structure_only_round_trip(
+    f: &mut Fixture,
+    source: &persistence_image::Image,
+    name: &str,
+    transfer: u64,
+) -> TrackId {
+    use persistence_image::Manifest;
+    let mut image = source.clone();
+    let Manifest::Session(session) = &mut image.manifest else {
+        panic!()
+    };
+    for track in &mut session.tracks {
+        for looped in &mut track.loops {
+            looped.frames = 0;
+            looped.recorded_processor_state = None;
+            for channel in &mut looped.audio {
+                channel.object = None;
+                channel.frames = 0;
+                channel.capture_alignment = 0;
+                channel.recording_started_at = None;
+            }
+            for midi in &mut looped.midi {
+                midi.channel.object = None;
+                midi.channel.frames = 0;
+                midi.channel.capture_alignment = 0;
+                midi.channel.recording_started_at = None;
+                midi.initial.clear();
+            }
+        }
+    }
+    image.payloads.clear();
+    let source = file_image(std::sync::Arc::new(image));
+    f.load(source.clone(), transfer);
+    let state = f.client.snapshot().unwrap();
+    let loaded = state.tracks.iter().find(|t| t.name == name).unwrap().id;
+    let resaved = file_image(f.capture(transfer + 1, None));
+    let Manifest::Session(before) = &source.manifest else {
+        panic!()
+    };
+    let Manifest::Session(after) = &resaved.manifest else {
+        panic!()
+    };
+    let before = before.tracks.iter().find(|t| t.name == name).unwrap();
+    let after = after.tracks.iter().find(|t| t.name == name).unwrap();
+    assert_eq!(after.topology, before.topology);
+    assert_eq!(after.processor_state, before.processor_state);
+    assert_eq!(after.default_playback_mode, before.default_playback_mode);
+    assert_eq!(
+        after.builtin_fx_midi_cc_assignments,
+        before.builtin_fx_midi_cc_assignments
+    );
+    assert_eq!(
+        after.oxisynth_midi_cc_assignments,
+        before.oxisynth_midi_cc_assignments
+    );
+    assert_eq!(
+        after.loops[0].audio_labels(),
+        before.loops[0].audio_labels()
+    );
+    assert!(after
+        .loops
+        .iter()
+        .all(|looped| looped.frames == 0 && looped.recorded_processor_state.is_none()));
+    loaded
 }

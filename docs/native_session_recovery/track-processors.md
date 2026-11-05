@@ -4,7 +4,8 @@ Implementation branch: `feat/hosted-track-processors`, based on
 `feat/fixed-quantum-runtime` at `2e19210b`. Behavioral reference: `master` at
 `92079fb6` and the retained reference fixtures. The implementation checklist is
 in [the plan](../../PLAN_HOSTED_TRACK_PROCESSORS.md). This document records the
-contract; no production support or completed validation is claimed yet.
+contract and delivered implementation. Public native production routes are verified
+locally; the final delivered-revision platform/browser CI gates remain pending.
 
 ## Host configuration and resource contract
 
@@ -25,7 +26,7 @@ buffered storage, FX units/delay lines, synth voices and decoded SoundFonts in
 both banks, not merely serialized asset sizes. Startup refuses an enabled pool
 that cannot fit its checked budget; it never silently shrinks the requested pool.
 
-FX supports the validated host sample rate. The pinned OxiSynth supports
+FX supports 8,000–384,000 Hz. The pinned OxiSynth supports
 8,000–96,000 Hz inclusive. Auto advertises synth unavailable outside this range;
 explicit On refuses startup. Initial real processing uses M=1, S=0 and thus one
 graph quantum of node latency. Host buffering is a separate delay.
@@ -674,3 +675,30 @@ capabilities from the actual prepared host. Service and adapter fixtures no long
 override advertisement. Real wire/archive fixtures, default actions, imported take
 timing/reconnect and minimal-host refusal pass. The startup-policy test checks all
 four combinations against actual host build support and handshake capabilities.
+
+### Packaged acceptance and CI coverage
+
+The native application/companion probe passes socket and shared-memory delivery
+with mono/N=3 FX, synth and External tracks in one session. It uses the normal
+application intent/file workflows and client Lua VM, checks real DSP output,
+default versus explicit playback, editor state, role imports, save/reload and
+socket reattachment. It also passes with both DSP types Off and External retained.
+On this Linux development host, readiness was 523 ms with both Off and about
+750 ms with both Auto (debug, dummy 8 kHz/128-frame callbacks, Q=32, three physical
+channels, five tracks, forty loops). These are observed preparation/readiness
+times for this configuration, not a general timing bound.
+
+Real service fixtures additionally verify structure-only and full archive
+round trips for FX N=3, synth and External 3→1. The real-FX pickup fixture uses
+49 source frames of lead-in with the declared 32-frame combined node/host delay
+at Q=16 and irregular callbacks. Callback heap guards remain active.
+
+`Hosted track processors` CI supplies four independent native/worklet feature
+builds, four startup-policy combinations in each build, both-DSP Node tests,
+prepared memory/startup observations and release callback measurements at eight
+FX channels or 256 synth voices with 1,024 MIDI events per callback. Measurements
+record hardware, configuration and source revision. Simulated callbacks report
+no hardware xrun count and provide no deadline guarantee. Selected Miri checks
+cover portable host ownership and buffered reset identity; they do not certify
+third-party DSP. Existing archive and browser jobs exercise the new public probes
+on their supported platforms. Delivered-revision results still need recording.

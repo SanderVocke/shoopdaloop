@@ -89,6 +89,10 @@ pub struct AppArgs {
         conflicts_with = "probe_engine_transport"
     )]
     pub probe_persistence: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise host-advertised processors and role media through application intents.
+    #[arg(long, requires = "engine_transport")]
+    pub probe_hosted_processors: bool,
     #[cfg(target_arch = "wasm32")]
     /// Disable browser audio (the session remains unavailable).
     #[arg(long)]

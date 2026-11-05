@@ -343,20 +343,24 @@ mod tests {
                 },
                 ..EngineDescription::default()
             };
+            #[cfg(not(target_arch = "wasm32"))]
+            let started = std::time::Instant::now();
             let (prepared, memory) =
                 shoop_wasm_test_support::heap::measure_memory(|| prepare(&d).unwrap());
             assert!(
                 memory.peak as u64 <= prepared.reserved_bytes,
                 "channels={channels} peak={} reserved={}",
                 memory.peak,
-                prepared.reserved_bytes
+                prepared.reserved_bytes,
+                started.elapsed().as_millis()
             );
             #[cfg(not(target_arch = "wasm32"))]
             std::println!(
-                "channels={channels} requested_peak={} requested_retained={} reserved={}",
+                "channels={channels} requested_peak={} requested_retained={} reserved={} preparation_ms={}",
                 memory.peak,
                 memory.live,
-                prepared.reserved_bytes
+                prepared.reserved_bytes,
+                started.elapsed().as_millis()
             );
         }
     }

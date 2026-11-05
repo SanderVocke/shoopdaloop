@@ -365,11 +365,11 @@ warning-denying product builds and tracing/test inventories pass.
   for distinct dry audio/MIDI, processor input/output and wet capture/playback. Restore
   External sends/returns and native dynamic publication; hosted endpoints stay internal.
   Carry roles through loop creation, content reads/meters and resynchronization.
-- [ ] Implement authoritative dry-through-wet/rerecord transitions and per-role capture
+- [x] Implement authoritative dry-through-wet/rerecord transitions and per-role capture
   policy over loop primitives. Preserve dry takes during wet rerecord, ordinary wet
   playback, input gain/monitoring/mute/balance, reference prerouting and multiple-loop
   behavior. Integrate current grab/replacement without treating them as new features.
-- [ ] Implement automatic buffered/host latency and future-take alignment needed by
+- [x] Implement automatic buffered/host latency and future-take alignment needed by
   these modes, including audio/MIDI preroll, initial silence and pending-output tails.
   Keep active take metadata immutable and compensate each delay once. Restore
   default-mode actions while keeping explicit Play regular.
@@ -509,7 +509,7 @@ until persistence, media and recorded-state support is complete.
 
 ### 7. Complete persistence, media and replacement/recovery
 
-- [ ] Extend persistence images/codecs, service capture/mapping and adapter replacement
+- [x] Extend persistence images/codecs, service capture/mapping and adapter replacement
   staging for topology/port roles/default mode, processor state/mappings, dry/wet media,
   track-only global input intent and required latency/take metadata. Keep stable
   source-to-live ID mappings and absent-port intent; do not serialize runtime owners.
@@ -517,7 +517,7 @@ until persistence, media and recorded-state support is complete.
   retaining it independently of later edits. Restore it through
   `LoopAction::RestoreRecordedFxState` using a preflighted atomic state change;
   failed restoration cannot damage the live processor or recorded media.
-- [ ] Restore dry/wet audio channel import/export labels/order, exact MIDI/SMF routes,
+- [x] Restore dry/wet audio channel import/export labels/order, exact MIDI/SMF routes,
   content replacement and recorded-take state. Stage processor candidates in the
   reserved bank and publish graph, state and media atomically with existing fences.
 - [ ] Verify structure-only and full save/load/save for mono/N FX, synth and unequal
@@ -615,6 +615,20 @@ timing/reconnect, minimal-host refusal and the four startup-policy combinations 
 through actual handshake advertisement. The loop capture path handles logical
 widths below the physical bank width. FreeRTOS host settings explicitly retain
 their default disabled processor policy; cross-target validation remains in CI.
+
+Packaged acceptance milestone: the companion probe passes socket/shared-memory
+application intents, mono/N FX, synth and External roles, editor visibility, real
+DSP output, UI/Lua defaults versus explicit wet Play, role imports, archive reload
+and socket recovery. With both DSP types Off, the same probe passes External-only
+admission with unavailable reasons. The archive smoke now runs both carriers and
+all startup policies in CI. The existing browser self-test has corresponding real
+AudioWorklet creation/audio/default/media/save/reload steps; focused Wasm builds pass.
+Service fixtures additionally round-trip structure-only files for all three types.
+A real-FX test proves nonaligned dry pickup before a scheduled transition with
+irregular callbacks. Required CI now includes independent native/worklet feature
+builds, both-DSP Node tests, startup/resource and release callback measurements,
+and selected portable ownership Miri tests. Platform/browser execution and final
+review are still pending; verification checkboxes remain open until those gates pass.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

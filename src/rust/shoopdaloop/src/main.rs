@@ -3766,6 +3766,7 @@ fn main() {
     let cli = AppArgs::parse();
     if !cli.probe_engine_transport
         && !cli.probe_persistence
+        && !cli.probe_hosted_processors
         && !cli.probe_builtins
         && !cli.tracing_smoke_test
     {
@@ -3779,8 +3780,13 @@ fn main() {
         }
     }
 
-    if cli.probe_engine_transport || cli.probe_persistence {
-        let result = if cli.probe_persistence {
+    if cli.probe_engine_transport || cli.probe_persistence || cli.probe_hosted_processors {
+        let result = if cli.probe_hosted_processors {
+            cli.audio
+                .apply_processors(Default::default())
+                .map_err(anyhow::Error::msg)
+                .and_then(|settings| session_probe::hosted(cli.engine_transport.unwrap(), settings))
+        } else if cli.probe_persistence {
             session_probe::files(cli.engine_transport.unwrap())
         } else {
             session_probe::run(cli.engine_transport.unwrap())

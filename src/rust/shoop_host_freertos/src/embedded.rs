@@ -629,7 +629,7 @@ pub fn run() {
     service
         .set_host_settings(
             HostSettings {
-                processors: Default::default(),
+                processors: shoop_app_api::ProcessorSettings::disabled(),
                 driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                     sample_rate: crate::SAMPLE_RATE,
                     buffer_size: crate::QUANTUM as u32,
