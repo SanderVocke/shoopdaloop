@@ -3556,6 +3556,14 @@ pub fn show_new_track_configuration(
                 });
                 ui.end_row();
             });
+        if configuration.mode == AddTrackMode::DryWet {
+            if let Some(resources) = selected_processor.and_then(|processor| processor.resources) {
+                ui.small(format!(
+                    "{} of {} host instances in use",
+                    resources.instances_in_use, resources.instance_limit
+                ));
+            }
+        }
         let advanced = egui::CollapsingHeader::new("Advanced timing")
             .id_salt("advanced_timing")
             .default_open(
@@ -5111,6 +5119,7 @@ mod tests {
         assert!(widget.add_track_open);
 
         let processor = TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new("future_browser_fx"),
             label: "Future browser FX".to_owned(),
             available: true,
@@ -5161,6 +5170,7 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let processor = TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
             label: "Built-in FX".to_owned(),
             available: true,
@@ -5741,6 +5751,7 @@ mod tests {
         widget.add_track_processor_frames = 128;
         widget.add_track_make_default = true;
         let processor = TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new("processor"),
             label: "Processor".to_owned(),
             available: true,

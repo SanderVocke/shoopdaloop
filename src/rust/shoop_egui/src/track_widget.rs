@@ -1498,6 +1498,7 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let processor = TrackProcessorDescriptor {
+            resources: None,
             id: crate::TrackProcessorTypeId::new("synthetic_fx"),
             label: "Synthetic FX".to_owned(),
             available: true,

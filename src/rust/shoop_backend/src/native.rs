@@ -3399,6 +3399,7 @@ impl NativeRuntime {
                 ),
             ] {
                 catalog.push(TrackProcessorDescriptor {
+                    resources: None,
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
                     available: carla_availability.is_ok(),
@@ -4081,6 +4082,7 @@ impl Backend for NativeBackend {
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         let catalog = vec![
             TrackProcessorDescriptor {
+                resources: None,
                 id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
                 label: "External".to_owned(),
                 available: true,
@@ -4113,6 +4115,7 @@ impl Backend for NativeBackend {
                 ),
             ] {
                 catalog.push(TrackProcessorDescriptor {
+                    resources: None,
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
                     available: carla_availability.is_ok(),

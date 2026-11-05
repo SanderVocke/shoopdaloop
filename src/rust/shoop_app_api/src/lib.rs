@@ -175,9 +175,21 @@ pub enum TrackProcessorEditorDescriptor {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HostedProcessorResources {
+    pub instance_limit: u16,
+    pub instances_in_use: u16,
+    pub buffering_frames: u32,
+    pub reserved_host_bytes: u64,
+    pub budget_host_bytes: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorDescriptor {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resources: Option<HostedProcessorResources>,
     pub id: TrackProcessorTypeId,
     pub label: String,
     pub available: bool,
@@ -3106,6 +3118,7 @@ mod tests {
 
     fn synthetic_processor() -> TrackProcessorDescriptor {
         TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new("browser_native_test"),
             label: "Browser native test".to_owned(),
             available: true,

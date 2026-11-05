@@ -1135,11 +1135,21 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         if !self.profiling_groups.2 {
             self.update_profiling_groups();
         }
+        let processor_latency = self
+            .processors
+            .map_or(0, |limits| limits.builtin_latency_frames);
         let mirror = &mut self.mirror;
         let mut tracks = alloc::collections::BTreeMap::new();
         for (id, track) in mirror.tracks.iter_mut() {
             if track.confirmed {
-                tracks.insert(*id, Mirror::track_state(track));
+                let mut state = Mirror::track_state(track);
+                if crate::processor_controls::track_kind(track).is_some() {
+                    state.latency.automatic_processor_advance_frames = Some(processor_latency);
+                    state.latency.processor_adjustment =
+                        BackendProcessorLatencyAdjustment::Automatic;
+                    state.latency.effective_processor_advance_frames = Some(processor_latency);
+                }
+                tracks.insert(*id, state);
             }
         }
         let mut loops = alloc::collections::BTreeMap::new();
@@ -1148,16 +1158,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 continue;
             };
             if entry.confirmed && track.confirmed {
-                loops.insert(
-                    *id,
-                    Mirror::loop_state(
-                        entry,
-                        track.audio_channels,
-                        track.topology.dry_audio_channels(),
-                        track.midi,
-                        !matches!(track.topology, BackendTrackTopology::Direct { .. }),
-                    ),
+                let mut state = Mirror::loop_state(
+                    entry,
+                    track.audio_channels,
+                    track.topology.dry_audio_channels(),
+                    track.midi,
+                    !matches!(track.topology, BackendTrackTopology::Direct { .. }),
                 );
+                if crate::processor_controls::track_kind(track).is_some() && state.length > 0 {
+                    state.processor_alignment_frames = Some(processor_latency);
+                }
+                loops.insert(*id, state);
             }
         }
         let connections = BackendConnectionSnapshot {

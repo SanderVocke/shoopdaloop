@@ -655,3 +655,10 @@ provide exact committed raw lengths/windows to the endpoint, adapter and reconne
 path. Media reads wait for those records. The new real-FX imported-take fixture
 compares dry media, MIDI, offsets, preplay and raw lengths after rerecord/reconnect;
 the unequal-role loop fixture and existing P12 timing/JACK regressions pass.
+
+Application protocol v28 adds authoritative hosted resource descriptors: instance
+limits/usage, buffering frames and reserved/budgeted host bytes. The public
+add-track dialog displays usage, and service snapshots carry automatic processor
+advance and loop alignment. Both real DSP service fixtures assert capacity changes
+and the 16-frame test delay. Focused dialog tests, warning-denying native product
+builds and tracing/test-attribute checks pass.

@@ -2,9 +2,9 @@
 use crate::{EngineClock, RtBackend};
 use alloc::{format, sync::Arc, vec::Vec};
 use shoop_app_api::{
-    TrackProcessorConstraints, TrackProcessorDescriptor, TrackProcessorEditorDescriptor,
-    TrackProcessorFeatures, TrackProcessorMidiPolicy, TrackProcessorPresetDescriptor,
-    TrackProcessorTypeId,
+    HostedProcessorResources, TrackProcessorConstraints, TrackProcessorDescriptor,
+    TrackProcessorEditorDescriptor, TrackProcessorFeatures, TrackProcessorMidiPolicy,
+    TrackProcessorPresetDescriptor, TrackProcessorTypeId,
 };
 use shoop_rt_protocol::{processors::Unavailable, Capabilities};
 use shoop_rt_transport::carrier::Carrier;
@@ -50,8 +50,27 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 name: preset.name.as_str().into(),
             })
             .collect();
+        let resources = |kind, instance_limit| {
+            Some(HostedProcessorResources {
+                instance_limit,
+                instances_in_use: self
+                    .mirror
+                    .tracks
+                    .values()
+                    .filter(|track| {
+                        track.confirmed
+                            && !track.removing
+                            && crate::processor_controls::track_kind(track) == Some(kind)
+                    })
+                    .count() as u16,
+                buffering_frames: limits.builtin_latency_frames,
+                reserved_host_bytes: limits.reserved_bytes,
+                budget_host_bytes: limits.effective.memory_bytes,
+            })
+        };
         Arc::from([
             TrackProcessorDescriptor {
+                resources: None,
                 id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
                 label: "External".into(),
                 available: external,
@@ -66,6 +85,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 editor: None,
             },
             TrackProcessorDescriptor {
+                resources: resources(
+                    shoop_rt_protocol::ProcessorKind::BuiltInFx,
+                    limits.effective.fx_instances,
+                ),
                 id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                 label: "Built-in FX".into(),
                 available: fx,
@@ -86,6 +109,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 editor: Some(TrackProcessorEditorDescriptor::BuiltInFx),
             },
             TrackProcessorDescriptor {
+                resources: resources(
+                    shoop_rt_protocol::ProcessorKind::OxiSynth,
+                    limits.effective.synth_instances,
+                ),
                 id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
                 label: "Built-in Synth".into(),
                 available: synth,

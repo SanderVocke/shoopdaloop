@@ -578,6 +578,43 @@ impl Service {
                     BackendDefaultPlaybackMode::Regular => DefaultPlaybackMode::Regular,
                     BackendDefaultPlaybackMode::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
                 };
+                let (adjustment, manual_frames) = match state.latency.adjustment {
+                    BackendRecordingOffsetAdjustment::Automatic => {
+                        (RecordingOffsetAdjustmentState::Automatic, 0)
+                    }
+                    BackendRecordingOffsetAdjustment::ManualOverride(value) => {
+                        (RecordingOffsetAdjustmentState::ManualOverride, value)
+                    }
+                    BackendRecordingOffsetAdjustment::AutomaticPlusTrim(value) => {
+                        (RecordingOffsetAdjustmentState::AutomaticPlusTrim, value)
+                    }
+                };
+                track.view.latency = TrackLatencyState {
+                    automatic_offset_frames: state.latency.automatic_offset_frames,
+                    adjustment,
+                    manual_frames,
+                    effective_offset_frames: state.latency.effective_offset_frames,
+                    automatic_processor_advance_frames: state
+                        .latency
+                        .automatic_processor_advance_frames,
+                    processor_adjustment: match state.latency.processor_adjustment {
+                        BackendProcessorLatencyAdjustment::Automatic => {
+                            ProcessorLatencyAdjustmentState::Automatic
+                        }
+                        BackendProcessorLatencyAdjustment::ManualOverride => {
+                            ProcessorLatencyAdjustmentState::ManualOverride
+                        }
+                        BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                            ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+                        }
+                    },
+                    processor_manual_frames: state.latency.processor_manual_frames,
+                    effective_processor_advance_frames: state
+                        .latency
+                        .effective_processor_advance_frames,
+                    pending: state.latency.pending,
+                    error: state.latency.error.clone(),
+                };
                 track.view.fx = state.fx.clone();
                 if track
                     .default_playback_intent

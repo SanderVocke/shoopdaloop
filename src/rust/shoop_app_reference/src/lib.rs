@@ -16074,6 +16074,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn application_publishes_backend_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
             label: "Future browser FX".to_owned(),
             available: true,
@@ -16108,6 +16109,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn application_adds_external_dry_wet_tracks_from_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -16733,6 +16735,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
             ),
@@ -16881,6 +16884,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn failed_recorded_fx_restore_leaves_the_processed_track_usable() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
             ),
@@ -21086,6 +21090,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let previews = Arc::new(Mutex::new(VecDeque::new()));
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -24997,6 +25002,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn dry_wet_media_io_maps_and_exports_role_order_without_flattening() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -26116,6 +26122,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -26307,6 +26314,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn failed_track_default_playback_update_keeps_application_state_unchanged() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),

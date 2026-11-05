@@ -406,6 +406,24 @@ fn service_processor(kind: ProcessorKind) {
         2
     };
     let catalog = f.client.snapshot().unwrap().track_processors.clone();
+    let resources = catalog
+        .iter()
+        .find(|descriptor| descriptor.id.as_str() == type_id)
+        .unwrap()
+        .resources
+        .unwrap();
+    assert_eq!(
+        (
+            resources.instance_limit,
+            resources.instances_in_use,
+            resources.buffering_frames
+        ),
+        (1, 0, 16)
+    );
+    assert!(
+        resources.reserved_host_bytes > 0
+            && resources.reserved_host_bytes <= resources.budget_host_bytes
+    );
     assert!(catalog
         .iter()
         .any(|descriptor| descriptor.id.as_str() == type_id
@@ -492,6 +510,23 @@ fn service_processor(kind: ProcessorKind) {
     }
     f.ticks(8);
     let state = f.track(track);
+    let catalog = &f.client.snapshot().unwrap().track_processors;
+    assert_eq!(
+        catalog
+            .iter()
+            .find(|descriptor| descriptor.id.as_str() == type_id)
+            .unwrap()
+            .resources
+            .unwrap()
+            .instances_in_use,
+        1
+    );
+    assert_eq!(state.latency.automatic_processor_advance_frames, Some(16));
+    assert_eq!(state.latency.effective_processor_advance_frames, Some(16));
+    assert_eq!(
+        state.latency.processor_adjustment,
+        ProcessorLatencyAdjustmentState::Automatic
+    );
     assert_eq!(
         state.default_playback_mode,
         DefaultPlaybackMode::DryThroughWet
@@ -542,6 +577,7 @@ fn service_processor(kind: ProcessorKind) {
     f.confirmed(loop_action(LoopAction::StopClicked));
     f.ticks(4);
     assert!(f.track(track).loops[0].has_recorded_fx_state);
+    assert_eq!(f.track(track).loops[0].processor_alignment_frames, Some(16));
     let message = f.client.read_media(loops[0]).unwrap();
     f.service.handle(f.connection, message).unwrap();
     for _ in 0..200 {

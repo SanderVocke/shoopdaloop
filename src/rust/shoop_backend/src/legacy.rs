@@ -214,6 +214,7 @@ fn validate_backend_midi_cc_assignments(track: &BackendSessionTrack) -> Result<(
 
 pub fn builtin_fx_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
+        resources: None,
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
         label: "Built-in FX".to_owned(),
         available: true,
@@ -291,6 +292,7 @@ mod builtin_fx_descriptor_tests {
 
 pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
+        resources: None,
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
         label: "Built-in Synth".to_owned(),
         available: true,
@@ -12173,6 +12175,7 @@ mod tests {
         let mut backend = FakeBackend::default();
         assert!(backend.track_processor_catalog().unwrap().is_empty());
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
             label: "Future browser FX".to_owned(),
             available: true,

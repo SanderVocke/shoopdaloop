@@ -18,7 +18,7 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   The target subsequently advanced to `e1f28c87` (P12 loop timing and the preliminary
   FreeRTOS host). Reconcile those changes too, preserving the target's timing,
   portable-host and CI contracts alongside processed channel roles.
-  The combined wire is engine v20/application v27. P12 timing requests and records
+  The combined wire is engine v20/application v28. P12 timing requests and records
   have distinct tags/capability bits; bounded playback windows cover both channel
   banks in canonical dry-first order. Keep P12 timing editing available for Direct
   tracks and extend its validated channel indices to processed tracks.
@@ -332,7 +332,7 @@ Each stage includes its own verification and a commit before moving on.
 - [x] Prepare finite active/candidate processor banks and resources before callbacks;
   implement bounded claim/return/reset with generations. Wire the portable prepared
   node seam into `EngineNode`/pool composition without concrete DSP dependencies.
-- [ ] Publish effective per-type descriptors, preset metadata, instance/width/resource
+- [x] Publish effective per-type descriptors, preset metadata, instance/width/resource
   limits and useful unavailable reasons through engine/backend/service snapshots.
   Keep the bus processor catalog empty and BusFx disabled. Clients never infer host
   support from their own Cargo features. Validate requests on the authoritative side.
@@ -351,6 +351,13 @@ bits remain gated until graph, service and persistence admission are complete.
 Library/configuration tests and the four build combinations pass; the linked
 worklet has no Wasm imports. Remaining Stage 4 admission and public projection
 checks run alongside Stages 5–7.
+
+Resource projection milestone: application protocol v28 carries authoritative
+instance capacity/usage, buffering frames and total prepared DSP reservation/budget.
+The add-track dialog shows current instance usage. Service snapshots project the
+fixed processor advance and loop alignment from the host. Real FX/synth wire tests
+verify these values before and after admission; the two add-track dialog tests,
+warning-denying product builds and tracing/test inventories pass.
 
 ### 5. Implement dry/wet graph roles, loop modes and latency
 
