@@ -220,7 +220,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     if timing_revision != entry.timing.revision {
                         return;
                     }
-                    if content_revision < entry.rt_content_revision {
+                    if content_revision
+                        < entry.rt_content_revision.max(entry.timing.content_revision)
+                    {
                         return;
                     }
                     if (mode == LoopMode::Recording && previous.mode != LoopMode::Recording)
@@ -231,23 +233,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         self.canonical_content.remove(id);
                         self.prepared_content.remove(id);
                         self.canonical_imports.remove(id);
-                    }
-                    if content_revision != entry.timing.content_revision {
-                        let track = &self.mirror.tracks[&entry.track];
-                        entry.timing.content_revision = content_revision;
-                        for window in entry
-                            .timing
-                            .windows
-                            .audio
-                            .iter_mut()
-                            .chain(core::iter::once(&mut entry.timing.windows.midi))
-                        {
-                            window.raw_frames = None;
-                        }
-                        entry.timing.length = length;
-                        entry.timing.raw_audio_frames =
-                            if track.audio_channels > 0 { length } else { 0 };
-                        entry.timing.raw_midi_frames = if track.midi { length } else { 0 };
                     }
                     entry.view = LoopView {
                         recording_armed,
@@ -297,6 +282,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn state_record(&mut self, record: StateRecord) {
         if self.resync.is_none() {
+            if let StateRecord::LoopTiming { loop_id, timing } = record {
+                if let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() {
+                    self.apply_timing(id, timing);
+                }
+            }
             if let StateRecord::RecordedProcessorState {
                 loop_id,
                 content_revision,

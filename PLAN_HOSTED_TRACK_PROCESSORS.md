@@ -18,6 +18,9 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   The target subsequently advanced to `e1f28c87` (P12 loop timing and the preliminary
   FreeRTOS host). Reconcile those changes too, preserving the target's timing,
   portable-host and CI contracts alongside processed channel roles.
+  The target then advanced to `a068ce72` with Zynq board profiles and a 512 MiB
+  ZedBoard configuration. Merge `a7d9505e` reconciles that update, retaining
+  board-specific memory budgets and explicitly disabled embedded DSP startup.
   The combined wire is engine v20/application v28. P12 timing requests and records
   have distinct tags/capability bits; bounded playback windows cover both channel
   banks in canonical dry-first order. Keep P12 timing editing available for Direct
@@ -349,8 +352,9 @@ configuration and catalog transport are implemented. Slots have generation-fence
 claim/control/start/retire operations. Retirement clears one prepared DSP unit per
 cleanup turn, with at most one turn across the whole bank per quantum. Capability
 bits remain gated until graph, service and persistence admission are complete.
-Library/configuration tests and the four build combinations pass; the linked
-worklet has no Wasm imports. Remaining Stage 4 admission and public projection
+Library/configuration tests and the four build combinations passed at that
+milestone. After retargeting, the worklet retains the upstream profiling-clock
+import, with no additional DSP imports. Remaining Stage 4 admission and public projection
 checks run alongside Stages 5–7.
 
 Resource projection milestone: application protocol v28 carries authoritative
@@ -666,6 +670,35 @@ owning track's default playback for its scheduled finish. The service-wire
 regression covers regular/dry defaults, autoplay Off and explicit Play remaining
 wet. The existing default ordering test still passes. This addresses the P2
 finding on `67b2565b`; re-review follows the fix.
+
+Native processed-port acceptance: one real JACK socket-host fixture passes
+External 2→1, stereo FX and synth. An independent peer observes wet audio,
+both External audio sends and MIDI send. The test verifies dynamic public roles,
+private hosted endpoints, exact dry capture, audible wet capture, recorded MIDI,
+and continuing audio across reconnect, removing each instance before the next.
+The existing four-carrier Direct JACK suite stays the transport regression matrix.
+Automated re-review of `2e035504` completed with no findings.
+
+Live timing reconciliation: reliable loop timing is now applied during normal
+operation as well as resync. Telemetry never invents raw channel extents or clears
+committed windows. Reliable content changes invalidate stale cached media, older
+telemetry cannot roll metadata back, and capture waits for matching authoritative
+timing. The real imported/rerecorded take fixture verifies exact dry/MIDI data
+and wet raw tails before reconnect, then checks both lane orderings.
+
+CI reconciliation also updates the application capability oracle and the network
+fixture channel role. The firmware fixture waits for the committed session epoch
+before starting a new capture; command confirmation can arrive before its snapshot.
+Broad platform and firmware execution remain in CI.
+
+
+The isolated both-DSP Node job's diagnostic log identified missing `protoc` before
+any tests ran. Its workflow now installs `protobuf-compiler`. Targeted local
+reconciliation passes nine real adapter/DSP tests, both network tests, the native
+application workflow, the processed JACK fixture and four portable board-profile
+contracts. Changed native products and the no-default Zynq client build with
+warnings denied; test/tracing inventories pass (457 modules). Firmware execution,
+Wasm and cross-platform matrices remain CI gates on the next delivered revision.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

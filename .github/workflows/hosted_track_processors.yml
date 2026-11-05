@@ -55,6 +55,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack@0.15.0
+      - name: Install Wasm test build dependencies
+        if: matrix.label == 'both'
+        run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - name: Verify optional assets and sole profiling-clock import
         run: |
           python3 - <<'PYTHON'

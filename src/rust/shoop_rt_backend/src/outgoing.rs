@@ -1286,12 +1286,22 @@ mod track_role_tests {
             .transition_loop(id, BackendLoopMode::Stopped, None)
             .unwrap();
         stack.wait_idle();
-        refresh(&mut stack);
         stack.canonical_content.remove(&id);
         stack.prepared_content.remove(&id);
         stack.canonical_imports.remove(&id);
         stack.reads.forget(id);
-        let after = stack.capture_session().unwrap().tracks[0].loops[0].clone();
+        let after = stack
+            .capture_session()
+            .unwrap_or_else(|error| {
+                let entry = &stack.mirror.loops[&id];
+                panic!(
+                    "{error}: timing={:?}, content={}",
+                    entry.timing, entry.rt_content_revision
+                )
+            })
+            .tracks[0]
+            .loops[0]
+            .clone();
         assert_eq!(after.length, before.length);
         assert_eq!(&after.audio[..3], &before.audio[..3]);
         assert_eq!(after.midi, before.midi);
@@ -1308,6 +1318,43 @@ mod track_role_tests {
         assert_eq!(state.capture_alignment_frames, 2);
         assert_eq!(state.processor_alignment_frames, None);
         assert_eq!(state.channel_timings[6].frames, 96);
+
+        let committed = stack.mirror.loops[&id].timing;
+        refresh(&mut stack);
+        assert_eq!(stack.mirror.loops[&id].timing, committed);
+        let slot = stack.mirror.loops[&id].slot;
+        let telemetry = |content_revision, length| {
+            shoop_rt_protocol::EngineMessage::Telemetry(shoop_rt_protocol::Telemetry::Loop {
+                loop_id: slot,
+                mode: shoop_rt_protocol::LoopMode::Stopped,
+                next_mode: None,
+                next_delay: None,
+                content_revision,
+                recording_armed: false,
+                timing_revision: committed.revision,
+                length,
+                position: 0,
+                peaks: Default::default(),
+            })
+        };
+        let next = shoop_rt_protocol::TimingState {
+            content_revision: committed.content_revision + 1,
+            length: 32,
+            ..committed
+        };
+        stack.apply_timing(id, next);
+        assert!(!stack.canonical_content.contains_key(&id));
+        stack.handle(telemetry(committed.content_revision, committed.length));
+        assert_eq!(stack.mirror.loops[&id].timing, next);
+        assert_eq!(stack.mirror.loops[&id].view.length, next.length);
+
+        stack.handle(telemetry(next.content_revision + 1, 48));
+        assert_eq!(stack.mirror.loops[&id].timing, next);
+        assert_eq!(stack.mirror.loops[&id].view.length, 48);
+        assert!(matches!(
+            stack.capture_core(Some(id)).unwrap(),
+            shoop_backend::BackendAsyncResult::Pending(_)
+        ));
     }
 
     #[shoop_test]

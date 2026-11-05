@@ -1368,3 +1368,237 @@ fn native_jack_startup_playback_has_one_master_signal_path() {
         }
     }
 }
+
+struct ProcessorPeer {
+    source: jack::Port<jack::AudioOut>,
+    output: jack::Port<jack::AudioIn>,
+    send: jack::Port<jack::AudioIn>,
+    keys: jack::Port<jack::MidiOut>,
+    midi_send: jack::Port<jack::MidiIn>,
+    audio: Arc<AtomicUsize>,
+    sent: Arc<AtomicUsize>,
+    midi: Arc<AtomicUsize>,
+}
+impl jack::ProcessHandler for ProcessorPeer {
+    fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+        self.source.as_mut_slice(scope).fill(0.25);
+        let mut keys = self.keys.writer(scope);
+        for (time, bytes) in [(0, [0x90, 60, 100]), (scope.n_frames() - 1, [0x80, 60, 0])] {
+            let _ = keys.write(&jack::RawMidi {
+                time,
+                bytes: &bytes,
+            });
+        }
+        if self
+            .output
+            .as_slice(scope)
+            .iter()
+            .any(|sample| sample.abs() > 1e-4)
+        {
+            self.audio.fetch_add(1, Ordering::Relaxed);
+        }
+        if self
+            .send
+            .as_slice(scope)
+            .iter()
+            .all(|sample| *sample == 0.5)
+        {
+            self.sent.fetch_add(1, Ordering::Relaxed);
+        }
+        for event in self.midi_send.iter(scope) {
+            if event.bytes == [0x90, 60, 100] {
+                self.midi.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        jack::Control::Continue
+    }
+}
+
+#[shoop_test(no_wasm = "actual native JACK processed ports and companion callbacks")]
+fn native_jack_processed_tracks_publish_real_roles_and_record_host_dsp() {
+    let (peer, _) = match jack::Client::new(
+        &format!("processor-peer-{}", std::process::id()),
+        jack::ClientOptions::NO_START_SERVER,
+    ) {
+        Ok(client) => client,
+        Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
+        Err(error) => panic!("required JACK server unavailable: {error}"),
+    };
+    let peer_name = peer.name().to_owned();
+    let audio = Arc::new(AtomicUsize::new(0));
+    let sent = Arc::new(AtomicUsize::new(0));
+    let midi = Arc::new(AtomicUsize::new(0));
+    let handler = ProcessorPeer {
+        source: peer
+            .register_port("source", jack::AudioOut::default())
+            .unwrap(),
+        output: peer
+            .register_port("output", jack::AudioIn::default())
+            .unwrap(),
+        send: peer
+            .register_port("send", jack::AudioIn::default())
+            .unwrap(),
+        keys: peer
+            .register_port("keys", jack::MidiOut::default())
+            .unwrap(),
+        midi_send: peer
+            .register_port("midi-send", jack::MidiIn::default())
+            .unwrap(),
+        audio: audio.clone(),
+        sent: sent.clone(),
+        midi: midi.clone(),
+    };
+    let _peer = peer.activate_async((), handler).unwrap();
+    let mut f = Fixture::new_on(
+        AudioDriverConfig::Jack(JackAudioDriverConfig {
+            client_name: format!("processed-host-{}", std::process::id()),
+        }),
+        DeliveryMode::Socket,
+    );
+    f.command(protocol::Command::Global(GlobalControlAction::SetSync(
+        false,
+    )));
+    let mut tested = 0;
+    for kind in [
+        TrackProcessorTypeId::EXTERNAL,
+        TrackProcessorTypeId::BUILTIN_FX,
+        TrackProcessorTypeId::OXISYNTH,
+    ] {
+        let available = f
+            .client
+            .snapshot()
+            .unwrap()
+            .track_processors
+            .iter()
+            .any(|p| p.id.as_str() == kind && p.available);
+        if !available {
+            continue;
+        }
+        let wet = if kind == TrackProcessorTypeId::EXTERNAL {
+            1
+        } else {
+            2
+        };
+        let Outcome::TrackCreated { track, loops, .. } =
+            f.command(protocol::Command::AddTrack(TrackSpec {
+                name: format!("JACK {kind}"),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: wet,
+                    dry_midi: true,
+                    processor_type: TrackProcessorTypeId::new(kind),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec![],
+                creation_request_id: None,
+            }))
+        else {
+            panic!("processed JACK admission failed: {kind}")
+        };
+        let ports: Vec<_> = f.client.snapshot().unwrap().connections.application_ports.iter().filter(|port| matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track)).cloned().collect();
+        if kind != TrackProcessorTypeId::EXTERNAL {
+            assert!(!ports.iter().any(|port| matches!(
+                port.role,
+                PortRole::AudioSend | PortRole::AudioReturn | PortRole::MidiSend
+            )));
+        }
+        for port in &ports {
+            let target = match port.role {
+                PortRole::AudioInput | PortRole::AudioReturn => "source",
+                PortRole::AudioOutput => "output",
+                PortRole::AudioSend => "send",
+                PortRole::MidiInput => "keys",
+                PortRole::MidiSend => "midi-send",
+                _ => panic!("unexpected processed port: {:?}", port.role),
+            };
+            let graph = &f.client.snapshot().unwrap().host_graph;
+            let publication = graph.publication(port.publication.unwrap()).unwrap();
+            assert!(matches!(
+                publication.state,
+                shoop_port_graph::PublicationState::Published(_)
+            ));
+            f.command(protocol::Command::SetPortConnected {
+                port: port.id,
+                host_port: HostPortId::new(format!("{peer_name}:{target}")),
+                connected: true,
+            });
+        }
+        audio.store(0, Ordering::Relaxed);
+        sent.store(0, Ordering::Relaxed);
+        midi.store(0, Ordering::Relaxed);
+        f.command(protocol::Command::Track {
+            track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        });
+        f.until(|_| {
+            audio.load(Ordering::Relaxed) > 3
+                && (kind != TrackProcessorTypeId::EXTERNAL
+                    || (sent.load(Ordering::Relaxed) > 3 && midi.load(Ordering::Relaxed) > 3))
+        });
+        f.command(protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        });
+        thread::sleep(Duration::from_millis(60));
+        f.command(protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::StopClicked,
+        });
+        let message = f.client.read_media(loops[0]).unwrap();
+        f.send(message);
+        f.until(|client| client.media().is_some());
+        let media = f.client.media().unwrap().as_ref().unwrap();
+        assert_eq!(media.audio.len(), 2 + wet as usize);
+        assert_eq!(media.midi.len(), 1);
+        assert!(
+            media.audio[..2]
+                .iter()
+                .all(|channel| !channel.samples.is_empty()
+                    && channel.samples.iter().all(|sample| *sample == 0.25)),
+            "dry capture: {kind}"
+        );
+        assert!(
+            media.audio[2..]
+                .iter()
+                .all(|channel| channel.samples.iter().any(|sample| sample.abs() > 1e-4)),
+            "wet capture: {kind}"
+        );
+        assert!(media.midi[0]
+            .events
+            .iter()
+            .any(|event| event.data.as_ref() == [0x90, 60, 100]));
+        let previous = audio.load(Ordering::Relaxed);
+        f.reconnect();
+        f.until(|_| audio.load(Ordering::Relaxed) > previous + 3);
+        assert!(f
+            .client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .any(|t| t.id == track));
+        f.command(protocol::Command::Track {
+            track,
+            action: TrackAction::Remove,
+        });
+        f.until(|client| {
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .all(|t| t.id != track)
+        });
+        tested += 1;
+    }
+    assert_eq!(
+        tested,
+        1 + usize::from(cfg!(feature = "builtin-fx")) + usize::from(cfg!(feature = "oxisynth"))
+    );
+}

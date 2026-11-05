@@ -725,3 +725,30 @@ Automatic playback after a fixed-cycle recording now follows the owning track's
 default, including dry-through-wet. The wire regression covers both defaults,
 autoplay disabled and explicit wet Play. This corrects the P2 automated review
 finding on `67b2565b` without changing explicit playback requests.
+
+A focused actual JACK companion test now covers External 2→1, stereo FX and
+OxiSynth through socket delivery. A separate JACK peer verifies both External
+audio sends, MIDI send and audible wet outputs. Public port roles are published;
+hosted internal endpoints stay private. Dry capture remains sample-exact, wet
+capture is audible, MIDI notes survive and audio continues across reconnect.
+All three types pass in one 2.43-second native run. The existing Direct suite
+continues to cover in-process/socket/shared-memory/TCP delivery. Automated review
+of `2e035504` completed without findings after the post-record fix.
+
+The `a068ce72` target update is merged, including Zynq board profiles and the
+512 MiB ZedBoard budgets. Embedded DSP remains explicitly disabled. Live loop
+timing now consumes reliable records outside resync, preserves imported raw
+lengths/windows and rejects stale telemetry. Capture waits for matching timing;
+a reliable content change also invalidates cached media. The real rerecord
+fixture checks retained dry/MIDI and wet raw tails before reconnect, then checks
+adversarial timing/telemetry ordering. CI fixture updates cover advertised FX
+capabilities, channel roles and waiting for a committed firmware session snapshot.
+
+
+The isolated both-DSP Node job's diagnostic log identified missing `protoc` before
+any tests ran. Its workflow now installs `protobuf-compiler`. Targeted local
+reconciliation passes nine real adapter/DSP tests, both network tests, the native
+application workflow, the processed JACK fixture and four portable board-profile
+contracts. Changed native products and the no-default Zynq client build with
+warnings denied; test/tracing inventories pass (457 modules). Firmware execution,
+Wasm and cross-platform matrices remain CI gates on the next delivered revision.

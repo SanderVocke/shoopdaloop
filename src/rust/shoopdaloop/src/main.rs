@@ -4829,6 +4829,15 @@ mod tests {
                 .with(BackendCapability::LoopContentImport, true)
                 .with(BackendCapability::LoopTimingEdits, true)
                 .with(BackendCapability::BusManagement, true)
+                .with(BackendCapability::DryWetModes, true)
+                .with(BackendCapability::DryWetTracks, true)
+                .with(
+                    BackendCapability::TrackFx,
+                    snapshot
+                        .track_processors
+                        .iter()
+                        .any(|processor| processor.available),
+                )
                 .with(BackendCapability::ClickTrackInsertion, true)
         );
         assert_eq!(

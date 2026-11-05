@@ -173,6 +173,17 @@ fn stage(
 pub(super) fn confirmed(outcome: Outcome) {
     assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
 }
+fn commit(client: &mut Client, connection: &mut Connection, key: Key) {
+    confirmed(command(client, connection, Command::CommitPersistence(key)));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while client.snapshot().unwrap().persistence_epoch <= key.epoch {
+        assert!(
+            Instant::now() < deadline,
+            "committed session was not published"
+        );
+        pump(client, connection);
+    }
+}
 pub(super) fn action(
     client: &mut Client,
     connection: &mut Connection,
@@ -458,11 +469,7 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
     );
     let large = Arc::new(large);
     let staged = stage(client, connection, 11, large.clone());
-    confirmed(command(
-        client,
-        connection,
-        Command::CommitPersistence(staged),
-    ));
+    commit(client, connection, staged);
     println!("{} audio bytes committed", frames * 8);
     let roundtrip = capture(client, connection, 12);
     assert_eq!(roundtrip.payloads.len(), large.payloads.len());
@@ -845,11 +852,7 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
         track.loops.truncate(1);
     }
     let staged = stage(client, connection, 490, Arc::new(minimal));
-    confirmed(command(
-        client,
-        connection,
-        Command::CommitPersistence(staged),
-    ));
+    commit(client, connection, staged);
     for _ in 0..20 {
         pump(client, connection);
     }
@@ -888,11 +891,7 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
         track.loops.truncate(1);
     }
     let staged = stage(client, connection, 492, Arc::new(minimal));
-    confirmed(command(
-        client,
-        connection,
-        Command::CommitPersistence(staged),
-    ));
+    commit(client, connection, staged);
     for _ in 0..20 {
         pump(client, connection);
     }
