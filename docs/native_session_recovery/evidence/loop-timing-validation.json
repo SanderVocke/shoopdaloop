@@ -1,6 +1,8 @@
 {
-  "status": "local validation passed; final PR checks required",
-  "production_source": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+  "status": "COMPLETE; final documentation head is verified by current PR checks",
+  "production_source": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+  "runtime_source": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+  "final_correction": "Browser acceptance only: retain timing reload assertions at Loaded, remove duplicate from preview-only NewSession.",
   "merged_target": "a192b0ce77325bc8bb55b7b749e8d68b324f0a43",
   "reference_master": "92079fb6f00308be0f6b407b7e8c02229662e420",
   "quantum": {
@@ -196,6 +198,51 @@
       "report": "current-files-shared.log",
       "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "sha256": "194328abcdb7b6866a18adc8b0bde8f4081fa9390211bdd73f745954c305a319"
+    },
+    {
+      "report": "preview-fix-output-only.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "8434e6018d0c2829aa13ed03c85319a3bef0f211a4cb70e35909b2d5ae9728f7"
+    },
+    {
+      "report": "preview-fix-reject.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "b19f59e81d90f214d05b10e9dd4ee3a1686b96f09643df1aa0e234cbe7ce142a"
+    },
+    {
+      "report": "preview-fix-pending.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "b19f59e81d90f214d05b10e9dd4ee3a1686b96f09643df1aa0e234cbe7ce142a"
+    },
+    {
+      "report": "preview-fix-full.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "9570bad117801a7ab33b66609a1c5de8c69ea06fdd72dea82d0e790897f60c9f"
+    },
+    {
+      "report": "preview-fix-large.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "1c21229fb9b1bc7c2d075390d6260a34e7325c76b28c1e03d5aa5a80b8e4a86d"
+    },
+    {
+      "report": "preview-fix-isolated.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "d5f655df65cd96a038a2627d792f38ed944e48bf0bae35e02277a60f0f0136c5"
+    },
+    {
+      "report": "preview-fix-isolated-large.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "61c2a6f270be1d7d552a658ba0bffa13b7f3f82a4ce0a5b99c40bdb892617b6e"
+    },
+    {
+      "report": "preview-fix-worklet-contract.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "fb343408d7bce9251a4b95b5fe04d032324a6d818ca62f80cf595a92931e0423"
+    },
+    {
+      "report": "ci-web-release-5fd.log",
+      "source_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+      "sha256": "280a555ea6c08b050c53775edc9f78508384f9ec50642f8f042aad87cb23158d"
     }
   ],
   "miri": [
@@ -281,9 +328,9 @@
   ],
   "browser_artifacts": [
     {
-      "path": "src/rust/shoopdaloop/dist/shoopdaloop-c969379c97649d1a_bg.wasm",
-      "sha256": "aeedb3dead8e0094a7ee0d5953a94452753b5d453c79c7b32ab157a48366c399",
-      "bytes": 74249627
+      "path": "src/rust/shoopdaloop/dist/shoopdaloop-4a1be2ee884159bb_bg.wasm",
+      "sha256": "77dbd00ce9f989fc82a0bafaad1c1dc9d9cc1297f09558e5841d5788532645fb",
+      "bytes": 74248755
     },
     {
       "path": "src/rust/shoopdaloop/dist/generated/shoop_persistence_codec_bg.wasm",
@@ -297,16 +344,46 @@
     },
     {
       "path": "src/rust/shoopdaloop/dist/shoopdaloop.html",
-      "sha256": "1fa0bf69287c5c1c286ae378aef35a3c7e2c210661bb9850aff72e05b930b07c",
-      "bytes": 118131833
+      "sha256": "2f59abd4535f3ec6c614ff17e0d30a6daccd237dcb021c6b74a3378246b0cc73",
+      "bytes": 118130663
     }
   ],
   "ci": {
     "pr": "https://github.com/SanderVocke/shoopdaloop/pull/943",
     "checks": "https://github.com/SanderVocke/shoopdaloop/pull/943/checks",
-    "implementation_build_run": 41933756106,
-    "implementation_codeql_run": 41933755850,
-    "implementation_docs_run": 41933756105
+    "implementation_build_run": 41947606480,
+    "implementation_codeql_run": 41947606641,
+    "implementation_docs_run": 41947606481,
+    "resolved_failure": {
+      "run": 41933756106,
+      "job": 126936916546,
+      "cause": "Timing reload assertions ran in preview-only setup before audio/MIDI tracks existed.",
+      "fix_commit": "5fd75d5c92990871ac2a7ebd42b65bede89d60df"
+    },
+    "passing_implementation_runs": [
+      {
+        "id": 41947606480,
+        "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606480",
+        "head_sha": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+        "run_attempt": 1,
+        "conclusion": "success"
+      },
+      {
+        "id": 41947606641,
+        "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606641",
+        "head_sha": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+        "run_attempt": 1,
+        "conclusion": "success"
+      },
+      {
+        "id": 41947606481,
+        "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606481",
+        "head_sha": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
+        "run_attempt": 1,
+        "conclusion": "success"
+      }
+    ],
+    "automated_review": "No automated code review or inline feedback was provided. Informational Codecov report reviewed; patch coverage 90.97% exceeds 80% floor. CLI/browser acceptance runs separately; base coverage delta unavailable."
   },
   "protocols": {
     "app": 22,
@@ -316,5 +393,5 @@
     ]
   },
   "immutable_plan_sha256": "543bcd78f2f47f75273b010b4834879d7039f022c42d42aaa1af79a303e27ea9",
-  "provenance": "Reports identify the actual current code checkpoint and reconciled target. Remaining worktree changes were acceptance documentation. Earlier checkpoint reports remain in the local work directory. Report hashes preserve local evidence; reproducible platform artifacts are published by the PR workflows."
+  "provenance": "Reports identify the actual current code checkpoint and reconciled target. Runtime unchanged since 1e2faf74; 5fd75d5c corrects browser acceptance preview setup only. Earlier suite logs retain their actual source checkpoints. Earlier checkpoint reports remain in the local work directory. Report hashes preserve local evidence; reproducible platform artifacts are published by the PR workflows."
 }

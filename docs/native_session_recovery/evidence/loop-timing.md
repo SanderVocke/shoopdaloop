@@ -1,6 +1,6 @@
 # P12 loop timing acceptance evidence
 
-Status: local acceptance complete; P12 is OPEN pending PR CI. Implementation
+Status: COMPLETE. All nine acceptance criteria are met. Implementation
 branch: `feat/p12-loop-timing`, reconciled target
 `a192b0ce77325bc8bb55b7b749e8d68b324f0a43`. PR target is
 `feat/fixed-quantum-runtime`. The [plan](../../../PLAN_P12.md) defines completion.
@@ -28,8 +28,10 @@ legacy/native fixtures and the independent legacy `shoop_engine`.
 ## Acceptance mapping
 
 The nine criteria in [PLAN_P12.md](../../../PLAN_P12.md) are unchanged.
-Implementation source is `1e2faf74` (reconciled target `a192b0ce`); the final
-validation inventory records exact source and report hashes.
+Implementation source is `5fd75d5c` (reconciled target `a192b0ce`). Runtime code
+is unchanged since `1e2faf74`; the final correction removes misplaced reload
+assertions from preview-only browser setup. The validation inventory records
+each report's actual source and hashes.
 
 | Criterion | Production behavior and executable evidence |
 | --- | --- |
@@ -109,9 +111,18 @@ and compares all original initial-state packets after replacement. Private timin
 headers do not count as committing a replacement. This retains cancellation and
 atomic live publication while making the browser workflow reliable.
 
+The first release CI browser run passed the P12 workflow, then exposed duplicate
+timing reload assertions in preview-only New Session setup, before audio/MIDI
+tracks exist. Those assertions remain in the actual Loaded stage. Output-only,
+rejected-resume and pending-resume preview workflows pass with zero xruns after
+the correction; normal and >32 MiB workflows also pass in hosted and isolated
+single-file deployments.
+
 The organization browser policy blocks `file://` navigation. Self-contained
 acceptance serves a directory containing only the embedded HTML over localhost,
 as supported by the existing runner; hosted assets cannot satisfy those reads.
+Release CI additionally passes direct-file normal/large-media HTML workflows and
+Firefox acceptance with zero xruns on `5fd75d5c`.
 
 ## Reproduction
 
@@ -145,5 +156,15 @@ without the missing-backend allowance. Miri's exact inventory is available from
 
 [PR #943](https://github.com/SanderVocke/shoopdaloop/pull/943) targets
 `feat/fixed-quantum-runtime`. The workflow filters include that requested base.
-Final-head CI and automated review are pending; the ledger remains OPEN until
-closure. No automated review or review comments had been provided at this checkpoint.
+The [implementation platform/browser/coverage matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606480),
+[CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606641)
+and [docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606481)
+pass on production source `5fd75d5c`. The PR's
+[current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+verify the final documentation head, which changes no production code.
+Reviews and inline feedback were inspected; no automated code review was
+provided. The informational Codecov report was reviewed: patch coverage is
+90.97% (configured floor 80%), with 89.85% total native coverage. Packaged CLI
+probes and browser UI acceptance run separately from native coverage. The base
+report was unavailable, so no coverage delta is claimed. P12 is COMPLETE; other
+restoration rows keep their existing status.

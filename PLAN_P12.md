@@ -1,6 +1,6 @@
 # Plan: P12 loop timing parity
 
-Status: implementation in progress on `feat/p12-loop-timing`. Written under
+Status: COMPLETE on `feat/p12-loop-timing`. Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Base and PR target: **`feat/fixed-quantum-runtime`**, inspected at
@@ -260,6 +260,13 @@ Goals and these criteria require explicit user approval to change.
   gates pass. The current source/hash inventory supersedes earlier checkpoints.
   Final-head PR CI, review inspection and ledger closure remain.
 
+- CI/browser correction on `5fd75d5c`: remove duplicate reload assertions from
+  preview-only New Session setup, where audio/MIDI tracks do not yet exist;
+  retain the actual Loaded timing assertions. Output-only, rejected/pending
+  resume, hosted/isolated normal and >32 MiB workflows all pass with zero xruns.
+  Runtime code remains unchanged from `1e2faf74`. Fresh Build/Docs/CodeQL runs
+  pass on this acceptance correction.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -436,7 +443,7 @@ Each stage's verification must pass before its dependent stage is closed.
   save/load/save and resume. Measure output/packet continuity and check errors,
   xruns and unchanged core/bus/preview workflows. Use existing browser runners and
   packaging contracts; compilation/Node execution cannot replace browser evidence.
-- [ ] Write `docs/native_session_recovery/evidence/loop-timing.md` mapping all nine
+- [x] Write `docs/native_session_recovery/evidence/loop-timing.md` mapping all nine
   criteria to tests, native/browser artifacts, Q qualification and final CI runs.
   Update architecture/usage docs and the P12 row/capability disposition, removing
   stale P12 refusals and updating OPEN counts. Mark COMPLETE only after full
@@ -447,12 +454,37 @@ Each stage's verification must pass before its dependent stage is closed.
 - [x] Commit each completed milestone, push `feat/p12-loop-timing`, and create a
   PR with base **`feat/fixed-quantum-runtime`**. Describe final behavior, quantum
   precision, validation and evidence links for a reviewer without this discussion.
-- [ ] Verify the requested base actually triggers build/platform, browser, docs,
+- [x] Verify the requested base actually triggers build/platform, browser, docs,
   coverage and CodeQL checks. Inspect failures using `.agents/info/ci-debug.md`,
   fix causes, and repeat affected validation until final-head checks are green.
-- [ ] Check automated review comments/threads as they arrive; address applicable
+- [x] Check automated review comments/threads as they arrive; address applicable
   feedback, explain evidence-backed disagreements, and repeat review/fixes until
   the reviewer approves. Record explicitly if no automated review is provided.
-- [ ] Keep this plan and acceptance evidence current, verify clean intended scope
+- [x] Keep this plan and acceptance evidence current, verify clean intended scope
   and passing checks on the final head, and report the PR ready to merge into
   `feat/fixed-quantum-runtime`. Leave the merge to a separate instruction.
+
+## Closure
+
+P12 is complete on the reconciled production source `5fd75d5c`, based on target
+`a192b0ce`. All nine acceptance criteria have linked evidence. The original
+goals and immutable criteria are unchanged. The final documentation changes
+update the acceptance record and ledger; they do not change production code.
+
+- [PR #943](https://github.com/SanderVocke/shoopdaloop/pull/943) targets
+  `feat/fixed-quantum-runtime`.
+- [Passing implementation matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606480),
+  [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606641)
+  and [docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606481)
+  identify the validated production source. The PR's
+  [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+  verify the final documentation head.
+- Local acceptance: 2,778 native tests, 904 Node executions across fifteen
+  packages, strict JACK, both native transports/large-file workflows,
+  hosted/isolated browser output with zero xruns, debug/release loop-host replay,
+  five selected Miri cases, no-std and policy/dependency checks all pass.
+- PR reviews, inline feedback and comments were inspected. No automated code
+  review was provided. The informational Codecov report was reviewed: 90.97%
+  patch coverage exceeds the configured 80% floor; CLI and browser acceptance
+  run separately from native coverage. No base coverage delta is claimed.
+  The PR is delivered ready for review/merge. Merging remains a separate instruction.
