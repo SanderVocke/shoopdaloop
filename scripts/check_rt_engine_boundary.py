@@ -18,14 +18,16 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
+    "shoop_deployment_protocol",
     "shoop_port_graph",
-    "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
+    "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_host_freertos", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_jack", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
     "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory", "shoop_rt_host_process", "shoop_rt_backend",
 )
 FORBIDDEN = {
+    "shoop_deployment_protocol",
     "shoop_host", "shoop_app", "shoop_app_api", "shoop_backend", "shoop_engine", "shoop_egui",
     "shoopdaloop", "shoop_session", "shoop_worklet_client", "shoop_audio_worklet",
     "shoop_audio_protocol",
@@ -48,6 +50,11 @@ def violations(tree: str, package: str | None = None) -> list[str]:
     if package == "shoop_host":
         return sorted(names & {"shoop_engine", "shoop_app_reference", "shoop_egui", "shoopdaloop", "shoop_scripting",
                                "shoop_session", "shoop_worklet_client", "shoop_audio_worklet", "shoop_audio_protocol"})
+    if package == "shoop_host_freertos":
+        return sorted(names & {"shoop_host", "shoop_rt_host_native", "shoop_engine", "shoop_app_reference",
+                               "shoop_egui", "shoopdaloop", "shoop_scripting", "shoop_session", "shoop_app_client",
+                               "shoop_transport_socket", "shoop_transport_shared_memory", "shoop_persistence_codec",
+                               "cpal", "midir", "iceoryx2", "web-sys", "js-sys", "wasm-bindgen"})
     if package == "shoop_app_client_runtime":
         forbidden = {"shoop_host", "shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop", "shoop_engine",
                      "shoop_session", "rt_runtime", "cpal", "iceoryx2"}
@@ -63,7 +70,7 @@ def violations(tree: str, package: str | None = None) -> list[str]:
                      "web-sys", "js-sys", "iceoryx2"}
         return sorted(name for name in names if name in forbidden or name.startswith(
             ("shoop_rt_", "shoop_transport_")))
-    if package in {"shoop_app_protocol", "shoop_app_client"}:
+    if package in {"shoop_deployment_protocol", "shoop_app_protocol", "shoop_app_client"}:
         forbidden = {"shoop_host", "shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop",
                      "shoop_engine", "shoop_scripting", "shoop_session", "rt_runtime",
                      "cpal", "midir", "web-sys", "js-sys", "iceoryx2"}

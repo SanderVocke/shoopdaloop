@@ -16,6 +16,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 shoop_loop_plan = { path = "../shoop_loop_plan" }
 shoop_port_graph = { path = "../shoop_port_graph" }
 shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }
+shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }
 anyhow = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend", default-features = false }

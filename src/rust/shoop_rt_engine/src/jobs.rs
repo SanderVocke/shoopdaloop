@@ -100,6 +100,7 @@ pub(crate) fn smoothing(frames: u32) -> Smoothing {
 }
 
 pub(crate) struct Job {
+    pub(crate) content_timing: Option<shoop_rt_protocol::TimingState>,
     pub correlation: Option<u64>,
     kind: Kind,
     phase: Phase,
@@ -151,6 +152,7 @@ impl Job {
             configured: false,
             committed: false,
             cancelled: false,
+            content_timing: None,
             content_media: None,
             content_revision: None,
         }
@@ -523,6 +525,11 @@ impl ControlEndpoint {
                         .as_mut()
                         .expect("staged family entry")
                         .media = job.content_media.take();
+                    self.family.entries[slot]
+                        .as_mut()
+                        .expect("staged family entry")
+                        .timing
+                        .content_revision = job.content_revision.expect("adopted revision").0;
                     self.answer_job(
                         job,
                         Outcome::ContentPrepared {
@@ -559,6 +566,11 @@ impl ControlEndpoint {
                 }
                 if let Some(media) = job.content_media.take() {
                     self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
+                }
+                if let (Kind::Content { id, .. }, Some(mut timing)) = (job.kind, job.content_timing)
+                {
+                    timing.content_revision = job.content_revision.expect("adopted revision").0;
+                    self.publish_content_timing(id, timing);
                 }
                 self.answer_job(
                     job,
@@ -752,6 +764,15 @@ impl ControlEndpoint {
                     .unwrap();
                 self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
                 return true;
+            }
+        }
+        if job.failure.is_none() && job.kind == (Kind::Family { commit: true }) {
+            for slot in 0..self.family.entries.len() {
+                if let Some(entry) = self.family.entries[slot] {
+                    if entry.edit.replace {
+                        self.publish_content_timing(entry.edit.loop_id, entry.timing);
+                    }
+                }
             }
         }
         self.answer_job(job, job.failure.map_or(Outcome::Done, Outcome::Refused));
@@ -1606,6 +1627,7 @@ impl ControlEndpoint {
                     (
                         _,
                         Outcome::CompositeApplied { .. }
+                        | Outcome::TimingApplied(_)
                         | Outcome::ContentApplied { .. }
                         | Outcome::ContentPrepared { .. },
                     ) => Some(Refusal::Internal),

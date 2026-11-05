@@ -762,7 +762,10 @@ impl Candidate {
                 .map(|event| {
                     (
                         event.loop_id,
-                        self.loops[&event.loop_id].view.content_revision,
+                        (
+                            self.loops[&event.loop_id].view.content_revision,
+                            self.loops[&event.loop_id].view.length_frames,
+                        ),
                     )
                 })
                 .collect();

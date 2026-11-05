@@ -69,6 +69,29 @@ fn host(ip: IpAddr) -> Host {
         path,
     }
 }
+
+#[shoop_test]
+fn native_host_reports_deployment_unsupported_independently_of_session_version() {
+    use shoop_deployment_protocol as d;
+    let h = host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    let mut profile = h.profile.clone();
+    profile.version = u16::MAX;
+    assert!(profile.validate().is_err());
+    assert_eq!(
+        shoop_host::deployment::management(&profile, d::Request::Status, Duration::from_secs(3))
+            .unwrap(),
+        d::Reply::Refused(d::Refusal::Unsupported)
+    );
+    let path = h._root.path().join("wrong.key");
+    shoop_host::remote::create_credential(&path).unwrap();
+    profile.credential = Some(path);
+    assert!(shoop_host::deployment::management(
+        &profile,
+        d::Request::Status,
+        Duration::from_secs(1)
+    )
+    .is_err());
+}
 fn attach(profile: &RemoteProfile, _id: u128) -> (Client, Connection) {
     let mut connection = connection::connect(profile, Duration::from_secs(5)).unwrap();
     let mut client = Client::new();

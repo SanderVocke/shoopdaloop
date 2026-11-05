@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 
 use crate::{
     persistence::{Job, Work},
-    prepared::{Upload, MAX_MEDIA_BYTES},
+    prepared::Upload,
     EngineClock, RtBackend,
 };
 use alloc::{
@@ -32,6 +32,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             });
         }
         self.ready()?;
+        if self.requests.timing_pending() {
+            bail!("a timing edit is pending");
+        }
         if self.mirror.live_loop(loop_id).is_none() {
             bail!("unknown loop {loop_id:?}");
         }
@@ -122,8 +125,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         .sum::<usize>()
                 })
                 .sum::<usize>();
-        if events > crate::prepared::MAX_MIDI_EVENTS {
-            bail!("retained canonical MIDI exceeds the one-million-event budget");
+        if events > self.resource_limits.midi_events {
+            bail!("retained canonical MIDI exceeds the host event budget");
         }
         let content = Arc::new(content);
         let id = self.next_persistence;
@@ -134,7 +137,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut uploads = Vec::new();
         let mut pair = [None; 2];
         let mut bytes = 0;
-        if content.length > 0 {
+        if content.length > 0
+            || content
+                .audio
+                .iter()
+                .any(|channel| !channel.samples.is_empty())
+            || content.midi.iter().any(|channel| channel.length > 0)
+        {
             for (index, midi) in [false, true].into_iter().enumerate() {
                 let token = self.next_persistence;
                 self.next_persistence = token
@@ -147,8 +156,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     usize::from(self.limits().strip_audio_channels),
                 )?;
                 bytes += upload.description.bytes;
-                if bytes > MAX_MEDIA_BYTES {
-                    bail!("prepared loop content exceeds the 256 MiB budget");
+                if bytes > self.resource_limits.media_bytes {
+                    bail!("prepared loop content exceeds the host budget");
                 }
                 uploads.push(token);
                 pair[index] = Some(token);
@@ -156,6 +165,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     upload,
                     begun: false,
                 });
+                work.push_back(Work::Request(Request::ContentWindow {
+                    id: token,
+                    frames: u64::from(content.length),
+                    windows: crate::prepared::windows(&content),
+                }));
             }
         }
         work.push_back(Work::Request(Request::ContentApply {
@@ -174,7 +188,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 false,
                 [Arc::clone(&content)],
                 usize::from(self.limits().strip_audio_channels),
-                MAX_MEDIA_BYTES.saturating_sub(retained),
+                self.resource_limits.media_bytes.saturating_sub(retained),
             )?,
             content: BTreeMap::from([(loop_id, content)]),
             connection_failures: Vec::new(),

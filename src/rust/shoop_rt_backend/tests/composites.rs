@@ -201,6 +201,32 @@ fn profiling_and_playing_composite_state_remain_coherent_across_conversion_and_r
 }
 
 #[shoop_test]
+fn conversion_and_clear_reset_primitive_timing_revisions() {
+    let (mut backend, ids) = setup();
+    backend.set_loop_length(ids[3], 4).unwrap();
+    backend.wait_idle();
+    backend.set_loop_length(ids[3], 0).unwrap();
+    backend.wait_idle();
+    assert!(backend.poll().unwrap().loops[&ids[3]].timing_revision > 0);
+    let comp = shoop_backend::BackendCompositeId::from_raw(ids[3].raw());
+    backend
+        .configure_prepared_composite_loop(comp, &plan(ids[1], None, 4))
+        .unwrap();
+    backend.wait_idle();
+    backend.clear_composite_loop(comp).unwrap();
+    backend.wait_idle();
+    backend.set_loop_length(ids[3], 8).unwrap();
+    backend.wait_idle();
+    let state = backend.poll().unwrap();
+    assert!(
+        state.mutation_failures.is_empty(),
+        "{:?}",
+        state.mutation_failures
+    );
+    assert_eq!(state.loops[&ids[3]].length, 8);
+}
+
+#[shoop_test]
 fn standalone_and_legacy_parallel_serial_compilation_use_frozen_units() {
     let (mut backend, ids) = setup();
     let comp = backend.create_prepared_composite().unwrap();

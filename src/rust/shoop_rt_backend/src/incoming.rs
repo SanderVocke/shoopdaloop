@@ -118,7 +118,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let mirror = &self.mirror;
                 self.reads.receive(chunk, |loop_id| {
                     mirror.loops.get(&loop_id).map_or(0, |entry| {
-                        u32::try_from(entry.view.length).unwrap_or(u32::MAX)
+                        u32::try_from(entry.timing.raw_midi_frames).unwrap_or(u32::MAX)
                     })
                 });
             }
@@ -197,6 +197,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 next_mode,
                 next_delay,
                 content_revision,
+                recording_armed,
+                timing_revision,
                 length,
                 position,
                 peaks,
@@ -211,6 +213,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         return;
                     }
                     let previous = entry.view;
+                    if timing_revision != entry.timing.revision {
+                        return;
+                    }
                     if content_revision < entry.rt_content_revision {
                         return;
                     }
@@ -223,7 +228,26 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         self.prepared_content.remove(id);
                         self.canonical_imports.remove(id);
                     }
+                    if content_revision != entry.timing.content_revision {
+                        let track =
+                            &self.mirror.tracks[&entry.track.expect("primitive loop owner")];
+                        entry.timing.content_revision = content_revision;
+                        for window in entry
+                            .timing
+                            .windows
+                            .audio
+                            .iter_mut()
+                            .chain(core::iter::once(&mut entry.timing.windows.midi))
+                        {
+                            window.raw_frames = None;
+                        }
+                        entry.timing.length = length;
+                        entry.timing.raw_audio_frames =
+                            if track.audio_channels > 0 { length } else { 0 };
+                        entry.timing.raw_midi_frames = if track.midi { length } else { 0 };
+                    }
                     entry.view = LoopView {
+                        recording_armed,
                         mode,
                         next_mode,
                         next_delay,
@@ -450,6 +474,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         entry.balance = balance;
                     }
                 }
+                StateRecord::LoopTiming { loop_id, timing } => {
+                    if let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() {
+                        self.apply_timing(id, timing);
+                    }
+                }
                 StateRecord::Connection { port, host } => {
                     let (Some(port), Some(host)) =
                         (self.mirror.port_of(port), self.mirror.host_by_id(host))
@@ -458,7 +487,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     };
                     links.insert(BackendConfirmedLink {
                         application_port_id: port,
-                        host_port_id: host.name.as_str().to_owned(),
+                        host_port_id: self.mirror.host_key(host).to_owned(),
                     });
                 }
                 StateRecord::Route {
@@ -556,7 +585,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .push(shoop_backend::BackendMutationCompletion {
                 sequence,
                 result: match outcome {
-                    Outcome::Done => Ok(()),
+                    Outcome::Done | Outcome::TimingApplied(_) => Ok(()),
                     Outcome::CompositeApplied { .. }
                     | Outcome::ContentApplied { .. }
                     | Outcome::ContentPrepared { .. } => {
@@ -566,7 +595,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 },
             });
         let refusal = match outcome {
-            Outcome::Done => None,
+            Outcome::Done | Outcome::TimingApplied(_) => None,
             Outcome::CompositeApplied { .. }
             | Outcome::ContentApplied { .. }
             | Outcome::ContentPrepared { .. } => Some(Refusal::Internal),
@@ -605,6 +634,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             (Purpose::CompositeControl(_) | Purpose::Composite(_), _) => {
                 unreachable!("internal result handled above")
             }
+            (Purpose::Timing(id), None) => {
+                if let Outcome::TimingApplied(state) = outcome {
+                    self.apply_timing(id, state);
+                }
+            }
+            (Purpose::Timing(id), Some(refusal)) => self.failure(
+                BackendMutationKind::LoopControl,
+                Some(id.raw()),
+                None,
+                format!("loop timing was refused: {}", refusal_text(refusal)),
+            ),
             (Purpose::CreateBus(id), None) => {
                 if let Some(bus) = self.mirror.buses.get_mut(&id) {
                     bus.confirmed = true;
@@ -772,6 +812,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.canonical_imports.remove(&id);
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.content += 1;
+                    entry.timing.windows = Default::default();
+                    entry.timing.length = 0;
+                    entry.timing.raw_audio_frames = 0;
+                    entry.timing.raw_midi_frames = 0;
                 }
             }
             (

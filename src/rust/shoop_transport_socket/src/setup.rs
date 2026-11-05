@@ -91,6 +91,44 @@ pub fn inspect(address: SocketAddr, timeout: Duration) -> io::Result<TcpStream> 
         &mut Handshake::inspect(deadline.saturating_duration_since(Instant::now())),
     )
 }
+/// Explicit credential admission for provisioned embedded hosts.
+pub fn connect_authenticated(
+    address: SocketAddr,
+    token: &[u8; 32],
+    config: Config,
+    timeout: Duration,
+) -> io::Result<Port> {
+    let deadline = Instant::now() + timeout;
+    let stream = TcpStream::connect_timeout(&address, timeout)?;
+    stream.set_nodelay(true)?;
+    stream.set_nonblocking(true)?;
+    let mut io = NativeStream(stream);
+    let mut handshake = shoop_transport::authenticated::Handshake::new(
+        *token,
+        false,
+        deadline.saturating_duration_since(Instant::now()),
+    );
+    let mut last = Instant::now();
+    loop {
+        let now = Instant::now();
+        match handshake.advance(&mut io, now.saturating_duration_since(last)) {
+            Ok(true) => return Port::from_stream(io.0, config),
+            Ok(false) => {}
+            Err(error) => {
+                return Err(io::Error::new(
+                    if error == shoop_transport::authenticated::Error::Timeout {
+                        io::ErrorKind::TimedOut
+                    } else {
+                        io::ErrorKind::PermissionDenied
+                    },
+                    format!("embedded admission failed: {error:?}"),
+                ))
+            }
+        }
+        last = now;
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
 fn progress(stream: TcpStream, handshake: &mut Handshake) -> io::Result<TcpStream> {
     stream.set_nodelay(true)?;
     stream.set_nonblocking(true)?;

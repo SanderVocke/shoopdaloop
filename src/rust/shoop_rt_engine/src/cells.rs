@@ -98,12 +98,13 @@ struct MonitoringOwner {
 #[derive(Default)]
 pub(crate) struct LoopCells {
     owners: [MonitoringOwner; 2],
-    publication: AtomicU64,
+    pub publication: AtomicU64,
     epoch: AtomicU64,
     frame: AtomicU64,
     iteration: AtomicU64,
     passes: AtomicU64,
     waiting_repeat: AtomicBool,
+    pub timing_revision: AtomicU64,
     pub generation: AtomicU32,
     pub mode: AtomicU32,
     pub length: AtomicU64,
@@ -126,6 +127,7 @@ pub(crate) struct LoopSnapshot {
     pub iteration: u64,
     pub passes: u64,
     pub waiting_repeat: bool,
+    pub timing_revision: u64,
 }
 impl LoopCells {
     pub(crate) fn configure_owner(&self, generation: u32, strip: u32, active_generation: u32) {
@@ -146,24 +148,25 @@ impl LoopCells {
         })
     }
     pub(crate) fn snapshot(&self) -> Option<LoopSnapshot> {
-        let before = self.publication.load(Ordering::Acquire);
+        let before = self.publication.load(Ordering::SeqCst);
         if before & 1 != 0 {
             return None;
         }
         let snapshot = LoopSnapshot {
-            epoch: self.epoch.load(Ordering::Relaxed),
-            frame: self.frame.load(Ordering::Relaxed),
-            generation: self.generation.load(Ordering::Relaxed),
-            mode: mode_from_code(self.mode.load(Ordering::Relaxed)),
-            length: self.length.load(Ordering::Relaxed),
-            revision: self.content_revision.load(Ordering::Relaxed),
-            position: self.position.load(Ordering::Relaxed),
-            iteration: self.iteration.load(Ordering::Relaxed),
-            passes: self.passes.load(Ordering::Relaxed),
-            waiting_repeat: self.waiting_repeat.load(Ordering::Relaxed),
+            timing_revision: self.timing_revision.load(Ordering::SeqCst),
+            epoch: self.epoch.load(Ordering::SeqCst),
+            frame: self.frame.load(Ordering::SeqCst),
+            generation: self.generation.load(Ordering::SeqCst),
+            mode: mode_from_code(self.mode.load(Ordering::SeqCst)),
+            length: self.length.load(Ordering::SeqCst),
+            revision: self.content_revision.load(Ordering::SeqCst),
+            position: self.position.load(Ordering::SeqCst),
+            iteration: self.iteration.load(Ordering::SeqCst),
+            passes: self.passes.load(Ordering::SeqCst),
+            waiting_repeat: self.waiting_repeat.load(Ordering::SeqCst),
         };
-        core::sync::atomic::fence(Ordering::Acquire);
-        (self.publication.load(Ordering::Relaxed) == before).then_some(snapshot)
+        core::sync::atomic::fence(Ordering::SeqCst);
+        (self.publication.load(Ordering::SeqCst) == before).then_some(snapshot)
     }
 }
 
@@ -348,37 +351,40 @@ impl BoundaryObserver for Observer {
             let Some(cells) = self.0.loops.get(state.id.slot() as usize) else {
                 continue;
             };
-            let publication = cells.publication.fetch_add(1, Ordering::AcqRel);
+            let publication = cells.publication.fetch_add(1, Ordering::SeqCst);
             let generation = state.id.generation();
-            if cells.generation.load(Ordering::Relaxed) != generation {
-                cells.pulses.store(0, Ordering::Relaxed);
-                cells.generation.store(generation, Ordering::Relaxed);
+            if cells.generation.load(Ordering::SeqCst) != generation {
+                cells.pulses.store(0, Ordering::SeqCst);
+                cells.generation.store(generation, Ordering::SeqCst);
             }
             if state.last_pulse == Some(frame) {
-                cells.pulses.fetch_add(1, Ordering::Relaxed);
+                cells.pulses.fetch_add(1, Ordering::SeqCst);
             }
-            cells.mode.store(mode_code(state.mode), Ordering::Relaxed);
+            cells.mode.store(mode_code(state.mode), Ordering::SeqCst);
             let length = if state.mode == Mode::Recording {
                 state.capture_frames
             } else {
                 state.content_length
             };
-            cells.length.store(length, Ordering::Relaxed);
+            cells.length.store(length, Ordering::SeqCst);
             cells
                 .content_revision
-                .store(state.content_revision.0, Ordering::Relaxed);
-            cells.position.store(state.position, Ordering::Relaxed);
-            cells.epoch.store(self.1 .0, Ordering::Relaxed);
-            cells.frame.store(frame.0, Ordering::Relaxed);
+                .store(state.content_revision.0, Ordering::SeqCst);
+            cells
+                .timing_revision
+                .store(state.timing_revision, Ordering::SeqCst);
+            cells.position.store(state.position, Ordering::SeqCst);
+            cells.epoch.store(self.1 .0, Ordering::SeqCst);
+            cells.frame.store(frame.0, Ordering::SeqCst);
             let cursor = state.composite.unwrap_or_default();
-            cells.iteration.store(cursor.iteration, Ordering::Relaxed);
-            cells.passes.store(cursor.passes, Ordering::Relaxed);
+            cells.iteration.store(cursor.iteration, Ordering::SeqCst);
+            cells.passes.store(cursor.passes, Ordering::SeqCst);
             cells
                 .waiting_repeat
-                .store(cursor.waiting_repeat, Ordering::Relaxed);
+                .store(cursor.waiting_repeat, Ordering::SeqCst);
             cells
                 .publication
-                .store(publication.wrapping_add(2), Ordering::Release);
+                .store(publication.wrapping_add(2), Ordering::SeqCst);
         }
     }
     fn as_any(&self) -> &dyn core::any::Any {

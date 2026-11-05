@@ -91,7 +91,7 @@ logical loop slots; composites consume no playback/capture nodes or host ports.
 These budgets do not reduce existing primitive slots or recording media capacity.
 Engine preparation exposes them as configurable, finite negotiated limits.
 
-The production engine carries these through protocol v12, native setup v7 and
+The production engine carries these through protocol v13, native setup v7 and
 worklet configuration v4. The relation capacity is at least the prepared logical
 loop count, so adding composite budgets never removes existing primitive capacity.
 For N loop slots, E entries and S segments, the prepared LTP image holds at most

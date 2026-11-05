@@ -95,6 +95,7 @@ struct History {
 }
 #[derive(Clone, Copy)]
 pub(super) struct Fence {
+    pub timing_revision: u64,
     pub target: LoopId,
     pub revision: Revision,
     pub length: u64,
@@ -1027,6 +1028,7 @@ impl LoopPlanner {
                     }
                 }
                 let fence = Fence {
+                    timing_revision: row.timing_revision,
                     target,
                     revision: state.content_revision,
                     length: state.content_length,
@@ -1114,7 +1116,9 @@ impl LoopPlanner {
         if graph != job.fence.graph || self.resolver.epoch() != job.fence.topology {
             return Err(Error::StaleEpoch.into());
         }
-        if state.content_revision != job.fence.revision || state.content_length != job.fence.length
+        if row.timing_revision != job.fence.timing_revision
+            || state.content_revision != job.fence.revision
+            || state.content_length != job.fence.length
         {
             return Err(Error::StaleRevision.into());
         }

@@ -202,6 +202,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 program_spans: Vec::new(),
                 composite: None,
                 repeat_sync: false,
+                timing: Default::default(),
                 slot,
                 track: Some(track_id),
                 confirmed: false,
@@ -333,6 +334,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .host_by_name(host)
             .ok_or_else(|| anyhow!("unknown host port {host}"))?;
+        if connected && !self.mirror.host_available(host_port) {
+            return Err(anyhow!("host port {host} is disconnected"));
+        }
         if host_data_type(host_port.kind) != port.descriptor.data_type
             || host_direction(host_port.direction) == port.descriptor.direction
         {

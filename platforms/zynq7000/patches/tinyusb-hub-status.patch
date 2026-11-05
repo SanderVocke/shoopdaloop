@@ -1,0 +1,45 @@
+--- a/src/host/hub.c
++++ b/src/host/hub.c
+@@ -17,6 +17,8 @@
+ // Debug level, TUSB_CFG_DEBUG must be at least this level for debug message
+ #define HUB_DEBUG   2
+ #define TU_LOG_DRV(...)   TU_LOG(HUB_DEBUG, __VA_ARGS__)
++
++TU_ATTR_WEAK void tuh_hub_descriptor_failed_cb(uint8_t daddr) { (void) daddr; }
+ 
+ // consecutive failed status-change polls before the hub or a port status is read directly
+ #define HUB_POLL_FAIL_THRESHOLD  3
+@@ -237,7 +239,7 @@
+ 
+   TU_VERIFY(p_hub->ep_in != 0); // closed
+   TU_VERIFY(usbh_edpt_claim(daddr, p_hub->ep_in));
+-  if (!usbh_edpt_xfer(daddr, p_hub->ep_in, p_epbuf->status_change, 1)) {
++  if (!usbh_edpt_xfer(daddr, p_hub->ep_in, p_epbuf->status_change, (p_hub->bNbrPorts + 8u) / 8u)) {
+     usbh_edpt_release(daddr, p_hub->ep_in);
+     return false;
+   }
+@@ -300,6 +302,13 @@
+ 
+   // only use the number of ports in the hub descriptor
+   hub_desc_cs_t const* desc_hub = (hub_desc_cs_t const*) p_epbuf->ctrl_buf;
++  if (xfer->actual_len < 7 || desc_hub->bLength < 7 || desc_hub->bDescriptorType != 0x29 ||
++      desc_hub->bNbrPorts == 0 || desc_hub->bNbrPorts > 31) {
++    tuh_hub_descriptor_failed_cb(daddr);
++    p_hub->ep_in = 0;
++    usbh_driver_set_config_complete(daddr, p_hub->itf_num);
++    return;
++  }
+   p_hub->bNbrPorts = desc_hub->bNbrPorts;
+   p_hub->bPwrOn2PwrGood_2ms = desc_hub->bPwrOn2PwrGood;
+ 
+@@ -355,7 +364,9 @@
+   if (result == XFER_RESULT_SUCCESS) {
+     p_hub->poll_failed_count = 0;
+     hub_epbuf_t *p_epbuf = get_hub_epbuf(daddr);
+-    const uint8_t status_change = p_epbuf->status_change[0];
++    uint32_t status_change = 0;
++    const uint32_t count = tu_min32(xferred_bytes, (p_hub->bNbrPorts + 8u) / 8u);
++    for (uint32_t i = 0; i < count; i++) status_change |= (uint32_t) p_epbuf->status_change[i] << (8u * i);
+     TU_LOG_DRV("  Hub Status Change = 0x%02X\r\n", status_change);
+ 
+     if (status_change == 0) {

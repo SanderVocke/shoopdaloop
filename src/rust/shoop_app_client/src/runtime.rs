@@ -737,6 +737,7 @@ impl Runtime {
                         name: endpoint.name.clone(),
                         data_type: PortDataType::Midi,
                         direction: host_direction,
+                        available: true,
                     });
                     if endpoint.connected {
                         links.insert((port, host));
@@ -927,12 +928,14 @@ impl Runtime {
         .then_some((entry.position * entry.length_frames as f32) as i64);
         Some(LoopDetailsState {
             generation: entry.content_revision,
+            quantum_frames: state.status.quantum_frames,
+            length_frames: entry.length_frames,
             loop_id: entry.id,
             title: entry.name.clone(),
             loading: composite.is_none() && data.is_none() && self.client.media().is_none(),
             midi_loading: composite.is_none() && data.is_none() && self.client.media().is_none(),
-            channels: data
-                .map(|data| {
+            channels: if entry.channel_timings.is_empty() {
+                data.map(|data| {
                     data.audio
                         .iter()
                         .enumerate()
@@ -948,9 +951,28 @@ impl Runtime {
                         })
                         .collect()
                 })
-                .unwrap_or_default(),
-            midi_channels: data
-                .map(|data| {
+                .unwrap_or_default()
+            } else {
+                entry
+                    .channel_timings
+                    .iter()
+                    .filter(|timing| !timing.is_midi)
+                    .enumerate()
+                    .map(|(index, timing)| WaveformChannelState {
+                        id: timing.id,
+                        label: format!("Audio {}", index + 1),
+                        samples: data
+                            .and_then(|data| data.audio.get(index))
+                            .map_or_else(|| Arc::from([]), |channel| Arc::clone(&channel.samples)),
+                        start_offset: timing.start_offset,
+                        preplay_samples: timing.preplay_samples,
+                        loop_length: entry.length_frames,
+                        played_sample: played,
+                    })
+                    .collect()
+            },
+            midi_channels: if entry.channel_timings.is_empty() {
+                data.map(|data| {
                     data.midi
                         .iter()
                         .enumerate()
@@ -961,14 +983,37 @@ impl Runtime {
                             data_length: u64::from(channel.length),
                             capture_alignment_frames: i64::from(channel.capture_alignment_frames),
                             events: Arc::clone(&channel.events),
-                            start_offset: i64::from(channel.start_offset),
+                            start_offset: i64::from(channel.start_offset)
+                                + i64::from(channel.capture_alignment_frames),
                             preplay_samples: u64::from(channel.preplay),
                             loop_length: entry.length_frames,
                             played_sample: played,
                         })
                         .collect()
                 })
-                .unwrap_or_default(),
+                .unwrap_or_default()
+            } else {
+                entry
+                    .channel_timings
+                    .iter()
+                    .filter(|timing| timing.is_midi)
+                    .enumerate()
+                    .map(|(index, timing)| MidiSequenceChannelState {
+                        id: timing.id,
+                        label: format!("MIDI {}", index + 1),
+                        content_revision: entry.content_revision,
+                        data_length: timing.data_length,
+                        capture_alignment_frames: timing.capture_alignment_frames,
+                        events: data
+                            .and_then(|data| data.midi.get(index))
+                            .map_or_else(|| Arc::from([]), |channel| Arc::clone(&channel.events)),
+                        start_offset: timing.start_offset,
+                        preplay_samples: timing.preplay_samples,
+                        loop_length: entry.length_frames,
+                        played_sample: played,
+                    })
+                    .collect()
+            },
             sync_loop_length: state
                 .tracks
                 .iter()
@@ -979,6 +1024,16 @@ impl Runtime {
         })
     }
     fn apply_intent(&mut self, intent: AppIntent) -> anyhow::Result<()> {
+        if matches!(
+            intent,
+            AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. }
+        ) && !self.client.snapshot().is_some_and(|state| {
+            state
+                .capabilities
+                .supports(BackendCapability::LoopTimingEdits)
+        }) {
+            anyhow::bail!(BackendCapability::LoopTimingEdits.unavailable_reason());
+        }
         if matches!(intent, AppIntent::RequestNewSession) {
             if self
                 .scripts
@@ -1235,6 +1290,20 @@ impl Runtime {
                     .replace_user_source(script_id, source.to_string())?;
                 return Ok(());
             }
+            AppIntent::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            } => Command::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            },
+            AppIntent::SetLoopChannelTimings { loop_id, updates } => {
+                Command::SetLoopChannelTimings { loop_id, updates }
+            }
             AppIntent::StopScript { script_id } => {
                 self.scripts.stop(script_id)?;
                 return Ok(());
@@ -1299,9 +1368,6 @@ impl Runtime {
                     | AppIntent::RequestLoopMidiImportPicker { .. }
                     | AppIntent::ImportLoopMidiBytes { .. } => BackendCapability::LoopContentImport,
                     AppIntent::GenerateClickTrack { .. } => BackendCapability::ClickTrackInsertion,
-                    AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. } => {
-                        BackendCapability::LoopTimingEdits
-                    }
                     AppIntent::SetTrackLatency { .. } => BackendCapability::LatencyCompensation,
                     AppIntent::SetTakeAlignment { .. }
                     | AppIntent::SetTakeProcessorAlignment { .. } => {

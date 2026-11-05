@@ -278,6 +278,12 @@ impl ControlEndpoint {
                         }
                         2 => {
                             cursor.part = 3;
+                            if entry.program.is_none() {
+                                return Some(StateRecord::LoopTiming {
+                                    loop_id: entry.id,
+                                    timing: self.current_timing(*entry),
+                                });
+                            }
                         }
                         _ => {
                             if let Some(span) =
@@ -295,6 +301,7 @@ impl ControlEndpoint {
                             cursor.part = 0;
                         }
                     }
+                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
@@ -363,7 +370,35 @@ impl ControlEndpoint {
             return;
         };
         while out.available(Lane::Reliable) > 0 {
-            match self.next_state(&mut cursor) {
+            let before = cursor;
+            let publication = if cursor.stage == 3 && cursor.part == 1 {
+                let cells = &self.cells.loops[cursor.index];
+                let serial = cells.publication.load(core::sync::atomic::Ordering::SeqCst);
+                if serial % 2 != 0
+                    || self.model.loops[cursor.index].is_some_and(|entry| {
+                        cells
+                            .timing_revision
+                            .load(core::sync::atomic::Ordering::SeqCst)
+                            != entry.timing.revision
+                    })
+                {
+                    break;
+                }
+                Some((cursor.index, serial))
+            } else {
+                None
+            };
+            let record = self.next_state(&mut cursor);
+            if publication.is_some_and(|(slot, serial)| {
+                self.cells.loops[slot]
+                    .publication
+                    .load(core::sync::atomic::Ordering::SeqCst)
+                    != serial
+            }) {
+                cursor = before;
+                break;
+            }
+            match record {
                 Some(record) => {
                     let _ = out.push(EngineMessage::State(record));
                 }

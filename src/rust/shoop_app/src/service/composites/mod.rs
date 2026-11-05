@@ -12,13 +12,13 @@ pub(super) struct Owner {
     pub candidates: BTreeMap<u64, Versioned>,
     pub latest: Option<u64>,
     retained: Option<shoop_app_protocol::composite::Content>,
-    revisions: BTreeMap<LoopId, u64>,
-    candidate_revisions: BTreeMap<u64, BTreeMap<LoopId, u64>>,
+    revisions: BTreeMap<LoopId, (u64, u64)>,
+    candidate_revisions: BTreeMap<u64, BTreeMap<LoopId, (u64, u64)>>,
     error: Option<String>,
 }
 
 impl Owner {
-    pub(super) fn restored(active: Versioned, revisions: BTreeMap<LoopId, u64>) -> Self {
+    pub(super) fn restored(active: Versioned, revisions: BTreeMap<LoopId, (u64, u64)>) -> Self {
         Self {
             active: Some(active),
             revisions,
@@ -482,7 +482,10 @@ impl Service {
             .map(|event| {
                 (
                     event.loop_id,
-                    self.loops[&event.loop_id].view.content_revision,
+                    (
+                        self.loops[&event.loop_id].view.content_revision,
+                        self.loops[&event.loop_id].view.length_frames,
+                    ),
                 )
             })
             .collect();
@@ -707,7 +710,10 @@ impl Service {
                                 entry.view.mode != LoopMode::Recording
                                     && entry.view.next_mode != LoopMode::Recording
                                     && owner.revisions.get(&event.loop_id)
-                                        != Some(&entry.view.content_revision)
+                                        != Some(&(
+                                            entry.view.content_revision,
+                                            entry.view.length_frames,
+                                        ))
                             })
                     })
                     .then(|| (id, active.document.clone()))
@@ -718,7 +724,10 @@ impl Service {
             for event in &document.instances {
                 if event.n_cycles.is_none()
                     && self.composites[&target].revisions.get(&event.loop_id)
-                        != Some(&self.loops[&event.loop_id].view.content_revision)
+                        != Some(&(
+                            self.loops[&event.loop_id].view.content_revision,
+                            self.loops[&event.loop_id].view.length_frames,
+                        ))
                 {
                     geometry.remove(&event.instance_id);
                 }
@@ -751,7 +760,10 @@ impl Service {
                     .map(|event| {
                         (
                             event.loop_id,
-                            self.loops[&event.loop_id].view.content_revision,
+                            (
+                                self.loops[&event.loop_id].view.content_revision,
+                                self.loops[&event.loop_id].view.length_frames,
+                            ),
                         )
                     })
                     .collect();
@@ -769,9 +781,12 @@ impl Service {
                             .instances
                             .iter()
                             .filter_map(|event| {
-                                self.loops
-                                    .get(&event.loop_id)
-                                    .map(|entry| (event.loop_id, entry.view.content_revision))
+                                self.loops.get(&event.loop_id).map(|entry| {
+                                    (
+                                        event.loop_id,
+                                        (entry.view.content_revision, entry.view.length_frames),
+                                    )
+                                })
                             })
                             .collect();
                     }

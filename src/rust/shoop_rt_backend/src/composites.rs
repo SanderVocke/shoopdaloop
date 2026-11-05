@@ -132,6 +132,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.loops.insert(
             id,
             Loop {
+                timing: Default::default(),
                 slot,
                 program: Some(description),
                 program_spans: Vec::new(),
@@ -925,6 +926,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         let old = entry.slot;
         entry.slot = description.loop_id;
+        if old != entry.slot {
+            entry.timing = Default::default();
+        }
         entry.program = Some(description);
         entry.program_spans = job.spans.clone();
         entry.sync = job.plan.sync_source;

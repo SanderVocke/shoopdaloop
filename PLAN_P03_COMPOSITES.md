@@ -10,10 +10,10 @@ Implementation in progress on `feat/p03-composites`. Written using
   `bbf027e98c4d1449f775019585acafd44728bd71`.
 - Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, with
   executable application behavior retained in `shoop_app_reference`.
-- Create `feat/p03-composites` from the current `feat/fixed-quantum-runtime` head
-  when execution starts. Target **`feat/fixed-quantum-runtime`** with the PR;
-  recheck the base and any integration-branch changes before starting. Do not
-  target `master` or merge without instructions.
+- `feat/p03-composites` was created from `feat/fixed-quantum-runtime`. The user
+  retargeted PR #941 to **`feat/backend-replacement`** after the former target was
+  merged there. Preserve that delivery target; do not target `master` or merge
+  the PR without instructions.
 - The user-approved execution contract below replaces source-tick-driven
   composite progression. Reference code is evidence for preserved editor,
   control and persistence behavior; it does not override this timing decision.
@@ -879,3 +879,18 @@ explicit response to a failure or identified risk, not a default milestone ritua
   and streams every span normally. The warning-denying affected-package build and
   four focused active/pending/monitoring/profiling resync cases passed. Broad
   platform and Wasm coverage is delegated to CI.
+- Retarget reconciliation: incoming `feat/backend-replacement` at `e1f28c87`
+  contains the squash of the previous fixed-runtime base plus profiling, P12 loop
+  timing and Zynq work. Verified source-equivalent baseline `eb4287a5` against
+  incoming profiling checkpoint `e4b180f6` (only the Host Manager logo change
+  differs), avoiding duplicate conflicts from squash history while retaining
+  both real merge parents and that incoming change.
+- Combined app protocol **27** and engine protocol **13** give timing and composite
+  records distinct tags. File **14**, native setup **7** and worklet config **4**
+  remain unchanged. Coherent publication includes timing revisions and composite
+  cursors; primitive timing edits refuse composite clocks. Natural dependencies
+  include effective child length, and kind conversions reset primitive timing
+  metadata. Added focused regressions for timing-driven natural refresh and
+  conversion/clear revision reuse. Warning-denying application/host build and
+  **17** selected protocol, recovery, timing, capture and replacement checks passed.
+  Broad validation stays in CI.

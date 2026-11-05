@@ -28,3 +28,4 @@ rust-analyzer-target
 *.pftrace
 traces/
 .vscode
+/work/

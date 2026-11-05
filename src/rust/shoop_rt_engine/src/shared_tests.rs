@@ -1802,3 +1802,154 @@ fn host_partitions_agree_at_identical_history_playback_and_replacement_cuts() {
         }
     }
 }
+
+#[shoop_test]
+fn shared_raw_windows_retain_history_across_manual_periods_and_host_partitions() {
+    use shoop_loops::windows::{ChannelUpdate, Edit};
+    for q in [1, 16, 32, 64, 128] {
+        for partition in [1, 7, 31, 128] {
+            let mut h = Fixture::new(q, partition);
+            let (take, _, start) = h.grabs();
+            h.adopt(0, take);
+            let old = h.export(0);
+            let Reply::State(before) = h.op(Operation::State { target: target(0) }) else {
+                panic!()
+            };
+            let Reply::Timing(short) = h.op(Operation::EditWindows {
+                target: target(0),
+                expected_revision: before.timing_revision,
+                expected_content: before.state.content_revision,
+                edit: Edit {
+                    length: Some(2 * q as u64),
+                    ..Default::default()
+                },
+            }) else {
+                panic!("period edit")
+            };
+            let mut change = Edit {
+                count: 3,
+                ..Default::default()
+            };
+            change.channels[0] = ChannelUpdate {
+                channel: 0,
+                start_offset: Some(1),
+                preplay: Some(q as u32 + 1),
+                ..Default::default()
+            };
+            change.channels[1] = ChannelUpdate {
+                channel: 1,
+                start_offset: Some(-1),
+                ..Default::default()
+            };
+            change.channels[2] = ChannelUpdate {
+                midi: true,
+                channel: 0,
+                start_offset: Some(take.frames as i32 + 1),
+                ..Default::default()
+            };
+            let Reply::Timing(edited) = h.op(Operation::EditWindows {
+                target: target(0),
+                expected_revision: short.timing_revision,
+                expected_content: short.state.content_revision,
+                edit: change,
+            }) else {
+                panic!("channel edit")
+            };
+            assert_eq!(
+                (edited.raw_audio_frames, edited.raw_midi_frames),
+                (take.frames, take.frames)
+            );
+            let play = h.aligned_future(256);
+            let command = h.send(
+                play,
+                Operation::Transition {
+                    target: target(0),
+                    timing: Timing::At,
+                    transition: Transition::Play {
+                        position: 0,
+                        retrigger: false,
+                    },
+                },
+            );
+            assert!(matches!(h.result(command), Reply::Transition(_)));
+            let latency = if q == 1 { 0 } else { q as u64 };
+            h.run_to(h.now().max(play + 5 * q as u64));
+            for frame in play + latency..play + 5 * q as u64 {
+                let logical = (frame - play - latency) % (2 * q as u64);
+                assert_eq!(
+                    h.samples[0][frame as usize],
+                    (start + logical + 2) as f32,
+                    "Q={q}, partition={partition}"
+                );
+                assert_eq!(
+                    h.samples[1][frame as usize],
+                    if logical == 0 {
+                        0.
+                    } else {
+                        -2. * (start + logical) as f32
+                    }
+                );
+            }
+            h.op(Operation::Transition {
+                target: target(0),
+                timing: Timing::At,
+                transition: Transition::Stop,
+            });
+            let Reply::Timing(extended) = h.op(Operation::EditWindows {
+                target: target(0),
+                expected_revision: edited.timing_revision,
+                expected_content: edited.state.content_revision,
+                edit: Edit {
+                    length: Some(take.frames),
+                    ..Default::default()
+                },
+            }) else {
+                panic!()
+            };
+            assert_eq!(
+                extended.raw_audio_frames,
+                old.view.audio.unwrap().snapshot.description.frames
+            );
+            let mut stopped = h.engine.render.into_stopped();
+            let raw = bytes(&mut stopped.resources, old.view.audio.unwrap().snapshot);
+            assert_eq!(raw.len() as u64, take.frames * 8);
+            recover_all(&mut stopped, 12288);
+        }
+    }
+}
+
+#[shoop_test]
+fn timing_edits_fence_an_already_prepared_shared_candidate() {
+    let mut h = Fixture::new(32, 7);
+    let (take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let candidate = h.audio_candidate(take);
+    let Reply::State(before) = h.op(Operation::State { target: target(0) }) else {
+        panic!()
+    };
+    let Reply::Timing(edited) = h.op(Operation::EditWindows {
+        target: target(0),
+        expected_revision: before.timing_revision,
+        expected_content: before.state.content_revision,
+        edit: shoop_loops::windows::Edit {
+            preplay: Some(7),
+            ..Default::default()
+        },
+    }) else {
+        panic!()
+    };
+    assert_eq!(
+        h.op(Operation::CandidatePublish { id: candidate }),
+        failed(Error::StaleRevision)
+    );
+    h.op(Operation::CandidateCancel { id: candidate });
+    let Reply::State(after) = h.op(Operation::State { target: target(0) }) else {
+        panic!()
+    };
+    assert_eq!(
+        (after.windows, after.timing_revision),
+        (edited.windows, edited.timing_revision)
+    );
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}

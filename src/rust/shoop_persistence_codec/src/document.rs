@@ -431,8 +431,8 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                     }
                 }
                 for channel in &content.channels {
-                    if channel.mode != ChannelModeDocument::Direct || channel.preplay_frames != 0 {
-                        unsupported.insert("channel mode/preplay (P06/P12)");
+                    if channel.mode != ChannelModeDocument::Direct {
+                        unsupported.insert("channel mode (P06)");
                     }
                     if channel.recording_fx_state_id.is_some() {
                         unsupported.insert("recorded FX states (P07)");

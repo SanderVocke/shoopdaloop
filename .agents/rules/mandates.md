@@ -10,7 +10,11 @@
 
 # Before pushing
 
-- If changes were made which can affect program behavior: run the test suites.
+- If changes were made which can affect program behavior: run the test suites. Exceptions can be made if you are confident - mention explicitly. Unless asked otherwise, only run tests for the platform you are on - generally rely on CI for cross-platform checks. During iterative development, use targeted limited testing strategies and keep the full suite for major milestones.
+
+# PR management
+
+- Unless explicitly asked or especially obvious, don't autonomously decide to merge a PR you deem finished.
 
 # When encountering a situation where the instructions given were plainly wrong w.r.t the codebase content
 

@@ -268,6 +268,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if let Some(entry) = self.mirror.loops.get_mut(&id) {
             let old = entry.slot;
             entry.slot = slot;
+            entry.timing = Default::default();
             entry.program = None;
             entry.program_spans.clear();
             entry.composite = None;

@@ -35,7 +35,7 @@ restore P04/P05 or enable capture during future replacement recording.
 | --- | --- | --- |
 | Sample rate and processing quantum | Confirm resampling/retiming once, then convert audio, MIDI and timing together into the prepared format | Client codecs; recheck rate/Q and content before commit; never switch the device implicitly |
 | Direct audio/MIDI/trigger tracks and primitive loops | Preserve names, order, topology, media, supported controls and sync relationships | Service maps document IDs to fresh live IDs; RT owns playback/resources |
-| Loop/channel length, gain, offsets, capture alignment and preplay | Preserve supported stored values and exact media timing | Validate every value; reject an unsupported non-default value before mutation; this does not enable P09/P10/P12 editing |
+| Loop/channel length, gain, offsets, capture alignment and preplay | Preserve supported stored values and exact media timing | Validate every value; reject an unsupported non-default value before mutation; P12 timing edits, including nonzero pre-play, are supported; P09/P10 editing retains its own gates |
 | Selection, target and global policies | Preserve document values supported by the core | Service-owned; reject unsupported recording/default-playback policies |
 | Ordinary buses, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |

@@ -254,6 +254,7 @@ pub struct Management<P> {
     pending: Option<WireMessage>,
     sent: bool,
     settings: Option<(Vec<u8>, usize)>,
+    deployment: Option<Vec<u8>>,
 }
 impl<P: RecordPort> Management<P> {
     pub fn new(port: P) -> Self {
@@ -264,6 +265,7 @@ impl<P: RecordPort> Management<P> {
             pending: None,
             sent: false,
             settings: None,
+            deployment: None,
         }
     }
     pub fn pump(&mut self, service: &mut Service, elapsed: Duration) -> bool {
@@ -282,31 +284,60 @@ impl<P: RecordPort> Management<P> {
                 Err(_) => return false,
             }
         }
-        if self.pending.is_none() && !self.sent && self.settings.is_none() {
+        if self.pending.is_none()
+            && self.deployment.is_none()
+            && !self.sent
+            && self.settings.is_none()
+        {
             if let Some(n) = self.port.take(&mut bytes) {
-                let reply = match codec::decode(&bytes[..n]) {
-                    Ok(WireMessage::ManagementRequest(ManagementRequest::Settings { version }))
-                        if version == VERSION =>
-                    {
-                        match codec::encode_host_report(&service.host_report()) {
-                            Ok(bytes) => {
-                                self.settings = Some((bytes, 0));
-                                ManagementReply::Status {
-                                    version: VERSION,
-                                    ready: service.is_ready(),
-                                    busy: false,
-                                    closed: false,
-                                }
-                            }
-                            Err(_) => ManagementReply::Refused(Refusal::Overloaded),
+                if shoop_deployment_protocol::is_record(&bytes[..n]) {
+                    use shoop_deployment_protocol as deploy;
+                    let reply = match deploy::decode_request(&bytes[..n]) {
+                        Ok(request) => service.deployment(request),
+                        Err(deploy::Error::Version) => {
+                            deploy::Reply::Refused(deploy::Refusal::Version)
                         }
+                        Err(_) => deploy::Reply::Refused(deploy::Refusal::Invalid),
+                    };
+                    let Ok(n) = deploy::encode_reply(&reply, &mut bytes) else {
+                        return false;
+                    };
+                    self.deployment = Some(bytes[..n].to_vec());
+                } else {
+                    let reply = match codec::decode(&bytes[..n]) {
+                        Ok(WireMessage::ManagementRequest(ManagementRequest::Settings {
+                            version,
+                        })) if version == VERSION => {
+                            match codec::encode_host_report(&service.host_report()) {
+                                Ok(bytes) => {
+                                    self.settings = Some((bytes, 0));
+                                    ManagementReply::Status {
+                                        version: VERSION,
+                                        ready: service.is_ready(),
+                                        busy: false,
+                                        closed: false,
+                                    }
+                                }
+                                Err(_) => ManagementReply::Refused(Refusal::Overloaded),
+                            }
+                        }
+                        Ok(WireMessage::ManagementRequest(request)) => service.management(request),
+                        _ => ManagementReply::Refused(Refusal::Invalid),
+                    };
+                    if self.settings.is_none() {
+                        self.pending = Some(WireMessage::ManagementReply(reply));
                     }
-                    Ok(WireMessage::ManagementRequest(request)) => service.management(request),
-                    _ => ManagementReply::Refused(Refusal::Invalid),
-                };
-                if self.settings.is_none() {
-                    self.pending = Some(WireMessage::ManagementReply(reply));
                 }
+            }
+        }
+        if let Some(bytes) = self.deployment.as_ref() {
+            match self.port.post(bytes) {
+                Ok(()) => {
+                    self.deployment = None;
+                    self.sent = true;
+                }
+                Err(CarrierError::Full) => {}
+                Err(_) => return false,
             }
         }
         if let Some((bytes, offset)) = self.settings.as_ref() {

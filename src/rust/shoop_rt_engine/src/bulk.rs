@@ -435,6 +435,7 @@ impl ControlEndpoint {
                 Outcome::Refused(refusal) => Err(refusal),
                 Outcome::Done => Ok(execution.operation_result),
                 Outcome::CompositeApplied { .. }
+                | Outcome::TimingApplied(_)
                 | Outcome::ContentApplied { .. }
                 | Outcome::ContentPrepared { .. } => Err(Refusal::Internal),
             },
@@ -463,7 +464,7 @@ impl ControlEndpoint {
                 };
                 let total = match source {
                     Some(source) if midi => source.snapshot.description.bytes as u64,
-                    Some(_) => media.view.description.frames,
+                    Some(source) => source.snapshot.description.frames,
                     None => 0,
                 };
                 self.bulk.session = Some(Session {

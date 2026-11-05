@@ -12,6 +12,7 @@ pub struct CompositeState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct State {
+    pub timing_revision: u64,
     pub id: LoopId,
     pub mode: Mode,
     pub content_length: u64,
@@ -31,6 +32,7 @@ pub struct State {
 impl State {
     pub(crate) fn new(id: LoopId, content_length: u64) -> Self {
         Self {
+            timing_revision: 0,
             id,
             mode: Mode::Stopped,
             content_length,

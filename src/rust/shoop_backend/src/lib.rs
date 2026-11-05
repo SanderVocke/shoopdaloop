@@ -169,6 +169,7 @@ pub struct BackendHostPortDescriptor {
     pub data_type: BackendPortDataType,
     pub direction: BackendPortDirection,
     pub preferred_playback: bool,
+    pub available: bool,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -710,6 +711,9 @@ pub fn dry_wet_routing_state(
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
     pub repeat_sync: bool,
+    pub recording_armed: bool,
+    pub timing_revision: u64,
+    pub channel_timings: Vec<BackendChannelTimingState>,
     pub content_revision: u64,
     pub sync_source: Option<BackendLoopId>,
     pub mode: BackendLoopMode,
@@ -912,6 +916,16 @@ pub struct BackendLoopContent {
     pub balance: f32,
     pub audio: Vec<BackendAudioContent>,
     pub midi: Vec<BackendMidiContent>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendChannelTimingState {
+    pub channel: usize,
+    pub is_midi: bool,
+    pub frames: u64,
+    pub start_offset: i32,
+    pub capture_alignment_frames: i32,
+    pub preplay: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1203,6 +1217,12 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn release_host_port_identity(&mut self, _id: &str) -> bool {
+        false
+    }
+    fn host_port_in_use(&self, _id: &str) -> bool {
+        false
+    }
     fn inspect_profiling(
         &mut self,
         _request: shoop_app_api::profiling_data::CaptureRequest,

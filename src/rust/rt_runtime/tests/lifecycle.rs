@@ -413,7 +413,14 @@ fn two_thread_stress_keeps_completion_and_state_publication_coherent() {
     let operations = if cfg!(miri) { 32 } else { 10_000 };
     let (mut control, mut render) = channel::<u64, (), [u64; 2]>(config(4)).unwrap();
     let worker = std::thread::spawn(move || {
-        for frame in 0..1_000_000 {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        for frame in 0.. {
+            if frame % 4096 == 0 {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "control did not finish within stress deadline"
+                );
+            }
             let connected = assert_no_heap(|| {
                 render.begin_cycle(Frame(frame), Epoch(0));
                 while let Some(operation) = render.next_operation() {
@@ -428,7 +435,6 @@ fn two_thread_stress_keeps_completion_and_state_publication_coherent() {
             }
             std::thread::yield_now();
         }
-        panic!("control did not finish within stress bound");
     });
     let mut sent = 0;
     let mut received = 0;

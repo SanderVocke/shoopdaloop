@@ -8,6 +8,7 @@
 use crate::ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 use crate::message::{ClientMessage, DisconnectReason, EngineMessage};
 use crate::schema::*;
+use crate::timing::*;
 use crate::{
     BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_NAME_BYTES, MAX_RECORD_BYTES,
     MAX_STRIP_CHANNELS,
@@ -190,6 +191,111 @@ impl<T: Wire> Wire for Option<T> {
             1 => Ok(Some(T::get(r)?)),
             _ => Err(CodecError::Invalid),
         }
+    }
+}
+
+impl Wire for i32 {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(*self as u32)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(r.u32()? as i32)
+    }
+}
+impl Wire for ChannelWindow {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.gain_bits)?;
+        self.start_offset.put(w)?;
+        self.capture_alignment.put(w)?;
+        w.u32(self.preplay)?;
+        self.raw_frames.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            gain_bits: r.u32()?,
+            start_offset: i32::get(r)?,
+            capture_alignment: i32::get(r)?,
+            preplay: r.u32()?,
+            raw_frames: Option::get(r)?,
+        })
+    }
+}
+impl Wire for PlaybackWindows {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        for channel in &self.audio {
+            channel.put(w)?;
+        }
+        self.midi.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut value = Self::default();
+        for channel in &mut value.audio {
+            *channel = ChannelWindow::get(r)?;
+        }
+        value.midi = ChannelWindow::get(r)?;
+        Ok(value)
+    }
+}
+impl Wire for TimingEdit {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.canonical() {
+            return Err(CodecError::Invalid);
+        }
+        self.length.put(w)?;
+        self.start_offset.put(w)?;
+        self.preplay.put(w)?;
+        w.u8(self.count)?;
+        for channel in &self.channels[..usize::from(self.count)] {
+            w.u8(channel.channel)?;
+            w.bool(channel.midi)?;
+            channel.start_offset.put(w)?;
+            channel.preplay.put(w)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut value = Self {
+            length: Option::get(r)?,
+            start_offset: Option::get(r)?,
+            preplay: Option::get(r)?,
+            count: r.u8()?,
+            ..Self::default()
+        };
+        if usize::from(value.count) > MAX_TIMING_UPDATES {
+            return Err(CodecError::Invalid);
+        }
+        for channel in &mut value.channels[..usize::from(value.count)] {
+            *channel = ChannelTimingUpdate {
+                channel: r.u8()?,
+                midi: r.bool()?,
+                start_offset: Option::get(r)?,
+                preplay: Option::get(r)?,
+            };
+        }
+        if !value.canonical() {
+            return Err(CodecError::Invalid);
+        }
+        Ok(value)
+    }
+}
+impl Wire for TimingState {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.revision)?;
+        w.u64(self.content_revision)?;
+        w.u64(self.length)?;
+        w.u64(self.raw_audio_frames)?;
+        w.u64(self.raw_midi_frames)?;
+        self.windows.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            revision: r.u64()?,
+            content_revision: r.u64()?,
+            length: r.u64()?,
+            raw_audio_frames: r.u64()?,
+            raw_midi_frames: r.u64()?,
+            windows: PlaybackWindows::get(r)?,
+        })
     }
 }
 
@@ -403,6 +509,28 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::ContentWindow {
+                id,
+                frames,
+                windows,
+            } => {
+                w.u8(42)?;
+                w.u64(id)?;
+                w.u64(frames)?;
+                windows.put(w)
+            }
+            Self::LoopTiming {
+                loop_id,
+                expected_revision,
+                expected_content,
+                edit,
+            } => {
+                w.u8(41)?;
+                loop_id.put(w)?;
+                w.u64(expected_revision)?;
+                w.u64(expected_content)?;
+                edit.put(w)
+            }
             Self::LoopIteration {
                 loop_id,
                 iteration,
@@ -667,6 +795,17 @@ impl Wire for Request {
                 enabled: r.bool()?,
             },
             40 => Self::Profiling(r.bool()?),
+            42 => Self::ContentWindow {
+                id: r.u64()?,
+                frames: r.u64()?,
+                windows: PlaybackWindows::get(r)?,
+            },
+            41 => Self::LoopTiming {
+                loop_id: LoopSlotId::get(r)?,
+                expected_revision: r.u64()?,
+                expected_content: r.u64()?,
+                edit: TimingEdit::get(r)?,
+            },
             31 => Self::ContentFamilyBegin {
                 id: r.u64()?,
                 root: LoopSlotId::get(r)?,
@@ -948,6 +1087,10 @@ impl Wire for Outcome {
                 w.u64(*version)?;
                 w.u64(*frame)
             }
+            Self::TimingApplied(state) => {
+                w.u8(5)?;
+                state.put(w)
+            }
             Self::Done => w.u8(0),
             Self::ContentApplied { revision } => {
                 w.u8(2)?;
@@ -969,6 +1112,7 @@ impl Wire for Outcome {
                 version: r.u64()?,
                 frame: r.u64()?,
             },
+            5 => Self::TimingApplied(TimingState::get(r)?),
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },
             3 => Self::ContentPrepared { revision: r.u64()? },
@@ -1136,6 +1280,8 @@ impl Wire for Telemetry {
                 next_mode,
                 next_delay,
                 content_revision,
+                recording_armed,
+                timing_revision,
                 length,
                 position,
                 peaks,
@@ -1146,6 +1292,8 @@ impl Wire for Telemetry {
                 next_mode.put(w)?;
                 next_delay.put(w)?;
                 w.u64(*content_revision)?;
+                w.bool(*recording_armed)?;
+                w.u64(*timing_revision)?;
                 w.u64(*length)?;
                 w.u64(*position)?;
                 peaks.put(w)
@@ -1198,6 +1346,8 @@ impl Wire for Telemetry {
                 next_mode: Option::get(r)?,
                 next_delay: Option::get(r)?,
                 content_revision: r.u64()?,
+                recording_armed: r.bool()?,
+                timing_revision: r.u64()?,
                 length: r.u64()?,
                 position: r.u64()?,
                 peaks: Peaks::get(r)?,
@@ -1266,6 +1416,11 @@ impl Wire for StateRecord {
                 w.u8(14)?;
                 loop_id.put(w)?;
                 w.bool(*enabled)
+            }
+            Self::LoopTiming { loop_id, timing } => {
+                w.u8(18)?;
+                loop_id.put(w)?;
+                timing.put(w)
             }
             Self::BusShape { bus, channels } => {
                 w.u8(10)?;
@@ -1364,6 +1519,10 @@ impl Wire for StateRecord {
             14 => Self::RepeatSync {
                 loop_id: LoopSlotId::get(r)?,
                 enabled: r.bool()?,
+            },
+            18 => Self::LoopTiming {
+                loop_id: LoopSlotId::get(r)?,
+                timing: TimingState::get(r)?,
             },
             10 => Self::BusShape {
                 bus: BusId::get(r)?,

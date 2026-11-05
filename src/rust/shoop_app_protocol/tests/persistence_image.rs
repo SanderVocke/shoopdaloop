@@ -81,6 +81,36 @@ fn image(samples: usize) -> Arc<Image> {
     })
 }
 #[shoop_test]
+fn captured_sources_enforce_host_media_metadata_object_and_event_limits() {
+    use shoop_app_api::HostResourceLimits;
+    for limits in [
+        HostResourceLimits {
+            media_bytes: 1,
+            ..Default::default()
+        },
+        HostResourceLimits {
+            metadata_bytes: 1,
+            ..Default::default()
+        },
+        HostResourceLimits {
+            objects: 2,
+            ..Default::default()
+        },
+        HostResourceLimits {
+            midi_events: 2,
+            ..Default::default()
+        },
+    ] {
+        let mut validation = Validation::for_transfer(image(16)).unwrap();
+        while !validation.step(64 * 1024).unwrap() {}
+        assert!(matches!(
+            Source::from_validated_with_limits(validation.finish().unwrap(), limits),
+            Err(Refusal::Overloaded)
+        ));
+    }
+}
+
+#[shoop_test]
 fn segmented_images_reconstruct_exact_typed_content_and_random_midi_byte_ranges() {
     let image = image(2048);
     let source = Source::new(Arc::clone(&image)).unwrap();

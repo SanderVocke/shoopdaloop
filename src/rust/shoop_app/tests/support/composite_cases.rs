@@ -983,6 +983,47 @@ fn natural_child_duration_refresh_is_versioned_and_keeps_the_existing_basis() {
 }
 
 #[shoop_test]
+fn primitive_timing_edits_refresh_natural_composites_without_rebasing_their_clock() {
+    let (mut f, mut client, _, loops) = setup_composites(true);
+    let target = loops[2];
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            edit(target, vec![loops[0]], false)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let original = f.service.snapshot().composites[0].active.clone().unwrap();
+    let length = f.service.snapshot().tracks[1].loops[0].length_frames;
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::SetLoopTimeline {
+                loop_id: loops[0],
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(length * 2),
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    for _ in 0..16 {
+        f.service.tick(STEP);
+    }
+    let refreshed = f.service.snapshot().composites[0].active.clone().unwrap();
+    assert!(refreshed.version > original.version);
+    assert_eq!(refreshed.document.basis, original.document.basis);
+    assert_eq!(
+        refreshed.prepared.iterations,
+        original.prepared.iterations * 2
+    );
+}
+
+#[shoop_test]
 fn invalid_mixed_transport_or_iteration_refuses_the_complete_target_set() {
     let (mut f, mut client, _, loops) = setup_composites(false);
     for (target, cycles) in [(loops[2], 10), (loops[3], 2)] {

@@ -272,7 +272,11 @@ impl Service {
                 self.persistence_begin(authority, key, description.target)?;
                 self.persistence_job = Some(Job::Upload {
                     authority,
-                    receiver: persistence::Receiver::new(authority, description)?,
+                    receiver: persistence::Receiver::with_limits(
+                        authority,
+                        description,
+                        self.resource_limits,
+                    )?,
                 });
                 self.persistence_reply(authority, persistence::Reply::Begun { key });
                 return Ok(());
@@ -345,7 +349,10 @@ impl Service {
                 unreachable!()
             };
             let target = receiver.description().target;
-            let work = Preparing::Assembly(Assembly::new(receiver.into_objects()?)?);
+            let work = Preparing::Assembly(Assembly::with_limits(
+                receiver.into_objects()?,
+                self.resource_limits,
+            )?);
             self.persistence_job = Some(Job::Prepare {
                 authority,
                 key,
@@ -469,16 +476,23 @@ impl Service {
             let selected = matches!(target, persistence::Target::Session { .. })
                 || matches!(target, persistence::Target::Loop { loop_id, .. } if loop_id == *id);
             selected
-                && (matches!(
-                    entry.view.mode,
-                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
-                ) || matches!(
-                    entry.view.next_mode,
-                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
-                ) || self
-                    .composites
-                    .get(id)
-                    .is_some_and(|owner| owner.has_retained()))
+                && (self
+                    .observed
+                    .loops
+                    .get(&entry.backend)
+                    .is_some_and(|state| state.recording_armed)
+                    || matches!(
+                        entry.view.mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    )
+                    || matches!(
+                        entry.view.next_mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    )
+                    || self
+                        .composites
+                        .get(id)
+                        .is_some_and(|owner| owner.has_retained()))
                 || (entry.view.mode == LoopMode::Playing
                     || entry.view.next_mode == LoopMode::Playing)
                     && self.composite_capture_records(
@@ -577,7 +591,9 @@ impl Service {
                         validation,
                     })
                 }
-                Ok(true) => match validation.finish().and_then(Source::from_validated) {
+                Ok(true) => match validation.finish().and_then(|image| {
+                    Source::from_validated_with_limits(image, self.resource_limits)
+                }) {
                     Ok(source) => {
                         let image = Arc::clone(source.image());
                         let reply = (!local)
@@ -638,7 +654,7 @@ impl Service {
                 if cut.is_none() {
                     let busy = self.loops.iter().any(|(id, entry)| {
                         let selected = matches!(target, persistence::Target::Session { .. }) || matches!(target, persistence::Target::Loop { loop_id, .. } if loop_id == *id);
-                        selected && (matches!(entry.view.mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet) || matches!(entry.view.next_mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet))
+                        selected && (self.observed.loops.get(&entry.backend).is_some_and(|state| state.recording_armed) || matches!(entry.view.mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet) || matches!(entry.view.next_mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet))
                     });
                     if busy {
                         self.persistence_reply(

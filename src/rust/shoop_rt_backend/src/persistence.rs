@@ -170,7 +170,10 @@ impl Job {
             self.fail("engine omitted the prepared content revision".to_owned());
         }
         if self.retries < 1024
-            && !matches!(request, Request::ContentWrite { .. })
+            && !matches!(
+                request,
+                Request::ContentWrite { .. } | Request::ContentInitial { .. }
+            )
             && (outcome == Outcome::Refused(Refusal::Overloaded)
                 || (outcome == Outcome::Refused(Refusal::Busy)
                     && matches!(
@@ -222,11 +225,11 @@ impl Job {
             if self.error.is_some() || self.active.len() >= window {
                 return Ok(None);
             }
-            let Some(Request::ContentWrite { id, .. }) = self.active.first() else {
-                return Ok(None);
+            let id = match self.active.first() {
+                Some(Request::ContentInitial { id, .. } | Request::ContentWrite { id, .. }) => *id,
+                _ => return Ok(None),
             };
-            let id = *id;
-            if !self.active.iter().all(|request| matches!(request, Request::ContentWrite { id: active, .. } if *active == id)) { return Ok(None); }
+            if !self.active.iter().all(|request| matches!(request, Request::ContentInitial { id: active, .. } | Request::ContentWrite { id: active, .. } if *active == id)) { return Ok(None); }
             let Some(Work::Upload {
                 upload,
                 begun: true,
@@ -237,10 +240,13 @@ impl Job {
             if upload.description.id != id {
                 return Ok(None);
             }
-            let Some((offset, data)) = upload.chunk(chunk_bytes) else {
+            let request = if let Some(message) = upload.initial()? {
+                Request::ContentInitial { id, message }
+            } else if let Some((offset, data)) = upload.chunk(chunk_bytes) {
+                Request::ContentWrite { id, offset, data }
+            } else {
                 return Ok(None);
             };
-            let request = Request::ContentWrite { id, offset, data };
             self.active.push(request);
             return Ok(Some(request));
         }
@@ -340,6 +346,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         entry.content += 1;
                         entry.rt_content_revision = replacement.job.revisions[&entry.slot];
                         entry.view.length = u64::from(content.length);
+                        entry.timing = crate::prepared::timing(
+                            &content,
+                            entry.rt_content_revision,
+                            entry.timing.revision,
+                        );
                     }
                     self.prepared_content
                         .insert(id, replacement.job.prepared[&content.source_id].clone());
@@ -348,7 +359,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     self.reads.forget(id);
                 }
             }
-            if let Some(image) = replacement.candidate.take() {
+            if let Some(mut image) = replacement.candidate.take() {
+                image.host_aliases = self.mirror.host_aliases.clone();
                 self.mirror = image;
                 self.composites.applied_frames.clear();
                 self.prepared_content = replacement
@@ -393,5 +405,47 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 replacement.mapping,
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn private_window_acknowledgment_keeps_replacement_cancellable() {
+        let header = Request::ContentWindow {
+            id: 2,
+            frames: 32,
+            windows: Default::default(),
+        };
+        let mut job = Job::new(
+            1,
+            VecDeque::from([Work::Request(header)]),
+            Vec::from([2]),
+            true,
+            [],
+            2,
+            1024,
+        )
+        .unwrap();
+        assert_eq!(job.next(64, 1, 8).unwrap(), Some(header));
+        assert!(!job.committed);
+        job.answered(header, Outcome::Done, 1);
+        assert!(!job.committed);
+        job.cancel().unwrap();
+        assert_eq!(
+            job.next(64, 1, 8).unwrap(),
+            Some(Request::ReplacementCancel { id: 1 })
+        );
+        job.answered(Request::ReplacementCancel { id: 1 }, Outcome::Done, 1);
+        assert_eq!(
+            job.next(64, 1, 8).unwrap(),
+            Some(Request::ContentRelease { id: 2 })
+        );
+        job.answered(Request::ContentRelease { id: 2 }, Outcome::Done, 1);
+        assert_eq!(job.next(64, 1, 8).unwrap(), None);
+        assert!(job.finished);
     }
 }

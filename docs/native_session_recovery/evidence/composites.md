@@ -187,6 +187,20 @@ Stage transitions now remain in the outer snapshot cursor. The affected packages
 built with warnings denied and all four focused composite resync cases passed,
 including pending versions, automatic monitoring and profiling coexistence.
 
+PR #941 was retargeted to `feat/backend-replacement` at the user's request. The
+`e1f28c87` reconciliation retains the verified shared fixed-runtime/profiling
+baseline while combining P03 with P12 timing and the incoming platform work.
+Combined versions are app **27** and engine **13**; file **14**, native setup **7**
+and worklet config **4** remain unchanged. Timing/composite requests, outcomes and
+resync records have distinct wire tags. One coherent publication includes timing
+revision and composite cursor state. Primitive timing requests refuse virtual
+composite clocks; kind conversions clear stale timing metadata. Natural child
+dependencies include effective length so P12 length edits refresh natural events
+without changing their accepted time basis. The warning-denying application/host
+build and **17** selected protocol, resync, service and persistence cases passed,
+including both new cross-feature regressions. Final-head CI is tracked separately;
+no cross-platform local rerun is implied.
+
 ## Reproduction and limits
 
 Use the repository build/test setup and deny Rust warnings. Native full-feature
