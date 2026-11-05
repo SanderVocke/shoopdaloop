@@ -1069,6 +1069,11 @@ mod tests {
         assert!(wrapping.before.mean > 0.);
         assert!(wrapping.after.mean > 0.);
         assert!(wrapping.between.mean > 0.);
+        assert_eq!(wrapping.before_budget.count, 1);
+        assert_eq!(
+            wrapping.before_budget.mean,
+            wrapping.before.mean * crate::WrappingStats::BUDGET_SCALE as f64 / 10_000.
+        );
         assert_eq!(wrapping.incomplete, 0);
         control.host_begin(3, 1, now());
         control.host_end(now() + 100, 10);

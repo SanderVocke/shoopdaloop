@@ -8,9 +8,11 @@ loop described below. CI was not inspected or corrected during Phase A.
 
 Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
-`feat/backend-replacement`. Target `78d39677` (composites and hosted FX) has
-been reconciled locally with source `d0451596`; the saved gesture WIP was ported
-selectively onto its role-aware planner, shared ownership and processor interfaces.
+`feat/backend-replacement`. Phase A implementation/acceptance is committed as
+`b53ed797`, following FX/composite reconciliation `e5b87190`. The Phase B target
+refresh found `273853aa` (connection drag cancellation) and `bb5b5598` (callback
+profiling budgets), now reconciled on top of target `78d39677`.
+
 
 | Stage | Current status |
 | --- | --- |
@@ -553,6 +555,16 @@ value. The complete default JACK sequence passes on the existing 512-KiB callbac
 stack with no increased storage or stack setting. The strict JACK acceptance
 script now runs this exact packaged workflow; extracted native archives also run
 the input canary over socket and shared memory.
+
+Phase B refreshed the target to `273853aa0b3b433d02c0373ec646925b96443681`.
+Its profiling change adds serialized wrapper budget statistics; its connection
+change caches semantic connection views so unrelated loop/meter updates do not
+cancel a drag. Preserve both alongside input mode/capture projection. Both branches
+independently used application protocol30 for different schema additions, so the
+combined schema is version31 with updated canonical codec bytes. RT protocol23,
+host setup8 and worklet configuration7 remain unchanged. Affected verification
+covers profiling/wrapping, service connection identity, public input workflows,
+codec/client projection and UI drag/graph behavior before the first Phase B push.
 
 ## Findings that determine the work
 

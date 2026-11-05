@@ -972,6 +972,105 @@ fn created(outcome: Outcome) -> (TrackId, Vec<LoopId>) {
 }
 
 #[shoop_test]
+fn connection_revision_ignores_unrelated_commands_and_backend_updates() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 1, connection, encoded);
+        let before = f.service.snapshot();
+        let bus = before.buses[0].id;
+        for value in [
+            Command::Global(GlobalControlAction::SetSync(false)),
+            Command::Bus {
+                bus,
+                action: BusAction::GainChanged(-6.),
+            },
+            Command::Bus {
+                bus,
+                action: BusAction::MuteChanged(true),
+            },
+        ] {
+            let operation = submit(&mut f.service, &mut client, connection, value);
+            assert!(matches!(
+                complete(&mut f.service, &mut client, connection, operation, encoded),
+                Outcome::Confirmed { .. }
+            ));
+            let after = client.snapshot().unwrap();
+            assert!(after.revision > before.revision);
+            assert_eq!(after.connections, before.connections);
+        }
+        f.service.detach(connection);
+        for _ in 0..20 {
+            f.service.tick(STEP);
+            assert_eq!(f.service.snapshot().connections, before.connections);
+        }
+    }
+}
+
+#[shoop_test]
+fn connection_revision_tracks_port_and_route_changes() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, false);
+    let initial = f.service.snapshot().connections.clone();
+    let (track, _) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Route", false),
+    ));
+    let added = f.service.snapshot().connections.clone();
+    assert!(added.revision > initial.revision);
+    assert!(added.application_ports.len() > initial.application_ports.len());
+    let route = added.mixer_links[0];
+    f.advance.set(false);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::SetMixerRoute {
+            source: route.source_port_id,
+            destination: route.destination_channel_id,
+            connected: false,
+        },
+    );
+    let pending = f.service.snapshot().connections.clone();
+    assert!(pending.revision > added.revision);
+    assert!(pending.mixer_links.contains(&route));
+    assert_eq!(
+        pending.pending_mixer_links.as_ref(),
+        [PendingMixerRouteState {
+            route,
+            desired_connected: false,
+        }]
+    );
+    f.advance.set(true);
+    assert!(matches!(
+        complete(&mut f.service, &mut client, connection, operation, false),
+        Outcome::Confirmed { .. }
+    ));
+    let confirmed = f.service.snapshot().connections.clone();
+    assert!(confirmed.revision > pending.revision);
+    assert!(!confirmed.mixer_links.contains(&route));
+    assert!(confirmed.pending_mixer_links.is_empty());
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::Track {
+                track,
+                action: TrackAction::Remove,
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let removed = f.service.snapshot().connections.clone();
+    assert!(removed.revision > confirmed.revision);
+    assert_eq!(removed.application_ports, initial.application_ports);
+}
+
+#[shoop_test]
 fn live_host_availability_reaches_encoded_clients_and_pins_disconnected_routes() {
     struct Inventory(
         std::sync::Arc<std::sync::Mutex<Option<Vec<shoop_rt_backend::HostPortAlias>>>>,
@@ -1055,12 +1154,14 @@ fn live_host_availability_reaches_encoded_clients_and_pins_disconnected_routes()
         Outcome::Confirmed { .. }
     ));
     let revision = client.snapshot().unwrap().revision;
+    let connection_revision = client.snapshot().unwrap().connections.revision;
     *inventory.lock().unwrap() = Some(alias(false));
     for _ in 0..3 {
         f.service.tick(STEP);
         drain(&mut f.service, &mut client, connection, true);
     }
     assert!(client.snapshot().unwrap().revision > revision);
+    assert!(client.snapshot().unwrap().connections.revision > connection_revision);
     assert!(client
         .snapshot()
         .unwrap()

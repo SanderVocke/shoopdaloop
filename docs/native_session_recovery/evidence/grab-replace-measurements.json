@@ -1,6 +1,6 @@
 {
   "date": "2026-11-05",
-  "source": "e5b87190 plus the acceptance/fault/retirement changes in this delivery; see the adjacent evidence validation pins",
+  "source": "Latest accepted measurement round: implementation b53ed797 on target 78d39677. Earlier retained rounds predate the stack-only correction; source hashes identify the latest measured implementation.",
   "environment": "Linux x86_64 managed workspace; concurrent local build/test load; release Rust, no physical-device deadline certification",
   "runs": [
     {

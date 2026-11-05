@@ -162,10 +162,14 @@ bytes; the journal preserves Adopt length, revision, position and post-mode.
 ## Validation pins and delivery
 
 Implementation reconciliation commit: `e5b87190`, target `78d39677`, source
-`d0451596`. Local acceptance passes: packaged default socket and shared-memory input canaries;
+`d0451596`. Complete Phase A implementation: `b53ed797`. Phase B refresh adds
+target `273853aa` (profiling budgets and connection drag identity); the combined
+application schema uses version31 because both branches independently used30.
+Input RT protocol23, host setup8 and worklet configuration7 are preserved. Local acceptance passes: packaged default socket and shared-memory input canaries;
 strict real JACK driver/service/process/application/Master-preview/default input
 acceptance; rebuilt Chromium workflow with zero xruns, overflows and render memory
-growth; 791 focused contract tests; independent loop/runtime fixtures; warning-
+growth; 791 focused contract tests; 60 independent loop-fixture tests and exact offline/two-thread native runtime
+replay against the retained real-worklet journal; warning-
 denied workspace build, formatting, attributes, tracing, parity and dependency/DSP
 isolation. The full 3,094-test run exposed the legacy latency and reset issues
 above; both were corrected and passed their focused/strict reruns. Final source/

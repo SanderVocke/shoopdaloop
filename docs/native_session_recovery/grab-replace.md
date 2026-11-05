@@ -16,7 +16,7 @@ checks, measured capacity limits and final validation pins.
 | Engine / protocol | Protocol v23 carries bounded input transactions, effective cuts, status/cancel/completion and negotiated limits. Batch settlement includes targets, solo peers and automatic completion atomically. |
 | Adapter | One owned admitting input job; confirmed mutation identity, pending projection, revision-driven media invalidation and independent processor controls. |
 | Service | Selection-aware gestures, exact explicit Control/Lua lists, targeting, solo, default Grab, apply-N and play-after-record; persistence and topology changes fence accepted work. |
-| UI / Lua | Normal Grab controls, bundled keyboard/default action and public Lua; primitive-loop “Replace input” menu, confirmed mode/pending state and an incomplete-capture warning. Application protocol v30. |
+| UI / Lua | Normal Grab controls, bundled keyboard/default action and public Lua; primitive-loop “Replace input” menu, confirmed mode/pending state and an incomplete-capture warning. Application protocol v31. |
 
 ## Reference policy matrix
 
