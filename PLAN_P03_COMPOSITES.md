@@ -2,7 +2,7 @@
 
 ## Status and delivery
 
-Implementation in progress on `feat/p03-composites`. Written using
+Implementation complete on `feat/p03-composites`. Written using
 [write_plan.md](.agents/prompts/write_plan.md) for P03 in the
 [feature parity ledger](docs/native_session_recovery/feature-parity.md).
 
@@ -20,11 +20,20 @@ Implementation in progress on `feat/p03-composites`. Written using
 - Execution was authorized by the user's goal to complete this plan. The branch
   starts at the inspected base; the planning checkpoint is commit `18f7a5b1`.
 
-PR #941 delivers the direct-track composite core before #946, as agreed with the
-user. Its landing gates are green required CI and resolved review feedback at the
-delivered head. Stage 9 replacing/dry-wet interactions remain follow-up parity
-work; they do not require importing the discarded integration branch into this PR.
-Full P03 remains OPEN until those interactions are implemented and validated.
+P03 is **COMPLETE** for the delivered direct-track composite core. On 2026-11-05,
+the user approved moving Stage 9's dependent replacing/dry-wet work into the
+separate [P17 parity item](docs/native_session_recovery/feature-parity.md#p17-composite-mode-integration).
+Those implementation and validation requirements remain OPEN under P17, with
+P05/P06/P07 dependencies; they no longer block P03 closure or require importing
+the discarded integration branch into PR #941.
+
+The final implementation head is `b9ab94d64509eb3761e8e05687f373b6d18d65b9`.
+All 29 checks completed: 28 passed and the nightly-only job was intentionally
+skipped. No automated reviewer responded and no approval is claimed. Stage 10 and
+the [acceptance evidence](docs/native_session_recovery/evidence/composites.md#final-acceptance-and-closure)
+record the source pin and CI runs. Subsequent closure updates change Markdown
+documentation only; the tested implementation is unchanged. PR #941 targets
+`feat/backend-replacement`; merging remains with the user.
 
 ## Goals, scope and dependencies
 
@@ -53,11 +62,12 @@ Dependencies and closure boundaries:
 - P05/P06 supply replacing and dry/wet modes accepted by reference script events;
   P06/P07 supply the corresponding track/processor topology. The current loop
   library exposes only stopped/playing/recording. Deliver and validate the core
-  direct-track composite path first, then integrate those modes when their
-  underlying features are available. Keep per-mode capability diagnostics.
-  **Do not mark full P03 parity COMPLETE while these composite-mode interactions
-  are absent.** Record a named partial restoration, with P03 OPEN, until the
-  dependencies are restored or the user explicitly approves narrower closure.
+  direct-track composite path first. Under the user-approved closure boundary,
+  [P17](docs/native_session_recovery/feature-parity.md#p17-composite-mode-integration)
+  owns integrating and validating those modes when their underlying features are
+  available. Keep per-mode capability diagnostics and atomic refusal until then.
+  P03 completion covers the direct-track core; P17 remains OPEN for the dependent
+  composite interactions.
 - Lua VMs remain client-local. An accepted composition or scheduled transition is
   shared work; future commands from a lost VM are not accepted work. This plan
   does not restore VMs, restart scripts automatically, or require P16 to restore
@@ -137,8 +147,8 @@ Goals and acceptance criteria require explicit user approval to change.
     supported requests succeed; excess work refuses before acceptance. Render and
     control-endpoint paths remain allocation/free/lock/wait/I/O-free. Native typed,
     supported native carriers and browser/worklet behavior pass the final checks.
-    Capability publication and ledger closure follow evidence, including the
-    dependency qualification above.
+    Capability publication and ledger closure follow evidence and the approved
+    P03/P17 scope boundary above.
 
 ## Composite execution contract
 
@@ -283,8 +293,9 @@ diagnostics, active-recording save refusal and private atomic replacement stagin
 User-approved revision on 2026-11-05: optimize the development loop for small,
 targeted checks and rely on CI for broad regression and cross-platform coverage.
 For P03 this supersedes earlier requirements in this plan and the general testing
-guide to run all gates locally before each behavior commit/push. The immutable
-behavioral acceptance criteria and Stage 9 dependency gate are unchanged.
+guide to run all gates locally before each behavior commit/push. Behavioral
+acceptance criteria are unchanged; the later user-approved scope revision moves
+Stage 9's dependent-mode requirements to P17.
 
 - For each change, identify the failure or contract at risk and run the smallest
   relevant test selection. Usually use a few named cases in the changed package
@@ -312,9 +323,11 @@ behavioral acceptance criteria and Stage 9 dependency gate are unchanged.
   not itself interpret the Miri inventory. Record that distinction and any missing
   facility; do not claim an automatic Miri gate or block every checkpoint on a
   broad local batch.
-- Final acceptance still requires green required CI checks at the delivered head
-  and review of their evidence. Record source pins and distinguish local results,
-  CI results, inherited unchanged-code evidence and checks not run.
+- Final implementation acceptance requires green required CI checks and review of
+  their evidence. Record source pins and distinguish local results, CI results,
+  inherited unchanged-code evidence and checks not run. For closure-only Markdown
+  updates, verify the documentation diff, local links and parity ledger; retain
+  the exact green implementation pin and report new-head CI separately.
 
 The stage verification lists below describe required behavioral coverage. Apply
 this local/CI split to them; they are not instructions to rerun every listed case
@@ -324,9 +337,9 @@ locally at each stage.
 
 Execute in order. Stages 1-3 establish library/engine contracts; Stages 4-6 add
 authoritative application ownership; Stage 7 completes persistence; Stage 8 exposes
-the supported production feature. Stage 9 is the full-P03 dependency gate. Stage 10
-validates and delivers the final implementation. Partial delivery must retain OPEN
-status and its named limits.
+the supported production feature. Stage 9 records the approved handoff of dependent
+mode integration to P17. Stage 10 validates and delivers the completed P03 core.
+P17 retains its own OPEN status and acceptance requirements.
 
 ### Stage 0 — planning checkpoint
 
@@ -522,26 +535,24 @@ scenarios. Use a local probe only for a changed boundary or a concrete failure.
 Test source stop/resume/resize mid-pass and callbacks continuing while
 the client is absent; check state and audible/rendered output, not only enabled UI.
 
-### Stage 9 — dependent mode integration and full-parity gate
+### Stage 9 — dependent-mode handoff to P17
 
-- [ ] Integrate replacing and dry/wet script-event modes with the production
-  capabilities restored under P05/P06/P07. Extend loop/RT mode representation and
-  default-action/role mapping as those workstreams require, without silently
-  translating unsupported modes into ordinary playback or recording.
-- [ ] Validate nested explicit/regular combinations, mixed selections, event-mode
-  edits, capture/monitoring, child independence, persistence and recovery for every
-  restored dependent mode and its original platform scope.
+- [x] Move replacing/dry-wet composite integration and its full interaction
+  validation into the separate
+  [P17 parity item](docs/native_session_recovery/feature-parity.md#p17-composite-mode-integration),
+  preserving P05/P06/P07 dependencies, unsupported-mode refusal and original
+  platform scope. The user approved this P03 closure boundary on 2026-11-05.
 - [x] Audit the complete master/reference composite surface against this plan's
-  intentional timing changes. Record remaining dependencies as partial scope;
-  keep P03 OPEN until this gate is satisfied or narrower closure is user-approved.
+  intentional timing changes. Link the remaining mode interactions to P17 and
+  close P03 for the validated direct-track core.
 
-Verification: focused local composite interaction cases; CI runs the dependent
-feature suites, including whole-document refusal until support exists. No processor/track feature
-is advertised solely because its mode tag can be encoded.
+Verification: P17 retains both the integration and validation requirements formerly
+listed here. Unsupported modes still refuse atomically, including whole-document
+load. No processor/track feature is advertised solely because its tag is encoded.
 
 ### Stage 10 — final end-to-end validation, evidence and delivery
 
-- [ ] Obtain green required CI checks at the final head: complete regression gates,
+- [x] Obtain green required CI checks at the final implementation head: regression gates,
   native platform matrix, Node/Wasm suites and actual browser/worklet scenarios.
   Use targeted ownership/Miri checks when the risk warrants them. Record exact
   source pins, commands, profiles, capacities and limits without duplicating the
@@ -554,9 +565,9 @@ is advertised solely because its mode tag can be encoded.
   rows; update current architecture and public loop/program/host guides. Create
   `docs/native_session_recovery/evidence/composites.md` with criterion-to-test mapping
   and explicit differences from the old tick/fallback behavior. Reconcile capability
-  coverage and feature counts; mark COMPLETE only after the dependency gate passes.
-- [ ] Commit and push completed milestones, create/update the PR against the target
-  branch and obtain green checks at the final head. Inspect automated review;
+  coverage and feature counts; mark P03 COMPLETE under the approved P17 handoff.
+- [x] Commit and push completed milestones, create/update the PR against the target
+  branch and obtain green checks at the final implementation head. Inspect automated review;
   address feedback, rerun affected checks and repeat until the reviewer approves.
   If no automated reviewer responds, record that fact without claiming approval.
   Leave merging to explicit instructions.
@@ -564,6 +575,31 @@ is advertised solely because its mode tag can be encoded.
 Verification: final evidence distinguishes tests actually run from inherited
 reference evidence and unavailable facilities. Compile-only or model-only success
 cannot replace public production, recovery, file and actual worklet acceptance.
+
+Completion evidence (2026-11-05): implementation head
+`b9ab94d64509eb3761e8e05687f373b6d18d65b9` is pushed to
+[PR #941](https://github.com/SanderVocke/shoopdaloop/pull/941), targeting
+`feat/backend-replacement`. The final inspection found no submitted reviews or
+inline review threads; no automated reviewer responded and no approval is claimed.
+GitHub reported the PR mergeable with a clean merge state.
+
+- [Build and Test](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001419660)
+  passed all six native platform/profile jobs, **2,906 native tests / 8 skipped**,
+  Node/Chrome Wasm suites, debug/release browser and AudioWorklet workflows,
+  shared-foundation measurements, JACK and host checks. Release acceptance includes
+  hosted/self-contained composites and exact large-media round trips.
+- [Firmware/deployment/USB](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001413258)
+  passed all five firmware, board-profile, deployment and USB jobs.
+- [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001413212),
+  [Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001413216) and both
+  Codecov checks passed. Overall: **28 successful checks, one intentional
+  nightly-only skip**.
+
+The final closure follow-up edits only Markdown documentation. Its scoped checks
+passed: `git diff --check`, validation of **50 local Markdown links/anchors** and
+`python3 scripts/check_feature_parity.py`; it reuses the unchanged implementation
+evidence above. Current-head CI remains visible on PR #941 and is reported
+separately from this green implementation pin.
 
 ## Check selection and final evidence
 
@@ -605,6 +641,10 @@ heap-guard, media and independent-oracle coverage in CI. Broader local runs are 
 explicit response to a failure or identified risk, not a default milestone ritual.
 
 ## Execution evidence
+
+The entries below are chronological checkpoints, including earlier OPEN/draft
+states and superseded gates. Current completion and the P17 handoff are recorded
+above; those historical states do not describe the delivered P03 core.
 
 - Planning checkpoint: local Markdown links and whitespace checked; no runtime
   result claimed. Base refreshed to `bbf027e9` before branch creation.

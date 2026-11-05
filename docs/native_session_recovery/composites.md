@@ -1,10 +1,12 @@
 # Composite execution and ownership
 
-Status: the direct-track core is restored under [P03](feature-parity.md) and
+Status: the direct-track core is COMPLETE under [P03](feature-parity.md) and
 [the implementation plan](../../PLAN_P03_COMPOSITES.md). The public composite
-capability covers regular programs and explicit Play/Stop/Record events. Full
-P03 remains open for replacing and dry/wet interactions under P05/P06/P07.
-See [acceptance evidence](evidence/composites.md) for tested paths and remaining gates.
+capability covers regular programs and explicit Play/Stop/Record events. Replacing
+and dry/wet interactions remain OPEN in the separate
+[P17 item](feature-parity.md#p17-composite-mode-integration), depending on P05/P06/P07.
+See [acceptance evidence](evidence/composites.md#final-acceptance-and-closure) for
+the approved scope and final implementation checks.
 
 ## Frames and synchronization
 

@@ -1,11 +1,13 @@
 # Composite core restoration evidence
 
-P03 is **OPEN**. The named partial restoration is the direct-track composite core:
+P03 is **COMPLETE** for the user-approved direct-track composite core:
 regular and explicit Play/Stop/Record arrangements, nested authoring and control,
 live edits, automatic monitoring, frozen file timing and accepted-work lifetime.
-Replacing and dry/wet event modes/topologies depend on P05/P06/P07. Those modes
-refuse atomically, including whole-document load; their tags are not advertised
-as executable support. The plan's immutable full-parity gate still applies.
+On 2026-11-05 the user approved moving replacing and dry/wet event modes/topologies
+and their validation into the separate
+[P17 parity item](../feature-parity.md#p17-composite-mode-integration), depending on
+P05/P06/P07. Those modes still refuse atomically, including whole-document load;
+their tags are not advertised as executable support. P17 remains OPEN.
 
 ## Contract and acceptance mapping
 
@@ -33,7 +35,41 @@ by the maintained `service` test target. Reference app/engine fixtures retain ol
 editor and media expectations. Their tick-driven scheduling is historical, not
 evidence that the new contract uses source ticks or a client fallback.
 
+## Final acceptance and closure
+
+Final implementation head: `b9ab94d64509eb3761e8e05687f373b6d18d65b9`, pushed to
+[PR #941](https://github.com/SanderVocke/shoopdaloop/pull/941), targeting
+`feat/backend-replacement`. Final inspection on 2026-11-05 reported the PR mergeable
+with a clean merge state against target `9caee9ba1db33eaa87ca31f6d4268bea7f350424`.
+All **29 checks completed: 28 passed, one intentional nightly-only skip**.
+
+- [Build and Test](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001419660):
+  all six Linux/macOS/Windows debug/release jobs; **2,906 native tests passed /
+  8 skipped**; Node/Chrome Wasm suites; debug/release browser and AudioWorklet
+  acceptance; shared-foundation measurements, JACK and host checks. Release
+  browser acceptance includes hosted/self-contained composites and exact
+  large-media round trips.
+- [Firmware/deployment/USB](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001413258):
+  all five firmware, board-profile, deployment and USB jobs passed.
+- [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001413212),
+  [Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/42001413216) and both
+  Codecov checks passed.
+- Focused local integration, recovery, UI projection, board/probe cases and
+  warning-denying builds passed; formatting, test policy, parity and the closed
+  **459-module** tracing inventory passed.
+
+The final review inspection found no submitted reviews or inline review threads.
+No automated reviewer responded; no reviewer approval or merge is claimed.
+Stage 10 is complete for the implementation above. The subsequent P03/P17 closure
+follow-up changes Markdown documentation only. Checks passed for whitespace,
+**50 local Markdown links/anchors**, and parity capability coverage. Its current-head
+CI is separate from this pinned implementation evidence and remains visible on
+PR #941.
+
 ## Source checkpoints and validation
+
+These are historical checkpoints. Earlier OPEN/draft states and incomplete CI
+matrices below are superseded by the final acceptance and approved P17 handoff above.
 
 - `730148bb`: automatic monitoring; native **2,824 passed / 7 skipped**. Node and
   Chrome app/client/protocol/editor/adapter/engine/worklet suites passed.
@@ -78,9 +114,6 @@ evidence that the new contract uses source ticks or a client fallback.
   HEAD field alone does not identify the uncommitted patch. Four-target runtime,
   loop and engine audits, Wasm isolation, test policy, parity/tracing (**441
   modules**), formatting and actual worklet/codec artifact contracts passed.
-
-Full P03 is still gated on dependent modes and the final integrated-head platform
-matrix/review. No narrower closure has been approved.
 
 ## Reference surface and dependency integration
 
@@ -170,7 +203,8 @@ PR #940 rebased to `2707c466`, with application Replacing still unavailable.
 New [PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946) at `ac70645e`
 provides concrete loop/RT dry-wet modes and processor foundations, while public
 admission and service/session-file persistence remain gated. It is now the
-integration candidate; full P03 remains OPEN.
+integration candidate. At that checkpoint the dependent-mode gate remained open;
+its requirements are now preserved in P17.
 
 The user revised P03's testing strategy on 2026-11-05: small targeted local checks,
 with broad regression and cross-platform/browser/artifact validation supplied by

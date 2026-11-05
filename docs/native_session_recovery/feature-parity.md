@@ -6,9 +6,10 @@ features from ShoopDaLoop. Full parity is outside the recovery milestone; preser
 this backlog and its evidence is part of that milestone.
 
 Status: recovery milestone complete on code/test candidate `929ed71b`, with a green
-full platform matrix. P13 is COMPLETE within negotiated replacement-engine bus
-limits, and P15 is COMPLETE for System/Master click preview under the accepted
-validation scope. The other 14 parity rows remain OPEN. Recheck the production
+full platform matrix. P03 is COMPLETE for the user-approved direct-track composite
+core; dependent composite modes are tracked separately in P17. P12, P13 and P15
+are also COMPLETE within their recorded timing, bus and preview scopes. The other
+**13 of 17 parity rows remain OPEN**. Recheck the production
 capability set and client/service handlers whenever implementation changes. A green
 recovery CI does not close these rows. A row remains **OPEN** until its completion evidence is linked here.
 
@@ -27,7 +28,7 @@ MIDI initial/preroll state cases stay open in P11. System/Master click preview i
 COMPLETE under P15; its [contract and completion evidence](preview.md) record the
 accepted testing boundary. P01/P02/P11 remain OPEN for their deferred dependencies.
 The [output bus work](evidence/output-buses.md) closes P13, including zero-bus
-save/load. With P12 also complete, **13 rows remain OPEN**. Bus FX remains P08.
+save/load. Bus FX remains P08.
 
 The [master reconciliation](master-reconciliation.md) preserves the newer range
 editor and per-channel timing behavior in the reference stack.
@@ -35,12 +36,13 @@ editor and per-channel timing behavior in the reference stack.
 real pre-play, atomic single/all-channel updates, retained raw media, persistence
 and recovery under the existing Q-aligned logical-period contract.
 
-P03 core restoration is implemented under [PLAN_P03_COMPOSITES.md](../../PLAN_P03_COMPOSITES.md).
+P03 is COMPLETE under [PLAN_P03_COMPOSITES.md](../../PLAN_P03_COMPOSITES.md).
 The accepted [composite execution contract](composites.md) uses frame-driven
 arrangements with launch/repeat alignment, superseding source-tick progression.
-P03 remains OPEN for replacing/dry-wet interactions under P05/P06/P07 and final
-acceptance. See [composite evidence](evidence/composites.md) for the named partial
-restoration, supported core and validation pins.
+The user approved moving replacing/dry-wet interactions into the separate
+[P17 item](#p17-composite-mode-integration) on 2026-11-05. See
+[composite evidence](evidence/composites.md#final-acceptance-and-closure) for the
+completed direct-track scope, green final implementation checks and validation pins.
 Core composite file support also extends the P01/P02 capture/load paths; their
 remaining dependencies and OPEN status are unchanged.
 
@@ -71,9 +73,9 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 
 | ID / status | Feature and present production limit | Preserved behavior, UI and code | Work needed to close the gap |
 | --- | --- | --- | --- |
-| P01 OPEN | Core coherent session save and WAV/loop-audio/exact-MIDI/SMF export are enabled, including zero or multiple supported buses. Active/scheduled recording refuses without stopping it. Browser completion reports download handoff. | `shoopdaloop/persistence_io`, `shoop_persistence_codec`, service persistence jobs and retained reference codecs; production `production_files_roundtrip_audio_midi_and_fresh_session_identities`; immutable capture/old-owner/playing-export tests in `shoop_app` and `shoop_rt_backend`. See [persistence acceptance evidence](evidence/session-persistence.md) and [bus evidence](evidence/output-buses.md) for deployment scope and limits. | Extend capture/file conversion as FX (P07/P08), composites (P03), dry/wet (P06), latency/take state (P09/P10) and session scripts/resources (P16) become available. UI recovery itself still has no disk durability. |
+| P01 OPEN | Core coherent session save and WAV/loop-audio/exact-MIDI/SMF export are enabled, including zero or multiple supported buses. Active/scheduled recording refuses without stopping it. Browser completion reports download handoff. | `shoopdaloop/persistence_io`, `shoop_persistence_codec`, service persistence jobs and retained reference codecs; production `production_files_roundtrip_audio_midi_and_fresh_session_identities`; immutable capture/old-owner/playing-export tests in `shoop_app` and `shoop_rt_backend`. See [persistence acceptance evidence](evidence/session-persistence.md) and [bus evidence](evidence/output-buses.md) for deployment scope and limits. | Extend capture/file conversion as FX (P07/P08), dependent composite modes (P17), dry/wet (P06), latency/take state (P09/P10) and session scripts/resources (P16) become available. Direct-track composite persistence is complete under P03. UI recovery itself still has no disk durability. |
 | P02 OPEN | Core structure-only and media-bearing loads plus New Session use fenced, atomic replacement and fresh live IDs, including zero or multiple supported buses. Unsupported documents refuse intact; loaded loops start stopped. | Existing `shoop_session` formats/migrations/resampling; `shoop_persistence_codec/document`; service/adapter private candidates; `accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay`, production save/load/save tests and [bus evidence](evidence/output-buses.md). | Restore each deferred document feature under its own row. Keep whole-document capability diagnostics, sample-rate consent, stable source/live mappings, missing-port intent and transactional refusal as coverage expands. |
-| P03 OPEN | **Partial restoration: direct-track composite core.** Regular and explicit Play/Stop/Record programs, nested UI/Lua authoring, live edits, automatic monitoring, files and accepted-work recovery are supported. Lua VMs remain client-local. | Frame resolver, prepared RT plans, service-owned documents and production editor; [execution contract](composites.md), [criterion/test map and acceptance](evidence/composites.md). Retained reference fixtures remain historical evidence. | Integrate replacing and dry/wet event modes/topologies under P05/P06/P07; complete final platform/browser/recovery acceptance. Full P03 stays OPEN until its dependency gate passes or narrower closure is explicitly approved. |
+| P03 COMPLETE | **Direct-track composite loops.** Regular and explicit Play/Stop/Record programs, nested UI/Lua authoring, live edits, automatic monitoring, files and accepted-work recovery are supported. Lua VMs remain client-local. | Frame resolver, prepared RT plans, service-owned documents and production editor; [execution contract](composites.md), [criterion/test map and final acceptance](evidence/composites.md#final-acceptance-and-closure), [completed plan](../../PLAN_P03_COMPOSITES.md). Retained reference fixtures remain historical evidence. | Complete under the user-approved direct-track scope. Dependent replacing/dry-wet modes and their interaction validation are preserved separately in [P17](#p17-composite-mode-integration). |
 | P04 OPEN | Grab and grab-with-target policies are refused. | `shoop_app_api` loop/global actions; `shoop_egui/{loop_widget,global_controls}`; reference `grab_targets_inner`; tests `grab_policy_covers_targeted_selection_solo_and_immediate_completion`, `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`. | Bounded grab/ringbuffer integration with authoritative target/selection resolution, sync policy, outcome reporting and media continuity. |
 | P05 OPEN | Replacing mode is unavailable. | `BackendCapability::ReplacingMode`; loop mode/actions/UI; reference `expanded_loop_actions_route_modes_grab_and_balance` and engine/loop tests. | Service/protocol admission and adapter/RT replacement semantics; cover selected versus explicit loop control, stop, sync and recorded content. |
 | P06 OPEN | Dry/wet tracks, dry-through-wet playback, dry-into-wet recording and their default actions are unavailable. | Track topology/port-role contracts; `shoop_egui/app_widget` add-track forms and details; reference tests `application_adds_external_dry_wet_tracks_from_processor_capabilities`, `dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit`, `dry_wet_media_io_maps_and_exports_role_order_without_flattening`. | Track graph/role mapping and mode integration across service/protocol/adapter/engine; preserve channel-role order, processor routes and explicit/default action distinctions. |
@@ -87,6 +89,31 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 | P14 OPEN | Live audio-driver switching is refused. Saved preferences apply on the next host start. Native JACK audio/MIDI supports dynamic track/bus publication, live discovery/connections and session restoration over native session carriers; CPAL remains separate. See [dynamic port graphs](port-graph.md). See [native JACK evidence](evidence/native-jack.md). | Audio profiles and confirmation/settings UI; independent driver/device code; reference tests `audio_driver_switch_requires_confirmation_and_resamples_transactionally`, `failed_audio_driver_switch_restores_prior_runtime_and_reports_failure`, `recording_blocks_confirmed_audio_driver_switch_without_stopping_recording`, `persistence_failure_keeps_new_driver_active_and_enables_save_retry`. | Host-managed device/engine transition with service-owned capture/restore, preflight/confirmation, resampling and rollback. Keep preference persistence and its retry separate from actual driver-switch success. Track native driver/backend equivalence explicitly. |
 | P15 COMPLETE | System/Master audio click preview is supported. System uses client-local native/Web Audio output; Master uses bounded service staging and transient RT bus playback, including split hosts. Master identity survives rename, reorder and save/load; Stop, switching and recovery preserve loop media and transport. | `shoopdaloop/persistence_io/preview`, native/browser players and production application mailbox; service/adapter/engine preview handlers. [Preview contract and completion evidence](preview.md) records output, cancellation, resource, wire-transport and persistence tests, Linux System/CPAL/JACK measurements and hosted Chromium acceptance. | Complete under the user-approved scope and existing evidence. No additional physical-platform or multi-machine testing is required for closure. Bus FX stays P08; audio/MIDI generation and insertion are already supported under P11. |
 | P16 OPEN | Session/filesystem script ownership conversion and related session resource workflows are unavailable. Script source export, fresh scripts, local dialogs, timers, controller MIDI and explicit starts are available. | `shoop_scripting`, `shoop_script_resources`, `shoop_egui/script_dialogs`; reference tests `scripts_export_exact_source_and_convert_session_ownership`, `filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal`, `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`. | Restore client-local file/resource workflows and explicit session-owned script data through service commands, without moving VM execution to the host. Respect the recovery no-auto-restart rule. |
+| P17 OPEN | Composite replacing and dry/wet script-event modes/topologies remain unavailable. The completed P03 core supports direct-track Play/Stop/Record events; dependent modes refuse atomically, including whole-document load. | P03's [execution contract](composites.md), service-owned composite documents, reference script-event/default-action/track-role behavior and [surface audit](evidence/composites.md#reference-surface-and-dependency-integration). Former P03 Stage 9, moved here with user approval on 2026-11-05. | Integrate P05 replacing (#940) and P06/P07 dry/wet/processor support (#946) through compilation, service/protocol/engine mappings, admission, monitoring and capture. Complete the [interaction validation below](#p17-composite-mode-integration) before closing this item. |
+
+## P17 composite mode integration
+
+This is the dependent-mode work formerly tracked by Stage 9 of
+[PLAN_P03_COMPOSITES.md](../../PLAN_P03_COMPOSITES.md). It is a separate OPEN parity
+item under the user-approved scope split on 2026-11-05. P03 is complete for its
+direct-track core; P17 depends on replacing (P05, #940), dry/wet modes and tracks
+(P06), and track processors/topology (P07, #946).
+
+- [ ] Integrate replacing and dry/wet script-event modes with those production
+  capabilities. Extend loop/RT mode representation, compiler and protocol mappings,
+  service admission, default-action/role mapping, automatic monitoring and capture.
+  Preserve the difference between explicit event modes and dynamic default actions;
+  never translate an unsupported mode into ordinary playback or recording.
+- [ ] Validate nested explicit/regular combinations, mixed selections, event-mode
+  edits, capture/monitoring, child independence, persistence and recovery for every
+  restored dependent mode and its original platform scope. Include exact media and
+  role-order round trips, unsupported whole-document refusal and the existing
+  frame-clock/frozen-timing contract.
+
+Verification uses focused local composite interaction cases and CI's dependent
+feature/platform suites. Keep per-mode capability gates and atomic refusal until
+support exists end to end. Restoring an individual mode flag or encoding its tag
+does not establish that the composite interaction is executable.
 
 The P04/P05 storage foundations have library evidence for both
 [shared audio](../../src/rust/rt_runtime/docs/reference/shared-audio.md) and
