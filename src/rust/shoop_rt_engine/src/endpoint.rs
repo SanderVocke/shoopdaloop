@@ -905,7 +905,10 @@ impl ControlEndpoint {
             } => {
                 let entry = self.model.strip_mut(strip).ok_or(Refusal::InvalidId);
                 match entry {
-                    Ok(entry) if !dry_through_wet || entry.processor.is_some() => {
+                    Ok(entry)
+                        if !dry_through_wet
+                            || (entry.processor.is_some() && entry.shape.audio_outputs > 0) =>
+                    {
                         entry.default_dry = dry_through_wet;
                         self.model.revision += 1;
                         if self.job.is_some() {
@@ -1222,6 +1225,10 @@ impl ControlEndpoint {
                     output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
                     midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
                     midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
+                    latest_input_midi: (cells.owner_generation.load(Ordering::Relaxed)
+                        == strip.id.0.generation)
+                        .then(|| cells.latest_midi())
+                        .flatten(),
                 }));
             }
             for (slot, bus) in self.model.buses.iter().enumerate() {

@@ -40,9 +40,8 @@ fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
         BackendLoopMode::Playing => Ok(LoopMode::Playing),
         BackendLoopMode::Recording => Ok(LoopMode::Recording),
         BackendLoopMode::Replacing => Err(unavailable(BackendCapability::ReplacingMode)),
-        BackendLoopMode::PlayingDryThroughWet | BackendLoopMode::RecordingDryIntoWet => {
-            Err(unavailable(BackendCapability::DryWetModes))
-        }
+        BackendLoopMode::PlayingDryThroughWet => Ok(LoopMode::PlayingDryThroughWet),
+        BackendLoopMode::RecordingDryIntoWet => Ok(LoopMode::RecordingDryIntoWet),
         BackendLoopMode::Unknown => Err(anyhow!("a loop cannot transition to an unknown mode")),
     }
 }
@@ -246,6 +245,18 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         BackendCapabilities::NONE
             .with(BackendCapability::BusManagement, self.is_ready())
             .with(
+                BackendCapability::DryWetTracks,
+                self.capabilities.contains(Capabilities::DRY_WET),
+            )
+            .with(
+                BackendCapability::DryWetModes,
+                self.capabilities.contains(Capabilities::DRY_WET),
+            )
+            .with(
+                BackendCapability::TrackFx,
+                self.capabilities.contains(Capabilities::TRACK_PROCESSORS),
+            )
+            .with(
                 BackendCapability::MidiInjection,
                 self.capabilities.contains(Capabilities::MIDI_INJECTION),
             )
@@ -390,8 +401,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .mirror
             .live_track(track_id)
             .ok_or_else(|| anyhow!("unknown track {track_id:?}"))?;
-        if mode == BackendDefaultPlaybackMode::DryThroughWet
-            && matches!(track.topology, BackendTrackTopology::Direct { .. })
+        if mode == BackendDefaultPlaybackMode::DryThroughWet && (!track.topology.has_wet_channels())
         {
             return Err(unavailable(BackendCapability::DryWetModes));
         }
@@ -667,9 +677,24 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         mode: BackendLoopMode,
         cycles_delay: Option<u32>,
     ) -> Result<()> {
+        let dry = matches!(
+            mode,
+            BackendLoopMode::PlayingDryThroughWet | BackendLoopMode::RecordingDryIntoWet
+        );
+        if dry && !self.capabilities.contains(Capabilities::DRY_WET) {
+            return Err(unavailable(BackendCapability::DryWetModes));
+        }
         let mode = protocol_mode(mode)?;
         self.ready()?;
         let slot = self.live_loop_slot(loop_id)?;
+        if dry
+            && matches!(
+                self.mirror.tracks[&self.mirror.loops[&loop_id].track].topology,
+                BackendTrackTopology::Direct { .. }
+            )
+        {
+            return Err(unavailable(BackendCapability::DryWetModes));
+        }
         self.requests.push(
             Request::LoopTransition {
                 loop_id: slot,

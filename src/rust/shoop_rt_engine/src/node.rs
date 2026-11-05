@@ -342,6 +342,7 @@ impl StripInput {
         self.release = false;
         let cells = &self.cells.strips[self.slot];
         cells.routing_state.store(0, Ordering::Relaxed);
+        cells.latest_input_midi.store(0, Ordering::Relaxed);
         cells.input.clear();
         cells
             .midi_in
@@ -803,6 +804,7 @@ impl StripInput {
         let mut active = false;
         for message in self.injected.iter_mut() {
             if let Some(packet) = message.take() {
+                cells.observe_midi(packet.as_bytes());
                 capture.push(0, frames, packet.as_bytes())?;
                 if monitoring {
                     monitor.push(0, frames, packet.as_bytes())?;
@@ -814,6 +816,10 @@ impl StripInput {
             }
         }
         active |= copy_midi(input, capture, frames)?;
+        for index in 0..input.len() {
+            let (_, packet) = input.get(index).ok_or(Error::InvalidState)?;
+            cells.observe_midi(packet);
+        }
         if monitoring {
             for index in 0..input.len() {
                 let (offset, packet) = input.get(index).ok_or(Error::InvalidState)?;

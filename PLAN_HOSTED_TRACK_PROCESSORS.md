@@ -415,6 +415,19 @@ additional fixed storage; snapshots carry bounded retention/saturation counters.
 Native and Wasm graph/adapter/protocol regressions pass. MIDI Learn, service/UI
 commands and persistence admission remain open, so capabilities remain gated.
 
+Service integration milestone: the service projects the host catalog, confirmed
+topologies, independent input/output widths, processor editor state and default
+playback choices. It forwards typed FX/synth/editor/mapping operations and resolves
+default UI/Lua actions per track. Ordered private default-mode intent preserves
+rapid reversals before acknowledgement without optimistic confirmed state. Rerecord
+gestures schedule the reference number of sync cycles and restore the previous
+mode. Protocol v14 carries bounded latest dry-input MIDI observations for the
+existing Learn widgets; slot reuse clears them. Wire-level External tests cover
+unequal widths, default reversals, default actions and explicit wet Play; core
+heap-guarded tests cover MIDI retention/injection/reuse. These tests explicitly
+expose foundation capabilities in a fixture while production admission stays gated
+until persistence, media and recorded-state support is complete.
+
 ### 7. Complete persistence, media and replacement/recovery
 
 - [ ] Extend persistence images/codecs, service capture/mapping and adapter replacement

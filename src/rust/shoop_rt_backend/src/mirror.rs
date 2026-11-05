@@ -124,6 +124,7 @@ pub(crate) struct Track {
     pub output_meter: Meter,
     pub midi_in: bool,
     pub midi_out: bool,
+    pub latest_input_midi: Option<shoop_backend::BackendLatestMidiMessage>,
 }
 
 impl Track {
@@ -591,6 +592,7 @@ impl Mirror {
                 .input_meter
                 .take_db(track.topology.dry_audio_channels() as usize),
             output_peaks: track.output_meter.take_db(channels),
+            latest_input_midi_message: track.latest_input_midi,
             input_midi_activity: core::mem::take(&mut track.midi_in),
             output_midi_activity: core::mem::take(&mut track.midi_out),
             ..Default::default()

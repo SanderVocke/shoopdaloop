@@ -154,6 +154,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 output_peaks,
                 midi_in,
                 midi_out,
+                latest_input_midi,
             } => {
                 let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                     return;
@@ -163,6 +164,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     track.output_meter.record(output_peaks.as_slice());
                     track.midi_in |= midi_in;
                     track.midi_out |= midi_out;
+                    track.latest_input_midi = latest_input_midi.and_then(|message| {
+                        let packet = message.as_bytes();
+                        if packet.len() > 4 {
+                            return None;
+                        }
+                        let mut bytes = [0; 4];
+                        bytes[..packet.len()].copy_from_slice(packet);
+                        Some(shoop_backend::BackendLatestMidiMessage {
+                            bytes,
+                            len: packet.len() as u8,
+                        })
+                    });
                 }
             }
             Telemetry::Loop {

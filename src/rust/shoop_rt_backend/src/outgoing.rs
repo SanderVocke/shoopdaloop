@@ -323,6 +323,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 output_meter: Default::default(),
                 midi_in: false,
                 midi_out: false,
+                latest_input_midi: None,
             },
         );
         self.mirror.strip_tracks.insert(strip, track_id);

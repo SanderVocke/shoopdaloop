@@ -458,6 +458,7 @@ pub enum Telemetry {
         output_peaks: Peaks,
         midi_in: bool,
         midi_out: bool,
+        latest_input_midi: Option<MidiMessage>,
     },
     Loop {
         loop_id: LoopSlotId,

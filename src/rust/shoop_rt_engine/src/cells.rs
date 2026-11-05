@@ -44,6 +44,7 @@ pub(crate) struct StripCells {
     pub output: Peak,
     pub midi_in: AtomicBool,
     pub midi_out: AtomicBool,
+    pub latest_input_midi: AtomicU64,
     pub owner_generation: AtomicU32,
     pub processor_demand: AtomicBool,
     pub routing_state: AtomicU32,
@@ -51,12 +52,31 @@ pub(crate) struct StripCells {
     pub wet_gate: Box<[AtomicU32]>,
 }
 impl StripCells {
+    pub(crate) fn observe_midi(&self, packet: &[u8]) {
+        if packet.is_empty() || packet.len() > 4 {
+            return;
+        }
+        let mut value = (packet.len() as u64) << 32;
+        for (index, byte) in packet.iter().enumerate() {
+            value |= u64::from(*byte) << (8 * index);
+        }
+        self.latest_input_midi.store(value, Ordering::Relaxed);
+    }
+    pub(crate) fn latest_midi(&self) -> Option<shoop_rt_protocol::MidiMessage> {
+        let value = self.latest_input_midi.load(Ordering::Relaxed);
+        let len = (value >> 32) as usize;
+        if len == 0 || len > 4 {
+            return None;
+        }
+        shoop_rt_protocol::MidiMessage::new(&value.to_le_bytes()[..len])
+    }
     fn new(frames: usize) -> Self {
         Self {
             input: Peak::default(),
             output: Peak::default(),
             midi_in: AtomicBool::new(false),
             midi_out: AtomicBool::new(false),
+            latest_input_midi: AtomicU64::new(0),
             owner_generation: AtomicU32::new(0),
             processor_demand: AtomicBool::new(false),
             routing_state: AtomicU32::new(0),

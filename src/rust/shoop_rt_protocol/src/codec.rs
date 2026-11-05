@@ -1118,13 +1118,15 @@ impl Wire for Telemetry {
                 output_peaks,
                 midi_in,
                 midi_out,
+                latest_input_midi,
             } => {
                 w.u8(1)?;
                 strip.put(w)?;
                 input_peaks.put(w)?;
                 output_peaks.put(w)?;
                 w.bool(*midi_in)?;
-                w.bool(*midi_out)
+                w.bool(*midi_out)?;
+                latest_input_midi.put(w)
             }
             Self::Loop {
                 loop_id,
@@ -1173,6 +1175,7 @@ impl Wire for Telemetry {
                 output_peaks: Peaks::get(r)?,
                 midi_in: r.bool()?,
                 midi_out: r.bool()?,
+                latest_input_midi: Option::get(r)?,
             },
             2 => Self::Loop {
                 loop_id: LoopSlotId::get(r)?,

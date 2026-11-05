@@ -31,9 +31,8 @@ impl Service {
                 self.global.sync.then(|| self.target_delay()),
                 Some(self.global.apply_n_cycles),
             )?,
-            TriggerDefaultPlayback { loops } => self.transition(
+            TriggerDefaultPlayback { loops } => self.transition_default(
                 loops,
-                BackendLoopMode::Playing,
                 self.global.sync.then(|| self.target_delay()),
                 Some(self.global.apply_n_cycles),
             )?,
@@ -230,9 +229,8 @@ fn control_mode(mode: LoopMode) -> Result<BackendLoopMode, CommandError> {
         LoopMode::Playing => Ok(BackendLoopMode::Playing),
         LoopMode::Recording => Ok(BackendLoopMode::Recording),
         LoopMode::Replacing => Err(CommandError::unsupported(BackendCapability::ReplacingMode)),
-        LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet => {
-            Err(CommandError::unsupported(BackendCapability::DryWetModes))
-        }
+        LoopMode::PlayingDryThroughWet => Ok(BackendLoopMode::PlayingDryThroughWet),
+        LoopMode::RecordingDryIntoWet => Ok(BackendLoopMode::RecordingDryIntoWet),
         LoopMode::Unknown => Err(CommandError::invalid("unknown loop mode")),
     }
 }

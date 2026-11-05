@@ -38,7 +38,20 @@ impl Service {
                     return Err(CommandError::invalid("the sync track has one loop"));
                 }
                 let backend = entry.backend;
-                let audio = entry.audio_channels;
+                let audio = match entry.view.topology {
+                    TrackTopology::Direct => entry.audio_channels,
+                    TrackTopology::DryWet {
+                        dry_audio_channels,
+                        wet_audio_channels,
+                        ..
+                    } => {
+                        if wet_audio_channels > 0 {
+                            wet_audio_channels
+                        } else {
+                            dry_audio_channels
+                        }
+                    }
+                };
                 let midi = entry.midi;
                 self.next_loop
                     .checked_add(1)
@@ -300,17 +313,67 @@ impl Service {
         if self.tracks.len() == MAX_TRACKS {
             return Err(CommandError::invalid("session track limit reached"));
         }
-        let (audio_channels, midi) = match spec.topology {
+        let (topology, default_mode, port_count) = match &spec.topology {
             TrackSpecTopology::Direct {
                 audio_channels,
                 midi,
-            } => (audio_channels, midi),
-            TrackSpecTopology::DryWet { .. } => {
-                return Err(CommandError::unsupported(BackendCapability::DryWetTracks))
+            } => (
+                BackendTrackTopology::Direct {
+                    audio_channels: *audio_channels,
+                    midi: *midi,
+                },
+                DefaultPlaybackMode::Regular,
+                2 * u64::from(*audio_channels) + 2 * u64::from(*midi),
+            ),
+            TrackSpecTopology::DryWet {
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+                processor_type,
+                default_playback_mode,
+            } => {
+                if !self
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::DryWetTracks)
+                {
+                    return Err(CommandError::unsupported(BackendCapability::DryWetTracks));
+                }
+                let external = processor_type.as_str() == TrackProcessorTypeId::EXTERNAL;
+                let topology = if external {
+                    BackendTrackTopology::DryWetExternal {
+                        dry_audio_channels: *dry_audio_channels,
+                        wet_audio_channels: *wet_audio_channels,
+                        dry_midi: *dry_midi,
+                    }
+                } else {
+                    BackendTrackTopology::DryWetProcessor {
+                        processor_type: processor_type.as_str().to_owned(),
+                        dry_audio_channels: *dry_audio_channels,
+                        wet_audio_channels: *wet_audio_channels,
+                        dry_midi: *dry_midi,
+                    }
+                };
+                let ports = u64::from(*dry_audio_channels)
+                    + u64::from(*wet_audio_channels)
+                    + u64::from(*dry_midi);
+                (
+                    topology,
+                    *default_playback_mode,
+                    ports * if external { 2 } else { 1 },
+                )
             }
         };
-        spec.validate(&[])
+        spec.validate(&self.track_processors)
             .map_err(|error| CommandError::invalid(format!("invalid track: {error:?}")))?;
+        if default_mode == DefaultPlaybackMode::DryThroughWet
+            && !self
+                .backend
+                .capabilities()
+                .supports(BackendCapability::DryWetModes)
+        {
+            return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+        }
         if spec.latency != TrackLatencySpec::default() {
             return Err(CommandError::unsupported(
                 BackendCapability::LatencyCompensation,
@@ -334,7 +397,7 @@ impl Service {
             .checked_add(slot_count as u64)
             .ok_or_else(|| CommandError::invalid("session identity space exhausted"))?;
         self.next_port
-            .checked_add(u64::from(audio_channels) * 2 + u64::from(midi) * 2)
+            .checked_add(port_count)
             .ok_or_else(|| CommandError::invalid("session identity space exhausted"))?;
         let mut base: String = spec
             .name
@@ -355,18 +418,20 @@ impl Service {
         if self
             .ports
             .values()
-            .any(|port| port.view.name.starts_with(&format!("{base}_direct_")))
+            .any(|port| port.view.name.starts_with(&format!("{base}_")))
         {
             base = format!("{base}_{}", self.next_track);
         }
-        let created = self.backend.create_direct_track(DirectTrackRequest {
+        let created = self.backend.create_track(TrackRequest {
             port_name_base: base,
-            audio_channels,
-            midi,
+            topology: topology.clone(),
             initial_loops: slot_count,
         })?;
-        let (id, loops) = self.insert_track(created, spec.name, audio_channels, midi, false)?;
+        let (id, loops) = self.insert_track(created, spec.name, topology, false)?;
         self.active_effect = Effect::TrackCreated(id, loops.clone());
+        if default_mode == DefaultPlaybackMode::DryThroughWet {
+            self.set_default_playback(id, default_mode)?;
+        }
         if self.global.sync {
             let source = self.sync_backend();
             for loop_id in &loops {
@@ -416,11 +481,52 @@ impl Service {
                 self.tracks.get_mut(&id).unwrap().view.structural_state = StructuralState::Removing;
                 return Ok(Effect::TrackRemoved(id));
             }
-            TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::Regular) => {
-                return Ok(Effect::None)
+            TrackAction::DefaultPlaybackModeChanged(mode) => {
+                if track
+                    .default_playback_intent
+                    .map_or(track.view.default_playback_mode, |(_, desired)| desired)
+                    == mode
+                {
+                    return Ok(Effect::None);
+                }
+                if !self
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::DryWetModes)
+                {
+                    return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+                }
+                self.set_default_playback(id, mode)?;
+                return Ok(Effect::None);
             }
-            TrackAction::DefaultPlaybackModeChanged(_) => {
-                return Err(CommandError::unsupported(BackendCapability::DryWetModes))
+            action @ (TrackAction::FxActiveChanged(_)
+            | TrackAction::FxVisibilityChanged(_)
+            | TrackAction::FxToggleOrRecover
+            | TrackAction::FxRestoreState(_)
+            | TrackAction::FxClearLogs
+            | TrackAction::BuiltInFx(_)
+            | TrackAction::OxiSynth(_)) => {
+                if !self
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::TrackFx)
+                {
+                    return Err(CommandError::unsupported(BackendCapability::TrackFx));
+                }
+                let control = match action {
+                    TrackAction::FxActiveChanged(on) => BackendTrackFxControl::SetActive(on),
+                    TrackAction::FxVisibilityChanged(on) => BackendTrackFxControl::SetVisible(on),
+                    TrackAction::FxToggleOrRecover => BackendTrackFxControl::ToggleOrRecover,
+                    TrackAction::FxRestoreState(state) => {
+                        BackendTrackFxControl::RestoreState(state)
+                    }
+                    TrackAction::FxClearLogs => BackendTrackFxControl::ClearLogs,
+                    TrackAction::BuiltInFx(control) => BackendTrackFxControl::BuiltInFx(control),
+                    TrackAction::OxiSynth(control) => BackendTrackFxControl::OxiSynth(control),
+                    _ => unreachable!(),
+                };
+                self.backend.set_track_fx_control(backend, control)?;
+                return Ok(Effect::None);
             }
             TrackAction::OutputGainChanged(value) => BackendTrackControl::OutputGainDb(value),
             TrackAction::OutputBalanceChanged(value) => BackendTrackControl::OutputBalance(value),
@@ -446,7 +552,6 @@ impl Service {
                 self.set_input_monitoring(id, enabled)?;
                 return Ok(Effect::None);
             }
-            _ => return Err(CommandError::unsupported(BackendCapability::TrackFx)),
         };
         self.backend.set_track_control(backend, control)?;
         Ok(Effect::None)
@@ -494,11 +599,11 @@ impl Service {
                 {
                     BackendLoopMode::Stopped
                 } else if view.mode == LoopMode::Recording {
-                    BackendLoopMode::Playing
+                    self.default_playback(id)?
                 } else if view.empty && view.mode == LoopMode::Stopped {
                     BackendLoopMode::Recording
                 } else if !view.empty && view.mode == LoopMode::Stopped {
-                    BackendLoopMode::Playing
+                    self.default_playback(id)?
                 } else {
                     BackendLoopMode::Stopped
                 };
@@ -514,9 +619,13 @@ impl Service {
                     Some(self.global.apply_n_cycles),
                 )?;
             }
-            LoopAction::PlayClicked | LoopAction::RecordClicked | LoopAction::StopClicked => {
+            LoopAction::PlayClicked
+            | LoopAction::PlayDryClicked
+            | LoopAction::RecordClicked
+            | LoopAction::StopClicked => {
                 let mode = match action {
                     LoopAction::PlayClicked => BackendLoopMode::Playing,
+                    LoopAction::PlayDryClicked => BackendLoopMode::PlayingDryThroughWet,
                     LoopAction::RecordClicked => BackendLoopMode::Recording,
                     _ => BackendLoopMode::Stopped,
                 };
@@ -567,9 +676,7 @@ impl Service {
                     .unwrap();
                 order.swap(a, b);
             }
-            LoopAction::PlayDryClicked | LoopAction::RerecordClicked => {
-                return Err(CommandError::unsupported(BackendCapability::DryWetModes))
-            }
+            LoopAction::RerecordClicked => self.rerecord_targets(id)?,
             LoopAction::GrabClicked => {
                 return Err(CommandError::unsupported(BackendCapability::Grab))
             }
@@ -628,13 +735,73 @@ impl Service {
         delay: Option<u32>,
         cycles: Option<u32>,
     ) -> core::result::Result<(), CommandError> {
-        let targets: BTreeSet<_> = ids.into_iter().collect();
+        self.transition_modes(
+            ids.into_iter().map(|id| (id, mode)).collect(),
+            delay,
+            cycles,
+        )
+    }
+
+    fn default_playback(&self, id: LoopId) -> Result<BackendLoopMode, CommandError> {
+        let entry = self.loop_entry(id)?;
+        let track = self.track(entry.track)?;
+        Ok(
+            match track
+                .default_playback_intent
+                .map_or(track.view.default_playback_mode, |(_, desired)| desired)
+            {
+                DefaultPlaybackMode::Regular => BackendLoopMode::Playing,
+                DefaultPlaybackMode::DryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+            },
+        )
+    }
+
+    fn transition_default(
+        &mut self,
+        ids: Vec<LoopId>,
+        delay: Option<u32>,
+        cycles: Option<u32>,
+    ) -> Result<(), CommandError> {
+        let modes = ids
+            .into_iter()
+            .map(|id| self.default_playback(id).map(|mode| (id, mode)))
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        self.transition_modes(modes, delay, cycles)
+    }
+
+    fn transition_modes(
+        &mut self,
+        modes: BTreeMap<LoopId, BackendLoopMode>,
+        delay: Option<u32>,
+        cycles: Option<u32>,
+    ) -> Result<(), CommandError> {
+        let targets: BTreeSet<_> = modes.keys().copied().collect();
         let mut tracks = BTreeSet::new();
         for id in &targets {
-            tracks.insert(self.loop_entry(*id)?.track);
+            let track = self.loop_entry(*id)?.track;
+            let dry = matches!(
+                modes[id],
+                BackendLoopMode::PlayingDryThroughWet | BackendLoopMode::RecordingDryIntoWet
+            );
+            if dry
+                && (!self
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::DryWetModes)
+                    || matches!(self.track(track)?.view.topology, TrackTopology::Direct))
+            {
+                return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+            }
+            if matches!(
+                modes[id],
+                BackendLoopMode::Playing
+                    | BackendLoopMode::PlayingDryThroughWet
+                    | BackendLoopMode::Recording
+            ) {
+                tracks.insert(track);
+            }
         }
-        if self.global.solo && matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Recording)
-        {
+        if self.global.solo {
             let others: Vec<_> = self
                 .loops
                 .iter()
@@ -653,6 +820,7 @@ impl Service {
             .into_iter()
             .filter(|id| targets.contains(id))
         {
+            let mode = modes[&id];
             let backend = self.loops[&id].backend;
             self.backend.transition_loop(backend, mode, delay)?;
             if mode == BackendLoopMode::Recording && cycles.unwrap_or(0) > 0 {
@@ -667,6 +835,80 @@ impl Service {
                     Some(delay.unwrap_or(0).saturating_add(cycles.unwrap())),
                 )?;
             }
+        }
+        Ok(())
+    }
+
+    fn rerecord_targets(&mut self, initiating: LoopId) -> Result<(), CommandError> {
+        if !self
+            .backend
+            .capabilities()
+            .supports(BackendCapability::DryWetModes)
+        {
+            return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+        }
+        let entry = self.loop_entry(initiating)?;
+        let sync = self
+            .loops
+            .values()
+            .find(|entry| entry.view.sync)
+            .map_or(0, |entry| entry.view.length_frames);
+        let cycles = if sync == 0 {
+            1
+        } else {
+            entry.view.length_frames.div_ceil(sync).max(1)
+        };
+        let position = self
+            .observed
+            .loops
+            .get(&entry.backend)
+            .map_or(0, |state| u64::from(state.position));
+        let current = if sync == 0 { 0 } else { position / sync };
+        let delay = if self.loops.values().any(|entry| entry.view.targeted) {
+            u64::from(self.target_delay())
+        } else {
+            cycles.saturating_sub(current).saturating_sub(1)
+        };
+        let delay = u32::try_from(delay)
+            .map_err(|_| CommandError::invalid("rerecord delay exceeds transition capacity"))?;
+        let cycles = u32::try_from(cycles)
+            .map_err(|_| CommandError::invalid("rerecord length exceeds transition capacity"))?;
+        let finish = delay
+            .checked_add(cycles)
+            .ok_or_else(|| CommandError::invalid("rerecord end exceeds transition capacity"))?;
+        let selected = entry.view.selected;
+        let targets = self
+            .ordered_loops()
+            .into_iter()
+            .filter(|id| *id == initiating || (selected && self.loops[id].view.selected))
+            .map(|id| {
+                let entry = &self.loops[&id];
+                if entry.view.empty
+                    || matches!(
+                        self.tracks[&entry.track].view.topology,
+                        TrackTopology::Direct
+                    )
+                {
+                    return Err(CommandError::invalid(
+                        "rerecord requires a recorded dry/wet loop",
+                    ));
+                }
+                let mode = self
+                    .observed
+                    .loops
+                    .get(&entry.backend)
+                    .map_or(BackendLoopMode::Stopped, |state| state.mode);
+                Ok((entry.backend, mode))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for (backend, previous) in targets {
+            self.backend.transition_loop(
+                backend,
+                BackendLoopMode::RecordingDryIntoWet,
+                Some(delay),
+            )?;
+            self.backend
+                .transition_loop(backend, previous, Some(finish))?;
         }
         Ok(())
     }
@@ -804,6 +1046,25 @@ impl Service {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn set_default_playback(
+        &mut self,
+        id: TrackId,
+        mode: DefaultPlaybackMode,
+    ) -> Result<(), CommandError> {
+        let before = self.backend.mutation_cursor();
+        self.backend.set_track_default_playback_mode(
+            self.tracks[&id].backend,
+            match mode {
+                DefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                DefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
+            },
+        )?;
+        let sequence = self.backend.mutation_cursor();
+        self.tracks.get_mut(&id).unwrap().default_playback_intent =
+            Some((if sequence > before { sequence } else { 0 }, mode));
         Ok(())
     }
 

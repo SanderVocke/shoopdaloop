@@ -378,6 +378,7 @@ impl Candidate {
                     audio_channels: track.audio_channels,
                     midi: track.midi,
                     monitoring_intent: None,
+                    default_playback_intent: None,
                     view: TrackState {
                         id,
                         name: track.name.clone(),
