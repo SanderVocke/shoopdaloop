@@ -1,0 +1,60 @@
+diff --git a/hw/arm/xilinx_zynq.c b/hw/arm/xilinx_zynq.c
+--- a/hw/arm/xilinx_zynq.c
++++ b/hw/arm/xilinx_zynq.c
+@@ -93,6 +93,7 @@
+     Clock *ps_clk;
+     ARMCPU *cpu[ZYNQ_MAX_CPUS];
+     uint8_t boot_mode;
++    uint8_t phy_address;
+ };
+ 
+ static void zynq_write_board_setup(ARMCPU *cpu,
+@@ -115,14 +116,14 @@
+ 
+ static struct arm_boot_info zynq_binfo = {};
+ 
+-static void gem_init(uint32_t base, qemu_irq irq)
++static void gem_init(uint32_t base, qemu_irq irq, uint8_t phy_address)
+ {
+     DeviceState *dev;
+     SysBusDevice *s;
+ 
+     dev = qdev_new(TYPE_CADENCE_GEM);
+     qemu_configure_nic_device(dev, true, NULL);
+-    object_property_set_int(OBJECT(dev), "phy-addr", 7, &error_abort);
++    object_property_set_int(OBJECT(dev), "phy-addr", phy_address, &error_abort);
+     s = SYS_BUS_DEVICE(dev);
+     sysbus_realize_and_unref(s, &error_fatal);
+     sysbus_mmio_map(s, 0, base);
+@@ -311,8 +312,8 @@
+     sysbus_create_varargs("cadence_ttc", 0xF8002000,
+             pic[69-GIC_INTERNAL], pic[70-GIC_INTERNAL], pic[71-GIC_INTERNAL], NULL);
+ 
+-    gem_init(0xE000B000, pic[54 - GIC_INTERNAL]);
+-    gem_init(0xE000C000, pic[77 - GIC_INTERNAL]);
++    gem_init(0xE000B000, pic[54 - GIC_INTERNAL], zynq_machine->phy_address);
++    gem_init(0xE000C000, pic[77 - GIC_INTERNAL], zynq_machine->phy_address);
+ 
+     for (n = 0; n < 2; n++) {
+         int hci_irq = n ? 79 : 56;
+@@ -475,11 +476,20 @@
+     object_property_set_default_str(prop, "qspi");
+ }
+ 
++static void zynq_machine_instance_init(Object *obj)
++{
++    ZynqMachineState *m = ZYNQ_MACHINE(obj);
++    m->phy_address = 7;
++    object_property_add_uint8_ptr(obj, "phy-address", &m->phy_address,
++                                  OBJ_PROP_FLAG_READWRITE);
++}
++
+ static const TypeInfo zynq_machine_type = {
+     .name = TYPE_ZYNQ_MACHINE,
+     .parent = TYPE_MACHINE,
+     .class_init = zynq_machine_class_init,
+     .instance_size = sizeof(ZynqMachineState),
++    .instance_init = zynq_machine_instance_init,
+ };
+ 
+ static void zynq_machine_register_types(void)

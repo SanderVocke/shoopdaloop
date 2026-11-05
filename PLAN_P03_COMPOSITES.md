@@ -933,3 +933,10 @@ explicit response to a failure or identified risk, not a default milestone ritua
   seconds for the existing large-media phases and 900 seconds for the complete
   large-media browser scenario. Ordinary/composite budgets and all exact media,
   rendering, recovery and ownership assertions stay intact.
+- The target advanced to `a068ce72` while final CI ran, adding board profiles
+  (#947). Reconciled its probe snapshot barrier with P03's `AncestorsStopped`
+  outcome and composite snapshot field; retained both outcome/snapshot orderings,
+  terminal shutdown behavior, board budgets and the non-growth soak check. Four
+  focused board-contract tests, two probe tests and the warning-denying native
+  probe build pass. Registered the incoming build-only module in the closed
+  tracing inventory. Board emulator/platform execution remains in CI.

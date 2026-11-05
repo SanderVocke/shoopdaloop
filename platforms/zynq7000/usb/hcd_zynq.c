@@ -71,24 +71,7 @@ static bool phy_write(uint8_t address, uint8_t value) {
     return ulpi(address, &value, true);
 }
 
-static void board_reset(void) {
-    *reg32(0xf8000008) = 0xdf0d;
-    *reg32(0xf800012c) |= (1u << 2) | (1u << 22);
-    *reg32(0xf800071c) = 0x200;
-    for (unsigned pin = 28; pin <= 39; ++pin)
-        *reg32(0xf8000700 + 4 * pin) = pin == 29 || pin == 31 || pin == 36 ? 0x205 : 0x204;
-    *reg32(0xf8000210) |= 1;
-    *reg32(0xe000a000) = 0xff7f0000;
-    *reg32(0xe000a204) |= 1u << 7;
-    *reg32(0xe000a208) |= 1u << 7;
-    __asm__ volatile("dsb sy" ::: "memory");
-    vTaskDelay(pdMS_TO_TICKS(2));
-    *reg32(0xe000a000) = 0xff7f0080;
-    *reg32(0xf8000210) &= ~1u;
-    *reg32(0xf8000004) = 0x767b;
-    __asm__ volatile("dsb sy" ::: "memory");
-    vTaskDelay(pdMS_TO_TICKS(10));
-}
+extern void shoop_board_usb_reset(void);
 
 static bool phy_init(void) {
     uint8_t id[4], saved, scratch;
@@ -107,7 +90,7 @@ static bool phy_init(void) {
 
 bool hcd_init(uint8_t rhport, const tusb_rhport_init_t *init) {
     if (rhport != 0 || init->role != TUSB_ROLE_HOST) return false;
-    board_reset();
+    shoop_board_usb_reset();
     size_t size = (size_t)(__usb_dma_end - __usb_dma_start);
     if (!size || size > 0x100000 || ((uintptr_t)__usb_dma_start & 0xfffff)) return false;
     Xil_SetTlbAttributes((INTPTR)__usb_dma_start, NORM_NONCACHE);

@@ -207,7 +207,7 @@ static void network(void *unused) {
     unsigned char mac[] = { 0x02, 0, 0, 0, 0, 1 };
 #endif
     lwip_init();
-    configASSERT(xemac_add(&interface, &ip, &mask, &gateway, mac, 0xe000b000));
+    configASSERT(xemac_add(&interface, &ip, &mask, &gateway, mac, SHOOP_GEM_BASE));
     netif_set_default(&interface); netif_set_up(&interface);
     sys_thread_new("gem-input", (void (*)(void *))xemacif_input_thread, &interface, 4096, 4);
     shoop_rust_main();
@@ -221,7 +221,8 @@ static void network(void *unused) {
 }
 int main(void) {
     shoop_platform_init();
-    xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP 1GiB\r\n");
+    xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP board=%s ram_mib=%u\r\n",
+               SHOOP_BOARD_PROFILE, (unsigned)(SHOOP_RAM_BYTES / (1024 * 1024)));
     xil_printf("SHOOP_BUILD %s\r\n", shoop_build_identity);
 #ifdef SHOOP_USB_MIDI
     shoop_usb_start();

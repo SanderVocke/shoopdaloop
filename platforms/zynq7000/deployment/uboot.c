@@ -38,7 +38,7 @@ static const struct shoop_io io = { NULL, read_sector, write_sector };
 static void watchdog(unsigned seconds) {
     writel(0xabc000, 0xf8005000);
     if (seconds) {
-        unsigned count = (uint64_t)seconds * 111111111 / (512 * 4096) + 1;
+        unsigned count = (uint64_t)seconds * SHOOP_WATCHDOG_HZ / (512 * 4096) + 1;
         writel(0x920000 | (count << 2) | 2, 0xf8005004);
         writel(0xabc003, 0xf8005000);
         writel(0x1999, 0xf8005008);
@@ -69,9 +69,14 @@ static int configure_network(void) {
     net_gateway = string_to_ip(env_get("gatewayip"));
     net_server_ip = string_to_ip(env_get("serverip"));
     /* Programmatic env writes bypass callbacks in this U-Boot release. */
+    struct udevice *ethernet = eth_get_dev();
+    if (!ethernet) {
+        puts("SHOOP_ETHERNET_UNAVAILABLE\n");
+        return SHOOP_IO;
+    }
     eth_env_get_enetaddr("ethaddr", eth_get_ethaddr());
-    if (eth_get_ops(eth_get_dev())->write_hwaddr)
-        eth_get_ops(eth_get_dev())->write_hwaddr(eth_get_dev());
+    if (eth_get_ops(ethernet)->write_hwaddr)
+        eth_get_ops(ethernet)->write_hwaddr(ethernet);
     printf("SHOOP_NETWORK ip=%s server=%s\n", env_get("ipaddr"), env_get("serverip"));
     return invalid;
 }
@@ -79,7 +84,7 @@ static int open_card(void) {
     struct mmc *mmc = find_mmc_device(0);
     if (!mmc || mmc_init(mmc)) return SHOOP_IO;
     card = mmc_get_blk_desc(mmc);
-    if (card->blksz != 512 || card->lba != SHOOP_CARD_SECTORS) return SHOOP_INVALID;
+    if (card->blksz != 512 || card->lba < SHOOP_CARD_SECTORS) return SHOOP_INVALID;
     uint8_t mbr[512];
     if (read_sector(NULL, 0, mbr) || mbr[510] != 0x55 || mbr[511] != 0xaa) return SHOOP_INVALID;
     const uint32_t starts[] = { SHOOP_BOOT_LBA, SHOOP_METADATA_LBA, SHOOP_SLOT_A_LBA, SHOOP_SLOT_B_LBA };
@@ -113,8 +118,8 @@ static int validate_elf(const uint8_t *bytes, uint32_t size) {
         if (!p.p_memsz || p.p_vaddr != p.p_paddr || p.p_filesz > p.p_memsz || p.p_offset > size ||
             p.p_filesz > size - p.p_offset || p.p_memsz > UINT32_MAX - p.p_paddr) return SHOOP_INVALID;
         uint32_t limit = p.p_paddr + p.p_memsz;
-        if (!((p.p_paddr >= 0x100000 && limit <= 0x08000000) ||
-              (p.p_paddr >= 0x08000000 && limit <= SHOOP_STAGE_ADDRESS))) return SHOOP_INVALID;
+        if (!((p.p_paddr >= SHOOP_PLATFORM_START && limit <= SHOOP_PLATFORM_END) ||
+              (p.p_paddr >= SHOOP_PLATFORM_END && limit <= SHOOP_RUST_END))) return SHOOP_INVALID;
         for (unsigned n = 0; n < regions; ++n)
             if (p.p_paddr < end[n] && limit > begin[n]) return SHOOP_INVALID;
         begin[regions] = p.p_paddr; end[regions++] = limit;
@@ -251,7 +256,7 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response) {
     }
 }
 static int launch(const struct image *image, uint32_t slot, const struct shoop_state *state) {
-    if (gd->relocaddr < 0x3c000000 || gd->start_addr_sp < 0x3c000000) return SHOOP_INVALID;
+    if (gd->relocaddr < SHOOP_LOADER_MIN || gd->start_addr_sp < SHOOP_LOADER_MIN) return SHOOP_INVALID;
     struct shoop_handoff handoff = { .magic = SHOOP_HANDOFF_MAGIC, .version = SHOOP_VERSION,
         .slot = slot, .trial = slot < 2 && slot == state->pending, .config = configuration };
     if (shoop_nonce_reserve(&io, &handoff.nonce)) return SHOOP_IO;
@@ -271,7 +276,9 @@ static int launch(const struct image *image, uint32_t slot, const struct shoop_s
 static int network_boot(struct shoop_state *state) {
     phys_addr_t guard = SHOOP_STAGE_ADDRESS + SHOOP_BUNDLE_MAX;
     if (lmb_alloc_mem(LMB_MEM_ALLOC_ADDR, 0, &guard, SHOOP_BUNDLE_MAX, LMB_NOOVERWRITE)) return SHOOP_IO;
-    int transfer = run_command("tftpboot 0x38000000 shoop.itb", 0);
+    char command[64];
+    snprintf(command, sizeof command, "tftpboot %x shoop.itb", SHOOP_STAGE_ADDRESS);
+    int transfer = run_command(command, 0);
     int release = lmb_free(guard, SHOOP_BUNDLE_MAX, LMB_NOOVERWRITE);
     if (transfer || release) return SHOOP_IO;
     ulong size = env_get_hex("filesize", 0);
@@ -298,6 +305,11 @@ static int boot_local(struct shoop_state *state) {
 static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const argv[]) {
     (void)command; (void)flags;
     watchdog(0);
+    if (gd->ram_size != SHOOP_RAM_BYTES || gd->relocaddr < SHOOP_LOADER_MIN ||
+        gd->start_addr_sp < SHOOP_LOADER_MIN) {
+        puts("SHOOP_MEMORY_CONTRACT_INVALID\n");
+        return CMD_RET_FAILURE;
+    }
     if (argc != 2 || (strcmp(argv[1], "boot") && strcmp(argv[1], "netboot") && strcmp(argv[1], "recovery"))) return CMD_RET_USAGE;
     int storage = open_card();
     storage_valid = !storage;

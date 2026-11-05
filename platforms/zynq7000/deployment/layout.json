@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "profile": "shoop-zynq7000-1g-v1",
   "sector_bytes": 512,
   "card_bytes": 536870912,
   "bundle_max_bytes": 33554432,

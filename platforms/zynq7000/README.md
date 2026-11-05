@@ -1,5 +1,10 @@
 # Zynq-7000 firmware
 
+[Board profiles](boards/README.md) select the BSP, memory budgets and boot chain.
+`--board qemu` preserves the reference below; `--board zedboard` targets 512 MiB
+DDR with reduced budgets. Physical ZedBoard qualification is the final, pending
+stage. Both profiles currently use dummy audio.
+
 Target: one Cortex-A9, 1 GiB PS DDR, FreeRTOS 10.6.1 and AMD lwIP 2.2.0.
 The firmware runs the portable Shoop session service, backend and RT engine with
 stereo 48 kHz dummy audio, 256-frame quanta and one dummy MIDI input/output.

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import secrets
 import struct
-from layout import LAYOUT
+from layout import LAYOUT, boards
 import records
 
 
@@ -61,8 +61,9 @@ def fat32(stream, files):
 
 
 def create(path, boot_files, bundle, build, credential, seed, mode=0, mac="02:00:00:00:00:01",
-           ip="10.0.2.15", netmask="255.255.255.0", gateway="10.0.2.2", server="10.0.2.2"):
-    config = records.configuration(credential, mac, ip, netmask, gateway, server)
+           ip="10.0.2.15", netmask="255.255.255.0", gateway="10.0.2.2", server="10.0.2.2", board=None):
+    board = board or boards.load()
+    config = records.configuration(credential, mac, ip, netmask, gateway, server, board.profile)
     digest = hashlib.sha256(bundle).digest()
     slot = records.slot(bundle, build)
     selection, counter = records.selection(digest, mode), records.counter(seed)
@@ -82,7 +83,7 @@ def create(path, boot_files, bundle, build, credential, seed, mode=0, mac="02:00
                 stream.seek((LAYOUT["metadata"]["lba"] + relative) * 512); stream.write(data)
         stream.seek(LAYOUT["slot_a"]["lba"] * 512); stream.write(slot); stream.write(bundle)
         stream.flush(); os.fsync(stream.fileno())
-    return {"layout_version": LAYOUT["version"], "card_bytes": LAYOUT["card_bytes"], "profile": LAYOUT["profile"],
+    return {"layout_version": LAYOUT["version"], "card_bytes": LAYOUT["card_bytes"], **board.manifest(),
             "build": build, "bundle_sha256": digest.hex(), "nonce_seed": seed,
             "boot_files": {name: hashlib.sha256(data).hexdigest() for name, data in boot_files.items()}}
 
@@ -101,13 +102,22 @@ def main():
     parser.add_argument("--netmask", default="255.255.255.0")
     parser.add_argument("--gateway", default="10.0.2.2")
     parser.add_argument("--server", default="10.0.2.2")
+    boards.argument(parser)
     args = parser.parse_args()
+    board = boards.load(args.board)
+    loader = json.loads((args.boot_files / "board.json").read_text())
+    bundle_manifest = json.loads(args.bundle.with_suffix(".json").read_text())
+    if loader != board.manifest() or any(bundle_manifest.get(k) != v for k, v in board.manifest().items()):
+        parser.error("Loader and bundle must match the selected board")
+    if (bundle_manifest.get("build") != args.build_id or
+            bundle_manifest.get("bundle_sha256") != hashlib.sha256(args.bundle.read_bytes()).hexdigest()):
+        parser.error("Bundle digest or build identity differs from its manifest")
     boot_files = {"BOOT    BIN": (args.boot_files / "boot.bin").read_bytes(),
                   "U-BOOT  IMG": (args.boot_files / "u-boot.img").read_bytes()}
     manifest = create(args.output, boot_files, args.bundle.read_bytes(), args.build_id,
                       args.credential_file.read_bytes(), args.nonce_seed if args.nonce_seed is not None else secrets.randbelow((1 << 64) - 2) + 1,
                       mode=2 if args.network_boot else 0, mac=args.mac, ip=args.ip, netmask=args.netmask,
-                      gateway=args.gateway, server=args.server)
+                      gateway=args.gateway, server=args.server, board=board)
     args.output.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(args.output)
 

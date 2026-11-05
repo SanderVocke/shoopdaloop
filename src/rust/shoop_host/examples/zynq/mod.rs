@@ -1,5 +1,5 @@
 use shoop_app_client::{Client, State};
-use shoop_app_protocol::{ClientMessage, Command, Outcome};
+use shoop_app_protocol::{ClientMessage, Command, OperationId, Outcome};
 use shoop_host::{
     connection::{self, Connection},
     remote::RemoteProfile,
@@ -11,6 +11,8 @@ use std::{
 };
 mod fixture;
 mod recovery;
+#[cfg(test)]
+mod tests;
 mod usb;
 
 fn pump(client: &mut Client, connection: &mut Connection) {
@@ -41,6 +43,7 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
     finish(client, connection, message)
 }
 fn finish(client: &mut Client, connection: &mut Connection, message: ClientMessage) -> Outcome {
+    let wait_for_snapshot = matches!(message, ClientMessage::Submit { .. });
     let operation = match message {
         ClientMessage::Submit { operation, .. } | ClientMessage::Shutdown { operation, .. } => {
             operation
@@ -48,29 +51,38 @@ fn finish(client: &mut Client, connection: &mut Connection, message: ClientMessa
         _ => panic!("operation expected"),
     };
     connection.send(message).expect("command delivery");
+    wait_for_result(client, operation, wait_for_snapshot, |client| {
+        pump(client, connection)
+    })
+}
+fn wait_for_result(
+    client: &mut Client,
+    operation: OperationId,
+    wait_for_snapshot: bool,
+    mut progress: impl FnMut(&mut Client),
+) -> Outcome {
     let deadline = Instant::now() + Duration::from_secs(30);
-    while !client.results().contains_key(&operation) {
-        assert!(Instant::now() < deadline, "command timeout");
-        pump(client, connection);
-    }
-    let outcome = client.results()[&operation].clone();
-    let revision = match outcome {
-        Outcome::Confirmed { revision }
-        | Outcome::AncestorsStopped { revision, .. }
-        | Outcome::TrackCreated { revision, .. }
-        | Outcome::LoopCreated { revision, .. } => Some(revision),
-        Outcome::Refused { .. } => None,
-    };
-    if let Some(revision) = revision {
-        while !client
-            .snapshot()
-            .is_some_and(|snapshot| snapshot.revision >= revision)
-        {
-            assert!(Instant::now() < deadline, "confirmed snapshot timeout");
-            pump(client, connection);
+    loop {
+        if let Some(outcome) = client.results().get(&operation) {
+            let published = match outcome {
+                Outcome::Confirmed { revision }
+                | Outcome::AncestorsStopped { revision, .. }
+                | Outcome::TrackCreated { revision, .. }
+                | Outcome::LoopCreated { revision, .. } => {
+                    !wait_for_snapshot
+                        || client
+                            .snapshot()
+                            .is_some_and(|state| state.revision >= *revision)
+                }
+                Outcome::Refused { .. } => true,
+            };
+            if published {
+                return outcome.clone();
+            }
         }
+        assert!(Instant::now() < deadline, "command timeout");
+        progress(client);
     }
-    outcome
 }
 pub fn run() {
     let path = std::env::args().nth(1).expect("remote profile path");
@@ -110,7 +122,13 @@ pub fn run() {
     println!("Attached: {:?}", client.snapshot().unwrap().status);
     let report =
         connection::host_report(&profile, Duration::from_secs(10)).expect("management settings");
-    assert_eq!(report.requested.as_ref().unwrap().pools.loop_memory_mb, 128);
+    let recording_mib = std::env::var("SHOOP_ZYNQ_RECORDING_MIB")
+        .map(|value| value.parse::<u32>().expect("board recording budget"))
+        .unwrap_or(128);
+    assert_eq!(
+        report.requested.as_ref().unwrap().pools.loop_memory_mb,
+        recording_mib
+    );
     println!("Management settings confirmed");
     if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {
         fixture::run(&mut client, &mut connection);
