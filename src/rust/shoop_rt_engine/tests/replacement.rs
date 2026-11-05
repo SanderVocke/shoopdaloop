@@ -13,6 +13,7 @@ fn edit(h: &mut Harness, id: u64, edit: ReplacementEdit) {
 }
 fn preset(gain: f32) -> StripPreset {
     StripPreset {
+        automatic_monitoring: false,
         input_gain: 1.,
         input_balance: 0.,
         monitoring: false,

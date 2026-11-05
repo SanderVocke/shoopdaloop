@@ -24,8 +24,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_loop_plan"
+version = "0.3.0"
+
+[[package]]
 name = "shoop_loops"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "shoop_loop_plan",
 ]

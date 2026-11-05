@@ -7,7 +7,7 @@ program or trigger actions are emitted**. It returns a copy-valued
 The owning transaction uses this mechanism internally before actual publication.
 
 The probe uses the resolver's ordinary retained requests, observations, component
-order, direct/reactive arbitration, pure-sync clock propagation and checked cursor
+order, direct/reactive arbitration, repeat alignment and checked frame-cursor
 advancement. Incoming nested-program actions are resolved normally. The target's
 old iteration-zero child actions are not executed and then undone. Normal preview
 uses the same cursor-advancement implementation followed by action emission.
@@ -16,8 +16,8 @@ uses the same cursor-advancement implementation followed by action emission.
 
 - `enters_zero()` is true when the prospective composite is Playing and enters
   iteration zero **at this frame**, including a successful start/restart or seek
-  to zero. An idle source that leaves a running cursor at zero does not repeatedly
-  produce eligible zero cuts.
+  to zero. Waiting at a pass end never produces zero-entry cuts; its actual
+  restart does. Internal frame progression does not depend on source activity.
 - Inspect `state.mode` separately for a stopped cut. An explicit one-pass program
   ending at this frame reports Stopped, not a manufactured new playing iteration.
 - Pre-clock Stop masks, reactive Stop after an actual pulse, highest-sequence
@@ -68,8 +68,8 @@ separately in repository [Miri evidence](../../../../VALIDATION.md#miri-evidence
 rerun for these prose corrections.
 
 The standalone [owning program transaction](program-changes.md) and the planner's
-ProgramActivate/ProgramGraphActivate use actual zero/stopped cuts for running
-changes. Immediate replace_topology/TopologyActivate still require changed programs
+ProgramActivate/ProgramGraphActivate use actual restart/stopped cuts for running
+changes, or preserve the protected prefix for a safe future-only change. Immediate replace_topology/TopologyActivate still require changed programs
 already stopped. See [publication paths](topology-activation.md) and the runnable
 [program/graph example](../examples/program_graph_cut.rs); independent loop hosts
 and deadline evidence are not supplied by these tests.

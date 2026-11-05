@@ -88,10 +88,10 @@ if (registered?.name !== 'shoop-rt-audio-processor') {
 }
 
 // The configuration record, written from its documented layout.
-function configRecord({ version = 3, maxFrames = 128 } = {}) {
+function configRecord({ version = 4, maxFrames = 128 } = {}) {
   const numbers = [
     version, 1000, maxFrames, 1, 2, 2, 8, 8, 0, 8, 4, 0, 512, 256, 64, 512, 32, 8, 2, 0,
-    16384, 16384, 4096, 4096, 8,
+    16384, 16384, 4096, 4096, 8, 256, 1024, 512,
     1, 2, 4,
     2, 0, 0, 1, 1,
   ];
@@ -124,7 +124,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 11;
+const engineProtocolVersion = 13;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
@@ -182,7 +182,7 @@ function profilingRequest(enabled, correlation) {
   view.setUint16(0, bytes.length, true);
   bytes[2] = 1;
   view.setBigUint64(3, BigInt(correlation), true);
-  bytes[11] = 35;
+  bytes[11] = 40;
   bytes[12] = enabled ? 1 : 0;
   node.port.deliver({ kind: 'records', bytes });
 }

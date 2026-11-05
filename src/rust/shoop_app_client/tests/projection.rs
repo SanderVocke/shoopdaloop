@@ -41,6 +41,7 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
         ..Default::default()
     }));
     Arc::new(SessionSnapshot {
+        composites: Vec::new(),
         profiling,
         sync_sources: Vec::new(),
         preview: Default::default(),

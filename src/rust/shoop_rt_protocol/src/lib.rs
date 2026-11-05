@@ -9,6 +9,7 @@ extern crate std;
 pub use rt_profiling as profiling;
 
 pub mod codec;
+pub mod composite;
 pub mod content;
 pub mod host;
 pub mod ids;
@@ -17,6 +18,7 @@ pub mod replacement;
 pub mod schema;
 pub mod timing;
 
+pub use composite::{CompositeCommand, CompositeDescription, CompositeKind, CompositeSpan};
 pub use content::{ContentChunk, ContentDescription, ContentFamilyEdit};
 pub use ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 pub use message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
@@ -25,7 +27,7 @@ pub use schema::*;
 pub use timing::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 11;
+pub const PROTOCOL_VERSION: u16 = 13;
 /// Reserved names for prepared I/O slots that are addressable by the host only.
 pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.

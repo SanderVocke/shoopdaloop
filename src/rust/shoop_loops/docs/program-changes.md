@@ -14,7 +14,7 @@ cargo run --locked -p shoop_loops --example program_graph_cut
 cargo run --locked -p shoop_loops --release --example program_graph_cut
 ```
 
-A one-frame source clocks an old four-iteration program. The pair is delivered at
+An old four-iteration program uses a prepared one-frame unit. The pair is delivered at
 start+1, waits until actual zero at start+4, then publishes a two-iteration program
 and bypass route together. Scalar effect output changes from 1 to 2 at that exact
 sample, both epochs advance, and the continuing child retains its four cycles.
@@ -68,10 +68,12 @@ musical command. Direct `submit` of that tag is rejected without a candidate.
 ## Choosing and publishing the cut
 
 A request waits until its effective frame. A stopped program can change at that
-boundary. A running program waits for its next actual entry to iteration zero;
-a source that leaves a cursor idle at zero does not repeatedly qualify. A
-successful explicit seek/restart to zero can establish another cut. No nominal
-clock, fixed delay or propagation quota is introduced.
+boundary. A running program may adopt a future-only change if its kind, prepared
+unit and target identities match and all compiled segments before the end of the
+next unit are unchanged. Otherwise it waits for actual entry to iteration zero,
+including explicit seek/restart. A repeat-alignment wait is not a zero-entry cut.
+The prepared frame unit advances the cursor even when its source stops; repeat
+alignment affects only the next pass. No propagation quota is introduced.
 
 Selection probes the old configuration's unpublished control/clock state before
 that program emits its child actions. The candidate is selected only if the

@@ -12,12 +12,18 @@ use shoop_rt_protocol::Request;
 /// What a request is for, so that its outcome updates the mirror or becomes a failure.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    Composite(u64),
+    CompositeControl(u64),
+    RepeatSync(BackendLoopId, bool),
+    RemoveComposite(BackendLoopId),
+    ResetComposite(BackendLoopId, shoop_rt_protocol::LoopSlotId),
     CreateBus(BackendBusId),
     RemoveBus(BackendBusId),
     CreateStrip(BackendTrackId),
     RemoveStrip(BackendTrackId),
     CreateLoop(BackendLoopId),
     StripControl(BackendTrackId, BackendTrackControl),
+    AutomaticMonitoring(BackendTrackId, bool),
     LoopSync(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId),
     Clear(BackendLoopId),
@@ -59,8 +65,21 @@ pub(crate) struct Requests {
 }
 
 impl Requests {
-    pub fn push(&mut self, request: Request, purpose: Purpose) -> u64 {
+    pub fn reserve_mutation(&mut self) -> u64 {
         self.next_sequence += 1;
+        self.next_sequence
+    }
+
+    pub fn push_internal(&mut self, request: Request, purpose: Purpose) {
+        self.outgoing.push_back(Pending {
+            sequence: 0,
+            request,
+            purpose,
+        });
+    }
+
+    pub fn push(&mut self, request: Request, purpose: Purpose) -> u64 {
+        self.reserve_mutation();
         self.outgoing.push_back(Pending {
             sequence: self.next_sequence,
             request,
@@ -94,7 +113,11 @@ impl Requests {
         self.outgoing
             .iter()
             .chain(self.in_flight.values())
-            .all(|pending| pending.purpose == Purpose::Preview || pending.sequence > sequence)
+            .all(|pending| {
+                pending.sequence == 0
+                    || pending.purpose == Purpose::Preview
+                    || pending.sequence > sequence
+            })
     }
 
     pub fn clear(&mut self) {

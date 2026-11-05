@@ -362,6 +362,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             if let Some(mut image) = replacement.candidate.take() {
                 image.host_aliases = self.mirror.host_aliases.clone();
                 self.mirror = image;
+                self.composites.applied_frames.clear();
                 self.prepared_content = replacement
                     .content
                     .iter()

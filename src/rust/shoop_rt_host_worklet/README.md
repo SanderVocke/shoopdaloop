@@ -132,12 +132,12 @@ Events beyond `midi_out_bytes` per quantum are dropped and counted.
 `WorkletConfig::encode` writes it and `WorkletConfig::decode` reads it. Every
 number is a little-endian `u32`:
 
-1. version (1), sample rate, largest quantum (`max_frames`), strip channels,
-   Master channels, smoothing frames, smoothing limit, ramp frames, control lead
+1. version (4), sample rate, largest callback (`max_frames`), graph quantum, strip
+   and Master channels, bus slots and channels, smoothing frames, smoothing limit, ramp frames, control lead
    frames, resource pages, page bytes, MIDI events and bytes per port, pending
    transitions, reliable credits, bulk credits, telemetry interval frames;
 2. `records_in_bytes`, `records_out_bytes`, `midi_in_bytes`, `midi_out_bytes`,
-   `records_per_quantum`;
+   `records_per_quantum`, composite entries, composite segments and timing relations;
 3. counted lists, each a count followed by its items: pool segments (strips,
    loops); initial Master connections (Master channel, host audio output index);
    then the names of the host audio inputs, audio outputs, MIDI inputs and MIDI

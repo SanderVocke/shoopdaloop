@@ -36,6 +36,8 @@ fn structural(request: &Request) -> bool {
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
+            | Request::ResetComposite { .. }
+            | Request::CreateComposite { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
             | Request::LoopSync { .. }
@@ -97,6 +99,7 @@ impl ControlEndpoint {
         if matches!(
             request,
             Request::CancelBulk
+                | Request::Composite(shoop_rt_protocol::CompositeCommand::Cancel { .. })
                 | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
                 | Request::ReplacementPrepare { .. }
@@ -137,7 +140,8 @@ impl ControlEndpoint {
         }
         if matches!(
             request,
-            Request::LoopClear { .. }
+            Request::Composite(shoop_rt_protocol::CompositeCommand::Commit { .. })
+                | Request::LoopClear { .. }
                 | Request::SetSmoothing { .. }
                 | Request::ContentApply { .. }
                 | Request::ContentFamilyBegin { .. }
@@ -186,6 +190,13 @@ impl ControlEndpoint {
                 || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::Composite(shoop_rt_protocol::CompositeCommand::Begin(d)) => {
+                loop_(d.loop_id.0.index, SOFT)
+            }
+            Request::Composite(_) => false,
+            Request::LoopRepeatSync { loop_id, .. } | Request::LoopIteration { loop_id, .. } => {
+                loop_(loop_id.0.index, HARD)
+            }
             Request::ContentFamilyBegin { root, .. } => loop_(root.0.index, SOFT),
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
@@ -213,7 +224,7 @@ impl ControlEndpoint {
                     .get(loop_id.0.index as usize)
                     .copied()
                     .flatten()
-                    .map(|entry| entry.strip.0.index);
+                    .and_then(|entry| entry.strip.map(|id| id.0.index));
                 loop_(loop_id.0.index, if delay.is_some() { SOFT } else { HARD })
                     || owner.is_some_and(|index| strip(index, SOFT))
             }
@@ -229,15 +240,24 @@ impl ControlEndpoint {
             Request::RemoveStrip { strip: id } => {
                 strip(id.0.index, WAITING)
                     || self.model.loops.iter().flatten().any(|entry| {
-                        entry.strip == id && self.blocked_loops[entry.id.0.index as usize]
+                        entry.strip == Some(id) && self.blocked_loops[entry.id.0.index as usize]
                     })
+            }
+            Request::CreateComposite {
+                loop_id,
+                strip: owner,
+            } => {
+                loop_(loop_id.0.index, WAITING)
+                    || owner.is_some_and(|id| strip(id.0.index, WAITING))
             }
             Request::CreateLoop { loop_id, strip: id } => {
                 loop_(loop_id.0.index, WAITING) || strip(id.0.index, WAITING)
             }
-            Request::RemoveLoop { loop_id } | Request::LoopSync { loop_id, .. } => {
-                loop_(loop_id.0.index, WAITING)
+            Request::ResetComposite {
+                previous: loop_id, ..
             }
+            | Request::RemoveLoop { loop_id }
+            | Request::LoopSync { loop_id, .. } => loop_(loop_id.0.index, WAITING),
             Request::Connect {
                 port: EnginePort::Strip(port),
                 ..
@@ -260,6 +280,12 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::Composite(_) => {}
+            Request::LoopRepeatSync { loop_id, .. } | Request::LoopIteration { loop_id, .. } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(loop_id.0.index as usize) {
+                    *blocked = true;
+                }
+            }
             Request::ContentFamilyBegin { root, .. } => {
                 if let Some(blocked) = self.blocked_loops.get_mut(root.0.index as usize) {
                     *blocked = true;
@@ -299,7 +325,7 @@ impl ControlEndpoint {
             Request::RemoveStrip { strip: id } => {
                 strip(id.0.index);
                 for slot in 0..self.model.loops.len() {
-                    if self.model.loops[slot].is_some_and(|entry| entry.strip == id) {
+                    if self.model.loops[slot].is_some_and(|entry| entry.strip == Some(id)) {
                         self.blocked_loops[slot] = true;
                     }
                 }
@@ -321,7 +347,11 @@ impl ControlEndpoint {
                     *blocked = true;
                 }
             }
-            Request::CreateLoop { loop_id, .. }
+            Request::ResetComposite {
+                previous: loop_id, ..
+            }
+            | Request::CreateLoop { loop_id, .. }
+            | Request::CreateComposite { loop_id, .. }
             | Request::RemoveLoop { loop_id }
             | Request::LoopSync { loop_id, .. }
             | Request::LoopTransition { loop_id, .. }
@@ -348,15 +378,22 @@ impl ControlEndpoint {
             Change::RemoveStrip { strip } => {
                 self.touched_strips[strip.0.index as usize] = HARD;
                 for slot in 0..self.next.loops.len() {
-                    if let Some(entry) = self.next.loops[slot].filter(|entry| entry.strip == strip)
+                    if let Some(entry) =
+                        self.next.loops[slot].filter(|entry| entry.strip == Some(strip))
                     {
                         self.touched_loops[slot] = HARD;
                         self.touch_followers(entry.id);
                     }
                 }
             }
-            Change::CreateLoop { loop_id, .. } => {
+            Change::CreateLoop { loop_id, .. } | Change::CreateComposite { loop_id, .. } => {
                 self.touched_loops[loop_id.0.index as usize] = HARD
+            }
+            Change::ResetComposite {
+                previous: loop_id, ..
+            } => {
+                raise(&mut self.touched_loops[loop_id.0.index as usize], HARD);
+                self.touch_followers(loop_id);
             }
             Change::RemoveLoop { loop_id } => {
                 self.touched_loops[loop_id.0.index as usize] = HARD;
@@ -442,6 +479,40 @@ impl ControlEndpoint {
                 Some(_) if self.model.strip(strip).is_none() => Staged::Wait,
                 Some(_) => Staged::Change(Change::RemoveStrip { strip }),
             },
+            Request::CreateComposite { loop_id, strip } => {
+                let slot = loop_id.0.index as usize;
+                if slot >= next.loops.len() {
+                    Staged::Refused(Refusal::Capacity)
+                } else if loop_id.0.generation == 0
+                    || loop_id.0.generation <= next.loop_generations[slot]
+                    || next.loops[slot].is_some()
+                    || strip.is_some_and(|s| next.strip(s).is_none())
+                {
+                    Staged::Refused(Refusal::InvalidId)
+                } else if !replacing && self.model.loops[slot].is_some() {
+                    Staged::Wait
+                } else {
+                    Staged::Change(Change::CreateComposite {
+                        loop_id,
+                        strip,
+                        program: shoop_rt_protocol::CompositeDescription {
+                            id: 0,
+                            loop_id,
+                            sync: None,
+                            previous: None,
+                            expected_version: 0,
+                            version: 0,
+                            kind: shoop_rt_protocol::CompositeKind::Regular,
+                            unit_frames: u64::from(self.limits.quantum),
+                            iterations: 0,
+                            entries: 0,
+                            segments: 0,
+                            sample_rate: self.cells.driver().sample_rate,
+                            quantum: self.limits.quantum,
+                        },
+                    })
+                }
+            }
             Request::CreateLoop { loop_id, strip } => {
                 let slot = loop_id.0.index as usize;
                 if slot >= next.loops.len() {
@@ -458,6 +529,23 @@ impl ControlEndpoint {
                     Staged::Change(Change::CreateLoop { loop_id, strip })
                 }
             }
+            Request::ResetComposite { previous, loop_id } => match next.find_loop(previous) {
+                Some(entry)
+                    if entry.program.is_some()
+                        && entry.strip.is_some()
+                        && previous.0.index == loop_id.0.index
+                        && loop_id.0.generation
+                            > next.loop_generations[loop_id.0.index as usize]
+                        && !next
+                            .spans
+                            .iter()
+                            .flatten()
+                            .any(|span| span.span.target == previous) =>
+                {
+                    Staged::Change(Change::ResetComposite { previous, loop_id })
+                }
+                _ => Staged::Refused(Refusal::InvalidId),
+            },
             Request::RemoveLoop { loop_id } => match next.find_loop(loop_id) {
                 None => Staged::Refused(Refusal::InvalidId),
                 Some(_) if self.model.find_loop(loop_id).is_none() => Staged::Wait,

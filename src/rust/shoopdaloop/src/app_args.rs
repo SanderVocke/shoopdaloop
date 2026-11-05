@@ -89,6 +89,10 @@ pub struct AppArgs {
         conflicts_with = "probe_engine_transport"
     )]
     pub probe_persistence: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise public composite authoring, recording, files and client lifetime.
+    #[arg(long, requires = "engine_transport", conflicts_with_all = ["probe_engine_transport", "probe_persistence"])]
+    pub probe_composites: bool,
     #[cfg(target_arch = "wasm32")]
     /// Disable browser audio (the session remains unavailable).
     #[arg(long)]

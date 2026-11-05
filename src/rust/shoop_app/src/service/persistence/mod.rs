@@ -468,6 +468,10 @@ impl Service {
         )
     }
     fn capture_recording_busy(&self, target: persistence::Target) -> bool {
+        let only = match target {
+            persistence::Target::Loop { loop_id, .. } => Some(loop_id),
+            _ => None,
+        };
         self.loops.iter().any(|(id, entry)| {
             let selected = matches!(target, persistence::Target::Session { .. })
                 || matches!(target, persistence::Target::Loop { loop_id, .. } if loop_id == *id);
@@ -484,7 +488,46 @@ impl Service {
                     || matches!(
                         entry.view.next_mode,
                         LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
-                    ))
+                    )
+                    || self
+                        .composites
+                        .get(id)
+                        .is_some_and(|owner| owner.has_retained()))
+                || (entry.view.mode == LoopMode::Playing
+                    || entry.view.next_mode == LoopMode::Playing)
+                    && self.composite_capture_records(
+                        *id,
+                        if selected { None } else { only },
+                        &mut BTreeSet::new(),
+                    )
+        })
+    }
+    fn composite_capture_records(
+        &self,
+        id: LoopId,
+        only: Option<LoopId>,
+        visited: &mut BTreeSet<LoopId>,
+    ) -> bool {
+        if !visited.insert(id) {
+            return false;
+        }
+        self.composites.get(&id).is_some_and(|owner| {
+            owner
+                .active
+                .iter()
+                .chain(owner.candidates.values())
+                .any(|plan| {
+                    plan.prepared.spans.iter().any(|span| {
+                        matches!(
+                            span.mode,
+                            LoopMode::Recording
+                                | LoopMode::Replacing
+                                | LoopMode::RecordingDryIntoWet
+                        ) && only.is_none_or(|target| target == span.target)
+                            || span.mode == LoopMode::Playing
+                                && self.composite_capture_records(span.target, only, visited)
+                    })
+                })
         })
     }
     pub(super) fn persistence_detach(&mut self) {
@@ -595,7 +638,10 @@ impl Service {
                     );
                     return;
                 }
-                if cut.is_none() && (!self.pending.is_empty() || !self.is_ready()) {
+                let barrier = self.pending.values().any(|pending| {
+                    !matches!(pending.effect, Effect::CompositeEdit(id) if self.composites.get(&id).is_some_and(|owner| owner.active.is_some()))
+                });
+                if cut.is_none() && (barrier || !self.is_ready()) {
                     self.persistence_job = Some(Job::Capture {
                         authority,
                         key,
@@ -632,6 +678,17 @@ impl Service {
                             },
                         );
                         return;
+                    }
+                    let pending = self
+                        .composites
+                        .iter()
+                        .filter(|(_, owner)| owner.latest.is_some())
+                        .count();
+                    if pending > 0 {
+                        self.persistence_reply(authority, persistence::Reply::CaptureNotice {
+                            key,
+                            message: format!("The capture contains confirmed arrangements; {pending} newer composite edits were pending."),
+                        });
                     }
                     cut = Some(Cut::new(self));
                 }
@@ -670,6 +727,18 @@ impl Service {
                         })
                     }
                     Ok(BackendAsyncResult::Ready(capture)) => {
+                        if let Captured::Session(data) = &capture {
+                            if !cut.as_ref().unwrap().matches_composites(data) {
+                                self.persistence_job = Some(Job::Capture {
+                                    authority,
+                                    key,
+                                    target,
+                                    local,
+                                    cut: None,
+                                });
+                                return;
+                            }
+                        }
                         let cut = cut.unwrap();
                         let image = match (capture, target) {
                             (Captured::Session(capture), _) => cut.finish(capture, target),
@@ -695,13 +764,16 @@ impl Service {
                                     persistence::Reply::Refused { key, reason },
                                 ),
                             },
-                            Err(_) => self.persistence_reply(
-                                authority,
-                                persistence::Reply::Refused {
-                                    key,
-                                    reason: Refusal::Unsupported,
-                                },
-                            ),
+                            Err(error) => {
+                                tracing::debug!(%error, "service.persistence.capture_refused");
+                                self.persistence_reply(
+                                    authority,
+                                    persistence::Reply::Refused {
+                                        key,
+                                        reason: Refusal::Unsupported,
+                                    },
+                                )
+                            }
                         }
                     }
                     Err(_) => self.persistence_reply(
@@ -784,7 +856,7 @@ impl Service {
                             self.publish_family_annotations(&ready.image, &observed)
                         }
                         Input::Session { candidate, .. } => {
-                            candidate.publish(self, &mapping.unwrap())?
+                            candidate.publish(self, &mapping.unwrap(), &observed)?
                         }
                         Input::Loop { .. } => {
                             if let persistence::Target::Loop { loop_id, .. } = ready.target {
@@ -976,6 +1048,9 @@ impl Service {
                         ),
                     ],
                     loops: vec![image::Loop {
+                        sync_source: None,
+                        repeat_sync: false,
+                        composite: None,
                         id: LoopId::from_raw(1),
                         name: "Sync".to_owned(),
                         sync: true,

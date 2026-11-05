@@ -14,6 +14,7 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::Composite(edit) => self.edit_composite(edit),
             Command::SetLoopTimeline {
                 loop_id,
                 start_offset,
@@ -68,6 +69,9 @@ impl Service {
                 if self.global.sync {
                     let source = self.sync_backend();
                     self.backend.set_loop_sync_source(created, source)?;
+                    if self.backend.composite_limits().is_some() {
+                        self.backend.set_loop_repeat_sync(created, true)?;
+                    }
                 }
                 Ok(Effect::LoopCreated(track, id))
             }
@@ -220,6 +224,11 @@ impl Service {
                         CommandError::invalid("cannot record with targeted: no loop is targeted")
                     })?;
                 for id in &loops {
+                    if self.composites.contains_key(id) {
+                        return Err(CommandError::invalid(
+                            "a composite's outer mode is Play or Stop",
+                        ));
+                    }
                     if self.loop_entry(*id)?.backend == target {
                         return Err(CommandError::invalid("a loop cannot synchronize to itself"));
                     }
@@ -296,7 +305,7 @@ impl Service {
             .filter(|track| track.view.structural_state != StructuralState::Removing)
             .ok_or_else(|| CommandError::invalid(format!("stale or unknown track {id}")))
     }
-    fn loop_entry(&self, id: LoopId) -> core::result::Result<&Loop, CommandError> {
+    pub(super) fn loop_entry(&self, id: LoopId) -> core::result::Result<&Loop, CommandError> {
         let entry = self
             .loops
             .get(&id)
@@ -304,7 +313,7 @@ impl Service {
         self.track(entry.track)?;
         Ok(entry)
     }
-    fn sync_backend(&self) -> Option<BackendLoopId> {
+    pub(super) fn sync_backend(&self) -> Option<BackendLoopId> {
         self.track_order
             .iter()
             .filter_map(|id| self.tracks.get(id))
@@ -390,8 +399,13 @@ impl Service {
             for loop_id in &loops {
                 self.backend
                     .set_loop_sync_source(self.loops[loop_id].backend, source)?;
+                if self.backend.composite_limits().is_some() {
+                    self.backend
+                        .set_loop_repeat_sync(self.loops[loop_id].backend, true)?;
+                }
             }
         }
+        self.set_automatic_monitoring_policy(id, self.global.auto_arm_track_inputs)?;
         self.connect_track_inputs(id)?;
         for name in &spec.initial_output_bus_names {
             self.route_track_to_bus(id, name)?;
@@ -430,9 +444,7 @@ impl Service {
                 if track.view.is_sync {
                     return Err(CommandError::invalid("the sync track cannot be removed"));
                 }
-                self.backend.remove_track(backend)?;
-                self.tracks.get_mut(&id).unwrap().view.structural_state = StructuralState::Removing;
-                return Ok(Effect::TrackRemoved(id));
+                return self.remove_track_with_composites(id);
             }
             TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::Regular) => {
                 return Ok(Effect::None)
@@ -472,6 +484,20 @@ impl Service {
 
     fn loop_action(&mut self, track: TrackId, id: LoopId, action: LoopAction) -> CommandResult {
         let entry = self.loop_entry(id)?;
+        if let LoopAction::ComposeIntoEnd(target) | LoopAction::ComposeIntoParallel(target) = action
+        {
+            if self.loop_entry(target)?.track != track {
+                return Err(CommandError::invalid(
+                    "composition target does not belong to the requested track",
+                ));
+            }
+            return self.edit_composite(shoop_app_protocol::composite::Edit::Append {
+                target,
+                add: vec![id],
+                parallel: matches!(action, LoopAction::ComposeIntoParallel(_)),
+                convert_if_empty: true,
+            });
+        }
         if entry.track != track {
             return Err(CommandError::invalid(
                 "loop does not belong to the requested track",
@@ -479,6 +505,10 @@ impl Service {
         }
         let backend = entry.backend;
         match action {
+            LoopAction::ConvertToComposite => {
+                return self
+                    .edit_composite(shoop_app_protocol::composite::Edit::Convert { target: id })
+            }
             LoopAction::NameChanged(name) => {
                 self.loops.get_mut(&id).unwrap().view.name = name;
             }
@@ -513,6 +543,12 @@ impl Service {
                     BackendLoopMode::Stopped
                 } else if view.mode == LoopMode::Recording {
                     BackendLoopMode::Playing
+                } else if self.composites.contains_key(&id) {
+                    if view.mode == LoopMode::Playing {
+                        BackendLoopMode::Stopped
+                    } else {
+                        BackendLoopMode::Playing
+                    }
                 } else if view.empty && view.mode == LoopMode::Stopped {
                     BackendLoopMode::Recording
                 } else if !view.empty && view.mode == LoopMode::Stopped {
@@ -594,9 +630,7 @@ impl Service {
             LoopAction::RestoreRecordedFxState => {
                 return Err(CommandError::unsupported(BackendCapability::TrackFx))
             }
-            LoopAction::ConvertToComposite
-            | LoopAction::ComposeIntoEnd(_)
-            | LoopAction::ComposeIntoParallel(_) => {
+            LoopAction::ComposeIntoEnd(_) | LoopAction::ComposeIntoParallel(_) => {
                 return Err(CommandError::unsupported(BackendCapability::CompositeLoops))
             }
             LoopAction::Duplicate | LoopAction::DuplicateTo(_) => {
@@ -649,7 +683,14 @@ impl Service {
         let targets: BTreeSet<_> = ids.into_iter().collect();
         let mut tracks = BTreeSet::new();
         for id in &targets {
+            self.require_restored_composite(*id, mode)?;
             tracks.insert(self.loop_entry(*id)?.track);
+            if self.composites.contains_key(id)
+                && mode != BackendLoopMode::Stopped
+                && mode != BackendLoopMode::Playing
+            {
+                return Err(CommandError::invalid("a composite's outer mode is Play or Stop; use explicit event modes to record children"));
+            }
         }
         if self.global.solo && matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Recording)
         {
@@ -708,17 +749,14 @@ impl Service {
             }
             GlobalControlAction::ClearAll { include_sync }
             | GlobalControlAction::ClearRecordings { include_sync } => {
-                let targets: Vec<_> = self
+                let targets = self
                     .loops
-                    .values()
-                    .filter_map(|entry| {
-                        (include_sync || !self.tracks[&entry.track].view.is_sync)
-                            .then_some(entry.backend)
+                    .iter()
+                    .filter_map(|(id, entry)| {
+                        (include_sync || !self.tracks[&entry.track].view.is_sync).then_some(*id)
                     })
                     .collect();
-                for target in targets {
-                    self.backend.clear_loop(target)?;
-                }
+                self.clear_composite_slots(targets)?;
             }
             GlobalControlAction::SetDefaultRecordingAction(value) => {
                 if value == DefaultRecordingAction::Grab {
@@ -738,6 +776,9 @@ impl Service {
                     .collect();
                 for target in targets {
                     self.backend.set_loop_sync_source(target, source)?;
+                    if self.backend.composite_limits().is_some() {
+                        self.backend.set_loop_repeat_sync(target, value)?;
+                    }
                 }
                 self.global.sync = value;
             }
@@ -746,7 +787,19 @@ impl Service {
                 self.global.auto_mute_other_track_inputs = value
             }
             GlobalControlAction::SetAutoArmTrackInputs(value) => {
-                self.global.auto_arm_track_inputs = value
+                let tracks = self
+                    .tracks
+                    .iter()
+                    .filter_map(|(id, track)| {
+                        (!track.view.is_sync
+                            && track.view.structural_state != StructuralState::Removing)
+                            .then_some(*id)
+                    })
+                    .collect::<Vec<_>>();
+                for id in tracks {
+                    self.set_automatic_monitoring_policy(id, value)?;
+                }
+                self.global.auto_arm_track_inputs = value;
             }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }

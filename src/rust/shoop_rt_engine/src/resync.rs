@@ -100,7 +100,7 @@ impl ControlEndpoint {
                     });
                 }
                 8 => {
-                    cursor.stage = 1;
+                    cursor.stage = 9;
                     return Some(StateRecord::BusGenerations {
                         generation: self
                             .model
@@ -110,6 +110,39 @@ impl ControlEndpoint {
                             .max()
                             .unwrap_or(0),
                     });
+                }
+                9 => {
+                    cursor.stage = 10;
+                    return Some(StateRecord::CompositeStageFloor {
+                        id: self.composite.last_id,
+                    });
+                }
+                10 => {
+                    cursor.stage = 11;
+                    cursor.index = 0;
+                    if let Some(description) = self.composite.description {
+                        return Some(StateRecord::CompositePending {
+                            description,
+                            received: self.composite.received as u32,
+                            committed: self.composite.committed,
+                            admitted: self.composite.admitted,
+                        });
+                    }
+                }
+                11 => {
+                    if let Some(description) = self.composite.description {
+                        if cursor.index < self.composite.received {
+                            let index = cursor.index;
+                            cursor.index += 1;
+                            return Some(StateRecord::CompositeStagedSpan {
+                                id: description.id,
+                                index: index as u32,
+                                span: self.composite.spans[index],
+                            });
+                        }
+                    }
+                    cursor.stage = 1;
+                    cursor.index = 0;
                 }
                 1 => {
                     if let Some(port) = self.host_ports.get(cursor.index) {
@@ -211,25 +244,63 @@ impl ControlEndpoint {
                         };
                         continue;
                     };
-                    if let Some(entry) = slot {
-                        if cursor.part == 1 {
-                            cursor.part = 0;
-                            cursor.index += 1;
-                            return Some(StateRecord::LoopTiming {
+                    let Some(entry) = slot else {
+                        cursor.index += 1;
+                        continue;
+                    };
+                    match cursor.part {
+                        0 => {
+                            cursor.part = 1;
+                            if let Some(description) = entry.program {
+                                return Some(StateRecord::Composite {
+                                    description,
+                                    strip: entry.strip,
+                                    sync: entry.sync,
+                                    gain: entry.gain,
+                                    balance: entry.balance,
+                                    repeat_sync: entry.repeat_sync,
+                                });
+                            }
+                            return Some(StateRecord::Loop {
                                 loop_id: entry.id,
-                                timing: self.current_timing(*entry),
+                                strip: entry.strip.expect("primitive owner"),
+                                sync: entry.sync,
+                                gain: entry.gain,
+                                balance: entry.balance,
                             });
                         }
-                        cursor.part = 1;
-                        return Some(StateRecord::Loop {
-                            loop_id: entry.id,
-                            strip: entry.strip,
-                            sync: entry.sync,
-                            gain: entry.gain,
-                            balance: entry.balance,
-                        });
+                        1 => {
+                            cursor.part = 2;
+                            return Some(StateRecord::RepeatSync {
+                                loop_id: entry.id,
+                                enabled: entry.repeat_sync,
+                            });
+                        }
+                        2 => {
+                            cursor.part = 3;
+                            if entry.program.is_none() {
+                                return Some(StateRecord::LoopTiming {
+                                    loop_id: entry.id,
+                                    timing: self.current_timing(*entry),
+                                });
+                            }
+                        }
+                        _ => {
+                            if let Some(span) =
+                                self.model.program_spans(entry.id).nth(cursor.part - 3)
+                            {
+                                let index = (cursor.part - 3) as u32;
+                                cursor.part += 1;
+                                return Some(StateRecord::CompositeSpan {
+                                    loop_id: entry.id,
+                                    index,
+                                    span,
+                                });
+                            }
+                            cursor.index += 1;
+                            cursor.part = 0;
+                        }
                     }
-                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
@@ -299,7 +370,10 @@ impl ControlEndpoint {
         };
         while out.available(Lane::Reliable) > 0 {
             let before = cursor;
-            let publication = if cursor.stage == 3 && cursor.part == 1 {
+            let publication = if cursor.stage == 3
+                && cursor.part == 2
+                && self.model.loops[cursor.index].is_some_and(|entry| entry.program.is_none())
+            {
                 let cells = &self.cells.loops[cursor.index];
                 let serial = cells.publication.load(core::sync::atomic::Ordering::SeqCst);
                 if serial % 2 != 0

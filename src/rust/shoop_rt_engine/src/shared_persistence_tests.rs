@@ -74,6 +74,9 @@ impl Pinned {
             recording_started_at: None,
         };
         let content = image::Loop {
+            sync_source: None,
+            repeat_sync: false,
+            composite: None,
             id: api::LoopId::from_raw(1),
             name: "fixed shared take".into(),
             sync: false,
@@ -681,6 +684,7 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
                 midi_output: true,
             },
             controls: protocol::StripPreset {
+                automatic_monitoring: false,
                 input_gain: 1.,
                 input_balance: 0.,
                 monitoring: false,

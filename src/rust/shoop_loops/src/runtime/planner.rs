@@ -920,7 +920,25 @@ impl LoopPlanner {
                     graph,
                     graph_epoch,
                     topology_epoch,
+                }
+                | Operation::ConvertEmpty {
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                    ..
                 } => {
+                    if let Operation::ConvertEmpty { previous, .. } = operation {
+                        let state = self.resolver.state(previous)?;
+                        if state.composite.is_some()
+                            || state.mode != Mode::Stopped
+                            || state.content_length != 0
+                            || state.capture_frames != 0
+                        {
+                            return Err(crate::Error::InvalidState.into());
+                        }
+                    }
                     let (graph_epoch, topology_epoch) = self.activate_configuration(
                         node_pairs,
                         topology,
@@ -1064,6 +1082,9 @@ impl LoopPlanner {
                         context.requested_frame,
                         &mut self.resolver,
                     )?;
+                    if graph.is_some() {
+                        self.resolver.defer_program_until_restart(request);
+                    }
                     self.pending[slot] = Some(Pending {
                         token: context.token,
                         kind: PendingKind::Program {
@@ -1179,6 +1200,10 @@ impl LoopPlanner {
                         .expect("row")
                         .binding
                         .gain = value;
+                    Ok(Disposition::Complete(Reply::Done))
+                }
+                Operation::RepeatSync { target, enabled } => {
+                    self.resolver.set_repeat_sync(target, enabled)?;
                     Ok(Disposition::Complete(Reply::Done))
                 }
                 Operation::Balance { target, value } => {
@@ -1418,6 +1443,7 @@ impl LoopPlanner {
                 | Operation::NodePairCancel { .. }
                 | Operation::NodePairRecycle { .. }
                 | Operation::ConfigurationActivate { .. }
+                | Operation::ConvertEmpty { .. }
                 | Operation::SelectFamily { .. }
                 | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
@@ -1525,12 +1551,14 @@ impl LoopPlanner {
                 self.graph_epoch = permit.commit();
             }
             self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
+            self.observer.topology_epoch(self.resolver.epoch());
             self.observer.boundary(
                 context.frame,
                 self.resolver.decisions().map_err(runtime_error)?,
                 self.resolver.events(),
                 self.resolver.dropped_events(),
             );
+            self.observer.settled(&self.resolver);
             return Ok(interval.end);
         }
     }

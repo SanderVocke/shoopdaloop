@@ -29,7 +29,9 @@ impl ConversionPlan {
         bundle: &SessionBundle,
         target: ConversionTarget,
     ) -> Result<Self, SessionError> {
-        let document = &bundle.document;
+        let mut resolved = bundle.document.clone();
+        crate::materialize_composite_timing(&mut resolved)?;
+        let document = &resolved;
         let sources = document
             .track_groups
             .iter()
@@ -50,18 +52,54 @@ impl ConversionPlan {
         let mut loops = Vec::new();
         for track in document.track_groups.iter().flat_map(|group| &group.tracks) {
             for loop_ in &track.loops {
-                if loop_.composite.is_some() {
-                    return Err(invalid("composite conversion is unsupported"));
-                }
                 loops.push(LoopTiming {
                     id: loop_.id,
-                    sync_source: if track.is_sync { None } else { source },
+                    sync_source: if loop_.composite.is_some() {
+                        None
+                    } else {
+                        loop_
+                            .execution
+                            .as_ref()
+                            .map_or(if track.is_sync { None } else { source }, |execution| {
+                                execution.sync_source
+                            })
+                    },
                     frames: loop_.length_frames,
                     sample_rate: document.sample_rate,
                 });
             }
         }
         let mut plan = Self::new(target, &loops)?;
+        plan.requires_confirmation |= document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .zip(
+                bundle
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|group| &group.tracks)
+                    .flat_map(|track| &track.loops),
+            )
+            .any(|(resolved, original)| resolved.length_frames != original.length_frames);
+        for loop_ in document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .flat_map(|t| &t.loops)
+        {
+            if let Some(timing) = loop_.composite.as_ref().and_then(|c| c.timing.as_ref()) {
+                let converted = timing.converted(target)?;
+                plan.requires_confirmation |= timing.instances != converted.instances
+                    || timing.spans.iter().zip(&converted.spans).any(|(old, new)| {
+                        old.start * timing.unit_frames != new.start * converted.unit_frames
+                            || old.end * timing.unit_frames != new.end * converted.unit_frames
+                    })
+                    || timing.spans.len() != converted.spans.len();
+            }
+        }
         plan.requires_confirmation |= document.sample_rate != target.sample_rate;
         Ok(plan)
     }
@@ -76,6 +114,7 @@ impl SessionFormatPlan {
         validate_bundle(bundle)?;
         let timing = ConversionPlan::for_session(bundle, target)?;
         let mut document = bundle.document.clone();
+        crate::materialize_composite_timing(&mut document)?;
         let mut assets = Vec::new();
         let mut mappings = BTreeMap::<(String, FrameScale, i128, bool), String>::new();
         let mut assigned = BTreeSet::new();
@@ -92,6 +131,21 @@ impl SessionFormatPlan {
                     .ok_or_else(|| invalid("missing loop conversion"))?;
                 let old_length = loop_.length_frames;
                 loop_.length_frames = conversion.frames;
+                if let Some(composite) = &mut loop_.composite {
+                    let converted = composite
+                        .timing
+                        .as_ref()
+                        .ok_or_else(|| invalid("missing composite timing"))?
+                        .converted(target)?;
+                    if converted.unit_frames.checked_mul(converted.iterations)
+                        != Some(conversion.frames)
+                    {
+                        return Err(invalid(
+                            "composite conversion disagrees with session duration",
+                        ));
+                    }
+                    composite.timing = Some(converted);
+                }
                 for channel in &mut loop_.channels {
                     let origin = channel
                         .start_offset_frames
@@ -222,6 +276,24 @@ impl SessionFormatPlan {
             }
         }
         document.sample_rate = target.sample_rate;
+        for (converted, original) in document
+            .track_groups
+            .iter_mut()
+            .flat_map(|g| &mut g.tracks)
+            .flat_map(|t| &mut t.loops)
+            .zip(
+                bundle
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .flat_map(|t| &t.loops),
+            )
+        {
+            if original.execution.is_none() {
+                converted.execution = None;
+            }
+        }
         Ok(Self {
             original: bundle.document.clone(),
             document,

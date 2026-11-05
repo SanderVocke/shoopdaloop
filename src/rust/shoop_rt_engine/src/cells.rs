@@ -1,6 +1,6 @@
 //! Latest-value cells that the render side writes without blocking and the
-//! control side reads when it assembles telemetry. Loop state has a publication
-//! check; other latest-value fields may span neighbouring callbacks.
+//! control side reads when it assembles telemetry. Loop snapshots use one
+//! nonblocking publication check; peaks remain independent latest-value cells.
 
 use alloc::boxed::Box;
 
@@ -40,16 +40,70 @@ impl Peak {
 }
 
 #[derive(Default)]
+struct MonitoringPolicy {
+    generation: AtomicU32,
+    enabled: AtomicBool,
+}
+
+#[derive(Default)]
 pub(crate) struct StripCells {
     pub input: Peak,
     pub output: Peak,
     pub midi_in: AtomicBool,
     pub midi_out: AtomicBool,
+    policies: [MonitoringPolicy; 2],
+    pub automatic_demand: AtomicBool,
+    pub automatic_monitoring: AtomicBool,
+}
+
+impl StripCells {
+    pub(crate) fn configure_policy(&self, generation: u32, active_generation: u32, enabled: bool) {
+        if generation == active_generation {
+            return;
+        }
+        let bank =
+            usize::from(self.policies[0].generation.load(Ordering::Acquire) == active_generation);
+        let policy = &self.policies[bank];
+        policy.generation.store(0, Ordering::Release);
+        policy.enabled.store(enabled, Ordering::Relaxed);
+        policy.generation.store(generation, Ordering::Release);
+    }
+    pub(crate) fn set_policy(&self, generation: u32, enabled: bool) -> bool {
+        if let Some(policy) = self
+            .policies
+            .iter()
+            .find(|policy| policy.generation.load(Ordering::Acquire) == generation)
+        {
+            policy.enabled.store(enabled, Ordering::Release);
+            true
+        } else {
+            false
+        }
+    }
+    pub(crate) fn policy_enabled(&self, generation: u32) -> bool {
+        generation != 0
+            && self.policies.iter().any(|policy| {
+                policy.generation.load(Ordering::Acquire) == generation
+                    && policy.enabled.load(Ordering::Acquire)
+            })
+    }
+}
+
+#[derive(Default)]
+struct MonitoringOwner {
+    generation: AtomicU32,
+    strip: AtomicU32,
 }
 
 #[derive(Default)]
 pub(crate) struct LoopCells {
+    owners: [MonitoringOwner; 2],
     pub publication: AtomicU64,
+    epoch: AtomicU64,
+    frame: AtomicU64,
+    iteration: AtomicU64,
+    passes: AtomicU64,
+    waiting_repeat: AtomicBool,
     pub timing_revision: AtomicU64,
     pub generation: AtomicU32,
     pub mode: AtomicU32,
@@ -59,6 +113,61 @@ pub(crate) struct LoopCells {
     /// Clock edges this loop emitted, counted at settled boundaries.
     pub pulses: AtomicU64,
     pub peaks: Peak,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct LoopSnapshot {
+    pub epoch: u64,
+    pub frame: u64,
+    pub generation: u32,
+    pub mode: Mode,
+    pub length: u64,
+    pub revision: u64,
+    pub position: u64,
+    pub iteration: u64,
+    pub passes: u64,
+    pub waiting_repeat: bool,
+    pub timing_revision: u64,
+}
+impl LoopCells {
+    pub(crate) fn configure_owner(&self, generation: u32, strip: u32, active_generation: u32) {
+        if generation == active_generation {
+            return;
+        }
+        let bank =
+            usize::from(self.owners[0].generation.load(Ordering::Acquire) == active_generation);
+        let owner = &self.owners[bank];
+        owner.generation.store(0, Ordering::Release);
+        owner.strip.store(strip, Ordering::Relaxed);
+        owner.generation.store(generation, Ordering::Release);
+    }
+    fn owner(&self, generation: u32) -> Option<usize> {
+        self.owners.iter().find_map(|owner| {
+            (owner.generation.load(Ordering::Acquire) == generation)
+                .then(|| owner.strip.load(Ordering::Relaxed) as usize)
+        })
+    }
+    pub(crate) fn snapshot(&self) -> Option<LoopSnapshot> {
+        let before = self.publication.load(Ordering::SeqCst);
+        if before & 1 != 0 {
+            return None;
+        }
+        let snapshot = LoopSnapshot {
+            timing_revision: self.timing_revision.load(Ordering::SeqCst),
+            epoch: self.epoch.load(Ordering::SeqCst),
+            frame: self.frame.load(Ordering::SeqCst),
+            generation: self.generation.load(Ordering::SeqCst),
+            mode: mode_from_code(self.mode.load(Ordering::SeqCst)),
+            length: self.length.load(Ordering::SeqCst),
+            revision: self.content_revision.load(Ordering::SeqCst),
+            position: self.position.load(Ordering::SeqCst),
+            iteration: self.iteration.load(Ordering::SeqCst),
+            passes: self.passes.load(Ordering::SeqCst),
+            waiting_repeat: self.waiting_repeat.load(Ordering::SeqCst),
+        };
+        core::sync::atomic::fence(Ordering::SeqCst);
+        (self.publication.load(Ordering::SeqCst) == before).then_some(snapshot)
+    }
 }
 
 pub(crate) fn mode_code(mode: Mode) -> u32 {
@@ -204,16 +313,45 @@ impl HostStatus {
 }
 
 /// Publishes settled loop state at every boundary.
-pub(crate) struct Observer(pub Arc<Cells>);
+pub(crate) struct Observer(
+    pub Arc<Cells>,
+    pub rt_runtime::Epoch,
+    pub(crate) super::monitoring::Demand,
+);
+impl Observer {
+    pub(crate) fn new(cells: Arc<Cells>) -> Self {
+        let demand = super::monitoring::Demand::new(cells.loops.len());
+        Self(cells, rt_runtime::Epoch(0), demand)
+    }
+}
 
 impl BoundaryObserver for Observer {
+    fn settled(&mut self, resolver: &shoop_loops::Resolver) {
+        self.2.update(resolver);
+        for strip in &self.0.strips {
+            strip.automatic_demand.store(false, Ordering::Relaxed);
+        }
+        for node in resolver.topology().nodes() {
+            if self.2.recording(node.id.slot() as usize) {
+                if let Some(strip) = self.0.loops[node.id.slot() as usize]
+                    .owner(node.id.generation())
+                    .and_then(|strip| self.0.strips.get(strip))
+                {
+                    strip.automatic_demand.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+    fn topology_epoch(&mut self, epoch: rt_runtime::Epoch) {
+        self.1 = epoch;
+    }
     fn boundary(&mut self, frame: Frame, decisions: &[Decision], _events: &[Event], _dropped: u64) {
         for decision in decisions {
             let state = decision.state;
             let Some(cells) = self.0.loops.get(state.id.slot() as usize) else {
                 continue;
             };
-            cells.publication.fetch_add(1, Ordering::SeqCst);
+            let publication = cells.publication.fetch_add(1, Ordering::SeqCst);
             let generation = state.id.generation();
             if cells.generation.load(Ordering::SeqCst) != generation {
                 cells.pulses.store(0, Ordering::SeqCst);
@@ -232,14 +370,49 @@ impl BoundaryObserver for Observer {
             cells
                 .content_revision
                 .store(state.content_revision.0, Ordering::SeqCst);
-            cells.position.store(state.position, Ordering::SeqCst);
             cells
                 .timing_revision
                 .store(state.timing_revision, Ordering::SeqCst);
-            cells.publication.fetch_add(1, Ordering::SeqCst);
+            cells.position.store(state.position, Ordering::SeqCst);
+            cells.epoch.store(self.1 .0, Ordering::SeqCst);
+            cells.frame.store(frame.0, Ordering::SeqCst);
+            let cursor = state.composite.unwrap_or_default();
+            cells.iteration.store(cursor.iteration, Ordering::SeqCst);
+            cells.passes.store(cursor.passes, Ordering::SeqCst);
+            cells
+                .waiting_repeat
+                .store(cursor.waiting_repeat, Ordering::SeqCst);
+            cells
+                .publication
+                .store(publication.wrapping_add(2), Ordering::SeqCst);
         }
     }
     fn as_any(&self) -> &dyn core::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod monitoring_tests {
+    use super::*;
+    use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
+
+    #[shoop_test]
+    fn monitoring_owner_banks_follow_the_confirmed_model_even_when_observation_lags_or_a_candidate_reuses_its_id(
+    ) {
+        let cells = LoopCells::default();
+        assert_no_heap(|| {
+            cells.configure_owner(1, 0, 0);
+            cells.configure_owner(2, 1, 1);
+            assert_eq!(cells.owner(1), Some(0));
+            assert_eq!(cells.owner(2), Some(1));
+            cells.configure_owner(2, 2, 1);
+            assert_eq!(cells.owner(1), Some(0));
+            assert_eq!(cells.owner(2), Some(2));
+            cells.configure_owner(3, 3, 2);
+            assert_eq!(cells.owner(1), None);
+            assert_eq!(cells.owner(2), Some(2));
+            assert_eq!(cells.owner(3), Some(3));
+        });
     }
 }

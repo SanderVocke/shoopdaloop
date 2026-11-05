@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 13;
+pub const SESSION_DOCUMENT_VERSION: u16 = 14;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -291,6 +291,14 @@ pub struct LoopDocument {
     pub balance: f32,
     pub channels: Vec<ChannelDocument>,
     pub composite: Option<CompositeDocument>,
+    #[serde(default)]
+    pub execution: Option<LoopExecutionDocument>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct LoopExecutionDocument {
+    pub sync_source: Option<u64>,
+    pub repeat_sync: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -487,6 +495,37 @@ pub struct FxStateDocument {
 pub struct CompositeDocument {
     pub kind: CompositeKindDocument,
     pub instances: Vec<CompositeLoopInstanceDocument>,
+    #[serde(default)]
+    pub timing: Option<CompositeTimingDocument>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct CompositeTimingDocument {
+    pub basis_sample_rate: u32,
+    pub basis_unit_frames: u64,
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+    pub unit_frames: u64,
+    pub iterations: u64,
+    pub instances: Vec<CompositeEffectiveInstanceDocument>,
+    pub spans: Vec<CompositeSpanDocument>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct CompositeEffectiveInstanceDocument {
+    pub instance_id: u64,
+    pub start_frame: u64,
+    pub end_frame: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct CompositeSpanDocument {
+    pub target: u64,
+    pub start: u64,
+    pub end: u64,
+    pub occurrence_start: u64,
+    pub ordinal: u32,
+    pub mode: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]

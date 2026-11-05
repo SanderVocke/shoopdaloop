@@ -9,6 +9,9 @@ use crate::client::*;
 use shoop_rt_protocol::*;
 
 const LIMITS: Limits = Limits {
+    composite_entries: 256,
+    composite_segments: 1024,
+    timing_relations: 512,
     content_chunk_bytes: 1024,
     strips: 4,
     loops: 16,

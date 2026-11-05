@@ -15,6 +15,8 @@ use web_time::Instant;
 
 use crate::Runtime;
 
+mod composites;
+
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_RECORDING: Duration = Duration::from_millis(600);
 const LARGE_FRAMES: usize = 33 * 1024 * 1024 / 4;
@@ -67,6 +69,7 @@ enum Step {
     Loaded,
     Resaving,
     RestoredPlayback,
+    Composites,
     LargeMapping,
     LargeImport,
     LargeSaving,
@@ -93,6 +96,7 @@ struct Ids {
 }
 
 pub struct NewEngineSelfTest {
+    composites: Option<composites::Canary>,
     preview_only: bool,
     preview_denied: bool,
     stress: bool,
@@ -122,6 +126,9 @@ impl NewEngineSelfTest {
             .and_then(|w| w.location().search().ok())
             .unwrap_or_default();
         Self {
+            composites: query
+                .contains("composites=1")
+                .then(composites::Canary::default),
             preview_only: query.contains("preview-only=1"),
             preview_denied: query.contains("preview-denied=1"),
             stress,
@@ -141,6 +148,10 @@ impl NewEngineSelfTest {
     }
 
     pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
+        if self.step == Step::Composites {
+            self.composites.as_mut().unwrap().file_output(output);
+            return;
+        }
         if !matches!(
             self.step,
             Step::Saving
@@ -187,6 +198,7 @@ impl NewEngineSelfTest {
                     < if matches!(
                         self.step,
                         Step::LargeMapping
+                            | Step::Composites
                             | Step::LargeImport
                             | Step::LargeSaving
                             | Step::LargeLoaded
@@ -195,7 +207,7 @@ impl NewEngineSelfTest {
                     ) || (self.large
                         && matches!(self.step, Step::BusZeroSaving | Step::BusZeroLoaded))
                     {
-                        Duration::from_secs(120)
+                        if self.step == Step::Composites { Duration::from_secs(300) } else { Duration::from_secs(240) }
                     } else {
                         STEP_TIMEOUT
                     } => {}
@@ -903,6 +915,9 @@ impl NewEngineSelfTest {
                     Some(position) if position == entry.position => return Ok(None),
                     _ => {}
                 }
+                if self.composites.is_some() {
+                    return Ok(Some(Step::Composites));
+                }
                 if !self.large {
                     for bus in snapshot.buses.iter() {
                         send(AppIntent::Bus {
@@ -936,6 +951,23 @@ impl NewEngineSelfTest {
                     update_loop_length: true,
                 })?;
                 Step::LargeMapping
+            }
+            Step::Composites => {
+                if !self
+                    .composites
+                    .as_mut()
+                    .unwrap()
+                    .advance(snapshot, pending, &mut send)?
+                {
+                    return Ok(None);
+                }
+                for bus in snapshot.buses.iter() {
+                    send(AppIntent::Bus {
+                        bus_id: bus.id,
+                        action: BusAction::Remove,
+                    })?;
+                }
+                Step::BusZero
             }
             Step::LargeMapping => {
                 let Some(task) = snapshot

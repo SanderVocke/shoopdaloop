@@ -434,7 +434,8 @@ impl ControlEndpoint {
             RuntimeResult::Execution(execution) => match execution_outcome(&execution) {
                 Outcome::Refused(refusal) => Err(refusal),
                 Outcome::Done => Ok(execution.operation_result),
-                Outcome::TimingApplied(_)
+                Outcome::CompositeApplied { .. }
+                | Outcome::TimingApplied(_)
                 | Outcome::ContentApplied { .. }
                 | Outcome::ContentPrepared { .. } => Err(Refusal::Internal),
             },

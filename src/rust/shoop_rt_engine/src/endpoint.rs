@@ -201,6 +201,7 @@ pub struct ControlEndpoint {
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
     pub(crate) family: crate::family::Stage,
+    pub(crate) composite: crate::composite::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -245,6 +246,18 @@ pub(crate) fn execution_outcome(execution: &EngineExecution) -> Outcome {
     }
     match execution.operation_result {
         Some(Reply::Failed(failure)) => Outcome::Refused(failure_refusal(failure)),
+        Some(
+            Reply::ProgramChanged { completion, .. }
+            | Reply::ProgramGraphChanged { completion, .. },
+        ) => match completion.outcome {
+            shoop_loops::Outcome::Applied { .. } => Outcome::Done,
+            shoop_loops::Outcome::Superseded { .. } | shoop_loops::Outcome::Cancelled { .. } => {
+                Outcome::Refused(Refusal::Busy)
+            }
+            shoop_loops::Outcome::Failed { reason, .. } => {
+                Outcome::Refused(timeline_refusal(reason))
+            }
+        },
         Some(Reply::Transition(completion)) => match completion.outcome {
             shoop_loops::Outcome::Applied { .. } | shoop_loops::Outcome::Superseded { .. } => {
                 Outcome::Done
@@ -487,6 +500,9 @@ impl ControlEndpoint {
         self.bulk.disconnect();
         self.disconnect_preview();
         self.uploads.disconnect();
+        if !self.composite.committed {
+            self.composite.clear();
+        }
     }
 
     fn drain_runtime(&mut self) {
@@ -682,6 +698,9 @@ impl ControlEndpoint {
     ) -> Result<(), Refusal> {
         let entry = *self.model.find_loop(id).ok_or(Refusal::InvalidId)?;
         let slot = id.0.index as usize;
+        if entry.program.is_some() && mode == LoopMode::Recording {
+            return Err(Refusal::InvalidValue);
+        }
         if !self.room(PLANNED + 1) {
             return Err(Refusal::Overloaded);
         }
@@ -763,6 +782,16 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::LoopIteration {
+                loop_id,
+                iteration,
+                retrigger,
+                seek,
+            } => self.composite_iteration(correlation, loop_id, iteration, retrigger, seek),
+            Request::Composite(command) => self.composite_request(correlation, command),
+            Request::LoopRepeatSync { loop_id, enabled } => {
+                self.repeat_sync(correlation, loop_id, enabled)
+            }
             Request::LoopTiming {
                 loop_id,
                 expected_revision,
@@ -931,6 +960,8 @@ impl ControlEndpoint {
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
+            | Request::ResetComposite { .. }
+            | Request::CreateComposite { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
             | Request::LoopSync { .. }
@@ -994,6 +1025,23 @@ impl ControlEndpoint {
     ) -> Result<Option<Outcome>, Refusal> {
         let slot = strip.0.index as usize;
         self.model.strip(strip).ok_or(Refusal::InvalidId)?;
+        if let StripControl::AutomaticMonitoring(enabled) = control {
+            if !self.cells.strips[slot].set_policy(strip.0.generation, enabled) {
+                return Err(Refusal::InvalidId);
+            }
+            self.model
+                .strip_mut(strip)
+                .expect("validated strip")
+                .controls
+                .apply(control);
+            self.model.revision += 1;
+            if self.job.is_some() {
+                if let Some(entry) = self.next.strip_mut(strip) {
+                    entry.controls.apply(control);
+                }
+            }
+            return Ok(Some(Outcome::Done));
+        }
         let (node, operation) = match control {
             StripControl::InputGain(value) if value.is_finite() => {
                 (self.pool.strip_input(slot), EngineOp::Gain(value))
@@ -1126,6 +1174,7 @@ impl ControlEndpoint {
                     output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
                     midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
                     midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
+                    automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
                 }));
             }
             for (slot, bus) in self.model.buses.iter().enumerate() {
@@ -1143,53 +1192,76 @@ impl ControlEndpoint {
             }
             if let Some(record) = self.loop_telemetry(slot) {
                 self.dirty[slot] = out.push(EngineMessage::Telemetry(record)).is_err();
+                if let Some(record) = self.composite_telemetry(slot) {
+                    self.dirty[slot] |= out.push(EngineMessage::Telemetry(record)).is_err();
+                }
             }
         }
+    }
+
+    fn composite_telemetry(&self, slot: usize) -> Option<Telemetry> {
+        let entry = self.model.loops[slot]?;
+        let program = entry.program?;
+        let state = self.cells.loops[slot].snapshot()?;
+        if state.generation != entry.id.0.generation || state.epoch != self.topology_epoch.0 {
+            return None;
+        }
+        Some(Telemetry::Composite {
+            loop_id: entry.id,
+            frame: state.frame,
+            mode: protocol_mode(state.mode),
+            position: state.position,
+            length: state.length,
+            active_version: program.version,
+            pending_version: self
+                .composite
+                .description
+                .filter(|d| {
+                    self.composite.committed && d.loop_id == entry.id && d.version > program.version
+                })
+                .map(|d| d.version),
+            pending_admitted: self.composite.admitted,
+            iteration: state.iteration,
+            passes: state.passes,
+            waiting_repeat: state.waiting_repeat,
+        })
     }
 
     fn loop_telemetry(&self, slot: usize) -> Option<Telemetry> {
         let entry = self.model.loops[slot]?;
         let cells = &self.cells.loops[slot];
         let publication = cells.publication.load(Ordering::SeqCst);
-        if publication % 2 != 0 {
+        let state = cells.snapshot()?;
+        if state.epoch != self.topology_epoch.0 {
             return None;
         }
-        let current = cells.generation.load(Ordering::SeqCst) == entry.id.0.generation;
+        let current = state.generation == entry.id.0.generation;
         let next = self.planned[slot]
             .iter()
             .flatten()
             .map(|planned| (self.remaining(planned), planned.mode))
             .min_by_key(|(remaining, _)| *remaining);
-        let channels = self
-            .model
-            .strip(entry.strip)
+        let channels = entry
+            .strip
+            .and_then(|id| self.model.strip(id))
             .map_or(0, |strip| strip.shape.audio_outputs as usize);
-        let timing_revision = cells.timing_revision.load(Ordering::SeqCst);
         let record = Telemetry::Loop {
             loop_id: entry.id,
-            mode: protocol_mode(self.observed_mode(entry.id)),
+            mode: if current {
+                protocol_mode(state.mode)
+            } else {
+                LoopMode::Stopped
+            },
             next_mode: next.map(|(_, mode)| mode),
-            next_delay: next.map(|(remaining, _)| remaining),
+            next_delay: next.map(|(delay, _)| delay),
             recording_armed: self.planned[slot]
                 .iter()
                 .flatten()
                 .any(|planned| planned.mode == LoopMode::Recording),
-            timing_revision: if current { timing_revision } else { 0 },
-            content_revision: if current {
-                cells.content_revision.load(Ordering::SeqCst)
-            } else {
-                0
-            },
-            length: if current {
-                cells.length.load(Ordering::SeqCst)
-            } else {
-                0
-            },
-            position: if current {
-                cells.position.load(Ordering::SeqCst)
-            } else {
-                0
-            },
+            timing_revision: if current { state.timing_revision } else { 0 },
+            content_revision: if current { state.revision } else { 0 },
+            length: if current { state.length } else { 0 },
+            position: if current { state.position } else { 0 },
             peaks: cells.peaks.take(channels),
         };
         if cells.publication.load(Ordering::SeqCst) != publication {

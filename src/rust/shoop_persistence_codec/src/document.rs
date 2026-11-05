@@ -3,6 +3,7 @@ use shoop_app_api::*;
 use shoop_app_protocol::persistence_image as image;
 use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
+mod composite;
 
 fn port_to_document(port: &image::Port) -> Result<PortDocument> {
     let state = &port.state;
@@ -238,6 +239,10 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                 next_channel += 1;
             }
             loops.push(LoopDocument {
+                execution: Some(LoopExecutionDocument {
+                    sync_source: content.sync_source.map(|id| id.raw()),
+                    repeat_sync: content.repeat_sync,
+                }),
                 id: content.id.raw(),
                 name: content.name.clone(),
                 length_frames: content.frames,
@@ -245,7 +250,7 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                 gain: content.gain,
                 balance: content.balance,
                 channels,
-                composite: None,
+                composite: content.composite.as_ref().map(composite::to_document),
             });
         }
         let controls = &track.controls;
@@ -412,8 +417,18 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                 unsupported.insert("dry/wet default playback (P06)");
             }
             for content in &track.loops {
-                if content.composite.is_some() {
-                    unsupported.insert("composite loops (P03)");
+                if let Some(composite) = &content.composite {
+                    for event in &composite.instances {
+                        match event.mode.as_deref() {
+                            Some("replacing") => {
+                                unsupported.insert("replacing composite events (P05)");
+                            }
+                            Some("playing_dry_through_wet" | "recording_dry_into_wet") => {
+                                unsupported.insert("dry/wet composite events (P06)");
+                            }
+                            _ => {}
+                        }
+                    }
                 }
                 for channel in &content.channels {
                     if channel.mode != ChannelModeDocument::Direct {
@@ -433,10 +448,11 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     );
     Ok(())
 }
-pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
+pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>> {
     requirements(&bundle.document)?;
     ensure!(bundle.scripts.is_empty(), "session scripts/resources (P16)");
     validate_bundle(&bundle)?;
+    materialize_composite_timing(&mut bundle.document)?;
     let media = bundle
         .media
         .into_iter()
@@ -595,11 +611,27 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
                 }
             }
             ensure!(
-                audio.len() == audio_channels as usize && midi_channels.len() == usize::from(midi),
+                content.composite.is_some()
+                    || audio.len() == audio_channels as usize
+                        && midi_channels.len() == usize::from(midi),
                 "loop {} has unsupported channel shape",
                 content.id
             );
             loops.push(image::Loop {
+                sync_source: content
+                    .execution
+                    .as_ref()
+                    .and_then(|execution| execution.sync_source)
+                    .map(LoopId::from_raw),
+                repeat_sync: content
+                    .execution
+                    .as_ref()
+                    .is_some_and(|execution| execution.repeat_sync),
+                composite: content
+                    .composite
+                    .as_ref()
+                    .map(composite::from_document)
+                    .transpose()?,
                 id: LoopId::from_raw(content.id),
                 name: content.name,
                 sync: content.is_sync,

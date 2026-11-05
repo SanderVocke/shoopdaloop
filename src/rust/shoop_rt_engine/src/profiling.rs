@@ -333,7 +333,7 @@ mod tests {
             }],
         };
         let mut layouts = Layouts::new(&pool, 4, 48000, 32);
-        let mut model = crate::model::Model::new(1, 1, 1, 2, Default::default());
+        let mut model = crate::model::Model::new(1, 1, 1, 2, Default::default(), 0);
         model.strips[0] = Some(crate::model::Strip {
             id: shoop_rt_protocol::StripId(shoop_rt_protocol::SlotId::new(0, 7)),
             shape: shoop_rt_protocol::StripShape {

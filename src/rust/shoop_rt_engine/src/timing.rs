@@ -42,6 +42,9 @@ impl ControlEndpoint {
     }
     pub(crate) fn current_timing(&self, entry: crate::model::Loop) -> TimingState {
         let mut timing = entry.timing;
+        if entry.program.is_some() {
+            return timing;
+        }
         let cells = &self.cells.loops[entry.id.0.index as usize];
         if cells.generation.load(Ordering::Acquire) != entry.id.0.generation {
             return timing;
@@ -51,7 +54,7 @@ impl ControlEndpoint {
             let frames = cells.length.load(Ordering::Acquire);
             let shape = self
                 .model
-                .strip(entry.strip)
+                .strip(entry.strip.expect("primitive loop strip"))
                 .expect("live loop strip")
                 .shape;
             timing.content_revision = revision;
@@ -84,9 +87,12 @@ impl ControlEndpoint {
             return Err(Refusal::Busy);
         }
         let entry = self.model.find_loop(target).ok_or(Refusal::InvalidId)?;
+        if entry.program.is_some() {
+            return Err(Refusal::InvalidValue);
+        }
         let shape = self
             .model
-            .strip(entry.strip)
+            .strip(entry.strip.ok_or(Refusal::InvalidId)?)
             .ok_or(Refusal::InvalidId)?
             .shape;
         if !edit.canonical()

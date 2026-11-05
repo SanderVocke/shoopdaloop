@@ -1018,6 +1018,7 @@ pub struct LoopChannelTimingState {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
+    pub repeat_sync: bool,
     pub timing_revision: u64,
     pub channel_timings: Arc<[LoopChannelTimingState]>,
     pub content_revision: u64,
@@ -1056,6 +1057,7 @@ pub struct LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         Self {
+            repeat_sync: false,
             timing_revision: 0,
             channel_timings: Arc::from([]),
             content_revision: 0,
@@ -1458,14 +1460,61 @@ pub struct CompositeEventDetailsState {
     pub loop_mode: LoopMode,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CompositeTimingState {
+    pub basis_sample_rate: u32,
+    pub basis_frames: u64,
+    pub render_sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeExecutionState {
+    pub active_version: Option<u64>,
+    pub pending_version: Option<u64>,
+    pub pending_stage: Option<String>,
+    pub waiting_repeat: bool,
+    pub restoring: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CompositeDetailsState {
+    pub timing: Option<CompositeTimingState>,
+    pub execution: CompositeExecutionState,
     pub kind: CompositeKind,
     pub cycle_length_frames: u64,
     pub timeline_length_frames: u64,
     pub played_frame: Option<u64>,
     pub tracks: Vec<CompositeTrackDetailsState>,
     pub events: Vec<CompositeEventDetailsState>,
+}
+
+impl CompositeDetailsState {
+    pub fn frame_cycles(&self, frame: u64) -> f64 {
+        if let Some(timing) = self
+            .timing
+            .filter(|timing| timing.basis_frames != 0 && timing.render_sample_rate != 0)
+        {
+            frame as f64 * f64::from(timing.basis_sample_rate)
+                / (timing.basis_frames as f64 * f64::from(timing.render_sample_rate))
+        } else {
+            frame as f64 / self.cycle_length_frames.max(1) as f64
+        }
+    }
+    pub fn cycles_ceil(&self, frame: u64) -> u64 {
+        if let Some(timing) = self
+            .timing
+            .filter(|timing| timing.basis_frames != 0 && timing.render_sample_rate != 0)
+        {
+            let numerator = u128::from(frame) * u128::from(timing.basis_sample_rate);
+            let denominator =
+                u128::from(timing.basis_frames) * u128::from(timing.render_sample_rate);
+            u64::try_from(numerator.div_ceil(denominator)).unwrap_or(u64::MAX)
+        } else {
+            frame.div_ceil(self.cycle_length_frames.max(1))
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1857,7 +1906,7 @@ pub enum BackendCapability {
     SessionCapture,
     /// Loading sessions whose loops carry content. Structure-only documents need no capability.
     SessionContentLoad,
-    /// Composite loops, scheduled by the backend or, without its support, by the application.
+    /// Prepared composite arrangements executed by the session engine.
     CompositeLoops,
     Grab,
     ReplacingMode,
@@ -2515,6 +2564,15 @@ pub enum AppIntent {
         target_loop_id: LoopId,
         kind: CompositeKind,
     },
+    SetCompositeTimingBasis {
+        target_loop_id: LoopId,
+        sample_rate: u32,
+        unit_frames: u64,
+    },
+    CancelCompositeEdit {
+        target_loop_id: LoopId,
+        version: u64,
+    },
     SetCompositeEventMode {
         target_loop_id: LoopId,
         event: CompositeEventId,
@@ -2854,6 +2912,8 @@ impl AppIntent {
             Self::SetCompositeLoopCycles { .. } => "loop.composite.set_loop_cycles",
             Self::SetCompositeKind { .. } => "loop.composite.set_kind",
             Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",
+            Self::SetCompositeTimingBasis { .. } => "loop.composite.set_timing_basis",
+            Self::CancelCompositeEdit { .. } => "loop.composite.cancel_edit",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddScriptFileSource { .. } => "scripting.add_file_source",

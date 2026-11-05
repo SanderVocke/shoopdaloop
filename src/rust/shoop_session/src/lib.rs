@@ -3,7 +3,9 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod archive;
 mod click_track;
+mod composite;
 mod conversion;
+pub use composite::materialize_composite_timing;
 mod document;
 mod limits;
 mod media;
@@ -294,6 +296,7 @@ mod tests {
                     },
                     latency: TrackLatencyDocument::default(),
                     loops: vec![LoopDocument {
+                        execution: None,
                         id: 10,
                         name: "Loop".to_owned(),
                         length_frames: 301,
@@ -454,6 +457,7 @@ mod tests {
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
+                    execution: None,
                     id: 20,
                     name: "Deferred primitive".to_owned(),
                     length_frames: 960,
@@ -520,6 +524,7 @@ mod tests {
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
+                    execution: None,
                     id: 30,
                     name: "Script composite".to_owned(),
                     length_frames: 1_920,
@@ -528,6 +533,7 @@ mod tests {
                     balance: 0.0,
                     channels: Vec::new(),
                     composite: Some(CompositeDocument {
+                        timing: None,
                         kind: CompositeKindDocument::Script,
                         instances: vec![CompositeLoopInstanceDocument {
                             instance_id: 1,
@@ -688,7 +694,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 14] {
+        for unsupported in [5, SESSION_DOCUMENT_VERSION + 1] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -884,6 +890,7 @@ mod tests {
         source.document.track_groups[0].tracks[0]
             .loops
             .push(LoopDocument {
+                execution: None,
                 id: 11,
                 name: "Composite".to_owned(),
                 length_frames: 301,
@@ -892,6 +899,7 @@ mod tests {
                 balance: 0.0,
                 channels: Vec::new(),
                 composite: Some(CompositeDocument {
+                    timing: None,
                     kind: CompositeKindDocument::Regular,
                     instances: vec![CompositeLoopInstanceDocument {
                         instance_id: 6_001,

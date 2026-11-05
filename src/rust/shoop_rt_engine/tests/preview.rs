@@ -4,6 +4,8 @@ use shoop_wasm_test_support::shoop_test;
 use support::*;
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 fn upload(h: &mut Harness, id: u64, frames: usize) {
     let bytes: Vec<u8> = (0..frames)
