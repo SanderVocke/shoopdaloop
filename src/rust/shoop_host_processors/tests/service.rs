@@ -46,7 +46,8 @@ impl<C: Carrier> Carrier for Foundation<C> {
             *capabilities = capabilities
                 .union(Capabilities::DRY_WET)
                 .union(Capabilities::TRACK_PROCESSORS)
-                .union(Capabilities::GLOBAL_FX_CONTROL);
+                .union(Capabilities::GLOBAL_FX_CONTROL)
+                .union(Capabilities::EXTERNAL_DRY_WET);
         }
         Some(message)
     }
@@ -58,8 +59,116 @@ struct Fixture {
     render: Rc<RefCell<OfflineRender>>,
 }
 impl Fixture {
+    fn persistence(&mut self, request: persistence::Request) {
+        let message = WireMessage::Client(self.client.persistence(request).unwrap());
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let used = codec::encode(&message, &mut bytes).unwrap();
+        let WireMessage::Client(message) = codec::decode(&bytes[..used]).unwrap() else {
+            panic!()
+        };
+        self.service.handle(self.connection, message).unwrap();
+        self.drain();
+    }
+    fn capture(
+        &mut self,
+        transfer: u64,
+        mut after_cut: Option<Command>,
+    ) -> std::sync::Arc<persistence_image::Image> {
+        let key = persistence::Key {
+            transfer: TransferId(transfer),
+            epoch: self.client.snapshot().unwrap().persistence_epoch,
+        };
+        let target = persistence::Target::Session {
+            revision: self.client.snapshot().unwrap().revision,
+        };
+        self.persistence(persistence::Request::Capture { key, target });
+        let mut captured = None;
+        for _ in 0..500 {
+            self.ticks(1);
+            if let Some(command) = after_cut.take() {
+                self.confirmed(command);
+            }
+            while let Some(reply) = self.client.take_persistence_reply() {
+                match reply {
+                    persistence::Reply::Captured(description) => captured = Some(description),
+                    persistence::Reply::Refused { reason, .. } => {
+                        panic!("capture refused: {reason:?}")
+                    }
+                    _ => {}
+                }
+            }
+            if captured.is_some() {
+                break;
+            }
+        }
+        let captured = captured.expect("capture stalled");
+        let mut objects = Vec::new();
+        for object in 0..captured.objects {
+            self.persistence(persistence::Request::Describe { key, object });
+            let persistence::Reply::Object {
+                object: description,
+                ..
+            } = self.client.take_persistence_reply().unwrap()
+            else {
+                panic!()
+            };
+            let mut bytes = Vec::new();
+            while (bytes.len() as u64) < description.bytes {
+                self.persistence(persistence::Request::Read {
+                    key,
+                    object,
+                    offset: bytes.len() as u64,
+                });
+                let persistence::Reply::Chunk { bytes: chunk, .. } =
+                    self.client.take_persistence_reply().unwrap()
+                else {
+                    panic!()
+                };
+                bytes.extend_from_slice(&chunk);
+            }
+            objects.push(persistence::Object { description, bytes });
+        }
+        self.persistence(persistence::Request::Cancel { key });
+        assert!(matches!(
+            self.client.take_persistence_reply(),
+            Some(persistence::Reply::Closed { .. })
+        ));
+        persistence_transfer::assemble(objects).unwrap()
+    }
+    fn load(&mut self, image: std::sync::Arc<persistence_image::Image>, transfer: u64) {
+        let key = persistence::Key {
+            transfer: TransferId(transfer),
+            epoch: self.client.snapshot().unwrap().persistence_epoch,
+        };
+        let target = persistence::Target::Session {
+            revision: self.client.snapshot().unwrap().revision,
+        };
+        let mut upload = persistence_transfer::UploadStream::new(image, key, target).unwrap();
+        while let Some(request) = upload.next_request().unwrap() {
+            self.persistence(request);
+        }
+        let mut ready = false;
+        for _ in 0..100 {
+            self.ticks(1);
+            while let Some(reply) = self.client.take_persistence_reply() {
+                match reply {
+                    persistence::Reply::Ready { .. } => ready = true,
+                    persistence::Reply::Refused { reason, .. } => {
+                        panic!("stage refused: {reason:?}")
+                    }
+                    _ => {}
+                }
+            }
+            if ready {
+                break;
+            }
+        }
+        assert!(ready, "staging stalled");
+        self.confirmed(Command::CommitPersistence(key));
+    }
     fn new(kind: ProcessorKind) -> Self {
         let description = EngineDescription {
+            external_dry_wet: true,
             sample_rate: 8000,
             quantum: 16,
             max_frames: 128,
@@ -184,6 +293,94 @@ impl Fixture {
             .unwrap()
             .clone()
     }
+}
+
+#[shoop_test]
+fn external_unequal_roles_survive_the_service_and_session_archive() {
+    use persistence_image::{ChannelMode, Manifest, Payload};
+    let mut f = Fixture::new(ProcessorKind::External);
+    f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
+    let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+        name: "External roles".into(),
+        topology: TrackSpecTopology::DryWet {
+            dry_audio_channels: 3,
+            wet_audio_channels: 1,
+            dry_midi: true,
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+            default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+        },
+        latency: Default::default(),
+        initial_output_bus_names: vec!["Master".into()],
+        creation_request_id: None,
+    })) else {
+        panic!("External creation refused")
+    };
+    let before = f.track(track);
+    f.confirmed(Command::Loop {
+        track,
+        loop_id: loops[0],
+        action: LoopAction::RecordClicked,
+    });
+    f.ticks(4);
+    f.confirmed(Command::Loop {
+        track,
+        loop_id: loops[0],
+        action: LoopAction::StopClicked,
+    });
+    let saved = file_image(f.capture(110, None));
+    let Manifest::Session(session) = &saved.manifest else {
+        panic!()
+    };
+    let stored = session.tracks.iter().find(|t| t.id == track).unwrap();
+    let take = &stored.loops[0];
+    assert_eq!(take.audio_labels(), ["Dry 1", "Dry 2", "Dry 3", "Wet 1"]);
+    assert_eq!(
+        take.audio.iter().map(|c| c.mode).collect::<Vec<_>>(),
+        [
+            ChannelMode::Dry,
+            ChannelMode::Dry,
+            ChannelMode::Dry,
+            ChannelMode::Wet
+        ]
+    );
+    assert_eq!(take.midi[0].channel.mode, ChannelMode::Dry);
+    assert!(take.recorded_processor_state.is_none());
+    f.load(saved.clone(), 111);
+    let loaded = f
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.name == before.name)
+        .unwrap()
+        .clone();
+    assert_ne!(loaded.id, track);
+    assert_eq!(loaded.topology, before.topology);
+    assert_eq!(loaded.default_playback_mode, before.default_playback_mode);
+    assert_eq!(loaded.loops[0].mode, LoopMode::Stopped);
+    let resaved = file_image(f.capture(112, None));
+    let Manifest::Session(session) = &resaved.manifest else {
+        panic!()
+    };
+    let after = &session
+        .tracks
+        .iter()
+        .find(|t| t.id == loaded.id)
+        .unwrap()
+        .loops[0];
+    let samples = |image: &persistence_image::Image, object: Option<u32>| match object {
+        Some(object) => match &image.payloads[object as usize - 1] {
+            Payload::Audio(samples) => samples.to_vec(),
+            _ => panic!(),
+        },
+        None => Vec::new(),
+    };
+    for (a, b) in take.audio.iter().zip(&after.audio) {
+        assert_eq!(a.mode, b.mode);
+        assert_eq!(samples(&saved, a.object), samples(&resaved, b.object));
+    }
+    assert_eq!(after.midi[0].initial, take.midi[0].initial);
 }
 
 #[cfg(feature = "builtin-fx")]
@@ -502,7 +699,11 @@ fn service_processor(kind: ProcessorKind) {
         }
         TrackProcessorEditorState::OxiSynth(state) => assert!(state.midi_cc_assignments.is_empty()),
     }
-    f.confirmed(control(TrackAction::Remove));
+    let loaded = session_file_round_trip(&mut f, track, kind);
+    f.confirmed(Command::Track {
+        track: loaded,
+        action: TrackAction::Remove,
+    });
     f.ticks(4);
     assert!(f
         .client
@@ -510,5 +711,228 @@ fn service_processor(kind: ProcessorKind) {
         .unwrap()
         .tracks
         .iter()
-        .all(|entry| entry.id != track));
+        .all(|entry| entry.id != loaded));
+}
+
+fn file_image(
+    image: std::sync::Arc<persistence_image::Image>,
+) -> std::sync::Arc<persistence_image::Image> {
+    use shoop_persistence_codec::codec::{Value, Work};
+    let Value::File { bytes, .. } = Work::Encode {
+        image,
+        kind: IoTaskKind::SaveSession,
+        wav: false,
+        standard: false,
+        channels: Vec::new(),
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let Value::Decoded(decoded) = Work::Decode {
+        kind: IoTaskKind::LoadSession,
+        bytes,
+        rate: 8000,
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let Value::Image(image) = Work::Prepare {
+        decoded,
+        mapping: Vec::new(),
+        update_length: true,
+    }
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    image
+}
+fn session_file_round_trip(f: &mut Fixture, track: TrackId, kind: ProcessorKind) -> TrackId {
+    use persistence_image::{Image, Manifest, Payload};
+    let scalar = |value| {
+        if kind == ProcessorKind::BuiltInFx {
+            TrackAction::BuiltInFx(BuiltInFxControl::SetParameter(
+                BuiltInFxParameter::DriveOutput,
+                value,
+            ))
+        } else {
+            TrackAction::OxiSynth(OxiSynthControl::SetReverbSend(value))
+        }
+    };
+    let (saved_value, late_value) = if kind == ProcessorKind::BuiltInFx {
+        (-3., -6.)
+    } else {
+        (0.25, 0.75)
+    };
+    f.confirmed(Command::Track {
+        track,
+        action: scalar(saved_value),
+    });
+    let mapping = if kind == ProcessorKind::BuiltInFx {
+        TrackAction::BuiltInFx(BuiltInFxControl::AssignMidiCc(BuiltInFxMidiCcAssignment {
+            parameter: BuiltInFxParameter::DriveOutput,
+            channel: 2,
+            controller: 22,
+        }))
+    } else {
+        TrackAction::OxiSynth(OxiSynthControl::AssignMidiCc(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
+            channel: 2,
+            controller: 22,
+        }))
+    };
+    f.confirmed(Command::Track {
+        track,
+        action: mapping,
+    });
+    f.ticks(4);
+    let before = f.track(track);
+    let expected = before
+        .fx
+        .as_ref()
+        .unwrap()
+        .editor
+        .as_ref()
+        .unwrap()
+        .canonical_state()
+        .unwrap();
+    let captured = f.capture(
+        100,
+        Some(Command::Track {
+            track,
+            action: scalar(late_value),
+        }),
+    );
+    assert_ne!(
+        f.track(track)
+            .fx
+            .unwrap()
+            .editor
+            .unwrap()
+            .canonical_state()
+            .unwrap(),
+        expected
+    );
+    let encoded = file_image(captured);
+    let Manifest::Session(session) = &encoded.manifest else {
+        panic!()
+    };
+    let stored = session.tracks.iter().find(|t| t.id == track).unwrap();
+    assert_eq!(stored.processor_state.as_deref(), Some(expected.as_str()));
+    assert_eq!(stored.default_playback_mode, before.default_playback_mode);
+    let take = stored.loops.iter().find(|l| l.frames > 0).unwrap();
+    assert!(take.recorded_processor_state.is_some());
+    assert_eq!(
+        stored.builtin_fx_midi_cc_assignments.len() + stored.oxisynth_midi_cc_assignments.len(),
+        1
+    );
+    f.load(encoded.clone(), 101);
+    let loaded = f
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.name == before.name)
+        .unwrap()
+        .clone();
+    assert_ne!(loaded.id, track);
+    assert_eq!(loaded.topology, before.topology);
+    assert_eq!(loaded.default_playback_mode, before.default_playback_mode);
+    assert_eq!(
+        loaded
+            .fx
+            .as_ref()
+            .unwrap()
+            .editor
+            .as_ref()
+            .unwrap()
+            .canonical_state()
+            .unwrap(),
+        expected
+    );
+    let resaved = file_image(f.capture(102, None));
+    let Manifest::Session(after) = &resaved.manifest else {
+        panic!()
+    };
+    let after = after.tracks.iter().find(|t| t.id == loaded.id).unwrap();
+    assert_eq!(after.processor_state, stored.processor_state);
+    assert_eq!(
+        after.builtin_fx_midi_cc_assignments,
+        stored.builtin_fx_midi_cc_assignments
+    );
+    assert_eq!(
+        after.oxisynth_midi_cc_assignments,
+        stored.oxisynth_midi_cc_assignments
+    );
+    let after_take = after.loops.iter().find(|l| l.frames > 0).unwrap();
+    assert_eq!(
+        after_take.recorded_processor_state,
+        take.recorded_processor_state
+    );
+    assert_eq!(after_take.frames, take.frames);
+    assert_eq!(after_take.audio.len(), take.audio.len());
+    let audio = |image: &Image, object: Option<u32>| match object {
+        Some(object) => match &image.payloads[object as usize - 1] {
+            Payload::Audio(samples) => samples.to_vec(),
+            _ => panic!(),
+        },
+        None => Vec::new(),
+    };
+    for (a, b) in after_take.audio.iter().zip(&take.audio) {
+        assert_eq!(a.mode, b.mode);
+        assert_eq!(audio(&resaved, a.object), audio(&encoded, b.object));
+        assert_eq!(
+            (
+                a.frames,
+                a.gain,
+                a.start_offset,
+                a.capture_alignment,
+                a.preplay
+            ),
+            (
+                b.frames,
+                b.gain,
+                b.start_offset,
+                b.capture_alignment,
+                b.preplay
+            )
+        );
+    }
+    let events = |image: &Image, object: Option<u32>| match object {
+        Some(object) => match &image.payloads[object as usize - 1] {
+            Payload::Midi(events) => events.to_vec(),
+            _ => panic!(),
+        },
+        None => Vec::new(),
+    };
+    for (a, b) in after_take.midi.iter().zip(&take.midi) {
+        assert_eq!(a.initial, b.initial);
+        assert_eq!(
+            events(&resaved, a.channel.object),
+            events(&encoded, b.channel.object)
+        );
+    }
+    f.confirmed(Command::Loop {
+        track: loaded.id,
+        loop_id: loaded.loops[0].id,
+        action: LoopAction::RestoreRecordedFxState,
+    });
+    f.ticks(4);
+    let restored = f.track(loaded.id).fx.unwrap().editor.unwrap();
+    assert_eq!(
+        restored.canonical_state().unwrap(),
+        take.recorded_processor_state.as_ref().unwrap().as_str()
+    );
+    match restored {
+        TrackProcessorEditorState::BuiltInFx(state) => {
+            assert_eq!(state.midi_cc_assignments[0].controller, 22)
+        }
+        TrackProcessorEditorState::OxiSynth(state) => {
+            assert_eq!(state.midi_cc_assignments[0].controller, 22)
+        }
+    }
+    loaded.id
 }

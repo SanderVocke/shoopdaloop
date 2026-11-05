@@ -24,6 +24,7 @@ fn capture() -> Arc<image::Image> {
             let id = LoopId::from_raw(index as u64 + 1);
             payloads.push(image::Payload::Audio(Arc::new(vec![0.25; frames as usize])));
             let channel = image::Channel {
+                mode: image::ChannelMode::Direct,
                 object: Some(payloads.len() as u32),
                 frames,
                 gain: 1.,
@@ -50,6 +51,7 @@ fn capture() -> Arc<image::Image> {
                 fence_content: true,
                 restart: index == 0,
                 content: Some(image::Loop {
+                    recorded_processor_state: None,
                     id,
                     name: "Chain".into(),
                     sync: false,
@@ -59,6 +61,7 @@ fn capture() -> Arc<image::Image> {
                     audio: vec![channel.clone()],
                     midi: vec![image::MidiChannel {
                         channel: image::Channel {
+                            mode: image::ChannelMode::Direct,
                             object: Some(payloads.len() as u32),
                             ..channel
                         },

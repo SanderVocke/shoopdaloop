@@ -65,6 +65,7 @@ impl Pinned {
     }
     fn image(&self) -> Arc<image::Image> {
         let channel = |object| image::Channel {
+            mode: image::ChannelMode::Direct,
             object: Some(object),
             frames: self.frames,
             gain: 1.,
@@ -74,6 +75,7 @@ impl Pinned {
             recording_started_at: None,
         };
         let content = image::Loop {
+            recorded_processor_state: None,
             id: api::LoopId::from_raw(1),
             name: "fixed shared take".into(),
             sync: false,
@@ -96,6 +98,11 @@ impl Pinned {
                 sample_rate: 1000,
                 global: api::GlobalControlState::default(),
                 tracks: vec![image::Track {
+                    topology: shoop_app_api::TrackTopology::Direct,
+                    default_playback_mode: Default::default(),
+                    processor_state: None,
+                    builtin_fx_midi_cc_assignments: Vec::new(),
+                    oxisynth_midi_cc_assignments: Vec::new(),
                     id: api::TrackId::from_raw(1),
                     name: "input".into(),
                     port_name_base: "input".into(),

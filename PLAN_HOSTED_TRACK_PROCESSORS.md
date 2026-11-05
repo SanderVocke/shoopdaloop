@@ -494,7 +494,7 @@ until persistence, media and recorded-state support is complete.
   staging for topology/port roles/default mode, processor state/mappings, dry/wet media,
   track-only global input intent and required latency/take metadata. Keep stable
   source-to-live ID mappings and absent-port intent; do not serialize runtime owners.
-- [ ] Capture applied processor state at the reference wet-take recording boundary,
+- [x] Capture applied processor state at the reference wet-take recording boundary,
   retaining it independently of later edits. Restore it through
   `LoopAction::RestoreRecordedFxState` using a preflighted atomic state change;
   failed restoration cannot damage the live processor or recorded media.
@@ -555,6 +555,17 @@ outstanding; this does not close Stage 7. The required native workspace gate
 passes 2,819 tests (seven existing skips); warning-denying build and boundary/
 inventory checks pass. Node/Wasm passes backend 47, core 83, protocol 6 and
 both-DSP host 22 tests.
+
+Service/file milestone: application protocol v26 carries channel roles, topology,
+default playback, canonical applied settings, mappings and immutable recorded-take
+settings. Capture freezes settings at the accepted cut while later live controls
+continue. The service and archive codec now round-trip real FX N=3, synth and
+External 3→1 sessions, including fresh IDs, stopped loaded loops, exact role media,
+MIDI state, mapping preservation and imported take restoration. Selected audio
+export keeps role labels and original numbering in the requested order; import
+mapping supports all sixteen logical channels. The production file workflow and
+waveform labels use the same role order. Synchronized family imports, automatic
+alignment projection and final public admission remain open.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

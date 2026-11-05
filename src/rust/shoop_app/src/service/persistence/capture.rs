@@ -12,6 +12,7 @@ pub(in crate::service) struct Cut {
     external: BTreeMap<PortId, BTreeSet<String>>,
     routes: BTreeSet<MixerRouteState>,
     annotations: BTreeMap<(LoopId, bool, u32), (u64, Option<String>)>,
+    recorded: BTreeMap<LoopId, Option<String>>,
 }
 impl Cut {
     pub(super) fn new(service: &Service) -> Self {
@@ -59,6 +60,20 @@ impl Cut {
             external,
             routes,
             annotations: service.channel_annotations.clone(),
+            recorded: service
+                .loops
+                .iter()
+                .map(|(id, entry)| {
+                    (
+                        *id,
+                        service
+                            .observed
+                            .loops
+                            .get(&entry.backend)
+                            .and_then(|s| s.recorded_processor_state.clone()),
+                    )
+                })
+                .collect(),
         }
     }
     fn port(&self, id: PortId) -> Result<image::Port> {
@@ -97,9 +112,6 @@ impl Cut {
                 .and_then(|(_, value)| value.clone())
         };
         for (index, channel) in content.audio.into_iter().enumerate() {
-            if channel.mode != BackendChannelMode::Direct {
-                return Err(anyhow!("capture requires unsupported audio channel modes"));
-            }
             let frames = channel.samples.len() as u64;
             let object = if channel.samples.is_empty() {
                 None
@@ -108,6 +120,11 @@ impl Cut {
                 Some(payloads.len() as u32)
             };
             audio.push(image::Channel {
+                mode: match channel.mode {
+                    BackendChannelMode::Direct => image::ChannelMode::Direct,
+                    BackendChannelMode::Dry => image::ChannelMode::Dry,
+                    BackendChannelMode::Wet => image::ChannelMode::Wet,
+                },
                 object,
                 frames,
                 gain: channel.gain,
@@ -118,9 +135,6 @@ impl Cut {
             });
         }
         for (index, channel) in content.midi.into_iter().enumerate() {
-            if channel.mode != BackendChannelMode::Direct {
-                return Err(anyhow!("capture requires unsupported MIDI channel modes"));
-            }
             let object = if channel.events.is_empty() {
                 None
             } else {
@@ -129,6 +143,11 @@ impl Cut {
             };
             midi.push(image::MidiChannel {
                 channel: image::Channel {
+                    mode: match channel.mode {
+                        BackendChannelMode::Direct => image::ChannelMode::Direct,
+                        BackendChannelMode::Dry => image::ChannelMode::Dry,
+                        BackendChannelMode::Wet => return Err(anyhow!("MIDI cannot be wet")),
+                    },
                     object,
                     frames: u64::from(channel.length),
                     gain: 1.,
@@ -141,6 +160,7 @@ impl Cut {
             });
         }
         Ok(image::Loop {
+            recorded_processor_state: self.recorded.get(&state.id).cloned().flatten(),
             id: state.id,
             name: state.name.clone(),
             sync: state.sync,
@@ -184,15 +204,30 @@ impl Cut {
                 )?);
             }
             let controls = &track.controls;
+            let editor = track.fx.as_ref().and_then(|fx| fx.editor.as_ref());
+            let processor_state = editor
+                .map(TrackProcessorEditorState::canonical_state)
+                .transpose()?;
+            let (builtin_fx_midi_cc_assignments, oxisynth_midi_cc_assignments) = match editor {
+                Some(TrackProcessorEditorState::BuiltInFx(fx)) => {
+                    (fx.midi_cc_assignments.to_vec(), Vec::new())
+                }
+                Some(TrackProcessorEditorState::OxiSynth(synth)) => {
+                    (Vec::new(), synth.midi_cc_assignments.to_vec())
+                }
+                None => (Vec::new(), Vec::new()),
+            };
             tracks.push(image::Track {
+                topology: track.topology.clone(),
+                default_playback_mode: track.default_playback_mode,
+                processor_state,
+                builtin_fx_midi_cc_assignments,
+                oxisynth_midi_cc_assignments,
                 id: track.id,
                 name: track.name.clone(),
                 port_name_base: captured.port_name_base,
                 sync: track.is_sync,
-                audio_channels: match captured.topology {
-                    BackendTrackTopology::Direct { audio_channels, .. } => audio_channels,
-                    _ => return Err(anyhow!("capture requires unsupported track topology")),
-                },
+                audio_channels: captured.topology.wet_audio_channels(),
                 midi: captured.state.midi,
                 controls: image::Controls {
                     input_gain_db: controls.input_gain_db,

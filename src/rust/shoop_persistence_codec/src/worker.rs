@@ -767,6 +767,7 @@ mod tests {
             manifest: persistence_image::Manifest::Loop {
                 sample_rate: *sample_rate,
                 content: persistence_image::Loop {
+                    recorded_processor_state: None,
                     id: shoop_app_api::LoopId::from_raw(1),
                     name: "Captured audio".into(),
                     sync: false,

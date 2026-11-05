@@ -441,3 +441,4 @@ src/rust/shoop_rt_engine/src/global_midi.rs,realtime_engine,excluded,Prepared MI
 src/rust/shoop_rt_backend/src/processor_controls.rs,processor_projection,excluded,Editor conversion and bounded host control construction run within traced application intents and backend outcomes.
 src/rust/shoop_rt_engine/src/recorded.rs,realtime_recorded_state,excluded,Bounded source-boundary observations and atomic take metadata on the render path; confirmed state and failures project through the owning endpoint.
 src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.
+src/rust/shoop_persistence_codec/src/document/processors.rs,client_codec_worker,excluded,Pure portable processor and channel-role conversion; traced frontend persistence orchestration owns the boundary.

@@ -601,3 +601,29 @@ public admission gating, profiling topology, and real FX monitoring/capture/both
 playback paths across all widths. Warning-denying builds of the affected host,
 worklet, app and Host Manager pass; tracing and test-attribute inventories pass.
 Broader platform/regression validation is delegated to PR CI under the updated plan.
+
+### Service images and session archives
+
+Application protocol v26 adds portable channel roles, processed topology, default
+playback, canonical applied processor settings, separate mappings and recorded-take
+settings to persistence images. Service capture freezes settings at the accepted
+cut while subsequent live parameter changes continue. The document codec restores
+the scoped FX, synth and External representations, including dry/send and
+wet/return port intent; unsupported Carla, bus processors and general latency
+overrides retain explicit refusals.
+
+Real service/archive save/load/save fixtures pass for FX N=3, synth and External
+3→1. They compare role media, MIDI state, defaults and settings after fresh owner
+creation, and restore imported take settings while keeping live mappings. The
+codec preserves selected export order and role numbering and supports sixteen
+logical import destinations. File dialogs and waveform labels follow those roles.
+The affected native product builds with warnings denied; codec/image tests and
+the three real service fixtures pass. Synchronized family imports, automatic
+alignment projection and final public capability admission remain unfinished.
+
+The first reconciled PR CI run also exposed outdated profiling/worklet contract
+fixtures and small native stacks. Runtime ownership now uses prepared heap storage;
+indexed MIDI validation avoids materializing unused full channel state. The
+1 MiB startup/cleanup regression, nine MIDI-index tests and actual JACK replacement
+across in-process/socket/shared-memory/TCP pass locally. The next CI run supplies
+the repeated Windows/macOS/browser artifact evidence.

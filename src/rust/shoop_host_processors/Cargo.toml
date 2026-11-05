@@ -26,6 +26,7 @@ shoop_dsp = { path = "../shoop_dsp", optional = true }
 thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
+shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_app = { path = "../shoop_app" }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_app_client = { path = "../shoop_app_client" }
