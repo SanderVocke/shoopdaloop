@@ -51,6 +51,7 @@ mod pool;
 mod preview;
 mod processors;
 mod queue;
+mod recorded;
 mod render;
 mod replacement;
 mod resync;
@@ -118,6 +119,13 @@ impl From<shoop_loops::Error> for PrepareError {
     fn from(error: shoop_loops::Error) -> Self {
         Self::Loops(Failure::Timeline(error))
     }
+}
+
+/// Fixed metadata storage for two independent processor-state take revisions.
+pub fn recorded_state_storage_bytes(loops: usize) -> Result<usize, rt_runtime::Error> {
+    loops
+        .checked_mul(core::mem::size_of::<recorded::TakeCells>())
+        .ok_or(rt_runtime::Error::Capacity)
 }
 
 /// A prepared engine, before its first callback.
@@ -641,6 +649,7 @@ pub fn prepare_with_shared_and_processors(
     };
     let endpoint = ControlEndpoint {
         projected_processors: vec![None; strips].into_boxed_slice(),
+        projected_recorded: vec![None; loops].into_boxed_slice(),
         processor_catalog,
         processor_cells,
         control,

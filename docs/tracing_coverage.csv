@@ -430,3 +430,4 @@ src/rust/shoop_processor_protocol/src/state.rs,processor_contract,excluded,Porta
 src/rust/shoop_processor_protocol/src/midi.rs,processor_contract,excluded,Fixed-storage MIDI control filtering and deferred values; owning processors expose bounded diagnostics.
 src/rust/shoop_rt_engine/src/global_midi.rs,realtime_engine,excluded,Prepared MIDI control merge and retention expose bounded counters without callback logging.
 src/rust/shoop_rt_backend/src/processor_controls.rs,processor_projection,excluded,Editor conversion and bounded host control construction run within traced application intents and backend outcomes.
+src/rust/shoop_rt_engine/src/recorded.rs,realtime_recorded_state,excluded,Bounded source-boundary observations and atomic take metadata on the render path; confirmed state and failures project through the owning endpoint.

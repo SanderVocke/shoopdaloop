@@ -75,6 +75,127 @@ fn looped() -> LoopSlotId {
 }
 #[cfg(feature = "builtin-fx")]
 #[shoop_test]
+fn wet_take_keeps_first_source_settings_after_equal_time_midi_and_before_later_cc() {
+    recorded_take_boundary(ProcessorKind::BuiltInFx);
+}
+#[cfg(feature = "oxisynth")]
+#[shoop_test]
+fn synth_take_keeps_first_source_settings_and_preset_independently_of_later_edits() {
+    recorded_take_boundary(ProcessorKind::OxiSynth);
+}
+fn recorded_take_boundary(kind: ProcessorKind) {
+    use processors::{Control, CC_BASE};
+    let (channels, target, mapping, first, last, mapping_index) = match kind {
+        ProcessorKind::BuiltInFx => (1, 8, CC_BASE + 8, -18., 6., 40),
+        ProcessorKind::OxiSynth => (2, 0, CC_BASE, 0., 1., 3),
+        _ => unreachable!(),
+    };
+    let d = description(channels, kind);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, channels, kind);
+    if kind == ProcessorKind::OxiSynth {
+        done(
+            &mut h,
+            Request::ProcessorControl {
+                strip: strip(),
+                control: Control::Parameter {
+                    parameter: 2,
+                    value: 40.,
+                },
+            },
+        );
+    }
+    done(
+        &mut h,
+        Request::ProcessorControl {
+            strip: strip(),
+            control: Control::Parameter {
+                parameter: mapping,
+                value: 7.,
+            },
+        },
+    );
+    assert_eq!(h.endpoint().recorded_processor_state(looped()), None);
+    let correlation = h
+        .request(Request::LoopTransition {
+            loop_id: looped(),
+            mode: LoopMode::Recording,
+            delay: None,
+        })
+        .unwrap();
+    let start = h.next_frame();
+    let mut accepted = false;
+    for _ in 0..4 {
+        while let Some(message) = h.receive() {
+            if matches!(message, EngineMessage::Result { correlation: id, outcome: Outcome::Done } if id == correlation)
+            {
+                accepted = true;
+            }
+        }
+        h.midi_input_mut(0).push(0, 16, &[0xb0, 7, 0]).unwrap();
+        h.midi_input_mut(0).push(7, 16, &[0xb0, 7, 127]).unwrap();
+        tick(&mut h, 16);
+    }
+    assert!(accepted);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().values[target as usize],
+        last
+    );
+    tick(&mut h, 16);
+    mode(&mut h, LoopMode::Stopped);
+    let recorded = h
+        .endpoint()
+        .recorded_processor_state(looped())
+        .expect("committed take settings");
+    assert!((start..start + 4 * d.quantum as u64).contains(&recorded.source_frame));
+    assert_eq!(recorded.source_frame % d.quantum as u64, 0);
+    assert_eq!(recorded.values[target as usize], first);
+    assert_eq!(recorded.values[mapping_index], 7.);
+    done(
+        &mut h,
+        Request::ProcessorControl {
+            strip: strip(),
+            control: Control::Parameter {
+                parameter: target,
+                value: if kind == ProcessorKind::BuiltInFx {
+                    -3.
+                } else {
+                    0.4
+                },
+            },
+        },
+    );
+    assert_eq!(
+        h.endpoint().recorded_processor_state(looped()),
+        Some(recorded)
+    );
+    done(
+        &mut h,
+        Request::ProcessorControl {
+            strip: strip(),
+            control: Control::Restore {
+                values: recorded.values,
+                replace_mappings: false,
+            },
+        },
+    );
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().values[target as usize],
+        first
+    );
+    mode(&mut h, LoopMode::RecordingDryIntoWet);
+    tick(&mut h, 16);
+    mode(&mut h, LoopMode::Stopped);
+    let rerecorded = h.endpoint().recorded_processor_state(looped()).unwrap();
+    assert!(rerecorded.source_frame > recorded.source_frame);
+    assert_eq!(rerecorded.values[target as usize], first);
+    done(&mut h, Request::LoopClear { loop_id: looped() });
+    assert_eq!(h.endpoint().recorded_processor_state(looped()), None);
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
 fn global_fx_controls_defer_without_dsp_and_merge_with_live_offsets_on_activation() {
     use processors::{Control, CC_BASE, STAGE_BASE};
     let mut d = description(1, ProcessorKind::BuiltInFx);
@@ -666,6 +787,7 @@ fn hosted_synth_matches_unbuffered_notes_with_sample_offsets_after_exact_declare
         }
         assert_no_heap(|| {
             raw.process(&mut Batch {
+                observer: None,
                 tag: BatchTag {
                     generation: 1,
                     sequence: tick_index,
@@ -844,6 +966,9 @@ fn invalid_processor_output_faults_only_its_owner_and_direct_audio_keeps_running
         fail: Arc<AtomicBool>,
     }
     impl Backend for Corrupt {
+        fn supports_observation(&self) -> bool {
+            self.inner.supports_observation()
+        }
         fn ports(&self) -> PortCounts {
             self.inner.ports()
         }
@@ -856,7 +981,7 @@ fn invalid_processor_output_faults_only_its_owner_and_direct_audio_keeps_running
         fn control(&mut self, id: u32, value: f32) -> Result<(), Error> {
             self.inner.control(id, value)
         }
-        fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+        fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
             self.inner.process(batch)?;
             if self.fail.load(Ordering::Relaxed) {
                 batch.audio.output(0).unwrap()[0] = f32::NAN;
@@ -929,6 +1054,12 @@ fn invalid_processor_output_faults_only_its_owner_and_direct_audio_keeps_running
     h.input_mut(1).fill(1.);
     tick(&mut h, 128);
     assert!(h.output(0)[64..128].iter().any(|sample| sample.abs() > 0.1));
+    mode(&mut h, LoopMode::Recording);
+    tick(&mut h, 128);
+    mode(&mut h, LoopMode::Stopped);
+    let old_take = h.endpoint().recorded_processor_state(looped()).unwrap();
+    mode(&mut h, LoopMode::RecordingDryIntoWet);
+    tick(&mut h, 32);
     fail.store(true, Ordering::Relaxed);
     tick(&mut h, 128);
     assert_eq!(&h.output(0)[32..128], &[0.; 96]);
@@ -937,6 +1068,13 @@ fn invalid_processor_output_faults_only_its_owner_and_direct_audio_keeps_running
         h.endpoint().processor_state(0).unwrap().phase,
         shoop_rt_engine::ProcessorPhase::Faulted
     );
+    assert_eq!(
+        h.endpoint().recorded_processor_state(looped()),
+        Some(old_take)
+    );
+    mode(&mut h, LoopMode::Playing);
+    tick(&mut h, 128);
+    assert!(h.output(0)[64..128].iter().any(|sample| sample.abs() > 0.1));
     done(&mut h, Request::RemoveStrip { strip: strip() });
     tick(&mut h, 128);
     assert_eq!(&h.output(1)[..128], &[1.; 128]);

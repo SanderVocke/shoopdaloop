@@ -681,7 +681,23 @@ impl Service {
                 return Err(CommandError::unsupported(BackendCapability::Grab))
             }
             LoopAction::RestoreRecordedFxState => {
-                return Err(CommandError::unsupported(BackendCapability::TrackFx))
+                if !self
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::TrackFx)
+                {
+                    return Err(CommandError::unsupported(BackendCapability::TrackFx));
+                }
+                let state = self
+                    .observed
+                    .loops
+                    .get(&self.loops[&id].backend)
+                    .and_then(|state| state.recorded_processor_state.clone())
+                    .ok_or_else(|| CommandError::invalid("loop has no recorded processor state"))?;
+                self.backend.set_track_fx_control(
+                    self.tracks[&self.loops[&id].track].backend,
+                    BackendTrackFxControl::RestoreState(state),
+                )?;
             }
             LoopAction::ConvertToComposite
             | LoopAction::ComposeIntoEnd(_)
@@ -1336,7 +1352,9 @@ impl Service {
             .iter()
             .filter(|id| {
                 let port = &self.ports[id].view;
-                port.data_type == PortDataType::Audio && port.direction == PortDirection::Output
+                port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Output
+                    && port.role == PortRole::AudioOutput
             })
             .copied()
             .collect();

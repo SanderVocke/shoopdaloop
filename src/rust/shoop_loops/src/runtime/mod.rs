@@ -485,6 +485,7 @@ struct Row {
     next_bank: usize,
     frozen: [Option<Snapshot>; 3],
     failure: Option<Error>,
+    aborted: bool,
     overflows: u64,
     balance: f32,
 }
@@ -730,6 +731,7 @@ impl LoopPlanner {
                 next_bank: 0,
                 frozen: [None; 3],
                 failure: None,
+                aborted: false,
                 overflows: 0,
                 balance: 0.,
             };
@@ -982,6 +984,39 @@ impl LoopPlanner {
             activity.pre_rerecording |= view.pre_rerecording;
         }
         activity
+    }
+
+    /// Prevent a failed source from replacing committed media at the next cut.
+    pub fn abort_source_captures(&mut self, source: u32, reason: Error) {
+        for row in self
+            .rows
+            .iter_mut()
+            .flatten()
+            .filter(|row| row.assigned && row.dry_wet && row.history_source == source)
+        {
+            let slot = row.binding.target.slot() as usize;
+            if self.views[slot].decision.state.mode.records() {
+                row.aborted = true;
+                row.failure = Some(reason);
+                self.views[slot].capture = None;
+                self.views[slot].replace = None;
+            }
+        }
+    }
+
+    /// Settled processed takes before their first source sample is captured.
+    pub fn recording_starts(&self, source: u32) -> impl Iterator<Item = (LoopId, Revision)> + '_ {
+        self.rows.iter().flatten().filter_map(move |row| {
+            let state = self.views[row.binding.target.slot() as usize]
+                .decision
+                .state;
+            (row.assigned
+                && row.dry_wet
+                && row.history_source == source
+                && state.mode.records()
+                && state.capture_frames == 0)
+                .then_some((row.binding.target, state.capture_revision))
+        })
     }
 
     fn validate_media_shape(row: Row, view: media::View) -> Result<(), Error> {

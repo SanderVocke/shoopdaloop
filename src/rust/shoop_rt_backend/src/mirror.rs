@@ -182,6 +182,7 @@ impl Default for LoopView {
 }
 
 pub(crate) struct Loop {
+    pub recorded: Option<(u64, shoop_rt_protocol::RecordedProcessorState)>,
     pub slot: LoopSlotId,
     pub track: BackendTrackId,
     pub confirmed: bool,
@@ -602,6 +603,15 @@ impl Mirror {
     pub fn loop_state(entry: &mut Loop, channels: u32) -> BackendLoopState {
         let view = entry.view;
         BackendLoopState {
+            recorded_processor_state: entry
+                .recorded
+                .filter(|(revision, _)| *revision == entry.rt_content_revision)
+                .and_then(|(_, recorded)| {
+                    let mut state =
+                        shoop_processor_protocol::state::State::new(recorded.kind).ok()?;
+                    state.values = recorded.values;
+                    Some(state.encode())
+                }),
             content_revision: entry.content,
             sync_source: entry.sync,
             mode: app_mode(view.mode),

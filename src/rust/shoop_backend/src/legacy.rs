@@ -6494,6 +6494,7 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    recorded_processor_state: None,
                     sync_source: self
                         .session
                         .primitive_sync_sources()

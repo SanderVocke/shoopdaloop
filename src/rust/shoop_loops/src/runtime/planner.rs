@@ -471,7 +471,17 @@ impl LoopPlanner {
                 continue;
             };
             let decision = self.views[slot].decision;
-            if let Some(take) = row.active {
+            if row.aborted {
+                if let Some(take) = row.active {
+                    if let Some(token) = take.token {
+                        io.capture().abort(token)?;
+                    }
+                    Self::release_edit(take, io)?;
+                    self.ledger.retire(io, take.media)?;
+                    self.rows[slot].as_mut().expect("row").active = None;
+                }
+                self.rows[slot].as_mut().expect("row").aborted = false;
+            } else if let Some(take) = row.active {
                 if !decision.state.mode.records()
                     || decision.state.capture_revision != take.revision
                 {
@@ -1571,7 +1581,12 @@ impl LoopPlanner {
         }
         self.failures.clear();
         for row in self.rows.iter().flatten() {
-            if row.active.is_some_and(|take| take.edit.is_some()) && row.failure.is_some() {
+            if row.aborted {
+                self.failures.push(crate::Observation::CaptureAborted {
+                    target: row.binding.target,
+                    reason: timeline_error(row.failure.unwrap_or(Error::InvalidState)),
+                });
+            } else if row.active.is_some_and(|take| take.edit.is_some()) && row.failure.is_some() {
                 self.failures.push(crate::Observation::CaptureExhausted {
                     target: row.binding.target,
                 });
@@ -1673,7 +1688,11 @@ impl LoopPlanner {
     ) -> Result<(), Error> {
         for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
             if let Some(interval) = row.interval {
-                context.resources.capture().commit(interval)?;
+                if row.aborted {
+                    context.resources.capture().cancel_tick(interval)?;
+                } else {
+                    context.resources.capture().commit(interval)?;
+                }
                 row.interval = None;
             }
             row.reset_input = false;

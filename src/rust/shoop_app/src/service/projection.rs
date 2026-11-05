@@ -568,6 +568,7 @@ impl Service {
                     .get(1)
                     .copied()
                     .unwrap_or(view.peak_left_db);
+                view.has_recorded_fx_state = state.recorded_processor_state.is_some();
                 view.capture_alignment_frames = state.capture_alignment_frames;
                 view.processor_alignment_frames = state.processor_alignment_frames;
             }

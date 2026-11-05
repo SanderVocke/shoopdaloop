@@ -1295,9 +1295,46 @@ impl Wire for ProcessorPreset {
     }
 }
 
+impl Wire for RecordedProcessorState {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.source_frame)?;
+        self.kind.put(w)?;
+        for value in self.values {
+            w.f32(value)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let source_frame = r.u64()?;
+        let kind = ProcessorKind::get(r)?;
+        if kind == ProcessorKind::External {
+            return Err(CodecError::Invalid);
+        }
+        let mut values = [0.; crate::processors::STATE_SCALARS];
+        for value in &mut values {
+            *value = r.f32()?;
+        }
+        Ok(Self {
+            source_frame,
+            kind,
+            values,
+        })
+    }
+}
+
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::RecordedProcessorState {
+                loop_id,
+                content_revision,
+                state,
+            } => {
+                w.u8(17)?;
+                loop_id.put(w)?;
+                w.u64(*content_revision)?;
+                state.put(w)
+            }
             Self::ProcessorState {
                 strip,
                 slot,
@@ -1403,6 +1440,11 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            17 => Self::RecordedProcessorState {
+                loop_id: LoopSlotId::get(r)?,
+                content_revision: r.u64()?,
+                state: Option::get(r)?,
+            },
             16 => Self::ProcessorState {
                 strip: StripId::get(r)?,
                 slot: ProcessorSlot::get(r)?,

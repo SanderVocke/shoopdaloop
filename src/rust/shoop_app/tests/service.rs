@@ -358,6 +358,24 @@ fn dry_wet_service_orders_defaults_and_keeps_explicit_play_wet_over_the_wire() {
         ));
         assert!(!projected.controls.input_stereo);
         assert!(projected.controls.output_stereo);
+        let snapshot = client.snapshot().unwrap();
+        let wet = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                projected.port_ids.contains(&port.id) && port.role == PortRole::AudioOutput
+            })
+            .map(|port| port.id)
+            .collect::<Vec<_>>();
+        let routed = snapshot
+            .connections
+            .mixer_links
+            .iter()
+            .filter(|link| projected.port_ids.contains(&link.source_port_id))
+            .collect::<Vec<_>>();
+        assert_eq!(routed.len(), 2);
+        assert!(routed.iter().all(|link| wet.contains(&link.source_port_id)));
     }
 }
 

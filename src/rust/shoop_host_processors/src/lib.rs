@@ -110,6 +110,11 @@ fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Resul
     }
     if total > 0 {
         total = add(total, 1 << 20)?;
+        total = add(
+            total,
+            shoop_rt_engine::recorded_state_storage_bytes(d.loops()).map_err(|_| Error::Capacity)?
+                as u64,
+        )?;
     }
     if total > effective.memory_bytes {
         return Err(Error::Capacity);

@@ -453,6 +453,23 @@ until persistence, media and recorded-state support is complete.
   repeated reconnect without replay, New Session and fresh-host capability changes.
   No host-wide stop/restart or stale buffered output on successful replacement; commit.
 
+Recorded-take milestone: protocol v15 projects immutable applied settings for
+committed wet takes and reconstructs them on resync. Buffered backends can honor
+bounded source-boundary observers after equal-time parameter/MIDI application and
+before rendering the sample. The real FX/synth implementations use this seam;
+M=2/S=1 collection tests independently cover exact observation offsets. Two fixed
+metadata banks preserve the previous take while recording a candidate. Metadata
+storage is included in startup reservation. A fault aborts dependent capture,
+returns its reserved leases and retains old media/state; unrelated Direct audio
+and playback of the old wet take continue. Service loop actions restore the
+canonical recorded state atomically while preserving live mappings. Native
+real-service wire fixtures cover both editors, learned values, mapping validation,
+activation, malformed restore, preset restoration and UI loss during a control.
+The External initial bus route now selects wet outputs and excludes dry sends.
+These fixtures explicitly expose foundation capability bits while production
+admission remains gated. Media-bearing save/load, imported take metadata and
+replacement/recovery validation are still outstanding.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise the packaged production application: launch hosts with both/either/

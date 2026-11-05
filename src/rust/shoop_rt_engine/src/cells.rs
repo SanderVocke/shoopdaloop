@@ -88,6 +88,7 @@ impl StripCells {
 
 #[derive(Default)]
 pub(crate) struct LoopCells {
+    pub recorded: crate::recorded::TakeCells,
     pub generation: AtomicU32,
     pub mode: AtomicU32,
     pub length: AtomicU64,

@@ -513,6 +513,10 @@ impl Resolver {
                 .iter()
                 .any(|previous| match (*previous, *observation) {
                     (
+                        Observation::CaptureAborted { target: a, .. },
+                        Observation::CaptureAborted { target: b, .. },
+                    ) => a == b,
+                    (
                         Observation::CaptureExhausted { target: a },
                         Observation::CaptureExhausted { target: b },
                     ) => a == b,
@@ -530,7 +534,8 @@ impl Resolver {
                 return Err(Error::DuplicateId);
             }
             match *observation {
-                Observation::CaptureExhausted { target } => {
+                Observation::CaptureAborted { target, .. }
+                | Observation::CaptureExhausted { target } => {
                     if !self.state(target)?.mode.records() {
                         return Err(Error::InvalidState);
                     }
@@ -992,6 +997,17 @@ impl Boundary<'_> {
 
     fn settle(&mut self, probe: Option<LoopId>) -> Result<(), Error> {
         for observation in self.observations {
+            if let Observation::CaptureAborted { target, reason } = *observation {
+                let state = self.scratch.states[target.slot() as usize]
+                    .as_mut()
+                    .expect("validated observation");
+                state.mode = Mode::Stopped;
+                state.position = 0;
+                state.capture_frames = 0;
+                state.capture_incomplete = true;
+                state.monitor_previous = false;
+                self.event(target, EventKind::Refused(reason));
+            }
             if let Observation::CaptureExhausted { target } = *observation {
                 let slot = target.slot() as usize;
                 let state = self.scratch.states[slot]

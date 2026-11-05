@@ -21,6 +21,11 @@ pub struct Decision {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Observation {
+    /// Discard the candidate capture and retain previously committed media.
+    CaptureAborted {
+        target: LoopId,
+        reason: Error,
+    },
     CaptureExhausted {
         target: LoopId,
     },

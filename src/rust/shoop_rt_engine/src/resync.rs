@@ -31,6 +31,63 @@ const PORT_KINDS: [PortKind; 7] = [
 ];
 
 impl ControlEndpoint {
+    fn recorded_record(
+        &self,
+        id: shoop_rt_protocol::LoopSlotId,
+    ) -> Result<Option<StateRecord>, ()> {
+        let entry = self.model.find_loop(id).ok_or(())?;
+        let strip = self.model.strip(entry.strip).ok_or(())?;
+        if strip.processor.and_then(|owner| owner.slot).is_none() {
+            return Ok(None);
+        }
+        let cells = &self.cells.loops[id.0.index as usize];
+        let current =
+            cells.generation.load(core::sync::atomic::Ordering::Relaxed) == id.0.generation;
+        let revision = if current {
+            cells
+                .content_revision
+                .load(core::sync::atomic::Ordering::Relaxed)
+        } else {
+            0
+        };
+        let state = cells.recorded.read(id.0.generation, revision)?;
+        Ok(Some(StateRecord::RecordedProcessorState {
+            loop_id: id,
+            content_revision: revision,
+            state,
+        }))
+    }
+
+    pub(crate) fn project_recorded(&mut self, out: &mut Outbox) {
+        if !self.connected || self.resync.is_some() {
+            return;
+        }
+        for index in 0..self.model.loops.len() {
+            let Some(entry) = self.model.loops[index] else {
+                self.projected_recorded[index] = None;
+                continue;
+            };
+            let Ok(Some(
+                record @ StateRecord::RecordedProcessorState {
+                    loop_id,
+                    content_revision,
+                    ..
+                },
+            )) = self.recorded_record(entry.id)
+            else {
+                continue;
+            };
+            let key = (loop_id, content_revision);
+            if self.projected_recorded[index] == Some(key) {
+                continue;
+            }
+            if out.push(EngineMessage::State(record)).is_err() {
+                return;
+            }
+            self.projected_recorded[index] = Some(key);
+        }
+    }
+
     pub(crate) fn processor_record(
         &self,
         strip: shoop_rt_protocol::StripId,
@@ -361,15 +418,25 @@ impl ControlEndpoint {
                         };
                         continue;
                     };
-                    cursor.index += 1;
                     if let Some(entry) = slot {
-                        return Some(StateRecord::Loop {
-                            loop_id: entry.id,
-                            strip: entry.strip,
-                            sync: entry.sync,
-                            gain: entry.gain,
-                            balance: entry.balance,
-                        });
+                        if cursor.part == 0 {
+                            cursor.part = 1;
+                            return Some(StateRecord::Loop {
+                                loop_id: entry.id,
+                                strip: entry.strip,
+                                sync: entry.sync,
+                                gain: entry.gain,
+                                balance: entry.balance,
+                            });
+                        }
+                        let record = self.recorded_record(entry.id).ok()?;
+                        cursor.index += 1;
+                        cursor.part = 0;
+                        if record.is_some() {
+                            return record;
+                        }
+                    } else {
+                        cursor.index += 1;
                     }
                 }
                 4 => {

@@ -496,9 +496,22 @@ pub struct ProcessorLimits {
     pub builtin_latency_frames: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RecordedProcessorState {
+    /// First source sample of the take, after controls and MIDI at this offset.
+    pub source_frame: u64,
+    pub kind: crate::ProcessorKind,
+    pub values: [f32; crate::processors::STATE_SCALARS],
+}
+
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    RecordedProcessorState {
+        loop_id: LoopSlotId,
+        content_revision: u64,
+        state: Option<RecordedProcessorState>,
+    },
     ProcessorState {
         strip: StripId,
         slot: ProcessorSlot,

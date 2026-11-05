@@ -28,7 +28,7 @@ impl crate::Backend for InlineTestProcessor {
         }
     }
 
-    fn process(&mut self, batch: &mut crate::Batch<'_>) -> Result<(), Error> {
+    fn process(&mut self, batch: &mut crate::Batch<'_, '_>) -> Result<(), Error> {
         if batch.audio.input_count() != 2 || batch.audio.output_count() != 2 {
             return Err(Error::InvalidShape);
         }

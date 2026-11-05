@@ -373,6 +373,20 @@ fn engine_samples() -> Vec<EngineMessage> {
     let peaks = Peaks::new(&[0.5; MAX_STRIP_CHANNELS]).unwrap();
     let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
     vec![
+        EngineMessage::State(StateRecord::RecordedProcessorState {
+            loop_id: loop_id(3),
+            content_revision: 9,
+            state: Some(RecordedProcessorState {
+                source_frame: 123,
+                kind: ProcessorKind::BuiltInFx,
+                values: [0.; processors::STATE_SCALARS],
+            }),
+        }),
+        EngineMessage::State(StateRecord::RecordedProcessorState {
+            loop_id: loop_id(3),
+            content_revision: 10,
+            state: None,
+        }),
         EngineMessage::State(StateRecord::ProcessorState {
             strip: strip(0),
             slot: ProcessorSlot {

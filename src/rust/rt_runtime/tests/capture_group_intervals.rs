@@ -91,6 +91,38 @@ fn finish(
     assert_eq!(store.midi_index_usage().free_versions, 2);
 }
 #[shoop_test]
+fn aborting_an_active_take_returns_reserved_leases_and_allows_repeated_reuse() {
+    let (mut store, group, mut take, resources) = prepared();
+    let reserved = store.usage().free_snapshots;
+    for cycle in 0..16 {
+        assert_no_heap(|| {
+            store.activate_capture_take(take, Frame(cycle)).unwrap();
+            let interval = store.reserve_capture_tick(take, Frame(cycle)).unwrap();
+            store
+                .stage_capture_audio(interval, 0, &[0.25, -0.5])
+                .unwrap();
+            assert_eq!(store.abort_capture_take(take), Err(Error::InvalidState));
+            store.cancel_capture_tick(interval).unwrap();
+            store.abort_capture_take(take).unwrap();
+            assert_eq!(
+                store.capture_group_info(group).unwrap().phase,
+                CapturePhase::Idle
+            );
+            assert_eq!(store.usage().free_snapshots, reserved + 2);
+        });
+        for _ in 0..4 {
+            store.begin_callback();
+            store.reclaim();
+        }
+        if cycle < 15 {
+            take = assert_no_heap(|| store.prepare_capture_take(group, &[MidiState::default()]))
+                .unwrap();
+        }
+    }
+    finish(&mut store, group, resources, [None; 2]);
+}
+
+#[shoop_test]
 fn staged_stereo_and_midi_match_independent_content_across_callback_partitions() {
     for partition in [&[8, 8][..], &[1; 16][..], &[3, 2, 5, 6][..]] {
         let (mut store, group, take, resources) = prepared();

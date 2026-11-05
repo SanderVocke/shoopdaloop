@@ -454,3 +454,44 @@ External dual routing, capture exclusion and connection resync. Four-target
 production dependency audits, test policy and the 431-module tracing inventory pass.
 Service/UI, MIDI Learn, recorded-take state and media/persistence are still pending;
 this evidence does not enable public feature bits or close those acceptance rows.
+
+### Service actions, Learn and recorded-take source boundaries
+
+The production service now forwards host-advertised creation and typed editor
+controls, projects topology/default/editor state, and resolves default UI/Lua
+playback independently per track. Queued default changes retain private ordered
+intent until acknowledgement; public state remains confirmed. Protocol v14 added
+a bounded latest dry-input MIDI value for the existing Learn widgets. Reuse clears
+that value; global control-only traffic does not become dry-input observation.
+
+Protocol v15 adds recorded processor settings identified by loop generation and
+content revision. The portable buffered backend supports optional source observers:
+parameters and MIDI at an observation offset apply first, settings are observed,
+then the sample renders. Later MIDI in the quantum is excluded. Applied settings
+are retained in two fixed per-loop banks for the committed and candidate takes.
+A failed/cancelled candidate cannot replace the old recorded settings. Startup
+reservation includes this storage. Public state carries the canonical envelope;
+restoration keeps live mappings and uses the existing atomic restore preflight.
+
+A faulted processor now aborts dependent captures before further staging. Active
+capture cancellation returns reserved final leases without publishing a snapshot;
+the planner keeps the prior media revision. A real corrupted-output fixture proves
+that failed rerecording preserves old state/media, wet playback bypasses the faulty
+processor, and an unrelated Direct track keeps rendering. Resource tests repeat
+abort/reuse sixteen times under heap guards and recover all pages, versions and
+leases.
+
+Native: 678 tests across the runtime, buffered adapter, loops, DSP, host processors,
+protocol, core, backend and service pass in `work/recorded-state-native.log`. Two
+additional actual service-wire fixtures exercise FX N=3 and synth: audible output
+to an ordinary bus, editor state, presets/sends, MIDI Learn, live mapping retention
+through recorded-state restoration, invalid controls, activation, detach/reconnect
+during an accepted edit, and removal. Their render calls are heap-guarded.
+An External service regression confirms that initial bus routes include wet outputs
+and exclude dry sends. As with other foundation fixtures, the service fixtures
+explicitly expose gated protocol capability bits; they are not final public
+admission or packaged-platform evidence. Core Wasm checks pass for buffered 19,
+adapter 45, core 79 and protocol 6 tests. Both-DSP Wasm passes all 22 host
+processor tests, including the two actual service-wire fixtures. The warning-denying
+workspace build and all 242 native editor/widget tests pass. Media/persistence and final delivery remain
+open; no stage is closed on these fixtures alone.

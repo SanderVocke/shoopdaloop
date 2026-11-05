@@ -15,7 +15,7 @@ mod inline;
 mod processor;
 mod timing;
 
-pub use backend::{Backend, Batch, BatchTag, ParameterEvent};
+pub use backend::{Backend, Batch, BatchTag, ParameterEvent, SourceObserver};
 pub use inline::InlineTestProcessor;
 pub use processor::{BufferLimits, BufferedProcessor, Lifecycle, MidiLimits, MAX_STORAGE_BYTES};
 pub use timing::{PreparedTiming, Timing, MAX_BATCH_FRAMES, MAX_LATENCY_FRAMES};

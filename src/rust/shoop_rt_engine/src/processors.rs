@@ -467,6 +467,13 @@ impl HostedProcessor {
             self.publish(block.frame);
             self.silence(block)?;
         }
+        if self.phase == ProcessorPhase::Faulted {
+            if let Some((source, _)) = self.binding {
+                block
+                    .domain
+                    .abort_source_captures(source as u32, Error::InvalidState);
+            }
+        }
         self.maintain(block.frame)?;
         Ok(())
     }
@@ -543,17 +550,40 @@ impl HostedProcessor {
             let mut audio = block
                 .audio
                 .subset(0..ports.audio_inputs, 0..ports.audio_outputs)?;
-            self.buffered.process_ports_tick(
-                block.frame,
-                block.quantum,
-                &mut audio,
-                if has_midi {
-                    core::slice::from_ref(self.global.output())
-                } else {
-                    block.midi_inputs
-                },
-                block.midi_outputs,
-            )?;
+            let mut observer = crate::recorded::TakeObserver {
+                domain: block.domain,
+                cells: self.signal.as_deref(),
+                source: self.binding.map(|(source, _)| source as u32),
+                kind: self.cells.kind,
+                frame: block.frame,
+                done: false,
+            };
+            if self.buffered.backend().supports_observation() {
+                self.buffered.process_ports_tick_observed(
+                    block.frame,
+                    block.quantum,
+                    &mut audio,
+                    if has_midi {
+                        core::slice::from_ref(self.global.output())
+                    } else {
+                        block.midi_inputs
+                    },
+                    block.midi_outputs,
+                    &mut observer,
+                )?;
+            } else {
+                self.buffered.process_ports_tick(
+                    block.frame,
+                    block.quantum,
+                    &mut audio,
+                    if has_midi {
+                        core::slice::from_ref(self.global.output())
+                    } else {
+                        block.midi_inputs
+                    },
+                    block.midi_outputs,
+                )?;
+            }
         }
         for port in 0..ports.audio_outputs {
             let output = block
@@ -665,7 +695,7 @@ mod tests {
             self.value = value;
             Ok(())
         }
-        fn process(&mut self, _: &mut Batch<'_>) -> Result<(), Error> {
+        fn process(&mut self, _: &mut Batch<'_, '_>) -> Result<(), Error> {
             Ok(())
         }
         fn suspend(&mut self) -> Result<(), Error> {

@@ -224,8 +224,42 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
+    fn recorded_snapshot(
+        &mut self,
+        loop_id: shoop_rt_protocol::LoopSlotId,
+        revision: u64,
+        state: Option<shoop_rt_protocol::RecordedProcessorState>,
+    ) {
+        let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() else {
+            return;
+        };
+        if let Some(recorded) = state {
+            let track = &self.mirror.tracks[&self.mirror.loops[&id].track];
+            let valid = crate::processor_controls::track_kind(track) == Some(recorded.kind)
+                && shoop_processor_protocol::state::State::new(recorded.kind).is_ok_and(
+                    |mut state| {
+                        state.values = recorded.values;
+                        state.validate().is_ok()
+                    },
+                );
+            if !valid {
+                self.lose("engine recorded processor state is invalid".to_owned());
+                return;
+            }
+        }
+        self.mirror.loops.get_mut(&id).unwrap().recorded = state.map(|state| (revision, state));
+    }
+
     fn state_record(&mut self, record: StateRecord) {
         if self.resync.is_none() {
+            if let StateRecord::RecordedProcessorState {
+                loop_id,
+                content_revision,
+                state,
+            } = record
+            {
+                self.recorded_snapshot(loop_id, content_revision, state);
+            }
             if let StateRecord::ProcessorState {
                 strip,
                 slot,
@@ -403,6 +437,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         for record in records {
             match record {
+                StateRecord::RecordedProcessorState {
+                    loop_id,
+                    content_revision,
+                    state,
+                } => self.recorded_snapshot(loop_id, content_revision, state),
                 StateRecord::ProcessorState {
                     strip,
                     slot,

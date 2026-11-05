@@ -26,6 +26,13 @@ assert_eq!(node.latency_frames(), 48);
 # }
 ```
 
+`process_ports_tick_observed` accepts caller-owned `SourceObserver` requests.
+An observing backend reports the requested source boundary after applying all
+parameters and MIDI at that offset, before rendering that sample. Later events
+are excluded. Requests survive collection in caller storage until the batch
+executes; observations add no release delay. Unsupported backends refuse before
+changing collection state.
+
 ## Timing
 
 For batch size M quanta and extra slack S quanta, input collected at ticks b through

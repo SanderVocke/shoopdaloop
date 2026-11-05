@@ -21,13 +21,22 @@ pub struct ParameterEvent {
     pub value: f32,
 }
 
-pub struct Batch<'a> {
+/// Caller-owned observations at exact source boundaries. The next boundary must
+/// advance after observation; it excludes controls at later samples. Both methods
+/// follow the same bounded realtime contract as the backend.
+pub trait SourceObserver {
+    fn next(&self, start: Frame, end: Frame) -> Option<Frame>;
+    fn observe(&mut self, frame: Frame, backend: &dyn Backend) -> Result<(), Error>;
+}
+
+pub struct Batch<'a, 'observer> {
     pub tag: BatchTag,
     pub frames: usize,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
     pub parameters: &'a [ParameterEvent],
+    pub observer: Option<&'observer mut dyn SourceObserver>,
 }
 
 /// A prepared synchronous implementation. Every method must be bounded and must
@@ -35,6 +44,10 @@ pub struct Batch<'a> {
 /// Processing fills every audio output and consumes events in source-time order.
 pub trait Backend: Send {
     fn ports(&self) -> PortCounts;
+    /// Whether processing honors source observations after equal-time controls.
+    fn supports_observation(&self) -> bool {
+        false
+    }
     /// Delay already introduced by the DSP implementation, excluding batching.
     fn latency_frames(&self) -> usize {
         0
@@ -69,7 +82,7 @@ pub trait Backend: Send {
         self.reset()?;
         Ok(true)
     }
-    fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error>;
+    fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error>;
     /// Reset only an inactive backend; implementations must bound their work.
     fn reset(&mut self) -> Result<(), Error>;
 }
@@ -77,6 +90,9 @@ pub trait Backend: Send {
 impl<B: Backend + ?Sized> Backend for Box<B> {
     fn ports(&self) -> PortCounts {
         (**self).ports()
+    }
+    fn supports_observation(&self) -> bool {
+        (**self).supports_observation()
     }
     fn latency_frames(&self) -> usize {
         (**self).latency_frames()
@@ -99,7 +115,7 @@ impl<B: Backend + ?Sized> Backend for Box<B> {
     fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
         (**self).reset_step(step)
     }
-    fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+    fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
         (**self).process(batch)
     }
     fn reset(&mut self) -> Result<(), Error> {

@@ -179,6 +179,7 @@ impl LoopPlanner {
                 row.reset_input = false;
             }
             row.failure = None;
+            row.aborted = false;
             row.overflows = 0;
         }
         self.node_pairs.applied(node_pairs);

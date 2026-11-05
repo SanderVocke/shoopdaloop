@@ -5048,6 +5048,7 @@ impl Backend for NativeBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    recorded_processor_state: None,
                     sync_source: loop_.sync_source,
                     content_revision: 0,
                     mode: from_native_mode(state.mode),

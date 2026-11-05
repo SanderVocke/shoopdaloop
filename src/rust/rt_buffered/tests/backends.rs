@@ -20,6 +20,12 @@ struct Gain {
     fail: bool,
 }
 impl Backend for Gain {
+    fn supports_observation(&self) -> bool {
+        true
+    }
+    fn parameter(&self, parameter: u32) -> Option<f32> {
+        (parameter == 0).then_some(self.value)
+    }
     fn ports(&self) -> PortCounts {
         self.ports
     }
@@ -34,7 +40,7 @@ impl Backend for Gain {
         self.value = 0.5;
         Ok(())
     }
-    fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+    fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
         if self.fail {
             return Err(Error::InvalidState);
         }
@@ -46,6 +52,20 @@ impl Backend for Gain {
                 }
                 self.value = parameter.value;
                 event += 1;
+            }
+            let source = batch.tag.source.checked_add(frame)?;
+            let end = batch.tag.source.checked_add(batch.frames)?;
+            if batch
+                .observer
+                .as_deref()
+                .and_then(|observer| observer.next(source, end))
+                == Some(source)
+            {
+                batch
+                    .observer
+                    .as_deref_mut()
+                    .unwrap()
+                    .observe(source, self)?;
             }
             for channel in 0..self.ports.audio_outputs {
                 let sample = if self.ports.audio_inputs == 0 {
@@ -102,6 +122,73 @@ fn render<B: Backend>(
         midi_in,
         midi_out,
     )
+}
+
+#[shoop_test]
+fn observations_across_collection_ticks_read_applied_values_at_exact_source_offsets() {
+    struct Observations {
+        next: usize,
+        values: [f32; 4],
+    }
+    const POINTS: [u64; 4] = [0, 5, 16, 31];
+    impl rt_buffered::SourceObserver for Observations {
+        fn next(&self, start: Frame, end: Frame) -> Option<Frame> {
+            POINTS
+                .get(self.next)
+                .copied()
+                .map(Frame)
+                .filter(|at| *at >= start && *at < end)
+        }
+        fn observe(&mut self, at: Frame, backend: &dyn Backend) -> Result<(), Error> {
+            if POINTS.get(self.next) != Some(&at.0) {
+                return Err(Error::InvalidFrame);
+            }
+            self.values[self.next] = backend.parameter(0).ok_or(Error::InvalidParameter)?;
+            self.next += 1;
+            Ok(())
+        }
+    }
+    let q = Quantum::new(16).unwrap();
+    let mut node = gain(
+        PortCounts {
+            audio_inputs: 1,
+            audio_outputs: 1,
+            ..Default::default()
+        },
+        16,
+        2,
+        1,
+    );
+    let mut observation = Observations {
+        next: 0,
+        values: [0.; 4],
+    };
+    let input = [1.; 16];
+    let mut output = [0.; 16];
+    for tick in 0..2 {
+        for (index, frame) in POINTS
+            .into_iter()
+            .enumerate()
+            .filter(|(_, frame)| frame / 16 == tick)
+        {
+            node.schedule_parameter(Frame(frame), 0, (index + 2) as f32)
+                .unwrap();
+        }
+        assert_no_heap(|| {
+            node.process_ports_tick_observed(
+                Frame(tick * 16),
+                q,
+                &mut AudioPorts::new(&input, &mut output, 16, 0, 16).unwrap(),
+                &[],
+                &mut [],
+                &mut observation,
+            )
+        })
+        .unwrap();
+        assert_eq!(observation.next, if tick == 0 { 0 } else { 4 });
+        assert_eq!(output, [0.; 16]);
+    }
+    assert_eq!(observation.values, [2., 3., 4., 5.]);
 }
 
 #[shoop_test]
@@ -418,7 +505,7 @@ impl Backend for Delay {
         self.cursor = 0;
         Ok(())
     }
-    fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+    fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
         for frame in 0..batch.frames {
             let input = batch.audio.input(0).unwrap()[frame];
             batch.audio.output(0).unwrap()[frame] = self.history[self.cursor];

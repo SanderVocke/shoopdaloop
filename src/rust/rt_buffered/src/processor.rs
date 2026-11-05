@@ -1,5 +1,6 @@
 use crate::{
-    Backend, Batch, BatchTag, InlineTestProcessor, ParameterEvent, PreparedTiming, Timing,
+    Backend, Batch, BatchTag, InlineTestProcessor, ParameterEvent, PreparedTiming, SourceObserver,
+    Timing,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use rt_runtime::{
@@ -452,6 +453,35 @@ impl<B: Backend> BufferedProcessor<B> {
         inputs: &[MidiBuffer],
         outputs: &mut [MidiBuffer],
     ) -> Result<(), Error> {
+        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, None)
+    }
+
+    /// Observe only when a complete batch executes. The caller retains requests
+    /// across collection ticks when using batches larger than one quantum.
+    pub fn process_ports_tick_observed(
+        &mut self,
+        frame: Frame,
+        quantum: Quantum,
+        audio: &mut AudioPorts<'_>,
+        inputs: &[MidiBuffer],
+        outputs: &mut [MidiBuffer],
+        observer: &mut dyn SourceObserver,
+    ) -> Result<(), Error> {
+        if !self.backend.supports_observation() {
+            return Err(Error::InvalidState);
+        }
+        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, Some(observer))
+    }
+
+    fn process_ports_tick_inner(
+        &mut self,
+        frame: Frame,
+        quantum: Quantum,
+        audio: &mut AudioPorts<'_>,
+        inputs: &[MidiBuffer],
+        outputs: &mut [MidiBuffer],
+        observer: Option<&mut dyn SourceObserver>,
+    ) -> Result<(), Error> {
         if self.state == Lifecycle::Faulted {
             return Err(Error::InvalidState);
         }
@@ -611,6 +641,7 @@ impl<B: Backend> BufferedProcessor<B> {
                     midi_inputs: &slot.input,
                     midi_outputs: &mut slot.output,
                     parameters: &slot.parameters,
+                    observer,
                 };
                 if let Err(error) = self.backend.process(&mut batch) {
                     self.state = Lifecycle::Faulted;

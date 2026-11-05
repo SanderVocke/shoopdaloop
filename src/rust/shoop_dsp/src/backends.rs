@@ -25,11 +25,11 @@ fn cc_value(source: Option<(u8, u8)>) -> f32 {
 }
 
 trait Instrument: Backend {
-    fn render(&mut self, batch: &mut Batch<'_>, start: usize, end: usize) -> Result<(), Error>;
+    fn render(&mut self, batch: &mut Batch<'_, '_>, start: usize, end: usize) -> Result<(), Error>;
     fn change(&mut self, parameter: u32, value: f32) -> Result<(), Error>;
     fn midi(&mut self, data: &[u8]);
 }
-fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_>) -> Result<(), Error> {
+fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
     let ports = instrument.ports();
     if batch.audio.input_count() != ports.audio_inputs
         || batch.audio.output_count() != ports.audio_outputs
@@ -47,20 +47,8 @@ fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_>) -> Result<(
     let mut midi = 0;
     let mut parameter = 0;
     let mut cursor = 0;
+    let end_frame = batch.tag.source.checked_add(batch.frames)?;
     while cursor < batch.frames {
-        let next_midi = batch.midi_inputs[0]
-            .get(midi)
-            .map_or(batch.frames, |(at, _)| at as usize);
-        let next_parameter = batch
-            .parameters
-            .get(parameter)
-            .map_or(batch.frames, |event| event.offset as usize);
-        let end = next_midi.min(next_parameter).min(batch.frames);
-        if end < cursor {
-            return Err(Error::InvalidEvent);
-        }
-        instrument.render(batch, cursor, end)?;
-        cursor = end;
         while let Some(event) = batch.parameters.get(parameter) {
             if event.offset as usize != cursor {
                 break;
@@ -75,6 +63,45 @@ fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_>) -> Result<(
             instrument.midi(data);
             midi += 1;
         }
+        let frame = batch.tag.source.checked_add(cursor)?;
+        let requested = batch
+            .observer
+            .as_deref()
+            .and_then(|observer| observer.next(frame, end_frame));
+        if requested == Some(frame) {
+            batch
+                .observer
+                .as_deref_mut()
+                .ok_or(Error::InvalidState)?
+                .observe(frame, instrument)?;
+        }
+        let next_observation = batch
+            .observer
+            .as_deref()
+            .and_then(|observer| observer.next(frame, end_frame));
+        let observed_end = match next_observation {
+            Some(at) if at > frame && at < end_frame => {
+                usize::try_from(at.0 - batch.tag.source.0).map_err(|_| Error::InvalidFrame)?
+            }
+            Some(_) => return Err(Error::InvalidFrame),
+            None => batch.frames,
+        };
+        let next_midi = batch.midi_inputs[0]
+            .get(midi)
+            .map_or(batch.frames, |(at, _)| at as usize);
+        let next_parameter = batch
+            .parameters
+            .get(parameter)
+            .map_or(batch.frames, |event| event.offset as usize);
+        let end = next_midi
+            .min(next_parameter)
+            .min(observed_end)
+            .min(batch.frames);
+        if end <= cursor {
+            return Err(Error::InvalidEvent);
+        }
+        instrument.render(batch, cursor, end)?;
+        cursor = end;
     }
     Ok(())
 }
@@ -143,6 +170,9 @@ mod fx {
         }
     }
     impl Backend for FxBackend {
+        fn supports_observation(&self) -> bool {
+            true
+        }
         fn ports(&self) -> PortCounts {
             PortCounts {
                 audio_inputs: self.channels,
@@ -237,7 +267,7 @@ mod fx {
                 .reset_for_activation(BuiltInFxState::default())
                 .map_err(|_| Error::InvalidParameter)
         }
-        fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+        fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
             if batch.frames > self.processor.max_frames() {
                 return Err(Error::Capacity);
             }
@@ -245,7 +275,12 @@ mod fx {
         }
     }
     impl Instrument for FxBackend {
-        fn render(&mut self, batch: &mut Batch<'_>, start: usize, end: usize) -> Result<(), Error> {
+        fn render(
+            &mut self,
+            batch: &mut Batch<'_, '_>,
+            start: usize,
+            end: usize,
+        ) -> Result<(), Error> {
             let frames = end - start;
             if frames == 0 {
                 return Ok(());
@@ -358,6 +393,9 @@ mod synth {
         }
     }
     impl Backend for SynthBackend {
+        fn supports_observation(&self) -> bool {
+            true
+        }
         fn ports(&self) -> PortCounts {
             PortCounts {
                 audio_inputs: 2,
@@ -410,7 +448,7 @@ mod synth {
                     }),
             }
         }
-        fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+        fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
             if batch.frames > self.processor.max_frames() {
                 return Err(Error::Capacity);
             }
@@ -446,7 +484,12 @@ mod synth {
         }
     }
     impl Instrument for SynthBackend {
-        fn render(&mut self, batch: &mut Batch<'_>, start: usize, end: usize) -> Result<(), Error> {
+        fn render(
+            &mut self,
+            batch: &mut Batch<'_, '_>,
+            start: usize,
+            end: usize,
+        ) -> Result<(), Error> {
             let frames = end - start;
             if frames == 0 {
                 return Ok(());

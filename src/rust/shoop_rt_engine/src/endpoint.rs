@@ -155,6 +155,7 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_processors: Box<
@@ -310,6 +311,23 @@ impl ControlEndpoint {
     }
     pub fn processor_state(&self, slot: usize) -> Option<crate::ProcessorState> {
         self.processor_cells.get(slot)?.read()
+    }
+    pub fn recorded_processor_state(
+        &self,
+        id: LoopSlotId,
+    ) -> Option<shoop_rt_protocol::RecordedProcessorState> {
+        let cells = self.cells.loops.get(id.0.index as usize)?;
+        if cells.generation.load(Ordering::Relaxed) != id.0.generation {
+            return None;
+        }
+        cells
+            .recorded
+            .read(
+                id.0.generation,
+                cells.content_revision.load(Ordering::Relaxed),
+            )
+            .ok()
+            .flatten()
     }
 
     pub(crate) fn next_frame(&self) -> Frame {
@@ -488,6 +506,7 @@ impl ControlEndpoint {
         self.unanswered = 0;
         self.resync = None;
         self.projected_processors.fill(None);
+        self.projected_recorded.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
         for pending in self.pending.iter_mut().flatten() {
@@ -1380,6 +1399,7 @@ impl Endpoint for ControlEndpoint {
             self.forced_monitoring(Some(out));
         }
         self.project_processors(out);
+        self.project_recorded(out);
         self.telemetry(out);
     }
 }
