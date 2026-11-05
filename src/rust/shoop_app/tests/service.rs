@@ -1696,7 +1696,9 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
             state.capabilities.supports(capability),
             matches!(
                 capability,
-                BackendCapability::MidiInjection | BackendCapability::BusManagement
+                BackendCapability::MidiInjection
+                    | BackendCapability::BusManagement
+                    | BackendCapability::CompositeLoops
             )
         );
     }

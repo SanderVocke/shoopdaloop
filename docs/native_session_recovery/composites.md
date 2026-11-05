@@ -1,8 +1,10 @@
 # Composite execution and ownership
 
-Status: implementation in progress under [P03](feature-parity.md) and
-[the implementation plan](../../PLAN_P03_COMPOSITES.md). This document specifies
-the accepted contract; it does not advertise current production support.
+Status: the direct-track core is restored under [P03](feature-parity.md) and
+[the implementation plan](../../PLAN_P03_COMPOSITES.md). The public composite
+capability covers regular programs and explicit Play/Stop/Record events. Full
+P03 remains open for replacing and dry/wet interactions under P05/P06/P07.
+See [acceptance evidence](evidence/composites.md) for tested paths and remaining gates.
 
 ## Frames and synchronization
 
@@ -41,6 +43,10 @@ command timing and repeat intent are distinct. An explicit-mode composite ends
 after one pass; an empty composite starts as a successful stopped operation.
 Recording continues in frames until an admitted transition ends it.
 
+Composite outer transport accepts Play and Stop. The legacy `play_after_record`
+option is accepted for API compatibility and has no effect on that transport;
+child recording and its follow-up actions are authored explicitly in the program.
+
 At pass end, completed authored child occurrences end even if the parent waits.
 The parent remains Playing with its playhead at the end and explicit wait state.
 Completed-pass accounting happens once; entering iteration zero happens only when
@@ -55,6 +61,9 @@ Explicit child commands outrank competing inherited or explicit program actions
 at the same frame. An independently controlled child never advances its parent.
 Later authored actions may affect that child through normal arbitration. Nested
 starts and seeks establish descendant snapshots in the same quantum.
+At a new parent pass, a completed one-pass child enters again. A still-running
+nested child retains its own phase, including across shorter parent passes.
+A coincident one-pass ending permits the next authored entry at that boundary.
 
 Prepared edits carry active/pending versions. Safe changes strictly beyond the
 current and next unit may activate before wrap if they preserve current ownership
@@ -161,8 +170,9 @@ and uses stopped/restart eligibility instead of early future-only adoption.
 
 Clear retires a track-owned composite's timing identity, stops its authored child
 occurrences, and installs an empty primitive with a fresh runtime generation. Its
-public backend identity remains stable. Public feature publication remains gated
-until the service, editor, monitoring and persistence paths are complete.
+public backend identity remains stable. `CompositeLoops` is published when the
+negotiated core program budgets are available. Replacing and dry/wet capabilities
+remain independent; unsupported modes refuse before a candidate is accepted.
 
 ## Automatic monitoring
 
@@ -186,7 +196,7 @@ generation banks. Preparing a private replacement preserves active ownership;
 activation selects the new generation without overwriting a policy already
 confirmed for it. No render allocation, journal replay or application timer drives
 this policy. The backend retains manual intent for capture and publishes automatic
-monitoring from rendered state. Composite file support remains gated separately.
+monitoring from rendered state. File capture preserves manual intent separately.
 
 ## Frozen file timing and replacement
 
@@ -222,4 +232,4 @@ Primitive topology seed lengths remain stable through subsequent program edits;
 current media lengths continue to come from render-owned content state. Invalid
 or cancelled candidates retain the old playing plans and monitoring policy.
 Replacing/dry-wet event modes still refuse complete files until their production
-capabilities exist. Public capability publication remains a separate gate.
+capabilities exist.

@@ -13,7 +13,7 @@ from run_loops_hosts import compare_graph_bindings, compare_graph_worklets, comp
 
 class DenseTests(unittest.TestCase):
     def fixture(self, stalled=False):
-        native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_dense_frames_native.json.gz").read_bytes()))
+        native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_dense_frames_nested_reentry_native.json.gz").read_bytes()))
         chunks = [[s[c] for s in native["samples"][:128]] + [native["samples"][128][c]] + [0]*127
                   + [s[c] for s in native["samples"][129:]] + [0]*126 for c in range(2)]
         output = [[0]*1024 for _ in range(2)]
@@ -31,7 +31,7 @@ class DenseTests(unittest.TestCase):
                     "returnedGraphBuffers":0,"returnedExportBuffers":0,"returnedStagingBuffers":0,"retainedGraphs":0,"retainedExports":0,"retainedStaging":0,
                     "journalOverflow":0,"recovered":[256,16,16,0],"firstFrame":"128","resumeFrame":None,"marker":0}}))
         if stalled:
-            native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_stalls_frames_native.json.gz").read_bytes()))
+            native = json.loads(gzip.decompress((Path(__file__).parent / "data/loop_stalls_frames_nested_reentry_native.json.gz").read_bytes()))
             for report in reports:
                 report["data"] = copy.deepcopy(native)
                 report["checkpoints"].append({"frame":"136","browser":"896","frames":5})

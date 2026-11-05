@@ -1350,6 +1350,178 @@ fn production_client_projects_frozen_composite_geometry_without_media_spinner_an
 }
 
 #[shoop_test]
+fn public_lua_composes_nested_plans_in_one_turn_and_editor_intents_keep_confirmed_identity() {
+    let (mut f, _, track, loops) = setup_composites(false);
+    f.service.detach(ConnectionId(1));
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    assert!(runtime
+        .snapshot()
+        .capabilities
+        .supports(BackendCapability::CompositeLoops));
+    runtime.dispatch(AppIntent::AddScriptSource {
+        name: "compose.lua".into(), kind: ScriptKind::User, enabled: true,
+        source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); c.loop_compose_add_to_end({0,2}, {{0,0},{0,1}}, false); c.loop_compose_add_to_end({0,3}, {{0,2}}, false); c.loop_trigger({0,3}, c.constants.LoopMode_Playing)"),
+    }).unwrap();
+    runtime.tick(Duration::ZERO);
+    f.service
+        .pump_local(ConnectionId(99), &port, Duration::ZERO);
+    let admitted = f.service.snapshot();
+    let inner = admitted
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[2])
+        .unwrap()
+        .pending
+        .as_ref()
+        .unwrap();
+    let outer = admitted
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[3])
+        .unwrap()
+        .pending
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        outer.prepared.unit_frames * outer.prepared.iterations,
+        inner.prepared.unit_frames * inner.prepared.iterations
+    );
+    assert!(inner.prepared.iterations > 1);
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let snapshot = f.service.snapshot();
+    let inner = snapshot
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[2])
+        .unwrap();
+    let outer = snapshot
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[3])
+        .unwrap();
+    assert_eq!(outer.length_frames, inner.length_frames);
+    assert!(outer.length_frames > 1);
+    assert_eq!(outer.mode, LoopMode::Playing);
+    assert!(runtime.snapshot().scripting.scripts[0]
+        .latest_error
+        .is_none());
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[3],
+            action: LoopAction::StopClicked,
+        })
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[2],
+            action: LoopAction::IconClicked(SelectionModifiers::default()),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    let details = runtime
+        .snapshot()
+        .details
+        .as_ref()
+        .unwrap()
+        .composite
+        .clone()
+        .unwrap();
+    let selected = details
+        .events
+        .iter()
+        .map(|event| CompositeEventId {
+            instance_id: event.instance_id,
+        })
+        .collect::<Vec<_>>();
+    for intent in [
+        AppIntent::ComposeLoopAt {
+            target_loop_id: loops[2],
+            source_loop_id: loops[1],
+            start_iteration: 40,
+        },
+        AppIntent::RelocateCompositeEvents {
+            target_loop_id: loops[2],
+            events: selected.clone(),
+            start_iteration: 100,
+            duplicate: true,
+        },
+        AppIntent::SetCompositeLoopCycles {
+            target_loop_id: loops[2],
+            event: selected[0],
+            n_cycles: Some(8),
+        },
+        AppIntent::SetCompositeKind {
+            target_loop_id: loops[2],
+            kind: CompositeKind::Script,
+        },
+        AppIntent::SetCompositeEventMode {
+            target_loop_id: loops[2],
+            event: selected[0],
+            mode: LoopMode::Recording,
+        },
+    ] {
+        runtime.dispatch(intent).unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    }
+    let edited = runtime
+        .snapshot()
+        .details
+        .as_ref()
+        .unwrap()
+        .composite
+        .clone()
+        .unwrap();
+    assert_eq!(edited.events.len(), 5);
+    assert_eq!(edited.kind, CompositeKind::Script);
+    assert_eq!(edited.events[0].instance_id, selected[0].instance_id);
+    assert_eq!(edited.events[0].forced_n_cycles, Some(8));
+    assert_eq!(edited.events[0].mode.as_deref(), Some("recording"));
+    let copied = edited
+        .events
+        .iter()
+        .filter(|event| {
+            !details
+                .events
+                .iter()
+                .any(|old| old.instance_id == event.instance_id)
+        })
+        .map(|event| CompositeEventId {
+            instance_id: event.instance_id,
+        })
+        .collect();
+    runtime
+        .dispatch(AppIntent::DeleteCompositeEvents {
+            target_loop_id: loops[2],
+            events: copied,
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    assert_eq!(
+        runtime
+            .snapshot()
+            .details
+            .as_ref()
+            .unwrap()
+            .composite
+            .as_ref()
+            .unwrap()
+            .events
+            .len(),
+        2
+    );
+    assert!(
+        runtime.snapshot().notifications.is_empty(),
+        "{:?}",
+        runtime.snapshot().notifications
+    );
+}
+
+#[shoop_test]
 fn failed_parent_restoration_keeps_working_geometry_and_an_editor_retry_can_recover_it() {
     let (mut f, mut client, _, loops) = setup_composites(false);
     for (target, sources) in [(loops[2], vec![loops[0]]), (loops[3], vec![loops[2]])] {

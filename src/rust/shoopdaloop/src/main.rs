@@ -3754,6 +3754,7 @@ fn main() {
     let cli = AppArgs::parse();
     if !cli.probe_engine_transport
         && !cli.probe_persistence
+        && !cli.probe_composites
         && !cli.probe_builtins
         && !cli.tracing_smoke_test
     {
@@ -3767,8 +3768,10 @@ fn main() {
         }
     }
 
-    if cli.probe_engine_transport || cli.probe_persistence {
-        let result = if cli.probe_persistence {
+    if cli.probe_engine_transport || cli.probe_persistence || cli.probe_composites {
+        let result = if cli.probe_composites {
+            session_probe::composites(cli.engine_transport.unwrap())
+        } else if cli.probe_persistence {
             session_probe::files(cli.engine_transport.unwrap())
         } else {
             session_probe::run(cli.engine_transport.unwrap())
@@ -3777,7 +3780,9 @@ fn main() {
             Ok(()) => {
                 println!(
                     "Session {} {}: workflow and graceful shutdown passed",
-                    if cli.probe_persistence {
+                    if cli.probe_composites {
+                        "composites"
+                    } else if cli.probe_persistence {
                         "persistence"
                     } else {
                         "transport"
@@ -4810,6 +4815,7 @@ mod tests {
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
                 .with(BackendCapability::BusManagement, true)
+                .with(BackendCapability::CompositeLoops, true)
                 .with(BackendCapability::ClickTrackInsertion, true)
         );
         assert_eq!(

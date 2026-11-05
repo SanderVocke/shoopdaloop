@@ -32,7 +32,7 @@ engine-owned, while mappings and the last confirmed projection live in the servi
 | Service admitted I/O | `next_task_id`, `next_audio_switch_id`, `pending_audio_switch`, `io_task`, `pending_io`, `session_encoding`, `background_session_encoding` | Keep admitted engine work until its result, even if delivery fails. Client-owned bulk reads may be canceled; unsupported capture/load/switch operations must continue to refuse explicitly. |
 | UI-local preview/file workflow | `click_track`, `next_preview_request_id`, `file_outputs`, `preview_outputs` | Dialog drafts, local audio preview and save destinations remain client-owned; engine preview playback is an explicit service command where supported. |
 | Lua-local | `scripting_view`, `script_manager`, `script_last_snapshot`, `next_script_conversion_request`, `pending_script_conversions` | VM, files, timers, MIDI controller registrations, dialogs and diagnostics move to the client. No automatic installation on reattachment. |
-| Lua-local unsupported composite scheduler | `script_composition_playback`, `script_composition_frame_remainder` | Retain only in development/reference coverage or refuse unsupported production composites. Do not move Lua into the service. |
+| Reference-only elapsed composite scheduler | `script_composition_playback`, `script_composition_frame_remainder` | Retain historical reference evidence. Production uses immutable prepared plans and the render frame clock; accepted documents and operations are service-owned. Lua VMs remain client-local. See the [composite contract](composites.md). |
 
 `TrackModel`/`LoopModel` hold backend IDs, names, ordering, selection, targets,
 controls and structural state: service-owned. Their actual mode, position, media,

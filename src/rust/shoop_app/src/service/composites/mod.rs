@@ -36,6 +36,14 @@ impl Owner {
 }
 
 impl Service {
+    fn authored_loop_length(&self, id: LoopId) -> u64 {
+        self.composites
+            .get(&id)
+            .and_then(Owner::authored)
+            .map_or(self.loops[&id].view.length_frames, |plan| {
+                plan.prepared.unit_frames * plan.prepared.iterations
+            })
+    }
     fn composite_geometry(&self, target: LoopId) -> (BTreeMap<u64, (u64, u64)>, Option<u64>) {
         let prepared = self.composites.get(&target).and_then(|owner| {
             owner
@@ -188,7 +196,7 @@ impl Service {
                     &document,
                     self.composite_format(),
                     self.backend.composite_limits().unwrap(),
-                    |id| Ok(self.loops[&id].view.length_frames),
+                    |id| Ok(self.authored_loop_length(id)),
                     &geometry,
                     unit,
                 )?;
@@ -213,7 +221,7 @@ impl Service {
                 for source in add {
                     let duration = prepare::cycles_for_frames(
                         document.basis,
-                        self.loops[&source].view.length_frames,
+                        self.authored_loop_length(source),
                         prepared.sample_rate,
                     )?;
                     document.instances.push(Instance {
@@ -392,7 +400,7 @@ impl Service {
             self.backend
                 .composite_limits()
                 .ok_or_else(|| anyhow!("prepared composites unavailable"))?,
-            |id| Ok(self.loops[&id].view.length_frames),
+            |id| Ok(self.authored_loop_length(id)),
             geometry,
             unit,
         )

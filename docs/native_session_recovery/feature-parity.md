@@ -20,7 +20,7 @@ import/replacement (part of P11). These file workflows are enabled and validated
 on this branch;
 [acceptance evidence](evidence/session-persistence.md) records native Linux/macOS/Windows,
 hosted/self-contained browsers, socket recovery and selected Miri coverage.
-FX, composites, session scripts and other unsupported document requirements still
+FX, dependent composite modes, session scripts and other unsupported requirements still
 refuse as a whole. Audio/MIDI click generation and insertion are also enabled through the production
 file provider and bounded media-import path. Content duplication and the remaining
 MIDI initial/preroll state cases stay open in P11. System/Master click preview is
@@ -34,10 +34,14 @@ editor and per-channel timing behavior in the reference stack. P12 still require
 authoritative service admission, atomic single/all-channel updates, RT execution,
 persistence and recovery coverage before production timing edits can be enabled.
 
-P03 restoration is planned in [PLAN_P03_COMPOSITES.md](../../PLAN_P03_COMPOSITES.md).
+P03 core restoration is implemented under [PLAN_P03_COMPOSITES.md](../../PLAN_P03_COMPOSITES.md).
 The accepted [composite execution contract](composites.md) uses frame-driven
 arrangements with launch/repeat alignment, superseding source-tick progression.
-P03 remains OPEN until production implementation and its dependency evidence exist.
+P03 remains OPEN for replacing/dry-wet interactions under P05/P06/P07 and final
+acceptance. See [composite evidence](evidence/composites.md) for the named partial
+restoration, supported core and validation pins.
+Core composite file support also extends the P01/P02 capture/load paths; their
+remaining dependencies and OPEN status are unchanged.
 
 ## What is already available
 
@@ -68,7 +72,7 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 | --- | --- | --- | --- |
 | P01 OPEN | Core coherent session save and WAV/loop-audio/exact-MIDI/SMF export are enabled, including zero or multiple supported buses. Active/scheduled recording refuses without stopping it. Browser completion reports download handoff. | `shoopdaloop/persistence_io`, `shoop_persistence_codec`, service persistence jobs and retained reference codecs; production `production_files_roundtrip_audio_midi_and_fresh_session_identities`; immutable capture/old-owner/playing-export tests in `shoop_app` and `shoop_rt_backend`. See [persistence acceptance evidence](evidence/session-persistence.md) and [bus evidence](evidence/output-buses.md) for deployment scope and limits. | Extend capture/file conversion as FX (P07/P08), composites (P03), dry/wet (P06), latency/take state (P09/P10) and session scripts/resources (P16) become available. UI recovery itself still has no disk durability. |
 | P02 OPEN | Core structure-only and media-bearing loads plus New Session use fenced, atomic replacement and fresh live IDs, including zero or multiple supported buses. Unsupported documents refuse intact; loaded loops start stopped. | Existing `shoop_session` formats/migrations/resampling; `shoop_persistence_codec/document`; service/adapter private candidates; `accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay`, production save/load/save tests and [bus evidence](evidence/output-buses.md). | Restore each deferred document feature under its own row. Keep whole-document capability diagnostics, sample-rate consent, stable source/live mappings, missing-port intent and transactional refusal as coverage expands. |
-| P03 OPEN | Regular and Lua-scheduled composite loops, their editor operations, and composite-dependent auto-arm behavior are refused. Lua remains client-side. | `shoop_egui/{composite_loop_widget,details_pane}`; composite documents in `shoop_session`; reference composite planners/schedulers; tests `public_intents_drive_three_section_engine_composite_and_isolate_child_control`, `regular_script_composition_plays_serial_sections_and_wraps_without_sync`, `auto_arm_reconciliation_follows_engine_composite_boundaries_and_preserves_prearmed_tracks`. | Composite protocol/state/operations, RT scheduling integration and service-owned accepted work; retain editor semantics and child independence. Explicitly settle scheduling ownership without making recovery depend on a lost Lua VM. |
+| P03 OPEN | **Partial restoration: direct-track composite core.** Regular and explicit Play/Stop/Record programs, nested UI/Lua authoring, live edits, automatic monitoring, files and accepted-work recovery are supported. Lua VMs remain client-local. | Frame resolver, prepared RT plans, service-owned documents and production editor; [execution contract](composites.md), [criterion/test map and acceptance](evidence/composites.md). Retained reference fixtures remain historical evidence. | Integrate replacing and dry/wet event modes/topologies under P05/P06/P07; complete final platform/browser/recovery acceptance. Full P03 stays OPEN until its dependency gate passes or narrower closure is explicitly approved. |
 | P04 OPEN | Grab and grab-with-target policies are refused. | `shoop_app_api` loop/global actions; `shoop_egui/{loop_widget,global_controls}`; reference `grab_targets_inner`; tests `grab_policy_covers_targeted_selection_solo_and_immediate_completion`, `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`. | Bounded grab/ringbuffer integration with authoritative target/selection resolution, sync policy, outcome reporting and media continuity. |
 | P05 OPEN | Replacing mode is unavailable. | `BackendCapability::ReplacingMode`; loop mode/actions/UI; reference `expanded_loop_actions_route_modes_grab_and_balance` and engine/loop tests. | Service/protocol admission and adapter/RT replacement semantics; cover selected versus explicit loop control, stop, sync and recorded content. |
 | P06 OPEN | Dry/wet tracks, dry-through-wet playback, dry-into-wet recording and their default actions are unavailable. | Track topology/port-role contracts; `shoop_egui/app_widget` add-track forms and details; reference tests `application_adds_external_dry_wet_tracks_from_processor_capabilities`, `dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit`, `dry_wet_media_io_maps_and_exports_role_order_without_flattening`. | Track graph/role mapping and mode integration across service/protocol/adapter/engine; preserve channel-role order, processor routes and explicit/default action distinctions. |

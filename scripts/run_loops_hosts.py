@@ -417,7 +417,12 @@ def compare_dense_worklets(result, native, *, stalled=False):
             or native["recovered"] != [256,16,16,0]):
         raise RuntimeError("incomplete native dense reference")
     semantics = validate_semantic(native["semanticBytes"], capacity=4096)
-    if semantics["boundaries"] != list(map(str,range(frames))) or semantics["records"] != (1805 if stalled else 1740):
+    # The explicit child reenters on each four-frame parent pass. Each boundary
+    # has six structural records, six recurring events, source events and three
+    # extra parent/child entry events on a wrap.
+    expected_records = 18 + sum(12 + (0 if frame == 130 else 1 if frame in (64, 129, 135) else 2)
+                                + 3 * (frame % 4 == 0) for frame in range(1, frames))
+    if semantics["boundaries"] != list(map(str,range(frames))) or semantics["records"] != expected_records:
         raise RuntimeError("incomplete dense semantic boundaries")
     for report in reports:
         data = json.loads(json.dumps(report["data"]))

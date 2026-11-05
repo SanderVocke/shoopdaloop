@@ -1,0 +1,109 @@
+# Composite core restoration evidence
+
+P03 is **OPEN**. The named partial restoration is the direct-track composite core:
+regular and explicit Play/Stop/Record arrangements, nested authoring and control,
+live edits, automatic monitoring, frozen file timing and accepted-work lifetime.
+Replacing and dry/wet event modes/topologies depend on P05/P06/P07. Those modes
+refuse atomically, including whole-document load; their tags are not advertised
+as executable support. The plan's immutable full-parity gate still applies.
+
+## Contract and acceptance mapping
+
+The [execution contract](../composites.md) and
+[plan](../../../PLAN_P03_COMPOSITES.md) define the requirements. Test paths below
+are production-stack evidence unless explicitly identified as loop-library tests.
+
+| Criterion | Implementation and executable evidence |
+| --- | --- |
+| 1. Frame clock | `shoop_loops/tests/frame_composites.rs::source_stop_resize_and_restart_preserve_every_prepared_frame`; guarded `shoop_rt_engine/tests/composites.rs::prepared_frame_programs_keep_their_media_under_every_quantum_and_partial_callback`. |
+| 2. Frozen preparation | Service `source_resize_does_not_retime_an_active_document_and_repeat_disable_retains_its_source`, `natural_child_duration_refresh_is_versioned_and_keeps_the_existing_basis`; frozen-geometry file round trips. |
+| 3. Launch/repeat | Loop `primitives_and_composites_wait_only_at_their_own_end_and_resume_on_source_edges`, `stopping_a_source_releases_an_existing_wait_without_an_extra_pass_or_tick`, `delayed_commands_still_follow_source_edges_without_owning_program_progression`; engine repeat-wait/media cases. |
+| 4. Deterministic execution | Loop `program_boundaries`, `program_changes`, independent dense oracle and interloop media tests; engine `nested_starts_and_iteration_seeks_apply_child_snapshots_in_the_same_quantum`. |
+| 5. UI/Lua | Service `public_lua_composes_nested_plans_in_one_turn_and_editor_intents_keep_confirmed_identity`, stable-ID group editor tests; retained actual `shoop_egui` composite widget tests; packaged companion canary. |
+| 6. Independent children | Service `child_commands_do_not_move_parent_frames_and_new_authored_actions_still_apply`; nested Clear/removal cases preserve child media and report stopped ancestors. |
+| 7. Live edits | Loop future-only/protected-next-unit and owning program/graph tests; adapter cancellation/supersession; service `cancellation_racing_an_activation_reconciles_the_version_that_actually_installed`. |
+| 8. Auto-arm | Guarded engine monitoring tests inspect audio/MIDI at every supported quantum. Service `automatic_monitoring_and_recording_finish_without_ui_or_service_polling`, manual-policy refusal/reconciliation. |
+| 9. Authoritative projection | Adapter exact activation receipts and resync tests; service `composite_documents_geometry_and_pending_versions_publish_only_after_render_confirmation`; client frozen details and pending/cancel display. |
+| 10. Persistence | Service `nested_composite_capture_and_load_preserve_frozen_geometry_media_and_event_ids`, active-plan capture during pending edit, future-recording refusal; session/codec legacy migration and independently rounded frozen endpoints; atomic backend replacement and first-quantum monitoring. |
+| 11. Recovery/lifetime | Service UI-loss load, owned lifecycle, New Session/shutdown; adapter generation reuse and active/pending resync; socket companion client-absent recording and fresh-VM recovery. |
+| 12. Bounded portability | Guarded engine/backend at-limit 8192-span staging with a small reliable window; allocation guards, four-target dependency audits, native/Node/Chrome suites and maintained worklet/codec artifact contracts. Final public/browser platform gates are recorded separately below. |
+
+Service test names refer to `shoop_app/tests/support/composite_cases.rs`, included
+by the maintained `service` test target. Reference app/engine fixtures retain old
+editor and media expectations. Their tick-driven scheduling is historical, not
+evidence that the new contract uses source ticks or a client fallback.
+
+## Source checkpoints and validation
+
+- `730148bb`: automatic monitoring; native **2,824 passed / 7 skipped**. Node and
+  Chrome app/client/protocol/editor/adapter/engine/worklet suites passed.
+- `bf9cef95`: corrected the maintained JavaScript artifact's stale engine protocol
+  pin; actual rebuilt worklet and codec contracts passed.
+- `b40ec30b`: persistence, app protocol **23**, engine protocol **11**, file
+  document **14**, host setup **7**, worklet configuration **4**. Native warning-
+  denying full-feature build and **2,835 passed / 7 skipped**. Node and Chrome:
+  app **58**, client **11**, app protocol **17**, legacy backend **87**, editor
+  **234**, adapter **52**, engine **93**, worklet **17**, engine protocol **6**,
+  session **54**, codec **21**. Boundaries, test policy, parity/tracing and actual
+  worklet/codec artifact contracts passed. Its complete GitHub platform matrix,
+  native JACK acceptance, coverage, docs and CodeQL checks passed. The debug-web
+  job subsequently passed too; final-head validation must rerun the matrix.
+- Public-core milestone after `b40ec30b`: capability and public raw creation,
+  compose-then-Play admission and same-turn nested Lua preparation. Focused backend
+  **54 passed**, app/client/protocol **87 passed**. Actual packaged socket and
+  shared-memory first-attachment canaries passed, including exact **4,096-frame**
+  recording, uninterrupted nested playback and exact save/load/save media/geometry.
+  Socket recovery reconnects without reconstructing its client-local Lua VM.
+  Final core validation: full native **2,838 passed / 7 skipped**; Node and Chrome
+  each passed app **59**, client **11**, app protocol **17**, legacy backend **87**,
+  editor **234**, loops **191**, codec **21**, adapter **53**, engine **94**, worklet
+  host **17**, engine protocol **6**, session **54**. The final warning-denying
+  build and socket/shared-memory canaries passed, including real piano MIDI data.
+  Hosted and direct-file actual AudioWorklet composite canaries passed with zero
+  xruns, exact audible recording through the main-thread stall, and exact file
+  round trips. Under concurrent full builds, two debug browser attempts hit the
+  existing core-load deadline; isolated final runs passed. The composite submachine
+  has its own bounded per-step deadlines, rather than sharing one 30-second timer.
+- A completed explicit nested child now reenters on a new parent pass, including
+  coincident endings, while unfinished children retain their phase. Guarded tests
+  inspect actual captured/output PCM at every supported quantum. The independent
+  dense oracle explicitly models those entries; all **60** standalone host tests,
+  **24** runner-validation tests and the maintained debug native/Node/offline/live
+  AudioWorklet replay passed. Prior compressed reference fixtures are retained;
+  the new nested-entry fixtures are separately named.
+- Pinned Miri (`nightly-2026-05-04`, seed **0**) passed **25** selected executions:
+  owning program changes/capture preflight **12**, media ownership **7**, boundary
+  preview **3**, bounded client projection **2**, engine slot reuse **1**. These
+  runs exercised the public-core working tree based on `b40ec30b`; their report
+  HEAD field alone does not identify the uncommitted patch. Four-target runtime,
+  loop and engine audits, Wasm isolation, test policy, parity/tracing (**441
+  modules**), formatting and actual worklet/codec artifact contracts passed.
+
+Full P03 is still gated on dependent modes and the final integrated-head platform
+matrix/review. No narrower closure has been approved.
+
+## Reproduction and limits
+
+Use the repository build/test setup and deny Rust warnings. Native full-feature
+checks select `shoop_engine/app_backend,shoop_backend/native-fx`; the former is
+only a retained-reference test feature. The production frontend uses the RT stack.
+Local preparation used Rust **1.99.1**, nextest **0.9.116**, Node **22.22.2** and
+Chrome/ChromeDriver **147.0.7727.137**, compact debug profiles and no incremental
+compilation. Node/Chrome package suites use `scripts/run_wasm_tests.py --profile dev`.
+
+Run the companion commands and browser `COMPOSITES=1` commands in the
+[frontend guide](../../../src/rust/shoopdaloop/README.md). Socket and shared-memory
+canaries use **Q32**, 20 logical loop slots and a 16-MiB media budget. The browser
+canary uses actual AudioWorklet capture and codec-worker/download paths, with a
+1.8-second blocked main thread spanning an entire authored recording occurrence.
+MessagePort simulation or model-only success does not replace that acceptance.
+
+Default prepared program budgets are **256 entries, 1024 segments and 512
+relations**, with relation capacity at least the loop-slot count. The adapter
+streams 32 span records at a time. At-limit tests explicitly raise the segment
+budget to **8192**; they do not claim every host's default pool accepts that plan.
+All supported quanta **1, 16, 32, 64, 128** have guarded render coverage.
+
+There is no host-crash durability, browser-page crash recovery, simultaneous
+controlling-client support, shared-memory reattachment, tempo following or DSP
+time stretching. No merge or reviewer approval is implied by these results.

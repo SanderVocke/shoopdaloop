@@ -65,6 +65,7 @@ struct Intent {
 enum ProgramAction {
     #[default]
     None,
+    Wrap,
     Snapshot {
         restart: bool,
     },
@@ -281,6 +282,12 @@ impl Resolver {
             .flatten()
             .filter(|state| state.id == id)
             .ok_or(Error::InvalidId)
+    }
+    /// Whether a new authored occurrence must enter a program at this boundary.
+    /// A playing regular pass or unfinished one-pass program keeps its own phase.
+    pub fn program_needs_entry_at(&self, id: LoopId, frame: Frame) -> Result<bool, Error> {
+        let program = self.topology.program(id).ok_or(Error::InvalidId)?;
+        Ok(program_needs_entry_at(program, self.state(id)?, frame))
     }
     pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
         if self.quiescent || self.committed {
@@ -1224,6 +1231,7 @@ impl Boundary<'_> {
                     } else if self.repeat_ready(id)? {
                         cursor.iteration = 0;
                         state.position = 0;
+                        action = ProgramAction::Wrap;
                     } else {
                         cursor.iteration = timing.iterations - 1;
                         cursor.waiting_repeat = true;
@@ -1296,12 +1304,19 @@ impl Boundary<'_> {
             } else {
                 selected
             };
-            if action == ProgramAction::None
+            let child = self.scratch.states[target.slot() as usize].expect("prepared target");
+            let nested_entry = action == ProgramAction::Wrap
+                && desired.is_some_and(|segment| segment.mode == Mode::Playing)
+                && self
+                    .topology
+                    .program(target)
+                    .is_some_and(|program| program_needs_entry_at(program, child, self.frame));
+            if matches!(action, ProgramAction::None | ProgramAction::Wrap)
+                && !nested_entry
                 && old.map(|segment| segment.mode) == desired.map(|segment| segment.mode)
             {
                 continue;
             }
-            let child = self.scratch.states[target.slot() as usize].expect("prepared target");
             let ordinal = desired
                 .map_or(self.topology.limits().program_entries + index, |segment| {
                     segment.ordinal as usize
@@ -1425,6 +1440,32 @@ fn initial_state(node: LoopSpec) -> State {
         state.composite = Some(CompositeState::default());
     }
     state
+}
+
+fn program_needs_entry_at(
+    program: crate::program::CompiledProgram<'_>,
+    child: State,
+    frame: Frame,
+) -> bool {
+    if child.mode != Mode::Playing {
+        return true;
+    }
+    if program.kind != ProgramKind::Explicit {
+        return false;
+    }
+    let Some(cursor) = child.composite else {
+        return true;
+    };
+    cursor
+        .entered_at
+        .and_then(|entered| {
+            program
+                .iterations
+                .checked_sub(cursor.iteration)
+                .and_then(|remaining| remaining.checked_mul(program.nominal_unit_frames))
+                .and_then(|remaining| entered.0.checked_add(remaining))
+        })
+        .is_none_or(|end| frame.0 >= end)
 }
 
 fn composite_transition(

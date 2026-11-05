@@ -267,6 +267,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::CompositeLoops,
+                self.is_ready()
+                    && self.limits.is_some_and(|limits| {
+                        limits.composite_entries > 0 && limits.composite_segments > 0
+                    }),
+            )
             .with(BackendCapability::BusManagement, self.is_ready())
             .with(
                 BackendCapability::MidiInjection,
@@ -285,6 +292,15 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 BackendCapability::LoopContentImport,
                 self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
             )
+    }
+
+    fn supports_composite_loops(&self) -> bool {
+        self.capabilities()
+            .supports(BackendCapability::CompositeLoops)
+    }
+
+    fn composite_plan_mutations_are_synchronous(&self) -> bool {
+        false
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -312,7 +328,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
-        Err(unavailable(BackendCapability::CompositeLoops))
+        if !self
+            .capabilities()
+            .supports(BackendCapability::CompositeLoops)
+        {
+            return Err(unavailable(BackendCapability::CompositeLoops));
+        }
+        self.create_prepared_composite()
     }
     fn convert_empty_loop_to_prepared_composite(
         &mut self,
@@ -373,14 +395,19 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn set_composite_play_after_record(
         &mut self,
-        _id: BackendCompositeId,
-        enabled: bool,
+        id: BackendCompositeId,
+        _enabled: bool,
     ) -> Result<()> {
-        if enabled {
-            return Err(anyhow!(
-                "play-after-record requires an authored follow-up plan"
-            ));
+        self.ready()?;
+        let loop_id = BackendLoopId::from_raw(id.raw());
+        if self
+            .mirror
+            .live_loop(loop_id)
+            .is_none_or(|entry| entry.program.is_none() && !self.pending_conversion(loop_id))
+        {
+            return Err(anyhow!("unknown composite"));
         }
+        // Play/Stop outer transport leaves recording follow-ups to authored actions.
         Ok(())
     }
     fn remove_composite_loop(&mut self, id: BackendCompositeId) -> Result<Option<u64>> {

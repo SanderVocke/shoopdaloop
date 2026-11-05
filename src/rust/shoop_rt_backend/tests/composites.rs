@@ -67,6 +67,36 @@ fn plan(
 }
 
 #[shoop_test]
+fn public_composite_creation_configuration_and_play_wait_for_the_first_accepted_plan() {
+    let (mut backend, ids) = setup();
+    assert!(backend.supports_composite_loops());
+    let composite = backend.create_composite_loop().unwrap();
+    let version = backend
+        .configure_prepared_composite_loop(composite, &plan(ids[1], None, 4))
+        .unwrap();
+    backend
+        .set_composite_play_after_record(composite, true)
+        .unwrap();
+    backend
+        .transition_composite_loop(composite, Mode::Playing, None, None)
+        .unwrap();
+    backend.wait_idle();
+    let state = backend.poll().unwrap();
+    assert_eq!(state.composites[&composite].active_plan_version, version);
+    assert_eq!(state.composites[&composite].mode, Mode::Playing);
+    assert_eq!(state.loops[&ids[1]].mode, Mode::Playing);
+    assert!(backend
+        .set_composite_play_after_record(
+            shoop_backend::BackendCompositeId::from_raw(u64::MAX),
+            false
+        )
+        .is_err());
+    assert!(backend
+        .transition_composite_loop(composite, Mode::Recording, None, None)
+        .is_err());
+}
+
+#[shoop_test]
 fn confirmed_conversion_retains_public_identity_and_exact_activation_receipt() {
     let (mut backend, ids) = setup();
     let comp = shoop_backend::BackendCompositeId::from_raw(ids[3].raw());

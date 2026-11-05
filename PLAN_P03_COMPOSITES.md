@@ -353,12 +353,12 @@ delivery. Confirm unchanged callback-wide budgets and generic dependency boundar
 
 ### Stage 4 — RT backend adapter and confirmed mappings
 
-- [ ] Implement composite creation/configuration/transport/options/removal methods
+- [x] Implement composite creation/configuration/transport/options/removal methods
   currently returning `CompositeLoops` unavailable. Reserve app IDs and generational
   slots until confirmation, and map primitive/composite targets without ambiguity.
 - [x] Extend request/result accounting, mirror/resync and active/pending plan metadata;
   retain scheduled/accepted work and return terminal supersession/refusal correctly.
-- [ ] Implement conversion rollback, clear/removal/track-removal cleanup, source
+- [x] Implement conversion rollback, clear/removal/track-removal cleanup, source
   disappearance handling and capture/replacement mappings without stale references.
 
 Verification: adapter tests through typed and encoded delivery for delayed activation,
@@ -384,10 +384,10 @@ same counts, after adapter unit-test browser registration was made explicit so
 its three assembly/refusal helpers run in Chrome too.
 Test-policy/parity/tracing and the four-target dependency boundaries passed.
 
-Public `CompositeLoops` capability and the legacy creation entry point remain gated
-until service/editor/monitoring/persistence support is complete. The negotiated
-prepared-plan API is exercised directly; this is not yet public P03 restoration.
-Lifecycle dependency cleanup and session capture/replacement integration remain.
+At the adapter-only checkpoint, public capability and legacy creation remained
+gated. Stages 5–8 now provide lifecycle cleanup, files and public creation/control,
+including ordering Play behind an accepted initial plan. The public core capability
+does not advertise replacing or dry/wet support.
 
 ### Stage 5 — service documents, editor operations and admission
 
@@ -452,16 +452,16 @@ documents, exported child media and preserved old-session output after refusal.
 
 ### Stage 8 — public UI/Lua routes and supported-core recovery
 
-- [ ] Route every retained composite intent and Lua composition operation through
+- [x] Route every retained composite intent and Lua composition operation through
   the service. Populate composite details instead of `composite: None`; retain
   editor interactions and show timing basis, pending edits and repeat wait honestly.
-- [ ] Enable `CompositeLoops` only when the supported core is complete across
+- [x] Enable `CompositeLoops` only when the supported core is complete across
   service, adapter, RT, UI and files. Keep unavailable per-event modes/topologies
   gated by their own capabilities and report partial P03 scope explicitly.
-- [ ] Exercise the unchanged public Lua API and actual editor: conversion, drag/drop,
+- [x] Exercise the unchanged public Lua API and actual editor: conversion, drag/drop,
   serial/parallel append, positioned insert, grouped copy/move/delete, kind/mode/
   duration changes, play/stop/seek and independent child control.
-- [ ] Add native host/socket UI-loss scenarios during playback, delayed start,
+- [x] Add native host/socket UI-loss scenarios during playback, delayed start,
   repeat waiting, recording sections and staged edits. Reattach with fresh authority
   and reconcile existing operation IDs/results without replay or script restart.
 
@@ -728,3 +728,37 @@ and retain the normal/full test groups required before behavioral commits/pushes
   actual-artifact contracts passed with engine protocol **11**. Actual browser/
   AudioWorklet editor acceptance and public capability remain
   Stage 8 gates; this does not close full P03 or its dependent-mode gate.
+
+- Public-core checkpoint (Stage 8): enabled negotiated `CompositeLoops` and the
+  retained raw creation route; same-turn Play waits for the accepted initial plan.
+  Nested Lua preparation uses the child's accepted prepared duration even before
+  its first publication. Public UI/Lua operations retain confirmed identities and
+  working documents. The legacy play-after-record option is inert for outer
+  composite Play/Stop; explicit child follow-ups remain authored events.
+- A completed one-pass nested child reenters at the next parent pass, including a
+  coincident end. Still-running nested clocks retain their phase. Guarded coverage
+  checks exact PCM on all five quanta. The independent closed-form dense oracle
+  names those entries and preserves its previous compressed reference fixtures.
+- Core verification: warning-denying full-feature build; complete native **2,838
+  passed / 7 skipped**; Node and Chrome each passed app **59**, client **11**, app
+  protocol **17**, legacy backend **87**, editor **234**, loops **191**, codec **21**,
+  adapter **53**, engine **94**, worklet **17**, engine protocol **6**, session **54**.
+  Standalone hosts **60 passed**, runner checks **24 passed**, maintained debug
+  native/Node/offline/live AudioWorklet replay passed. Four-target boundaries,
+  Wasm isolation, formatting, test policy, parity/tracing (**441 modules**) and
+  actual worklet/codec artifact contracts passed.
+- Packaged socket/shared-memory-first-attachment canaries passed public Lua and
+  editor authoring, exact piano MIDI and media round trips. Socket UI loss spans a
+  complete **4,096-frame** recording section, repeat waiting, a delayed launch and
+  a staged edit. Fresh authorities retain original results without replay or VM
+  restart. A running arrangement retains its active geometry through source stop,
+  resize and restart. Hosted and self-contained real browser/AudioWorklet composite
+  canaries passed with zero xruns, audible exact-length microphone capture through
+  a **1.8-second** main-thread stall and exact save/load/save. Concurrent debug
+  builds caused two core-load deadline misses; isolated final browser runs passed.
+  The new multi-step composite canary has bounded per-step deadlines.
+- Pinned Miri seed 0: **25 passed** (12 program/capture ownership, 7 media, 3
+  boundary previews, 2 client projection, 1 engine slot-reuse). These ran on the
+  public-core working tree after `b40ec30b`, not the unmodified report HEAD.
+  Full P03 remains OPEN for Stage 9 dependent-mode integration and Stage 10 final
+  integrated-head matrix/review. No narrower closure has been approved.

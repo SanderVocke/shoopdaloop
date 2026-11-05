@@ -17,11 +17,20 @@ pub(crate) struct Control {
     id: BackendLoopId,
     action: Action,
     require_composite: bool,
+    required_version: Option<u64>,
     sent: bool,
     reset: Option<LoopSlotId>,
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    fn pending_initial_plan(&self, id: BackendLoopId) -> bool {
+        self.mirror
+            .loops
+            .get(&id)
+            .and_then(|entry| entry.program)
+            .is_some_and(|program| program.version == 0)
+            && self.composites.jobs.iter().any(|job| job.id == id)
+    }
     pub(crate) fn pending_conversion(&self, id: BackendLoopId) -> bool {
         self.mirror
             .loops
@@ -44,7 +53,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .any(|control| control.id == id && matches!(control.action, Action::Clear))
     }
     pub(crate) fn pending_kind_change(&self, id: BackendLoopId) -> bool {
-        self.pending_clear(id) || self.pending_conversion(id) || self.requests.outgoing.iter().chain(self.requests.in_flight.values()).any(|pending| matches!(pending.purpose, Purpose::ResetComposite(target, _) if target == id))
+        self.pending_clear(id) || self.pending_conversion(id) || self.pending_initial_plan(id) || self.requests.outgoing.iter().chain(self.requests.in_flight.values()).any(|pending| matches!(pending.purpose, Purpose::ResetComposite(target, _) if target == id))
     }
     pub(crate) fn defer_composite_control(
         &mut self,
@@ -53,6 +62,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         require_composite: bool,
     ) {
         let sequence = self.requests.reserve_mutation();
+        let required_version = (require_composite && self.pending_initial_plan(id))
+            .then(|| {
+                self.composites
+                    .jobs
+                    .iter()
+                    .rev()
+                    .find(|job| job.id == id)
+                    .map(|job| job.version)
+            })
+            .flatten();
         tracing::debug!(
             sequence,
             loop_id = id.raw(),
@@ -64,6 +83,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 id,
                 action,
                 require_composite,
+                required_version,
                 sent: false,
                 reset: None,
             },
@@ -92,7 +112,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .controls
                 .range(..sequence)
                 .any(|(_, prior)| prior.id == control.id);
-            let changing = self.pending_conversion(control.id) || self.requests.outgoing.iter().chain(self.requests.in_flight.values()).any(|pending| matches!(pending.purpose, Purpose::ResetComposite(target, _) if target == control.id));
+            let changing = self.pending_conversion(control.id) || self.pending_initial_plan(control.id) || self.requests.outgoing.iter().chain(self.requests.in_flight.values()).any(|pending| matches!(pending.purpose, Purpose::ResetComposite(target, _) if target == control.id));
             if control.sent || room == 0 || changing || earlier || source_pending {
                 self.composites.controls.insert(sequence, control);
                 continue;
@@ -105,11 +125,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 );
                 continue;
             };
-            if control.require_composite && entry.program.is_none() {
+            if control.require_composite
+                && (entry.program.is_none()
+                    || control.required_version.is_some_and(|version| {
+                        entry
+                            .program
+                            .is_none_or(|program| program.version < version)
+                    }))
+            {
                 self.finish_composite_control(
                     sequence,
                     control,
-                    Err("the composite conversion did not install".to_string()),
+                    Err("the prepared composite did not install".to_string()),
                 );
                 continue;
             }

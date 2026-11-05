@@ -166,6 +166,7 @@ fn core_workflow_runs_on_the_new_engine_backend() {
             .with(BackendCapability::SessionContentLoad, true)
             .with(BackendCapability::LoopContentImport, true)
             .with(BackendCapability::BusManagement, true)
+            .with(BackendCapability::CompositeLoops, true)
     );
 
     runtime.dispatch(AppIntent::RequestNewSession).unwrap();

@@ -137,9 +137,23 @@ impl Demand {
             };
             for target in program.targets() {
                 if let Some(segment) = target.at(next).filter(|segment| segment.start == next) {
+                    let nested_entry = next == 0
+                        && segment.mode == Mode::Playing
+                        && cursor
+                            .entered_at
+                            .and_then(|entered| entered.0.checked_add(program.nominal_unit_frames))
+                            .is_some_and(|frame| {
+                                resolver
+                                    .program_needs_entry_at(
+                                        target.target,
+                                        shoop_loops::Frame(frame),
+                                    )
+                                    .unwrap_or(false)
+                            });
                     if target
                         .at(cursor.iteration)
                         .is_some_and(|old| old.mode == segment.mode)
+                        && !nested_entry
                     {
                         continue;
                     }

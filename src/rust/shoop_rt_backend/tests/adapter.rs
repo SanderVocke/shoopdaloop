@@ -117,6 +117,7 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
     assert_eq!(
         backend.capabilities(),
         BackendCapabilities::NONE
+            .with(BackendCapability::CompositeLoops, true)
             .with(BackendCapability::BusManagement, true)
             .with(BackendCapability::MidiInjection, true)
             .with(BackendCapability::SessionCapture, true)

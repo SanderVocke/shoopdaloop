@@ -925,9 +925,12 @@ jobs:
           NEW_ENGINE: '1'
         run: |
           node --experimental-websocket browser_smoke.mjs
+          COMPOSITES=1 node --experimental-websocket browser_smoke.mjs
           PREVIEW_ONLY=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
           if [ '${{ matrix.profile }}' = release ]; then
             SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
+              node --experimental-websocket browser_smoke.mjs
+            COMPOSITES=1 SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
               node --experimental-websocket browser_smoke.mjs
             LARGE_MEDIA=1 node --experimental-websocket browser_smoke.mjs
             LARGE_MEDIA=1 SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \

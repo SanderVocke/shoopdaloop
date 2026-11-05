@@ -740,7 +740,7 @@ Only the actual session field normalizes for fixed-partition native comparison.
 `bindingChecks.dense` is a separate Node/Chromium binding report, not worklet proof.
 Native `--dense-json`/`--dense-two-thread-json` agree completely across whole/single/
 irregular/zero partitions. Their independent oracle checks131 samples,8449 MIDI
-packets and every byte of1740 semantic records (131 boundaries/655 decisions/954
+packets and every byte of1930 semantic records (131 boundaries/655 decisions/1144
 ordered events). The larger observer bank has4096 records; no loss is accepted.
 These pauses/sideband observations are test-driver instrumentation, not a runtime
 musical quantum, production transport or continuous live-edit/deadline guarantee.
@@ -768,7 +768,7 @@ received:10,clientOutstanding:2,heldBuffers:10}`. `states` adds the frame136 sto
 refusal. Four checkpoints map128/1/2/5-frame calls to all512 downstream probe samples
 per channel; offline additionally checks all1280 output samples/channel. Complete
 native-shaped data includes seven requests/fourteen replies,136 stereo samples,
-8713 MIDI packets/130695 bytes and1805 semantic records/288840 bytes. Only actual
+8713 MIDI packets/130695 bytes and2002 semantic records/320360 bytes. Only actual
 sessions normalize. `bindingChecks.stalls` and native `--stall-json`/
 `--stall-two-thread-json` reproduce the engine script with unpolled returns; they
 are not described as actual MessagePort transfers.

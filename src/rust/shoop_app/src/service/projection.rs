@@ -96,6 +96,7 @@ impl Service {
             status: status(&self.observed.status),
             audio_drivers: self.observed.audio_drivers.clone(),
             capabilities: [
+                BackendCapability::CompositeLoops,
                 BackendCapability::BusManagement,
                 BackendCapability::MidiInjection,
                 BackendCapability::SessionCapture,

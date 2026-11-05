@@ -398,7 +398,7 @@ fn automatic_policy_can_change_during_primitive_recording_without_changing_manua
 }
 
 #[shoop_test]
-fn a_continuing_nested_clock_is_not_prearmed_as_a_new_occurrence_on_each_parent_wrap() {
+fn a_continuing_nested_clock_keeps_phase_until_completion_then_reenters_at_parent_wrap() {
     let mut h = setup(1);
     install(
         &mut h,
@@ -428,7 +428,64 @@ fn a_continuing_nested_clock_is_not_prearmed_as_a_new_occurrence_on_each_parent_
     );
     assert!(h.telemetry.iter().rev().any(|(_, record)| matches!(record, Telemetry::Composite { loop_id: id, mode: LoopMode::Playing, position, .. } if *id == loop_id(3, 1) && *position >= 8)));
     h.run(8, 1);
-    assert!(!automatic(&h));
+    assert!(automatic(&h));
+    assert_eq!(
+        &h.outputs[0][origin as usize + 16..origin as usize + 20],
+        &[0.25; 4]
+    );
+}
+
+#[shoop_test]
+fn a_completed_nested_one_pass_program_reenters_on_the_next_parent_pass() {
+    for q in [1, 16, 32, 64, 128] {
+        for child_iterations in [2, 4] {
+            let mut h = setup(q);
+            let program = |slot, id, iterations, kind| {
+                let mut d = description_for(slot, id, 1, 4 * q, iterations, kind, None);
+                d.quantum = q as u32;
+                d
+            };
+            install(
+                &mut h,
+                program(3, 1, child_iterations, CompositeKind::Explicit),
+                &[
+                    span(1, 0, 1, LoopMode::Recording),
+                    CompositeSpan {
+                        ordinal: 1,
+                        ..span(1, 1, child_iterations, LoopMode::Stopped)
+                    },
+                ],
+            );
+            install(
+                &mut h,
+                program(4, 2, 4, CompositeKind::Regular),
+                &[span(3, 0, 4, LoopMode::Playing)],
+            );
+            let delay = if q == 1 { 0 } else { q };
+            let origin = aligned(&mut h, q) as usize + delay;
+            h.send(transport(4, LoopMode::Playing));
+            h.run(16 * q + delay, 7);
+            assert_eq!(
+                &h.outputs[0][origin..origin + 4 * q],
+                vec![0.25; 4 * q].as_slice()
+            );
+            assert_eq!(
+                &h.outputs[0][origin + 4 * q..origin + 12 * q],
+                vec![0.; 8 * q].as_slice()
+            );
+            h.run(4 * q, 7);
+            assert_eq!(
+                &h.outputs[0][origin + 16 * q..origin + 20 * q],
+                vec![0.25; 4 * q].as_slice(),
+                "q={q}, child_iterations={child_iterations}"
+            );
+            h.run(2 * q, 7);
+            assert!(!automatic(&h));
+            let (length, audio, _) = h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 });
+            assert_eq!(length, (4 * q) as u64);
+            assert_eq!(audio, vec![0.25; 4 * q]);
+        }
+    }
 }
 
 #[shoop_test]
