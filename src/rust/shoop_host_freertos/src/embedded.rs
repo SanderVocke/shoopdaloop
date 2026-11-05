@@ -641,15 +641,16 @@ pub fn run() {
                     tracks: 8,
                     loops: 32,
                     channels: 2,
-                    loop_memory_mb: 128,
+                    loop_memory_mb: (crate::RECORDING_BYTES / (1024 * 1024)) as u32,
                 },
                 master_auto_connect: true,
                 loop_smoothing_ms: 3,
             },
             vec![
-                String::from("FreeRTOS / AMD lwIP; 1 GiB PS DDR; dummy audio"),
-                String::from(
-                    "Direct audio/MIDI loops; up to 64 MiB session media and 65,536 MIDI events.",
+                String::from("FreeRTOS / AMD lwIP; dummy audio"),
+                alloc::format!(
+                    "Direct audio/MIDI loops; up to {} MiB session media and 65,536 MIDI events.",
+                    crate::MEDIA_BYTES / (1024 * 1024),
                 ),
             ],
         )

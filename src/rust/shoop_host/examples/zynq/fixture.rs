@@ -628,8 +628,11 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
 }
 
 fn capacity(client: &mut Client, connection: &mut Connection) {
+    let media_limit = std::env::var("SHOOP_ZYNQ_MEDIA_BYTES")
+        .map(|value| value.parse::<u64>().expect("board media limit"))
+        .unwrap_or(64 * 1024 * 1024);
     for (transfer, media_bytes, metadata_bytes, objects) in [
-        (20, 64 * 1024 * 1024 + 1, 1, 1),
+        (20, media_limit + 1, 1, 1),
         (21, 0, 1024 * 1024 + 1, 1),
         (22, 0, 1, 513),
     ] {
@@ -1201,10 +1204,10 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
     let after = &client.snapshot().unwrap().tracks[1].loops[0];
     assert_eq!(after.content_revision, before.content_revision);
     assert_eq!(after.length_frames, before.length_frames);
-    assert!(
-        final_stats[4] < 768 * 1024 * 1024,
-        "Rust arena peak exceeded"
-    );
+    let arena_bytes = std::env::var("SHOOP_ZYNQ_RUST_BYTES")
+        .map(|value| value.parse::<u32>().expect("board Rust arena"))
+        .unwrap_or(768 * 1024 * 1024);
+    assert!(final_stats[4] < arena_bytes, "Rust arena peak exceeded");
     println!(
         "{cycles} warmed attach/stage/cancel/detach cycles passed: {baseline:?} -> {final_stats:?}"
     );
@@ -1219,8 +1222,9 @@ fn retained_stats(client: &mut Client, connection: &mut Connection) -> [u32; 11]
     let mut minimum = drive("Q");
     let mut maximum = minimum[3];
     let mut peak = minimum[4];
-    for _ in 0..32 {
+    for sample in 0..64 {
         pump(client, connection);
+        std::thread::sleep(Duration::from_millis(1 + sample % 7));
         let stats = drive("Q");
         maximum = maximum.max(stats[3]);
         peak = peak.max(stats[4]);

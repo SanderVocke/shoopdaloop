@@ -17,5 +17,4 @@ pub const MIDI_BLOCK_BYTES: usize = if cfg!(feature = "usb-midi") {
 } else {
     2048
 };
-pub const RECORDING_BYTES: usize = 128 * 1024 * 1024;
-pub const MEDIA_BYTES: u64 = 64 * 1024 * 1024;
+include!(concat!(env!("OUT_DIR"), "/memory.rs"));

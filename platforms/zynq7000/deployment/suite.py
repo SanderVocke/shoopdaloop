@@ -12,6 +12,7 @@ import time
 from build_artifacts import build, PLATFORM
 from emulator import BootQemu, ROOT
 from qualification import Qualification
+from layout import boards
 
 PHASES = ["build", "records", "first-stage", "network-boot", "warm-boot", "ui", "roundtrip", "defaults", "watchdogs",
           "disk-faults", "metadata-damage", "network-faults", "refusals", "cleanup-refusal", "no-server"]
@@ -87,9 +88,11 @@ def worker(args):
             assert (test / "private/quarantine/artifacts/leak").exists()
         subprocess.run([sys.executable, PLATFORM / "deployment/tests/records.py"], check=True)
         subprocess.run([sys.executable, PLATFORM / "deployment/tests/capture_redaction.py"], check=True)
+        generated = directory / "private/board"
+        boards.load().generate(generated)
         executable = directory / "private/boot-state-tests"
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
-                        "-I", PLATFORM / "deployment", PLATFORM / "deployment/tests/boot_state.c",
+                        "-I", generated, "-I", PLATFORM / "deployment", PLATFORM / "deployment/tests/boot_state.c",
                         PLATFORM / "deployment/boot_state.c", "-o", executable], check=True)
         subprocess.run([executable], check=True, env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})
     elif args.phase == "first-stage":

@@ -55,7 +55,7 @@ def build(directory, fetch=False, port_base=16400, native_coverage=False, usb=Fa
     phoff = next(start + stride * i for i in range(count) if struct.unpack_from("<I", bad_elf, start + stride * i)[0] == 1)
     struct.pack_into("<II", bad_elf, phoff + 8, 0x3c000000, 0x3c000000)
     (artifacts / "bad-range.elf").write_bytes(bad_elf)
-    bundle.create(artifacts / "bad-range.elf", "bad-range", keys, artifacts / "bad-range.itb", artifacts / "loader")
+    bundle.create(artifacts / "bad-range.elf", "bad-range", keys, artifacts / "bad-range.itb", artifacts / "loader", validate_firmware=False)
     for source, target in [(bundle.BOOT / "shoop-build.json", "loader-build.json"),
                            (ROOT / ("work/zynq/qemu-usb-build/shoop-build.json" if usb else "work/zynq/qemu-build/shoop-build.json"), "emulator-build.json"),
                            (PLATFORM / "pins.json", "pins.json")]:
