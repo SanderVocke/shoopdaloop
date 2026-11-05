@@ -4809,6 +4809,7 @@ mod tests {
                 .with(BackendCapability::SessionCapture, true)
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
+                .with(BackendCapability::LoopTimingEdits, true)
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::ClickTrackInsertion, true)
         );

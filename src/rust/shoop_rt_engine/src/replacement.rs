@@ -66,6 +66,7 @@ impl ControlEndpoint {
                 if self.replacement.state != State::Empty
                     || self.job.is_some()
                     || self.family.id.is_some()
+                    || self.timing_pending()
                 {
                     return Err(Refusal::Busy);
                 }
@@ -227,6 +228,7 @@ impl ControlEndpoint {
                 entry.sync = sync;
                 entry.gain = gain;
                 entry.balance = balance;
+                entry.timing = self.uploads.timing(audio, midi, frames)?;
                 self.replacement.initial[slot] = Some(Initial {
                     frames,
                     audio,

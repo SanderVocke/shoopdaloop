@@ -1,6 +1,6 @@
 //! Latest-value cells that the render side writes without blocking and the
-//! control side reads when it assembles telemetry. Fields are independent
-//! atomics: a record may combine values from neighbouring callbacks.
+//! control side reads when it assembles telemetry. Loop state has a publication
+//! check; other latest-value fields may span neighbouring callbacks.
 
 use alloc::boxed::Box;
 
@@ -49,6 +49,8 @@ pub(crate) struct StripCells {
 
 #[derive(Default)]
 pub(crate) struct LoopCells {
+    pub publication: AtomicU64,
+    pub timing_revision: AtomicU64,
     pub generation: AtomicU32,
     pub mode: AtomicU32,
     pub length: AtomicU64,
@@ -211,25 +213,30 @@ impl BoundaryObserver for Observer {
             let Some(cells) = self.0.loops.get(state.id.slot() as usize) else {
                 continue;
             };
+            cells.publication.fetch_add(1, Ordering::SeqCst);
             let generation = state.id.generation();
-            if cells.generation.load(Ordering::Relaxed) != generation {
-                cells.pulses.store(0, Ordering::Relaxed);
-                cells.generation.store(generation, Ordering::Relaxed);
+            if cells.generation.load(Ordering::SeqCst) != generation {
+                cells.pulses.store(0, Ordering::SeqCst);
+                cells.generation.store(generation, Ordering::SeqCst);
             }
             if state.last_pulse == Some(frame) {
-                cells.pulses.fetch_add(1, Ordering::Relaxed);
+                cells.pulses.fetch_add(1, Ordering::SeqCst);
             }
-            cells.mode.store(mode_code(state.mode), Ordering::Relaxed);
+            cells.mode.store(mode_code(state.mode), Ordering::SeqCst);
             let length = if state.mode == Mode::Recording {
                 state.capture_frames
             } else {
                 state.content_length
             };
-            cells.length.store(length, Ordering::Relaxed);
+            cells.length.store(length, Ordering::SeqCst);
             cells
                 .content_revision
-                .store(state.content_revision.0, Ordering::Relaxed);
-            cells.position.store(state.position, Ordering::Relaxed);
+                .store(state.content_revision.0, Ordering::SeqCst);
+            cells.position.store(state.position, Ordering::SeqCst);
+            cells
+                .timing_revision
+                .store(state.timing_revision, Ordering::SeqCst);
+            cells.publication.fetch_add(1, Ordering::SeqCst);
         }
     }
     fn as_any(&self) -> &dyn core::any::Any {

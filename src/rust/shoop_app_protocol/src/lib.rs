@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 24;
+pub const VERSION: u16 = 25;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -72,6 +72,16 @@ pub struct OperationId {
 /// Shared operations only. Platform dialogs, script VMs and UI drafts are local.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Command {
+    SetLoopTimeline {
+        loop_id: LoopId,
+        start_offset: Option<i64>,
+        preplay_samples: Option<u64>,
+        loop_length: Option<u64>,
+    },
+    SetLoopChannelTimings {
+        loop_id: LoopId,
+        updates: Vec<ChannelTimelineUpdate>,
+    },
     Preview(PreviewCommand),
     AddTrack(TrackSpec),
     AddLoop {
@@ -127,6 +137,7 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
+            Self::SetLoopChannelTimings { updates, .. } => updates.len() <= 9,
             Self::InspectProfiling(r) => {
                 r.capture != 0
                     && r.generation != 0

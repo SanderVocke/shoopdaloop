@@ -193,7 +193,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
             if let Outcome::Done(data) = self.reads.audio(loop_id, version, slot, channels) {
-                return Ok(Some(data));
+                return Ok(Some(self.audio_timing(loop_id, data)));
             }
             let content = &self.canonical_content[&loop_id];
             if content
@@ -219,16 +219,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             };
             self.reads
                 .remember_audio(loop_id, version, slot, data.clone());
-            return Ok(Some(data));
+            return Ok(Some(self.audio_timing(loop_id, data)));
         }
-        if entry.view.length == 0 {
-            return Ok(Some(empty_audio(channels)));
+        if entry.timing.raw_audio_frames == 0 {
+            return Ok(Some(self.audio_timing(loop_id, empty_audio(channels))));
         }
         let (version, slot) = (entry.content, entry.slot);
         let outcome = self.reads.audio(loop_id, version, slot, channels);
         self.pump();
         match outcome {
-            Outcome::Done(data) => Ok(Some(data)),
+            Outcome::Done(data) => Ok(Some(self.audio_timing(loop_id, data))),
             Outcome::Reading => Ok(None),
             Outcome::Failed(message) => {
                 tracing::warn!(message = %message, "backend.rt.read_failed");
@@ -302,6 +302,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::LoopTimingEdits,
+                self.capabilities.contains(Capabilities::LOOP_TIMING),
+            )
             .with(BackendCapability::BusManagement, self.is_ready())
             .with(
                 BackendCapability::MidiInjection,
@@ -629,7 +633,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
             if let Outcome::Done(data) = self.reads.midi(loop_id, version, slot) {
-                return Ok(Some(data));
+                return Ok(Some(self.midi_timing(loop_id, data)));
             }
             let content = &self.canonical_content[&loop_id];
             let bytes = self
@@ -658,10 +662,12 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             };
             self.reads
                 .remember_midi(loop_id, version, slot, data.clone());
-            return Ok(Some(data));
+            return Ok(Some(self.midi_timing(loop_id, data)));
         }
-        if !midi || entry.view.length == 0 && entry.view.mode != LoopMode::Recording {
-            return Ok(Some(empty_midi(entry.content, midi)));
+        if !midi || entry.timing.raw_midi_frames == 0 && entry.view.mode != LoopMode::Recording {
+            return Ok(Some(
+                self.midi_timing(loop_id, empty_midi(entry.content, midi)),
+            ));
         }
         if !self.capabilities.contains(Capabilities::BULK_MIDI) {
             return Err(anyhow!("this engine cannot read loop MIDI"));
@@ -673,7 +679,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let outcome = self.reads.midi(loop_id, version, slot);
         self.pump();
         match outcome {
-            Outcome::Done(data) => Ok(Some(data)),
+            Outcome::Done(data) => Ok(Some(self.midi_timing(loop_id, data))),
             Outcome::Reading => Ok(None),
             Outcome::Failed(message) => {
                 tracing::warn!(message = %message, "backend.rt.read_failed");
@@ -765,18 +771,47 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_family(update)
     }
 
-    fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
-        Err(unavailable(BackendCapability::LoopTimingEdits))
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        self.set_loop_timing(loop_id, None, None, Some(length))
     }
-
     fn set_loop_timing(
         &mut self,
-        _loop_id: BackendLoopId,
-        _start_offset: Option<i32>,
-        _preplay: Option<u32>,
-        _length: Option<u32>,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::LoopTimingEdits))
+        self.send_timing(
+            loop_id,
+            shoop_rt_protocol::TimingEdit {
+                start_offset,
+                preplay,
+                length: length.map(u64::from),
+                ..Default::default()
+            },
+        )
+    }
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[shoop_backend::BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        if updates.len() > shoop_rt_protocol::MAX_TIMING_UPDATES {
+            return Err(anyhow!("too many channel timing updates"));
+        }
+        let mut edit = shoop_rt_protocol::TimingEdit {
+            count: updates.len() as u8,
+            ..Default::default()
+        };
+        for (target, source) in edit.channels.iter_mut().zip(updates) {
+            *target = shoop_rt_protocol::ChannelTimingUpdate {
+                channel: u8::try_from(source.channel)?,
+                midi: source.is_midi,
+                start_offset: source.start_offset,
+                preplay: source.preplay,
+            };
+        }
+        self.send_timing(loop_id, edit)
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
@@ -1034,7 +1069,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 continue;
             };
             if entry.confirmed && track.confirmed {
-                loops.insert(*id, Mirror::loop_state(entry, track.audio_channels));
+                loops.insert(
+                    *id,
+                    Mirror::loop_state(entry, track.audio_channels, track.midi),
+                );
             }
         }
         let connections = BackendConnectionSnapshot {

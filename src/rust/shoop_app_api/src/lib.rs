@@ -1004,9 +1004,22 @@ pub enum StructuralState {
     Removing,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LoopChannelTimingState {
+    pub id: ChannelId,
+    pub is_midi: bool,
+    pub data_length: u64,
+    pub start_offset: i64,
+    pub capture_alignment_frames: i64,
+    pub preplay_samples: u64,
+}
+
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
+    pub timing_revision: u64,
+    pub channel_timings: Arc<[LoopChannelTimingState]>,
     pub content_revision: u64,
     pub id: LoopId,
     pub name: String,
@@ -1043,6 +1056,8 @@ pub struct LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         Self {
+            timing_revision: 0,
+            channel_timings: Arc::from([]),
             content_revision: 0,
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
@@ -1454,6 +1469,8 @@ pub struct CompositeDetailsState {
 
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
+    pub quantum_frames: u32,
+    pub length_frames: u64,
     pub generation: u64,
     pub loop_id: LoopId,
     pub title: String,
@@ -2410,6 +2427,7 @@ pub enum PianoAction {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChannelTimelineUpdate {
     pub channel_id: ChannelId,
     pub start_offset: Option<i64>,

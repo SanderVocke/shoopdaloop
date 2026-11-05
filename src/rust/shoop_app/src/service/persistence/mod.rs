@@ -465,13 +465,19 @@ impl Service {
             let selected = matches!(target, persistence::Target::Session { .. })
                 || matches!(target, persistence::Target::Loop { loop_id, .. } if loop_id == *id);
             selected
-                && (matches!(
-                    entry.view.mode,
-                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
-                ) || matches!(
-                    entry.view.next_mode,
-                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
-                ))
+                && (self
+                    .observed
+                    .loops
+                    .get(&entry.backend)
+                    .is_some_and(|state| state.recording_armed)
+                    || matches!(
+                        entry.view.mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    )
+                    || matches!(
+                        entry.view.next_mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    ))
         })
     }
     pub(super) fn persistence_detach(&mut self) {
@@ -593,7 +599,7 @@ impl Service {
                 if cut.is_none() {
                     let busy = self.loops.iter().any(|(id, entry)| {
                         let selected = matches!(target, persistence::Target::Session { .. }) || matches!(target, persistence::Target::Loop { loop_id, .. } if loop_id == *id);
-                        selected && (matches!(entry.view.mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet) || matches!(entry.view.next_mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet))
+                        selected && (self.observed.loops.get(&entry.backend).is_some_and(|state| state.recording_armed) || matches!(entry.view.mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet) || matches!(entry.view.next_mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet))
                     });
                     if busy {
                         self.persistence_reply(

@@ -95,6 +95,20 @@ fn lifecycle_commands_and_results_roundtrip_and_reject_every_truncation() {
         roundtrip(message);
     }
     for command in [
+        Command::SetLoopTimeline {
+            loop_id: LoopId::from_raw(9),
+            start_offset: Some(i64::MIN),
+            preplay_samples: Some(u64::MAX),
+            loop_length: Some(0),
+        },
+        Command::SetLoopChannelTimings {
+            loop_id: LoopId::from_raw(9),
+            updates: vec![shoop_app_api::ChannelTimelineUpdate {
+                channel_id: shoop_app_api::ChannelId::from_raw(2305),
+                start_offset: Some(-4),
+                preplay_samples: None,
+            }],
+        },
         Command::SetHostGraphConnected(shoop_app_api::HostGraphRequest {
             epoch: 4,
             local: shoop_app_api::HostGraphPortId(1),
@@ -146,7 +160,7 @@ fn versions_protocol_discriminators_lengths_and_identity_are_checked() {
         assert_eq!(codec::decode(&corrupt), Err(CodecError::Invalid));
     }
     let mut previous = buffer[..length].to_vec();
-    previous[6..8].copy_from_slice(&19u16.to_le_bytes());
+    previous[6..8].copy_from_slice(&(VERSION - 1).to_le_bytes());
     assert_eq!(codec::decode(&previous), Err(CodecError::Invalid));
     assert_eq!(
         codec::encode(&message, &mut [0; 7]),
@@ -276,12 +290,12 @@ fn hostile_container_lengths_and_midi_message_lengths_are_refused() {
 fn heartbeat_records_have_a_canonical_cross_platform_representation() {
     let mut bytes = [0; 1280];
     let n = codec::encode(&WireMessage::Ping(42), &mut bytes).unwrap();
-    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 24, 0, 0, 42]);
+    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 25, 0, 0, 42]);
     let n = codec::encode(&WireMessage::Pong(0x1122334455667788), &mut bytes).unwrap();
     assert_eq!(
         &bytes[..n],
         &[
-            18, 0, b'S', b'A', b'P', b'P', 24, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
+            18, 0, b'S', b'A', b'P', b'P', 25, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
             0x11
         ]
     );
@@ -297,8 +311,40 @@ fn attachment_and_greeting_carry_no_host_or_session_identifiers() {
     .unwrap();
     assert_eq!(
         &bytes[..n],
-        &[11, 0, b'S', b'A', b'P', b'P', 24, 0, 3, 1, 24]
+        &[11, 0, b'S', b'A', b'P', b'P', 25, 0, 3, 1, 25]
     );
     let n = codec::encode(&WireMessage::CarrierReady, &mut bytes).unwrap();
-    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 24, 0, 19]);
+    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 25, 0, 19]);
+}
+
+#[shoop_test]
+fn oversized_timing_batches_are_refused_before_wire_encoding() {
+    let update = shoop_app_api::ChannelTimelineUpdate {
+        channel_id: shoop_app_api::ChannelId::from_raw(2305),
+        start_offset: Some(1),
+        preplay_samples: None,
+    };
+    let valid = Command::SetLoopChannelTimings {
+        loop_id: LoopId::from_raw(9),
+        updates: vec![update.clone(); 9],
+    };
+    assert!(valid.bounded());
+    let invalid = Command::SetLoopChannelTimings {
+        loop_id: LoopId::from_raw(9),
+        updates: vec![update; 10],
+    };
+    let message = WireMessage::Client(ClientMessage::Submit {
+        session_epoch: 1,
+        authority: AUTHORITY,
+        operation: OperationId {
+            client: AUTHORITY.client,
+            sequence: 1,
+        },
+        expected_revision: None,
+        command: invalid,
+    });
+    assert_eq!(
+        codec::encode(&message, &mut [0; MAX_RECORD_BYTES]),
+        Err(CodecError::Invalid)
+    );
 }

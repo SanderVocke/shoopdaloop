@@ -196,6 +196,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.loops.insert(
             id,
             Loop {
+                timing: Default::default(),
                 slot,
                 track: track_id,
                 confirmed: false,
