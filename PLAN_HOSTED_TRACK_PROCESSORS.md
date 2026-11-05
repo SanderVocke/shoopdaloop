@@ -470,6 +470,17 @@ These fixtures explicitly expose foundation capability bits while production
 admission remains gated. Media-bearing save/load, imported take metadata and
 replacement/recovery validation are still outstanding.
 
+Role-aware read milestone: protocol v16 adds an audio-roles bulk selector. One
+export retains both dry and wet snapshots through the full read, even if the loop
+is cleared midway. The render reader interleaves both prepared banks in reference
+order and handles partial frames across finite copy budgets without allocating.
+The adapter selects independent logical widths from each bank; the service media
+path includes both sides in its budget. Native and Wasm core fixtures cover 8+8,
+small pages, and clear during export. Actual FX N=3 and synth service-wire fixtures
+check the ordered dry samples and computed wet results. Existing Direct bulk paths
+remain covered. Role-aware writes, candidate replacement and persistence codecs
+are still open; public admission remains gated.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise the packaged production application: launch hosts with both/either/

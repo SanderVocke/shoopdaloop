@@ -98,6 +98,11 @@ pub enum EngineOp {
         cursor: Cursor,
         bytes: u64,
     },
+    ReadRolesStart {
+        cursors: [Cursor; 2],
+        bytes: u64,
+        channels: u8,
+    },
     ReadStop,
     PreviewStart {
         cursor: Cursor,
@@ -914,6 +919,7 @@ impl StripInput {
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Presence(_)
             | EngineOp::ReadStart { .. }
+            | EngineOp::ReadRolesStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
             | EngineOp::PreviewStop
@@ -1025,6 +1031,7 @@ impl StripOutput {
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Inject(_)
             | EngineOp::ReadStart { .. }
+            | EngineOp::ReadRolesStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
             | EngineOp::PreviewStop

@@ -14,11 +14,17 @@ pub(super) struct Audio {
     channels: Vec<Vec<f32>>,
     frames: usize,
     width: usize,
+    columns: Vec<usize>,
 }
 impl Audio {
     pub fn new(frames: u64, width: usize, channels: usize) -> Result<Self, String> {
+        Self::selected(frames, width, (0..channels).collect())
+    }
+    pub fn selected(frames: u64, width: usize, columns: Vec<usize>) -> Result<Self, String> {
+        let channels = columns.len();
         if width == 0
             || channels > width
+            || columns.iter().any(|index| *index >= width)
             || frames
                 .checked_mul(width as u64 * 4)
                 .is_none_or(|n| n > MAX_BYTES)
@@ -38,6 +44,7 @@ impl Audio {
             channels: output,
             frames,
             width,
+            columns,
         })
     }
     pub fn push(&mut self, offset: u64, interleaved: &[f32]) -> Result<(), String> {
@@ -51,7 +58,7 @@ impl Audio {
         for (index, samples) in self.channels.iter_mut().enumerate() {
             samples.resize(samples.len().max(end), 0.0);
             for (frame, value) in interleaved.chunks_exact(self.width).enumerate() {
-                samples[offset as usize + frame] = value[index];
+                samples[offset as usize + frame] = value[self.columns[index]];
             }
         }
         Ok(())

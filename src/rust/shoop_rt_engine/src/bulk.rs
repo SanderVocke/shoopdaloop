@@ -39,6 +39,7 @@ enum Waiting {
 struct Session {
     loop_id: LoopSlotId,
     midi: bool,
+    roles: bool,
     export: ExportId,
     /// Frames for audio, bytes for MIDI.
     total: u64,
@@ -130,14 +131,15 @@ impl Bulk {
         self.filled = 0;
         Ok(())
     }
-    fn frame_bytes(&self) -> u64 {
-        self.channels as u64 * 4
+    fn frame_bytes(&self, roles: bool) -> u64 {
+        self.channels as u64 * if roles { 8 } else { 4 }
     }
     /// Frames (or MIDI bytes) per chunk of `read`.
     fn chunk_units(&self, read: BulkRead) -> u64 {
         match read.selector {
             BulkSelector::Audio { .. } => BULK_CHUNK_SAMPLES as u64,
             BulkSelector::AudioFrames => (BULK_CHUNK_SAMPLES / self.channels.max(1)) as u64,
+            BulkSelector::AudioRoles => (BULK_CHUNK_SAMPLES / (self.channels.max(1) * 2)) as u64,
             BulkSelector::Midi | BulkSelector::MidiInitial { .. } => BULK_CHUNK_BYTES as u64,
         }
     }
@@ -148,7 +150,10 @@ impl Bulk {
         if session.midi {
             (offset, end)
         } else {
-            (offset * self.frame_bytes(), end * self.frame_bytes())
+            (
+                offset * self.frame_bytes(session.roles),
+                end * self.frame_bytes(session.roles),
+            )
         }
     }
     fn chunk(&self, session: &Session, read: BulkRead) -> BulkChunk {
@@ -171,6 +176,7 @@ impl Bulk {
             _ => None,
         };
         session.loop_id == read.loop_id
+            && session.roles == (read.selector == BulkSelector::AudioRoles)
             && session.midi
                 == matches!(
                     read.selector,
@@ -232,6 +238,14 @@ impl ControlEndpoint {
         } else if matches!(read.selector, BulkSelector::Audio { channel } if channel as usize >= self.settings.channels)
         {
             Some(Refusal::InvalidValue)
+        } else if read.selector == BulkSelector::AudioRoles
+            && self
+                .model
+                .find_loop(read.loop_id)
+                .and_then(|entry| self.model.strip(entry.strip))
+                .is_none_or(|strip| strip.processor.is_none())
+        {
+            Some(Refusal::Unsupported)
         } else if matches!(read.selector, BulkSelector::MidiInitial { channel } if channel >= 16) {
             Some(Refusal::InvalidValue)
         } else {
@@ -369,9 +383,15 @@ impl ControlEndpoint {
             if !session.streaming && start < end {
                 self.bulk.session = Some(session);
                 self.submit_bulk_loop(
-                    Operation::Cursor {
-                        export: session.export,
-                        midi: session.midi,
+                    if session.roles {
+                        Operation::AudioRoleCursors {
+                            export: session.export,
+                        }
+                    } else {
+                        Operation::Cursor {
+                            export: session.export,
+                            midi: session.midi,
+                        }
                     },
                     Waiting::Cursor,
                 );
@@ -456,11 +476,32 @@ impl ControlEndpoint {
                     _ => None,
                 };
                 let midi = read.selector == BulkSelector::Midi || initial.is_some();
+                let roles = read.selector == BulkSelector::AudioRoles;
                 let source = if midi {
                     media.view.midi
                 } else {
                     media.view.audio
                 };
+                if roles
+                    && media.view.description.frames > 0
+                    && (media.view.audio.is_none() || media.view.auxiliary.is_none())
+                {
+                    self.bulk.session = Some(Session {
+                        loop_id: read.loop_id,
+                        midi,
+                        roles,
+                        export: id,
+                        total: 0,
+                        bytes: 0,
+                        position: 0,
+                        streaming: false,
+                        channel: None,
+                        initial,
+                    });
+                    self.finish_read(refused(read, Refusal::Unsupported));
+                    self.end_session();
+                    return;
+                }
                 let total = match source {
                     Some(source) if midi => source.snapshot.description.bytes as u64,
                     Some(_) => media.view.description.frames,
@@ -469,12 +510,13 @@ impl ControlEndpoint {
                 self.bulk.session = Some(Session {
                     loop_id: read.loop_id,
                     midi,
+                    roles,
                     export: id,
                     total,
                     bytes: if midi {
                         total
                     } else {
-                        total * self.bulk.frame_bytes()
+                        total * self.bulk.frame_bytes(roles)
                     },
                     position: 0,
                     streaming: false,
@@ -524,6 +566,9 @@ impl ControlEndpoint {
                 }
             }
             (Waiting::Cursor, Ok(Some(Reply::Cursor(cursor)))) => self.start_reader(cursor),
+            (Waiting::Cursor, Ok(Some(Reply::AudioRoleCursors(cursors)))) => {
+                self.start_role_reader(cursors)
+            }
             (Waiting::Start, Ok(_)) => {
                 if let Some(session) = &mut self.bulk.session {
                     session.streaming = true;
@@ -568,6 +613,27 @@ impl ControlEndpoint {
             EngineOp::ReadStart {
                 cursor,
                 bytes: session.bytes,
+            },
+            Waiting::Start,
+        );
+        if self.bulk.waiting != Waiting::Start {
+            if let Some(read) = self.bulk.active {
+                self.finish_read(refused(read, Refusal::Overloaded));
+            }
+            self.end_session();
+        }
+    }
+
+    fn start_role_reader(&mut self, cursors: [Cursor; 2]) {
+        let Some(session) = self.bulk.session else {
+            return;
+        };
+        self.cells.bulk.reset();
+        self.submit_reader(
+            EngineOp::ReadRolesStart {
+                cursors,
+                bytes: session.bytes,
+                channels: self.settings.channels as u8,
             },
             Waiting::Start,
         );

@@ -127,13 +127,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
-        let channels = self.mirror.tracks[&entry.track].audio_channels as usize;
-        if entry.view.mode == LoopMode::Recording {
+        let track = &self.mirror.tracks[&entry.track];
+        let wet = track.audio_channels as usize;
+        let dry = (!matches!(track.topology, BackendTrackTopology::Direct { .. }))
+            .then_some(track.topology.dry_audio_channels() as usize);
+        let channels = wet + dry.unwrap_or(0);
+        let (version, slot) = (entry.content, entry.slot);
+        let read = |reads: &mut crate::reads::Reads| match dry {
+            Some(dry) => reads.audio_roles(loop_id, version, slot, dry, wet),
+            None => reads.audio(loop_id, version, slot, channels),
+        };
+        if entry.view.mode.records() {
             return Ok(None);
         }
         if self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
-            if let Outcome::Done(data) = self.reads.audio(loop_id, version, slot, channels) {
+            if let Outcome::Done(data) = read(&mut self.reads) {
                 return Ok(Some(data));
             }
             let content = &self.canonical_content[&loop_id];
@@ -159,14 +168,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .collect(),
             };
             self.reads
-                .remember_audio(loop_id, version, slot, data.clone());
+                .remember_audio(loop_id, version, slot, data.clone(), dry);
             return Ok(Some(data));
         }
         if entry.view.length == 0 {
             return Ok(Some(empty_audio(channels)));
         }
-        let (version, slot) = (entry.content, entry.slot);
-        let outcome = self.reads.audio(loop_id, version, slot, channels);
+        let outcome = read(&mut self.reads);
         self.pump();
         match outcome {
             Outcome::Done(data) => Ok(Some(data)),

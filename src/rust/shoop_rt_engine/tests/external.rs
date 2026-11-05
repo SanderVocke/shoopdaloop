@@ -117,6 +117,71 @@ fn mode(h: &mut OfflineHost, mode: LoopMode) {
     );
 }
 #[shoop_test]
+fn bulk_audio_roles_pin_both_eight_channel_sides_through_clear_and_small_copy_budgets() {
+    for page_bytes in [32, 512] {
+        let mut d = description();
+        d.page_bytes = page_bytes;
+        d.resource_pages = 8192;
+        let mut h = OfflineHost::new(&d).unwrap();
+        create(&mut h, 8, 8, false);
+        for channel in 0..8 {
+            h.input_mut(channel).fill(channel as f32 + 0.25);
+            h.input_mut(8 + channel).fill(channel as f32 + 100.5);
+        }
+        mode(&mut h, LoopMode::Recording);
+        tick(&mut h, 128);
+        mode(&mut h, LoopMode::Stopped);
+        let mut offset = 0;
+        let mut cleared = false;
+        for id in 1..100 {
+            assert_no_heap(|| {
+                h.bulk(BulkRead {
+                    id,
+                    loop_id: looped(),
+                    selector: BulkSelector::AudioRoles,
+                    offset,
+                })
+            })
+            .unwrap();
+            let chunk = (0..4000)
+                .find_map(|_| {
+                    while let Some(message) = assert_no_heap(|| h.receive()) {
+                        if let EngineMessage::Bulk(chunk) = message {
+                            if chunk.id == id {
+                                return Some(chunk);
+                            }
+                        }
+                    }
+                    tick(&mut h, 16);
+                    None
+                })
+                .expect("role read completed");
+            assert_eq!(chunk.offset, offset);
+            let BulkPayload::Audio { len, samples } = chunk.payload else {
+                panic!("{chunk:?}");
+            };
+            assert!(len > 0);
+            assert_eq!(len as usize % 16, 0);
+            for frame in samples[..len as usize].chunks_exact(16) {
+                for channel in 0..8 {
+                    assert_eq!(frame[channel], channel as f32 + 0.25);
+                    assert_eq!(frame[8 + channel], channel as f32 + 100.5);
+                }
+            }
+            offset += u64::from(len) / 16;
+            if offset >= chunk.total {
+                break;
+            }
+            if !cleared {
+                done(&mut h, Request::LoopClear { loop_id: looped() });
+                cleared = true;
+            }
+        }
+        assert!(cleared && offset >= 128);
+    }
+}
+
+#[shoop_test]
 fn global_external_controls_are_additive_and_never_enter_the_recorded_dry_lane() {
     let mut d = description();
     d.host.midi_inputs.push(Name::new("global_in").unwrap());

@@ -353,6 +353,12 @@ fn client_samples() -> Vec<ClientMessage> {
             offset: 128,
         }),
         ClientMessage::Bulk(BulkRead {
+            id: 6,
+            loop_id: loop_id(2),
+            selector: BulkSelector::AudioRoles,
+            offset: 128,
+        }),
+        ClientMessage::Bulk(BulkRead {
             id: 7,
             loop_id: loop_id(2),
             selector: BulkSelector::MidiInitial { channel: 15 },

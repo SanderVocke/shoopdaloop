@@ -326,6 +326,33 @@ fn service_processor(kind: ProcessorKind) {
     f.confirmed(loop_action(LoopAction::StopClicked));
     f.ticks(4);
     assert!(f.track(track).loops[0].has_recorded_fx_state);
+    let message = f.client.read_media(loops[0]).unwrap();
+    f.service.handle(f.connection, message).unwrap();
+    for _ in 0..200 {
+        f.ticks(1);
+        if f.client.media().is_some() {
+            break;
+        }
+    }
+    let media = f.client.media().unwrap().as_ref().unwrap().clone();
+    assert_eq!(media.audio.len(), channels as usize * 2);
+    for dry in &media.audio[..channels as usize] {
+        assert!(dry.samples.len() >= 128);
+        assert!(dry.samples.iter().all(|sample| *sample == 0.25));
+    }
+    if kind == ProcessorKind::BuiltInFx {
+        let expected = 0.25 * 10.0_f32.powf(-18. / 20.);
+        assert!(media.audio[channels as usize]
+            .samples
+            .iter()
+            .all(|sample| (*sample - expected).abs() < 1e-6));
+    } else {
+        assert!(media.audio[channels as usize]
+            .samples
+            .iter()
+            .any(|sample| sample.abs() > 1e-4));
+    }
+
     let edit = if kind == ProcessorKind::BuiltInFx {
         TrackAction::BuiltInFx(BuiltInFxControl::SetParameter(
             BuiltInFxParameter::DriveOutput,

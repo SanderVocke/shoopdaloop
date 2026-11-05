@@ -1521,6 +1521,7 @@ impl Wire for BulkSelector {
             }
             Self::Midi => w.u8(1),
             Self::AudioFrames => w.u8(2),
+            Self::AudioRoles => w.u8(4),
             Self::MidiInitial { channel } => {
                 w.u8(3)?;
                 w.u8(*channel)
@@ -1532,6 +1533,7 @@ impl Wire for BulkSelector {
             0 => Self::Audio { channel: r.u8()? },
             1 => Self::Midi,
             2 => Self::AudioFrames,
+            4 => Self::AudioRoles,
             3 => Self::MidiInitial { channel: r.u8()? },
             _ => return Err(CodecError::Invalid),
         })

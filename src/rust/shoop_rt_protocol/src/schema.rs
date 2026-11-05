@@ -587,6 +587,9 @@ pub enum BulkSelector {
     /// Every audio channel of the loop, interleaved by frame. Offsets and totals
     /// count frames; a chunk carries whole frames.
     AudioFrames,
+    /// Dry and wet audio from one exported revision, interleaved by frame.
+    /// Each role occupies the host's prepared audio width; dry precedes wet.
+    AudioRoles,
     Midi,
     /// Length-prefixed short packets restoring one channel's initial projection.
     MidiInitial {

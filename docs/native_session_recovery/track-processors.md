@@ -495,3 +495,29 @@ adapter 45, core 79 and protocol 6 tests. Both-DSP Wasm passes all 22 host
 processor tests, including the two actual service-wire fixtures. The warning-denying
 workspace build and all 242 native editor/widget tests pass. Media/persistence and final delivery remain
 open; no stage is closed on these fixtures alone.
+
+### One-revision dry/wet media reads
+
+RT protocol v16 adds `BulkSelector::AudioRoles`: each frame contains the prepared
+dry bank followed by the prepared wet bank. The adapter selects independent
+logical widths without reducing the eight-channel limit on either side. Canonical
+audio order remains dry channels followed by wet channels, matching the reference.
+Both cursors retain the same immutable export, so a clear or replacement cannot
+mix audio from different revisions within a read. The reader prepares its scratch
+space, handles partial frames across callbacks/copy budgets, and releases the
+export after streaming stops. This extends the existing media path; processor DSP
+continues to run inside the host graph.
+
+A heap-guarded core fixture records eight dry plus eight wet channels, begins a
+chunked read, clears the loop after its first chunk, and verifies the old samples
+on both sides through completion. It covers 32-byte and 512-byte pages. An adapter
+fixture selects three dry and one wet channel from eight-channel prepared banks.
+Real FX and synth service-wire fixtures validate ordered dry/wet samples from the
+public media path. The service counts both sides against its media-view budget
+and refuses reads during active rerecording.
+
+Native core/protocol/backend/service regressions pass 169 tests; the two additional
+real-DSP service fixtures pass. The warning-denying workspace build passes. Wasm
+passes backend 46, core 80 and protocol 6 tests. All 22 both-DSP host Wasm tests,
+including the service media reads, pass. Writes and session replacement/persistence remain pending, so protocol
+capability admission remains gated.

@@ -306,6 +306,9 @@ pub enum Operation {
     Retire {
         media: media::MediaId,
     },
+    AudioRoleCursors {
+        export: media::ExportId,
+    },
     Cursor {
         export: media::ExportId,
         midi: bool,
@@ -429,6 +432,7 @@ pub enum Reply {
         media: media::Export,
     },
     Cursor(Cursor),
+    AudioRoleCursors([Cursor; 2]),
     MidiInitial {
         channel: u8,
         state: rt_runtime::midi_state::ChannelState,

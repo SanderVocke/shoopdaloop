@@ -1449,6 +1449,15 @@ impl LoopPlanner {
                         system_reset_seen: initial.state.system_reset_seen(),
                     }))
                 }
+                Operation::AudioRoleCursors { export } => {
+                    let view = self.ledger.exported(export)?.view;
+                    let dry = view.auxiliary.ok_or(Error::InvalidShape)?;
+                    let wet = view.audio.ok_or(Error::InvalidShape)?;
+                    Ok(Disposition::Complete(Reply::AudioRoleCursors([
+                        context.resources.cursor(dry.snapshot.id)?,
+                        context.resources.cursor(wet.snapshot.id)?,
+                    ])))
+                }
                 Operation::Cursor { export, midi } => {
                     let view = self.ledger.exported(export)?.view;
                     let source =
