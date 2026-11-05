@@ -110,7 +110,9 @@ jobs:
             . -> target
             platforms/zynq7000/firmware -> target
       - name: Validate board contracts
-        run: python3 platforms/zynq7000/tests/boards.py
+        run: |
+          python3 platforms/zynq7000/tests/boards.py
+          cargo test --locked -p shoop_host --no-default-features --example zynq_probe
       - name: Cross-build board firmware and boot chain
         run: |
           python3 platforms/zynq7000/build.py --fetch --board ${{ matrix.board }} --app host --deployment
