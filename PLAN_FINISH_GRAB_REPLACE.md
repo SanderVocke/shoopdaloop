@@ -173,8 +173,8 @@ need fresh CI. Payload slabs, continuous writers and application integration
 remain unfinished.
 
 On 2026-11-05, the parent #930 was observed merged at `0ef7581b` into
-`feat/backend-replacement`. The delivery branch is being consolidated onto that
-actual merged head and its PR retargeted. CI on `b6ac9443` exposed duplicate test
+`feat/backend-replacement`. The delivery branch is rebased onto that
+actual merged head and PR #940 now targets `feat/backend-replacement`. CI on `b6ac9443` exposed duplicate test
 allocators in GitHub's combination with the updated parent; consolidation removes
 the duplicate before fresh validation. Focused shared-media and native jobs on
 `0d2f525f` passed, validating the complete query and pooled audio kernel but not
