@@ -53,6 +53,46 @@ exact-list. The user identified selection-dependent explicit scripts as a bug;
 Control/Lua Grab will intentionally use the exact supplied list. UI gesture
 selection semantics remain as shown above.
 
+## Behavior-to-test matrix
+
+The case IDs below define the production acceptance group to add in F4–F8.
+They are specifications, not claims that those public-route tests already pass.
+Reference policy comes from `grab_targets_inner`, `grab_window`,
+`adoption_window`, BasicLoop and the direct channel replace/erase scenarios.
+Existing kernel proofs are listed separately so they cannot substitute for the
+service/adapter/UI assertions.
+
+| Cases | Required public route and expected confirmed result | Existing lower-layer proof |
+| --- | --- | --- |
+| G01–G02 | Grab button with sync enabled: an unselected initiator changes only itself; a selected initiator includes selected peers across source tracks. All targets share one effective cut. | Gesture/window arithmetic; pooled source complete-cut tests. |
+| G03–G04 | Targeted Grab uses the target's rounded sync-cycle period and current cycle at settlement. Without a target, apply-N is clamped to at least one. Both play-after-record settings produce Playing or Stopped, respectively. | `gesture_policy_resolves_target_cycle_and_unsynced_finish_at_the_authoritative_cut`; targeted lookback tests. |
+| G05–G06 | Unsynced button Grab uses only its initiator, retains the prefix through the live cut, continues Recording once, then completes at the target delay or next sync boundary into the configured post-mode. Include pending target transitions. | Gesture finish-delay tests; padded MIDI continuation and wrapped audio-tail oracles. |
+| G07 | A per-loop default action with default-recording Grab targets that loop. The bundled keyboard script may choose its explicit action list; it must not gain another implicit selection expansion in the service. Pending default actions cancel under the reference policy. | Reference `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`; production route pending. |
+| G08 | Control/Lua Grab uses exactly its supplied ordered targets and the global musical policy. AdoptRingbuffers uses its explicit window/position/post-mode arguments. Neither expands selection. | Window arithmetic, including raw adoption above u32; intentional explicit-list correction recorded above. |
+| G09 | Missing sync length refuses UI/default Grab without changing targets or solo peers. Explicit raw adoption without sync retains the available range at position zero. Empty target lists are no-ops; an invalid member refuses a nonempty batch before mutation. | Missing-sync and raw-adoption arithmetic; reference `fake_grab_preflights_every_target`. |
+| G10–G11 | Startup, silent and missing-input histories produce explicitly padded requested durations; sparse MIDI retains complete boundary state. A source failure or discontinuous requested range refuses instead of fabricating startup silence. | Audio discontinuity tests; indexed MIDI padded windows, byte-density eviction and strict-before-cut state tests. |
+| G12 | Solo stops only peers on affected target tracks outside the admitted target set, atomically with Grab. A stale ID, route change, full owner pool or invalid final target changes no target or peer. | Coordinator source-generation/candidate fences; production batch proof pending. |
+| G13 | Audio-only, MIDI-only and mixed tracks share the policy above. Trigger tracks retain meaningful length/phase/transition behavior without requiring sample/packet resources. | Audio/MIDI-only and mixed coordinator tests; trigger production policy pending. |
+| R01–R02 | Immediate and sync-scheduled Playing → Replacing preserve period, phase, cycle scheduling and controls. Replacing advances and repeats while suppressing ordinary loop playback; monitoring remains independently controlled. | Reference BasicLoop playing-mode transition and REPLACE flag tests; fixed writer wrap oracles. |
+| R03 | Every admitted positive tick overwrites all channels and complete MIDI packets. Positive empty MIDI input erases originals; zero-length input performs no edit. Preserve equal-frame order, SysEx and natural suffix-state effects. | Continuous writer packet/state oracle; stereo COW replacement tests. |
+| R04–R05 | Stop exits to complete media and rewinds. Replacing → Playing preserves the playing-mode phase. Replacing → Recording starts a fresh growing recording; Recording → Replacing uses the completed recording as its fixed base. Cancellation before entry changes no media. | Core writer complete exit and immutable export tests; reference transitions; production lifecycle pending. |
+| R06 | Prefix continuation consumes the first live tick once, grows beyond the history horizon and may subsequently become a fixed replacement base. Old exports and sibling users retain their original bytes/state throughout. | Wrapped-prefix/loaded-PCM continuation and subsequent replacement; shared continuous MIDI resource tests. |
+| R07–R08 | Writer pressure/exhaustion, clear/removal, slot reuse, source reset and terminal faults produce truthful final outcomes and release private owners. Required tick work and accepted exits do not depend on optional transfer credits. Unrelated playback/recording continues. | Source-reset/revision fences, required-work/exit tests and full credit recovery; production job/fault proof pending. |
+| X01–X02 | Active or scheduled writers obey the existing media/save/import/family/session conflict policy. Previously pinned immutable exports remain readable. Save/load persists resulting media/default-Grab settings and reloads loops stopped. | Existing private publication persistence tests; continuous production persistence pending. |
+| X03 | UI detach/reattach and controller loss preserve the service-owned admitted request and its outcome exactly once. Lua is not restarted or replayed. | Existing service recovery contract; new operation recovery proof pending. |
+| X04 | Normal startup negotiates enabled Grab/Replacing only after host, protocol, adapter and service support agree. Unsupported/old peers stay unsupported; warmup and capacity refusal remain per-request outcomes. | Protocol capability/refusal contract; production success gates pending. |
+
+The service/adapter policy group must port the meaningful expectations from
+`grab_policy_covers_targeted_selection_solo_and_immediate_completion`,
+`production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`,
+`expanded_loop_actions_route_modes_grab_and_balance` and
+`fake_grab_preflights_every_target`. Dry/wet assertions remain under P06.
+The final packaged-app sequence must exercise button, bundled keyboard and public
+Lua routes against real samples/packets, not substitute internal operation calls.
+Requested/effective cuts must include fixed-quantum alignment and any declared
+host buffering. Admission, pending projection, completion, reconnect and resync
+must identify the same accepted operation and effective cut.
+
 ## Replacing and continuation contracts
 
 Replacing uses fixed-period overwrite and cursor repetition, without ordinary

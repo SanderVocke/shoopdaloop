@@ -5,6 +5,7 @@ pub(in crate::resource) struct Source {
     media: Media,
     horizon: u64,
     events: usize,
+    bytes: usize,
     current: MidiState,
 }
 impl Source {
@@ -23,6 +24,25 @@ impl Core {
         events: usize,
         initial: &MidiState,
     ) -> Result<Source, Error> {
+        self.begin_source_with_bytes(origin, horizon, events, usize::MAX, initial)
+    }
+    pub fn begin_source_with_bytes(
+        &mut self,
+        origin: Frame,
+        horizon: u64,
+        events: usize,
+        bytes: usize,
+        initial: &MidiState,
+    ) -> Result<Source, Error> {
+        let tick_bytes = self
+            .config
+            .events_per_tick
+            .checked_mul(12)
+            .and_then(|n| n.checked_add(self.config.bytes_per_tick))
+            .ok_or(Error::Capacity)?;
+        if bytes < tick_bytes {
+            return Err(Error::InvalidConfig);
+        }
         if horizon == 0 || events < self.config.events_per_tick || origin.0 % self.q as u64 != 0 {
             return Err(Error::InvalidConfig);
         }
@@ -31,6 +51,7 @@ impl Core {
             media: self.empty(origin, 0, initial)?,
             horizon,
             events,
+            bytes,
             current: *initial,
         })
     }
@@ -42,10 +63,18 @@ impl Core {
     ) -> Result<(), Error> {
         self.indexes.reset_work();
         let result = self.commit_source_inner(source, staged);
+        if result == Ok(true) {
+            io.store
+                .charge_work(WorkClass::Render, 2 * size_of::<MidiState>(), 0)?;
+        }
         self.account(io);
-        result
+        result.map(|_| ())
     }
-    fn commit_source_inner(&mut self, source: &mut Source, staged: &Staging) -> Result<(), Error> {
+    fn commit_source_inner(
+        &mut self,
+        source: &mut Source,
+        staged: &Staging,
+    ) -> Result<bool, Error> {
         let next = source.coverage().end;
         if staged.frame != next {
             return Err(Error::InvalidFrame);
@@ -63,50 +92,141 @@ impl Core {
         for record in &staged.records[..staged.count] {
             self.packets.value(record.ok_or(Error::InvalidId)?)?;
         }
-        let total = self
-            .indexes
-            .len(source.media.root)?
-            .checked_add(staged.count)
+        let totals = self.indexes.totals(
+            source.media.root,
+            Cut::frame(source.media.origin),
+            Cut::frame(next),
+            &self.packets,
+        )?;
+        let incoming_bytes =
+            staged.values[..staged.count]
+                .iter()
+                .try_fold(0usize, |n, &value| {
+                    n.checked_add(12)
+                        .and_then(|n| n.checked_add(self.packets.packet_len(value)))
+                        .ok_or(Error::Capacity)
+                })?;
+        let keep_events = source
+            .events
+            .checked_sub(staged.count)
+            .ok_or(Error::Capacity)?;
+        let keep_bytes = source
+            .bytes
+            .checked_sub(incoming_bytes)
             .ok_or(Error::Capacity)?;
         let mut origin = source
             .media
             .origin
             .0
             .max(end.saturating_sub(source.horizon));
-        let mut after = Cut::frame(source.media.origin);
-        self.removals.clear();
-        while let Some(value) =
-            self.indexes
-                .first(source.media.root, after, Cut::frame(next), &self.packets)?
-        {
-            let point = self.packets.point(value);
-            if point.frame.0 >= origin && total - self.removals.len() <= source.events {
-                break;
-            }
-            if self.removals.len() == self.config.events_per_tick * 2 {
-                return Err(Error::Capacity);
-            }
-            self.removals.push(value);
-            if total - self.removals.len() > source.events || point.frame.0 >= origin {
-                origin = origin.max(Quantum::new(self.q)?.ceil(Frame(point.frame.0 + 1))?.0);
-            }
-            after = Cut::at(point);
+        let mut discard_through = None;
+        if totals.events > keep_events {
+            discard_through = self
+                .indexes
+                .record_number(source.media.root, totals.events - keep_events - 1)?;
         }
-        let initial = if self.removals.is_empty() {
+        if totals.bytes > keep_bytes {
+            let (value, _) = self
+                .indexes
+                .record_at(
+                    source.media.root,
+                    totals.bytes - keep_bytes - 1,
+                    &self.packets,
+                )?
+                .ok_or(Error::InvalidState)?;
+            if discard_through.is_none_or(|old| self.packets.point(old) < self.packets.point(value))
+            {
+                discard_through = Some(value);
+            }
+        }
+        if let Some(value) = discard_through {
+            origin = origin.max(
+                Quantum::new(self.q)?
+                    .ceil(Frame(self.packets.point(value).frame.0 + 1))?
+                    .0,
+            );
+        }
+        let discarded = self
+            .indexes
+            .totals(
+                source.media.root,
+                Cut::frame(source.media.origin),
+                Cut::frame(Frame(origin)),
+                &self.packets,
+            )?
+            .events;
+        let bulk = discarded > self.config.events_per_tick * 2;
+        self.removals.clear();
+        let initial = if discarded == 0 {
             None
+        } else if bulk {
+            let timeline = Window {
+                inner: self.indexes.timeline(source.media.root, &self.packets)?,
+                origin: source.media.origin.0,
+                frames: source.media.frames,
+            };
+            Some(indexed::state(
+                &timeline,
+                &source.media.initial,
+                Cut::frame(Frame(origin - source.media.origin.0)),
+            ))
         } else {
             let mut initial = source.media.initial;
-            for &value in &self.removals {
+            let mut after = Cut::frame(source.media.origin);
+            for _ in 0..discarded {
+                let value = self
+                    .indexes
+                    .first(
+                        source.media.root,
+                        after,
+                        Cut::frame(Frame(origin)),
+                        &self.packets,
+                    )?
+                    .ok_or(Error::InvalidState)?;
+                self.removals.push(value);
                 self.packets.apply(value, &mut initial);
+                after = Cut::at(self.packets.point(value));
             }
             Some(initial)
         };
-        source.media.root = self.indexes.replace_records(
-            source.media.root,
-            &self.removals,
-            &staged.values[..staged.count],
-            &mut self.packets,
-        )?;
+        if bulk {
+            let root = self.indexes.retain(source.media.root)?;
+            let clipped = self.indexes.window(
+                root,
+                Cut::frame(Frame(origin)),
+                Cut::frame(Frame(u64::MAX)),
+                &mut self.packets,
+            );
+            let clipped = match clipped {
+                Ok(root) => root,
+                Err(error) => {
+                    self.indexes.release(root).unwrap();
+                    return Err(error);
+                }
+            };
+            let changed = self.indexes.replace_records(
+                clipped,
+                &[],
+                &staged.values[..staged.count],
+                &mut self.packets,
+            );
+            let changed = match changed {
+                Ok(root) => root,
+                Err(error) => {
+                    self.indexes.release(clipped).unwrap();
+                    return Err(error);
+                }
+            };
+            self.indexes.release(source.media.root)?;
+            source.media.root = changed;
+        } else {
+            source.media.root = self.indexes.replace_records(
+                source.media.root,
+                &self.removals,
+                &staged.values[..staged.count],
+                &mut self.packets,
+            )?;
+        }
         if let Some(initial) = initial {
             source.media.initial = initial;
         }
@@ -116,7 +236,7 @@ impl Core {
         source.media.origin = Frame(origin);
         source.media.frames = end - origin;
         source.media.revision = Revision(revision);
-        Ok(())
+        Ok(initial.is_some())
     }
     pub fn grab_source(
         &mut self,

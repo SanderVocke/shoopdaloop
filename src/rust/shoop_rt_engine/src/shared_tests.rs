@@ -209,6 +209,7 @@ impl Fixture {
                     sources: 2,
                     history_frames: history_frames as u64,
                     history_events: 128,
+                    history_bytes: 16384,
                     views: 48,
                     writers: 4,
                     imports: 2,

@@ -12,9 +12,9 @@ snapshot IDs, including immutable loaded bases and indexed serialized reads.
 | Stage | Current status |
 | --- | --- |
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
-| F1 | Partial: reference policy/window helpers and contract audit exist; final production limits and public-route matrix remain. |
-| F2 | Partial: pooled audio histories and shared MIDI source-history core exist; normal host preparation, resource integration and reserved global capacity remain. |
-| F3 | Partial: continuous fixed/growing MIDI core passes targeted tests; continuous audio, domain modes and atomic engine publication remain. |
+| F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
+| F2 | Partial: pooled audio/indexed MIDI histories run through the coordinator and ordinary resources; normal host preparation and reserved global capacity remain. |
+| F3 | Partial: fixed/growing MIDI resources and growing COW audio tails pass targeted tests; domain modes and atomic engine publication remain. |
 | F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
 Grab and Replacing are still disabled in the normal application. P04/P05 remain
@@ -281,6 +281,29 @@ Other platform jobs were running/queued at inspection. That job validates the
 preceding resource/audio milestones, not this later coordinator integration or
 application parity.
 
+F1 now has a complete compact behavior-to-test matrix in the application
+contract, with stable G/R/X case IDs. It covers explicit versus gesture/default
+membership, sync/target/apply-N/solo, warmup/padding/gaps, trigger tracks,
+monitoring, writer-to-writer transitions, pressure, persistence and reconnect.
+Reference expectations and existing lower-layer proofs are distinguished from
+still-pending public-route tests. Only the matrix extraction item is checked off;
+F1 production limits and policy-test porting remain open.
+
+Indexed source preparation now includes an explicit serialized-byte limit as well
+as the event/time limits. Aggregate byte/event rank queries select a truthful
+whole-tick eviction cut. Small evictions retain bounded packet-state application;
+large byte evictions clip the persistent prefix and reconstruct its complete
+boundary projection without replaying the discarded suffix. Repeated clipped
+source windows stay narrow. A guarded SysEx pressure case evicts more than the
+old two-tick removal buffer, preserves sustain/sostenuto state and old/current
+exports through repeated bulk and small evictions, then recovers every credit.
+Idle indexed sources now avoid repeated full projection copies; a guarded
+silent-tick/writer-zero case verifies both required work and pre-input state.
+Five indexed resource tests, ten neighboring semantic index tests and the mixed
+coordinator scenario pass with warnings denied, as do affected builds, formatting,
+tracing and test-attribute checks. Global admission reservations, normal host
+preparation and application delivery are not yet established by these results.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -508,7 +531,7 @@ legacy production backend is used.
 
 ### F1 — Freeze app behavior and production limits
 
-- [ ] Extract a compact behavior-to-test matrix from reference `grab_targets_inner`,
+- [x] Extract a compact behavior-to-test matrix from reference `grab_targets_inner`,
   `grab_window`, `adoption_window`, BasicLoop and audio/MIDI channel replacement.
   Include explicit versus selected targets, all global policies, phase/length,
   startup/missing-history padding, empty/no-sync cases, trigger tracks, monitoring,

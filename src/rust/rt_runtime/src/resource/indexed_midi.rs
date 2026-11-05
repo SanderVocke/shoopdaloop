@@ -31,6 +31,8 @@ pub struct Config {
     pub sources: usize,
     pub history_frames: u64,
     pub history_events: usize,
+    /// Serialized history bytes per source, including record headers.
+    pub history_bytes: usize,
     pub views: usize,
     pub writers: usize,
     pub imports: usize,
@@ -155,6 +157,7 @@ struct Source {
     history: Option<writer::history::Source>,
     staged: writer::Staging,
     before: MidiState,
+    before_dirty: bool,
     cut: Option<Frame>,
 }
 struct Job {
@@ -215,6 +218,11 @@ impl Config {
     }
     /// Allocation-free sizing; production history and writer reservations require additional admission policy.
     pub fn capacity(self, runtime: crate::PreparedConfig, q: Quantum) -> Result<Capacity, Error> {
+        let tick_bytes = self
+            .events_per_tick
+            .checked_mul(12)
+            .and_then(|n| n.checked_add(self.bytes_per_tick))
+            .ok_or(Error::Capacity)?;
         if self.views == 0
             || self.events_per_tick == 0
             || self.bytes_per_tick == 0
@@ -225,7 +233,9 @@ impl Config {
             || self.sources > self.indexes.versions
             || self.sources > self.indexes.leases
             || self.sources > 0
-                && (self.history_frames == 0 || self.history_events < self.events_per_tick)
+                && (self.history_frames == 0
+                    || self.history_events < self.events_per_tick
+                    || self.history_bytes < tick_bytes)
         {
             return Err(Error::InvalidConfig);
         }
@@ -279,14 +289,16 @@ impl Store {
         let mut core = writer::Core::prepare(resources, q, config.core())?;
         for _ in 0..config.sources {
             sources.insert(Source {
-                history: Some(core.begin_source(
+                history: Some(core.begin_source_with_bytes(
                     Frame(0),
                     config.history_frames,
                     config.history_events,
+                    config.history_bytes,
                     &MidiState::default(),
                 )?),
                 staged: writer::Staging::prepare(config.events_per_tick)?,
                 before: MidiState::default(),
+                before_dirty: false,
                 cut: None,
             });
         }
@@ -840,7 +852,10 @@ impl RenderIo<'_> {
             source.cut = None;
             pool.core
                 .stage(&mut resources.render_io(), &mut source.staged, frame, input)?;
-            let before = *source.history.as_ref().ok_or(Error::InvalidState)?.state();
+            if source.before_dirty {
+                source.before = *source.history.as_ref().ok_or(Error::InvalidState)?.state();
+                resources.charge_work(WorkClass::Render, size_of::<MidiState>(), 0)?;
+            }
             if let Err(error) = pool.core.commit_source(
                 &mut resources.render_io(),
                 source.history.as_mut().ok_or(Error::InvalidState)?,
@@ -849,7 +864,7 @@ impl RenderIo<'_> {
                 pool.core.clear_stage(&mut source.staged)?;
                 return Err(error);
             }
-            source.before = before;
+            source.before_dirty = !input.is_empty();
             source.cut = Some(frame);
             Ok(())
         })
@@ -860,7 +875,7 @@ impl RenderIo<'_> {
         frame: Frame,
         initial: &MidiState,
     ) -> Result<SourceId, Error> {
-        self.store.with_indexed_midi(id.store, |_, pool| {
+        self.store.with_indexed_midi(id.store, |resources, pool| {
             let source = pool.sources.get_mut(id.key)?;
             if id.key.generation == u64::MAX - 1 {
                 return Err(Error::Exhausted);
@@ -883,6 +898,8 @@ impl RenderIo<'_> {
             pool.core.clear_stage(&mut source.staged)?;
             source.cut = None;
             source.before = *initial;
+            source.before_dirty = false;
+            resources.charge_work(WorkClass::Render, 3 * size_of::<MidiState>(), 0)?;
             pool.sources.entries[id.key.slot].generation += 1;
             Ok(SourceId {
                 store: id.store,

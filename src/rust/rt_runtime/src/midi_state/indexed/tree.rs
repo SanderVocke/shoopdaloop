@@ -712,6 +712,22 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
     pub(crate) fn len(&self, root: Root) -> Result<usize, Error> {
         Ok(self.count(self.check(root)?))
     }
+    pub(crate) fn record_number(&self, root: Root, mut ordinal: usize) -> Result<Option<V>, Error> {
+        let mut link = self.check(root)?;
+        while let Some(id) = link {
+            let node = self.node(id);
+            let left = self.count(node.children[0]);
+            if ordinal < left {
+                link = node.children[0];
+            } else if ordinal == left {
+                return Ok(Some(node.value));
+            } else {
+                ordinal -= left + 1;
+                link = node.children[1];
+            }
+        }
+        Ok(None)
+    }
     pub(crate) fn tree_height(&self, root: Root) -> Result<usize, Error> {
         Ok(usize::from(self.height(self.check(root)?)))
     }

@@ -358,8 +358,8 @@ impl<V: Copy> Store<V> {
         }
         .expect("preflighted category clipping")
     }
-    /// Consume an owned source-version lease. Its source has no previous window;
-    /// category boundaries materialize only when that category is first edited.
+    /// Consume an owned lease and narrow its visible range. Category bounds
+    /// materialize only when that category is first edited.
     pub(crate) fn window(
         &mut self,
         version: Version,
@@ -368,8 +368,12 @@ impl<V: Copy> Store<V> {
         values: &mut impl Values<V>,
     ) -> Result<Version, Error> {
         let table = self.table(version)?;
-        if table.bounds.is_some() {
-            return Err(Error::InvalidState);
+        if after > cut
+            || table
+                .bounds
+                .is_some_and(|(low, high)| after < low || cut > high)
+        {
+            return Err(Error::InvalidFrame);
         }
         if table.references > 1
             && (self.free_tables.is_empty() || self.packets.available_roots() == 0)
@@ -861,6 +865,14 @@ impl<V: Copy> Store<V> {
     }
     pub(crate) fn leases(&self) -> usize {
         self.leases
+    }
+    pub(crate) fn record_number(
+        &self,
+        version: Version,
+        ordinal: usize,
+    ) -> Result<Option<V>, Error> {
+        self.packets
+            .record_number(self.table(version)?.packets, ordinal)
     }
     pub(crate) fn record_at(
         &self,
