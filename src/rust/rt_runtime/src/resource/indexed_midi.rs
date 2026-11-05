@@ -71,6 +71,13 @@ pub struct ImportId {
     store: StoreId,
     key: Key,
 }
+/// One nonwrapping raw-media span within a complete source tick.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WriteSpan {
+    pub position: u64,
+    pub offset: usize,
+    pub frames: usize,
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WriteKind {
     Fixed,
@@ -696,6 +703,25 @@ impl ResourceStore {
         expected: Revision,
         kind: WriteKind,
     ) -> Result<WriterId, Error> {
+        let kind = match kind {
+            WriteKind::Fixed => writer::Kind::Fixed,
+            WriteKind::Growing { maximum_frames } => writer::Kind::Growing { maximum_frames },
+        };
+        self.prepare_indexed_writer(resource, expected, kind)
+    }
+    pub fn prepare_indexed_midi_window_writer(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+    ) -> Result<WriterId, Error> {
+        self.prepare_indexed_writer(resource, expected, writer::Kind::Windowed)
+    }
+    fn prepare_indexed_writer(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        kind: writer::Kind,
+    ) -> Result<WriterId, Error> {
         let owner = self.check_writer(resource, None)?;
         if owner.revision != expected {
             return Err(Error::StaleRevision);
@@ -718,10 +744,6 @@ impl ResourceStore {
                 return Err(Error::Busy);
             }
             let media = pool.core.retain(pool.views.get(take.media)?)?;
-            let kind = match kind {
-                WriteKind::Fixed => writer::Kind::Fixed,
-                WriteKind::Growing { maximum_frames } => writer::Kind::Growing { maximum_frames },
-            };
             let admission = match pool.core.begin_writer(media, kind) {
                 Ok(admission) => admission,
                 Err((error, media)) => {
@@ -1036,6 +1058,25 @@ impl RenderIo<'_> {
         input: SourceId,
         frame: Frame,
     ) -> Result<u64, Error> {
+        self.write_indexed_midi_tick_impl(id, input, frame, None)
+    }
+    pub fn write_indexed_midi_window_tick(
+        &mut self,
+        id: WriterId,
+        input: SourceId,
+        frame: Frame,
+        span: WriteSpan,
+    ) -> Result<(), Error> {
+        self.write_indexed_midi_tick_impl(id, input, frame, Some(span))
+            .map(|_| ())
+    }
+    fn write_indexed_midi_tick_impl(
+        &mut self,
+        id: WriterId,
+        input: SourceId,
+        frame: Frame,
+        span: Option<WriteSpan>,
+    ) -> Result<u64, Error> {
         if id.store != input.store {
             return Err(Error::InvalidShape);
         }
@@ -1055,12 +1096,22 @@ impl RenderIo<'_> {
                 .maintain(&mut resources.render_io(), pool.maintenance_steps)?;
             let next = frame.checked_add(resources.quantum.frames())?;
             let writer = job.writer.as_mut().ok_or(Error::Busy)?;
-            pool.core.write_tick(
-                &mut resources.render_io(),
-                writer,
-                &source.before,
-                &source.staged,
-            )?;
+            if let Some(span) = span {
+                pool.core.write_window_tick(
+                    &mut resources.render_io(),
+                    writer,
+                    &source.before,
+                    &source.staged,
+                    span,
+                )?;
+            } else {
+                pool.core.write_tick(
+                    &mut resources.render_io(),
+                    writer,
+                    &source.before,
+                    &source.staged,
+                )?;
+            }
             job.source = Some(input);
             job.next = Some(next);
             Ok(writer.position)
@@ -1069,6 +1120,15 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn prepare_indexed_midi_window_writer(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+    ) -> Result<WriterId, Error> {
+        self.store
+            .prepare_indexed_midi_window_writer(resource, expected)
+    }
+
     pub fn maintain_indexed_midi_required(&mut self, id: StoreId) -> Result<usize, Error> {
         self.store.with_indexed_midi(id, |resources, pool| {
             pool.core

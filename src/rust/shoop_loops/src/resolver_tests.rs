@@ -209,11 +209,39 @@ fn replacing_preserves_playing_phase_wraps_sync_and_commits_one_content_revision
         resolver.commit().unwrap();
         assert_eq!(resolver.state(id(0)).unwrap().capture_revision, revision);
         resolver.finish().unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        resolver.finish().unwrap();
         resolver
             .submit(Request {
                 target: id(0),
                 sequence: Sequence(5),
-                at: Frame(96),
+                at: Frame(128),
+                timing: Timing::At,
+                transition: Transition::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        let playing = resolver.state(id(0)).unwrap();
+        assert_eq!(
+            (
+                playing.mode,
+                playing.position,
+                playing.cycles,
+                playing.content_revision
+            ),
+            (Mode::Playing, 32, 2, revision)
+        );
+        resolver.finish().unwrap();
+        resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(6),
+                at: Frame(160),
                 timing: Timing::At,
                 transition: Transition::Stop,
             })

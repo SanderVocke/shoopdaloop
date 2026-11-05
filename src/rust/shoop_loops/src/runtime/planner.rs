@@ -377,9 +377,16 @@ impl LoopPlanner {
             .map_err(runtime_error)?
             .capture_frames;
         let input = self.input_from_frozen(slot, take, frames, io)?;
-        self.ledger
-            .publish(io, take.media, input)
-            .map_err(|e| e.error)?;
+        if take.writer.is_some() {
+            self.ledger
+                .publish_windowed(io, take.media, input, row.windows)
+                .map_err(|e| e.error)?;
+            self.rows[slot].as_mut().unwrap().length_override = None;
+        } else {
+            self.ledger
+                .publish(io, take.media, input)
+                .map_err(|e| e.error)?;
+        }
         self.rows[slot].as_mut().expect("row").frozen = [None; 2];
         self.ledger
             .set_latest(io, row.binding.target, Some(take.media))?;
@@ -468,11 +475,10 @@ impl LoopPlanner {
                 .and_then(|take| take.writer)
                 .filter(|_| decision.state.mode == Mode::Replacing)
             {
-                self.shared.as_mut().ok_or(Error::InvalidState)?.seek_live(
-                    writer,
-                    decision.state.position,
-                    io,
-                )?;
+                self.shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .seek_live(writer, decision.state.position)?;
             }
             let media = self
                 .ledger
@@ -568,35 +574,44 @@ impl LoopPlanner {
                     }
                 }
             }
-            let audio = sources[0]
-                .map(|snapshot| {
-                    io.read_index(snapshot.id)
-                        .map(|index| media::Source { snapshot, index })
-                })
-                .transpose()?;
-            let midi = sources[1]
-                .map(|snapshot| {
-                    io.read_index(snapshot.id)
-                        .map(|index| media::Source { snapshot, index })
-                })
-                .transpose()?;
-            self.ledger
-                .publish(
-                    io,
-                    id,
-                    media::Input {
-                        description: media::Description {
-                            owner: target,
-                            revision: take.revision,
-                            frames: state.capture_frames,
-                            channels: row.binding.channels as u32,
-                            midi: row.binding.midi,
-                        },
-                        audio,
-                        midi,
-                    },
-                )
-                .map_err(|e| e.error)?;
+            let audio = (if row.binding.channels > 0 {
+                sources[0]
+            } else {
+                None
+            })
+            .map(|snapshot| {
+                io.read_index(snapshot.id)
+                    .map(|index| media::Source { snapshot, index })
+            })
+            .transpose()?;
+            let midi = (if row.binding.midi {
+                sources[usize::from(row.binding.channels > 0)]
+            } else {
+                None
+            })
+            .map(|snapshot| {
+                io.read_index(snapshot.id)
+                    .map(|index| media::Source { snapshot, index })
+            })
+            .transpose()?;
+            let input = media::Input {
+                description: media::Description {
+                    owner: target,
+                    revision: take.revision,
+                    frames: state.capture_frames,
+                    channels: row.binding.channels as u32,
+                    midi: row.binding.midi,
+                },
+                audio,
+                midi,
+            };
+            if take.writer.is_some() {
+                self.ledger
+                    .publish_windowed(io, id, input, row.windows)
+                    .map_err(|e| e.error)?;
+            } else {
+                self.ledger.publish(io, id, input).map_err(|e| e.error)?;
+            }
             sources = [None; 2];
             self.ledger.export(id, frame)
         })();

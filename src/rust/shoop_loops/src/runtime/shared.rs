@@ -233,7 +233,7 @@ impl Shared {
                     .filter(|setting| setting.audio.is_some())
                     .count();
                 resources
-                    .prepare_audio_pool(config, Frame(0), count)
+                    .prepare_audio_pool_windowed(config, Frame(0), count)
                     .map(|id| (id, false))
             })
             .transpose()?;
@@ -261,7 +261,7 @@ impl Shared {
             let audio = match setting.audio {
                 Some(config) => Some(match audio_pool {
                     Some((id, _)) => id,
-                    None => resources.prepare_audio_store(config, Frame(0))?,
+                    None => resources.prepare_audio_pool_windowed(config, Frame(0), 1)?,
                 }),
                 None => None,
             };
@@ -1340,7 +1340,15 @@ impl LoopPlanner {
                 {
                     return Err(Error::InvalidShape.into());
                 }
-                if row.windows != Windows::default() || row.length_override.is_some() {
+                if matches!(kind, indexed_midi::WriteKind::Growing { .. })
+                    && row
+                        .windows
+                        .audio
+                        .iter()
+                        .take(row.binding.channels)
+                        .chain(row.binding.midi.then_some(&row.windows.midi))
+                        .any(|window| window.origin() != 0 || window.raw_frames.is_some())
+                {
                     return Err(Error::Busy.into());
                 }
                 if kind == indexed_midi::WriteKind::Fixed && take.frames != state.content_length {
@@ -1355,7 +1363,7 @@ impl LoopPlanner {
                     topology: self.resolver.epoch(),
                 };
                 let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
-                let id = shared.begin_live(fence, source, take, kind, frame, io)?;
+                let id = shared.begin_live(fence, source, take, kind, row.windows, frame, io)?;
                 let job = shared.live_job(id)?;
                 Ok(Reply::Writer {
                     id,

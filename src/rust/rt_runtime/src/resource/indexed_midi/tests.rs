@@ -759,3 +759,183 @@ fn required_cleanup_recovers_hidden_packets_while_capture_runs_without_optional_
         assert_eq!(resources.usage(), baseline);
     });
 }
+
+#[shoop_test]
+fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_cut_on_density_refusal(
+) {
+    let mut resources = resources();
+    let baseline = resources.usage();
+    let pool = resources.prepare_indexed_midi_store(config()).unwrap();
+    let source = resources.indexed_midi_source(pool, 0).unwrap();
+    let mut encoded = [0; 45];
+    for (index, (frame, packet)) in [
+        (1, [0xb0, 2, 11]),
+        (32, [0x90, 61, 80]),
+        (38, [0xb0, 2, 22]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        encode_midi_record(frame, &packet, &mut encoded[index * 15..(index + 1) * 15]).unwrap();
+    }
+    let loaded = upload(&mut resources, &encoded, 39);
+    let old_file = resources.snapshot(loaded, Frame(0)).unwrap();
+    let mut initial = MidiState::default();
+    initial.apply_packet(&[0xb0, 1, 13], 64).unwrap();
+    let take = import(&mut resources, pool, old_file, &initial);
+    let old_view = resources.snapshot(take, Frame(0)).unwrap();
+    let writer = resources
+        .prepare_indexed_midi_window_writer(take, Revision(1))
+        .unwrap();
+    while resources.progress_indexed_midi_writer(writer, 1).unwrap() != Status::Ready {}
+    resources.start_indexed_midi_writer(writer, 0).unwrap();
+    let publication = resources.reserve_snapshot(take, Frame(0), 39).unwrap();
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    let mut expected = [0; 92];
+    let mut at = 0;
+    for (frame, packet) in [
+        (0, &[0x90, 60, 90][..]),
+        (1, &[0xf0, 1, 2, 3, 0xf7][..]),
+        (26, &[0x80, 60, 0][..]),
+        (32, &[0x90, 61, 80][..]),
+        (35, &[0xb0, 2, 88][..]),
+        (38, &[0xb0, 2, 99][..]),
+    ] {
+        let end = at + 12 + packet.len();
+        encode_midi_record(frame, packet, &mut expected[at..end]).unwrap();
+        at = end;
+    }
+    let mut final_expected = [0; 195];
+    let mut at = 0;
+    for (frame, packet) in core::iter::once((0, [0x90, 60, 90]))
+        .chain((0..8).map(|value| (1, [0xb0, 9, value])))
+        .chain([
+            (26, [0x80, 60, 0]),
+            (32, [0x90, 61, 80]),
+            (35, [0xb0, 2, 88]),
+            (38, [0xb0, 2, 99]),
+        ])
+    {
+        encode_midi_record(frame, &packet, &mut final_expected[at..at + 15]).unwrap();
+        at += 15;
+    }
+    assert_no_heap(|| {
+        resources.copy_remaining = 0;
+        resources.steps_remaining = 0;
+        for (offset, packet) in [
+            (1, &[0xb0, 7, 44][..]),
+            (5, &[0x90, 60, 90][..]),
+            (6, &[0xf0, 1, 2, 3, 0xf7][..]),
+            (31, &[0x80, 60, 0][..]),
+        ] {
+            input.push(offset, Q, packet).unwrap();
+        }
+        resources
+            .render_io()
+            .append_indexed_midi_source(source, Frame(0), &input)
+            .unwrap();
+        resources
+            .render_io()
+            .write_indexed_midi_window_tick(
+                writer,
+                source,
+                Frame(0),
+                WriteSpan {
+                    position: 0,
+                    offset: 5,
+                    frames: 27,
+                },
+            )
+            .unwrap();
+        input.clear();
+        for (offset, value) in [(0, 77), (1, 88), (4, 99), (5, 100)] {
+            input.push(offset, Q, &[0xb0, 2, value]).unwrap();
+        }
+        resources
+            .render_io()
+            .append_indexed_midi_source(source, Frame(32), &input)
+            .unwrap();
+        resources
+            .render_io()
+            .write_indexed_midi_window_tick(
+                writer,
+                source,
+                Frame(32),
+                WriteSpan {
+                    position: 35,
+                    offset: 1,
+                    frames: 4,
+                },
+            )
+            .unwrap();
+        let resource = resources.snapshot_indexed_midi_writer(writer).unwrap();
+        let intermediate = resources.snapshot(resource, Frame(64)).unwrap();
+        resources.remove(resource).unwrap();
+        assert_eq!(bytes::<92>(&mut resources, intermediate), expected);
+        for tick in 2..4 {
+            input.clear();
+            for value in 0..8 {
+                input
+                    .push(0, Q, &[0xb0, 9, value + 8 * (tick - 2) as u8])
+                    .unwrap();
+            }
+            let frame = Frame(tick * Q as u64);
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, frame, &input)
+                .unwrap();
+            let result = resources.render_io().write_indexed_midi_window_tick(
+                writer,
+                source,
+                frame,
+                WriteSpan {
+                    position: tick - 1,
+                    offset: 0,
+                    frames: 1,
+                },
+            );
+            assert_eq!(
+                result,
+                if tick == 2 {
+                    Ok(())
+                } else {
+                    Err(Error::Capacity)
+                }
+            );
+        }
+        assert_eq!(
+            (resources.copy_remaining(), resources.steps_remaining()),
+            (0, 0)
+        );
+        resources.finish_indexed_midi_writer(writer).unwrap();
+        let complete = resources
+            .publish_reserved_snapshot(publication, Frame(96))
+            .unwrap();
+        assert_eq!(complete.description.frames, 39);
+        assert_eq!(bytes::<195>(&mut resources, complete), final_expected);
+        assert_eq!(bytes::<92>(&mut resources, intermediate), expected);
+        assert_eq!(bytes::<45>(&mut resources, old_file), encoded);
+        let index = resources.read_index(complete.id).unwrap();
+        let zero = resources.render_io().midi_seek(index, 0).unwrap().state;
+        assert_eq!(zero.channel(0).unwrap().controller(1), None);
+        assert_eq!(zero.channel(0).unwrap().controller(7), Some(44));
+        let end = resources.render_io().midi_seek(index, 39).unwrap().state;
+        assert_eq!(end.channel(0).unwrap().controller(2), Some(99));
+        assert_eq!(end.channel(0).unwrap().controller(9), Some(7));
+        let index = resources.read_index(old_view.id).unwrap();
+        assert_eq!(
+            resources.render_io().midi_seek(index, 0).unwrap().state,
+            initial
+        );
+        for snapshot in [complete, intermediate, old_file, old_view] {
+            resources.release_snapshot(snapshot.id).unwrap();
+        }
+        for resource in [take, loaded] {
+            resources.remove(resource).unwrap();
+        }
+        drain(&mut resources);
+        resources.cleanup_indexed_midi_store(pool).unwrap();
+        drain(&mut resources);
+        assert_eq!(resources.usage(), baseline);
+    });
+}

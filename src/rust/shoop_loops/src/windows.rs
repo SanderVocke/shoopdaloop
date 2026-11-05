@@ -163,8 +163,23 @@ pub fn span(
     frames: usize,
     raw_frames: u64,
 ) -> Span {
+    span_inner(i128::from(position), window, lead, frames, raw_frames)
+}
+pub fn write_span(position: u64, window: ChannelWindow, frames: usize, raw_frames: u64) -> Span {
+    let mut span = span_inner(i128::from(position), window, false, frames, raw_frames);
+    if span.frames == 0 {
+        span.position = 0;
+    }
+    span
+}
+fn span_inner(
+    position: i128,
+    window: ChannelWindow,
+    lead: bool,
+    frames: usize,
+    raw_frames: u64,
+) -> Span {
     let raw_frames = window.raw_frames.unwrap_or(raw_frames).min(raw_frames);
-    let position = i128::from(position);
     let raw = position + i128::from(window.origin());
     let begin = (-raw)
         .max(if lead {

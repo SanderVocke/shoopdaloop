@@ -110,7 +110,11 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                     position,
                     retrigger,
                 } => {
-                    if candidate.mode != Mode::Playing || retrigger {
+                    if candidate.mode == Mode::Replacing && !retrigger {
+                        candidate.revision = candidate.take;
+                        candidate.mode = Mode::Playing;
+                        candidate.monitor = false;
+                    } else if candidate.mode != Mode::Playing || retrigger {
                         let length = if candidate.mode == Mode::Recording {
                             candidate.captured
                         } else {
@@ -176,6 +180,7 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                         if !moving {
                             candidate.turns = 0;
                         }
+                        pulse = candidate.mode != Mode::Replacing && head == 0;
                         candidate.mode = Mode::Replacing;
                         candidate.length = fixed_length;
                         candidate.head = head;

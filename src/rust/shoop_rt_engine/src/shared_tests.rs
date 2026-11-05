@@ -2774,3 +2774,181 @@ fn production_source_removal_retires_history_and_slot_reuse_cannot_retarget_reta
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
 }
+
+#[shoop_test]
+fn replacing_maps_each_channel_window_and_preserves_raw_tails_manual_period_and_monitoring() {
+    use shoop_loops::windows::{ChannelUpdate, Edit};
+    let (mut h, capacity) = Fixture::new_production(32, 7);
+    let (mut take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let old = h.export(0);
+    let Reply::Timing(period) = h.op(Operation::EditWindows {
+        target: target(0),
+        expected_revision: 0,
+        expected_content: old.view.description.revision,
+        edit: Edit {
+            length: Some(64),
+            ..Default::default()
+        },
+    }) else {
+        panic!("manual period")
+    };
+    let mut edit = Edit {
+        count: 3,
+        ..Default::default()
+    };
+    for (destination, (channel, midi, offset)) in
+        edit.channels
+            .iter_mut()
+            .zip([(0, false, 3), (1, false, -5), (0, true, -3)])
+    {
+        *destination = ChannelUpdate {
+            channel,
+            midi,
+            start_offset: Some(offset),
+            preplay: Some(5),
+        };
+    }
+    let Reply::Timing(windows) = h.op(Operation::EditWindows {
+        target: target(0),
+        expected_revision: period.timing_revision,
+        expected_content: old.view.description.revision,
+        edit,
+    }) else {
+        panic!("channel windows")
+    };
+    let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("source")
+    };
+    take.frames = 64;
+    assert_eq!(
+        h.op(Operation::WriterBegin {
+            target: target(0),
+            source: history.id,
+            take: SharedTake {
+                midi: take.audio,
+                ..take
+            },
+            kind: resource::indexed_midi::WriteKind::Fixed
+        }),
+        failed(Error::InvalidShape)
+    );
+    assert!(matches!(
+        h.op(Operation::WriterBegin {
+            target: target(0),
+            source: history.id,
+            take,
+            kind: resource::indexed_midi::WriteKind::Fixed
+        }),
+        Reply::Writer {
+            status: CandidateStatus::Ready,
+            ..
+        }
+    ));
+    let start = h.aligned_future(256);
+    let play = h.send(
+        start - 64,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Play {
+                position: 32,
+                retrigger: true,
+            },
+        },
+    );
+    let entry = h.send(
+        start,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::ReplaceInput { position: None },
+        },
+    );
+    let end = start + 13 * 32;
+    let exit = h.send(
+        end,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    h.result(play);
+    assert!(matches!(
+        h.result(entry),
+        Reply::Transition(shoop_loops::Completion {
+            outcome: shoop_loops::Outcome::Applied { .. },
+            ..
+        })
+    ));
+    h.result(exit);
+    let current = h.export(0);
+    assert_eq!(current.view.description.frames, 64);
+    assert_eq!(current.view.audio.unwrap().snapshot.description.frames, 128);
+    assert_eq!(current.view.midi.unwrap().snapshot.description.frames, 128);
+    assert_eq!(current.view.windows, Some(windows.windows));
+    let old_audio = h.read(old.view.audio.unwrap().snapshot);
+    let old_midi = h.read(old.view.midi.unwrap().snapshot);
+    let mut expected_audio = old_audio.clone();
+    let mut expected_midi = midi_events(&old_midi);
+    let mut position = 32i64;
+    let mut last_zero = 0;
+    for tick in (start..end).step_by(32) {
+        for offset in 0..32 {
+            for (channel, shift) in [(0usize, 3i64), (1, -5)] {
+                let raw = position + shift + offset as i64;
+                if (0..128).contains(&raw) {
+                    let sample = (tick + offset + 1) as f32 * if channel == 0 { 1. } else { -2. };
+                    let at = (raw as usize * 2 + channel) * 4;
+                    expected_audio[at..at + 4].copy_from_slice(&sample.to_le_bytes());
+                }
+            }
+        }
+        let begin = (position - 3).max(0) as u64;
+        let finish = (position - 3 + 32).clamp(0, 128) as u64;
+        expected_midi.retain(|(at, _)| *at < begin || *at >= finish);
+        for offset in 0..32 {
+            let raw = position - 3 + offset as i64;
+            if (0..128).contains(&raw) {
+                for packet in packets(tick + offset as u64, 32) {
+                    expected_midi.push((raw as u64, packet));
+                }
+            }
+        }
+        if position == 0 {
+            last_zero = tick + 3;
+        }
+        position = (position + 32) % 64;
+    }
+    expected_midi.sort_by_key(|(at, _)| *at);
+    assert_eq!(h.read(current.view.audio.unwrap().snapshot), expected_audio);
+    assert_eq!(
+        midi_events(&h.read(current.view.midi.unwrap().snapshot)),
+        expected_midi
+    );
+    assert!(h.samples[0][(start + 32) as usize..(end + 32) as usize]
+        .iter()
+        .all(|sample| *sample == 0.));
+    let expected_initial = input_state(h.stimulus.unwrap(), last_zero, 32);
+    let mut stopped = h.engine.render.into_stopped();
+    let source = current.view.midi.unwrap();
+    assert_eq!(
+        stopped
+            .resources
+            .render_io()
+            .midi_seek(source.index, 0)
+            .unwrap()
+            .state,
+        expected_initial
+    );
+    assert_eq!(
+        bytes(&mut stopped.resources, old.view.audio.unwrap().snapshot),
+        old_audio
+    );
+    assert_eq!(
+        bytes(&mut stopped.resources, old.view.midi.unwrap().snapshot),
+        old_midi
+    );
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}

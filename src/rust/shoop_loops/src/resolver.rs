@@ -1454,6 +1454,7 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             Ok(false)
         }
         Transition::ReplaceInput { position } => {
+            let entering = state.mode != Mode::Replacing;
             if state.mode == Mode::Recording {
                 state.content_length = state.capture_frames;
                 state.content_revision = state.capture_revision;
@@ -1488,7 +1489,7 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             state.capture_frames = state.content_length;
             state.capture_incomplete = false;
             state.monitor_previous = false;
-            Ok(false)
+            Ok(entering && position == 0)
         }
         Transition::RecordPrefix { frames } => {
             transition(
@@ -1520,6 +1521,12 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             retrigger,
         } => {
             if state.mode == Mode::Playing && !retrigger {
+                return Ok(false);
+            }
+            if state.mode == Mode::Replacing && !retrigger {
+                state.content_revision = state.capture_revision;
+                state.mode = Mode::Playing;
+                state.monitor_previous = false;
                 return Ok(false);
             }
             if state.writes() {

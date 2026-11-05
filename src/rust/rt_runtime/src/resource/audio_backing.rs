@@ -74,6 +74,24 @@ impl ResourceStore {
         })
     }
 
+    pub fn prepare_audio_pool_windowed(
+        &mut self,
+        config: shared_audio::Config,
+        origin: Frame,
+        histories: usize,
+    ) -> Result<AudioStoreId, Error> {
+        let slot = self.audio_stores.len();
+        if slot == self.config.limits().resource_slots {
+            return Err(Error::Capacity);
+        }
+        let audio =
+            shared_audio::AudioStore::prepare_histories_windowed(self, config, origin, histories)?;
+        self.audio_stores.push(Some(Box::new(audio)));
+        Ok(AudioStoreId {
+            scope: self.scope,
+            slot,
+        })
+    }
     pub(super) fn with_audio<T>(
         &mut self,
         id: AudioStoreId,
@@ -493,6 +511,37 @@ impl RenderIo<'_> {
         };
         let write = self.store.with_audio(take.store, |store, audio| {
             audio.stage_write(&mut store.render_io(), take.take, position, samples)
+        })?;
+        Ok(AudioWrite {
+            resource,
+            expected,
+            active,
+            revision,
+            store: take.store,
+            write,
+        })
+    }
+    pub fn stage_audio_window_write(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        samples: &[f32],
+        spans: &[shared_audio::ChannelWrite],
+    ) -> Result<AudioWrite, Error> {
+        let owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        let revision = if spans.iter().any(|span| span.frames > 0) {
+            owner.revision.checked_next()?
+        } else {
+            owner.revision
+        };
+        let write = self.store.with_audio(take.store, |store, audio| {
+            audio.stage_window_write(&mut store.render_io(), take.take, samples, spans)
         })?;
         Ok(AudioWrite {
             resource,

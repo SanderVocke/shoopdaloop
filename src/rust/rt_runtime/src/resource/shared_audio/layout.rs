@@ -22,6 +22,13 @@ impl Config {
     pub fn capacity(self, runtime: PreparedConfig, histories: usize) -> Result<Capacity, Error> {
         Layout::new(runtime, self, histories).map(|layout| layout.capacity)
     }
+    pub fn windowed_capacity(
+        self,
+        runtime: PreparedConfig,
+        histories: usize,
+    ) -> Result<Capacity, Error> {
+        Layout::new_windowed(runtime, self, histories).map(|layout| layout.capacity)
+    }
 }
 
 impl Layout {
@@ -29,6 +36,21 @@ impl Layout {
         runtime: PreparedConfig,
         config: Config,
         histories: usize,
+    ) -> Result<Self, Error> {
+        Self::with_windows(runtime, config, histories, false)
+    }
+    pub(super) fn new_windowed(
+        runtime: PreparedConfig,
+        config: Config,
+        histories: usize,
+    ) -> Result<Self, Error> {
+        Self::with_windows(runtime, config, histories, true)
+    }
+    fn with_windows(
+        runtime: PreparedConfig,
+        config: Config,
+        histories: usize,
+        windowed: bool,
     ) -> Result<Self, Error> {
         let channels = config.channels as usize;
         let page_bytes = runtime.limits().page_bytes;
@@ -55,11 +77,19 @@ impl Layout {
             .and_then(usize::checked_next_power_of_two)
             .ok_or(Error::Capacity)?;
         let max_frames = runtime.limits().max_frames;
-        let transaction_pages = max_frames
+        let mut transaction_pages = max_frames
             .div_ceil(page_frames)
             .min(ring_pages)
             .checked_add(4)
             .ok_or(Error::Capacity)?;
+        if windowed {
+            let windows = max_frames
+                .div_ceil(page_frames)
+                .checked_add(3)
+                .and_then(|pages| pages.checked_mul(channels))
+                .ok_or(Error::Capacity)?;
+            transaction_pages = transaction_pages.max(windows);
+        }
         let history_pages = ring_pages.checked_mul(histories).ok_or(Error::Capacity)?;
         let baseline = history_pages
             .checked_add(transaction_pages)

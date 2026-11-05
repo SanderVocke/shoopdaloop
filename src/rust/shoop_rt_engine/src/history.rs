@@ -86,6 +86,10 @@ impl Layout {
             .min(ring_pages)
             .checked_add(4)
             .ok_or(Error::Capacity)?;
+        let transaction_pages = transaction_pages.max(mul(
+            d.strip_channels as usize,
+            add(d.quantum.div_ceil(page_frames), 3)?,
+        )?);
         let history_pages = mul(ring_pages, d.strips())?;
         let audio_pages = add(
             add(history_pages, transaction_pages)?,
@@ -112,7 +116,7 @@ impl Layout {
             views,
             pages: audio_pages,
         };
-        let audio_capacity = audio.capacity(runtime, d.strips())?;
+        let audio_capacity = audio.windowed_capacity(runtime, d.strips())?;
         let records = d.history.midi_records as usize;
         let history_events = records / 2 / d.strips();
         let history_bytes = mul(d.history.midi_pages as usize, d.page_bytes)? / 2 / d.strips();
@@ -224,7 +228,7 @@ mod tests {
         assert_eq!(capacity.retention_frames, 1_440_000);
         assert_eq!(capacity.ordinary_payload_bytes, 256 << 20);
         assert_eq!(capacity.history_audio_bytes, 256 << 20);
-        assert_eq!(capacity.shared_audio_bytes, (128 << 20) + 5 * 4096);
+        assert_eq!(capacity.shared_audio_bytes, (128 << 20) + 8 * 4096);
         assert_eq!(capacity.midi_payload_bytes, 16 << 20);
         assert_eq!(capacity.midi_events_per_source, 2048);
         assert_eq!(capacity.midi_bytes_per_source, 512 << 10);

@@ -21,7 +21,7 @@ remain outstanding.
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
 | F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
 | F2 | Partial: normal native/worklet constructors prepare common thirty-second histories with separately budgeted storage; removal/reuse and typed sizing/readiness pass locally. Global retained-owner MIDI admission and measured default callback limits remain. |
-| F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; ordinary-recording entry, channel-window mapping and global admission remain. |
+| F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; ordinary-recording entry and global admission remain. |
 | F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
 Grab and Replacing are still disabled in the normal application. P04/P05 remain
@@ -415,6 +415,31 @@ pass. Global per-owner indexed MIDI credit guarantees and actual default callbac
 measurements remain open; F2 and application P04/P05 are not complete. CI remains
 deferred until the complete local implementation and acceptance pass.
 
+Fixed Replacing now maps each channel into its retained raw window while keeping
+the manual logical period. Audio stages one atomic root across independent channel
+spans; MIDI supports a clipped, possibly offset raw interval for each complete
+source tick, including a raw duration between quantum boundaries. Outside samples,
+packets, gains/preplay and old exports are preserved. Raw-zero MIDI projection
+includes source packets strictly before the mapped input offset. An offset bucket
+can combine two admitted input quanta; a bounded density preflight refuses excess
+before mutation and retains the preceding complete cut. Windowed audio preparation
+reserves the larger disjoint-channel transaction shape explicitly; stereo default
+workspace is now 32 KiB (eight pages), preserving the same 128 MiB owner allowance.
+The public sizing API includes this change.
+
+A guarded normal-constructor scenario exercises independent positive/negative
+channel offsets, a shorter manual period, repeated wraps, phase-preserving entry,
+suppressed loop playback, natural MIDI state and exact raw tails. A resource oracle
+covers non-quantized raw MIDI duration, SysEx/order, partial input, raw-zero state,
+density refusal and reserved exit without optional credits. Malformed preparation
+also returns every owner. Replacing-to-Playing now preserves cursor/cycles when not
+retriggered, and entry at zero emits the reference clock pulse; the scalar seeded
+oracle and fixed-domain test cover these mode edges. All 65 resource tests, affected
+loop/runtime/shared-audio and engine shared/timing groups pass locally, as do the
+affected builds, formatting, tracing and test-attribute checks. This advances F3;
+ordinary long Recording-to-Replacing preparation, global live MIDI reservations
+and application batch/service/UI delivery remain outstanding. CI stays deferred.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -436,7 +461,7 @@ the later tree/category/coordinator increments.
 
 | Layer | Existing support and remaining gap |
 | --- | --- |
-| `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver and explicit coordinator route now support Replacing and prefix Recording with continuous paired writers. Ordinary recording entry, channel windows and global live admission still need integration. One-shot CandidateMidi remains separate. |
+| `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver and explicit coordinator route now support Replacing and prefix Recording with continuous paired writers. Ordinary recording entry and global live admission still need integration. One-shot CandidateMidi remains separate. |
 | Production preparation | `shoop_rt_engine::prepare` now constructs the common thirty-second source pools with a separate arena allowance, and native/worklet setup carries the same settings. Per-owner MIDI credits and default callback measurements remain open. |
 | Engine protocol / adapter | No negotiated Grab or Replacing capability/operation exists. `shoop_rt_backend::grab_loops` refuses Grab; its mode conversion refuses Replacing. |
 | Service / clients | Grab, AdoptRingbuffers, GrabClicked, default-recording Grab and Replacing remain refused. UI and Lua consequently cannot reach the primitives. Several media/read/cache guards recognize Recording only. |

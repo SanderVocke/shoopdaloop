@@ -10,7 +10,7 @@ recorded here as the implementation stages pass.
 | Layer | Required work |
 | --- | --- |
 | Normal host preparation | The normal constructor prepares common thirty-second audio/indexed MIDI pools with a separate reservation. Host setup v7/worklet config v4 carry the limits; typed capacity/readiness and source removal/reuse are covered locally. Final live-credit and default callback gates remain. |
-| Portable domain | Continuous paired writers and a distinct resolver/program Replacing mode support explicit fixed/growing entry, scheduled exit and active exports. Ordinary Recording entry and channel-window mapping remain; private candidates stay separate. |
+| Portable domain | Continuous paired writers and a distinct resolver/program Replacing mode support explicit fixed/growing entry, scheduled exit and active exports. Ordinary Recording entry remains; private candidates stay separate. |
 | Kernel resources | Grab roots now retain visible audio pages/MIDI chunks; prepared metadata follows retained credits. Production global pooling, checkpoint-state density and continuous-writer reservations still need completion. |
 | Engine / protocol | Add bounded admission, musical batch settlement, completions and capability/limit negotiation in `shoop_rt_protocol`, `shoop_rt_engine/endpoint`, jobs, model, cells, topology and resync. |
 | Adapter | Implement Grab and Replacing in `shoop_rt_backend/backend`, requests, incoming/mirror, reads, capture, family and persistence. Invalidate canonical-import media on actual committed revisions. |
@@ -106,11 +106,10 @@ the live stream once at the cut. A normal Record transition that starts a fresh
 empty take is insufficient. Stop and playback return complete immutable media;
 old exports and sibling takes retain their original data.
 
-Current CandidateMidi preparation owns one patch, rebuilds affected indexes in
-bounded steps, and refuses another patch while Building. It cannot be polled as
-a continuous recording implementation. The continuous writer must separately own
-every admitted tick and bound index debt, input retention and exit resources.
-Neither moving publication deadlines nor queue growth establishes that bound.
+CandidateMidi remains a bounded one-shot patch interface. The continuous route owns
+source ticks and private roots separately and reserves final publication owners.
+Global retained/live MIDI credits and preparation debt remain acceptance gates;
+publication deadlines and queue growth cannot substitute for those guarantees.
 
 The explicit coordinator writer route now joins a retained prefix to growing
 Recording or overwrites a fixed take in Replacing. Entry requires completed
@@ -119,8 +118,15 @@ paired cut; exit consumes reserved immutable owners. Active exports pin complete
 cuts, and source reset terminates capture at the last successful cut with an
 incomplete outcome. Protocol version 12 represents the new confirmed mode.
 The normal application still lacks production preparation and action admission;
-non-default channel-window mapping and ordinary Recording-to-Replacing remain
-open. These library/integration tests do not close P04/P05.
+ordinary Recording-to-Replacing remains open. These library/integration tests do not close P04/P05.
+
+Fixed writers also retain manual periods and per-channel raw windows. They write
+only each channel's mapped overlap and preserve outside data, gains and preplay.
+MIDI raw durations need not align to the quantum. Raw-zero state is taken strictly
+before its mapped source offset, and density refusal preserves the preceding
+complete cut. Switching between Playing and Replacing preserves phase/cycles
+unless an explicit restart is requested. Growing prefix media still requires an
+identity raw mapping; public Grab settlement must establish that new layout.
 
 ## Production sizing gate
 
@@ -136,9 +142,9 @@ pages and 256 MiB ordinary loop memory:
 | --- | --- |
 | Ordinary media | 256 MiB, preserved |
 | Thirty-second input audio rings | 256 MiB (raw samples alone are 184,320,000 bytes) |
-| Shared audio owners and write workspace | 128 MiB plus 20 KiB |
+| Shared audio owners and write workspace | 128 MiB plus 32 KiB |
 | Shared MIDI packet payload | 16 MiB |
-| Audio pool metadata (native layout) | 37,041,992 bytes |
+| Audio pool metadata (native layout) | 37,057,592 bytes |
 | MIDI pool metadata/state (native layout) | 50,698,328 bytes |
 | MIDI packet bodies/records | 65,536 each |
 | MIDI retention quota per source | 2,048 events and 512 KiB serialized bytes |
@@ -172,7 +178,7 @@ remaining admission proofs.
 
 Raw `HistoryWindow` acquisition still needs public musical batch settlement from
 authoritative sync/target state, including target/solo preflight and final receipts.
-Ordinary Recording-to-Replacing and non-default channel windows also remain open.
+Ordinary Recording-to-Replacing also remains open.
 
 ## Validation status
 

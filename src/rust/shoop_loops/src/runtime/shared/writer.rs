@@ -13,6 +13,9 @@ pub(in crate::runtime) struct LiveJob {
     pub kind: indexed_midi::WriteKind,
     pub frames: u64,
     pub position: u64,
+    pub windows: Windows,
+    audio_frames: u64,
+    midi_frames: u64,
     audio: Option<rt_runtime::ResourceId>,
     midi: Option<rt_runtime::ResourceId>,
     audio_revision: Revision,
@@ -59,6 +62,7 @@ impl Shared {
         source: HistoryId,
         take: SharedTake,
         kind: indexed_midi::WriteKind,
+        windows: Windows,
         frame: Frame,
         io: &mut ResourceIo<'_>,
     ) -> Result<LiveWriterId, Error> {
@@ -77,6 +81,11 @@ impl Shared {
         }
         let h = self.source(source.source)?;
         let audio_store = h.audio;
+        let channels = if take.audio.is_some() {
+            h.settings.audio.map_or(0, |audio| audio.channels as usize)
+        } else {
+            0
+        };
         let midi_store = h.indexed_midi.map(|id| id.store());
         if take.audio.is_some() && audio_store.is_none()
             || take.midi.is_some() && midi_store.is_none()
@@ -99,6 +108,9 @@ impl Shared {
             kind,
             frames: take.frames,
             position: 0,
+            windows,
+            audio_frames: 0,
+            midi_frames: 0,
             audio: None,
             midi: None,
             audio_revision: Revision(0),
@@ -117,10 +129,13 @@ impl Shared {
         let result = (|| {
             if let Some(resource) = take.audio {
                 let snapshot = io.snapshot(resource, frame)?;
-                if snapshot.description.frames != take.frames {
+                if matches!(kind, indexed_midi::WriteKind::Growing { .. })
+                    && snapshot.description.frames != take.frames
+                {
                     io.release_snapshot(snapshot.id)?;
                     return Err(Error::InvalidShape);
                 }
+                job.audio_frames = snapshot.description.frames;
                 let fork = io.fork_audio(audio_store.ok_or(Error::InvalidShape)?, snapshot.id);
                 io.release_snapshot(snapshot.id)?;
                 let resource = fork?;
@@ -129,26 +144,50 @@ impl Shared {
                 if matches!(kind, indexed_midi::WriteKind::Growing { .. }) {
                     io.prepare_audio_growth(resource, job.audio_revision, maximum)?;
                 }
+                let maximum = if kind == indexed_midi::WriteKind::Fixed {
+                    job.audio_frames
+                } else {
+                    maximum
+                };
                 job.audio_export = Some(io.reserve_snapshot(resource, frame, maximum)?);
             }
             if let Some(resource) = take.midi {
                 let store = midi_store.ok_or(Error::InvalidShape)?;
                 let snapshot = io.snapshot(resource, frame)?;
-                if snapshot.description.frames != take.frames {
+                if matches!(kind, indexed_midi::WriteKind::Growing { .. })
+                    && snapshot.description.frames != take.frames
+                {
                     io.release_snapshot(snapshot.id)?;
                     return Err(Error::InvalidShape);
                 }
-                let result = if take.indexed_midi_store == Some(store) {
-                    io.fork_indexed_midi(store, snapshot.id)
-                        .map(|resource| job.midi = Some(resource))
-                } else {
-                    let index = io.read_index(snapshot.id)?;
-                    let initial = io.render().midi_seek(index, 0)?.state;
-                    io.prepare_indexed_midi_import(store, snapshot.id, &initial)
-                        .map(|import| job.import = Some(import))
-                };
+                job.midi_frames = snapshot.description.frames;
+                let result = (|| {
+                    if take.indexed_midi_store == Some(store) {
+                        io.fork_indexed_midi(store, snapshot.id)
+                            .map(|resource| job.midi = Some(resource))
+                    } else {
+                        let index = io.read_index(snapshot.id)?;
+                        let initial = io.render().midi_seek(index, 0)?.state;
+                        io.prepare_indexed_midi_import(store, snapshot.id, &initial)
+                            .map(|import| job.import = Some(import))
+                    }
+                })();
                 io.release_snapshot(snapshot.id)?;
                 result?;
+            }
+            if kind == indexed_midi::WriteKind::Fixed {
+                if channels > crate::windows::MAX_AUDIO_CHANNELS {
+                    return Err(Error::Capacity);
+                }
+                windows
+                    .validate_alignment(
+                        channels,
+                        job.midi.is_some() || job.import.is_some(),
+                        job.audio_frames,
+                        job.midi_frames,
+                        take.frames,
+                    )
+                    .map_err(runtime_error)?;
             }
             Self::progress_live_job(&mut job, frame, 1, io)
         })();
@@ -177,13 +216,14 @@ impl Shared {
         }
         if let Some(resource) = job.midi {
             if job.writer.is_none() {
-                job.writer = Some(io.prepare_indexed_midi_writer(
-                    resource,
-                    io.info(resource)?.revision,
-                    job.kind,
-                )?);
+                let revision = io.info(resource)?.revision;
+                job.writer = Some(if job.kind == indexed_midi::WriteKind::Fixed {
+                    io.prepare_indexed_midi_window_writer(resource, revision)?
+                } else {
+                    io.prepare_indexed_midi_writer(resource, revision, job.kind)?
+                });
                 let maximum = match job.kind {
-                    indexed_midi::WriteKind::Fixed => job.frames,
+                    indexed_midi::WriteKind::Fixed => job.midi_frames,
                     indexed_midi::WriteKind::Growing { maximum_frames } => maximum_frames,
                 };
                 job.midi_export = Some(io.reserve_snapshot(resource, frame, maximum)?);
@@ -240,7 +280,14 @@ impl Shared {
             return Err(error);
         }
         if let Some(writer) = job.writer {
-            io.start_indexed_midi_writer(writer, position)?;
+            io.start_indexed_midi_writer(
+                writer,
+                if job.kind == indexed_midi::WriteKind::Fixed {
+                    0
+                } else {
+                    position
+                },
+            )?;
         }
         let job = self.live[id.slot as usize].value.as_mut().unwrap();
         job.active = true;
@@ -276,21 +323,68 @@ impl Shared {
                 }
                 let staged = if let Some(resource) = job.audio {
                     let channels = h.settings.audio.ok_or(Error::InvalidShape)?.channels as usize;
-                    Some(io.render().stage_audio_write(
-                        resource,
-                        job.audio_revision,
-                        matches!(job.kind, indexed_midi::WriteKind::Fixed).then_some(job.position),
-                        &h.audio_scratch[..q * channels],
-                    )?)
+                    if job.kind == indexed_midi::WriteKind::Fixed {
+                        let mut spans = [shared_audio::ChannelWrite::default();
+                            crate::windows::MAX_AUDIO_CHANNELS];
+                        for (channel, destination) in spans[..channels].iter_mut().enumerate() {
+                            let span = crate::windows::write_span(
+                                job.position,
+                                job.windows.audio[channel],
+                                q,
+                                job.audio_frames,
+                            );
+                            *destination = shared_audio::ChannelWrite {
+                                channel,
+                                position: span.position,
+                                offset: span.offset,
+                                frames: span.frames,
+                            };
+                        }
+                        Some(io.render().stage_audio_window_write(
+                            resource,
+                            job.audio_revision,
+                            &h.audio_scratch[..q * channels],
+                            &spans[..channels],
+                        )?)
+                    } else {
+                        Some(io.render().stage_audio_write(
+                            resource,
+                            job.audio_revision,
+                            None,
+                            &h.audio_scratch[..q * channels],
+                        )?)
+                    }
                 } else {
                     None
                 };
                 if let Some(writer) = job.writer {
-                    if let Err(error) = io.render().write_indexed_midi_tick(
-                        writer,
-                        midi_source.ok_or(Error::InvalidShape)?,
-                        frame,
-                    ) {
+                    let result = if job.kind == indexed_midi::WriteKind::Fixed {
+                        let span = crate::windows::write_span(
+                            job.position,
+                            job.windows.midi,
+                            q,
+                            job.midi_frames,
+                        );
+                        io.render().write_indexed_midi_window_tick(
+                            writer,
+                            midi_source.ok_or(Error::InvalidShape)?,
+                            frame,
+                            indexed_midi::WriteSpan {
+                                position: span.position,
+                                offset: span.offset,
+                                frames: span.frames,
+                            },
+                        )
+                    } else {
+                        io.render()
+                            .write_indexed_midi_tick(
+                                writer,
+                                midi_source.ok_or(Error::InvalidShape)?,
+                                frame,
+                            )
+                            .map(|_| ())
+                    };
+                    if let Err(error) = result {
                         if let Some(write) = staged {
                             io.render().cancel_audio_write(write)?;
                         }
@@ -318,21 +412,13 @@ impl Shared {
         }
         Ok(())
     }
-    pub fn seek_live(
-        &mut self,
-        id: LiveWriterId,
-        position: u64,
-        io: &mut ResourceIo<'_>,
-    ) -> Result<(), Error> {
+    pub fn seek_live(&mut self, id: LiveWriterId, position: u64) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if !job.active || job.kind != indexed_midi::WriteKind::Fixed || position >= job.frames {
             return Err(Error::InvalidFrame);
         }
         if job.position == position {
             return Ok(());
-        }
-        if let Some(writer) = job.writer {
-            io.seek_indexed_midi_writer(writer, position)?;
         }
         self.live[id.slot as usize].value.as_mut().unwrap().position = position;
         Ok(())
@@ -370,6 +456,7 @@ impl Shared {
                 indexed_midi_store,
             },
             indexed_midi::WriteKind::Fixed,
+            job.windows,
             frame,
             io,
         );

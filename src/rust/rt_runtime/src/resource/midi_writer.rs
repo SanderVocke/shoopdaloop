@@ -1,6 +1,7 @@
 //! Complete shared MIDI versions after each successful fixed tick.
 
 use super::{
+    indexed_midi::WriteSpan,
     midi_packets::{self, Packets, RecordId},
     RenderIo, ResourceStore, WorkClass,
 };
@@ -75,6 +76,7 @@ pub(super) struct Media {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Kind {
     Fixed,
+    Windowed,
     Growing { maximum_frames: u64 },
 }
 pub(super) struct Admission {
@@ -405,7 +407,7 @@ impl Core {
         if let Err(error) = self.indexes.len(media.root) {
             return Err((error, media));
         }
-        if media.frames % self.q as u64 != 0
+        if kind != Kind::Windowed && media.frames % self.q as u64 != 0
             || matches!(kind, Kind::Fixed) && media.frames == 0
             || matches!(kind, Kind::Growing { maximum_frames } if maximum_frames < media.frames || media.origin.0.checked_add(maximum_frames).is_none())
         {
@@ -413,7 +415,7 @@ impl Core {
         }
         let after = Cut::frame(media.origin);
         let end = Cut::frame(Frame(match kind {
-            Kind::Fixed => media.origin.0 + media.frames,
+            Kind::Fixed | Kind::Windowed => media.origin.0 + media.frames,
             Kind::Growing { .. } => u64::MAX,
         }));
         let ready = media.density_checked;
@@ -493,6 +495,7 @@ impl Core {
         if position % self.q as u64 != 0
             || match admission.kind {
                 Kind::Fixed => position >= admission.media.frames,
+                Kind::Windowed => position != 0,
                 Kind::Growing { .. } => position != admission.media.frames,
             }
         {
@@ -535,12 +538,43 @@ impl Core {
         before_input: &MidiState,
         staged: &Staging,
     ) -> Result<(), Error> {
+        if writer.kind == Kind::Windowed {
+            return Err(Error::InvalidState);
+        }
+        let span = WriteSpan {
+            position: writer.position,
+            offset: 0,
+            frames: self.q,
+        };
+        self.write_span(io, writer, before_input, staged, span)
+    }
+    pub fn write_window_tick(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        writer: &mut Writer,
+        before_input: &MidiState,
+        staged: &Staging,
+        span: WriteSpan,
+    ) -> Result<(), Error> {
+        if writer.kind != Kind::Windowed {
+            return Err(Error::InvalidState);
+        }
+        self.write_span(io, writer, before_input, staged, span)
+    }
+    fn write_span(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        writer: &mut Writer,
+        before_input: &MidiState,
+        staged: &Staging,
+        span: WriteSpan,
+    ) -> Result<(), Error> {
         self.indexes.reset_work();
-        let logical_zero = writer.position == 0;
-        let result = self.write_inner(writer, before_input, staged);
-        if result.is_ok() && logical_zero {
+        let result = self.write_inner(writer, before_input, staged, span);
+        if result.is_ok() && span.position == 0 && span.frames > 0 {
             io.store
-                .charge_work(WorkClass::Render, size_of::<MidiState>(), 0)?;
+                .charge_work(WorkClass::Render, size_of::<MidiState>(), staged.count)
+                .expect("required input projection");
         }
         self.account(io);
         result
@@ -550,26 +584,43 @@ impl Core {
         writer: &mut Writer,
         before_input: &MidiState,
         staged: &Staging,
+        span: WriteSpan,
     ) -> Result<(), Error> {
-        let next = writer
+        let next = span
             .position
-            .checked_add(self.q as u64)
-            .ok_or(Error::InvalidEvent)?;
+            .checked_add(span.frames as u64)
+            .ok_or(Error::InvalidFrame)?;
+        if span
+            .offset
+            .checked_add(span.frames)
+            .is_none_or(|end| end > self.q)
+        {
+            return Err(Error::InvalidFrame);
+        }
         let frames = match writer.kind {
-            Kind::Fixed => writer.media.frames,
-            Kind::Growing { maximum_frames } if next <= maximum_frames => next,
+            Kind::Fixed | Kind::Windowed if next <= writer.media.frames => writer.media.frames,
+            Kind::Fixed | Kind::Windowed => return Err(Error::InvalidFrame),
+            Kind::Growing { maximum_frames }
+                if span.position == writer.media.frames && next <= maximum_frames =>
+            {
+                next
+            }
             Kind::Growing { .. } => return Err(Error::Capacity),
         };
-        let revision = writer
+        let revision = writer.media.revision.checked_next()?;
+        if span.frames == 0 {
+            writer.media.revision = revision;
+            return Ok(());
+        }
+        let begin = writer
             .media
-            .revision
+            .origin
             .0
-            .checked_add(1)
-            .ok_or(Error::Exhausted)?;
-        let begin = writer.media.origin.0 + writer.position;
+            .checked_add(span.position)
+            .ok_or(Error::InvalidFrame)?;
         let end = begin
-            .checked_add(self.q as u64)
-            .ok_or(Error::InvalidEvent)?;
+            .checked_add(span.frames as u64)
+            .ok_or(Error::InvalidFrame)?;
         self.removals.clear();
         let mut after = Cut::frame(Frame(begin));
         while let Some(value) = self.indexes.first(
@@ -578,15 +629,13 @@ impl Core {
             Cut::frame(Frame(end)),
             &self.packets,
         )? {
-            if self.removals.len() == self.config.events_per_tick {
+            if self.removals.len() == self.removals.capacity() {
                 return Err(Error::Capacity);
             }
             self.removals.push(value);
             after = Cut::at(self.packets.point(value));
         }
-        if staged.count > self.packets.available_records() {
-            return Err(Error::Capacity);
-        }
+        let mut selected = 0;
         for i in 0..staged.count {
             self.packets
                 .value(staged.records[i].ok_or(Error::InvalidId)?)?;
@@ -594,42 +643,127 @@ impl Core {
             if point.frame.0 < staged.frame.0 || point.frame.0 - staged.frame.0 >= self.q as u64 {
                 return Err(Error::InvalidEvent);
             }
+            let offset = (point.frame.0 - staged.frame.0) as usize;
+            if offset >= span.offset && offset < span.offset + span.frames {
+                selected += 1;
+            }
         }
+        if selected > self.packets.available_records() {
+            return Err(Error::Capacity);
+        }
+        if writer.kind == Kind::Windowed {
+            self.check_window_density(writer, staged, span)?;
+        }
+        let mut inserted = 0;
         for i in 0..staged.count {
-            let offset = self.packets.point(staged.values[i]).frame.0 - staged.frame.0;
+            let offset = (self.packets.point(staged.values[i]).frame.0 - staged.frame.0) as usize;
+            if offset < span.offset || offset >= span.offset + span.frames {
+                continue;
+            }
             let record = self
                 .packets
                 .fork_record(
                     staged.values[i],
                     Point {
-                        frame: Frame(begin + offset),
+                        frame: Frame(begin + (offset - span.offset) as u64),
                         order: i as u64,
                     },
                 )
                 .expect("preflighted writer record");
-            self.insertions[i] = self.packets.value(record).unwrap();
-            self.records[i] = Some(record);
+            self.insertions[inserted] = self.packets.value(record).unwrap();
+            self.records[inserted] = Some(record);
+            inserted += 1;
         }
         let result = self.indexes.replace_records(
             writer.media.root,
             &self.removals,
-            &self.insertions[..staged.count],
+            &self.insertions[..inserted],
             &mut self.packets,
         );
-        for record in &mut self.records[..staged.count] {
+        for record in &mut self.records[..inserted] {
             self.packets.release_record(record.take().unwrap()).unwrap();
         }
         writer.media.root = result?;
-        if writer.position == 0 {
+        if span.position == 0 {
             writer.media.initial = *before_input;
+            for &value in &staged.values[..staged.count] {
+                let offset = self.packets.point(value).frame.0 - staged.frame.0;
+                if offset < span.offset as u64 {
+                    self.packets.apply(value, &mut writer.media.initial);
+                }
+            }
         }
         writer.media.frames = frames;
-        writer.media.revision = Revision(revision);
-        writer.position = if next == frames && matches!(writer.kind, Kind::Fixed) {
-            0
-        } else {
-            next
+        writer.media.revision = revision;
+        writer.position = match writer.kind {
+            Kind::Fixed => next % frames,
+            Kind::Windowed => 0,
+            Kind::Growing { .. } => next,
         };
+        Ok(())
+    }
+    fn check_window_density(
+        &self,
+        writer: &Writer,
+        staged: &Staging,
+        span: WriteSpan,
+    ) -> Result<(), Error> {
+        let first = span.position / self.q as u64;
+        let last = (span.position + span.frames as u64 - 1) / self.q as u64;
+        for bucket in first..=last {
+            let begin = writer.media.origin.0 + bucket * self.q as u64;
+            let end = writer.media.origin.0
+                + (bucket * self.q as u64)
+                    .checked_add(self.q as u64)
+                    .unwrap_or(writer.media.frames)
+                    .min(writer.media.frames);
+            let totals = self.indexes.totals(
+                writer.media.root,
+                Cut::frame(Frame(begin)),
+                Cut::frame(Frame(end)),
+                &self.packets,
+            )?;
+            let (mut events, mut bytes) = (totals.events, totals.bytes);
+            for &value in &self.removals {
+                if (begin..end).contains(&self.packets.point(value).frame.0) {
+                    events = events.checked_sub(1).ok_or(Error::InvalidState)?;
+                    bytes = bytes
+                        .checked_sub(12 + self.packets.packet_len(value))
+                        .ok_or(Error::InvalidState)?;
+                }
+            }
+            for &value in &staged.values[..staged.count] {
+                let offset = (self.packets.point(value).frame.0 - staged.frame.0) as usize;
+                if offset >= span.offset && offset < span.offset + span.frames {
+                    let at = writer.media.origin.0 + span.position + (offset - span.offset) as u64;
+                    if (begin..end).contains(&at) {
+                        events = events.checked_add(1).ok_or(Error::Capacity)?;
+                        bytes = bytes
+                            .checked_add(12 + self.packets.packet_len(value))
+                            .ok_or(Error::Capacity)?;
+                    }
+                }
+            }
+            let payload = bytes
+                .checked_sub(events.checked_mul(12).ok_or(Error::Capacity)?)
+                .ok_or(Error::InvalidState)?;
+            // An offset span can combine portions of two admitted source quanta.
+            if events
+                > self
+                    .config
+                    .events_per_tick
+                    .checked_mul(2)
+                    .ok_or(Error::Capacity)?
+                || payload
+                    > self
+                        .config
+                        .bytes_per_tick
+                        .checked_mul(2)
+                        .ok_or(Error::Capacity)?
+            {
+                return Err(Error::Capacity);
+            }
+        }
         Ok(())
     }
     pub fn totals(&mut self, io: &mut RenderIo<'_>, media: &Media) -> Result<Totals, Error> {

@@ -23,6 +23,15 @@ pub struct Config {
     pub pages: usize,
 }
 
+/// One channel's nonwrapping raw span within interleaved source samples.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ChannelWrite {
+    pub channel: usize,
+    pub position: u64,
+    pub offset: usize,
+    pub frames: usize,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Handle {
     scope: u32,
@@ -211,6 +220,24 @@ impl AudioStore {
         histories: usize,
     ) -> Result<Self, Error> {
         let layout = layout::Layout::new(store.config, config, histories)?;
+        Self::prepare_layout(store, config, origin, histories, layout)
+    }
+    pub fn prepare_histories_windowed(
+        store: &mut ResourceStore,
+        config: Config,
+        origin: Frame,
+        histories: usize,
+    ) -> Result<Self, Error> {
+        let layout = layout::Layout::new_windowed(store.config, config, histories)?;
+        Self::prepare_layout(store, config, origin, histories, layout)
+    }
+    fn prepare_layout(
+        store: &mut ResourceStore,
+        config: Config,
+        origin: Frame,
+        histories: usize,
+        layout: layout::Layout,
+    ) -> Result<Self, Error> {
         if config.pages > store.free_pages.len() - store.reserved_pages {
             return Err(Error::Capacity);
         }
@@ -849,23 +876,41 @@ impl AudioStore {
         wrapping: bool,
         base: Option<usize>,
     ) -> Result<Option<usize>, Error> {
-        let count = samples.len() / self.channels;
-        self.generation = self.generation.checked_add(1).ok_or(Error::Exhausted)?;
-        self.plans.clear();
-        for frame in 0..count {
+        self.stage_map(store, root, samples, base, |frame, _| {
             let local = if wrapping {
                 (position + frame) % frames
             } else {
                 position + frame
             };
-            let physical = mapping.physical(local);
-            let page = physical / self.page_frames;
-            if self.marks[page].0 != self.generation {
-                if self.plans.len() == self.capacity.transaction_pages {
-                    return Err(Error::Capacity);
+            Some(mapping.physical(local))
+        })
+    }
+    fn stage_map(
+        &mut self,
+        store: &mut ResourceStore,
+        root: Option<usize>,
+        samples: &[f32],
+        base: Option<usize>,
+        physical: impl Fn(usize, usize) -> Option<usize>,
+    ) -> Result<Option<usize>, Error> {
+        let count = samples.len() / self.channels;
+        self.generation = self.generation.checked_add(1).ok_or(Error::Exhausted)?;
+        self.plans.clear();
+        let mut writes = 0usize;
+        for frame in 0..count {
+            for channel in 0..self.channels {
+                let Some(physical) = physical(frame, channel) else {
+                    continue;
+                };
+                let page = physical / self.page_frames;
+                if self.marks[page].0 != self.generation {
+                    if self.plans.len() == self.capacity.transaction_pages {
+                        return Err(Error::Capacity);
+                    }
+                    self.marks[page] = (self.generation, self.plans.len());
+                    self.plans.push(Plan { page });
                 }
-                self.marks[page] = (self.generation, self.plans.len());
-                self.plans.push(Plan { page });
+                writes += 1;
             }
         }
         let required_nodes = self.plans.len() * (self.depth + 1);
@@ -901,24 +946,22 @@ impl AudioStore {
             }
         }
         for frame in 0..count {
-            let local = if wrapping {
-                (position + frame) % frames
-            } else {
-                position + frame
-            };
-            let physical = mapping.physical(local);
-            let plan = self.marks[physical / self.page_frames].1;
-            let destination =
-                plan * self.page_bytes + physical % self.page_frames * self.channels * 4;
             for channel in 0..self.channels {
-                self.scratch[destination + channel * 4..destination + channel * 4 + 4]
+                let Some(physical) = physical(frame, channel) else {
+                    continue;
+                };
+                let plan = self.marks[physical / self.page_frames].1;
+                let destination = plan * self.page_bytes
+                    + physical % self.page_frames * self.channels * 4
+                    + channel * 4;
+                self.scratch[destination..destination + 4]
                     .copy_from_slice(&samples[frame * self.channels + channel].to_le_bytes());
             }
         }
         store
             .charge_work(
                 WorkClass::Render,
-                self.plans.len() * self.page_bytes + samples.len() * 4,
+                self.plans.len() * self.page_bytes + writes * 4,
                 2 * required_nodes,
             )
             .expect("required staged work");
@@ -1042,6 +1085,60 @@ impl AudioStore {
             view.base,
         )?;
         view.frames = frames;
+        Ok(Write {
+            take,
+            expected,
+            view,
+        })
+    }
+    pub(in crate::resource) fn stage_window_write(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        take: TakeId,
+        samples: &[f32],
+        spans: &[ChannelWrite],
+    ) -> Result<Write, Error> {
+        self.check(io.store)?;
+        let mut view = self.view(take.0)?;
+        if !view.writable || view.growing.is_some() {
+            return Err(Error::Busy);
+        }
+        if samples.len() % self.channels != 0
+            || samples.len() / self.channels > self.max_frames
+            || spans.len() > self.channels
+        {
+            return Err(Error::InvalidShape);
+        }
+        for (index, span) in spans.iter().enumerate() {
+            if span.channel >= self.channels
+                || spans[..index].iter().any(|old| old.channel == span.channel)
+            {
+                return Err(Error::InvalidShape);
+            }
+            if span
+                .position
+                .checked_add(span.frames as u64)
+                .is_none_or(|end| end > view.frames as u64)
+                || span
+                    .offset
+                    .checked_add(span.frames)
+                    .is_none_or(|end| end > samples.len() / self.channels)
+            {
+                return Err(Error::InvalidFrame);
+            }
+        }
+        let expected = view.revision;
+        if spans.iter().any(|span| span.frames > 0) {
+            view.revision = view.revision.checked_next()?;
+        }
+        let mapping = view.mapping;
+        view.root = self.stage_map(io.store, view.root, samples, view.base, |frame, channel| {
+            let span = spans.iter().find(|span| span.channel == channel)?;
+            if frame < span.offset || frame >= span.offset + span.frames {
+                return None;
+            }
+            Some(mapping.physical(span.position as usize + frame - span.offset))
+        })?;
         Ok(Write {
             take,
             expected,
