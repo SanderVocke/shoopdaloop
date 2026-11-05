@@ -1363,7 +1363,7 @@ impl LoopPlanner {
                     topology: self.resolver.epoch(),
                 };
                 let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
-                let id = shared.begin_live(fence, source, take, kind, row.windows, frame, io)?;
+                let id = shared.begin_live(fence, source, take, kind, 1, row.windows, frame, io)?;
                 let job = shared.live_job(id)?;
                 Ok(Reply::Writer {
                     id,
@@ -1441,6 +1441,7 @@ impl LoopPlanner {
                         view.midi.map(|source| source.snapshot),
                     ],
                     indexed_midi::WriteKind::Fixed,
+                    1,
                     row.windows,
                     frame,
                     io,

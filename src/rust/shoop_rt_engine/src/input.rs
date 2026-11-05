@@ -246,7 +246,7 @@ impl ControlEndpoint {
                         mode,
                         maximum_frames,
                         ..
-                    } if (mode == LoopMode::Recording) != (maximum_frames > 0) => {
+                    } if mode != LoopMode::Recording && maximum_frames != 0 => {
                         return Err(Refusal::InvalidValue)
                     }
                     _ => {}

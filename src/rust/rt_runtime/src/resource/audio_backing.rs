@@ -252,6 +252,14 @@ impl ResourceStore {
         let take = self.with_audio(store, |_, audio| audio.empty_take())?;
         self.audio_resource(Take { store, take })
     }
+    pub fn audio_growth_limit(&self, resource: ResourceId, owners: usize) -> Result<u64, Error> {
+        let owner = self.check_writer(resource, None)?;
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let take = get(&self.versions, active.slot, active.generation)?
+            .audio
+            .ok_or(Error::InvalidShape)?;
+        self.audio(take.store)?.growth_limit(take.take, owners)
+    }
     pub fn prepare_audio_growth(
         &mut self,
         resource: ResourceId,
@@ -624,6 +632,9 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn audio_growth_limit(&self, resource: ResourceId, owners: usize) -> Result<u64, Error> {
+        self.store.audio_growth_limit(resource, owners)
+    }
     pub fn prepare_audio_growth(
         &mut self,
         resource: ResourceId,

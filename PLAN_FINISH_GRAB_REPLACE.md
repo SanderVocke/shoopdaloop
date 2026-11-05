@@ -755,6 +755,21 @@ checks. Application adapter, musical finish plans, global MIDI owner protection,
 production measurements and application acceptance remain open. No Phase A CI
 inspection or remote push was performed for this milestone.
 
+The RT application adapter now routes raw Grab and Replacing through that public
+transaction protocol. Internal preparation RPCs retain one application mutation
+sequence until the terminal result; later edits of those targets wait, while a
+later mode action cancels a pending delayed transaction. Normal preparation
+negotiates adapter Grab/Replacing capabilities; production service command
+refusals and gesture policy still need removal after their own implementation.
+Raw growing Grab can divide available audio credits across its batch and reserves
+both continuation and a complete final export before entry. An ordinary adapter
+scenario verifies one completion, pending identity, delayed cancellation, exact
+old/current audio, zero MIDI output overflow and two simultaneous growing targets.
+All sixteen adapter scenarios, two public engine input scenarios and eight audio
+resource scenarios pass locally, with affected warnings-denied builds, formatting,
+tracing and test-attribute checks. Musical gesture settlement and atomic finish
+plans remain open; P04/P05 remain OPEN. No Phase A CI inspection or push occurred.
+
 ### F0 — Establish the new delivery
 
 - [x] Refresh the merged foundation, target instructions and parent status; record

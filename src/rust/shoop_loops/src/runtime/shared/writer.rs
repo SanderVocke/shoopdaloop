@@ -64,6 +64,7 @@ impl Shared {
         source: HistoryId,
         take: SharedTake,
         kind: indexed_midi::WriteKind,
+        growth_owners: usize,
         windows: Windows,
         frame: Frame,
         io: &mut ResourceIo<'_>,
@@ -81,6 +82,7 @@ impl Shared {
                 take.frames,
                 snapshots,
                 kind,
+                growth_owners,
                 windows,
                 frame,
                 io,
@@ -98,6 +100,7 @@ impl Shared {
         frames: u64,
         snapshots: [Option<Snapshot>; 2],
         kind: indexed_midi::WriteKind,
+        growth_owners: usize,
         windows: Windows,
         frame: Frame,
         io: &mut ResourceIo<'_>,
@@ -159,9 +162,17 @@ impl Shared {
             following_recording: None,
             failure: None,
         };
-        let maximum = match kind {
+        let mut maximum = match kind {
             indexed_midi::WriteKind::Fixed => frames,
+            indexed_midi::WriteKind::Growing { maximum_frames: 0 } => u64::MAX,
             indexed_midi::WriteKind::Growing { maximum_frames } => maximum_frames,
+        };
+        job.kind = if matches!(kind, indexed_midi::WriteKind::Growing { .. }) {
+            indexed_midi::WriteKind::Growing {
+                maximum_frames: maximum,
+            }
+        } else {
+            kind
         };
         let result = (|| {
             if let Some(snapshot) = snapshots[0] {
@@ -176,6 +187,17 @@ impl Shared {
                 job.audio = Some(resource);
                 job.audio_revision = io.info(resource)?.revision;
                 if matches!(kind, indexed_midi::WriteKind::Growing { .. }) {
+                    if matches!(kind, indexed_midi::WriteKind::Growing { maximum_frames: 0 }) {
+                        let quantum = self.max_frames as u64;
+                        maximum =
+                            io.audio_growth_limit(resource, growth_owners)? / quantum * quantum;
+                        if maximum < frames.checked_add(quantum).ok_or(Error::Capacity)? {
+                            return Err(Error::Capacity);
+                        }
+                        job.kind = indexed_midi::WriteKind::Growing {
+                            maximum_frames: maximum,
+                        };
+                    }
                     io.prepare_audio_growth(resource, job.audio_revision, maximum)?;
                 }
                 let maximum = if kind == indexed_midi::WriteKind::Fixed {
@@ -635,6 +657,7 @@ impl Shared {
                 indexed_midi_store,
             },
             indexed_midi::WriteKind::Fixed,
+            1,
             job.windows,
             frame,
             io,

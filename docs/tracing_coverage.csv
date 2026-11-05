@@ -466,3 +466,4 @@ src/rust/shoop_loops/src/runtime/input_batch.rs,rt,instrumented_indirect,Planner
 src/rust/shoop_rt_protocol/src/input.rs,control,excluded,Plain bounded input transaction messages with no executable runtime work.
 src/rust/shoop_rt_engine/src/input.rs,control,instrumented_indirect,Endpoint delivery and polling scopes cover input transaction preparation and result ownership.
 src/rust/shoop_rt_engine/src/midi_layout.rs,realtime_engine,excluded,Allocation-free preparation arithmetic sizes bounded MIDI playback merge and host workspaces.
+src/rust/shoop_rt_backend/src/input.rs,control,instrumented_indirect,Backend pump delivery and request refusal scopes cover application input job ownership.

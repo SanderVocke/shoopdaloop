@@ -40,6 +40,7 @@ pub(crate) enum Purpose {
     Preview,
     Persistence,
     CancelReads,
+    Input,
 }
 
 #[derive(Clone, Debug)]
@@ -60,13 +61,25 @@ pub(crate) struct Requests {
 
 impl Requests {
     pub fn push(&mut self, request: Request, purpose: Purpose) -> u64 {
-        self.next_sequence += 1;
+        let sequence = self.reserve_sequence();
         self.outgoing.push_back(Pending {
-            sequence: self.next_sequence,
+            sequence,
             request,
             purpose,
         });
         self.next_sequence
+    }
+
+    pub fn reserve_sequence(&mut self) -> u64 {
+        self.next_sequence += 1;
+        self.next_sequence
+    }
+    pub fn input(&mut self, request: Request) {
+        self.outgoing.push_front(Pending {
+            sequence: 0,
+            request,
+            purpose: Purpose::Input,
+        });
     }
 
     pub fn timing_pending(&self) -> bool {
@@ -94,7 +107,10 @@ impl Requests {
         self.outgoing
             .iter()
             .chain(self.in_flight.values())
-            .all(|pending| pending.purpose == Purpose::Preview || pending.sequence > sequence)
+            .all(|pending| {
+                matches!(pending.purpose, Purpose::Preview | Purpose::Input)
+                    || pending.sequence > sequence
+            })
     }
 
     pub fn clear(&mut self) {

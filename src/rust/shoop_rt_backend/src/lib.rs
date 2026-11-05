@@ -38,6 +38,7 @@ mod clock;
 mod family;
 mod import;
 mod incoming;
+mod input;
 mod mirror;
 mod outgoing;
 mod persistence;
@@ -181,6 +182,7 @@ pub struct RtBackend<C, K> {
     failure_sequence: u64,
     /// Telemetry arrived after the latest outcome.
     telemetry_fresh: bool,
+    input: Option<input::Job>,
     replacement: Option<Replacement>,
     preview: Option<preview::Preview>,
     preview_playing: u64,
@@ -238,6 +240,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             mixer_failures: Vec::new(),
             failure_sequence: 0,
             telemetry_fresh: false,
+            input: None,
             replacement: None,
             preview: None,
             preview_playing: 0,
@@ -467,6 +470,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 );
                 self.read_cancel_needed = false;
             }
+            self.advance_input();
             self.advance_preview();
             self.advance_persistence();
             let sent = self.send();
@@ -495,7 +499,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn require_mutation_capacity(&self, count: usize) -> Result<()> {
-        let used = self.requests.outstanding() + self.mutation_completions.len();
+        let used = self.requests.outstanding()
+            + self.mutation_completions.len()
+            + usize::from(self.input.is_some());
         if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
             || self
                 .requests
@@ -516,6 +522,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         match self.link {
             Link::Ready => {
                 self.requests.is_empty()
+                    && self.input.is_none()
                     && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
@@ -550,7 +557,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return 0;
         }
         let mut sent = 0;
-        while let Some(pending) = self.requests.outgoing.front() {
+        let waiting = self.requests.outgoing.len();
+        for _ in 0..waiting {
+            let Some(pending) = self.requests.outgoing.front() else {
+                break;
+            };
+            if self.input.as_ref().is_some_and(|job| job.blocks(pending)) {
+                let pending = self.requests.outgoing.pop_front().expect("front exists");
+                self.requests.outgoing.push_back(pending);
+                continue;
+            }
             match self.client.request(pending.request) {
                 Ok(correlation) => {
                     let pending = self.requests.outgoing.pop_front().expect("front exists");
@@ -620,8 +636,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .iter()
             .chain(self.requests.in_flight.values())
         {
+            if pending.purpose == crate::requests::Purpose::Input {
+                continue;
+            }
             self.mutation_completions.push(BackendMutationCompletion {
                 sequence: pending.sequence,
+                result: Err(reason.clone()),
+            });
+        }
+        if let Some(job) = self.input.take() {
+            self.mutation_completions.push(BackendMutationCompletion {
+                sequence: job.sequence,
                 result: Err(reason.clone()),
             });
         }

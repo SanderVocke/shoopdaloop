@@ -34,12 +34,12 @@ use crate::{unavailable, EngineClock, Link, RtBackend};
 /// Most events in one MIDI input injection, as in the legacy backends.
 const MAX_INJECTED_EVENTS: usize = 128;
 
-fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
+pub(crate) fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
     match mode {
         BackendLoopMode::Stopped => Ok(LoopMode::Stopped),
         BackendLoopMode::Playing => Ok(LoopMode::Playing),
         BackendLoopMode::Recording => Ok(LoopMode::Recording),
-        BackendLoopMode::Replacing => Err(unavailable(BackendCapability::ReplacingMode)),
+        BackendLoopMode::Replacing => Ok(LoopMode::Replacing),
         BackendLoopMode::PlayingDryThroughWet | BackendLoopMode::RecordingDryIntoWet => {
             Err(unavailable(BackendCapability::DryWetModes))
         }
@@ -172,7 +172,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
-    fn live_loop_slot(&self, loop_id: BackendLoopId) -> Result<shoop_rt_protocol::LoopSlotId> {
+    pub(crate) fn live_loop_slot(
+        &self,
+        loop_id: BackendLoopId,
+    ) -> Result<shoop_rt_protocol::LoopSlotId> {
         self.mirror
             .live_loop(loop_id)
             .map(|entry| entry.slot)
@@ -264,11 +267,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.requests.last_sequence()
     }
     fn mutations_pending_through(&self, sequence: u64) -> bool {
-        !self.requests.answered_through(sequence)
+        self.input
+            .as_ref()
+            .is_some_and(|job| job.sequence <= sequence)
+            || !self.requests.answered_through(sequence)
     }
     fn mutation_capacity(&self) -> usize {
-        crate::MAX_TRACKED_MUTATIONS
-            .saturating_sub(self.requests.outstanding() + self.mutation_completions.len())
+        crate::MAX_TRACKED_MUTATIONS.saturating_sub(
+            self.requests.outstanding()
+                + self.mutation_completions.len()
+                + usize::from(self.input.is_some()),
+        )
     }
 
     fn close_connection(&mut self) {
@@ -323,6 +332,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::Grab,
+                self.capabilities.contains(Capabilities::INPUT_BATCH),
+            )
+            .with(
+                BackendCapability::ReplacingMode,
+                self.capabilities.contains(Capabilities::REPLACING),
+            )
             .with(
                 BackendCapability::LoopTimingEdits,
                 self.capabilities.contains(Capabilities::LOOP_TIMING),
@@ -578,8 +595,11 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
 
-    fn grab_loops(&mut self, _requests: &[BackendGrabRequest]) -> Result<()> {
-        Err(unavailable(BackendCapability::Grab))
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        if !self.capabilities.contains(Capabilities::INPUT_BATCH) {
+            return Err(unavailable(BackendCapability::Grab));
+        }
+        self.grab_input(requests)
     }
 
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
@@ -738,6 +758,25 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let mode = protocol_mode(mode)?;
         self.ready()?;
         let slot = self.live_loop_slot(loop_id)?;
+        if mode == LoopMode::Replacing {
+            if !self.capabilities.contains(Capabilities::REPLACING) {
+                return Err(unavailable(BackendCapability::ReplacingMode));
+            }
+            return self.begin_input(
+                alloc::vec![(
+                    loop_id,
+                    shoop_rt_protocol::InputEdit {
+                        loop_id: slot,
+                        intent: shoop_rt_protocol::InputIntent::Mode {
+                            mode,
+                            position: None
+                        },
+                    }
+                )],
+                cycles_delay,
+            );
+        }
+        self.cancel_input_for(loop_id);
         self.requests.push(
             Request::LoopTransition {
                 loop_id: slot,

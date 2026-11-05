@@ -21,7 +21,7 @@ use crate::mirror::{amplitude_db, LoopView};
 use crate::requests::{Pending, Purpose};
 use crate::{EngineClock, Link, RtBackend};
 
-fn refusal_text(refusal: Refusal) -> &'static str {
+pub(crate) fn refusal_text(refusal: Refusal) -> &'static str {
     match refusal {
         Refusal::Unsupported => "the engine does not support it",
         Refusal::Capacity => "the engine's prepared capacity is exhausted",
@@ -427,7 +427,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.mixer_revision += 1;
     }
 
-    fn failure(
+    pub(crate) fn failure(
         &mut self,
         kind: BackendMutationKind,
         entity: Option<u64>,
@@ -448,6 +448,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::Input {
+            self.input_answered(pending.request, outcome);
+            return;
+        }
         if pending.purpose == Purpose::CancelReads {
             return;
         }
@@ -797,7 +801,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | Purpose::Smoothing(_)
                 | Purpose::Preview
                 | Purpose::Persistence
-                | Purpose::CancelReads,
+                | Purpose::CancelReads
+                | Purpose::Input,
                 _,
             ) => {}
         }

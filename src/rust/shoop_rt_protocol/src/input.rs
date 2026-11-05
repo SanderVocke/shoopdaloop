@@ -14,7 +14,8 @@ pub enum InputIntent {
         cycles_length: Option<u32>,
         go_to_cycle: Option<u32>,
         mode: LoopMode,
-        /// Complete prefix plus live continuation capacity; zero outside Recording.
+        /// Complete prefix plus continuation capacity; zero selects available reserved
+        /// capacity for Recording and is required for other modes.
         maximum_frames: u64,
     },
 }

@@ -1240,6 +1240,43 @@ impl AudioStore {
         .map(TakeId)
     }
 
+    /// Largest growth that also reserves a complete final export. Owners share
+    /// the remaining page credits; this query does not acquire any of them.
+    pub fn growth_limit(&self, take: TakeId, owners: usize) -> Result<u64, Error> {
+        let view = self.view(take.0)?;
+        if owners == 0 || !view.writable || view.growing.is_some() {
+            return Err(Error::InvalidState);
+        }
+        let limit = self.marks.len() * self.page_frames;
+        let available = self.debt_limit - self.debt;
+        let prefix = view.mapping.credits(view.frames, self.page_frames);
+        let credits = available.saturating_sub(prefix.checked_mul(2).ok_or(Error::Capacity)?)
+            / owners.checked_mul(2).ok_or(Error::Capacity)?;
+        let mut low = 0;
+        let mut high = match view.mapping.prefix {
+            Some(prefix) => prefix
+                .frames
+                .checked_add(limit.checked_sub(prefix.tail).ok_or(Error::Capacity)?)
+                .ok_or(Error::Capacity)?
+                .min(limit),
+            None => limit
+                .checked_sub(view.mapping.first)
+                .ok_or(Error::Capacity)?,
+        };
+        while low < high {
+            let middle = low + (high - low).div_ceil(2);
+            if view.mapping.credits(middle, self.page_frames) <= credits {
+                low = middle
+            } else {
+                high = middle - 1
+            }
+        }
+        if low < view.frames {
+            return Err(Error::Capacity);
+        }
+        Ok(low as u64)
+    }
+
     /// Reserve the full growing take before consuming live input. The retained
     /// prefix keeps its physical pages; the tail uses a disjoint linear range.
     pub fn reserve_growth(&mut self, take: TakeId, maximum_frames: u64) -> Result<(), Error> {

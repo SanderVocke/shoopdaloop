@@ -293,6 +293,7 @@ impl LoopPlanner {
         if matches!(mode, Mode::Playing | Mode::Replacing)
             && (window.frames == 0 || window.go_to_frame >= window.frames)
             || mode == Mode::Recording
+                && maximum_frames != 0
                 && window
                     .frames
                     .checked_add(self.resolver.quantum().frames() as u64)
@@ -336,11 +337,34 @@ impl LoopPlanner {
                 } else {
                     indexed_midi::WriteKind::Fixed
                 };
+                let growth_owners = self.input_batch.entries[index..]
+                    .iter()
+                    .filter(|entry| {
+                        matches!(
+                            entry.edit.action,
+                            InputAction::Grab {
+                                mode: Mode::Recording,
+                                maximum_frames: 0,
+                                ..
+                            }
+                        )
+                    })
+                    .count()
+                    .max(1);
                 let id = self
                     .shared
                     .as_mut()
                     .ok_or(Error::InvalidState)?
-                    .begin_live(fence, status.id, take, kind, windows, frame, io)?;
+                    .begin_live(
+                        fence,
+                        status.id,
+                        take,
+                        kind,
+                        growth_owners,
+                        windows,
+                        frame,
+                        io,
+                    )?;
                 self.input_batch.entries[index].writer = Some(id);
                 if !self.shared.as_ref().unwrap().live_job(id)?.ready {
                     return Err(Error::Busy.into());
