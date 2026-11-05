@@ -470,7 +470,7 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
     ) -> Result<Root, Error> {
         let link = self.check(root)?;
         if self
-            .last(root, Cut::at(point))?
+            .last(root, Cut::at(point), values)?
             .is_none_or(|value| values.point(value) != point)
         {
             return Ok(root);
