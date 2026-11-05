@@ -182,7 +182,7 @@ function profilingRequest(enabled, correlation) {
   view.setUint16(0, bytes.length, true);
   bytes[2] = 1;
   view.setBigUint64(3, BigInt(correlation), true);
-  bytes[11] = 40;
+  bytes[11] = 35;
   bytes[12] = enabled ? 1 : 0;
   node.port.deliver({ kind: 'records', bytes });
 }

@@ -914,3 +914,12 @@ Both packaged native socket probes pass their actual Lua/editor/media/archive an
 recovery flows. Rebuilt Chromium acceptance with `COMPOSITES=1` passes both Direct
 composites and FX/synth/External dry/wet workflows with zero reported xruns. Final
 cross-platform CI and automated review must validate the integrated revision.
+
+The four independent DSP feature/startup jobs, both-DSP Node tests, optional asset
+and import checks, and Miri pass at `0f395569` in
+[run 42032960877](https://github.com/SanderVocke/shoopdaloop/actions/runs/42032960877).
+JACK, bare-metal, shared-media and all platform process-inspection jobs pass too.
+Debug web CI finds the fixture's inherited profiling tag 40; the combined wire uses
+35. Correcting that tag passes the actual artifact's profiling clocks, timestamps,
+xrun capture, toggle and memory checks locally. The production codec is unchanged;
+the final matrix must validate the fixture correction.

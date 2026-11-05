@@ -356,7 +356,7 @@ Each stage includes its own verification and a commit before moving on.
   limits and useful unavailable reasons through engine/backend/service snapshots.
   Keep the bus processor catalog empty and BusFx disabled. Clients never infer host
   support from their own Cargo features. Validate requests on the authoritative side.
-- [ ] Verify every build combination and all four startup combinations, explicit
+- [x] Verify every build combination and all four startup combinations, explicit
   missing-feature requests, real sample-rate resolution, at-limit and one-over-limit
   admission, disabled startup with zero DSP preparation, client/host build mismatch,
   config/launch round trips, no DSP-related Wasm imports and no callback heap activity.
@@ -817,6 +817,16 @@ Its broad CI found one remaining three-poll latency regression: validation now
 shares the final append's callback, and all three latency assertions pass unchanged.
 Final platform CI must run again after the P03 reconciliation; no old run is a
 substitute for that integration evidence.
+
+At integrated revision `0f395569`, all four isolated DSP feature/startup jobs,
+Node real-DSP tests and Miri pass in
+[run 42032960877](https://github.com/SanderVocke/shoopdaloop/actions/runs/42032960877).
+JACK, shared-media, bare-metal and all three platform process-inspection jobs also
+pass. Debug web CI detects a stale profiling request tag in the JavaScript artifact
+fixture inherited during reconciliation. Matching the combined protocol's tag 35
+restores the actual worklet contract locally, including clocks, node timestamps,
+xrun capture, runtime toggle and unchanged memory assertions. Final CI is rerun
+after that fixture correction.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 
