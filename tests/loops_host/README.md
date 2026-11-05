@@ -775,3 +775,9 @@ native, bindings and actual hosts; they do not add a production fault-injection 
 This fixture is not a benchmark (the loop library has a separate
 [native benchmark](../../src/rust/shoop_loops/docs/performance.md)), a production
 adapter or a hard-deadline guarantee.
+
+The primitive fixture sets `dry_wet=false` and zero auxiliary channels. Its
+observation encoders also recognize the library's dry playback/rerecord modes:
+journal/export mode values 3/4, transition event codes 15/16, and bit 4 in the
+compact staging state word (the primitive play/record bits and flags keep their
+existing values). Existing Direct replay records remain byte-identical.

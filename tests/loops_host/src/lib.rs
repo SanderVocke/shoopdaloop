@@ -2,6 +2,7 @@
 //!
 //! Native scenario and bounded command bridge; AudioWorklet integration is separate.
 #[path = "../../../src/rust/shoop_wasm_test_support/src/heap.rs"]
+#[allow(dead_code)]
 mod allocation_guard;
 #[path = "../../../src/rust/shoop_loops_test_support/src/lib.rs"]
 #[allow(dead_code)]

@@ -1149,6 +1149,7 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
     ))
     .unwrap();
     let mut baseline = [0; 11];
+    let mut final_stats = [0; 11];
     let cycles = std::env::var("SHOOP_ZYNQ_SOAK_CYCLES")
         .map(|s| s.parse::<u64>().unwrap())
         .unwrap_or(100);
@@ -1185,15 +1186,16 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
             advance();
             std::thread::sleep(Duration::from_millis(2));
         }
+        if cycle == 9 {
+            baseline = retained_stats();
+        } else if cycle == cycles + 9 {
+            final_stats = retained_stats();
+        }
         (*client, *connection) = super::attach(&profile);
         for _ in 0..10 {
             pump(client, connection);
         }
-        if cycle == 9 {
-            baseline = retained_stats(client, connection);
-        }
     }
-    let final_stats = retained_stats(client, connection);
     assert!(
         final_stats[3] == baseline[3],
         "retained Rust heap growth: {baseline:?} -> {final_stats:?}"
@@ -1212,17 +1214,16 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
     );
 }
 
-fn retained_stats(client: &mut Client, connection: &mut Connection) -> [u32; 11] {
-    // The fixture task can preempt temporary snapshot serialization. Compare
-    // bounded lower watermarks after pumping, keeping exact retained equality.
+fn retained_stats() -> [u32; 11] {
     for _ in 0..20 {
-        pump(client, connection);
+        advance();
+        std::thread::sleep(Duration::from_millis(2));
     }
     let mut minimum = drive("Q");
     let mut maximum = minimum[3];
     let mut peak = minimum[4];
     for sample in 0..64 {
-        pump(client, connection);
+        advance();
         std::thread::sleep(Duration::from_millis(1 + sample % 7));
         let stats = drive("Q");
         maximum = maximum.max(stats[3]);
@@ -1232,6 +1233,10 @@ fn retained_stats(client: &mut Client, connection: &mut Connection) -> [u32; 11]
         }
     }
     minimum[4] = peak;
+    assert_eq!(
+        minimum[6], 0,
+        "data peer remained attached during retained-heap measurement"
+    );
     println!(
         "Retained Rust heap window: minimum={} maximum={maximum}",
         minimum[3]

@@ -1569,7 +1569,7 @@ mod tests {
                     *sample = (index as f32 + channel as f32) / frames as f32;
                 }
             }
-            processor.process(frames);
+            processor.process_block(frames);
             for channel in 0..channels {
                 assert_eq!(
                     processor.output(channel, frames).unwrap(),
@@ -1600,7 +1600,7 @@ mod tests {
         let mut stereo = BuiltInFxProcessor::new_with_channels(48_000.0, frames, 2, state).unwrap();
         stereo.input_mut(0, frames).unwrap().fill(1.0);
         stereo.input_mut(1, frames).unwrap().fill(0.25);
-        stereo.process(frames);
+        stereo.process_block(frames);
         let left = stereo.output(0, frames).unwrap()[frames - 1];
         let right = stereo.output(1, frames).unwrap()[frames - 1];
         assert!(left < 0.15, "compressed left {left}");
@@ -1613,7 +1613,7 @@ mod tests {
         multichannel.input_mut(0, frames).unwrap().fill(1.0);
         multichannel.input_mut(1, frames).unwrap().fill(0.01);
         multichannel.input_mut(2, frames).unwrap().fill(0.0);
-        multichannel.process(frames);
+        multichannel.process_block(frames);
         assert!(multichannel.output(0, frames).unwrap()[frames - 1] < 0.15);
         assert!((multichannel.output(1, frames).unwrap()[frames - 1] - 0.01).abs() < 1.0e-4);
         assert!(multichannel
@@ -1640,7 +1640,7 @@ mod tests {
         let input = processor.input_mut(0, frames).unwrap();
         input[..2_048].fill(1.0);
         input[2_048..].fill(0.01);
-        processor.process(frames);
+        processor.process_block(frames);
         let output = processor.output(0, frames).unwrap();
         assert!(output[0] > output[1_500] * 2.0);
         assert!(output[4_000] > output[2_048] * 2.0);
@@ -1676,7 +1676,7 @@ mod tests {
             {
                 *sample = (std::f32::consts::TAU * 440.0 * index as f32 / 48_000.0).sin() * 0.4;
             }
-            processor.process(frames);
+            processor.process_block(frames);
             let output = processor.output(0, frames).unwrap();
             assert!(output.iter().all(|sample| sample.is_finite()));
             assert!(output.iter().all(|sample| sample.abs() <= 8.1));
@@ -1726,7 +1726,7 @@ mod tests {
             {
                 *sample = (std::f32::consts::TAU * frequency * index as f32 / 48_000.0).sin() * 0.1;
             }
-            processor.process(frames);
+            processor.process_block(frames);
             let output = &processor.output(0, frames).unwrap()[frames / 2..];
             assert_eq!(processor.stage_process_calls(BuiltInFxStage::Eq), 1);
             (output.iter().map(|sample| sample * sample).sum::<f32>() / output.len() as f32).sqrt()
@@ -1761,7 +1761,7 @@ mod tests {
             processor.input_mut(channel, frames).unwrap().fill(0.0);
         }
         processor.input_mut(4, frames).unwrap()[0] = 0.5;
-        processor.process(frames);
+        processor.process_block(frames);
         for channel in [0, 1, 2, 3, 5] {
             assert!(processor
                 .output(channel, frames)
@@ -1783,7 +1783,7 @@ mod tests {
                 *sample = channel as f32 + index as f32 / frames as f32;
             }
         }
-        processor.process(frames);
+        processor.process_block(frames);
         for channel in 0..6 {
             assert_eq!(
                 processor.output(channel, frames).unwrap(),
@@ -1826,7 +1826,7 @@ mod tests {
                     *sample = ((index + channel) as f32 * 0.01).sin() * 0.25;
                 }
             }
-            processor.process(frames);
+            processor.process_block(frames);
             for channel in 0..3 {
                 assert!(processor
                     .output(channel, frames)
@@ -1864,7 +1864,7 @@ mod tests {
                     *sample = (std::f32::consts::TAU * 220.0 * index as f32 / 48_000.0).sin();
                 }
             }
-            processor.process(frames);
+            processor.process_block(frames);
             assert_eq!(processor.stage_process_calls(BuiltInFxStage::Chorus), 1);
         }
         assert_eq!(
@@ -1886,7 +1886,7 @@ mod tests {
             multichannel.input_mut(channel, frames).unwrap().fill(0.0);
         }
         multichannel.input_mut(1, frames).unwrap()[0] = 1.0;
-        multichannel.process(frames);
+        multichannel.process_block(frames);
         assert!(multichannel
             .output(0, frames)
             .unwrap()
@@ -1900,9 +1900,9 @@ mod tests {
 
         multichannel.set_stage_enabled(BuiltInFxStage::Chorus, false);
         set_silence(&mut multichannel, frames);
-        multichannel.process(frames);
+        multichannel.process_block(frames);
         multichannel.set_stage_enabled(BuiltInFxStage::Chorus, true);
-        multichannel.process(frames);
+        multichannel.process_block(frames);
         for channel in 0..3 {
             assert!(multichannel
                 .output(channel, frames)
@@ -1941,7 +1941,7 @@ mod tests {
             {
                 *sample = (std::f32::consts::TAU * 440.0 * index as f32 / 48_000.0).sin() * 0.5;
             }
-            processor.process(frames);
+            processor.process_block(frames);
             assert!(processor
                 .output(0, frames)
                 .unwrap()
@@ -1992,7 +1992,7 @@ mod tests {
             for channel in 0..2 {
                 processor.input_mut(channel, frames).unwrap().fill(0.5);
             }
-            processor.process(frames);
+            processor.process_block(frames);
             [
                 processor.output(0, frames).unwrap().to_vec(),
                 processor.output(1, frames).unwrap().to_vec(),
@@ -2027,7 +2027,7 @@ mod tests {
                 .input_mut(0, frames)
                 .unwrap()
                 .copy_from_slice(&input);
-            processor.process(frames);
+            processor.process_block(frames);
             processor.output(0, frames).unwrap().to_vec()
         };
         assert_eq!(render_chorus(0.3, 1.0, 0.0), input);
@@ -2054,7 +2054,7 @@ mod tests {
                 .input_mut(0, frames)
                 .unwrap()
                 .copy_from_slice(&input);
-            processor.process(frames);
+            processor.process_block(frames);
             processor.output(0, frames).unwrap().to_vec()
         };
         assert_eq!(
@@ -2094,7 +2094,7 @@ mod tests {
                 if block > 0 {
                     set_silence(&mut processor, frames);
                 }
-                processor.process(frames);
+                processor.process_block(frames);
                 response.extend_from_slice(processor.output(0, frames).unwrap());
             }
             for candidate in [ReverbType::Room, ReverbType::Hall, ReverbType::Plate] {
@@ -2123,7 +2123,7 @@ mod tests {
         for (index, sample) in dry.input_mut(0, frames).unwrap().iter_mut().enumerate() {
             *sample = index as f32 / frames as f32;
         }
-        dry.process(frames);
+        dry.process_block(frames);
         assert_eq!(dry.output(0, frames).unwrap(), dry.inputs[0]);
 
         let render_tone = |tone| {
@@ -2136,10 +2136,10 @@ mod tests {
                 BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
             set_impulse(&mut processor, frames);
             for _ in 0..40 {
-                processor.process(frames);
+                processor.process_block(frames);
                 set_silence(&mut processor, frames);
             }
-            processor.process(frames);
+            processor.process_block(frames);
             processor.output(0, frames).unwrap().to_vec()
         };
         let dark = render_tone(0.0);
@@ -2165,11 +2165,11 @@ mod tests {
         let mut modulation =
             BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, state).unwrap();
         set_impulse(&mut modulation, frames);
-        modulation.process(frames);
+        modulation.process_block(frames);
         modulation.set_modulation_type(ModulationType::Phaser);
         modulation.set_modulation_type(ModulationType::Flanger);
         set_silence(&mut modulation, frames);
-        modulation.process(frames);
+        modulation.process_block(frames);
         assert!(modulation
             .output(0, frames)
             .unwrap()
@@ -2180,11 +2180,11 @@ mod tests {
             BuiltInFxProcessor::new_with_channels(48_000.0, frames, 1, BuiltInFxState::default())
                 .unwrap();
         set_impulse(&mut reverb, frames);
-        reverb.process(frames);
+        reverb.process_block(frames);
         reverb.set_reverb_type(ReverbType::Hall);
         reverb.set_reverb_type(ReverbType::Room);
         set_silence(&mut reverb, frames);
-        reverb.process(frames);
+        reverb.process_block(frames);
         assert!(reverb
             .output(0, frames)
             .unwrap()
@@ -2213,7 +2213,7 @@ mod tests {
                 processor.input_mut(channel, frames).unwrap().fill(0.0);
             }
             processor.input_mut(1, frames).unwrap()[0] = 0.5;
-            processor.process(frames);
+            processor.process_block(frames);
             for channel in 0..3 {
                 assert!(processor
                     .output(channel, frames)
@@ -2243,13 +2243,13 @@ mod tests {
             )
             .unwrap();
             set_impulse(&mut processor, frames);
-            processor.process(frames);
+            processor.process_block(frames);
             assert!(processor.output(0, frames).unwrap()[0] > 0.9);
 
             let mut heard_tail = false;
             for _ in 0..400 {
                 set_silence(&mut processor, frames);
-                processor.process(frames);
+                processor.process_block(frames);
                 heard_tail |= processor
                     .output(0, frames)
                     .unwrap()
@@ -2265,14 +2265,14 @@ mod tests {
         let frames = 128;
         let mut processor = processor(true, frames);
         set_impulse(&mut processor, frames);
-        processor.process(frames);
+        processor.process_block(frames);
         processor.set_reverb_enabled(false);
         set_silence(&mut processor, frames);
-        processor.process(frames);
+        processor.process_block(frames);
         processor.set_reverb_enabled(true);
         for _ in 0..400 {
             set_silence(&mut processor, frames);
-            processor.process(frames);
+            processor.process_block(frames);
             assert!(processor
                 .output(0, frames)
                 .unwrap()
@@ -2288,7 +2288,7 @@ mod tests {
                 BuiltInFxProcessor::new(sample_rate, frames, BuiltInFxState::default());
             assert_eq!(processor.max_frames(), frames);
             set_impulse(&mut processor, frames);
-            processor.process(frames);
+            processor.process_block(frames);
             assert!(processor.output(0, frames).unwrap()[0] > 0.9);
         }
     }
@@ -2306,9 +2306,9 @@ mod tests {
         let mut processor = control.prepare_processor(48_000.0, frames);
         set_impulse(&mut processor, frames);
         let event = MidiStorageElem::new(0, &[0xb0, 1, 64]).unwrap();
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(frames));
+        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(frames));
         shoop_wasm_test_support::heap::assert_no_heap(|| processor.set_reverb_enabled(false));
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(frames));
+        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(frames));
         shoop_wasm_test_support::heap::assert_no_heap(|| {
             processor.process_midi_controls_only(&[event])
         });
@@ -2326,7 +2326,7 @@ mod tests {
         };
         let mut rack = BuiltInFxProcessor::new_with_channels(48_000.0, frames, 6, state).unwrap();
         set_impulse(&mut rack, frames);
-        shoop_wasm_test_support::heap::assert_no_heap(|| rack.process(frames));
+        shoop_wasm_test_support::heap::assert_no_heap(|| rack.process_block(frames));
         for stage in [
             BuiltInFxStage::Compressor,
             BuiltInFxStage::Drive,
@@ -2337,7 +2337,7 @@ mod tests {
         ] {
             shoop_wasm_test_support::heap::assert_no_heap(|| rack.set_stage_enabled(stage, false));
         }
-        shoop_wasm_test_support::heap::assert_no_heap(|| rack.process(frames));
+        shoop_wasm_test_support::heap::assert_no_heap(|| rack.process_block(frames));
         shoop_wasm_test_support::heap::assert_no_heap(|| rack.reset());
     }
 }

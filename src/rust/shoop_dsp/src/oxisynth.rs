@@ -988,21 +988,23 @@ mod tests {
         control
             .set_send(OxiSynthParameter::ChorusSend, 0.5)
             .unwrap();
-        processor.process(128, &[]);
+        processor.process_block(128, &[]);
         assert_eq!(
             processor.synth.gen(0, GeneratorType::ChorusSend).unwrap(),
             100.0
         );
 
         let learned = MidiStorageElem::new(0, &[0xbf, 91, 127]).unwrap();
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(128, &[learned]));
+        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(128, &[learned]));
         assert_eq!(
             processor.synth.gen(0, GeneratorType::ReverbSend).unwrap(),
             200.0
         );
         assert_eq!(processor.synth.cc(0, 91).unwrap(), 0);
         let learned_chorus = MidiStorageElem::new(0, &[0xb2, 93, 64]).unwrap();
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(128, &[learned_chorus]));
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            processor.process_block(128, &[learned_chorus])
+        });
         assert_eq!(processor.synth.cc(0, 93).unwrap(), 0);
         let editor = control.editor_state();
         assert_eq!(editor.reverb_send, 1.0);
@@ -1051,7 +1053,7 @@ mod tests {
             MidiStorageElem::new(0, &[0xb7, 91, 3]).unwrap(),
             MidiStorageElem::new(0, &[0xb7, 93, 4]).unwrap(),
         ];
-        processor.process(128, &events);
+        processor.process_block(128, &events);
         assert_eq!(processor.synth.cc(0, 1).unwrap(), 12);
         assert_eq!(processor.synth.cc(0, 11).unwrap(), 34);
         assert_eq!(processor.synth.cc(0, 64).unwrap(), 127);
@@ -1066,7 +1068,7 @@ mod tests {
         let mut processor =
             OxiSynthProcessor::new(48_000.0, 256, OxiSynthState::default()).unwrap();
         let note = MidiStorageElem::new(128, &[0x9f, 60, 100]).unwrap();
-        processor.process(256, &[note]);
+        processor.process_block(256, &[note]);
         let pre_event_peak = processor
             .output(0, 128)
             .unwrap()
@@ -1080,13 +1082,15 @@ mod tests {
             .iter()
             .any(|sample| sample.abs() > f32::EPSILON));
         let note_off = MidiStorageElem::new(0, &[0x8f, 60, 0]).unwrap();
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(256, &[note_off, note]));
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            processor.process_block(256, &[note_off, note])
+        });
         let filtered = [
             MidiStorageElem::new(0, &[0xbf, 0, 1]).unwrap(),
             MidiStorageElem::new(0, &[0xbf, 32, 2]).unwrap(),
             MidiStorageElem::new(0, &[0xcf, 3]).unwrap(),
         ];
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(256, &filtered));
+        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(256, &filtered));
         let selected = processor.selected_preset();
         shoop_wasm_test_support::heap::assert_no_heap(|| processor.reset());
         shoop_wasm_test_support::heap::assert_no_heap(|| processor.panic());
@@ -1098,9 +1102,9 @@ mod tests {
         let mut processor =
             OxiSynthProcessor::new(48_000.0, 2048, OxiSynthState::default()).unwrap();
         let note = MidiStorageElem::new(0, &[0x90, 60, 100]).unwrap();
-        processor.process(2048, &[note]);
+        processor.process_block(2048, &[note]);
         for _ in 0..8 {
-            processor.process(2048, &[]);
+            processor.process_block(2048, &[]);
         }
         let piano = processor.output(0, 2048).unwrap().to_vec();
 
@@ -1110,7 +1114,7 @@ mod tests {
         };
         processor.select_preset(violin).unwrap();
         for _ in 0..128 {
-            shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(2048, &[]));
+            shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(2048, &[]));
         }
         let tail_peak = processor
             .output(0, 2048)
@@ -1122,9 +1126,9 @@ mod tests {
             "preset-switch tail peak was {tail_peak}"
         );
 
-        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(2048, &[note]));
+        shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(2048, &[note]));
         for _ in 0..8 {
-            shoop_wasm_test_support::heap::assert_no_heap(|| processor.process(2048, &[]));
+            shoop_wasm_test_support::heap::assert_no_heap(|| processor.process_block(2048, &[]));
         }
         let violin = processor.output(0, 2048).unwrap();
         let difference = piano
@@ -1169,7 +1173,7 @@ mod tests {
         );
 
         let system_reset = MidiStorageElem::new(0, &[0xff]).unwrap();
-        processor.process(128, &[system_reset]);
+        processor.process_block(128, &[system_reset]);
         assert_eq!(
             processor
                 .synth
@@ -1187,8 +1191,8 @@ mod tests {
         wet.set_send(OxiSynthParameter::ReverbSend, 1.0).unwrap();
         wet.set_send(OxiSynthParameter::ChorusSend, 1.0).unwrap();
         let note = MidiStorageElem::new(0, &[0x90, 60, 127]).unwrap();
-        dry.process(4096, &[note]);
-        wet.process(4096, &[note]);
+        dry.process_block(4096, &[note]);
+        wet.process_block(4096, &[note]);
         let difference = dry
             .output(0, 4096)
             .unwrap()
@@ -1213,13 +1217,13 @@ mod tests {
         ] {
             let mut processor =
                 OxiSynthProcessor::new(48_000.0, 4096, OxiSynthState::default()).unwrap();
-            processor.process(4096, &[note]);
+            processor.process_block(4096, &[note]);
             if let Some(preset) = change {
                 processor.select_preset(preset).unwrap();
             } else {
                 processor.panic();
             }
-            processor.process(4096, &[]);
+            processor.process_block(4096, &[]);
             let peak = processor
                 .output(0, 4096)
                 .unwrap()
@@ -1236,15 +1240,15 @@ mod tests {
         let mut released =
             OxiSynthProcessor::new(48_000.0, 2048, OxiSynthState::default()).unwrap();
         let note_on = MidiStorageElem::new(0, &[0x90, 60, 127]).unwrap();
-        sustained.process(2048, &[note_on]);
-        released.process(2048, &[note_on]);
+        sustained.process_block(2048, &[note_on]);
+        released.process_block(2048, &[note_on]);
         let sustain_on = MidiStorageElem::new(0, &[0xb0, 64, 127]).unwrap();
         let note_off = MidiStorageElem::new(0, &[0x80, 60, 0]).unwrap();
-        sustained.process(2048, &[sustain_on, note_off]);
-        released.process(2048, &[note_off]);
+        sustained.process_block(2048, &[sustain_on, note_off]);
+        released.process_block(2048, &[note_off]);
         for _ in 0..8 {
-            sustained.process(2048, &[]);
-            released.process(2048, &[]);
+            sustained.process_block(2048, &[]);
+            released.process_block(2048, &[]);
         }
         let sustained_peak = sustained
             .output(0, 2048)
@@ -1261,9 +1265,9 @@ mod tests {
             "sustain did not retain the note: {sustained_peak} vs {released_peak}"
         );
         let sustain_off = MidiStorageElem::new(0, &[0xb0, 64, 0]).unwrap();
-        sustained.process(2048, &[sustain_off]);
+        sustained.process_block(2048, &[sustain_off]);
         for _ in 0..128 {
-            sustained.process(2048, &[]);
+            sustained.process_block(2048, &[]);
         }
         let final_peak = sustained
             .output(0, 2048)
@@ -1304,10 +1308,10 @@ mod tests {
                 .unwrap()
             })
             .collect::<Vec<_>>();
-        processor.process(128, &events);
+        processor.process_block(128, &events);
         shoop_wasm_test_support::heap::assert_no_heap(|| {
             for _ in 0..64 {
-                processor.process(128, &[]);
+                processor.process_block(128, &[]);
             }
         });
         assert!(processor

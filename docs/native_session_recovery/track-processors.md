@@ -802,3 +802,35 @@ All 15 adapter integration tests also pass after `wait_idle` waits for matching
 committed timing on settled loops. Changed DSP/host/adapter products build with
 warnings denied. This reconciles the coverage job without disabling tracing or
 weakening allocation assertions.
+
+
+Further CI reconciliation at `5b2c0460`: all four isolated DSP builds/startup
+policies, both-DSP Node Wasm, selected Miri, real JACK acceptance, the shared-media
+foundation, Cortex-A no_std and all three host-process inspection jobs pass.
+The remaining failures identify several boundary/fixture gaps. The browser codec
+worker now permits the same sixteen audio destinations as the portable codec;
+its focused test covers inspection/preparation, seventeen-channel refusal and
+complete streamed samples. DSP unit allocation guards enter the same processing
+body as the buffered backend, retaining native detailed tracing and all guards.
+Independent primitive host fixtures include the new binding/media fields and
+observe the added modes/transitions without changing their Direct replay oracles.
+The 512 KiB callback-stack fixture boxes the prepared runtime before thread entry.
+
+The firmware packet trace shows a native heartbeat expiring during the large
+commit while the control endpoint is busy. Backend pumps now yield after eight
+rounds and cap received messages per round; a busy-producer regression verifies
+that queued telemetry remains while real track controls still confirm. Real
+processor service and adapter tests pass with the smaller slices. Retained-heap
+sampling moves after data-peer detachment, preserving exact byte equality and
+requiring zero remaining data sockets. USB output capture stays active until
+firmware shutdown returns, preserving the complete reset-suffix assertion.
+Cross-platform/firmware execution of these follow-ups remains a CI gate.
+
+The follow-up measurement at `5b2c0460` uses merge checkout
+`f6a6ff6ebe55e0df9daf2475c35d9a03b77a584b` on the same advertised VM/toolchain.
+[Run 42007823682](https://github.com/SanderVocke/shoopdaloop/actions/runs/42007823682/job/127178951620)
+([artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42007823682/artifacts/13407701925))
+observed FX mean/peak 594/658 us and synth 1,946/2,324 us. Preparation at widths
+1/2/8 was 20/241/359 ms; allocation peaks and reservations match the earlier table.
+These differing observations do not establish a deadline guarantee or erase the
+earlier saturated-synth run that exceeded its block period.

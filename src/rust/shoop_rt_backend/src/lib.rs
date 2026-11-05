@@ -72,7 +72,8 @@ use crate::requests::Requests;
 const MAX_WAITS: usize = 10_000;
 pub const MAX_TRACKED_MUTATIONS: usize = 4096;
 /// Rounds of sending and receiving in one pump.
-const MAX_PUMP_ROUNDS: usize = 1_000;
+const MAX_PUMP_ROUNDS: usize = 8;
+const MAX_MESSAGES_PER_PUMP_ROUND: usize = 64;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Link {
@@ -453,8 +454,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         (self.client, self.clock)
     }
 
-    /// Sends queued requests and reads as credits allow and handles every engine message that
-    /// has arrived. Never waits.
+    /// Makes a bounded pass through queued requests, reads and engine messages. Never waits.
     pub fn pump(&mut self) {
         self.reads.advance();
         if let Some(replacement) = self.replacement.as_mut() {
@@ -478,7 +478,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
-            while let Some(message) = self.client.poll() {
+            for _ in 0..MAX_MESSAGES_PER_PUMP_ROUND {
+                let Some(message) = self.client.poll() else {
+                    break;
+                };
                 self.handle(message);
                 received += 1;
             }

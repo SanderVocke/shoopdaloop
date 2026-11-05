@@ -21,6 +21,8 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   The target then advanced to `a068ce72` with Zynq board profiles and a 512 MiB
   ZedBoard configuration. Merge `a7d9505e` reconciles that update, retaining
   board-specific memory budgets and explicitly disabled embedded DSP startup.
+  The target also advanced to `9caee9ba` with planning-guideline updates;
+  that update is merged without changing product scope.
   The combined wire is engine v20/application v28. P12 timing requests and records
   have distinct tags/capability bits; bounded playback windows cover both channel
   banks in canonical dry-first order. Keep P12 timing editing available for Direct
@@ -720,6 +722,29 @@ All 15 adapter integration tests also pass after `wait_idle` waits for matching
 committed timing on settled loops. Changed DSP/host/adapter products build with
 warnings denied. This reconciles the coverage job without disabling tracing or
 weakening allocation assertions.
+
+
+Further CI reconciliation at `5b2c0460`: all four isolated DSP builds/startup
+policies, both-DSP Node Wasm, selected Miri, real JACK acceptance, the shared-media
+foundation, Cortex-A no_std and all three host-process inspection jobs pass.
+The remaining failures identify several boundary/fixture gaps. The browser codec
+worker now permits the same sixteen audio destinations as the portable codec;
+its focused test covers inspection/preparation, seventeen-channel refusal and
+complete streamed samples. DSP unit allocation guards enter the same processing
+body as the buffered backend, retaining native detailed tracing and all guards.
+Independent primitive host fixtures include the new binding/media fields and
+observe the added modes/transitions without changing their Direct replay oracles.
+The 512 KiB callback-stack fixture boxes the prepared runtime before thread entry.
+
+The firmware packet trace shows a native heartbeat expiring during the large
+commit while the control endpoint is busy. Backend pumps now yield after eight
+rounds and cap received messages per round; a busy-producer regression verifies
+that queued telemetry remains while real track controls still confirm. Real
+processor service and adapter tests pass with the smaller slices. Retained-heap
+sampling moves after data-peer detachment, preserving exact byte equality and
+requiring zero remaining data sockets. USB output capture stays active until
+firmware shutdown returns, preserving the complete reset-suffix assertion.
+Cross-platform/firmware execution of these follow-ups remains a CI gate.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

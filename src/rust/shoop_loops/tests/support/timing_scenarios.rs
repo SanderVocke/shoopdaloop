@@ -432,6 +432,7 @@ fn indexed_window_validation_fits_a_native_callback_stack() {
             ..Default::default()
         },
     );
+    let engine = Box::new(engine);
     let engine = std::thread::Builder::new()
         .stack_size(512 * 1024)
         .spawn(move || {

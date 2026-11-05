@@ -126,6 +126,8 @@ pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (LoopControl<Mix>, LoopRuntime
     let mut graph = routes(false);
     graph.nodes.extend((3..7).map(node));
     let mut bindings = vec![Binding {
+        auxiliary_channels: 0,
+        dry_wet: false,
         target: id(0),
         playback: node(0),
         capture: node(1),
@@ -139,6 +141,8 @@ pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (LoopControl<Mix>, LoopRuntime
     }];
     for slot in 1..3 {
         bindings.push(Binding {
+            auxiliary_channels: 0,
+            dry_wet: false,
             target: id(slot),
             playback: node(slot * 2 + 1),
             capture: node(slot * 2 + 2),

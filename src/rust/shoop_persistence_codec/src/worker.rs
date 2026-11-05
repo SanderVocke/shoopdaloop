@@ -380,7 +380,7 @@ impl Worker {
                 mapping,
                 update_length,
             } => {
-                ensure!(mapping.len() <= 2, "too many destination channels");
+                ensure!(mapping.len() <= 16, "too many destination channels");
                 let decoded = self.take_decoded(handle)?;
                 let value = Work::Inspect {
                     decoded,
@@ -410,7 +410,7 @@ impl Worker {
                 mapping,
                 update_length,
             } => {
-                ensure!(mapping.len() <= 2, "too many destination channels");
+                ensure!(mapping.len() <= 16, "too many destination channels");
                 let decoded = self.take_decoded(handle)?;
                 let Value::Image(image) = (Work::Prepare {
                     decoded,
@@ -961,9 +961,20 @@ mod tests {
         };
         assert_eq!(summary.rate, 1000);
         assert_eq!(summary.audio_labels.as_ref().unwrap().len(), 1);
+        let Response::Decoded(summary) = worker.receive(Command::Inspect {
+            handle: summary.handle,
+            target: ConversionTarget {
+                sample_rate: 1000,
+                quantum_frames: 1,
+            },
+            mapping: vec![0; 16],
+            update_length: true,
+        }) else {
+            panic!("sixteen-channel inspection failed")
+        };
         let Response::Image(description) = worker.receive(Command::Prepare {
             handle: summary.handle,
-            mapping: vec![0, 0],
+            mapping: vec![0; 16],
             update_length: true,
         }) else {
             panic!("prepare failed")
@@ -982,7 +993,7 @@ mod tests {
         let image =
             shoop_app_protocol::persistence_transfer::assemble(receiver.into_objects().unwrap())
                 .unwrap();
-        assert_eq!(image.payloads.len(), 2);
+        assert_eq!(image.payloads.len(), 16);
         for payload in &image.payloads {
             let persistence_image::Payload::Audio(samples) = payload else {
                 panic!("wrong payload")
@@ -992,5 +1003,34 @@ mod tests {
         assert!(worker.decoded.is_none());
         assert!(worker.image.is_none());
         assert!(matches!(worker.receive(Command::Next), Response::Done));
+        for prepare in [false, true] {
+            let mut refused = Worker::default();
+            let Response::Decoded(summary) = refused
+                .decoded(Value::Decoded(Decoded::Audio(audio.clone())))
+                .unwrap()
+            else {
+                panic!("decode failed")
+            };
+            let command = if prepare {
+                Command::Prepare {
+                    handle: summary.handle,
+                    mapping: vec![0; 17],
+                    update_length: true,
+                }
+            } else {
+                Command::Inspect {
+                    handle: summary.handle,
+                    target: ConversionTarget {
+                        sample_rate: 1000,
+                        quantum_frames: 1,
+                    },
+                    mapping: vec![0; 17],
+                    update_length: true,
+                }
+            };
+            assert!(matches!(refused.receive(command), Response::Failed(_)));
+            assert!(refused.decoded.is_none());
+            assert!(refused.image.is_none());
+        }
     }
 }
