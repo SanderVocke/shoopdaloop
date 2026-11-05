@@ -22,6 +22,22 @@ pub enum Mode {
     Stopped,
     Playing,
     Recording,
+    PlayingDryThroughWet,
+    RecordingDryIntoWet,
+}
+impl Mode {
+    pub fn records(self) -> bool {
+        matches!(self, Self::Recording | Self::RecordingDryIntoWet)
+    }
+    pub fn playback_mode(self) -> bool {
+        matches!(
+            self,
+            Self::Playing | Self::PlayingDryThroughWet | Self::RecordingDryIntoWet
+        )
+    }
+    pub fn dry_playback(self) -> bool {
+        matches!(self, Self::PlayingDryThroughWet | Self::RecordingDryIntoWet)
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProgramKind {

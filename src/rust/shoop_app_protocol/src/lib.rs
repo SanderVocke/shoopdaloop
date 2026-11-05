@@ -26,7 +26,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 27;
+pub const VERSION: u16 = 29;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -140,7 +140,9 @@ impl Command {
         let detail = |text: &str| text.len() <= 512;
         match self {
             Self::Composite(edit) => edit.bounded(),
-            Self::SetLoopChannelTimings { updates, .. } => updates.len() <= 9,
+            Self::SetLoopChannelTimings { updates, .. } => {
+                updates.len() <= MAX_LOOP_CHANNEL_TIMING_UPDATES
+            }
             Self::InspectProfiling(r) => {
                 r.capture != 0
                     && r.generation != 0

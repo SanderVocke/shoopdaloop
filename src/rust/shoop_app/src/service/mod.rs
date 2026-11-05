@@ -51,6 +51,7 @@ struct Track {
     audio_channels: u32,
     midi: bool,
     monitoring_intent: Option<(u64, bool)>,
+    default_playback_intent: Option<(u64, DefaultPlaybackMode)>,
     view: TrackState,
     loops: Vec<LoopId>,
 }
@@ -156,6 +157,7 @@ pub struct Service {
     graph_connections: BTreeMap<shoop_port_graph::OperationId, (PortId, String)>,
     master_graph_auto_done: bool,
     backend: Box<dyn Backend>,
+    track_processors: Arc<[TrackProcessorDescriptor]>,
     preview: ClickTrackState,
     preview_bus: Option<BusId>,
     preview_stage: Option<preview::Stage>,
@@ -234,7 +236,11 @@ impl Service {
         {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
         }
+        let track_processors = backend
+            .track_processor_catalog()
+            .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            track_processors,
             host_graph_controller: None,
             host_graph: Arc::default(),
             publications: BTreeMap::new(),
@@ -307,7 +313,15 @@ impl Service {
         })?;
         service.bootstrap_track = Some(created.track_id);
         service.bootstrap_loop = created.loops.first().copied();
-        service.insert_track(created, "Sync".to_owned(), 1, false, true)?;
+        service.insert_track(
+            created,
+            "Sync".to_owned(),
+            BackendTrackTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            true,
+        )?;
         service
             .backend
             .set_loop_smoothing_ms(service.options.loop_smoothing_ms)?;
@@ -1015,6 +1029,12 @@ impl Service {
         self.advance_preview();
         match self.backend.poll() {
             Ok(mut observed) => {
+                if let Ok(catalog) = self.backend.track_processor_catalog() {
+                    if catalog != self.track_processors {
+                        self.track_processors = catalog;
+                        self.bump();
+                    }
+                }
                 self.observe_composites(&observed);
                 self.observe_composite_structure(&observed.mutation_completions);
                 let completions = core::mem::take(&mut observed.mutation_completions);
@@ -1030,6 +1050,12 @@ impl Service {
                             .is_some_and(|(sequence, _)| sequence == completion.sequence)
                         {
                             track.monitoring_intent = None;
+                        }
+                        if track
+                            .default_playback_intent
+                            .is_some_and(|(sequence, _)| sequence == completion.sequence)
+                        {
+                            track.default_playback_intent = None;
                         }
                     }
                     for intent in self

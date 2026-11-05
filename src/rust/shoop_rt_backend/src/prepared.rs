@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 pub(crate) use validation::{Prepared, Validation};
 
 use anyhow::{anyhow, bail, Result};
-use shoop_backend::BackendLoopContent;
+use shoop_backend::{BackendChannelMode, BackendLoopContent};
 use shoop_rt_protocol::{ContentChunk, ContentDescription, MidiMessage};
 
 pub(crate) const MAX_MEDIA_BYTES: u64 = 256 * 1024 * 1024;
@@ -14,6 +14,8 @@ pub(crate) struct Upload {
     pub description: ContentDescription,
     content: Arc<BackendLoopContent>,
     channels: usize,
+    audio_start: usize,
+    audio_len: usize,
     offset: u64,
     event: usize,
     event_end: usize,
@@ -72,8 +74,10 @@ impl Upload {
                 frames,
                 bytes,
             },
-            content,
             channels,
+            audio_start: 0,
+            audio_len: content.audio.len(),
+            content,
             offset: 0,
             event,
             event_end,
@@ -81,6 +85,24 @@ impl Upload {
             initial: 0,
             certified: false,
         })
+    }
+    /// Normalize one logical audio role into its independently prepared bank.
+    pub fn audio_role(
+        id: u64,
+        content: Arc<BackendLoopContent>,
+        channels: usize,
+        role: BackendChannelMode,
+    ) -> Result<Self> {
+        let start = content
+            .audio
+            .iter()
+            .position(|c| c.mode == role)
+            .unwrap_or(0);
+        let len = content.audio.iter().filter(|c| c.mode == role).count();
+        let mut upload = Self::new(id, false, content, channels)?;
+        upload.audio_start = start;
+        upload.audio_len = len;
+        Ok(upload)
     }
     pub fn source(&self) -> u64 {
         self.content.source_id
@@ -151,10 +173,9 @@ impl Upload {
             for (index, word) in bytes[..count].chunks_exact_mut(4).enumerate() {
                 let sample = (offset / 4) as usize + index;
                 let frame = sample / self.channels;
-                let sample = self
-                    .content
-                    .audio
-                    .get(sample % self.channels)
+                let lane = sample % self.channels;
+                let sample = (lane < self.audio_len)
+                    .then(|| &self.content.audio[self.audio_start + lane])
                     .map_or(0., |channel| {
                         channel.samples.get(frame).copied().unwrap_or(0.)
                     });

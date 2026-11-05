@@ -120,6 +120,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_buffered"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+]
+
+[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
@@ -205,6 +212,7 @@ dependencies = [
  "serde",
  "shoop_latency",
  "shoop_port_graph",
+ "shoop_processor_protocol",
  "shoop_script_resources",
 ]
 
@@ -290,6 +298,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_processor_protocol"
+version = "0.3.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "shoop_rt_backend"
 version = "0.3.0"
 dependencies = [
@@ -297,6 +312,7 @@ dependencies = [
  "libm",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_processor_protocol",
  "shoop_loop_plan",
  "shoop_rt_protocol",
  "shoop_rt_transport",
@@ -307,8 +323,10 @@ dependencies = [
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
+ "rt_buffered",
  "rt_runtime",
  "shoop_loops",
+ "shoop_processor_protocol",
  "shoop_rt_protocol",
  "shoop_rt_transport",
 ]
@@ -318,6 +336,7 @@ name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
  "rt_profiling",
+ "shoop_processor_protocol",
  "shoop_transport",
 ]
 

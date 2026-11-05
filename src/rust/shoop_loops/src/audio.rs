@@ -44,6 +44,7 @@ enum Source<'a> {
 
 pub struct AudioRenderer {
     channels: usize,
+    balance_channels: usize,
     max_frames: usize,
     bytes: Box<[u8]>,
     window_bytes: Box<[u8]>,
@@ -92,37 +93,41 @@ fn shape(
 }
 enum Outputs<'a, 'b> {
     Slices(&'a mut [&'b mut [f32]]),
-    Ports(&'a mut AudioPorts<'b>),
+    Ports(&'a mut AudioPorts<'b>, usize, usize),
 }
 impl Outputs<'_, '_> {
     fn count(&self) -> usize {
         match self {
             Self::Slices(value) => value.len(),
-            Self::Ports(value) => value.output_count(),
+            Self::Ports(_, _, count) => *count,
         }
     }
     fn channel(&mut self, channel: usize) -> &mut [f32] {
         match self {
             Self::Slices(value) => value[channel],
-            Self::Ports(value) => value.output(channel).expect("declared output port"),
+            Self::Ports(value, first, _) => value
+                .output(first.saturating_add(channel))
+                .expect("declared output port"),
         }
     }
 }
 enum Inputs<'a, 'b> {
     Slices(&'a [&'b [f32]]),
-    Ports(&'a AudioPorts<'b>),
+    Ports(&'a AudioPorts<'b>, usize, usize),
 }
 impl Inputs<'_, '_> {
     fn count(&self) -> usize {
         match self {
             Self::Slices(value) => value.len(),
-            Self::Ports(value) => value.input_count(),
+            Self::Ports(_, _, count) => *count,
         }
     }
     fn channel(&self, channel: usize) -> &[f32] {
         match self {
             Self::Slices(value) => value[channel],
-            Self::Ports(value) => value.input(channel).expect("declared input port"),
+            Self::Ports(value, first, _) => value
+                .input(first.saturating_add(channel))
+                .expect("declared input port"),
         }
     }
 }
@@ -153,6 +158,7 @@ impl AudioRenderer {
         };
         Ok(Self {
             channels,
+            balance_channels: channels,
             max_frames,
             bytes: buffer(count * 4),
             window_bytes: buffer(count * 4),
@@ -163,6 +169,14 @@ impl AudioRenderer {
             ramp_position: ramp_frames,
             next_ramp_frames: ramp_frames,
         })
+    }
+
+    pub fn set_balance_channels(&mut self, channels: usize) -> Result<(), Error> {
+        if channels > self.channels {
+            return Err(Error::InvalidShape);
+        }
+        self.balance_channels = channels;
+        Ok(())
     }
 
     /// Smoothing for the following restarts; a restart ramp in progress keeps
@@ -193,7 +207,33 @@ impl AudioRenderer {
         playback: Playback,
         outputs: &mut AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.render_output(io, playback, Outputs::Ports(outputs), None)
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, 0, outputs.output_count()),
+            None,
+        )
+    }
+
+    pub fn render_port_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        outputs: &mut AudioPorts<'_>,
+        first: usize,
+    ) -> Result<(), Error> {
+        if first
+            .checked_add(self.channels)
+            .is_none_or(|end| end > outputs.output_count())
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, first, self.channels),
+            None,
+        )
     }
 
     pub fn render_windowed_ports(
@@ -208,7 +248,31 @@ impl AudioRenderer {
         self.render_output(
             io,
             playback,
-            Outputs::Ports(outputs),
+            Outputs::Ports(outputs, 0, self.channels),
+            Some((position, windows, lead)),
+        )
+    }
+
+    pub fn render_windowed_port_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        position: i64,
+        windows: &[crate::windows::ChannelWindow],
+        lead: bool,
+        outputs: &mut AudioPorts<'_>,
+        first: usize,
+    ) -> Result<(), Error> {
+        if first
+            .checked_add(self.channels)
+            .is_none_or(|end| end > outputs.output_count())
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, first, self.channels),
             Some((position, windows, lead)),
         )
     }
@@ -268,7 +332,7 @@ impl AudioRenderer {
                 discontinuity: playback.discontinuity,
             },
             playback.source.map(|index| Source::Shared(media, index)),
-            Outputs::Ports(outputs),
+            Outputs::Ports(outputs, 0, outputs.output_count()),
             None,
         )
     }
@@ -293,7 +357,7 @@ impl AudioRenderer {
         if !playback.gain.is_finite() || !(-1.0..=1.0).contains(&playback.balance) {
             return Err(Error::InvalidParameter);
         }
-        let factors = balance_factors(channels, playback.balance);
+        let factors = balance_factors(self.balance_channels, playback.balance);
         let Some(source) = source else {
             for channel in 0..channels {
                 outputs.channel(channel).fill(0.0);
@@ -438,7 +502,12 @@ impl AudioCapture {
         frame: rt_runtime::Frame,
         inputs: &AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.append_shared_input(io, media, frame, Inputs::Ports(inputs))
+        self.append_shared_input(
+            io,
+            media,
+            frame,
+            Inputs::Ports(inputs, 0, inputs.input_count()),
+        )
     }
 
     fn append_shared_input(
@@ -483,7 +552,108 @@ impl AudioCapture {
         member: usize,
         inputs: &AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.stage_input(io, interval, member, Inputs::Ports(inputs))
+        self.stage_input(
+            io,
+            interval,
+            member,
+            Inputs::Ports(inputs, 0, inputs.input_count()),
+        )
+    }
+
+    pub fn stage_port_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        interval: CaptureTickId,
+        member: usize,
+        inputs: &AudioPorts<'_>,
+        first: usize,
+    ) -> Result<(), Error> {
+        if first
+            .checked_add(self.channels)
+            .is_none_or(|end| end > inputs.input_count())
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.stage_input(
+            io,
+            interval,
+            member,
+            Inputs::Ports(inputs, first, self.channels),
+        )
+    }
+    pub fn replace_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        resource: rt_runtime::ResourceId,
+        revision: rt_runtime::Revision,
+        position: u64,
+        inputs: &AudioPorts<'_>,
+    ) -> Result<rt_runtime::Revision, Error> {
+        if inputs.input_count() < self.channels {
+            return Err(Error::InvalidShape);
+        }
+        let frames = shape(
+            self.channels,
+            self.max_frames,
+            (0..self.channels).map(|channel| inputs.input(channel).expect("validated port").len()),
+        )?;
+        for frame in 0..frames {
+            for channel in 0..self.channels {
+                self.interleaved[frame * self.channels + channel] =
+                    inputs.input(channel).expect("validated port")[frame];
+            }
+        }
+        io.replace_audio(
+            resource,
+            revision,
+            position,
+            &self.interleaved[..frames * self.channels],
+        )
+    }
+
+    pub fn replace_windowed_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        resource: rt_runtime::ResourceId,
+        mut revision: rt_runtime::Revision,
+        position: u64,
+        raw_frames: u64,
+        windows: &[crate::windows::ChannelWindow],
+        inputs: &AudioPorts<'_>,
+    ) -> Result<rt_runtime::Revision, Error> {
+        if windows.len() > self.channels || inputs.input_count() < self.channels {
+            return Err(Error::InvalidShape);
+        }
+        if windows.iter().all(|window| window.start_offset == 0) {
+            return self.replace_ports(io, resource, revision, position, inputs);
+        }
+        let raw_frames = windows
+            .iter()
+            .filter_map(|window| window.raw_frames)
+            .fold(raw_frames, u64::max);
+        for (channel, window) in windows.iter().copied().enumerate() {
+            let input = inputs.input(channel).ok_or(Error::InvalidShape)?;
+            let span = crate::windows::span(
+                i64::try_from(position).map_err(|_| Error::InvalidFrame)?,
+                crate::windows::ChannelWindow {
+                    capture_alignment: 0,
+                    ..window
+                },
+                false,
+                input.len(),
+                raw_frames,
+            );
+            if span.frames > 0 {
+                revision = io.replace_audio_channel(
+                    resource,
+                    revision,
+                    channel,
+                    span.position,
+                    &input[span.offset..span.offset + span.frames],
+                )?;
+            }
+        }
+        Ok(revision)
     }
 
     fn stage_input(

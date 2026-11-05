@@ -247,6 +247,8 @@ fn setup_with(
     )
     .unwrap();
     let binding = Binding {
+        dry_wet: false,
+        auxiliary_channels: 0,
         target: id(),
         playback: node(0),
         capture: node(1),

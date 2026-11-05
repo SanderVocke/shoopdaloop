@@ -710,6 +710,7 @@ pub fn dry_wet_routing_state(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
+    pub recorded_processor_state: Option<String>,
     pub repeat_sync: bool,
     pub recording_armed: bool,
     pub timing_revision: u64,
@@ -838,32 +839,7 @@ pub struct BackendBuiltInFxMidiCcAssignment {
     pub controller: u8,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum BackendBuiltInFxParameter {
-    CompressorThreshold,
-    CompressorRatio,
-    CompressorAttack,
-    CompressorRelease,
-    CompressorMakeup,
-    Drive,
-    DriveTone,
-    DriveMix,
-    DriveOutput,
-    EqLow,
-    EqMid,
-    EqHigh,
-    ChorusRate,
-    ChorusDepth,
-    ChorusMix,
-    ChorusWidth,
-    ModulationRate,
-    ModulationDepth,
-    ModulationMix,
-    ModulationFeedback,
-    ModulationSpread,
-    ReverbAmount,
-    ReverbTone,
-}
+pub use shoop_app_api::BuiltInFxParameter as BackendBuiltInFxParameter;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendOxiSynthMidiCcAssignment {
@@ -872,11 +848,7 @@ pub struct BackendOxiSynthMidiCcAssignment {
     pub controller: u8,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum BackendOxiSynthParameter {
-    ReverbSend,
-    ChorusSend,
-}
+pub use shoop_app_api::OxiSynthParameter as BackendOxiSynthParameter;
 
 pub use shoop_app_api::MidiEventState as BackendMidiEvent;
 
@@ -910,6 +882,8 @@ pub struct BackendMidiData {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendLoopContent {
+    #[serde(default)]
+    pub recorded_processor_state: Option<String>,
     pub source_id: u64,
     pub length: u32,
     pub gain: f32,

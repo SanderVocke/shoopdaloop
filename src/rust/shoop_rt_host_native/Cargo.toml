@@ -8,12 +8,15 @@ description = "Native engine host with JACK audio/MIDI, CPAL/midir and dummy dri
 workspace = true
 
 [features]
+builtin-fx = ["shoop_host_processors/builtin-fx"]
+oxisynth = ["shoop_host_processors/oxisynth"]
 default = ["cpal", "jack"]
 jack = ["dep:jack", "dep:shoop_jack", "dep:getrandom"]
 # CPAL audio and midir MIDI are independent of native JACK.
 cpal = ["dep:cpal", "dep:midir"]
 
 [dependencies]
+shoop_host_processors = { path = "../shoop_host_processors" }
 shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 rt_runtime = { path = "../rt_runtime" }

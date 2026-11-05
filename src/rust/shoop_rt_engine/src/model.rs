@@ -124,10 +124,21 @@ impl Banks {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProcessorOwner {
+    pub kind: shoop_rt_protocol::ProcessorKind,
+    pub slot: Option<shoop_rt_protocol::ProcessorSlot>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Strip {
+    pub default_dry: bool,
     pub id: StripId,
     pub shape: StripShape,
+    pub processor: Option<ProcessorOwner>,
+    pub sends: Banks,
+    pub returns: Banks,
+    pub midi_send: HostMask,
     pub controls: Controls,
     pub inputs: Banks,
     pub outputs: Banks,
@@ -188,6 +199,10 @@ impl Bus {
 /// A structural change, applied as one activation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Change {
+    ConnectGlobal {
+        host: usize,
+        connected: bool,
+    },
     CreateBus {
         bus: BusId,
         channels: u8,
@@ -198,6 +213,7 @@ pub(crate) enum Change {
     CreateStrip {
         strip: StripId,
         shape: StripShape,
+        processor: Option<ProcessorOwner>,
     },
     /// Removes the strip together with its loops.
     RemoveStrip {
@@ -246,6 +262,7 @@ pub(crate) enum Change {
 }
 
 pub(crate) struct Model {
+    pub global_midi: HostMask,
     pub strips: Box<[Option<Strip>]>,
     pub loops: Box<[Option<Loop>]>,
     pub spans: Box<[Option<OwnedSpan>]>,
@@ -266,6 +283,7 @@ impl Model {
         program_segments: usize,
     ) -> Self {
         let mut model = Self {
+            global_midi: HostMask::EMPTY,
             strips: vec![None; strips].into_boxed_slice(),
             loops: vec![None; loops].into_boxed_slice(),
             spans: vec![None; program_segments].into_boxed_slice(),
@@ -289,12 +307,15 @@ impl Model {
         for strip in self.strips.iter_mut().flatten() {
             strip.inputs.swapped = false;
             strip.outputs.swapped = false;
+            strip.sends.swapped = false;
+            strip.returns.swapped = false;
         }
         for bus in self.buses.iter_mut().flatten() {
             bus.outputs.swapped = false;
         }
     }
     pub(crate) fn copy_from(&mut self, other: &Self) {
+        self.global_midi = other.global_midi;
         self.strips.copy_from_slice(&other.strips);
         self.loops.copy_from_slice(&other.loops);
         self.spans.copy_from_slice(&other.spans);
@@ -347,6 +368,7 @@ impl Model {
     /// Apply a validated change.
     pub(crate) fn apply(&mut self, change: Change) {
         match change {
+            Change::ConnectGlobal { host, connected } => self.global_midi.set(host, connected),
             Change::CreateBus { bus, channels } => {
                 let slot = bus.0.index as usize;
                 self.bus_generations[slot] = bus.0.generation;
@@ -367,12 +389,21 @@ impl Model {
                     }
                 }
             }
-            Change::CreateStrip { strip, shape } => {
+            Change::CreateStrip {
+                strip,
+                shape,
+                processor,
+            } => {
                 let slot = strip.0.index as usize;
                 self.strip_generations[slot] = strip.0.generation;
                 self.strips[slot] = Some(Strip {
+                    default_dry: false,
                     id: strip,
                     shape,
+                    processor,
+                    sends: Banks::default(),
+                    returns: Banks::default(),
+                    midi_send: HostMask::EMPTY,
                     controls: Controls::default(),
                     inputs: Banks::default(),
                     outputs: Banks::default(),
@@ -429,6 +460,7 @@ impl Model {
                     .as_mut()
                     .expect("validated composite");
                 entry.id = loop_id;
+                entry.timing = Default::default();
                 entry.program = None;
                 entry.seed_frames = 0;
                 self.loop_generations[loop_id.0.index as usize] = loop_id.0.generation;
@@ -463,6 +495,9 @@ impl Model {
                 let set = |mask: &mut HostMask| mask.set(host, connected);
                 let index = port.index as usize;
                 match port.kind {
+                    PortKind::AudioSend => set(&mut strip.sends.swap()[index]),
+                    PortKind::AudioReturn => set(&mut strip.returns.swap()[index]),
+                    PortKind::MidiSend => set(&mut strip.midi_send),
                     PortKind::AudioIn => set(&mut strip.inputs.swap()[index]),
                     PortKind::AudioOut => set(&mut strip.outputs.swap()[index]),
                     PortKind::MidiIn => set(&mut strip.midi_inputs),

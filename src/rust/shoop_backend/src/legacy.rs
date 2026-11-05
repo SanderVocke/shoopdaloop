@@ -214,6 +214,7 @@ fn validate_backend_midi_cc_assignments(track: &BackendSessionTrack) -> Result<(
 
 pub fn builtin_fx_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
+        resources: None,
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
         label: "Built-in FX".to_owned(),
         available: true,
@@ -291,6 +292,7 @@ mod builtin_fx_descriptor_tests {
 
 pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
+        resources: None,
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
         label: "Built-in Synth".to_owned(),
         available: true,
@@ -3264,6 +3266,7 @@ impl EngineBackend {
                     })
                     .collect::<Result<Vec<_>>>()?;
                 loops.push(BackendLoopContent {
+                    recorded_processor_state: None,
                     source_id: loop_id.raw(),
                     length: loop_state.length(),
                     gain: channels.gain,
@@ -6501,6 +6504,7 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    recorded_processor_state: None,
                     repeat_sync: false,
                     recording_armed: false,
                     timing_revision: 0,
@@ -8023,6 +8027,7 @@ impl Backend for FakeBackend {
         self.loop_content.insert(
             id,
             BackendLoopContent {
+                recorded_processor_state: None,
                 source_id: id.raw(),
                 length: 0,
                 gain: 1.0,
@@ -10012,6 +10017,7 @@ impl Backend for FakeBackend {
                 staged.loop_content.insert(
                     *loop_id,
                     BackendLoopContent {
+                        recorded_processor_state: None,
                         source_id: loop_id.raw(),
                         ..source_loop.clone()
                     },
@@ -12192,6 +12198,7 @@ mod tests {
         let mut backend = FakeBackend::default();
         assert!(backend.track_processor_catalog().unwrap().is_empty());
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
             label: "Future browser FX".to_owned(),
             available: true,

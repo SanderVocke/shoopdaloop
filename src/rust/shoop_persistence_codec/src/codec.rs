@@ -178,7 +178,7 @@ impl Decoded {
             return Ok(self);
         };
         ensure!(
-            !mapping.is_empty() && mapping.len() <= 2,
+            !mapping.is_empty() && mapping.len() <= 16,
             "invalid destination channel count"
         );
         audio.channels = mapping
@@ -454,6 +454,7 @@ impl Work {
                             updates.push(image::AudioUpdate {
                                 channel: channel as u32,
                                 content: image::Channel {
+                                    mode: image::ChannelMode::Direct,
                                     object,
                                     frames: samples.len() as u64,
                                     gain: 1.,
@@ -502,6 +503,7 @@ impl Work {
                                     channel: 0,
                                     content: image::MidiChannel {
                                         channel: image::Channel {
+                                            mode: image::ChannelMode::Direct,
                                             object,
                                             frames: midi.length_frames,
                                             gain: 1.,
@@ -565,6 +567,7 @@ impl Work {
                                 <= MAX_SESSION_MEDIA_BYTES,
                             "logical export exceeds the media budget"
                         );
+                        let labels = content.audio_labels();
                         let mut output = Vec::new();
                         for index in channels {
                             let channel = content.audio.get(index as usize).ok_or_else(|| {
@@ -595,8 +598,8 @@ impl Work {
                                 );
                             }
                             output.push(LoopAudioChannel {
-                                label: format!("Audio {}", index + 1),
-                                role: "direct".into(),
+                                label: labels[index as usize].clone(),
+                                role: channel.mode.role().into(),
                                 samples: normalized,
                             });
                         }

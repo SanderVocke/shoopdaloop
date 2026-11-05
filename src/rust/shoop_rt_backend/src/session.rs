@@ -21,21 +21,38 @@ use shoop_rt_transport::carrier::Carrier;
 
 use crate::{unavailable, EngineClock, RtBackend};
 
-/// The port layout of a direct track, in creation order.
-fn direct_ports(
-    audio_channels: u32,
-    midi: bool,
+fn track_ports(
+    topology: &BackendTrackTopology,
 ) -> Vec<(BackendPortDataType, BackendPortDirection, BackendPortRole)> {
     use BackendPortDataType::{Audio, Midi};
     use BackendPortDirection::{Input, Output};
+    use BackendPortRole::*;
     let mut ports = Vec::new();
-    for _ in 0..audio_channels {
-        ports.push((Audio, Input, BackendPortRole::AudioInput));
-        ports.push((Audio, Output, BackendPortRole::AudioOutput));
+    let direct = matches!(topology, BackendTrackTopology::Direct { .. });
+    let external = matches!(topology, BackendTrackTopology::DryWetExternal { .. });
+    for _ in 0..topology.dry_audio_channels() {
+        ports.push((Audio, Input, AudioInput));
+        if direct {
+            ports.push((Audio, Output, AudioOutput));
+        } else if external {
+            ports.push((Audio, Output, AudioSend));
+        }
     }
-    if midi {
-        ports.push((Midi, Input, BackendPortRole::MidiInput));
-        ports.push((Midi, Output, BackendPortRole::MidiOutput));
+    if !direct {
+        for _ in 0..topology.wet_audio_channels() {
+            if external {
+                ports.push((Audio, Input, AudioReturn));
+            }
+            ports.push((Audio, Output, AudioOutput));
+        }
+    }
+    if topology.has_midi() {
+        ports.push((Midi, Input, MidiInput));
+        if direct {
+            ports.push((Midi, Output, MidiOutput));
+        } else if external {
+            ports.push((Midi, Output, MidiSend));
+        }
     }
     ports
 }
@@ -70,32 +87,39 @@ fn check_track(
     max_channels: u32,
     composites: &BTreeSet<u64>,
 ) -> Result<()> {
-    let BackendTrackTopology::Direct {
-        audio_channels,
-        midi,
-    } = track.topology
-    else {
-        return Err(unavailable(BackendCapability::DryWetTracks));
-    };
-    if track.state.topology != track.topology {
+    let dry = track.topology.dry_audio_channels();
+    let wet = track.topology.wet_audio_channels();
+    let midi = track.topology.has_midi();
+    let direct = matches!(track.topology, BackendTrackTopology::Direct { .. });
+    if track.state.topology != track.topology
+        || track.state.audio_channels != wet
+        || track.state.midi != midi
+    {
         return Err(anyhow!("the session's track topology is inconsistent"));
     }
-    if track.processor_state.is_some()
-        || track.state.fx.is_some()
-        || !track.builtin_fx_midi_cc_assignments.is_empty()
-        || !track.oxisynth_midi_cc_assignments.is_empty()
-    {
-        return Err(unavailable(BackendCapability::TrackFx));
-    }
-    if track.state.default_playback_mode != BackendDefaultPlaybackMode::Regular {
-        return Err(unavailable(BackendCapability::DryWetModes));
-    }
-    if audio_channels > max_channels {
+    if dry > max_channels || wet > max_channels {
         return Err(anyhow!(
             "tracks of this engine have at most {max_channels} audio channels"
         ));
     }
-    let expected = direct_ports(audio_channels, midi);
+    if track.state.default_playback_mode == BackendDefaultPlaybackMode::DryThroughWet
+        && (direct || wet == 0)
+    {
+        return Err(anyhow!("this track cannot default to dry playback"));
+    }
+    if let BackendTrackTopology::DryWetProcessor { .. } = &track.topology {
+        let kind = crate::processor_controls::topology_kind(&track.topology)
+            .ok_or_else(|| unavailable(BackendCapability::TrackFx))?;
+        if dry == 0
+            || dry != wet
+            || !midi
+            || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth && dry != 2)
+        {
+            return Err(anyhow!("invalid audio/MIDI shape for this processor"));
+        }
+    }
+    crate::processor_controls::session_state(track)?;
+    let expected = track_ports(&track.topology);
     if track.ports.len() != expected.len()
         || track.ports.iter().zip(&expected).any(|(port, shape)| {
             let port = &port.descriptor;
@@ -104,10 +128,9 @@ fn check_track(
         })
     {
         return Err(anyhow!(
-            "the session's track ports do not match a direct track"
+            "the session's track ports do not match its topology"
         ));
     }
-    let direct = |mode: BackendChannelMode| mode == BackendChannelMode::Direct;
     for content in &track.loops {
         if composites.contains(&content.source_id) {
             if content.length != 0 || !content.audio.is_empty() || !content.midi.is_empty() {
@@ -115,10 +138,27 @@ fn check_track(
             }
             continue;
         }
-        if content.audio.len() != audio_channels as usize
+        let audio_count = if direct { wet } else { dry + wet } as usize;
+        if content.audio.len() != audio_count
             || content.midi.len() != usize::from(midi)
-            || !content.audio.iter().all(|channel| direct(channel.mode))
-            || !content.midi.iter().all(|channel| direct(channel.mode))
+            || content.audio.iter().enumerate().any(|(i, channel)| {
+                channel.mode
+                    != if direct {
+                        BackendChannelMode::Direct
+                    } else if i < dry as usize {
+                        BackendChannelMode::Dry
+                    } else {
+                        BackendChannelMode::Wet
+                    }
+            })
+            || content.midi.iter().any(|channel| {
+                channel.mode
+                    != if direct {
+                        BackendChannelMode::Direct
+                    } else {
+                        BackendChannelMode::Dry
+                    }
+            })
             || !content.gain.is_finite()
             || !content.balance.is_finite()
         {
@@ -126,6 +166,10 @@ fn check_track(
                 "the session's loop channels do not match their track"
             ));
         }
+        crate::processor_controls::recorded_state(
+            &track.topology,
+            content.recorded_processor_state.as_deref(),
+        )?;
     }
     let state = &track.state;
     if ![
@@ -210,8 +254,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         if self.mirror.loops.values().any(|entry| {
             entry.view.recording_armed
-                || entry.view.mode == shoop_rt_protocol::LoopMode::Recording
-                || entry.view.next_mode == Some(shoop_rt_protocol::LoopMode::Recording)
+                || entry.view.mode.records()
+                || entry
+                    .view
+                    .next_mode
+                    .is_some_and(shoop_rt_protocol::LoopMode::records)
         }) {
             return Err(anyhow!(
                 "stop recording and settle pending recording transitions before loading a session"
@@ -308,7 +355,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut uploads = Vec::new();
         let mut sources = BTreeMap::new();
         let mut prepared_bytes = 0u64;
-        for content in session.tracks.iter().flat_map(|track| &track.loops) {
+        for (track, content) in session
+            .tracks
+            .iter()
+            .flat_map(|track| track.loops.iter().map(move |content| (track, content)))
+        {
             let loop_id = mapping.loops[&content.source_id];
             if session
                 .composites
@@ -318,25 +369,32 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 continue;
             }
             let canonical = Arc::new(content.clone());
-            let mut pair = [None; 2];
+            let roles = !matches!(track.topology, BackendTrackTopology::Direct { .. });
+            let mut pair = [None; 3];
             if content.length > 0
-                || content
-                    .audio
-                    .iter()
-                    .any(|channel| !channel.samples.is_empty())
-                || content.midi.iter().any(|channel| channel.length > 0)
+                || content.audio.iter().any(|c| !c.samples.is_empty())
+                || content.midi.iter().any(|c| c.length > 0)
             {
-                for (medium, midi) in [false, true].into_iter().enumerate() {
+                for medium in 0..if roles { 3 } else { 2 } {
                     let token = self.next_persistence;
                     self.next_persistence = token
                         .checked_add(1)
                         .ok_or_else(|| anyhow!("persistence identity exhausted"))?;
-                    let upload = Upload::new(
-                        token,
-                        midi,
-                        Arc::clone(&canonical),
-                        usize::from(self.limits().strip_audio_channels),
-                    )?;
+                    let width = usize::from(self.limits().strip_audio_channels);
+                    let upload = if roles && medium != 1 {
+                        Upload::audio_role(
+                            token,
+                            Arc::clone(&canonical),
+                            width,
+                            if medium == 0 {
+                                BackendChannelMode::Wet
+                            } else {
+                                BackendChannelMode::Dry
+                            },
+                        )?
+                    } else {
+                        Upload::new(token, medium == 1, Arc::clone(&canonical), width)?
+                    };
                     prepared_bytes = prepared_bytes
                         .checked_add(upload.description.bytes)
                         .ok_or_else(|| anyhow!("prepared media size overflow"))?;
@@ -372,30 +430,59 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             sources.insert(loop_id, pair);
             contents.insert(loop_id, canonical);
         }
-        for track in candidate.tracks.values_mut() {
+        let processor_states = session
+            .tracks
+            .iter()
+            .map(|track| {
+                Ok((
+                    mapping.tracks[&track.source_id].track_id,
+                    crate::processor_controls::session_state(track)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        for (track_id, track) in &mut candidate.tracks {
             track.confirmed = true;
             let controls = track.controls;
-            work.push_back(Work::Request(Request::ReplacementEdit {
-                id,
-                edit: ReplacementEdit::Strip {
+            let shape = shoop_rt_protocol::StripShape {
+                audio_inputs: track.topology.dry_audio_channels() as u8,
+                audio_outputs: track.audio_channels as u8,
+                midi_input: track.midi,
+                midi_output: track.midi
+                    && matches!(track.topology, BackendTrackTopology::Direct { .. }),
+            };
+            let controls = StripPreset {
+                input_gain: db_amplitude(controls.input_gain_db),
+                input_balance: controls.input_balance,
+                monitoring: controls.input_monitoring,
+                automatic_monitoring: track.automatic_enabled,
+                output_gain: db_amplitude(controls.output_gain_db),
+                output_balance: controls.output_balance,
+                output_mute: controls.output_muted,
+            };
+            let kind = match track.topology {
+                BackendTrackTopology::Direct { .. } => None,
+                BackendTrackTopology::DryWetExternal { .. } => {
+                    Some(shoop_rt_protocol::ProcessorKind::External)
+                }
+                _ => crate::processor_controls::track_kind(track),
+            };
+            let edit = match kind {
+                Some(kind) => ReplacementEdit::ProcessedStrip {
                     strip: track.strip,
-                    shape: shoop_rt_protocol::StripShape {
-                        audio_inputs: track.audio_channels as u8,
-                        audio_outputs: track.audio_channels as u8,
-                        midi_input: track.midi,
-                        midi_output: track.midi,
-                    },
-                    controls: StripPreset {
-                        input_gain: db_amplitude(controls.input_gain_db),
-                        input_balance: controls.input_balance,
-                        monitoring: controls.input_monitoring,
-                        automatic_monitoring: track.automatic_enabled,
-                        output_gain: db_amplitude(controls.output_gain_db),
-                        output_balance: controls.output_balance,
-                        output_mute: controls.output_muted,
-                    },
+                    shape,
+                    controls,
+                    kind,
+                    default_dry: track.default_playback_mode
+                        == BackendDefaultPlaybackMode::DryThroughWet,
+                    state: processor_states[track_id],
                 },
-            }));
+                None => ReplacementEdit::Strip {
+                    strip: track.strip,
+                    shape,
+                    controls,
+                },
+            };
+            work.push_back(Work::Request(Request::ReplacementEdit { id, edit }));
         }
         let sync_slots = sync
             .iter()
@@ -411,7 +498,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             entry.sync = sync.iter().find_map(|(target, source)| {
                 (mapping.loops[target] == loop_id).then_some(mapping.loops[source])
             });
-            let pair = sources.get(&loop_id).copied().unwrap_or([None; 2]);
+            let pair = sources.get(&loop_id).copied().unwrap_or([None; 3]);
             if entry.track.is_none() {
                 continue;
             }
@@ -424,6 +511,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         .strip,
                     sync: sync_slots.get(&loop_id).copied(),
                     frames: entry.view.length,
+                    dry_audio: pair[2],
+                    recorded_state: crate::processor_controls::recorded_state(
+                        &candidate.tracks[&entry.track.expect("primitive owner")].topology,
+                        contents
+                            .get(&loop_id)
+                            .and_then(|content| content.recorded_processor_state.as_deref()),
+                    )?,
                     audio: pair[0],
                     midi: pair[1],
                     gain: entry.gain,
@@ -534,6 +628,35 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         for track in &session.tracks {
             check_track(track, u32::from(limits.strip_audio_channels), &composites)?;
+        }
+        for kind in [
+            shoop_rt_protocol::ProcessorKind::BuiltInFx,
+            shoop_rt_protocol::ProcessorKind::OxiSynth,
+        ] {
+            let requested = session
+                .tracks
+                .iter()
+                .filter(|track| {
+                    crate::processor_controls::topology_kind(&track.topology) == Some(kind)
+                })
+                .count();
+            let available = self.processors.map_or(0, |limits| match kind {
+                shoop_rt_protocol::ProcessorKind::BuiltInFx => limits.effective.fx_instances,
+                _ => limits.effective.synth_instances,
+            });
+            if requested > available as usize {
+                return Err(anyhow!("session requires {requested} {kind:?} instances; the host prepared {available}"));
+            }
+        }
+        if session
+            .tracks
+            .iter()
+            .any(|track| matches!(track.topology, BackendTrackTopology::DryWetExternal { .. }))
+            && !self
+                .capabilities
+                .contains(shoop_rt_protocol::Capabilities::EXTERNAL_DRY_WET)
+        {
+            return Err(unavailable(BackendCapability::DryWetTracks));
         }
         let loops = session
             .tracks
@@ -689,19 +812,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
 
         for track in &session.tracks {
-            let BackendTrackTopology::Direct {
-                audio_channels,
-                midi,
-            } = track.topology
-            else {
-                unreachable!("checked topology");
-            };
-            let mut created = self.create_strip(
+            let mut created = self.create_track_topology(
                 &track.port_name_base,
-                audio_channels,
-                midi,
+                track.topology.clone(),
                 track.loops.len(),
             )?;
+            self.mirror
+                .tracks
+                .get_mut(&created.track_id)
+                .expect("candidate track")
+                .default_playback_mode = track.state.default_playback_mode;
             let state = &track.state;
             self.mirror
                 .tracks

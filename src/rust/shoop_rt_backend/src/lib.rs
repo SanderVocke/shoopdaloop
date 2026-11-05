@@ -47,6 +47,8 @@ mod outgoing;
 mod persistence;
 mod prepared;
 mod preview;
+mod processor_controls;
+mod processors;
 mod reads;
 mod requests;
 mod session;
@@ -74,7 +76,8 @@ use crate::requests::Requests;
 const MAX_WAITS: usize = 10_000;
 pub const MAX_TRACKED_MUTATIONS: usize = 4096;
 /// Rounds of sending and receiving in one pump.
-const MAX_PUMP_ROUNDS: usize = 1_000;
+const MAX_PUMP_ROUNDS: usize = 8;
+const MAX_MESSAGES_PER_PUMP_ROUND: usize = 64;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Link {
@@ -169,6 +172,9 @@ pub struct RtBackend<C, K> {
     clock: K,
     link: Link,
     capabilities: Capabilities,
+    processors: Option<shoop_rt_protocol::ProcessorLimits>,
+    processor_presets: Vec<shoop_rt_protocol::ProcessorPreset>,
+
     limits: Option<Limits>,
     driver: Option<DriverStatus>,
     driver_profile: Option<shoop_app_api::ResolvedAudioDriverConfig>,
@@ -228,6 +234,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             clock,
             link: Link::Connecting,
             capabilities: Capabilities::default(),
+            processors: None,
+            processor_presets: Vec::new(),
             limits: None,
             driver: None,
             driver_profile: None,
@@ -463,8 +471,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         (self.client, self.clock)
     }
 
-    /// Sends queued requests and reads as credits allow and handles every engine message that
-    /// has arrived. Never waits.
+    /// Makes a bounded pass through queued requests, reads and engine messages. Never waits.
     pub fn pump(&mut self) {
         self.reads.advance();
         if let Some(replacement) = self.replacement.as_mut() {
@@ -489,7 +496,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
-            while let Some(message) = self.client.poll() {
+            for _ in 0..MAX_MESSAGES_PER_PUMP_ROUND {
+                let Some(message) = self.client.poll() else {
+                    break;
+                };
                 self.handle(message);
                 received += 1;
             }
@@ -548,6 +558,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
+                    && self.mirror.loops.values().all(|entry| {
+                        entry.view.mode.records()
+                            || entry.timing.content_revision == entry.rt_content_revision
+                    })
                     && self
                         .replacement
                         .as_ref()

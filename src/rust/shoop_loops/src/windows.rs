@@ -2,7 +2,7 @@
 
 use crate::Error;
 
-pub const MAX_AUDIO_CHANNELS: usize = 8;
+pub const MAX_AUDIO_CHANNELS: usize = 16;
 pub const MAX_CHANNEL_UPDATES: usize = MAX_AUDIO_CHANNELS + 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

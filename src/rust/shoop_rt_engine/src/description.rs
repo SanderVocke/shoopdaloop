@@ -50,6 +50,9 @@ pub struct EngineDescription {
     pub composite_segments: usize,
     pub timing_relations: usize,
     pub sample_rate: u32,
+    pub processors: shoop_rt_protocol::ProcessorSettings,
+    /// Prepare External dry/wet routing and its bounded wet edit storage.
+    pub external_dry_wet: bool,
     /// Largest callback the host will render.
     pub max_frames: usize,
     /// Fixed graph tick. Changing it requires preparing a new engine.
@@ -92,10 +95,12 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
+            external_dry_wet: false,
             composite_entries: 256,
             composite_segments: 1024,
             timing_relations: 512,
             sample_rate: 48_000,
+            processors: shoop_rt_protocol::ProcessorSettings::disabled(),
             max_frames: 512,
             quantum: 32,
             host: HostPorts::numbered(2, 2, 1),
@@ -133,6 +138,9 @@ impl EngineDescription {
     }
 
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
+        self.processors
+            .validate()
+            .map_err(|_| rt_runtime::Error::InvalidConfig)?;
         use rt_runtime::Error;
         let host = &self.host;
         rt_runtime::Quantum::new(self.quantum)?;

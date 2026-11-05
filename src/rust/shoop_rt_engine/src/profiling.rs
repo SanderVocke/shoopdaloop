@@ -59,6 +59,12 @@ impl Pool {
         for slot in 0..self.buses() {
             set(self.bus(slot), format_args!("Bus {} output", slot + 1));
         }
+        for slot in 0..self.processors() {
+            set(
+                self.processor(slot),
+                format_args!("Host processor {}", slot + 1),
+            );
+        }
         names.into_boxed_slice()
     }
 }
@@ -335,6 +341,11 @@ mod tests {
         let mut layouts = Layouts::new(&pool, 4, 48000, 32);
         let mut model = crate::model::Model::new(1, 1, 1, 2, Default::default(), 0);
         model.strips[0] = Some(crate::model::Strip {
+            default_dry: false,
+            processor: None,
+            sends: Default::default(),
+            returns: Default::default(),
+            midi_send: Default::default(),
             id: shoop_rt_protocol::StripId(shoop_rt_protocol::SlotId::new(0, 7)),
             shape: shoop_rt_protocol::StripShape {
                 audio_inputs: 0,

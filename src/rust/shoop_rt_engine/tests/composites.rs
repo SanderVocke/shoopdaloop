@@ -485,6 +485,8 @@ fn private_replacement_prepares_composites_inaudibly_and_loads_them_stopped_with
             host: audio_in(0),
         },
         ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: child,
             strip: track,
             sync: None,
@@ -495,6 +497,8 @@ fn private_replacement_prepares_composites_inaudibly_and_loads_them_stopped_with
             balance: 0.,
         },
         ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: parent,
             strip: track,
             sync: None,

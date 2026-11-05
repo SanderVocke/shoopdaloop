@@ -23,6 +23,7 @@ fn image() -> Arc<Image> {
                 gain: 1.,
                 balance: 0.,
                 audio: vec![Channel {
+                    mode: shoop_app_protocol::persistence_image::ChannelMode::Direct,
                     object: Some(1),
                     frames,
                     gain: 1.,
@@ -32,6 +33,7 @@ fn image() -> Arc<Image> {
                     recording_started_at: None,
                 }],
                 midi: Vec::new(),
+                recorded_processor_state: None,
             },
         },
         payloads: vec![Payload::Audio(Arc::new(vec![0.25; frames as usize]))],

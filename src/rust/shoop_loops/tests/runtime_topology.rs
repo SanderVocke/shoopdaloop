@@ -478,7 +478,9 @@ impl Harness {
             }
             imports.extend([audio.snapshot.resource, midi.snapshot.resource]);
             owned.push(media::Input {
+                auxiliary: None,
                 description: media::Description {
+                    auxiliary_channels: 0,
                     owner: id(1),
                     revision: Revision(0),
                     frames: 4,
@@ -491,6 +493,8 @@ impl Harness {
         }
         let mut bindings: Vec<_> = (0..2)
             .map(|slot| Binding {
+                dry_wet: false,
+                auxiliary_channels: 0,
                 target: id(slot),
                 playback: node(slot * 2),
                 capture: node(slot * 2 + 1),
@@ -505,6 +509,8 @@ impl Harness {
             .collect();
         if spare {
             bindings.push(Binding {
+                dry_wet: false,
+                auxiliary_channels: 0,
                 target: LoopId::from_parts(2, 2).unwrap(),
                 playback: node(5),
                 capture: node(6),

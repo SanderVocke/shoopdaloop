@@ -252,6 +252,8 @@ impl Encoder {
                     shoop_rt_protocol::LoopMode::Stopped => 0,
                     shoop_rt_protocol::LoopMode::Playing => 1,
                     shoop_rt_protocol::LoopMode::Recording => 2,
+                    shoop_rt_protocol::LoopMode::PlayingDryThroughWet => 3,
+                    shoop_rt_protocol::LoopMode::RecordingDryIntoWet => 4,
                 };
             }
         }

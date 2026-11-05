@@ -47,6 +47,7 @@ fn session_files_preserve_ordinary_bus_shapes_order_and_an_empty_bus_set() {
 }
 pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
     image::Channel {
+        mode: image::ChannelMode::Direct,
         object: Some(object),
         frames,
         gain: 1.,
@@ -58,6 +59,7 @@ pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
 }
 pub(super) fn content() -> image::Loop {
     image::Loop {
+        recorded_processor_state: None,
         sync_source: None,
         repeat_sync: false,
         composite: None,
@@ -362,6 +364,11 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
         sample_rate: 48000,
         global: GlobalControlState::default(),
         tracks: vec![image::Track {
+            topology: shoop_app_api::TrackTopology::Direct,
+            default_playback_mode: Default::default(),
+            processor_state: None,
+            builtin_fx_midi_cc_assignments: Vec::new(),
+            oxisynth_midi_cc_assignments: Vec::new(),
             id: TrackId::from_raw(1),
             name: "Track".into(),
             port_name_base: "track".into(),
@@ -764,6 +771,68 @@ fn exact_audio_export_maps_the_logical_window_without_baking_in_gain() {
     let audio = decode_loop_audio(&bytes).unwrap();
     assert_eq!(audio.channels[0].samples, [0., -0.0, 0.25, 0.]);
     assert_eq!(audio.channels[0].samples[1].to_bits(), (-0.0f32).to_bits());
+}
+#[shoop_test]
+fn role_exports_preserve_selected_order_labels_and_map_all_sixteen_destinations() {
+    let mut content = content();
+    content.audio = (0..16)
+        .map(|index| {
+            let mut channel = channel(index + 1, 2, -1);
+            channel.mode = if index < 8 {
+                image::ChannelMode::Dry
+            } else {
+                image::ChannelMode::Wet
+            };
+            channel
+        })
+        .collect();
+    let image = Arc::new(image::Image {
+        manifest: image::Manifest::Loop {
+            sample_rate: 48000,
+            content,
+        },
+        payloads: (0..16)
+            .map(|index| image::Payload::Audio(Arc::new(vec![index as f32 + 0.25; 2])))
+            .collect(),
+    });
+    let Value::File { bytes, .. } = (Work::Encode {
+        image,
+        kind: IoTaskKind::ExportLoopAudio,
+        wav: false,
+        standard: false,
+        channels: vec![15, 0, 9],
+    })
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let audio = decode_loop_audio(&bytes).unwrap();
+    assert_eq!(
+        audio
+            .channels
+            .iter()
+            .map(|c| c.label.as_str())
+            .collect::<Vec<_>>(),
+        ["Wet 8", "Dry 1", "Wet 2"]
+    );
+    assert_eq!(
+        audio
+            .channels
+            .iter()
+            .map(|c| c.role.as_str())
+            .collect::<Vec<_>>(),
+        ["wet", "dry", "wet"]
+    );
+    assert_eq!(audio.channels[0].samples, [0., 15.25, 15.25, 0.]);
+    let selected = Decoded::Audio(audio)
+        .select_audio(&(0..16).map(|i| i % 3).collect::<Vec<_>>())
+        .unwrap();
+    let Decoded::Audio(selected) = selected else {
+        panic!()
+    };
+    assert_eq!(selected.channels.len(), 16);
+    assert_eq!(selected.channels[15].samples, selected.channels[0].samples);
+    assert!(Decoded::Audio(selected).select_audio(&[0; 17]).is_err());
 }
 #[shoop_test]
 fn exact_midi_export_folds_preroll_and_preserves_logical_event_order() {

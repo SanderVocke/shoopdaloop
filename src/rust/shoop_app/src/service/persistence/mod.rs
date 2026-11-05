@@ -438,7 +438,14 @@ impl Service {
                                 | TrackAction::OutputBalanceChanged(_)
                                 | TrackAction::OutputMuteChanged(_)
                                 | TrackAction::InputGainChanged(_)
-                                | TrackAction::InputBalanceChanged(_),
+                                | TrackAction::InputBalanceChanged(_)
+                                | TrackAction::DefaultPlaybackModeChanged(_)
+                                | TrackAction::FxActiveChanged(_)
+                                | TrackAction::FxVisibilityChanged(_)
+                                | TrackAction::FxToggleOrRecover
+                                | TrackAction::FxRestoreState(_)
+                                | TrackAction::BuiltInFx(_)
+                                | TrackAction::OxiSynth(_),
                             ..
                         }
                         | Command::Loop {
@@ -1007,6 +1014,11 @@ impl Service {
                 target: None,
                 routes: Vec::new(),
                 tracks: vec![image::Track {
+                    topology: shoop_app_api::TrackTopology::Direct,
+                    default_playback_mode: Default::default(),
+                    processor_state: None,
+                    builtin_fx_midi_cc_assignments: Vec::new(),
+                    oxisynth_midi_cc_assignments: Vec::new(),
                     id: TrackId::from_raw(1),
                     name: "Sync".to_owned(),
                     port_name_base: "sync_loop".to_owned(),
@@ -1048,6 +1060,7 @@ impl Service {
                         ),
                     ],
                     loops: vec![image::Loop {
+                        recorded_processor_state: None,
                         sync_source: None,
                         repeat_sync: false,
                         composite: None,
@@ -1058,6 +1071,7 @@ impl Service {
                         gain: 1.,
                         balance: 0.,
                         audio: vec![image::Channel {
+                            mode: image::ChannelMode::Direct,
                             object: None,
                             frames: 0,
                             gain: 1.,

@@ -346,6 +346,26 @@ impl ResourceIo<'_> {
     pub fn read(&mut self, cursor: &mut Cursor, bytes: &mut [u8]) -> Result<usize, Error> {
         self.store.read(cursor, bytes)
     }
+    pub fn reserve_snapshot(&mut self) -> Result<SnapshotReservation, Error> {
+        self.store.reserve_snapshot()
+    }
+    pub fn cancel_snapshot_reservation(
+        &mut self,
+        reservation: SnapshotReservation,
+    ) -> Result<(), Error> {
+        self.store.cancel_snapshot_reservation(reservation)
+    }
+    pub fn snapshot_reserved(
+        &mut self,
+        reservation: SnapshotReservation,
+        resource: ResourceId,
+        frame: Frame,
+    ) -> Result<Snapshot, Error> {
+        self.store.snapshot_reserved(reservation, resource, frame)
+    }
+    pub fn retain_snapshot(&mut self, snapshot: SnapshotId) -> Result<Snapshot, Error> {
+        self.store.retain_snapshot(snapshot)
+    }
     pub fn release_snapshot(&mut self, snapshot: SnapshotId) -> Result<(), Error> {
         self.store.release_snapshot(snapshot)
     }

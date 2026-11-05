@@ -1744,6 +1744,7 @@ impl NativeRuntime {
                     })
                     .collect::<Result<Vec<_>>>()?;
                 loops.push(BackendLoopContent {
+                    recorded_processor_state: None,
                     source_id: loop_id.raw(),
                     length: loop_state.length,
                     gain: loop_.gain,
@@ -3402,6 +3403,7 @@ impl NativeRuntime {
                 ),
             ] {
                 catalog.push(TrackProcessorDescriptor {
+                    resources: None,
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
                     available: carla_availability.is_ok(),
@@ -4084,6 +4086,7 @@ impl Backend for NativeBackend {
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         let catalog = vec![
             TrackProcessorDescriptor {
+                resources: None,
                 id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
                 label: "External".to_owned(),
                 available: true,
@@ -4116,6 +4119,7 @@ impl Backend for NativeBackend {
                 ),
             ] {
                 catalog.push(TrackProcessorDescriptor {
+                    resources: None,
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
                     available: carla_availability.is_ok(),
@@ -5054,6 +5058,7 @@ impl Backend for NativeBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    recorded_processor_state: None,
                     repeat_sync: false,
                     sync_source: loop_.sync_source,
                     content_revision: 0,

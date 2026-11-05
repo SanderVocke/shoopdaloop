@@ -24,6 +24,57 @@ impl shoop_rt_backend::HostPortInventory for Inventory {
 }
 
 #[shoop_test]
+fn busy_telemetry_yields_control_without_starving_confirmed_track_requests() {
+    use shoop_rt_transport::{carrier::Carrier, client::ProtocolClient};
+    use std::{cell::Cell, rc::Rc};
+
+    struct Busy<C> {
+        inner: C,
+        pending: Rc<Cell<usize>>,
+    }
+    impl<C: Carrier> Carrier for Busy<C> {
+        fn send(
+            &mut self,
+            message: shoop_rt_protocol::ClientMessage,
+        ) -> Result<(), shoop_rt_transport::carrier::CarrierError> {
+            self.inner.send(message)
+        }
+        fn receive(&mut self) -> Option<EngineMessage> {
+            self.inner.receive().or_else(|| {
+                let remaining = self.pending.get().checked_sub(1)?;
+                self.pending.set(remaining);
+                Some(EngineMessage::Telemetry(
+                    shoop_rt_protocol::Telemetry::Preview { request_id: 0 },
+                ))
+            })
+        }
+    }
+    let (clock, client) = parts(&description());
+    let pending = Rc::new(Cell::new(0));
+    let mut backend = RtBackend::connect(
+        ProtocolClient::new(Busy {
+            inner: client.into_carrier(),
+            pending: pending.clone(),
+        }),
+        clock,
+    )
+    .unwrap();
+    backend.wait_idle();
+    pending.set(100_000);
+    backend.pump();
+    assert!(pending.get() > 0, "one pump drained the busy producer");
+    let created = backend.create_direct_track(track(1, false, 1)).unwrap();
+    backend
+        .set_track_control(created.track_id, BackendTrackControl::OutputBalance(0.25))
+        .unwrap();
+    backend.wait_idle();
+    let snapshot = backend.poll().unwrap();
+    assert!(snapshot.mutation_failures.is_empty());
+    assert_eq!(snapshot.tracks[&created.track_id].output_balance, 0.25);
+    assert!(pending.get() > 0);
+}
+
+#[shoop_test]
 fn physical_host_ids_route_to_prepared_slots_and_preserve_disconnected_bindings() {
     use shoop_backend::{BackendPortDataType, BackendPortDirection};
     use shoop_rt_backend::HostPortAlias;

@@ -2463,7 +2463,14 @@ type CatalogScanCompletion = (
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
-        Self::new_with_engine_start(settings, args, engine_backend::start_selected)
+        Self::new_with_engine_start(settings, args, |driver, pools, transport| {
+            engine_backend::start_selected_with_processors(
+                driver,
+                pools,
+                transport,
+                args.configured_processors(settings)?,
+            )
+        })
     }
 
     fn new_with_engine_start(
@@ -3271,7 +3278,11 @@ impl Runtime {
             ));
                 true
             });
-        let controller = browser_rt_audio::BrowserRtAudio::new(midi.hub(), pools)?;
+        let controller = browser_rt_audio::BrowserRtAudio::new(
+            midi.hub(),
+            pools,
+            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        )?;
         if offline {
             set_offline_audio_permission_presentation();
             controller.refuse(
@@ -3715,6 +3726,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
+            processors: args.configured_processors(&settings)?,
             driver: args
                 .configured_audio_driver(&settings)
                 .map_err(anyhow::Error::msg)?,
@@ -3754,6 +3766,7 @@ fn main() {
     let cli = AppArgs::parse();
     if !cli.probe_engine_transport
         && !cli.probe_persistence
+        && !cli.probe_hosted_processors
         && !cli.probe_composites
         && !cli.probe_builtins
         && !cli.tracing_smoke_test
@@ -3768,8 +3781,17 @@ fn main() {
         }
     }
 
-    if cli.probe_engine_transport || cli.probe_persistence || cli.probe_composites {
-        let result = if cli.probe_composites {
+    if cli.probe_engine_transport
+        || cli.probe_persistence
+        || cli.probe_hosted_processors
+        || cli.probe_composites
+    {
+        let result = if cli.probe_hosted_processors {
+            cli.audio
+                .apply_processors(Default::default())
+                .map_err(anyhow::Error::msg)
+                .and_then(|settings| session_probe::hosted(cli.engine_transport.unwrap(), settings))
+        } else if cli.probe_composites {
             session_probe::composites(cli.engine_transport.unwrap())
         } else if cli.probe_persistence {
             session_probe::files(cli.engine_transport.unwrap())
@@ -4816,6 +4838,15 @@ mod tests {
                 .with(BackendCapability::LoopContentImport, true)
                 .with(BackendCapability::LoopTimingEdits, true)
                 .with(BackendCapability::BusManagement, true)
+                .with(BackendCapability::DryWetModes, true)
+                .with(BackendCapability::DryWetTracks, true)
+                .with(
+                    BackendCapability::TrackFx,
+                    snapshot
+                        .track_processors
+                        .iter()
+                        .any(|processor| processor.available),
+                )
                 .with(BackendCapability::CompositeLoops, true)
                 .with(BackendCapability::ClickTrackInsertion, true)
         );
@@ -5163,7 +5194,12 @@ mod tests {
         };
         let mut runtime =
             Runtime::new_with_engine_start(&settings, &args, |driver, pools, kind| {
-                engine_backend::start_selected(driver, pools, kind)
+                engine_backend::start_selected_with_processors(
+                    driver,
+                    pools,
+                    kind,
+                    Default::default(),
+                )
             })
             .unwrap();
         let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {

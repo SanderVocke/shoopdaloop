@@ -180,6 +180,8 @@ fn main() {
             },
         });
         edit(ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: loop_id(slot),
             strip: strip(slot),
             sync: None,

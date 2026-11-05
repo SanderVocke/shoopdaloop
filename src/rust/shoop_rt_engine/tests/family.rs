@@ -49,6 +49,8 @@ fn prepare(
     let outcome = h.apply(Request::ContentFamilyEdit {
         id: family,
         edit: ContentFamilyEdit {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: target,
             sync_source: source,
             expected_revision: revision,
@@ -93,6 +95,8 @@ fn baseline() -> Harness {
     for (token, loop_id, frames, value) in [(1, root, 96, 1.0), (2, child, 384, 2.0)] {
         upload(&mut h, token, frames, value);
         h.done(Request::ContentApply {
+            dry_audio: None,
+            recorded_state: None,
             loop_id,
             frames,
             audio: Some(token * 2 - 1),
@@ -308,6 +312,8 @@ fn family_prepares_without_changing_music_and_publishes_one_cut_beside_recording
         h.done(route(strip, 0, 0, true));
         upload(&mut h, 1, 3 * q, 1.0);
         h.done(Request::ContentApply {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: root,
             frames: 3 * q,
             audio: Some(1),
@@ -315,6 +321,8 @@ fn family_prepares_without_changing_music_and_publishes_one_cut_beside_recording
         });
         upload(&mut h, 2, 12 * q, 2.0);
         h.done(Request::ContentApply {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: child,
             frames: 12 * q,
             audio: Some(3),
@@ -396,6 +404,8 @@ fn family_prepares_without_changing_music_and_publishes_one_cut_beside_recording
         prepare(&mut h, 2, child, root, 16 * q, 2, 20 * q, 6);
         upload(&mut h, 7, 4 * q, 0.375);
         h.done(Request::ContentApply {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: root,
             frames: 4 * q,
             audio: Some(13),

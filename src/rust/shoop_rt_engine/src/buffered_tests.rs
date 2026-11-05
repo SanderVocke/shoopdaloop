@@ -77,8 +77,10 @@ fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
             sample_rate: 48000,
             buffer_frames: 128,
         },
+        quantum.frames(),
     );
     let settings = NodeSettings {
+        external_midi: None,
         cells,
         channels: 2,
         master_channels: 2,

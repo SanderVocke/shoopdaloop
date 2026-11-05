@@ -90,6 +90,48 @@ fn configured() -> (Harness, StripId, LoopSlotId) {
 }
 
 #[shoop_test]
+fn latest_dry_midi_is_retained_for_learning_and_cleared_on_slot_reuse() {
+    let (mut h, track, looped) = configured();
+    let latest = |h: &Harness, id| {
+        h.telemetry
+            .iter()
+            .rev()
+            .find_map(|(_, record)| match record {
+                Telemetry::Strip {
+                    strip,
+                    latest_input_midi,
+                    ..
+                } if *strip == id => Some(*latest_input_midi),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(latest(&h, track), None);
+    let cc = MidiMessage::new(&[0xb2, 17, 100]).unwrap();
+    h.midi_input.push((h.frame() + 1, cc.as_bytes().to_vec()));
+    h.run(8, 3);
+    assert_eq!(latest(&h, track), Some(cc));
+    h.run(8, 2);
+    assert_eq!(latest(&h, track), Some(cc));
+    let injected = MidiMessage::new(&[0xb3, 19, 70]).unwrap();
+    h.done(Request::InjectMidi {
+        strip: track,
+        message: injected,
+    });
+    h.run(4, 1);
+    assert_eq!(latest(&h, track), Some(injected));
+    h.done(Request::RemoveLoop { loop_id: looped });
+    h.done(Request::RemoveStrip { strip: track });
+    let reused = StripId(SlotId::new(track.0.index, track.0.generation + 1));
+    h.done(Request::CreateStrip {
+        strip: reused,
+        shape: shape(2, 2, true),
+    });
+    h.run(4, 1);
+    assert_eq!(latest(&h, reused), None);
+}
+
+#[shoop_test]
 fn jack_buffer_changes_keep_controls_one_server_period_ahead() {
     let (mut harness, track, _) = configured();
     harness.done(Request::Connect {
@@ -223,8 +265,8 @@ fn bulk_reads_return_recorded_audio_channels_and_midi() {
         message: MidiMessage::new(&[0xb0, 64, 127]).unwrap(),
     });
     harness.run((start + 400 - harness.frame()) as usize, 16);
+    let stop = harness.frame();
     harness.done(transition(looped, LoopMode::Stopped));
-    let stop = harness.frame() - 1;
     let frames = stop - start;
     let (total, left, _) = harness.read(looped, BulkSelector::Audio { channel: 0 });
     assert_eq!(total, frames);

@@ -510,6 +510,19 @@ impl Service {
         target: LoopId,
         document: &Document,
     ) -> core::result::Result<(), CommandError> {
+        for id in
+            core::iter::once(target).chain(document.instances.iter().map(|event| event.loop_id))
+        {
+            let entry = self.loop_entry(id)?;
+            if !matches!(
+                self.tracks[&entry.track].view.topology,
+                TrackTopology::Direct
+            ) {
+                return Err(CommandError::invalid(
+                    "composites currently require Direct tracks",
+                ));
+            }
+        }
         let mut graph: BTreeMap<LoopId, BTreeSet<LoopId>> = BTreeMap::new();
         for (&parent, owner) in &self.composites {
             if parent == target {

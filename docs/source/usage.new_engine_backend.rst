@@ -1,33 +1,24 @@
 New engine backend
 ------------------
 
-ShoopDaLoop can run on a new audio engine instead of its legacy engine. The new
-engine backend is opt-in and supports the core looping workflow only. The
-legacy engine stays the default and supports every feature described in this
-guide.
+The RT session engine is ShoopDaLoop's production backend. It supports core
+audio/MIDI looping, host-advertised dry/wet processors, session files and
+client-side Lua. The feature parity ledger tracks remaining features.
 
 Enabling it
 ~~~~~~~~~~~
 
-Open **Settings → Audio** and set **Audio backend** to **New engine (core
-looping only)**. The backend is chosen at startup: save the settings and
-restart ShoopDaLoop, or reload the page in the browser.
-
-To choose a backend for one run without changing the setting, start
-ShoopDaLoop with ``--audio-backend new_engine`` or ``--audio-backend legacy``.
-In the browser, add the query parameter ``?audio-backend=new_engine`` or
-``?audio-backend=legacy`` to the URL.
+Choose the audio driver, session delivery and prepared capacities in
+**Settings → Audio** before starting a host. Existing hosts retain their
+configuration when a UI attaches. ``--audio-backend new_engine`` remains a
+compatibility option; the legacy backend is unavailable in production.
 
 Drivers
 ~~~~~~~
 
-Native builds run the new engine on the dummy driver or on CPAL, with MIDI
-through midir. It uses the preferred audio driver and its settings from
-**Settings → Audio**. The new engine has no JACK driver: with JACK preferred,
-it uses CPAL's JACK host where available and CPAL's default devices otherwise.
-If the configured driver fails to start, the new engine starts on the dummy
-driver instead. These fallbacks, and settings that cannot be used as given,
-such as a missing device or MIDI port, are shown as notifications at startup.
+Native builds support dummy, CPAL and native JACK drivers according to compiled
+features. Native JACK publishes track and bus ports dynamically. Startup
+failures and unavailable devices are reported by the host launch flow.
 
 The new engine cannot switch drivers while it runs. Instead, the **Audio
 driver** section of **Settings → Audio** offers the dummy and CPAL drivers and
@@ -112,10 +103,15 @@ Supported features
        named buses with gain, stereo balance and mute; per-channel routes from
        tracks to buses and buses to host outputs. Master is an ordinary removable
        default; zero buses is valid. The configured pool supports up to eight buses
-       of at most eight channels each. **Global FX Control MIDI In** can be connected but has no
-       effect.
+       of at most eight channels each. **Global FX Control MIDI In** routes
+       supported continuous controls to processed tracks without recording them.
    * - Sessions
-     - New session.
+     - New session and atomic save/load, including dry/wet role media, processor
+       settings, MIDI mappings and recorded-take settings. Loaded loops stop.
+   * - Track processors
+     - External, built-in FunDSP FX and OxiSynth according to the host catalog.
+       Embedded editors, MIDI Learn, activation and recorded-state restoration;
+       dry-through-wet playback, wet rerecord and per-track default actions.
    * - Status
      - Sample rate, buffer size, driver state, xruns and load.
 
@@ -123,15 +119,17 @@ Everything else is unavailable. The UI disables or hides it with an
 explanation, and a script operation or session that needs it is refused as a
 whole instead of being applied partially:
 
-* saving and loading sessions, and saving loop audio or MIDI;
 * composite loops;
 * grab;
-* replacing, and the dry/wet modes;
-* Dry + Wet tracks and their processors, and track and bus FX;
-* latency compensation and take alignment;
-* replacing loop content: imports, click-track generation and cloning;
-* editing loop length, start offset and pre-play;
+* general replacing mode, Carla and bus FX;
+* manual latency compensation and take-alignment controls;
+* cloning loop content;
 * switching the audio driver while running.
+
+Loop content import/export, click generation, length, start-offset and pre-play
+editing are supported within the advertised limits. Processor buffering is
+automatic and reported separately from host buffering. Optional processor
+features and ``auto``/``on``/``off`` startup policies control availability.
 
 Known limitations
 ~~~~~~~~~~~~~~~~~

@@ -43,6 +43,7 @@ use shoop_rt_transport::carrier::{Endpoint, Outbox};
 pub(crate) const PLANNED: usize = 8;
 
 pub(crate) struct Settings {
+    pub external_dry_wet: bool,
     pub ramp: u32,
     pub lead: u32,
     pub smoothing: u32,
@@ -53,8 +54,6 @@ pub(crate) struct Settings {
     /// Audio inputs, audio outputs, MIDI inputs, MIDI outputs.
     pub host: [usize; 4],
     pub records_per_append: usize,
-    /// The largest callback, which separates scheduled topology appends.
-    pub frames: u32,
     pub command_slots: usize,
     pub max_reliable: u16,
     pub max_bulk: u16,
@@ -71,12 +70,18 @@ pub(crate) struct Planned {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    TimingSnapshot(LoopSlotId),
     Timing {
         slot: usize,
         correlation: Option<u64>,
     },
     /// Answer `correlation` with the execution's outcome.
     Reply(Option<u64>),
+    StripControl {
+        correlation: Option<u64>,
+        strip: StripId,
+        control: StripControl,
+    },
     /// A loop transition: answered when executed, or once scheduled if delayed.
     Transition {
         correlation: Option<u64>,
@@ -153,6 +158,17 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
+    pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
+    pub(crate) processor_catalog: crate::ProcessorCatalog,
+    pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
+    pub(crate) projected_processors: Box<
+        [Option<(
+            StripId,
+            shoop_rt_protocol::ProcessorSlot,
+            shoop_rt_protocol::processors::Snapshot,
+        )>],
+    >,
     pub(crate) profiling: Option<rt_runtime::profiling::Reader>,
     pub(crate) profile_named: Box<[bool]>,
     pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
@@ -188,6 +204,7 @@ pub struct ControlEndpoint {
     pub(crate) blocked_loops: Box<[bool]>,
     pub(crate) blocked_buses: Box<[bool]>,
     pub(crate) blocked_all: bool,
+    pub(crate) blocked_global: bool,
     /// Initial media of new loops, to release.
     pub(crate) retired: Ring<shoop_loops::media::MediaId>,
     /// Nodes that fade out before an activation.
@@ -285,6 +302,11 @@ fn loop_transition(mode: LoopMode) -> Transition {
             position: 0,
             retrigger: false,
         },
+        LoopMode::PlayingDryThroughWet => Transition::PlayDry {
+            position: 0,
+            retrigger: false,
+        },
+        LoopMode::RecordingDryIntoWet => Transition::Rerecord,
         LoopMode::Recording => Transition::Record {
             monitor_previous: false,
         },
@@ -295,6 +317,8 @@ pub(crate) fn protocol_mode(mode: Mode) -> LoopMode {
         Mode::Stopped => LoopMode::Stopped,
         Mode::Playing => LoopMode::Playing,
         Mode::Recording => LoopMode::Recording,
+        Mode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
+        Mode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
     }
 }
 pub(crate) fn loop_id(id: LoopSlotId) -> LoopId {
@@ -305,6 +329,30 @@ fn finite_balance(value: f32) -> bool {
 }
 
 impl ControlEndpoint {
+    pub fn processor_catalog(&self) -> &crate::ProcessorCatalog {
+        &self.processor_catalog
+    }
+    pub fn processor_state(&self, slot: usize) -> Option<crate::ProcessorState> {
+        self.processor_cells.get(slot)?.read()
+    }
+    pub fn recorded_processor_state(
+        &self,
+        id: LoopSlotId,
+    ) -> Option<shoop_rt_protocol::RecordedProcessorState> {
+        let cells = self.cells.loops.get(id.0.index as usize)?;
+        if cells.generation.load(Ordering::Relaxed) != id.0.generation {
+            return None;
+        }
+        cells
+            .recorded
+            .read(
+                id.0.generation,
+                cells.content_revision.load(Ordering::Relaxed),
+            )
+            .ok()
+            .flatten()
+    }
+
     pub(crate) fn next_frame(&self) -> Frame {
         Frame(self.cells.next_frame.load(Ordering::Relaxed))
     }
@@ -350,14 +398,26 @@ impl ControlEndpoint {
         self.limits
     }
 
-    pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::PROFILING
+    pub(crate) fn capabilities(&self) -> Capabilities {
+        let mut capabilities = Capabilities::PROFILING
             .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
             .union(Capabilities::WIDE_CONTENT_UPLOAD)
-            .union(Capabilities::LOOP_TIMING)
+            .union(Capabilities::LOOP_TIMING);
+        if self.settings.external_dry_wet || !self.processor_catalog.kinds.is_empty() {
+            capabilities = capabilities
+                .union(Capabilities::DRY_WET)
+                .union(Capabilities::GLOBAL_FX_CONTROL);
+        }
+        if self.settings.external_dry_wet {
+            capabilities = capabilities.union(Capabilities::EXTERNAL_DRY_WET);
+        }
+        if !self.processor_catalog.kinds.is_empty() {
+            capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
+        }
+        capabilities
     }
 
     fn free_pending(&self) -> usize {
@@ -482,13 +542,17 @@ impl ControlEndpoint {
         self.results.clear();
         self.unanswered = 0;
         self.resync = None;
+        self.projected_processors.fill(None);
+        self.projected_recorded.fill(None);
+        self.projected_timing.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
         for pending in self.pending.iter_mut().flatten() {
             match &mut pending.purpose {
                 Purpose::Reply(correlation)
-                | Purpose::Transition { correlation, .. }
-                | Purpose::Timing { correlation, .. } => *correlation = None,
+                | Purpose::StripControl { correlation, .. }
+                | Purpose::Timing { correlation, .. }
+                | Purpose::Transition { correlation, .. } => *correlation = None,
                 Purpose::Content { correlation, .. } => *correlation = None,
                 _ => {}
             }
@@ -552,8 +616,20 @@ impl ControlEndpoint {
         let finished = pending.completed && (pending.executed || !pending.expects);
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
+            Purpose::TimingSnapshot(target) => self.timing_snapshot_result(target, result),
             Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
+            Purpose::StripControl {
+                correlation,
+                strip,
+                control,
+            } => {
+                if matches!(&result, RuntimeResult::Execution(execution) if execution_outcome(execution) == Outcome::Done)
+                {
+                    self.apply_strip_control(strip, control);
+                }
+                self.reply_result(correlation, result);
+            }
             Purpose::Transition {
                 correlation,
                 delayed,
@@ -697,6 +773,16 @@ impl ControlEndpoint {
         delay: Option<u32>,
     ) -> Result<(), Refusal> {
         let entry = *self.model.find_loop(id).ok_or(Refusal::InvalidId)?;
+        if matches!(
+            mode,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) && self
+            .model
+            .strip(entry.strip.ok_or(Refusal::InvalidId)?)
+            .is_none_or(|strip| strip.processor.is_none())
+        {
+            return Err(Refusal::Unsupported);
+        }
         let slot = id.0.index as usize;
         if entry.program.is_some() && mode == LoopMode::Recording {
             return Err(Refusal::InvalidValue);
@@ -707,7 +793,7 @@ impl ControlEndpoint {
         let at = self.at();
         let target = loop_id(id);
         let immediate =
-            delay.is_none() || (entry.sync.is_none() && self.observed_mode(id) != Mode::Playing);
+            delay.is_none() || (entry.sync.is_none() && !self.observed_mode(id).playback_mode());
         if immediate {
             self.cancel_planned(slot, None, at);
             self.submit_loop(
@@ -764,10 +850,10 @@ impl ControlEndpoint {
     pub(crate) fn host_index(&self, host: HostPortId, kind: PortKind) -> Option<usize> {
         let port = self.host_ports.get(host.0 as usize)?;
         let expected = match kind {
-            PortKind::AudioIn => (HostPortKind::Audio, Direction::Input),
-            PortKind::AudioOut => (HostPortKind::Audio, Direction::Output),
+            PortKind::AudioIn | PortKind::AudioReturn => (HostPortKind::Audio, Direction::Input),
+            PortKind::AudioOut | PortKind::AudioSend => (HostPortKind::Audio, Direction::Output),
             PortKind::MidiIn => (HostPortKind::Midi, Direction::Input),
-            PortKind::MidiOut => (HostPortKind::Midi, Direction::Output),
+            PortKind::MidiOut | PortKind::MidiSend => (HostPortKind::Midi, Direction::Output),
         };
         if (port.kind, port.direction) != expected {
             return None;
@@ -860,11 +946,15 @@ impl ControlEndpoint {
             Request::ContentApply {
                 loop_id: id,
                 frames,
+                dry_audio,
+                recorded_state,
                 audio,
                 midi,
             } => {
                 if self.model.find_loop(id).is_none() {
                     Err(Refusal::InvalidId)
+                } else if self.validate_recorded(id, recorded_state).is_err() {
+                    Err(Refusal::InvalidValue)
                 } else {
                     let sources = audio
                         .map(|id| self.uploads.source(id, false, frames))
@@ -873,15 +963,22 @@ impl ControlEndpoint {
                             midi.map(|id| self.uploads.source(id, true, frames))
                                 .transpose()
                                 .map(|midi| (audio, midi))
+                        })
+                        .and_then(|(audio, midi)| {
+                            dry_audio
+                                .map(|id| self.uploads.source(id, false, frames))
+                                .transpose()
+                                .map(|dry| (audio, dry, midi))
                         });
                     match sources {
                         Err(refusal) => Err(refusal),
-                        Ok((audio, midi)) => {
+                        Ok((audio, dry, midi)) => {
                             if self.job.is_some() {
                                 return Err(());
                             }
                             self.touched_loops[id.0.index as usize] = crate::queue::HARD;
-                            let mut job = Job::content(id, frames, audio, midi);
+                            let mut job =
+                                Job::content(id, frames, audio, dry, midi, recorded_state);
                             match self.uploads.source_timing(audio, midi, frames) {
                                 Ok(timing) => job.content_timing = Some(timing),
                                 Err(refusal) => {
@@ -896,6 +993,48 @@ impl ControlEndpoint {
             }
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
+            }
+            Request::ProcessorControl { strip, control } => {
+                match self.model.strip(strip).ok_or(Refusal::InvalidId) {
+                    Ok(entry) => match entry.processor.and_then(|owner| owner.slot) {
+                        Some(slot) => self
+                            .submit_op(
+                                self.at(),
+                                self.pool.processor(slot.index as usize),
+                                EngineOp::ProcessorControl {
+                                    generation: slot.generation,
+                                    control,
+                                },
+                                Purpose::Reply(Some(correlation)),
+                            )
+                            .map(|()| None),
+                        None => Err(Refusal::Unsupported),
+                    },
+                    Err(error) => Err(error),
+                }
+            }
+            Request::StripDefaultPlayback {
+                strip,
+                dry_through_wet,
+            } => {
+                let entry = self.model.strip_mut(strip).ok_or(Refusal::InvalidId);
+                match entry {
+                    Ok(entry)
+                        if !dry_through_wet
+                            || (entry.processor.is_some() && entry.shape.audio_outputs > 0) =>
+                    {
+                        entry.default_dry = dry_through_wet;
+                        self.model.revision += 1;
+                        if self.job.is_some() {
+                            if let Some(entry) = self.next.strip_mut(strip) {
+                                entry.default_dry = dry_through_wet;
+                            }
+                        }
+                        Ok(Some(Outcome::Done))
+                    }
+                    Ok(_) => Err(Refusal::Unsupported),
+                    Err(refusal) => Err(refusal),
+                }
             }
             Request::LoopTransition {
                 loop_id,
@@ -959,6 +1098,7 @@ impl ControlEndpoint {
             Request::CreateBus { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
+            | Request::CreateProcessedStrip { .. }
             | Request::RemoveStrip { .. }
             | Request::ResetComposite { .. }
             | Request::CreateComposite { .. }
@@ -1062,19 +1202,63 @@ impl ControlEndpoint {
             _ => return Err(Refusal::InvalidValue),
         };
         let at = self.at();
-        self.submit_op(at, node, operation, Purpose::Reply(Some(correlation)))?;
-        self.model
-            .strip_mut(strip)
-            .expect("validated strip")
-            .controls
-            .apply(control);
+        self.submit_op(
+            at,
+            node,
+            operation,
+            Purpose::StripControl {
+                correlation: Some(correlation),
+                strip,
+                control,
+            },
+        )?;
+        Ok(None)
+    }
+
+    fn apply_strip_control(&mut self, strip: StripId, control: StripControl) {
+        let Some(entry) = self.model.strip_mut(strip) else {
+            return;
+        };
+        entry.controls.apply(control);
         self.model.revision += 1;
         if self.job.is_some() {
             if let Some(entry) = self.next.strip_mut(strip) {
                 entry.controls.apply(control);
             }
         }
-        Ok(None)
+    }
+
+    fn forced_monitoring(&mut self, mut out: Option<&mut Outbox>) {
+        for slot in 0..self.model.strips.len() {
+            let generation = self.cells.strips[slot]
+                .forced_monitor_off
+                .load(Ordering::Acquire);
+            let Some(strip) = self.model.strips[slot].filter(|s| s.id.0.generation == generation)
+            else {
+                continue;
+            };
+            if strip.controls.monitoring {
+                self.apply_strip_control(strip.id, StripControl::Monitoring(false));
+            }
+            if let Some(out) = out.as_deref_mut() {
+                if out
+                    .push(EngineMessage::State(
+                        shoop_rt_protocol::StateRecord::StripControl {
+                            strip: strip.id,
+                            control: StripControl::Monitoring(false),
+                        },
+                    ))
+                    .is_ok()
+                {
+                    let _ = self.cells.strips[slot].forced_monitor_off.compare_exchange(
+                        generation,
+                        0,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    );
+                }
+            }
+        }
     }
 
     fn bus_control(
@@ -1174,6 +1358,10 @@ impl ControlEndpoint {
                     output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
                     midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
                     midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
+                    latest_input_midi: (cells.owner_generation.load(Ordering::Relaxed)
+                        == strip.id.0.generation)
+                        .then(|| cells.latest_midi())
+                        .flatten(),
                     automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
                 }));
             }
@@ -1241,23 +1429,30 @@ impl ControlEndpoint {
             .flatten()
             .map(|planned| (self.remaining(planned), planned.mode))
             .min_by_key(|(remaining, _)| *remaining);
+        let mode = if current {
+            state.mode
+        } else {
+            shoop_loops::Mode::Stopped
+        };
         let channels = entry
             .strip
             .and_then(|id| self.model.strip(id))
-            .map_or(0, |strip| strip.shape.audio_outputs as usize);
+            .map_or(0, |strip| {
+                if mode.dry_playback() {
+                    strip.shape.audio_inputs as usize
+                } else {
+                    strip.shape.audio_outputs as usize
+                }
+            });
         let record = Telemetry::Loop {
             loop_id: entry.id,
-            mode: if current {
-                protocol_mode(state.mode)
-            } else {
-                LoopMode::Stopped
-            },
+            mode: protocol_mode(mode),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(delay, _)| delay),
             recording_armed: self.planned[slot]
                 .iter()
                 .flatten()
-                .any(|planned| planned.mode == LoopMode::Recording),
+                .any(|planned| planned.mode.records()),
             timing_revision: if current { state.timing_revision } else { 0 },
             content_revision: if current { state.revision } else { 0 },
             length: if current { state.length } else { 0 },
@@ -1294,7 +1489,7 @@ impl Endpoint for ControlEndpoint {
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
-                    capabilities: Self::capabilities(),
+                    capabilities: self.capabilities(),
                     limits: self.limits,
                     driver: self.cells.driver(),
                 });
@@ -1356,12 +1551,20 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.forced_monitoring(None);
         self.advance_job();
         self.process_queue(true);
         self.advance_bulk();
         self.advance_preview();
         self.advance_content();
+        self.advance_timing();
         self.flush(out);
+        if self.connected {
+            self.forced_monitoring(Some(out));
+        }
+        self.project_processors(out);
+        self.project_recorded(out);
+        self.project_timing(out);
         self.telemetry(out);
         self.forward_profiling(out);
     }

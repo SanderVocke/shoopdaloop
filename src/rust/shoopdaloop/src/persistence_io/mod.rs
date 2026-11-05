@@ -47,6 +47,7 @@ struct Task {
     inspected: bool,
     family: Option<shoop_persistence_codec::codec::family::FamilyPlan>,
     audio_channels: usize,
+    audio_labels: Vec<String>,
     update_length: bool,
     wav: bool,
     standard: bool,
@@ -90,21 +91,19 @@ impl Provider {
             "another file workflow is still active"
         );
         self.codec.reset();
-        let (target, audio_channels) = if let Some(loop_id) = loop_id {
+        let (target, audio_labels) = if let Some(loop_id) = loop_id {
             let (track, entry) = state
                 .tracks
                 .iter()
                 .find_map(|t| t.loops.iter().find(|l| l.id == loop_id).map(|l| (t, l)))
                 .ok_or_else(|| anyhow!("the target loop no longer exists"))?;
-            ensure!(
-                track.topology == TrackTopology::Direct,
-                "media files require a direct track (P03)"
-            );
             let ports = state.connections.application_ports.iter().filter(|p| matches!(p.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track.id)).collect::<Vec<_>>();
-            let audio = ports
+            let direct_audio = ports
                 .iter()
                 .filter(|p| p.role == PortRole::AudioInput)
                 .count();
+            let labels = track.topology.audio_channel_labels(direct_audio);
+            let audio = labels.len();
             let midi = ports.iter().any(|p| p.role == PortRole::MidiInput);
             ensure!(
                 !matches!(
@@ -125,14 +124,14 @@ impl Provider {
                     loop_id,
                     content_revision: entry.content_revision,
                 },
-                audio,
+                labels,
             )
         } else {
             (
                 transfer::Target::Session {
                     revision: state.revision,
                 },
-                0,
+                Vec::new(),
             )
         };
         let id = family::next_transfer()?.0;
@@ -159,7 +158,8 @@ impl Provider {
             mapping: None,
             inspected: false,
             family: None,
-            audio_channels,
+            audio_channels: audio_labels.len(),
+            audio_labels,
             update_length: true,
             wav: false,
             standard: false,
@@ -270,9 +270,7 @@ impl Provider {
             task.view.status = IoTaskStatus::AwaitingChannelMapping;
             task.view.audio_channel_mapping = Some(AudioChannelMappingState {
                 source_channels: labels.clone(),
-                destination_channels: (0..task.audio_channels)
-                    .map(|index| format!("Audio {}", index + 1))
-                    .collect(),
+                destination_channels: task.audio_labels.clone(),
                 default_mapping: (0..task.audio_channels)
                     .map(|index| (index % labels.len()) as u32)
                     .collect(),
@@ -346,9 +344,7 @@ impl Provider {
             ensure!(!content.audio.is_empty(), "loop has no audio channels");
             task.view.status = IoTaskStatus::AwaitingChannelSelection;
             task.view.audio_channel_selection = Some(AudioChannelSelectionState {
-                available_channels: (0..content.audio.len())
-                    .map(|i| format!("Audio {}", i + 1))
-                    .collect(),
+                available_channels: content.audio_labels(),
                 default_selection: (0..content.audio.len() as u32).collect(),
             });
             task.view.message = "Choose audio channels to export".into();

@@ -1485,6 +1485,10 @@ fn production_client_projects_frozen_composite_geometry_without_media_spinner_an
     assert!(!details.loading && !details.midi_loading);
     assert!(details.channels.is_empty() && details.midi_channels.is_empty());
     let composite = details.composite.as_ref().unwrap();
+    assert_eq!(
+        composite.available_event_modes,
+        [LoopMode::Playing, LoopMode::Recording, LoopMode::Stopped]
+    );
     assert_eq!(composite.events.len(), 1);
     assert_eq!(composite.events[0].loop_id, loops[0]);
     assert_eq!(composite.timing.unwrap().basis_sample_rate, 1000);
@@ -1632,7 +1636,14 @@ fn public_lua_composes_nested_plans_in_one_turn_and_editor_intents_keep_confirme
         },
     ] {
         runtime.dispatch(intent).unwrap();
-        pump_runtime(&mut f.service, &mut runtime, &port, 8);
+        for _ in 0..100 {
+            pump_runtime(&mut f.service, &mut runtime, &port, 1);
+            if !runtime.has_pending_commands() && !runtime.client().has_unfinished_operations() {
+                break;
+            }
+        }
+        assert!(!runtime.has_pending_commands());
+        assert!(!runtime.client().has_unfinished_operations());
     }
     let edited = runtime
         .snapshot()

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ['master']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+
+    steps:
+      - name: Install alsa dev package
+        run: sudo apt-get install libasound2-dev
+      - uses: actions/checkout@v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - run: cargo fmt --all --check

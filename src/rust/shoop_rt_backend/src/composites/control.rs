@@ -269,6 +269,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             let old = entry.slot;
             entry.slot = slot;
             entry.timing = Default::default();
+            entry.rt_content_revision = 0;
+            entry.recorded = None;
             entry.program = None;
             entry.program_spans.clear();
             entry.composite = None;

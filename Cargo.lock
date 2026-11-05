@@ -1657,8 +1657,6 @@ dependencies = [
 [[package]]
 name = "fundsp"
 version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6969e5c9d5c5c704723f547237494fde9b1addf16f718f65cd786b3b6e320a4f"
 dependencies = [
  "dyn-clone",
  "funutd",
@@ -3781,8 +3779,6 @@ dependencies = [
 [[package]]
 name = "oxisynth"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68d089fc07e074f57ac6698292ce3da05eac1d282b821eb4156d4c7d8e36c6ec"
 dependencies = [
  "bitflags 2.13.1",
  "log",
@@ -3794,8 +3790,6 @@ dependencies = [
 [[package]]
 name = "oxisynth-chorus"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755d6ea336fc37043b00a1b54198e24cb4537c509435c7aca2d837d36185703b"
 dependencies = [
  "log",
 ]
@@ -3803,8 +3797,6 @@ dependencies = [
 [[package]]
 name = "oxisynth-reverb"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdbb2d72d399b03dc7546c1087fabcdba68402f987bea903fe284c946fcca7aa"
 
 [[package]]
 name = "parking"
@@ -4852,6 +4844,7 @@ dependencies = [
  "serde",
  "shoop_latency",
  "shoop_port_graph",
+ "shoop_processor_protocol",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -4996,6 +4989,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_dsp"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fundsp",
+ "oxisynth",
+ "rt_buffered",
+ "rt_runtime",
+ "sha2",
+ "shoop_processor_protocol",
+ "shoop_tracing",
+ "shoop_wasm_test_support",
+ "soundfont",
+ "thiserror 2.0.21",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_egui"
 version = "0.3.0"
 dependencies = [
@@ -5026,7 +5037,6 @@ dependencies = [
  "base64",
  "cpal 0.18.2",
  "enum-iterator",
- "fundsp",
  "jack",
  "jack-sys",
  "libc",
@@ -5035,20 +5045,18 @@ dependencies = [
  "memmap2",
  "midir",
  "num_enum",
- "oxisynth",
  "regex",
  "rfd",
  "rtrb",
  "rubato",
  "serde_json",
- "sha2",
  "shoop_common",
+ "shoop_dsp",
  "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_tracing",
  "shoop_wasm_test_support",
- "soundfont",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
@@ -5152,6 +5160,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_host_processors"
+version = "0.3.0"
+dependencies = [
+ "rt_buffered",
+ "rt_runtime",
+ "shoop_app",
+ "shoop_app_api",
+ "shoop_app_client",
+ "shoop_app_protocol",
+ "shoop_dsp",
+ "shoop_persistence_codec",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_transport",
+ "shoop_wasm_test_support",
+ "thiserror 2.0.21",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_jack"
 version = "0.3.0"
 dependencies = [
@@ -5207,6 +5237,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_app_protocol",
  "shoop_loops",
+ "shoop_processor_protocol",
  "shoop_session",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -5233,6 +5264,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_processor_protocol"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_rt_backend"
 version = "0.3.0"
 dependencies = [
@@ -5240,7 +5281,9 @@ dependencies = [
  "libm",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_host_processors",
  "shoop_loop_plan",
+ "shoop_processor_protocol",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",
@@ -5259,6 +5302,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_loops",
  "shoop_persistence_codec",
+ "shoop_processor_protocol",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",
@@ -5277,6 +5321,7 @@ dependencies = [
  "midir",
  "rt_runtime",
  "rtrb",
+ "shoop_host_processors",
  "shoop_jack",
  "shoop_port_graph",
  "shoop_rt_engine",
@@ -5312,6 +5357,7 @@ name = "shoop_rt_host_worklet"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "shoop_host_processors",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",
@@ -5325,6 +5371,7 @@ name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
  "rt_profiling",
+ "shoop_processor_protocol",
  "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",

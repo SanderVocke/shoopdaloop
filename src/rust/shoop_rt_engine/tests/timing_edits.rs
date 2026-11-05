@@ -403,6 +403,8 @@ fn retained_raw_lead_in_starts_inside_quantum_and_carries_midi_pickups() {
         assert!(matches!(
             h.apply_in(
                 Request::ContentApply {
+                    dry_audio: None,
+                    recorded_state: None,
                     loop_id: target,
                     frames: (4 * quantum) as u64,
                     audio: Some(1),

@@ -1,4 +1,6 @@
+mod processors;
 use anyhow::{anyhow, bail, ensure, Result};
+use processors::*;
 use shoop_app_api::*;
 use shoop_app_protocol::persistence_image as image;
 use shoop_session::*;
@@ -25,7 +27,9 @@ fn port_to_document(port: &image::Port) -> Result<PortDocument> {
             PortRole::AudioOutput => PortRoleDocument::AudioOutput,
             PortRole::MidiInput => PortRoleDocument::MidiInput,
             PortRole::MidiOutput => PortRoleDocument::MidiOutput,
-            _ => bail!("unsupported persisted port role"),
+            PortRole::AudioSend => PortRoleDocument::AudioSend,
+            PortRole::AudioReturn => PortRoleDocument::AudioReturn,
+            PortRole::MidiSend => PortRoleDocument::MidiSend,
         },
         input_connectability: vec![if input {
             ConnectabilityDocument::External
@@ -88,30 +92,35 @@ fn port_from_document(port: PortDocument, owner: ApplicationPortOwner) -> Result
                 PortRoleDocument::AudioOutput => PortRole::AudioOutput,
                 PortRoleDocument::MidiInput => PortRole::MidiInput,
                 PortRoleDocument::MidiOutput => PortRole::MidiOutput,
-                _ => bail!(
-                    "port {} requires unsupported send/return/internal routing",
-                    port.id
-                ),
+                PortRoleDocument::AudioSend => PortRole::AudioSend,
+                PortRoleDocument::AudioReturn => PortRole::AudioReturn,
+                PortRoleDocument::MidiSend => PortRole::MidiSend,
+                PortRoleDocument::Internal => bail!("internal processor ports cannot be persisted"),
             },
             connection_policy: ConnectionPolicy::UserManaged,
         },
         external_connections: port.external_connections,
     })
 }
-fn connected_ports(ports: &[image::Port], midi: bool, index: usize) -> Vec<u64> {
-    if midi {
-        ports
-            .iter()
-            .filter(|p| matches!(p.state.role, PortRole::MidiInput | PortRole::MidiOutput))
-            .map(|p| p.state.id.raw())
-            .collect()
-    } else {
-        [PortRole::AudioInput, PortRole::AudioOutput]
-            .into_iter()
-            .filter_map(|role| ports.iter().filter(|p| p.state.role == role).nth(index))
-            .map(|p| p.state.id.raw())
-            .collect()
-    }
+fn connected_ports(
+    ports: &[image::Port],
+    midi: bool,
+    index: usize,
+    mode: image::ChannelMode,
+) -> Vec<u64> {
+    let roles: &[PortRole] = match (midi, mode) {
+        (false, image::ChannelMode::Direct) => &[PortRole::AudioInput, PortRole::AudioOutput],
+        (false, image::ChannelMode::Dry) => &[PortRole::AudioInput, PortRole::AudioSend],
+        (false, image::ChannelMode::Wet) => &[PortRole::AudioReturn, PortRole::AudioOutput],
+        (true, image::ChannelMode::Direct) => &[PortRole::MidiInput, PortRole::MidiOutput],
+        (true, image::ChannelMode::Dry) => &[PortRole::MidiInput, PortRole::MidiSend],
+        (true, image::ChannelMode::Wet) => &[],
+    };
+    roles
+        .iter()
+        .filter_map(|role| ports.iter().filter(|p| p.state.role == *role).nth(index))
+        .map(|p| p.state.id.raw())
+        .collect()
 }
 fn channel_document(
     channel: &image::Channel,
@@ -122,7 +131,7 @@ fn channel_document(
 ) -> ChannelDocument {
     ChannelDocument {
         id,
-        mode: ChannelModeDocument::Direct,
+        mode: mode_to_document(channel.mode),
         data_type: if midi {
             DataTypeDocument::Midi
         } else {
@@ -185,9 +194,28 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
         },
     ];
     let mut next_channel = 1;
+    let mut next_fx_state = 1;
     for track in &session.tracks {
+        let topology = document_topology(track)?;
+        image_topology(&topology)?;
+        let fx_chain = processor_chain(track)?;
         let mut loops = Vec::new();
         for content in &track.loops {
+            let recorded_id = if let Some(encoded) = &content.recorded_processor_state {
+                let chain = fx_chain
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("recorded state needs a processor"))?;
+                let id = next_fx_state;
+                next_fx_state += 1;
+                bundle.document.fx_states.push(FxStateDocument {
+                    id,
+                    chain_type: chain.chain_type,
+                    internal_state: canonical_state(chain.chain_type, encoded)?,
+                });
+                Some(id)
+            } else {
+                None
+            };
             let mut channels = Vec::new();
             for (index, channel) in content.audio.iter().enumerate() {
                 let media_id = if let Some(object) = channel.object {
@@ -206,13 +234,21 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                 } else {
                     None
                 };
-                channels.push(channel_document(
+                let role_index = content.audio[..index]
+                    .iter()
+                    .filter(|c| c.mode == channel.mode)
+                    .count();
+                let mut document = channel_document(
                     channel,
                     next_channel,
                     false,
-                    connected_ports(&track.ports, false, index),
+                    connected_ports(&track.ports, false, role_index, channel.mode),
                     media_id,
-                ));
+                );
+                if channel.mode == image::ChannelMode::Wet {
+                    document.recording_fx_state_id = recorded_id;
+                }
+                channels.push(document);
                 next_channel += 1;
             }
             for (index, channel) in content.midi.iter().enumerate() {
@@ -233,7 +269,7 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                     &channel.channel,
                     next_channel,
                     true,
-                    connected_ports(&track.ports, true, index),
+                    connected_ports(&track.ports, true, index, channel.channel.mode),
                     media_id,
                 ));
                 next_channel += 1;
@@ -260,15 +296,11 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
             port_name_base: track.port_name_base.clone(),
             is_sync: track.sync,
             width: None,
-            topology: if track.audio_channels == 0 && !track.midi {
-                TrackTopologyDocument::Trigger
-            } else {
-                TrackTopologyDocument::Direct {
-                    audio_channels: track.audio_channels,
-                    midi: track.midi,
-                }
+            topology,
+            default_playback_mode: match track.default_playback_mode {
+                DefaultPlaybackMode::Regular => DefaultPlaybackModeDocument::Regular,
+                DefaultPlaybackMode::DryThroughWet => DefaultPlaybackModeDocument::DryThroughWet,
             },
-            default_playback_mode: DefaultPlaybackModeDocument::Regular,
             controls: TrackControlsDocument {
                 output_gain_db: controls.output_gain_db,
                 output_balance: controls.output_balance,
@@ -284,7 +316,7 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                 .iter()
                 .map(port_to_document)
                 .collect::<Result<_>>()?,
-            fx_chain: None,
+            fx_chain,
         });
     }
     let global = &session.global;
@@ -363,8 +395,8 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     if !doc.scripts.is_empty() {
         unsupported.insert("session scripts/resources (P16)");
     }
-    if !doc.fx_states.is_empty() {
-        unsupported.insert("recorded FX states (P07)");
+    for state in &doc.fx_states {
+        canonical_state(state.chain_type, &state.internal_state)?;
     }
     if !doc.midi_control.bindings.is_empty() || !doc.settings.is_empty() {
         unsupported.insert("reserved MIDI bindings/session settings");
@@ -395,26 +427,19 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
             unsupported.insert("custom track groups");
         }
         for track in &group.tracks {
-            if !matches!(
-                track.topology,
-                TrackTopologyDocument::Direct {
-                    audio_channels: 0..=2,
-                    ..
-                } | TrackTopologyDocument::Trigger
-            ) {
-                unsupported.insert("FX/dry-wet or wider track topology (P06/P07)");
-            }
-            if track.fx_chain.is_some() {
-                unsupported.insert("track FX (P07)");
+            image_topology(&track.topology)?;
+            if let Some(chain) = &track.fx_chain {
+                canonical_state(chain.chain_type, &chain.internal_state)?;
+                ensure!(
+                    chain.ports.is_empty(),
+                    "processor port routing is unsupported"
+                );
             }
             if track.width.is_some() {
                 unsupported.insert("stored track width");
             }
             if track.latency != TrackLatencyDocument::default() {
                 unsupported.insert("latency compensation/take alignment (P09/P10)");
-            }
-            if track.default_playback_mode != DefaultPlaybackModeDocument::Regular {
-                unsupported.insert("dry/wet default playback (P06)");
             }
             for content in &track.loops {
                 if let Some(composite) = &content.composite {
@@ -431,12 +456,7 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                     }
                 }
                 for channel in &content.channels {
-                    if channel.mode != ChannelModeDocument::Direct {
-                        unsupported.insert("channel mode (P06)");
-                    }
-                    if channel.recording_fx_state_id.is_some() {
-                        unsupported.insert("recorded FX states (P07)");
-                    }
+                    mode_from_document(channel.mode)?;
                 }
             }
         }
@@ -482,6 +502,17 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
     let mut used_media = BTreeSet::new();
     let doc = bundle.document;
+    let fx_states = doc
+        .fx_states
+        .iter()
+        .map(|state| {
+            Ok((
+                state.id,
+                canonical_state(state.chain_type, &state.internal_state)?,
+            ))
+        })
+        .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+    let mut used_states = BTreeSet::new();
     let preview_bus = match doc.preview_bus {
         shoop_session::PreviewBusDocument::Automatic => {
             let mut masters = doc.buses.iter().filter(|b| b.name == "Master");
@@ -533,14 +564,15 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
     let mut payloads = Vec::new();
     let mut tracks = Vec::new();
     for track in doc.track_groups.into_iter().flat_map(|group| group.tracks) {
-        let (audio_channels, midi) = match track.topology {
-            TrackTopologyDocument::Direct {
-                audio_channels,
-                midi,
-            } => (audio_channels, midi),
-            TrackTopologyDocument::Trigger => (0, false),
-            _ => unreachable!(),
-        };
+        let (topology, audio_channels, midi) = image_topology(&track.topology)?;
+        let audio_count = match &topology {
+            TrackTopology::Direct => audio_channels,
+            TrackTopology::DryWet {
+                dry_audio_channels,
+                wet_audio_channels,
+                ..
+            } => dry_audio_channels + wet_audio_channels,
+        } as usize;
         let track_id = TrackId::from_raw(track.id);
         let ports = track
             .ports
@@ -561,18 +593,38 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             .collect::<Result<Vec<_>>>()?;
         let mut loops = Vec::new();
         for content in track.loops {
-            let mut audio = Vec::new();
-            let mut midi_channels = Vec::new();
+            let mut audio = Vec::<image::Channel>::new();
+            let mut midi_channels = Vec::<image::MidiChannel>::new();
+            let mut recorded_id = None::<Option<u64>>;
             for channel in content.channels {
+                let mode = mode_from_document(channel.mode)?;
+                if mode == image::ChannelMode::Wet {
+                    if let Some(previous) = recorded_id {
+                        ensure!(
+                            previous == channel.recording_fx_state_id,
+                            "wet channels disagree about recorded state"
+                        );
+                    }
+                    recorded_id = Some(channel.recording_fx_state_id);
+                } else {
+                    ensure!(
+                        channel.recording_fx_state_id.is_none(),
+                        "only wet audio can carry recorded state"
+                    );
+                }
                 let is_midi = channel.data_type == DataTypeDocument::Midi;
                 let expected = connected_ports(
                     &ports,
                     is_midi,
                     if is_midi {
-                        midi_channels.len()
+                        midi_channels
+                            .iter()
+                            .filter(|m| m.channel.mode == mode)
+                            .count()
                     } else {
-                        audio.len()
+                        audio.iter().filter(|c| c.mode == mode).count()
                     },
+                    mode,
                 );
                 ensure!(
                     channel.connected_port_ids == expected,
@@ -596,6 +648,7 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                     None
                 };
                 let channel = image::Channel {
+                    mode,
                     object,
                     frames: channel.data_length_frames,
                     gain: channel.gain,
@@ -612,12 +665,23 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             }
             ensure!(
                 content.composite.is_some()
-                    || audio.len() == audio_channels as usize
-                        && midi_channels.len() == usize::from(midi),
+                    || (audio.len() == audio_count && midi_channels.len() == usize::from(midi)),
                 "loop {} has unsupported channel shape",
                 content.id
             );
+            audio.sort_by_key(|c| c.mode as u8);
+            let recorded_processor_state = recorded_id
+                .flatten()
+                .map(|id| {
+                    used_states.insert(id);
+                    fx_states
+                        .get(&id)
+                        .cloned()
+                        .ok_or_else(|| anyhow!("missing recorded processor state"))
+                })
+                .transpose()?;
             loops.push(image::Loop {
+                recorded_processor_state,
                 sync_source: content
                     .execution
                     .as_ref()
@@ -644,6 +708,38 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         }
         let c = track.controls;
         tracks.push(image::Track {
+            topology,
+            default_playback_mode: match track.default_playback_mode {
+                DefaultPlaybackModeDocument::Regular => DefaultPlaybackMode::Regular,
+                DefaultPlaybackModeDocument::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
+            },
+            processor_state: track
+                .fx_chain
+                .as_ref()
+                .map(|chain| canonical_state(chain.chain_type, &chain.internal_state))
+                .transpose()?,
+            builtin_fx_midi_cc_assignments: track
+                .fx_chain
+                .as_ref()
+                .into_iter()
+                .flat_map(|chain| &chain.builtin_fx_midi_cc_assignments)
+                .map(|a| BuiltInFxMidiCcAssignment {
+                    parameter: fx_from_document(a.parameter),
+                    channel: a.channel,
+                    controller: a.controller,
+                })
+                .collect(),
+            oxisynth_midi_cc_assignments: track
+                .fx_chain
+                .as_ref()
+                .into_iter()
+                .flat_map(|chain| &chain.midi_cc_assignments)
+                .map(|a| OxiSynthMidiCcAssignment {
+                    parameter: synth_from_document(a.parameter),
+                    channel: a.channel,
+                    controller: a.controller,
+                })
+                .collect(),
             id: track_id,
             name: track.name,
             port_name_base: track.port_name_base,
@@ -662,6 +758,10 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             loops,
         });
     }
+    ensure!(
+        used_states.len() == fx_states.len(),
+        "unreferenced recorded processor state"
+    );
     ensure!(
         used_media.len() == media.len(),
         "unreferenced media cannot be preserved"

@@ -520,6 +520,8 @@ fn preparing_and_cancelling_a_private_replacement_preserves_live_recording_monit
     h.done(Request::ReplacementEdit {
         id: 1,
         edit: ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: loop_id(1, 2),
             strip: strip(0, 2),
             sync: None,
@@ -576,6 +578,8 @@ fn replacement_installs_automatic_policy_before_the_first_composite_recording_qu
                 },
             },
             ReplacementEdit::Loop {
+                dry_audio: None,
+                recorded_state: None,
                 loop_id: child,
                 strip: track,
                 sync: None,

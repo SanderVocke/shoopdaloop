@@ -15,6 +15,7 @@ use core::ops::Range;
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
     pub channels: u32,
+    /// Zero prepares an edit-only store with no input history.
     pub history_frames: usize,
     pub views: usize,
     /// Includes live history, retained versions and transaction workspace.
@@ -138,11 +139,7 @@ impl AudioStore {
     ) -> Result<Self, Error> {
         let channels = config.channels as usize;
         let page_bytes = store.config.limits().page_bytes;
-        if channels == 0
-            || config.history_frames == 0
-            || config.views == 0
-            || page_bytes / 4 < channels
-        {
+        if channels == 0 || config.views == 0 || page_bytes / 4 < channels {
             return Err(Error::InvalidConfig);
         }
         let page_frames = page_bytes / 4 / channels;
@@ -154,6 +151,7 @@ impl AudioStore {
             .and_then(|n| n.checked_mul(4))
             .filter(|&n| n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
+        let edit_only = config.history_frames == 0;
         let ring_pages = config
             .history_frames
             .div_ceil(page_frames)
@@ -161,13 +159,16 @@ impl AudioStore {
             .and_then(usize::checked_next_power_of_two)
             .ok_or(Error::Capacity)?;
         let max_frames = store.config.limits().max_frames;
-        let transaction_pages = ring_pages.min(
-            max_frames
-                .div_ceil(page_frames)
-                .checked_add(2)
-                .ok_or(Error::Capacity)?,
-        );
-        let baseline = ring_pages
+        let transaction_limit = max_frames
+            .div_ceil(page_frames)
+            .checked_add(2)
+            .ok_or(Error::Capacity)?;
+        let transaction_pages = if edit_only {
+            transaction_limit
+        } else {
+            ring_pages.min(transaction_limit)
+        };
+        let baseline = (if edit_only { 0 } else { ring_pages })
             .checked_add(transaction_pages)
             .ok_or(Error::Capacity)?;
         if config.pages < baseline || config.pages > store.free_pages.len() - store.reserved_pages {
@@ -179,12 +180,24 @@ impl AudioStore {
             .checked_next_power_of_two()
             .ok_or(Error::Capacity)?;
         let depth = index_pages.trailing_zeros() as usize;
-        let node_limit = config
-            .views
-            .checked_add(2)
-            .and_then(|n| n.checked_mul(ring_pages.checked_mul(2)?.checked_sub(1)?))
-            .and_then(|n| n.checked_add(transaction_pages.checked_mul(depth + 1)?))
-            .ok_or(Error::Capacity)?;
+        let node_limit = if edit_only {
+            // Each new leaf requires a reserved page; a mutation copies at most
+            // one path per leaf. Retained roots and transaction paths are bounded too.
+            config
+                .pages
+                .checked_add(config.views)
+                .and_then(|n| n.checked_add(transaction_pages))
+                .and_then(|n| n.checked_mul(depth + 1))
+                .and_then(|n| n.checked_mul(2))
+                .ok_or(Error::Capacity)?
+        } else {
+            config
+                .views
+                .checked_add(2)
+                .and_then(|n| n.checked_mul(ring_pages.checked_mul(2)?.checked_sub(1)?))
+                .and_then(|n| n.checked_add(transaction_pages.checked_mul(depth + 1)?))
+                .ok_or(Error::Capacity)?
+        };
         let scratch_bytes = transaction_pages
             .checked_mul(page_bytes)
             .ok_or(Error::Capacity)?;
@@ -278,7 +291,7 @@ impl AudioStore {
             max_frames,
             depth,
             capacity: Capacity {
-                history_pages: ring_pages,
+                history_pages: if edit_only { 0 } else { ring_pages },
                 transaction_pages,
                 index_nodes: node_limit,
                 metadata_bytes,
@@ -606,8 +619,14 @@ impl AudioStore {
         wrapping: bool,
         modulus: usize,
         base: Option<usize>,
+        selected_channel: Option<usize>,
     ) -> Result<Option<usize>, Error> {
-        let count = samples.len() / self.channels;
+        let stride = if selected_channel.is_some() {
+            1
+        } else {
+            self.channels
+        };
+        let count = samples.len() / stride;
         self.generation = self.generation.checked_add(1).ok_or(Error::Exhausted)?;
         self.plans.clear();
         for frame in 0..count {
@@ -666,9 +685,11 @@ impl AudioStore {
             let plan = self.marks[physical / self.page_frames].1;
             let destination =
                 plan * self.page_bytes + physical % self.page_frames * self.channels * 4;
-            for channel in 0..self.channels {
+            let channels =
+                selected_channel.map_or(0..self.channels, |channel| channel..channel + 1);
+            for (source, channel) in channels.enumerate() {
                 self.scratch[destination + channel * 4..destination + channel * 4 + 4]
-                    .copy_from_slice(&samples[frame * self.channels + channel].to_le_bytes());
+                    .copy_from_slice(&samples[frame * stride + source].to_le_bytes());
             }
         }
         store
@@ -704,6 +725,9 @@ impl AudioStore {
         samples: &[f32],
     ) -> Result<(), Error> {
         self.check(io.store)?;
+        if self.keep == 0 {
+            return Err(Error::InvalidState);
+        }
         if frame != self.next {
             return Err(Error::InvalidFrame);
         }
@@ -724,6 +748,7 @@ impl AudioStore {
             samples,
             false,
             self.ring_frames(),
+            None,
             None,
         )?;
         let old = core::mem::replace(&mut self.history, root);
@@ -765,6 +790,52 @@ impl AudioStore {
             true,
             view.modulus,
             view.base,
+            None,
+        )?;
+        self.release_immediate(io.store, view.root);
+        view.root = root;
+        view.revision = revision;
+        self.views[take.0.slot as usize].value = Some(view);
+        Ok(revision)
+    }
+
+    pub fn replace_channel(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        take: TakeId,
+        channel: usize,
+        position: u64,
+        samples: &[f32],
+    ) -> Result<Revision, Error> {
+        self.check(io.store)?;
+        let mut view = self.view(take.0)?;
+        if !view.writable {
+            return Err(Error::InvalidState);
+        }
+        if channel >= self.channels || samples.len() > self.max_frames {
+            return Err(Error::InvalidShape);
+        }
+        if position
+            .checked_add(samples.len() as u64)
+            .is_none_or(|end| end > view.frames as u64)
+        {
+            return Err(Error::InvalidOffset);
+        }
+        if samples.is_empty() {
+            return Ok(view.revision);
+        }
+        let revision = view.revision.checked_next()?;
+        let root = self.stage(
+            io.store,
+            view.root,
+            view.first,
+            view.frames,
+            position as usize,
+            samples,
+            false,
+            view.modulus,
+            view.base,
+            Some(channel),
         )?;
         self.release_immediate(io.store, view.root);
         view.root = root;

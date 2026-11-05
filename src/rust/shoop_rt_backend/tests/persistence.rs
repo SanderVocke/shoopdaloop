@@ -45,6 +45,7 @@ fn session_replacement_restores_nested_timing_slots_and_repeat_intent_with_fresh
     sync.audio[0].samples = vec![0.25; 8].into();
     session.tracks[0].loops.push(sync);
     session.tracks[0].loops.push(BackendLoopContent {
+        recorded_processor_state: None,
         source_id: parent,
         length: 0,
         gain: 1.,

@@ -464,6 +464,45 @@ impl ResourceStore {
         self.capture_groups.groups[id.slot as usize].value = Some(group);
         Ok(())
     }
+    /// Discard an active take after its reserved interval has been cancelled.
+    /// Reserved final leases return without publishing snapshots.
+    pub fn abort_capture_take(&mut self, take: CaptureTakeId) -> Result<(), Error> {
+        let mut group = self.capture_take_info(take)?;
+        if group.phase != CapturePhase::Recording {
+            return Err(Error::InvalidState);
+        }
+        let id = take.group;
+        for index in 0..group.members {
+            let member = self.capture_groups.member(id, index);
+            let version = get(
+                &self.versions,
+                member.take.ok_or(Error::InvalidState)?.slot,
+                member.take.ok_or(Error::InvalidState)?.generation,
+            )?;
+            if version.state != State::Capturing {
+                return Err(Error::InvalidState);
+            }
+        }
+        for index in 0..group.members {
+            let mut member = self.capture_groups.member(id, index);
+            let version_id = member.take.take().expect("validated take");
+            let mut version = get(&self.versions, version_id.slot, version_id.generation)
+                .expect("validated version");
+            version.state = State::Active;
+            version.capture.as_mut().expect("active capture").active = false;
+            self.versions[version_id.slot as usize].value = Some(version);
+            let lease = member.lease.take().expect("reserved final lease");
+            release(
+                &mut self.snapshots,
+                &mut self.free_snapshots,
+                lease.slot as usize,
+            );
+            self.capture_groups.set_member(id, index, member);
+        }
+        group.phase = CapturePhase::Idle;
+        self.capture_groups.groups[id.slot as usize].value = Some(group);
+        Ok(())
+    }
     pub fn activate_capture_take(&mut self, take: CaptureTakeId, at: Frame) -> Result<(), Error> {
         if !self.quantum.aligned(at) {
             return Err(Error::InvalidFrame);

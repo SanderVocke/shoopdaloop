@@ -815,6 +815,10 @@ impl Runtime {
         if selected.next().is_some() {
             return None;
         }
+        let track = state
+            .tracks
+            .iter()
+            .find(|track| track.loops.iter().any(|item| item.id == entry.id))?;
         let composite = state
             .composites
             .iter()
@@ -873,6 +877,11 @@ impl Runtime {
                     .collect();
                 Some(CompositeDetailsState {
                     kind: document.kind,
+                    available_event_modes: vec![
+                        LoopMode::Playing,
+                        LoopMode::Recording,
+                        LoopMode::Stopped,
+                    ],
                     timing: Some(CompositeTimingState {
                         basis_sample_rate: document.basis.sample_rate,
                         basis_frames: document.basis.unit_frames,
@@ -941,7 +950,8 @@ impl Runtime {
                         .enumerate()
                         .map(|(index, channel)| WaveformChannelState {
                             id: ChannelId::from_raw((entry.id.raw() << 8) | (index as u64 + 1)),
-                            label: format!("Audio {}", index + 1),
+                            label: track.topology.audio_channel_labels(data.audio.len())[index]
+                                .clone(),
                             samples: Arc::clone(&channel.samples),
                             start_offset: i64::from(channel.start_offset)
                                 + i64::from(channel.capture_alignment_frames),

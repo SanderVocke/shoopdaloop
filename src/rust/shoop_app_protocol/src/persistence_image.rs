@@ -15,8 +15,34 @@ pub struct Controls {
     pub output_balance: f32,
     pub muted: bool,
 }
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ChannelMode {
+    #[default]
+    Direct,
+    Dry,
+    Wet,
+}
+impl ChannelMode {
+    pub fn role(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Dry => "dry",
+            Self::Wet => "wet",
+        }
+    }
+    pub fn label(self, index: usize) -> String {
+        let role = match self {
+            Self::Direct => "Audio",
+            Self::Dry => "Dry",
+            Self::Wet => "Wet",
+        };
+        alloc::format!("{role} {}", index + 1)
+    }
+}
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Channel {
+    #[serde(default)]
+    pub mode: ChannelMode,
     pub object: Option<u32>,
     pub frames: u64,
     pub gain: f32,
@@ -32,6 +58,8 @@ pub struct MidiChannel {
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Loop {
+    #[serde(default)]
+    pub recorded_processor_state: Option<String>,
     pub id: LoopId,
     pub name: String,
     pub sync: bool,
@@ -47,6 +75,24 @@ pub struct Loop {
     pub audio: Vec<Channel>,
     pub midi: Vec<MidiChannel>,
 }
+impl Loop {
+    pub fn audio_labels(&self) -> Vec<String> {
+        let mut counts = [0; 3];
+        self.audio
+            .iter()
+            .map(|channel| {
+                let index = match channel.mode {
+                    ChannelMode::Direct => 0,
+                    ChannelMode::Dry => 1,
+                    ChannelMode::Wet => 2,
+                };
+                let label = channel.mode.label(counts[index]);
+                counts[index] += 1;
+                label
+            })
+            .collect()
+    }
+}
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Port {
     pub state: ApplicationPortState,
@@ -54,6 +100,16 @@ pub struct Port {
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Track {
+    #[serde(default)]
+    pub topology: TrackTopology,
+    #[serde(default)]
+    pub default_playback_mode: DefaultPlaybackMode,
+    #[serde(default)]
+    pub processor_state: Option<String>,
+    #[serde(default)]
+    pub builtin_fx_midi_cc_assignments: Vec<BuiltInFxMidiCcAssignment>,
+    #[serde(default)]
+    pub oxisynth_midi_cc_assignments: Vec<OxiSynthMidiCcAssignment>,
     pub id: TrackId,
     pub name: String,
     pub port_name_base: String,

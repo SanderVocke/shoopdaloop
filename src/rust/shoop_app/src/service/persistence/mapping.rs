@@ -60,7 +60,9 @@ fn backend_port(port: &image::Port, owner: BackendPortOwner) -> Result<BackendSe
                 PortRole::AudioOutput => BackendPortRole::AudioOutput,
                 PortRole::MidiInput => BackendPortRole::MidiInput,
                 PortRole::MidiOutput => BackendPortRole::MidiOutput,
-                _ => return Err(anyhow!("session requires unsupported port roles")),
+                PortRole::AudioSend => BackendPortRole::AudioSend,
+                PortRole::AudioReturn => BackendPortRole::AudioReturn,
+                PortRole::MidiSend => BackendPortRole::MidiSend,
             },
         },
         external_connections: port.external_connections.clone(),
@@ -93,6 +95,7 @@ pub(super) fn backend_loop(
     content: &image::Loop,
 ) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
+        recorded_processor_state: content.recorded_processor_state.clone(),
         source_id: content.id.raw(),
         length: if content.composite.is_some() {
             0
@@ -106,7 +109,7 @@ pub(super) fn backend_loop(
             .iter()
             .map(|channel| {
                 Ok(BackendAudioContent {
-                    mode: BackendChannelMode::Direct,
+                    mode: backend_mode(channel.mode),
                     samples: audio_samples(image, channel)?,
                     gain: channel.gain,
                     start_offset: channel.start_offset as i32,
@@ -123,7 +126,7 @@ pub(super) fn backend_loop(
                     return Err(anyhow!("MIDI channel gain is unsupported"));
                 }
                 Ok(BackendMidiContent {
-                    mode: BackendChannelMode::Direct,
+                    mode: backend_mode(channel.channel.mode),
                     length: channel.channel.frames as u32,
                     start_state: channel.initial.clone(),
                     events: midi_events(image, &channel.channel)?,
@@ -135,7 +138,45 @@ pub(super) fn backend_loop(
             .collect::<Result<_>>()?,
     })
 }
-fn controls(state: &image::Controls, channels: u32, midi: bool) -> TrackControlState {
+fn backend_mode(mode: image::ChannelMode) -> BackendChannelMode {
+    match mode {
+        image::ChannelMode::Direct => BackendChannelMode::Direct,
+        image::ChannelMode::Dry => BackendChannelMode::Dry,
+        image::ChannelMode::Wet => BackendChannelMode::Wet,
+    }
+}
+fn topology(track: &image::Track) -> BackendTrackTopology {
+    match &track.topology {
+        TrackTopology::Direct => BackendTrackTopology::Direct {
+            audio_channels: track.audio_channels,
+            midi: track.midi,
+        },
+        TrackTopology::DryWet {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+            processor_type,
+        } if processor_type.as_str() == TrackProcessorTypeId::EXTERNAL => {
+            BackendTrackTopology::DryWetExternal {
+                dry_audio_channels: *dry_audio_channels,
+                wet_audio_channels: *wet_audio_channels,
+                dry_midi: *dry_midi,
+            }
+        }
+        TrackTopology::DryWet {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+            processor_type,
+        } => BackendTrackTopology::DryWetProcessor {
+            dry_audio_channels: *dry_audio_channels,
+            wet_audio_channels: *wet_audio_channels,
+            dry_midi: *dry_midi,
+            processor_type: processor_type.as_str().into(),
+        },
+    }
+}
+fn controls(state: &image::Controls, dry: u32, channels: u32, midi: bool) -> TrackControlState {
     TrackControlState {
         has_output: channels > 0 || midi,
         has_output_audio: channels > 0,
@@ -143,9 +184,9 @@ fn controls(state: &image::Controls, channels: u32, midi: bool) -> TrackControlS
         output_gain_db: state.output_gain_db,
         output_balance: state.output_balance,
         output_muted: state.muted,
-        has_input: channels > 0 || midi,
-        has_input_audio: channels > 0,
-        input_stereo: channels == 2,
+        has_input: dry > 0 || midi,
+        has_input_audio: dry > 0,
+        input_stereo: dry == 2,
         input_gain_db: state.input_gain_db,
         input_balance: state.input_balance,
         input_monitoring: state.monitoring,
@@ -236,11 +277,46 @@ impl Candidate {
         let mut tracks = Vec::new();
         let mut sync_source = None;
         for track in &session.tracks {
+            let topology = topology(track);
+            let dry = topology.dry_audio_channels();
+            let wet = topology.wet_audio_channels();
+            let processed = !matches!(track.topology, TrackTopology::Direct);
+            let audio_count = if processed { dry + wet } else { wet } as usize;
+            let spec_topology = match &track.topology {
+                TrackTopology::Direct => TrackSpecTopology::Direct {
+                    audio_channels: wet,
+                    midi: track.midi,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    dry_midi,
+                    processor_type,
+                } => TrackSpecTopology::DryWet {
+                    dry_audio_channels: *dry_audio_channels,
+                    wet_audio_channels: *wet_audio_channels,
+                    dry_midi: *dry_midi,
+                    processor_type: processor_type.clone(),
+                    default_playback_mode: track.default_playback_mode,
+                },
+            };
+            TrackSpec {
+                name: "loaded track".into(),
+                topology: spec_topology,
+                latency: Default::default(),
+                initial_output_bus_names: Vec::new(),
+                creation_request_id: None,
+            }
+            .validate(&service.track_processors)
+            .map_err(|error| anyhow!("unsupported loaded track: {error:?}"))?;
             if !track.id.is_valid()
                 || !track_ids.insert(track.id)
                 || track.name.len() > 128
                 || track.port_name_base.len() > 128
-                || track.audio_channels > 2
+                || dry > 8
+                || wet > 8
+                || track.audio_channels != wet
+                || track.midi != topology.has_midi()
                 || (track.sync && (track.loops.len() != 1 || sync_source.is_some()))
             {
                 return Err(anyhow!("invalid or unsupported session track"));
@@ -289,9 +365,27 @@ impl Candidate {
             for content in &track.loops {
                 if content.sync != track.sync
                     || content.composite.is_none()
-                        && (content.audio.len() != track.audio_channels as usize
-                            || content.midi.len() != usize::from(track.midi))
-                    || content.composite.is_some() && track.sync
+                        && (content.audio.len() != audio_count
+                            || content.midi.len() != usize::from(track.midi)
+                            || content.audio.iter().enumerate().any(|(i, c)| {
+                                c.mode
+                                    != if !processed {
+                                        image::ChannelMode::Direct
+                                    } else if i < dry as usize {
+                                        image::ChannelMode::Dry
+                                    } else {
+                                        image::ChannelMode::Wet
+                                    }
+                            })
+                            || content.midi.iter().any(|m| {
+                                m.channel.mode
+                                    != if processed {
+                                        image::ChannelMode::Dry
+                                    } else {
+                                        image::ChannelMode::Direct
+                                    }
+                            }))
+                    || content.composite.is_some() && (track.sync || processed)
                 {
                     return Err(anyhow!("session loop shape does not match its track"));
                 }
@@ -326,12 +420,13 @@ impl Candidate {
                             empty: content.frames == 0,
                             mode: LoopMode::Stopped,
                             sync: content.sync,
-                            has_audio: track.audio_channels > 0,
+                            has_audio: audio_count > 0,
                             has_midi: track.midi,
-                            show_gain: track.audio_channels > 0,
+                            show_gain: audio_count > 0,
                             stereo: track.audio_channels == 2,
                             gain: content.gain,
                             balance: content.balance,
+                            has_recorded_fx_state: content.recorded_processor_state.is_some(),
                             ..Default::default()
                         },
                     },
@@ -356,9 +451,10 @@ impl Candidate {
                 }
             }
             let state = BackendTrackState {
-                topology: BackendTrackTopology::Direct {
-                    audio_channels: track.audio_channels,
-                    midi: track.midi,
+                topology,
+                default_playback_mode: match track.default_playback_mode {
+                    DefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                    DefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
                 },
                 audio_channels: track.audio_channels,
                 midi: track.midi,
@@ -386,9 +482,25 @@ impl Candidate {
                     .iter()
                     .map(|port| backend_port(port, BackendPortOwner::Track))
                     .collect::<Result<_>>()?,
-                processor_state: None,
-                builtin_fx_midi_cc_assignments: Vec::new(),
-                oxisynth_midi_cc_assignments: Vec::new(),
+                processor_state: track.processor_state.clone(),
+                builtin_fx_midi_cc_assignments: track
+                    .builtin_fx_midi_cc_assignments
+                    .iter()
+                    .map(|a| BackendBuiltInFxMidiCcAssignment {
+                        parameter: a.parameter,
+                        channel: a.channel,
+                        controller: a.controller,
+                    })
+                    .collect(),
+                oxisynth_midi_cc_assignments: track
+                    .oxisynth_midi_cc_assignments
+                    .iter()
+                    .map(|a| BackendOxiSynthMidiCcAssignment {
+                        parameter: a.parameter,
+                        channel: a.channel,
+                        controller: a.controller,
+                    })
+                    .collect(),
             });
             candidate.tracks.insert(
                 id,
@@ -397,12 +509,15 @@ impl Candidate {
                     audio_channels: track.audio_channels,
                     midi: track.midi,
                     monitoring_intent: None,
+                    default_playback_intent: None,
                     view: TrackState {
                         id,
                         name: track.name.clone(),
                         is_sync: track.sync,
+                        topology: track.topology.clone(),
+                        default_playback_mode: track.default_playback_mode,
                         structural_state: StructuralState::Confirmed,
-                        controls: controls(&track.controls, track.audio_channels, track.midi),
+                        controls: controls(&track.controls, dry, wet, track.midi),
                         port_ids: ports.into(),
                         ..Default::default()
                     },

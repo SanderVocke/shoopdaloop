@@ -292,7 +292,7 @@ impl Resolver {
                 return Err(Error::DuplicateId);
             }
             let state = self.state(change.target)?;
-            if state.mode == Mode::Recording
+            if state.mode.records()
                 || state.content_length != change.expected_length
                 || state.content_revision != change.expected_revision
                 || change.revision <= state.content_revision
@@ -361,11 +361,14 @@ impl Resolver {
 impl Resolver {
     pub fn recording_armed(&self, target: LoopId) -> Result<bool, Error> {
         let state = self.state(target)?;
-        Ok(state.mode == Mode::Recording
+        Ok(state.mode.records()
             || self.records.iter().flatten().any(|record| {
                 record.terminal.is_none()
                     && record.request.target == target
-                    && matches!(record.request.transition, Transition::Record { .. })
+                    && matches!(
+                        record.request.transition,
+                        Transition::Record { .. } | Transition::Rerecord
+                    )
             }))
     }
     /// Manual period edits retain absolute position. Content import/resampling
@@ -406,7 +409,7 @@ impl Resolver {
 
     /// Prediction from the settled preview only. No renderer advances or guesses
     /// a clock, and an idle source cannot produce an imminent start.
-    pub(crate) fn preplay_eta(&self, target: LoopId) -> Option<u64> {
+    pub(crate) fn preplay_eta(&self, target: LoopId) -> Option<(u64, Transition)> {
         let state = self.scratch.states.get(target.slot() as usize)?.as_ref()?;
         if state.mode != Mode::Stopped || state.content_length == 0 {
             return None;
@@ -427,7 +430,7 @@ impl Resolver {
                             return None;
                         }
                         let source = self.scratch.states.get(source.slot() as usize)?.as_ref()?;
-                        if source.mode != Mode::Playing || source.content_length == 0 {
+                        if !source.plays() || source.content_length == 0 {
                             return None;
                         }
                         source
@@ -440,8 +443,13 @@ impl Resolver {
             })
             .min_by_key(|(eta, sequence, _)| (*eta, *sequence))
             .and_then(|(eta, _, transition)| {
-                (eta > 0 && matches!(transition, Transition::Play { position: 0, .. }))
-                    .then_some(eta)
+                (eta > 0
+                    && matches!(
+                        transition,
+                        Transition::Play { position: 0, .. }
+                            | Transition::PlayDry { position: 0, .. }
+                    ))
+                .then_some((eta, transition))
             })
     }
 }

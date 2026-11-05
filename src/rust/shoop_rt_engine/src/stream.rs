@@ -95,6 +95,9 @@ impl ByteRing {
 pub struct BulkReader {
     cells: Arc<Cells>,
     cursor: Option<Cursor>,
+    role_cursors: Option<[Cursor; 2]>,
+    role_frame_bytes: usize,
+    role_filled: usize,
     remaining: u64,
     scratch: Box<[u8]>,
     per_callback: usize,
@@ -107,8 +110,12 @@ impl BulkReader {
         Self {
             cells,
             cursor: None,
+            role_cursors: None,
+            role_frame_bytes: 0,
+            role_filled: 0,
             remaining: 0,
-            scratch: vec![0; page_bytes].into_boxed_slice(),
+            scratch: vec![0; page_bytes.max(8 * shoop_rt_protocol::MAX_STRIP_CHANNELS)]
+                .into_boxed_slice(),
             per_callback: READ_PAGES * page_bytes,
             callback: None,
             available: 0,
@@ -137,15 +144,52 @@ impl BulkReader {
         if self.cells.fail_reader_tick.swap(false, Ordering::Relaxed) {
             return Err(Error::InvalidState);
         }
-        let Some(mut cursor) = self.cursor else {
+        if self.cursor.is_none() && self.role_cursors.is_none() {
             return Ok(());
-        };
+        }
         let ring = &self.cells.bulk;
         if Some(block.callback_start) != self.callback {
             self.callback = Some(block.callback_start);
             self.available = self.per_callback;
         }
         let mut budget = self.available.min(block.resources.copy_remaining());
+        if let Some(mut cursors) = self.role_cursors {
+            let frame_bytes = self.role_frame_bytes * 2;
+            while self.remaining > 0 {
+                if self.role_filled == frame_bytes {
+                    if ring.free() < frame_bytes {
+                        break;
+                    }
+                    ring.push(&self.scratch[..frame_bytes]);
+                    self.remaining -= frame_bytes as u64;
+                    self.role_filled = 0;
+                    continue;
+                }
+                if budget == 0 {
+                    break;
+                }
+                let role = self.role_filled / self.role_frame_bytes;
+                let count =
+                    (self.role_frame_bytes - self.role_filled % self.role_frame_bytes).min(budget);
+                match block.resources.read(
+                    &mut cursors[role],
+                    &mut self.scratch[self.role_filled..self.role_filled + count],
+                ) {
+                    Ok(read) if read > 0 => {
+                        self.role_filled += read;
+                        budget -= read;
+                        self.available -= read;
+                    }
+                    _ => {
+                        ring.fail();
+                        self.remaining = 0;
+                    }
+                }
+            }
+            self.role_cursors = (self.remaining > 0).then_some(cursors);
+            return Ok(());
+        }
+        let mut cursor = self.cursor.ok_or(Error::InvalidState)?;
         while self.remaining > 0 && budget > 0 {
             let count = self
                 .scratch
@@ -182,10 +226,32 @@ impl BulkReader {
         match operation {
             EngineOp::ReadStart { cursor, bytes } => {
                 self.cursor = Some(cursor);
+                self.role_cursors = None;
+                self.role_filled = 0;
+                self.remaining = bytes;
+            }
+            EngineOp::ReadRolesStart {
+                cursors,
+                bytes,
+                channels,
+            } => {
+                let width = usize::from(channels);
+                if width == 0
+                    || width > shoop_rt_protocol::MAX_STRIP_CHANNELS
+                    || !bytes.is_multiple_of(width as u64 * 8)
+                {
+                    return Err(Error::InvalidShape);
+                }
+                self.cursor = None;
+                self.role_cursors = Some(cursors);
+                self.role_frame_bytes = width * 4;
+                self.role_filled = 0;
                 self.remaining = bytes;
             }
             EngineOp::ReadStop => {
                 self.cursor = None;
+                self.role_cursors = None;
+                self.role_filled = 0;
                 self.remaining = 0;
             }
             _ => return Err(Error::InvalidParameter),

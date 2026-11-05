@@ -93,6 +93,7 @@ pub(super) struct Dialog {
     midi_inputs: Vec<String>,
     midi_outputs: Vec<String>,
     pools: NewEnginePools,
+    processors: shoop_app_api::ProcessorSettings,
     master_auto_connect: bool,
     smoothing: u32,
     lan: bool,
@@ -132,6 +133,7 @@ impl Default for Dialog {
             midi_inputs: vec!["all".into()],
             midi_outputs: vec!["all".into()],
             pools: NewEnginePools::default(),
+            processors: Default::default(),
             master_auto_connect: true,
             smoothing: 3,
             lan: false,
@@ -284,6 +286,7 @@ impl Dialog {
             settings: HostSettings {
                 driver,
                 pools: self.pools.clone(),
+                processors: self.processors,
                 master_auto_connect: self.master_auto_connect,
                 loop_smoothing_ms: self.smoothing,
             },
@@ -498,7 +501,7 @@ impl Dialog {
                     ui.add(egui::DragValue::new(&mut self.pools.loops).range(1..=256));
                     ui.end_row();
                     ui.label("Channels");
-                    ui.add(egui::DragValue::new(&mut self.pools.channels).range(1..=16));
+                    ui.add(egui::DragValue::new(&mut self.pools.channels).range(1..=8));
                     ui.end_row();
                     ui.label("Loop memory");
                     ui.add(
@@ -518,6 +521,41 @@ impl Dialog {
                     ui.checkbox(&mut self.master_auto_connect, "Enabled");
                     ui.end_row();
                 });
+        });
+        ui.collapsing("Track processors", |ui| {
+            ui.label("These settings apply when starting this host.");
+            for (label, policy) in [
+                ("Built-in FX", &mut self.processors.builtin_fx),
+                ("Built-in Synth", &mut self.processors.oxisynth),
+            ] {
+                egui::ComboBox::from_id_salt(label)
+                    .selected_text(match *policy {
+                        shoop_app_api::ProcessorPolicy::Auto => "Auto",
+                        shoop_app_api::ProcessorPolicy::On => "On",
+                        shoop_app_api::ProcessorPolicy::Off => "Off",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(policy, shoop_app_api::ProcessorPolicy::Auto, "Auto");
+                        ui.selectable_value(policy, shoop_app_api::ProcessorPolicy::On, "On");
+                        ui.selectable_value(policy, shoop_app_api::ProcessorPolicy::Off, "Off");
+                    });
+            }
+            ui.horizontal(|ui| {
+                ui.label("FX instances");
+                ui.add(egui::DragValue::new(&mut self.processors.fx_instances).range(0..=64));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Synth instances");
+                ui.add(egui::DragValue::new(&mut self.processors.synth_instances).range(0..=64));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Processor memory");
+                ui.add(
+                    egui::DragValue::new(&mut self.processors.memory_mb)
+                        .range(0..=4096)
+                        .suffix(" MiB"),
+                );
+            });
         });
         ui.collapsing("Connection", |ui| {
             let was_lan = self.lan;

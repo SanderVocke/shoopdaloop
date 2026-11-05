@@ -27,7 +27,7 @@ impl Peak {
     pub(crate) fn take(&self, channels: usize) -> Peaks {
         let mut values = [0.; MAX_STRIP_CHANNELS];
         let channels = channels.min(MAX_STRIP_CHANNELS);
-        for (value, cell) in values.iter_mut().zip(&self.0).take(channels) {
+        for (value, cell) in values.iter_mut().zip(&self.0) {
             *value = f32::from_bits(cell.swap(0, Ordering::Relaxed));
         }
         Peaks::new(&values[..channels]).expect("bounded channels")
@@ -51,12 +51,52 @@ pub(crate) struct StripCells {
     pub output: Peak,
     pub midi_in: AtomicBool,
     pub midi_out: AtomicBool,
+    pub latest_input_midi: AtomicU64,
+    pub owner_generation: AtomicU32,
+    pub processor_demand: AtomicBool,
+    pub routing_state: AtomicU32,
+    pub forced_monitor_off: AtomicU32,
+    pub wet_gate: Box<[AtomicU32]>,
     policies: [MonitoringPolicy; 2],
     pub automatic_demand: AtomicBool,
     pub automatic_monitoring: AtomicBool,
 }
-
 impl StripCells {
+    pub(crate) fn observe_midi(&self, packet: &[u8]) {
+        if packet.is_empty() || packet.len() > 4 {
+            return;
+        }
+        let mut value = (packet.len() as u64) << 32;
+        for (index, byte) in packet.iter().enumerate() {
+            value |= u64::from(*byte) << (8 * index);
+        }
+        self.latest_input_midi.store(value, Ordering::Relaxed);
+    }
+    pub(crate) fn latest_midi(&self) -> Option<shoop_rt_protocol::MidiMessage> {
+        let value = self.latest_input_midi.load(Ordering::Relaxed);
+        let len = (value >> 32) as usize;
+        if len == 0 || len > 4 {
+            return None;
+        }
+        shoop_rt_protocol::MidiMessage::new(&value.to_le_bytes()[..len])
+    }
+    fn new(frames: usize) -> Self {
+        Self {
+            input: Peak::default(),
+            output: Peak::default(),
+            midi_in: AtomicBool::new(false),
+            midi_out: AtomicBool::new(false),
+            latest_input_midi: AtomicU64::new(0),
+            owner_generation: AtomicU32::new(0),
+            processor_demand: AtomicBool::new(false),
+            routing_state: AtomicU32::new(0),
+            forced_monitor_off: AtomicU32::new(0),
+            wet_gate: (0..frames).map(|_| AtomicU32::new(0)).collect(),
+            policies: Default::default(),
+            automatic_demand: AtomicBool::new(false),
+            automatic_monitoring: AtomicBool::new(false),
+        }
+    }
     pub(crate) fn configure_policy(&self, generation: u32, active_generation: u32, enabled: bool) {
         if generation == active_generation {
             return;
@@ -97,6 +137,7 @@ struct MonitoringOwner {
 
 #[derive(Default)]
 pub(crate) struct LoopCells {
+    pub recorded: crate::recorded::TakeCells,
     owners: [MonitoringOwner; 2],
     pub publication: AtomicU64,
     epoch: AtomicU64,
@@ -175,12 +216,16 @@ pub(crate) fn mode_code(mode: Mode) -> u32 {
         Mode::Stopped => 0,
         Mode::Playing => 1,
         Mode::Recording => 2,
+        Mode::PlayingDryThroughWet => 3,
+        Mode::RecordingDryIntoWet => 4,
     }
 }
 pub(crate) fn mode_from_code(code: u32) -> Mode {
     match code {
         1 => Mode::Playing,
         2 => Mode::Recording,
+        3 => Mode::PlayingDryThroughWet,
+        4 => Mode::RecordingDryIntoWet,
         _ => Mode::Stopped,
     }
 }
@@ -214,6 +259,7 @@ impl Cells {
         buses: usize,
         bulk_bytes: usize,
         driver: DriverStatus,
+        frames: usize,
     ) -> Arc<Self> {
         let cells = Self {
             profiling: None,
@@ -224,7 +270,7 @@ impl Cells {
             preview_playing: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),
-            strips: (0..strips).map(|_| StripCells::default()).collect(),
+            strips: (0..strips).map(|_| StripCells::new(frames)).collect(),
             loops: (0..loops).map(|_| LoopCells::default()).collect(),
             buses: (0..buses).map(|_| Peak::default()).collect(),
             callbacks: AtomicU64::new(0),
@@ -389,6 +435,22 @@ impl BoundaryObserver for Observer {
     }
     fn as_any(&self) -> &dyn core::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn shrinking_meter_width_discards_unreported_channels() {
+        let peak = Peak::default();
+        peak.raise(0, 0.25);
+        peak.raise(1, 0.75);
+        assert_eq!(peak.take(1).as_slice(), &[0.25]);
+        assert_eq!(peak.take(2).as_slice(), &[0., 0.]);
+        peak.raise(1, 0.5);
+        assert!(peak.take(0).as_slice().is_empty());
+        assert_eq!(peak.take(2).as_slice(), &[0., 0.]);
     }
 }
 

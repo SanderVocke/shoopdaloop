@@ -43,6 +43,7 @@ mod content;
 mod description;
 mod endpoint;
 mod family;
+mod global_midi;
 mod graph;
 mod jobs;
 mod model;
@@ -50,8 +51,10 @@ mod monitoring;
 mod node;
 mod pool;
 mod preview;
+mod processors;
 mod profiling;
 mod queue;
+mod recorded;
 mod render;
 mod replacement;
 mod resync;
@@ -67,6 +70,10 @@ pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::ControlEndpoint;
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
+pub use processors::{
+    HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog, ProcessorPhase,
+    ProcessorPreset, ProcessorState,
+};
 pub use render::{Phase, Render, Report, Stopped};
 
 use crate::cells::{Cells, Observer};
@@ -116,6 +123,13 @@ impl From<shoop_loops::Error> for PrepareError {
     fn from(error: shoop_loops::Error) -> Self {
         Self::Loops(Failure::Timeline(error))
     }
+}
+
+/// Fixed metadata storage for two independent processor-state take revisions.
+pub fn recorded_state_storage_bytes(loops: usize) -> Result<usize, rt_runtime::Error> {
+    loops
+        .checked_mul(core::mem::size_of::<recorded::TakeCells>())
+        .ok_or(rt_runtime::Error::Capacity)
 }
 
 /// A prepared engine, before its first callback.
@@ -179,15 +193,19 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
     let credits = usize::from(description.reliable_credits);
     let pending = description.pending_transitions;
     let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
-    let ports = strips * (7 * channels + 5)
-        + loops * (4 * channels + 2)
+    let ports = strips * (14 * channels + 9)
+        + loops * (8 * channels + 2)
         + 3 * buses * master_channels
-        + counts.iter().sum::<usize>();
+        + counts.iter().sum::<usize>()
+        + pool.processors() * (3 * channels + 3);
     let edges = strips
-        * (2 * channels * (audio_in + audio_out + buses * master_channels) + midi_in + midi_out)
-        + loops * (3 * channels + 2)
+        * (channels * (4 * (audio_in + audio_out) + 2 * buses * master_channels)
+            + 2 * midi_in
+            + 2 * midi_out)
+        + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
-        + 2 * buses * master_channels * audio_out;
+        + 2 * buses * master_channels * audio_out
+        + pool.processors() * (3 * channels + 3);
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND.max(loops) * RECORD_BYTES;
     Config {
@@ -203,7 +221,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         midi_events_per_port: description.midi_events,
         midi_bytes_per_port: description.midi_bytes,
         scheduled_events: slots,
-        resource_slots: 12 * loops + 16,
+        resource_slots: 20 * loops + 16,
         resource_pages: description.resource_pages,
         page_bytes,
         resource_io_bytes: stream::READ_PAGES * page_bytes,
@@ -282,8 +300,101 @@ pub fn prepare_with_shared(
     driver: DriverStatus,
     shared_settings: shoop_loops::runtime::SharedSettings,
 ) -> Result<Engine, PrepareError> {
+    let mut processors = PreparedProcessors::default();
+    processors.effective = description
+        .processors
+        .resolve(
+            shoop_rt_protocol::processors::Support::default(),
+            description.sample_rate,
+        )
+        .map_err(|_| rt_runtime::Error::InvalidConfig)?;
+    prepare_with_shared_and_processors(description, driver, shared_settings, processors)
+}
+
+pub fn prepare_with_processors(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    processors: PreparedProcessors,
+) -> Result<Engine, PrepareError> {
+    prepare_with_shared_and_processors(description, driver, Default::default(), processors)
+}
+
+pub fn prepare_with_shared_and_processors(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+    processors: PreparedProcessors,
+) -> Result<Engine, PrepareError> {
     description.validate()?;
-    let pool = Pool::new(&description.segments, description.buses as usize);
+    let policy = description.processors;
+    let effective = processors.effective;
+    if effective.memory_bytes != u64::from(policy.memory_mb) * (1 << 20)
+        || effective.fx_instances > policy.fx_instances
+        || effective.synth_instances > policy.synth_instances
+        || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::Off
+            && effective.fx_instances != 0)
+        || (policy.oxisynth == shoop_rt_protocol::ProcessorPolicy::Off
+            && effective.synth_instances != 0)
+        || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::On
+            && effective.fx_instances != policy.fx_instances)
+        || (policy.oxisynth == shoop_rt_protocol::ProcessorPolicy::On
+            && effective.synth_instances != policy.synth_instances)
+        || (effective.fx_instances == 0) != effective.fx_unavailable.is_some()
+        || (effective.synth_instances == 0) != effective.synth_unavailable.is_some()
+        || (effective.synth_instances == 0 && !processors.presets.is_empty())
+        || processors.presets.len() > 512
+        || processors
+            .presets
+            .windows(2)
+            .any(|p| (p[0].bank, p[0].program) >= (p[1].bank, p[1].program))
+        || (!processors.instances.is_empty() && processors.reserved_bytes == 0)
+    {
+        return Err(rt_runtime::Error::InvalidConfig.into());
+    }
+    for instance in &processors.instances {
+        let expected = match instance.kind {
+            shoop_rt_protocol::ProcessorKind::BuiltInFx => description.strip_channels as usize,
+            shoop_rt_protocol::ProcessorKind::OxiSynth => 2,
+            shoop_rt_protocol::ProcessorKind::External => {
+                return Err(rt_runtime::Error::InvalidConfig.into())
+            }
+        };
+        let ports = instance.backend.ports();
+        if ports.audio_inputs != expected
+            || ports.audio_outputs != expected
+            || ports.midi_inputs != 1
+            || ports.midi_outputs != 0
+            || expected > description.strip_channels as usize
+        {
+            return Err(rt_runtime::Error::InvalidShape.into());
+        }
+    }
+    if processors.instances.len() != processors.effective.slots()
+        || processors.reserved_bytes > processors.effective.memory_bytes
+        || processors
+            .instances
+            .iter()
+            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx)
+            .count()
+            != 2 * processors.effective.fx_instances as usize
+        || processors
+            .instances
+            .iter()
+            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::OxiSynth)
+            .count()
+            != 2 * processors.effective.synth_instances as usize
+    {
+        return Err(rt_runtime::Error::InvalidConfig.into());
+    }
+    let pool = if processors.instances.is_empty() {
+        Pool::new(&description.segments, description.buses as usize)
+    } else {
+        Pool::with_processors(
+            &description.segments,
+            description.buses as usize,
+            processors.instances.len(),
+        )
+    };
     let (strips, loops) = (pool.strips(), pool.loops());
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
@@ -313,9 +424,9 @@ pub fn prepare_with_shared(
             replay_events: 64,
         }),
         CaptureGroupConfig {
-            groups: (2 * loops).max(1),
-            members_per_group: 2,
-            staging_bytes_per_group: quantum.frames() * channels * 4
+            groups: (4 * loops).max(1),
+            members_per_group: 3,
+            staging_bytes_per_group: quantum.frames() * channels * 8
                 + 12 * midi_events.max(rt_runtime::midi::ResetState::EVENTS)
                 + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
         },
@@ -340,6 +451,7 @@ pub fn prepare_with_shared(
         buses,
         stream::RING_PAGES * description.page_bytes,
         driver,
+        quantum.frames(),
     );
     if let Some(cells) = alloc::sync::Arc::get_mut(&mut cells) {
         cells.profiling = profile_control;
@@ -352,6 +464,8 @@ pub fn prepare_with_shared(
     let bindings = (0..loops)
         .map(|slot| {
             Ok(Binding {
+                dry_wet: false,
+                auxiliary_channels: channels,
                 target: LoopId::from_parts(slot as u32, 1)?,
                 playback: pool.playback(slot),
                 capture: pool.capture(slot),
@@ -396,6 +510,24 @@ pub fn prepare_with_shared(
             observer: Some(Box::new(Observer::new(cells.clone()))),
         },
     )?;
+    if (pool.processors() > 0 || description.external_dry_wet)
+        && shared_settings
+            .histories
+            .iter()
+            .filter(|history| history.audio.is_some())
+            .count()
+            < strips
+    {
+        planner.prepare_wet_edits(
+            &mut resources,
+            rt_runtime::resource::shared_audio::Config {
+                channels: channels as u32,
+                history_frames: 0,
+                views: 6 * loops + 8,
+                pages: description.resource_pages / 4,
+            },
+        )?;
+    }
     if !shared_settings.histories.is_empty() || shared_settings.candidates != 0 {
         if shared_settings.histories.iter().any(|h| {
             h.source as usize >= pool.strips()
@@ -406,6 +538,9 @@ pub fn prepare_with_shared(
         planner.prepare_shared(&mut resources, shared_settings)?;
     }
     let settings = NodeSettings {
+        external_midi: description
+            .external_dry_wet
+            .then_some((description.midi_events, description.midi_bytes)),
         cells: cells.clone(),
         channels,
         master_channels,
@@ -421,6 +556,43 @@ pub fn prepare_with_shared(
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node)),
     );
+    let processor_cells: Box<[_]> = processors
+        .instances
+        .iter()
+        .map(|p| alloc::sync::Arc::new(processors::ProcessorCells::new(p.kind)))
+        .collect();
+    let processor_catalog = ProcessorCatalog {
+        effective: processors.effective,
+        reserved_bytes: processors.reserved_bytes,
+        kinds: processors.instances.iter().map(|p| p.kind).collect(),
+        presets: processors.presets,
+    };
+    let buffer_limits = rt_buffered::BufferLimits {
+        midi_input: rt_buffered::MidiLimits {
+            events_per_quantum: description.midi_events,
+            bytes_per_quantum: description.midi_bytes,
+        },
+        midi_output: rt_buffered::MidiLimits {
+            events_per_quantum: 0,
+            bytes_per_quantum: 0,
+        },
+        parameters_per_quantum: 64,
+    };
+    for (slot, processor) in processors.instances.into_iter().enumerate() {
+        let mut node = HostedProcessor::new(
+            processor.backend,
+            processor_cells[slot].clone(),
+            quantum,
+            buffer_limits,
+            slot,
+            pool.processors(),
+        )?;
+        node.attach(cells.clone());
+        nodes.push(PreparedNode::new(
+            pool.processor(slot),
+            EngineNode::Processor(node),
+        ));
+    }
     let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
         config,
         description.max_frames,
@@ -496,6 +668,11 @@ pub fn prepare_with_shared(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        projected_processors: vec![None; strips].into_boxed_slice(),
+        projected_timing: vec![None; loops].into_boxed_slice(),
+        projected_recorded: vec![None; loops].into_boxed_slice(),
+        processor_catalog,
+        processor_cells,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),
         profile_names: pool.profiling_names(),
@@ -515,6 +692,7 @@ pub fn prepare_with_shared(
         },
         cells: cells.clone(),
         settings: Settings {
+            external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,
             smoothing: description.smoothing_frames,
@@ -524,7 +702,6 @@ pub fn prepare_with_shared(
             master_channels,
             host: counts,
             records_per_append: RECORDS_PER_APPEND,
-            frames: description.max_frames as u32,
             command_slots: slots,
             max_reliable: description.reliable_credits,
             max_bulk: description.bulk_credits,
@@ -572,6 +749,7 @@ pub fn prepare_with_shared(
         blocked_loops: vec![false; loops].into_boxed_slice(),
         blocked_buses: vec![false; buses].into_boxed_slice(),
         blocked_all: false,
+        blocked_global: false,
         retired: Ring::new(loops.max(1)),
         fades: vec![pool.bus(0); strips + loops + buses].into_boxed_slice(),
         work,
@@ -612,7 +790,110 @@ pub fn prepare_with_shared(
 
 #[cfg(test)]
 mod tests {
+    use core::sync::atomic::Ordering;
+    use shoop_rt_protocol::{LoopSlotId, Outcome, Request, SlotId, StripId, StripShape};
+    use shoop_wasm_test_support::heap::assert_no_heap;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn late_control_topology_appends_respect_each_render_callback_budget() {
+        let mut host = super::testing::OfflineHost::new(&super::EngineDescription {
+            max_frames: 16,
+            quantum: 16,
+            segments: alloc::vec![super::Segment {
+                strips: 1,
+                loops: 20,
+            }],
+            ..super::EngineDescription::default()
+        })
+        .unwrap();
+        host.connect().unwrap();
+        fn finish(host: &mut super::testing::OfflineHost, count: usize, late: bool) {
+            let mut completed = 0;
+            for _ in 0..2_000 {
+                assert_no_heap(|| host.process(16)).unwrap();
+                loop {
+                    if late && completed < count {
+                        // The render can advance while a control submission is descheduled.
+                        host.endpoint().cells.next_frame.store(0, Ordering::Relaxed);
+                    }
+                    let Some(message) = assert_no_heap(|| host.receive()) else {
+                        break;
+                    };
+                    if let shoop_rt_protocol::EngineMessage::Result { outcome, .. } = message {
+                        assert_eq!(outcome, Outcome::Done);
+                        completed += 1;
+                    }
+                }
+                let frame = host.next_frame();
+                host.endpoint()
+                    .cells
+                    .next_frame
+                    .store(frame, Ordering::Relaxed);
+                if completed == count && host.endpoint().is_idle() {
+                    return;
+                }
+            }
+            panic!("topology transaction did not finish: {completed}/{count}");
+        }
+        finish(&mut host, 0, false);
+        let strip = StripId(SlotId::new(0, 1));
+        host.request(Request::CreateStrip {
+            strip,
+            shape: StripShape {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_input: false,
+                midi_output: false,
+            },
+        })
+        .unwrap();
+        finish(&mut host, 1, false);
+        let source = LoopSlotId(SlotId::new(0, 1));
+        for index in 0..20 {
+            host.request(Request::CreateLoop {
+                loop_id: LoopSlotId(SlotId::new(index, 1)),
+                strip,
+            })
+            .unwrap();
+        }
+        finish(&mut host, 20, false);
+        for index in 1..20 {
+            host.request(Request::LoopSync {
+                loop_id: LoopSlotId(SlotId::new(index, 1)),
+                source: Some(source),
+            })
+            .unwrap();
+        }
+        finish(&mut host, 19, true);
+        for index in 1..20 {
+            let id = LoopSlotId(SlotId::new(index, 1));
+            assert_eq!(
+                host.endpoint().model.find_loop(id).unwrap().sync,
+                Some(source)
+            );
+        }
+    }
+
+    #[shoop_test]
+    fn offline_minimal_host_resolves_auto_policy_without_implementations() {
+        let mut host = super::testing::OfflineHost::new(&super::EngineDescription {
+            processors: shoop_rt_protocol::ProcessorSettings::default(),
+            ..super::EngineDescription::default()
+        })
+        .unwrap();
+        let catalog = host.endpoint().processor_catalog();
+        assert!(catalog.kinds.is_empty());
+        assert_eq!(
+            catalog.effective.fx_unavailable,
+            Some(shoop_rt_protocol::processors::Unavailable::NotCompiled)
+        );
+        assert_eq!(
+            catalog.effective.synth_unavailable,
+            Some(shoop_rt_protocol::processors::Unavailable::NotCompiled)
+        );
+        assert_eq!(catalog.effective.memory_bytes, 256 << 20);
+    }
 
     #[shoop_test]
     fn owners_can_move_to_host_threads() {

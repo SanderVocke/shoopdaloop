@@ -57,6 +57,11 @@ pub struct NodePairInitial {
     pub target: LoopId,
     pub frames: u64,
     pub audio: Option<NodePairSourceId>,
+    pub auxiliary: Option<NodePairSourceId>,
+    pub dry_wet: bool,
+    pub history_source: u32,
+    /// Logical primary and auxiliary widths within the prepared port banks.
+    pub audio_widths: Option<[u8; 2]>,
     pub midi: Option<NodePairSourceId>,
     pub gain: f32,
     pub balance: f32,
@@ -359,12 +364,13 @@ impl NodePairs {
     fn windows(
         &self,
         audio: Option<NodePairSourceId>,
+        auxiliary: Option<NodePairSourceId>,
         midi: Option<NodePairSourceId>,
         frames: u64,
     ) -> Result<Option<Windows>, Error> {
         let mut result = None;
         let mut unset = false;
-        for id in [audio, midi].into_iter().flatten() {
+        for id in [audio, auxiliary, midi].into_iter().flatten() {
             self.source(id)?;
             match self.sources[id.slot as usize].windows {
                 Some((length, windows)) if length == frames => {
@@ -386,15 +392,18 @@ impl NodePairs {
         &mut self,
         description: media::Description,
         audio: Option<NodePairSourceId>,
+        auxiliary: Option<NodePairSourceId>,
         midi: Option<NodePairSourceId>,
         packet_bytes: usize,
         ledger: &mut media::Ledger,
         io: &mut ResourceIo<'_>,
     ) -> Result<media::MediaId, Error> {
-        if audio.is_some() && audio == midi {
+        if audio.is_some() && (audio == midi || audio == auxiliary)
+            || auxiliary.is_some() && auxiliary == midi
+        {
             return Err(Error::InvalidShape);
         }
-        for id in [audio, midi].into_iter().flatten() {
+        for id in [audio, auxiliary, midi].into_iter().flatten() {
             match self.source_status(id)? {
                 NodePairSourceStatus::Ready { max_packet } if max_packet <= packet_bytes => {}
                 NodePairSourceStatus::Ready { .. } => return Err(Error::Capacity),
@@ -402,16 +411,17 @@ impl NodePairs {
             }
         }
         let input = media::Input {
+            auxiliary: auxiliary.map(|id| self.source(id)).transpose()?,
             description,
             audio: audio.map(|id| self.source(id)).transpose()?,
             midi: midi.map(|id| self.source(id)).transpose()?,
         };
-        let media = match self.windows(audio, midi, description.frames)? {
+        let media = match self.windows(audio, auxiliary, midi, description.frames)? {
             Some(windows) => ledger.adopt_windowed(io, input, windows),
             None => ledger.adopt(io, input),
         }
         .map_err(|e| e.error)?;
-        for id in [audio, midi].into_iter().flatten() {
+        for id in [audio, auxiliary, midi].into_iter().flatten() {
             self.take_source(id);
         }
         Ok(media)
@@ -472,13 +482,27 @@ impl NodePairs {
             return Err(Error::InvalidId);
         }
         let mut change = if let Some(initial) = edit.initial {
-            if !initial.gain.is_finite()
+            if initial.audio_widths.is_some_and(|widths| {
+                widths[0] as usize > binding.channels
+                    || widths[1] as usize > binding.auxiliary_channels
+                    || (!initial.dry_wet && widths[1] != 0)
+            }) {
+                return Err(Error::InvalidShape);
+            }
+            if (initial.dry_wet && binding.auxiliary_channels == 0)
+                || (!initial.dry_wet && initial.auxiliary.is_some())
+                || !initial.gain.is_finite()
                 || !(-1.0..=1.0).contains(&initial.balance)
-                || (initial.audio.is_some() && initial.audio == initial.midi)
+                || (initial.audio.is_some()
+                    && (initial.audio == initial.midi || initial.audio == initial.auxiliary))
+                || (initial.auxiliary.is_some() && initial.auxiliary == initial.midi)
             {
                 return Err(Error::InvalidShape);
             }
-            for source in [initial.audio, initial.midi].into_iter().flatten() {
+            for source in [initial.audio, initial.auxiliary, initial.midi]
+                .into_iter()
+                .flatten()
+            {
                 let NodePairSourceStatus::Ready { max_packet } = self.source_status(source)? else {
                     return Err(Error::InvalidState);
                 };
@@ -487,9 +511,16 @@ impl NodePairs {
                 }
             }
             let audio = initial.audio.map(|id| self.source(id)).transpose()?;
+            let auxiliary = initial.auxiliary.map(|id| self.source(id)).transpose()?;
             let midi = initial.midi.map(|id| self.source(id)).transpose()?;
             let input = media::Input {
+                auxiliary,
                 description: media::Description {
+                    auxiliary_channels: if initial.dry_wet {
+                        binding.auxiliary_channels as u32
+                    } else {
+                        0
+                    },
                     owner: initial.target,
                     revision: Revision(0),
                     frames: initial.frames,
@@ -499,7 +530,12 @@ impl NodePairs {
                 audio,
                 midi,
             };
-            match self.windows(initial.audio, initial.midi, initial.frames)? {
+            match self.windows(
+                initial.audio,
+                initial.auxiliary,
+                initial.midi,
+                initial.frames,
+            )? {
                 Some(windows) => {
                     media::OwnerChange::replace_windowed(edit.previous, input, windows)
                 }
@@ -513,7 +549,10 @@ impl NodePairs {
                 ledger.prepare_owner_activation(io, core::slice::from_mut(&mut change))?;
         }
         if let Some(initial) = edit.initial {
-            for source in [initial.audio, initial.midi].into_iter().flatten() {
+            for source in [initial.audio, initial.auxiliary, initial.midi]
+                .into_iter()
+                .flatten()
+            {
                 self.take_source(source);
             }
         }
@@ -543,7 +582,10 @@ impl NodePairs {
             return Err(Error::InvalidState);
         }
         for input in bank.changes.iter().filter_map(|c| c.input()) {
-            for source in [input.audio, input.midi].into_iter().flatten() {
+            for source in [input.audio, input.auxiliary, input.midi]
+                .into_iter()
+                .flatten()
+            {
                 if io.render().snapshot(source.index)? != source.snapshot {
                     return Err(Error::InvalidId);
                 }
@@ -551,7 +593,10 @@ impl NodePairs {
         }
         while let Some(change) = bank.changes.pop() {
             if let Some(input) = change.into_input() {
-                for source in [input.audio, input.midi].into_iter().flatten() {
+                for source in [input.audio, input.auxiliary, input.midi]
+                    .into_iter()
+                    .flatten()
+                {
                     io.release_snapshot(source.snapshot.id)
                         .expect("validated owned source");
                 }

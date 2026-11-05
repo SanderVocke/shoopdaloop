@@ -90,6 +90,13 @@ pub enum LoopMode {
     Stopped,
     Playing,
     Recording,
+    PlayingDryThroughWet,
+    RecordingDryIntoWet,
+}
+impl LoopMode {
+    pub fn records(self) -> bool {
+        matches!(self, Self::Recording | Self::RecordingDryIntoWet)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -119,6 +126,9 @@ pub enum PortKind {
     AudioOut,
     MidiIn,
     MidiOut,
+    AudioSend,
+    AudioReturn,
+    MidiSend,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -139,6 +149,7 @@ pub struct BusPort {
 /// An engine port that can be connected to host ports.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EnginePort {
+    GlobalFxControl,
     Strip(StripPort),
     Bus(BusPort),
 }
@@ -155,6 +166,15 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ProcessorControl {
+        strip: StripId,
+        control: crate::processors::Control,
+    },
+    CreateProcessedStrip {
+        strip: StripId,
+        shape: StripShape,
+        kind: crate::ProcessorKind,
+    },
     CreateComposite {
         loop_id: LoopSlotId,
         strip: Option<StripId>,
@@ -246,6 +266,8 @@ pub enum Request {
     ContentApply {
         loop_id: LoopSlotId,
         frames: u64,
+        dry_audio: Option<u64>,
+        recorded_state: Option<RecordedProcessorState>,
         audio: Option<u64>,
         midi: Option<u64>,
     },
@@ -262,6 +284,10 @@ pub enum Request {
     StripControl {
         strip: StripId,
         control: StripControl,
+    },
+    StripDefaultPlayback {
+        strip: StripId,
+        dry_through_wet: bool,
     },
     CreateLoop {
         loop_id: LoopSlotId,
@@ -398,13 +424,17 @@ pub struct Capabilities(pub u32);
 impl Capabilities {
     pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
-    pub const LOOP_TIMING: Self = Self(1 << 7);
+    pub const LOOP_TIMING: Self = Self(1 << 11);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
     pub const CONTENT_UPLOAD: Self = Self(1 << 3);
     pub const COMPLETE_REPLACEMENT: Self = Self(1 << 4);
     /// Accept sixty-four queued upload records through thirty-two reusable buffers.
     pub const WIDE_CONTENT_UPLOAD: Self = Self(1 << 5);
+    pub const DRY_WET: Self = Self(1 << 7);
+    pub const TRACK_PROCESSORS: Self = Self(1 << 8);
+    pub const GLOBAL_FX_CONTROL: Self = Self(1 << 9);
+    pub const EXTERNAL_DRY_WET: Self = Self(1 << 10);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -482,6 +512,7 @@ pub enum Telemetry {
         output_peaks: Peaks,
         midi_in: bool,
         midi_out: bool,
+        latest_input_midi: Option<MidiMessage>,
         automatic_monitoring: bool,
     },
     Loop {
@@ -502,9 +533,58 @@ pub enum Telemetry {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorSlot {
+    pub index: u16,
+    pub generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorPreset {
+    pub bank: u16,
+    pub program: u8,
+    pub name: Name,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorLimits {
+    pub effective: crate::processors::Effective,
+    pub reserved_bytes: u64,
+    pub channels: u8,
+    pub builtin_latency_frames: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RecordedProcessorState {
+    /// First source sample of the take, after controls and MIDI at this offset.
+    pub source_frame: u64,
+    pub kind: crate::ProcessorKind,
+    pub values: [f32; crate::processors::STATE_SCALARS],
+}
+
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    RecordedProcessorState {
+        loop_id: LoopSlotId,
+        content_revision: u64,
+        state: Option<RecordedProcessorState>,
+    },
+    ProcessorState {
+        strip: StripId,
+        slot: ProcessorSlot,
+        snapshot: crate::processors::Snapshot,
+    },
+    StripDefaultPlayback {
+        strip: StripId,
+        dry_through_wet: bool,
+    },
+    StripProcessor {
+        strip: StripId,
+        kind: crate::ProcessorKind,
+        slot: Option<ProcessorSlot>,
+    },
+    Processors(ProcessorLimits),
+    ProcessorPreset(ProcessorPreset),
     CompositePending {
         description: crate::CompositeDescription,
         received: u32,
@@ -599,6 +679,9 @@ pub enum BulkSelector {
     /// Every audio channel of the loop, interleaved by frame. Offsets and totals
     /// count frames; a chunk carries whole frames.
     AudioFrames,
+    /// Dry and wet audio from one exported revision, interleaved by frame.
+    /// Each role occupies the host's prepared audio width; dry precedes wet.
+    AudioRoles,
     Midi,
     /// Length-prefixed short packets restoring one channel's initial projection.
     MidiInitial {

@@ -121,19 +121,20 @@ src/rust/shoop_egui/src/track_widget.rs,application_ui_and_control,instrumented_
 src/rust/shoop_egui/src/tracks_widget.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_egui/src/waveform.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/waveform_widget.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_engine/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
+src/rust/shoop_dsp/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
 src/rust/shoop_engine/src/app_backend.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/audio_channel.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/audio_midi_loop.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/basic_loop.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/buffer_queue.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_engine/src/builtin_fx.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
-src/rust/shoop_engine/src/builtin_fx/chorus.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
-src/rust/shoop_engine/src/builtin_fx/compressor.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
-src/rust/shoop_engine/src/builtin_fx/drive.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
-src/rust/shoop_engine/src/builtin_fx/eq.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
-src/rust/shoop_engine/src/builtin_fx/modulation.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
-src/rust/shoop_engine/src/builtin_fx/reverb.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_dsp/src/builtin_fx.rs,mixed_realtime_and_control,instrumented_direct,Legacy processing retains gated rack tracing; prepared host processing uses the owning runtime profiler without SDK calls.
+src/rust/shoop_engine/src/builtin_fx.rs,legacy_dsp_reexport,excluded,Compatibility reexport of extracted optional host DSP; no execution to trace.
+src/rust/shoop_dsp/src/builtin_fx/chorus.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_dsp/src/builtin_fx/compressor.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_dsp/src/builtin_fx/drive.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_dsp/src/builtin_fx/eq.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_dsp/src/builtin_fx/modulation.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_dsp/src/builtin_fx/reverb.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
 src/rust/shoop_engine/src/carla_completion.rs,realtime_processing,instrumented_indirect,Completion waits run within traced Carla transport boundaries.
 src/rust/shoop_engine/src/carla_native.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/carla_processor.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
@@ -173,7 +174,7 @@ src/rust/shoop_engine/src/latency_runtime.rs,mixed_realtime_and_control,instrume
 src/rust/shoop_engine/src/loop_mode.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midi.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midi_buffering_input_port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_engine/src/midi_cc.rs,non_realtime_support,instrumented_indirect,"Constant-size assignment-table operations run within traced processor control boundaries; a separate span would add noise."
+src/rust/shoop_dsp/src/midi_cc.rs,non_realtime_support,instrumented_indirect,"Constant-size assignment-table operations run within traced processor control boundaries; a separate span would add noise."
 src/rust/shoop_engine/src/midi_channel.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midi_event.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midi_port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -183,7 +184,8 @@ src/rust/shoop_engine/src/midi_state.rs,mixed_realtime_and_control,instrumented_
 src/rust/shoop_engine/src/midi_storage.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midir_driver.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/multichannel_audio.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_engine/src/oxisynth.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoop_dsp/src/oxisynth.rs,mixed_realtime_and_control,instrumented_direct,Legacy processing retains gated synth tracing; prepared host processing uses the owning runtime profiler without SDK calls.
+src/rust/shoop_engine/src/oxisynth.rs,legacy_dsp_reexport,excluded,Compatibility reexport of extracted optional host DSP; no execution to trace.
 src/rust/shoop_engine/src/pending_midi_control.rs,realtime_processing,instrumented_indirect,Runs within the traced processor routing boundary; a separate per-control span would add callback overhead.
 src/rust/shoop_engine/src/port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/profiling.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -447,6 +449,19 @@ src/rust/rt_profiling/src/graph.rs,portable_profiling,excluded,Bounded metadata 
 src/rust/rt_profiling/src/capture.rs,portable_profiling,excluded,Pure capture value types and clock-domain containment with no side effects or tracing dependency.
 src/rust/shoop_egui/src/profiling/graph.rs,egui_ui,excluded,Frame-rate graph drawing and hover rendering use profiling data directly; avoid per-frame tracing overhead.
 src/rust/shoop_rt_engine/src/buffered_tests.rs,test_support,excluded,Test-only processor composition and heap guards.
+src/rust/rt_buffered/src/backend.rs,buffered_processing,excluded,Portable prepared backend contract; render execution is observed by the owning runtime.
+src/rust/shoop_dsp/src/lib.rs,host_dsp_contract,excluded,Feature-gated module surface or inline MIDI value definitions; no execution boundary to trace.
+src/rust/shoop_dsp/src/midi_storage.rs,host_dsp_contract,excluded,Feature-gated module surface or inline MIDI value definitions; no execution boundary to trace.
+src/rust/shoop_dsp/src/backends.rs,host_dsp_adapter,excluded,Bounded inline DSP adapter; owning runtime and processor spans observe render execution.
+src/rust/shoop_processor_protocol/src/lib.rs,processor_contract,excluded,Portable startup validation and scalar identifiers; callers report admission outcomes.
+src/rust/shoop_rt_engine/src/processors.rs,realtime_processors,excluded,Bounded opaque processor composition and atomic applied-state publication; owning host observes outcomes.
+src/rust/shoop_host_processors/src/lib.rs,host_processor_preparation,excluded,Startup-only resource validation and DSP construction; host startup reports preparation failures.
+src/rust/shoop_rt_backend/src/processors.rs,processor_projection,excluded,Descriptor conversion from confirmed host metadata; owning backend traces connection and admission.
+src/rust/shoop_processor_protocol/src/state.rs,processor_contract,excluded,Portable canonical state validation and formatting; owners report restore and persistence outcomes.
+src/rust/shoop_processor_protocol/src/midi.rs,processor_contract,excluded,Fixed-storage MIDI control filtering and deferred values; owning processors expose bounded diagnostics.
+src/rust/shoop_rt_engine/src/global_midi.rs,realtime_engine,excluded,Prepared MIDI control merge and retention expose bounded counters without callback logging.
+src/rust/shoop_rt_backend/src/processor_controls.rs,processor_projection,excluded,Editor conversion and bounded host control construction run within traced application intents and backend outcomes.
+src/rust/shoop_rt_engine/src/recorded.rs,realtime_recorded_state,excluded,Bounded source-boundary observations and atomic take metadata on the render path; confirmed state and failures project through the owning endpoint.
 src/rust/shoop_rt_backend/src/composites.rs,application_ui_and_control,instrumented_direct,Logical prepared composite admission and terminal versions are traced without document or media payloads.
 src/rust/shoop_app_protocol/src/composite.rs,app_session,excluded,Checked authored and effective timing values expose no execution or I/O boundary.
 src/rust/shoop_app/src/service/composites/mod.rs,app_session,instrumented_indirect,Canonical editor admission and confirmed version publication run inside traced service operation boundaries.
@@ -458,3 +473,4 @@ src/rust/shoop_rt_engine/src/monitoring.rs,realtime_engine,excluded,Fixed prepar
 src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.
 src/rust/shoop_transport/src/authenticated.rs,session_transport,excluded,Bounded credential admission for provisioned embedded hosts; failures return to connection owners without tracing credentials.
 src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.
+src/rust/shoop_persistence_codec/src/document/processors.rs,client_codec_worker,excluded,Pure portable processor and channel-role conversion; traced frontend persistence orchestration owns the boundary.

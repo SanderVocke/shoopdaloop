@@ -98,8 +98,10 @@ impl MidiPool {
         if bytes > i32::MAX as usize {
             return Err(Error::Capacity);
         }
-        let mut versions = vec![MidiVersion::default(); config.versions];
-        let mut checkpoints = vec![Checkpoint::default(); count];
+        let mut versions = Vec::with_capacity(config.versions);
+        versions.resize_with(config.versions, MidiVersion::default);
+        let mut checkpoints = Vec::with_capacity(count);
+        checkpoints.resize_with(count, Checkpoint::default);
         for row in &mut versions {
             *core::hint::black_box(row) = MidiVersion::default();
         }
@@ -244,6 +246,15 @@ impl MidiPool {
             base + low.checked_sub(1).ok_or(Error::InvalidState)?,
             config.replay_events,
         ))
+    }
+    pub fn initial_state(
+        &self,
+        owner: MidiOwner,
+        source: UploadId,
+        prefix: usize,
+    ) -> Result<&MidiState, Error> {
+        let (slot, _) = self.checkpoint_before(owner, source, 0, prefix)?;
+        Ok(&self.checkpoints[slot].state)
     }
     pub fn before(
         &mut self,

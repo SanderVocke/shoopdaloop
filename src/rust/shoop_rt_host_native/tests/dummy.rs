@@ -105,6 +105,24 @@ fn controlled_mode_renders_exactly_the_requested_frames() {
 }
 
 #[shoop_test(no_wasm = "native driver and threads")]
+fn startup_and_cleanup_fit_the_native_one_megabyte_stack() {
+    std::thread::Builder::new()
+        .stack_size(1 << 20)
+        .spawn(|| {
+            let Started { host, client } = start(&config(controlled())).unwrap();
+            let dummy = host.dummy().unwrap();
+            dummy.request_frames(32);
+            assert!(dummy.wait_rendered(Duration::from_secs(5)));
+            assert_eq!(host.status().phase, RenderPhase::Running);
+            drop(client);
+            assert!(host.stop().stopped.is_ok());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[shoop_test(no_wasm = "native driver and threads")]
 fn quantum_native_startup_handles_partial_callbacks_and_returns_all_owners() {
     for q in [16, 32, 64, 128] {
         let mut settings = config(DummyConfig {

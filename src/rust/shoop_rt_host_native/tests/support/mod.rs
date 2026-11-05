@@ -16,6 +16,8 @@ use shoop_rt_protocol::*;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        external_dry_wet: false,
+        processors: shoop_rt_protocol::ProcessorSettings::disabled(),
         composite_entries: 256,
         composite_segments: 1024,
         timing_relations: 512,

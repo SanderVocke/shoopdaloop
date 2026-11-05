@@ -490,6 +490,7 @@ mod tests {
 
     fn fixture() -> (TrackState, TrackProcessorDescriptor) {
         let processor = TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
             label: "Built-in FX".to_owned(),
             available: true,

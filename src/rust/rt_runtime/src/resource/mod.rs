@@ -153,6 +153,10 @@ impl Cursor {
     }
 }
 
+/// Exclusive metadata credit. Copying this token acquires no additional credit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SnapshotReservation(SnapshotId);
+
 pub struct ResourceStore {
     quantum: Quantum,
     scope: u32,
@@ -167,6 +171,7 @@ pub struct ResourceStore {
     free_versions: Vec<usize>,
     snapshots: Vec<Slot<Lease>>,
     free_snapshots: Vec<usize>,
+    snapshot_reservations: Box<[bool]>,
     retired_versions: Vec<usize>,
     retired_pages: Vec<usize>,
     copy_remaining: usize,
@@ -260,6 +265,7 @@ impl ResourceStore {
             free_versions: (0..limits.resource_slots).rev().collect(),
             snapshots: slots(limits.resource_slots),
             free_snapshots: (0..limits.resource_slots).rev().collect(),
+            snapshot_reservations: vec![false; limits.resource_slots].into_boxed_slice(),
             retired_versions: retirement_stack(limits.resource_slots),
             retired_pages: retirement_stack(limits.resource_pages),
             copy_remaining: 0,
@@ -599,7 +605,55 @@ impl ResourceStore {
         Ok(())
     }
 
+    pub fn reserve_snapshot(&mut self) -> Result<SnapshotReservation, Error> {
+        let slot = self.free_snapshots.pop().ok_or(Error::Capacity)?;
+        self.snapshot_reservations[slot] = true;
+        Ok(SnapshotReservation(SnapshotId {
+            slot: slot as u32,
+            generation: self.snapshots[slot].generation,
+        }))
+    }
+    fn check_snapshot_reservation(&self, reservation: SnapshotReservation) -> Result<usize, Error> {
+        let id = reservation.0;
+        let slot = self
+            .snapshots
+            .get(id.slot as usize)
+            .ok_or(Error::InvalidId)?;
+        if slot.generation != id.generation
+            || !self.snapshot_reservations[id.slot as usize]
+            || slot.value.is_some()
+        {
+            return Err(Error::InvalidId);
+        }
+        Ok(id.slot as usize)
+    }
+    pub fn cancel_snapshot_reservation(
+        &mut self,
+        reservation: SnapshotReservation,
+    ) -> Result<(), Error> {
+        let slot = self.check_snapshot_reservation(reservation)?;
+        self.snapshot_reservations[slot] = false;
+        release(&mut self.snapshots, &mut self.free_snapshots, slot);
+        Ok(())
+    }
+    pub fn snapshot_reserved(
+        &mut self,
+        reservation: SnapshotReservation,
+        resource: ResourceId,
+        cut_frame: Frame,
+    ) -> Result<Snapshot, Error> {
+        let slot = self.check_snapshot_reservation(reservation)?;
+        self.snapshot_in_slot(resource, cut_frame, Some(slot))
+    }
     pub fn snapshot(&mut self, resource: ResourceId, cut_frame: Frame) -> Result<Snapshot, Error> {
+        self.snapshot_in_slot(resource, cut_frame, None)
+    }
+    fn snapshot_in_slot(
+        &mut self,
+        resource: ResourceId,
+        cut_frame: Frame,
+        reserved: Option<usize>,
+    ) -> Result<Snapshot, Error> {
         let active = get(&self.resources, resource.slot(), resource.generation())?
             .active
             .ok_or(Error::InvalidState)?;
@@ -613,7 +667,7 @@ impl ResourceStore {
         } else {
             cut_frame
         };
-        if self.free_snapshots.is_empty() {
+        if reserved.is_none() && self.free_snapshots.is_empty() {
             return Err(Error::Capacity);
         }
         let audio = match version.audio {
@@ -664,7 +718,12 @@ impl ResourceStore {
         } else {
             None
         };
-        let index = self.free_snapshots.pop().ok_or(Error::InvalidState)?;
+        let index = if let Some(index) = reserved {
+            self.snapshot_reservations[index] = false;
+            index
+        } else {
+            self.free_snapshots.pop().ok_or(Error::InvalidState)?
+        };
         let snapshot = Snapshot {
             id: SnapshotId {
                 slot: index as u32,

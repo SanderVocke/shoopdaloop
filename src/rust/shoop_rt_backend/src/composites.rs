@@ -16,7 +16,7 @@ use shoop_backend::{
     BackendActiveCompositeChild, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
     BackendCompositeLimits, BackendCompositeOutcome, BackendCompositePending,
     BackendCompositeReceipt, BackendCompositeState, BackendCompositeTarget, BackendLoopId,
-    BackendLoopMode, BackendMutationCompletion, BackendPreparedCompositePlan,
+    BackendLoopMode, BackendMutationCompletion, BackendPreparedCompositePlan, BackendTrackTopology,
 };
 use shoop_rt_protocol::{
     CompositeCommand, CompositeDescription, CompositeKind, CompositeSpan, LoopMode, LoopSlotId,
@@ -91,6 +91,8 @@ fn app_mode(mode: LoopMode) -> BackendLoopMode {
         LoopMode::Stopped => BackendLoopMode::Stopped,
         LoopMode::Playing => BackendLoopMode::Playing,
         LoopMode::Recording => BackendLoopMode::Recording,
+        LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
     }
 }
 
@@ -132,6 +134,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.loops.insert(
             id,
             Loop {
+                recorded: None,
                 timing: Default::default(),
                 slot,
                 program: Some(description),
@@ -169,6 +172,24 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_loop(id)
             .ok_or_else(|| anyhow!("unknown composite target"))?;
+        for target in
+            core::iter::once(id).chain(plan.spans.iter().map(|span| target_id(span.target)))
+        {
+            if self
+                .mirror
+                .loops
+                .get(&target)
+                .and_then(|entry| entry.track)
+                .is_some_and(|owner| {
+                    !matches!(
+                        self.mirror.tracks[&owner].topology,
+                        BackendTrackTopology::Direct { .. }
+                    )
+                })
+            {
+                bail!("composites currently require Direct tracks");
+            }
+        }
         if entry.program.is_none()
             && (!entry.confirmed
                 || entry.view.mode != LoopMode::Stopped
@@ -450,6 +471,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                                 LoopMode::Stopped => shoop_loop_plan::Mode::Stopped,
                                 LoopMode::Playing => shoop_loop_plan::Mode::Playing,
                                 LoopMode::Recording => shoop_loop_plan::Mode::Recording,
+                                LoopMode::PlayingDryThroughWet => {
+                                    shoop_loop_plan::Mode::PlayingDryThroughWet
+                                }
+                                LoopMode::RecordingDryIntoWet => {
+                                    shoop_loop_plan::Mode::RecordingDryIntoWet
+                                }
                             },
                         ),
                     };
@@ -513,6 +540,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             shoop_loop_plan::Mode::Stopped => BackendLoopMode::Stopped,
                             shoop_loop_plan::Mode::Playing => BackendLoopMode::Playing,
                             shoop_loop_plan::Mode::Recording => BackendLoopMode::Recording,
+                            shoop_loop_plan::Mode::PlayingDryThroughWet => {
+                                BackendLoopMode::PlayingDryThroughWet
+                            }
+                            shoop_loop_plan::Mode::RecordingDryIntoWet => {
+                                BackendLoopMode::RecordingDryIntoWet
+                            }
                         },
                     })
             })
@@ -928,6 +961,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         entry.slot = description.loop_id;
         if old != entry.slot {
             entry.timing = Default::default();
+            entry.rt_content_revision = 0;
+            entry.recorded = None;
         }
         entry.program = Some(description);
         entry.program_spans = job.spans.clone();

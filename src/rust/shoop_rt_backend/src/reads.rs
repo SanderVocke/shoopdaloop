@@ -36,6 +36,7 @@ struct Read<T> {
     slot: LoopSlotId,
     /// Audio channels the application wants, out of the interleaved loop channels.
     channels: usize,
+    dry: Option<usize>,
     /// Offset of the next chunk to ask for: frames for audio, bytes for MIDI.
     next: u64,
     total: Option<u64>,
@@ -56,6 +57,7 @@ impl<T> Read<T> {
             version,
             slot,
             channels,
+            dry: None,
             next: 0,
             total: None,
             received: 0,
@@ -124,8 +126,10 @@ impl Reads {
         version: u64,
         slot: LoopSlotId,
         data: BackendAudioData,
+        dry: Option<usize>,
     ) {
         let mut read = Read::new(version, slot, data.channels.len());
+        read.dry = dry;
         read.outcome = Outcome::Done(data);
         self.audio.insert(id, read);
     }
@@ -179,8 +183,8 @@ impl Reads {
         self.loop_channels = usize::from(channels).max(1);
     }
 
-    fn audio_chunk_frames(&self) -> u64 {
-        (BULK_CHUNK_SAMPLES / self.loop_channels).max(1) as u64
+    fn audio_chunk_frames(&self, roles: bool) -> u64 {
+        (BULK_CHUNK_SAMPLES / (self.loop_channels * if roles { 2 } else { 1 })).max(1) as u64
     }
 
     /// The audio read of a loop's content version, started if needed.
@@ -191,15 +195,43 @@ impl Reads {
         slot: LoopSlotId,
         channels: usize,
     ) -> Outcome<BackendAudioData> {
+        self.audio_layout(loop_id, version, slot, channels, None)
+    }
+    pub fn audio_roles(
+        &mut self,
+        loop_id: BackendLoopId,
+        version: u64,
+        slot: LoopSlotId,
+        dry: usize,
+        wet: usize,
+    ) -> Outcome<BackendAudioData> {
+        if dry > self.loop_channels || wet > self.loop_channels {
+            return Outcome::Failed("audio role width exceeds the prepared host width".into());
+        }
+        self.audio_layout(loop_id, version, slot, dry + wet, Some(dry))
+    }
+    fn audio_layout(
+        &mut self,
+        loop_id: BackendLoopId,
+        version: u64,
+        slot: LoopSlotId,
+        channels: usize,
+        dry: Option<usize>,
+    ) -> Outcome<BackendAudioData> {
         let read = self
             .audio
             .entry(loop_id)
             .and_modify(|read| {
-                if read.version != version {
+                if read.version != version || read.channels != channels || read.dry != dry {
                     *read = Read::new(version, slot, channels);
+                    read.dry = dry;
                 }
             })
-            .or_insert_with(|| Read::new(version, slot, channels));
+            .or_insert_with(|| {
+                let mut read = Read::new(version, slot, channels);
+                read.dry = dry;
+                read
+            });
         let outcome = read.outcome.clone();
         if let Outcome::Failed(_) = outcome {
             self.audio.remove(&loop_id);
@@ -317,7 +349,13 @@ impl Reads {
                 loop_id: slot,
                 offset,
                 selector: match kind {
-                    ReadKind::Audio => BulkSelector::AudioFrames,
+                    ReadKind::Audio => {
+                        if self.audio[&loop_id].dry.is_some() {
+                            BulkSelector::AudioRoles
+                        } else {
+                            BulkSelector::AudioFrames
+                        }
+                    }
                     ReadKind::Midi => BulkSelector::Midi,
                     ReadKind::Initial(channel) => BulkSelector::MidiInitial { channel },
                 },
@@ -326,7 +364,11 @@ impl Reads {
     }
     pub fn sent(&mut self, loop_id: BackendLoopId, kind: ReadKind, id: u32) {
         let step = if kind == ReadKind::Audio {
-            self.audio_chunk_frames()
+            self.audio_chunk_frames(
+                self.audio
+                    .get(&loop_id)
+                    .is_some_and(|read| read.dry.is_some()),
+            )
         } else {
             BULK_CHUNK_BYTES as u64
         };
@@ -485,6 +527,8 @@ impl Reads {
         let Some(expected) = read.waiting.remove(&chunk.id) else {
             return;
         };
+        let physical_role_width = loop_channels;
+        let loop_channels = loop_channels * if read.dry.is_some() { 2 } else { 1 };
         match chunk.payload {
             BulkPayload::Audio { len, samples } => {
                 let len = usize::from(len);
@@ -513,7 +557,20 @@ impl Reads {
                         read.outcome = Outcome::Failed("audio exceeds host media capacity".into());
                         return;
                     }
-                    match assembly::Audio::new(chunk.total, loop_channels, read.channels) {
+                    let assembly = if let Some(dry) = read.dry {
+                        assembly::Audio::selected(
+                            chunk.total,
+                            loop_channels,
+                            (0..dry)
+                                .chain(
+                                    physical_role_width..physical_role_width + read.channels - dry,
+                                )
+                                .collect(),
+                        )
+                    } else {
+                        assembly::Audio::new(chunk.total, loop_channels, read.channels)
+                    };
+                    match assembly {
                         Ok(assembly) => read.audio_data = Some(assembly),
                         Err(message) => {
                             read.outcome = Outcome::Failed(message);
@@ -539,12 +596,12 @@ impl Reads {
         if matches!(read.outcome, Outcome::Reading)
             && read.total.is_some_and(|total| read.received == total)
         {
-            read.outcome = Outcome::Done(
-                read.audio_data
-                    .take()
-                    .expect("complete audio assembly")
-                    .finish(),
-            );
+            let data = read
+                .audio_data
+                .take()
+                .expect("complete audio assembly")
+                .finish();
+            read.outcome = Outcome::Done(data);
         }
     }
 }
@@ -577,6 +634,40 @@ pub(crate) fn empty_midi(version: u64, midi: bool) -> BackendMidiData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn audio_roles_select_independent_widths_from_both_prepared_banks() {
+        let mut reads = Reads::default();
+        reads.set_loop_channels(8);
+        let id = BackendLoopId::from_raw(1);
+        let slot = LoopSlotId(shoop_rt_protocol::SlotId::new(0, 1));
+        assert!(matches!(
+            reads.audio_roles(id, 1, slot, 3, 1),
+            Outcome::Reading
+        ));
+        let (_, kind, request) = reads.next().unwrap();
+        assert_eq!(request.selector, BulkSelector::AudioRoles);
+        reads.sent(id, kind, request.id);
+        let samples = (0..32)
+            .map(|sample| (sample / 16 * 100 + sample % 16) as f32)
+            .collect::<Vec<_>>();
+        reads.receive(
+            BulkChunk {
+                id: request.id,
+                offset: 0,
+                total: 2,
+                payload: BulkPayload::audio(&samples).unwrap(),
+            },
+            |_| 2,
+        );
+        let Outcome::Done(data) = reads.audio_roles(id, 1, slot, 3, 1) else {
+            panic!("read incomplete");
+        };
+        assert_eq!(data.channels.len(), 4);
+        for (channel, source) in data.channels.iter().zip([0., 1., 2., 8.]) {
+            assert_eq!(&*channel.samples, &[source, source + 100.]);
+        }
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn oversized_bulk_totals_fail_before_allocating_media() {
         for midi in [false, true] {

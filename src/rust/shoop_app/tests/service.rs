@@ -60,11 +60,22 @@ fn fixture_with_inventory(
 fn fixture_with_outputs(outputs: usize) -> Fixture {
     fixture_with_options(outputs, None)
 }
+fn fixture_with_dry_wet(outputs: usize, dry_wet: bool) -> Fixture {
+    fixture_configured(outputs, dry_wet, None)
+}
 fn fixture_with_options(
     outputs: usize,
     inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
 ) -> Fixture {
+    fixture_configured(outputs, false, inventory)
+}
+fn fixture_configured(
+    outputs: usize,
+    dry_wet: bool,
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
     let description = EngineDescription {
+        external_dry_wet: dry_wet,
         quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
@@ -235,6 +246,316 @@ fn new_track(name: &str, midi: bool) -> Command {
         initial_output_bus_names: vec!["Master".to_owned()],
         creation_request_id: None,
     })
+}
+
+#[shoop_test]
+fn fixed_cycle_recording_resolves_each_tracks_default_post_record_playback() {
+    let mut f = fixture_with_dry_wet(2, true);
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    let run = |f: &mut Fixture, client: &mut Client, value| {
+        let id = submit(&mut f.service, client, connection, value);
+        complete(&mut f.service, client, connection, id, true)
+    };
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let sync = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .clone();
+    let sync_action = |action| Command::Loop {
+        track: sync.id,
+        loop_id: sync.loops[0].id,
+        action,
+    };
+    run(&mut f, &mut client, sync_action(LoopAction::RecordClicked));
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    run(&mut f, &mut client, sync_action(LoopAction::StopClicked));
+    run(&mut f, &mut client, sync_action(LoopAction::PlayClicked));
+    let (track, loops) = created(run(
+        &mut f,
+        &mut client,
+        Command::AddTrack(TrackSpec {
+            name: "Post-record defaults".into(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                default_playback_mode: DefaultPlaybackMode::Regular,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    ));
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(true)),
+    );
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetApplyNCycles(1)),
+    );
+    for (index, (default, autoplay, expected)) in [
+        (DefaultPlaybackMode::Regular, true, LoopMode::Playing),
+        (
+            DefaultPlaybackMode::DryThroughWet,
+            true,
+            LoopMode::PlayingDryThroughWet,
+        ),
+        (DefaultPlaybackMode::DryThroughWet, false, LoopMode::Stopped),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        run(
+            &mut f,
+            &mut client,
+            Command::Track {
+                track,
+                action: TrackAction::DefaultPlaybackModeChanged(default),
+            },
+        );
+        run(
+            &mut f,
+            &mut client,
+            Command::Global(GlobalControlAction::SetPlayAfterRecord(autoplay)),
+        );
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[index],
+                    action: LoopAction::DefaultClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut finished = false;
+        for _ in 0..100 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, true);
+            let state = client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap();
+            let state = &state.loops[index];
+            if !state.empty && state.mode == expected && state.next_transition_delay.is_none() {
+                finished = true;
+                break;
+            }
+        }
+        assert!(finished, "default={default:?} autoplay={autoplay}");
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[index],
+                    action: LoopAction::PlayClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut explicit_wet = false;
+        for _ in 0..100 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, true);
+            let state = client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap();
+            if state.loops[index].mode == LoopMode::Playing {
+                explicit_wet = true;
+                break;
+            }
+        }
+        assert!(explicit_wet);
+    }
+}
+
+#[shoop_test]
+fn dry_wet_service_orders_defaults_and_keeps_explicit_play_wet_over_the_wire() {
+    for encoded in [false, true] {
+        let mut f = fixture_with_dry_wet(2, true);
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 1, connection, encoded);
+        let run = |f: &mut Fixture, client: &mut Client, command| {
+            let id = submit(&mut f.service, client, connection, command);
+            complete(&mut f.service, client, connection, id, encoded)
+        };
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .track_processors
+            .iter()
+            .any(|p| p.id.as_str() == TrackProcessorTypeId::EXTERNAL && p.available));
+        run(
+            &mut f,
+            &mut client,
+            Command::Global(GlobalControlAction::SetSync(false)),
+        );
+        let (track, loops) = created(run(
+            &mut f,
+            &mut client,
+            Command::AddTrack(TrackSpec {
+                name: "External".into(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            }),
+        ));
+        let action = |action| Command::Loop {
+            track,
+            loop_id: loops[0],
+            action,
+        };
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::RecordClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        f.service.tick(STEP);
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::StopClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        let mode = |client: &Client| {
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap()
+                .loops[0]
+                .mode
+        };
+        for final_mode in [
+            DefaultPlaybackMode::Regular,
+            DefaultPlaybackMode::DryThroughWet,
+        ] {
+            let mut pending = Vec::new();
+            for choice in [
+                DefaultPlaybackMode::DryThroughWet,
+                DefaultPlaybackMode::Regular,
+                final_mode,
+            ] {
+                pending.push(submit(
+                    &mut f.service,
+                    &mut client,
+                    connection,
+                    Command::Track {
+                        track,
+                        action: TrackAction::DefaultPlaybackModeChanged(choice),
+                    },
+                ));
+            }
+            let playback = submit(
+                &mut f.service,
+                &mut client,
+                connection,
+                Command::Control(ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loops[0]],
+                }),
+            );
+            for id in pending.into_iter().chain([playback]) {
+                assert!(matches!(
+                    complete(&mut f.service, &mut client, connection, id, encoded),
+                    Outcome::Confirmed { .. }
+                ));
+            }
+            assert_eq!(
+                mode(&client),
+                if final_mode == DefaultPlaybackMode::Regular {
+                    LoopMode::Playing
+                } else {
+                    LoopMode::PlayingDryThroughWet
+                }
+            );
+            assert!(matches!(
+                run(&mut f, &mut client, action(LoopAction::StopClicked)),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::PlayClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(mode(&client), LoopMode::Playing);
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::StopClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::DefaultClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(mode(&client), LoopMode::PlayingDryThroughWet);
+        let projected = client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .unwrap()
+            .clone();
+        assert!(matches!(
+            projected.topology,
+            TrackTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                ..
+            }
+        ));
+        assert!(!projected.controls.input_stereo);
+        assert!(projected.controls.output_stereo);
+        let snapshot = client.snapshot().unwrap();
+        let wet = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                projected.port_ids.contains(&port.id) && port.role == PortRole::AudioOutput
+            })
+            .map(|port| port.id)
+            .collect::<Vec<_>>();
+        let routed = snapshot
+            .connections
+            .mixer_links
+            .iter()
+            .filter(|link| projected.port_ids.contains(&link.source_port_id))
+            .collect::<Vec<_>>();
+        assert_eq!(routed.len(), 2);
+        assert!(routed.iter().all(|link| wet.contains(&link.source_port_id)));
+    }
 }
 
 #[shoop_test]

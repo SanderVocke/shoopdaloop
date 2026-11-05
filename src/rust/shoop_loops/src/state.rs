@@ -54,7 +54,7 @@ impl State {
         self.composite.is_none()
             && self.content_length != 0
             && self.position < self.content_length
-            && (self.mode == Mode::Playing
+            && (self.mode.playback_mode()
                 || (self.mode == Mode::Recording && self.monitor_previous))
     }
 }

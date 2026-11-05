@@ -302,6 +302,8 @@ impl Exports {
                         shoop_loops::Mode::Stopped => 0,
                         shoop_loops::Mode::Playing => 1,
                         shoop_loops::Mode::Recording => 2,
+                        shoop_loops::Mode::PlayingDryThroughWet => 3,
+                        shoop_loops::Mode::RecordingDryIntoWet => 4,
                     };
                     for (stream, source) in
                         [media.view.audio, media.view.midi].into_iter().enumerate()

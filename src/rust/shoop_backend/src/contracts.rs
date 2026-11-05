@@ -704,6 +704,7 @@ fn session_track(
     let loops = loops
         .iter()
         .map(|&(source_id, gain)| BackendLoopContent {
+            recorded_processor_state: None,
             source_id,
             length: 0,
             gain,

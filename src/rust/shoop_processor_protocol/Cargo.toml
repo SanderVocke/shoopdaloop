@@ -1,0 +1,28 @@
+[package]
+name = "shoop_processor_protocol"
+version.workspace = true
+edition = "2021"
+description = "Portable host processor policy and scalar state contracts"
+
+[lints]
+workspace = true
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[features]
+default = []
+alloc = []
+serde = ["dep:serde"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"], optional = true }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+serde_json = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

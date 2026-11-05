@@ -232,7 +232,9 @@ fn setup_with_pages(
         let midi = upload(&mut resources, Format::Midi, frames, &encoded(&packets));
         handles.extend([audio.snapshot.resource, midi.snapshot.resource]);
         imports.push(media::Input {
+            auxiliary: None,
             description: media::Description {
+                auxiliary_channels: 0,
                 owner: id(target),
                 revision: Revision(revision),
                 frames,
@@ -332,6 +334,8 @@ fn setup_with_pages(
         let capture = node(3 * slot + 2);
         effects.push((effect, Mix));
         bindings.push(Binding {
+            dry_wet: false,
+            auxiliary_channels: 0,
             target: id(slot),
             playback,
             capture,

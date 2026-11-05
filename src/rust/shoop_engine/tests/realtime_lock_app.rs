@@ -125,6 +125,11 @@ fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
         .expect("MIDI capture reset");
 
     driver.wait_process();
+    let deadline = std::time::Instant::now() + DEFAULT_WAIT_TIMEOUT;
+    while !session.graph_up_to_date().expect("graph readiness") {
+        assert!(std::time::Instant::now() < deadline, "graph did not settle");
+        driver.wait_process();
+    }
     assert_eq!(loop_.get_state().expect("state").position, 0);
     driver.dummy_request_controlled_frames(BUFFER);
     driver.dummy_run_requested_frames();

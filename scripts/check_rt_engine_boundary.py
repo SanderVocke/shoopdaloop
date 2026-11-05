@@ -22,7 +22,7 @@ PACKAGES = (
     "shoop_port_graph",
     "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_host_freertos", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
-    "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
+    "shoop_rt_engine", "shoop_rt_protocol", "shoop_processor_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_jack", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
     "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory", "shoop_rt_host_process", "shoop_rt_backend",
 )
@@ -83,6 +83,10 @@ def violations(tree: str, package: str | None = None) -> list[str]:
         return sorted(name for name in names if name in forbidden or name.startswith(
             ("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")))
     forbidden = set(FORBIDDEN)
+    if package in {"shoop_rt_engine", "shoop_rt_protocol", "shoop_processor_protocol"}:
+        forbidden.update({"shoop_dsp", "shoop_host_processors", "fundsp", "oxisynth", "soundfont"})
+    if package == "shoop_processor_protocol":
+        forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime", "std", "web-sys", "js-sys", "cpal"})
     if package in {"shoop_transport", "shoop_rt_protocol", "shoop_rt_transport"}:
         forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime"})
         forbidden.update(name for name in names if name.startswith(

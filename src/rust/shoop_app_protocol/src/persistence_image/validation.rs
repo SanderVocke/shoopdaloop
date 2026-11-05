@@ -43,6 +43,7 @@ impl Progress {
                 || i32::try_from(channel.start_offset).is_err()
                 || i32::try_from(channel.capture_alignment).is_err()
                 || u32::try_from(channel.preplay).is_err()
+                || (midi && channel.mode == ChannelMode::Wet)
                 || channel
                     .recording_started_at
                     .as_ref()
@@ -110,6 +111,16 @@ impl Progress {
                 {
                     return Err(Refusal::Invalid);
                 }
+                if session.tracks.iter().any(|track| {
+                    track
+                        .processor_state
+                        .as_ref()
+                        .is_some_and(|s| s.len() > 1024)
+                        || track.builtin_fx_midi_cc_assignments.len() > 23
+                        || track.oxisynth_midi_cc_assignments.len() > 2
+                }) {
+                    return Err(Refusal::Invalid);
+                }
                 if session.buses.len() > 8
                     || session
                         .buses
@@ -156,7 +167,7 @@ impl Progress {
             } => {
                 if *sample_rate == 0
                     || frames.is_some_and(|f| f > u32::MAX as u64)
-                    || audio.len() > 2
+                    || audio.len() > 16
                     || midi.len() > 1
                 {
                     return Err(Refusal::Invalid);
@@ -176,8 +187,42 @@ impl Progress {
                 || !content.gain.is_finite()
                 || !(-1.0..=1.0).contains(&content.balance)
                 || content.name.len() > 128
-                || content.audio.len() > 2
+                || content.audio.len() > 16
                 || content.midi.len() > 1
+                || content
+                    .recorded_processor_state
+                    .as_ref()
+                    .is_some_and(|s| s.len() > 1024)
+            {
+                return Err(Refusal::Invalid);
+            }
+            let direct = content
+                .audio
+                .iter()
+                .filter(|c| c.mode == ChannelMode::Direct)
+                .count();
+            let dry = content
+                .audio
+                .iter()
+                .filter(|c| c.mode == ChannelMode::Dry)
+                .count();
+            let wet = content
+                .audio
+                .iter()
+                .filter(|c| c.mode == ChannelMode::Wet)
+                .count();
+            if direct > 8
+                || dry > 8
+                || wet > 8
+                || (direct > 0 && dry + wet > 0)
+                || content
+                    .audio
+                    .windows(2)
+                    .any(|pair| pair[0].mode as u8 > pair[1].mode as u8)
+                || content.midi.iter().any(|m| {
+                    (direct > 0 && m.channel.mode != ChannelMode::Direct)
+                        || (dry + wet > 0 && m.channel.mode != ChannelMode::Dry)
+                })
             {
                 return Err(Refusal::Invalid);
             }

@@ -61,6 +61,13 @@ impl ControlEndpoint {
             .copied()
             .flatten()
             .ok_or(Refusal::InvalidId)?;
+        if previous
+            .strip
+            .and_then(|id| self.model.strip(id))
+            .is_some_and(|strip| strip.processor.is_some())
+        {
+            return Err(Refusal::Unsupported);
+        }
         if let Some(old) = d.previous {
             if old != previous.id
                 || previous.program.is_some()
@@ -161,6 +168,16 @@ impl ControlEndpoint {
                     .model
                     .find_loop(span.target)
                     .ok_or(Refusal::InvalidId)?;
+                if matches!(
+                    span.mode,
+                    LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+                ) || child
+                    .strip
+                    .and_then(|id| self.model.strip(id))
+                    .is_some_and(|strip| strip.processor.is_some())
+                {
+                    return Err(Refusal::Unsupported);
+                }
                 if span.target == d.loop_id
                     || d.previous == Some(span.target)
                     || span.start >= span.end

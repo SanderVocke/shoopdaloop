@@ -175,9 +175,21 @@ pub enum TrackProcessorEditorDescriptor {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HostedProcessorResources {
+    pub instance_limit: u16,
+    pub instances_in_use: u16,
+    pub buffering_frames: u32,
+    pub reserved_host_bytes: u64,
+    pub budget_host_bytes: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorDescriptor {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resources: Option<HostedProcessorResources>,
     pub id: TrackProcessorTypeId,
     pub label: String,
     pub available: bool,
@@ -552,6 +564,80 @@ pub struct TrackFxState {
     pub crash_summary: Option<String>,
     pub logs: Arc<[FxGenerationLogState]>,
     pub editor: Option<TrackProcessorEditorState>,
+}
+
+impl TrackProcessorEditorState {
+    pub fn canonical_state(&self) -> Result<String, shoop_processor_protocol::state::InvalidState> {
+        use shoop_processor_protocol::{
+            state::{InvalidState, State},
+            Kind,
+        };
+        let state = match self {
+            Self::BuiltInFx(fx) => {
+                let mut state = State::new(Kind::BuiltInFx)?;
+                state.values[..23].copy_from_slice(&[
+                    fx.compressor_threshold_db,
+                    fx.compressor_ratio,
+                    fx.compressor_attack_ms,
+                    fx.compressor_release_ms,
+                    fx.compressor_makeup_db,
+                    fx.drive_db,
+                    fx.drive_tone,
+                    fx.drive_mix,
+                    fx.drive_output_db,
+                    fx.eq_low_db,
+                    fx.eq_mid_db,
+                    fx.eq_high_db,
+                    fx.chorus_rate_hz,
+                    fx.chorus_depth,
+                    fx.chorus_mix,
+                    fx.chorus_width,
+                    fx.modulation_rate_hz,
+                    fx.modulation_depth,
+                    fx.modulation_mix,
+                    fx.modulation_feedback,
+                    fx.modulation_spread,
+                    fx.reverb_amount,
+                    fx.reverb_tone,
+                ]);
+                for (index, enabled) in [
+                    fx.compressor_enabled,
+                    fx.drive_enabled,
+                    fx.eq_enabled,
+                    fx.chorus_enabled,
+                    fx.modulation_enabled,
+                    fx.reverb_enabled,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    state.values[23 + index] = u8::from(enabled) as f32;
+                }
+                state.values[29] = fx.drive_type as u8 as f32;
+                state.values[30] = fx.modulation_type as u8 as f32;
+                state.values[31] = fx.reverb_type as u8 as f32;
+                state
+            }
+            Self::OxiSynth(synth) => {
+                let (bank, program) = synth
+                    .selected_preset_id
+                    .split_once(':')
+                    .ok_or(InvalidState)?;
+                let bank = bank.parse::<u32>().map_err(|_| InvalidState)?;
+                let program = program.parse::<u32>().map_err(|_| InvalidState)?;
+                if bank > 65535 || program > 127 {
+                    return Err(InvalidState);
+                }
+                let mut state = State::new(Kind::OxiSynth)?;
+                state.values[0] = synth.reverb_send;
+                state.values[1] = synth.chorus_send;
+                state.values[2] = (bank * 128 + program) as f32;
+                state
+            }
+        };
+        state.validate()?;
+        Ok(state.encode())
+    }
 }
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
@@ -1356,6 +1442,23 @@ pub enum TrackTopology {
         processor_type: TrackProcessorTypeId,
     },
 }
+impl TrackTopology {
+    pub fn audio_channel_labels(&self, direct_channels: usize) -> Vec<String> {
+        match self {
+            Self::Direct => (1..=direct_channels)
+                .map(|index| format!("Audio {index}"))
+                .collect(),
+            Self::DryWet {
+                dry_audio_channels,
+                wet_audio_channels,
+                ..
+            } => (1..=*dry_audio_channels)
+                .map(|index| format!("Dry {index}"))
+                .chain((1..=*wet_audio_channels).map(|index| format!("Wet {index}")))
+                .collect(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1483,6 +1586,7 @@ pub struct CompositeDetailsState {
     pub timing: Option<CompositeTimingState>,
     pub execution: CompositeExecutionState,
     pub kind: CompositeKind,
+    pub available_event_modes: Vec<LoopMode>,
     pub cycle_length_frames: u64,
     pub timeline_length_frames: u64,
     pub played_frame: Option<u64>,
@@ -2476,6 +2580,8 @@ pub enum PianoAction {
     ReleaseAll,
 }
 
+pub const MAX_LOOP_CHANNEL_TIMING_UPDATES: usize = 17;
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChannelTimelineUpdate {
@@ -3075,6 +3181,7 @@ mod tests {
 
     fn synthetic_processor() -> TrackProcessorDescriptor {
         TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new("browser_native_test"),
             label: "Browser native test".to_owned(),
             available: true,
@@ -3925,6 +4032,7 @@ impl Default for NewEnginePools {
 pub struct HostSettings {
     pub driver: AudioDriverConfig,
     pub pools: NewEnginePools,
+    pub processors: ProcessorSettings,
     pub master_auto_connect: bool,
     pub loop_smoothing_ms: u32,
 }
@@ -3933,6 +4041,7 @@ impl Default for HostSettings {
         Self {
             driver: Default::default(),
             pools: Default::default(),
+            processors: ProcessorSettings::default(),
             master_auto_connect: true,
             loop_smoothing_ms: 3,
         }
@@ -3940,6 +4049,9 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.processors
+            .validate()
+            .map_err(|_| "invalid processor startup capacities")?;
         if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
             return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
         }
@@ -3947,7 +4059,7 @@ impl HostSettings {
             || !(2..=8).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
-            || !(1..=16).contains(&self.pools.channels)
+            || !(1..=8).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
@@ -3970,3 +4082,5 @@ impl HostSettings {
         Ok(())
     }
 }
+
+pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};

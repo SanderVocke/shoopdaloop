@@ -68,25 +68,19 @@ fn manual_timing_keeps_absolute_position_raw_media_and_independent_channel_windo
     );
     let changed = Edit {
         count: 2,
-        channels: [
-            ChannelUpdate {
+        channels: core::array::from_fn(|index| match index {
+            0 => ChannelUpdate {
                 channel: 0,
                 start_offset: Some(1),
-                ..ChannelUpdate::default()
+                ..Default::default()
             },
-            ChannelUpdate {
+            1 => ChannelUpdate {
                 channel: 1,
                 start_offset: Some(-1),
-                ..ChannelUpdate::default()
+                ..Default::default()
             },
-            ChannelUpdate::default(),
-            ChannelUpdate::default(),
-            ChannelUpdate::default(),
-            ChannelUpdate::default(),
-            ChannelUpdate::default(),
-            ChannelUpdate::default(),
-            ChannelUpdate::default(),
-        ],
+            _ => ChannelUpdate::default(),
+        }),
         ..Edit::default()
     };
     edit(&mut control, 5, 1, changed);
@@ -193,7 +187,7 @@ fn channel_batch_refusal_and_armed_recording_length_refusal_do_not_partially_app
     assert_eq!(cut.state.content_length, 4);
     assert_eq!(cut.timing_revision, 1);
     assert_eq!(cut.windows.audio[0].start_offset, 1);
-    let mut channels = [ChannelUpdate::default(); 9];
+    let mut channels = [ChannelUpdate::default(); shoop_loops::windows::MAX_CHANNEL_UPDATES];
     channels[0] = ChannelUpdate {
         channel: 0,
         start_offset: Some(2),
@@ -438,6 +432,7 @@ fn indexed_window_validation_fits_a_native_callback_stack() {
             ..Default::default()
         },
     );
+    let engine = Box::new(engine);
     let engine = std::thread::Builder::new()
         .stack_size(512 * 1024)
         .spawn(move || {

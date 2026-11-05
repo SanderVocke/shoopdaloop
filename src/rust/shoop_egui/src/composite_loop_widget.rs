@@ -641,16 +641,21 @@ impl CompositeLoopWidget {
                                             .filter(|capability| {
                                                 !crate::supports(ui.ctx(), *capability)
                                             });
+                                            let available =
+                                                details.available_event_modes.contains(&mode);
                                             let response = ui
                                                 .add_enabled(
-                                                    capability.is_none(),
+                                                    available && capability.is_none(),
                                                     egui::Button::selectable(selected, label),
                                                 )
-                                                .on_disabled_hover_text(
-                                                    capability.map_or("", |capability| {
-                                                        capability.unavailable_reason()
-                                                    }),
-                                                );
+                                                .on_disabled_hover_text(capability.map_or(
+                                                    if available {
+                                                        ""
+                                                    } else {
+                                                        "This composite event mode is unavailable"
+                                                    },
+                                                    |capability| capability.unavailable_reason(),
+                                                ));
                                             #[cfg(test)]
                                             self.mode_menu_rects.push((mode, response.rect));
                                             if response.clicked() {
@@ -1148,6 +1153,7 @@ mod tests {
         CompositeDetailsState {
             timing: None,
             execution: Default::default(),
+            available_event_modes: SCRIPT_EVENT_MODES.iter().map(|(mode, _)| *mode).collect(),
             kind: CompositeKind::Regular,
             cycle_length_frames: 100,
             timeline_length_frames: events
@@ -1997,6 +2003,7 @@ mod tests {
         let state = CompositeDetailsState {
             timing: None,
             execution: Default::default(),
+            available_event_modes: SCRIPT_EVENT_MODES.iter().map(|(mode, _)| *mode).collect(),
             kind: CompositeKind::Regular,
             cycle_length_frames: 100,
             timeline_length_frames: 1_000,
@@ -2081,74 +2088,90 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn script_event_context_menu_emits_mode_change_for_one_instance() {
-        let context = egui::Context::default();
-        let loop_id = LoopId::from_raw(8);
-        let mut script = details(vec![keyed_event(3, 1, 1, 20, 100)]);
-        script.kind = CompositeKind::Script;
-        script.events[0].mode = Some("playing".to_owned());
-        let mut widget = CompositeLoopWidget::default();
-        let _ = widget_frame(&context, &mut widget, loop_id, &script, Vec::new());
-        let event_center = widget.rendered_events[0].1.center();
-        for pressed in [true, false] {
+    fn script_event_context_menu_respects_arrangement_modes_when_primitive_modes_are_available() {
+        for (requested, limited) in [
+            (LoopMode::Recording, true),
+            (LoopMode::PlayingDryThroughWet, true),
+            (LoopMode::RecordingDryIntoWet, true),
+            (LoopMode::PlayingDryThroughWet, false),
+        ] {
+            let context = egui::Context::default();
+            let loop_id = LoopId::from_raw(8);
+            let mut script = details(vec![keyed_event(3, 1, 1, 20, 100)]);
+            script.kind = CompositeKind::Script;
+            if limited {
+                script.available_event_modes =
+                    vec![LoopMode::Playing, LoopMode::Recording, LoopMode::Stopped];
+            }
+            assert!(crate::supports(&context, BackendCapability::DryWetModes));
+            script.events[0].mode = Some("playing".to_owned());
+            let mut widget = CompositeLoopWidget::default();
+            let _ = widget_frame(&context, &mut widget, loop_id, &script, Vec::new());
+            let event_center = widget.rendered_events[0].1.center();
+            for pressed in [true, false] {
+                let _ = widget_frame(
+                    &context,
+                    &mut widget,
+                    loop_id,
+                    &script,
+                    vec![
+                        egui::Event::PointerMoved(event_center),
+                        egui::Event::PointerButton {
+                            pos: event_center,
+                            button: egui::PointerButton::Secondary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+            let _ = widget_frame(&context, &mut widget, loop_id, &script, Vec::new());
+            let mode_center = widget
+                .mode_menu_rects
+                .iter()
+                .find(|(mode, _)| *mode == requested)
+                .unwrap()
+                .1
+                .center();
             let _ = widget_frame(
                 &context,
                 &mut widget,
                 loop_id,
                 &script,
                 vec![
-                    egui::Event::PointerMoved(event_center),
+                    egui::Event::PointerMoved(mode_center),
                     egui::Event::PointerButton {
-                        pos: event_center,
-                        button: egui::PointerButton::Secondary,
-                        pressed,
+                        pos: mode_center,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
                         modifiers: egui::Modifiers::NONE,
                     },
                 ],
             );
-        }
-        let _ = widget_frame(&context, &mut widget, loop_id, &script, Vec::new());
-        let record_center = widget
-            .mode_menu_rects
-            .iter()
-            .find(|(mode, _)| *mode == LoopMode::Recording)
-            .unwrap()
-            .1
-            .center();
-        let _ = widget_frame(
-            &context,
-            &mut widget,
-            loop_id,
-            &script,
-            vec![
-                egui::Event::PointerMoved(record_center),
-                egui::Event::PointerButton {
-                    pos: record_center,
+            let intents = widget_frame(
+                &context,
+                &mut widget,
+                loop_id,
+                &script,
+                vec![egui::Event::PointerButton {
+                    pos: mode_center,
                     button: egui::PointerButton::Primary,
-                    pressed: true,
+                    pressed: false,
                     modifiers: egui::Modifiers::NONE,
-                },
-            ],
-        );
-        let intents = widget_frame(
-            &context,
-            &mut widget,
-            loop_id,
-            &script,
-            vec![egui::Event::PointerButton {
-                pos: record_center,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-        );
-        assert_eq!(
-            intents,
-            [AppIntent::SetCompositeEventMode {
-                target_loop_id: loop_id,
-                event: CompositeEventId { instance_id: 4 },
-                mode: LoopMode::Recording,
-            }]
-        );
+                }],
+            );
+            if !limited || requested == LoopMode::Recording {
+                assert_eq!(
+                    intents,
+                    [AppIntent::SetCompositeEventMode {
+                        target_loop_id: loop_id,
+                        event: CompositeEventId { instance_id: 4 },
+                        mode: requested,
+                    }]
+                );
+            } else {
+                assert!(intents.is_empty());
+            }
+        }
     }
 }

@@ -139,6 +139,9 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::DryWetTracks,
+                BackendCapability::DryWetModes,
+                BackendCapability::TrackFx,
                 BackendCapability::LoopTimingEdits,
             ]
             .into_iter()
@@ -147,7 +150,7 @@ impl Service {
             }),
             connections: Arc::new(connections),
             host_graph: self.host_graph.clone(),
-            track_processors: Arc::from([]),
+            track_processors: self.track_processors.clone(),
             bus_processors: Arc::from([]),
             pending: self
                 .pending
@@ -470,10 +473,17 @@ impl Service {
         &mut self,
         created: BackendTrackCreation,
         name: String,
-        audio_channels: u32,
-        midi: bool,
+        topology: BackendTrackTopology,
         sync: bool,
     ) -> Result<(TrackId, Vec<LoopId>)> {
+        let audio_channels = topology.wet_audio_channels();
+        let midi = topology.has_midi();
+        let loop_channels = if audio_channels > 0 {
+            audio_channels
+        } else {
+            topology.dry_audio_channels()
+        };
+        let view_topology = track_topology(&topology);
         let id = TrackId::from_raw(allocate(&mut self.next_track)?);
         let mut ports = Vec::new();
         for descriptor in created.ports {
@@ -491,7 +501,7 @@ impl Service {
         }
         let mut loops = Vec::new();
         for (index, backend) in created.loops.into_iter().enumerate() {
-            let loop_id = self.insert_loop(id, backend, audio_channels, midi, sync)?;
+            let loop_id = self.insert_loop(id, backend, loop_channels, midi, sync)?;
             if !sync {
                 self.loops.get_mut(&loop_id).unwrap().view.name = format!("Loop {}", index + 1);
             }
@@ -504,10 +514,12 @@ impl Service {
                 audio_channels,
                 midi,
                 monitoring_intent: None,
+                default_playback_intent: None,
                 view: TrackState {
                     id,
                     name,
                     is_sync: sync,
+                    topology: view_topology,
                     structural_state: StructuralState::Creating,
                     port_ids: ports.into(),
                     ..Default::default()
@@ -573,6 +585,55 @@ impl Service {
                     track.view.structural_state = StructuralState::Confirmed;
                 }
                 track.view.controls = controls(state);
+                track.view.topology = track_topology(&state.topology);
+                track.view.default_playback_mode = match state.default_playback_mode {
+                    BackendDefaultPlaybackMode::Regular => DefaultPlaybackMode::Regular,
+                    BackendDefaultPlaybackMode::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
+                };
+                let (adjustment, manual_frames) = match state.latency.adjustment {
+                    BackendRecordingOffsetAdjustment::Automatic => {
+                        (RecordingOffsetAdjustmentState::Automatic, 0)
+                    }
+                    BackendRecordingOffsetAdjustment::ManualOverride(value) => {
+                        (RecordingOffsetAdjustmentState::ManualOverride, value)
+                    }
+                    BackendRecordingOffsetAdjustment::AutomaticPlusTrim(value) => {
+                        (RecordingOffsetAdjustmentState::AutomaticPlusTrim, value)
+                    }
+                };
+                track.view.latency = TrackLatencyState {
+                    automatic_offset_frames: state.latency.automatic_offset_frames,
+                    adjustment,
+                    manual_frames,
+                    effective_offset_frames: state.latency.effective_offset_frames,
+                    automatic_processor_advance_frames: state
+                        .latency
+                        .automatic_processor_advance_frames,
+                    processor_adjustment: match state.latency.processor_adjustment {
+                        BackendProcessorLatencyAdjustment::Automatic => {
+                            ProcessorLatencyAdjustmentState::Automatic
+                        }
+                        BackendProcessorLatencyAdjustment::ManualOverride => {
+                            ProcessorLatencyAdjustmentState::ManualOverride
+                        }
+                        BackendProcessorLatencyAdjustment::AutomaticPlusTrim => {
+                            ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+                        }
+                    },
+                    processor_manual_frames: state.latency.processor_manual_frames,
+                    effective_processor_advance_frames: state
+                        .latency
+                        .effective_processor_advance_frames,
+                    pending: state.latency.pending,
+                    error: state.latency.error.clone(),
+                };
+                track.view.fx = state.fx.clone();
+                if track
+                    .default_playback_intent
+                    .is_some_and(|(sequence, _)| sequence == 0)
+                {
+                    track.default_playback_intent = None;
+                }
             }
         }
         let loop_ids = self
@@ -692,12 +753,10 @@ impl Service {
                 view.gain = state.gain;
                 view.balance = state.balance;
                 view.midi_activity = state.midi_activity;
-                view.peak_left_db = state.audio_peaks.first().copied().unwrap_or(-200.0);
-                view.peak_right_db = state
-                    .audio_peaks
-                    .get(1)
-                    .copied()
-                    .unwrap_or(view.peak_left_db);
+                view.stereo = state.stereo;
+                (view.peak_left_db, view.peak_right_db) =
+                    display_peaks(&state.audio_peaks, view.stereo);
+                view.has_recorded_fx_state = state.recorded_processor_state.is_some();
                 view.capture_alignment_frames = state.capture_alignment_frames;
                 view.processor_alignment_frames = state.processor_alignment_frames;
             }
@@ -883,16 +942,65 @@ pub(super) fn status(state: &BackendStatus) -> StatusState {
         storage_exhaustions: state.storage_exhaustions,
     }
 }
+fn track_topology(topology: &BackendTrackTopology) -> TrackTopology {
+    match topology {
+        BackendTrackTopology::Direct { .. } => TrackTopology::Direct,
+        BackendTrackTopology::DryWetExternal {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } => TrackTopology::DryWet {
+            dry_audio_channels: *dry_audio_channels,
+            wet_audio_channels: *wet_audio_channels,
+            dry_midi: *dry_midi,
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+        },
+        BackendTrackTopology::DryWetProcessor {
+            processor_type,
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } => TrackTopology::DryWet {
+            dry_audio_channels: *dry_audio_channels,
+            wet_audio_channels: *wet_audio_channels,
+            dry_midi: *dry_midi,
+            processor_type: TrackProcessorTypeId::new(processor_type),
+        },
+    }
+}
+
+fn display_peaks(peaks: &[f32], stereo: bool) -> (f32, f32) {
+    if stereo {
+        let left = peaks.first().copied().unwrap_or(-200.);
+        (left, peaks.get(1).copied().unwrap_or(left))
+    } else {
+        let peak = peaks.iter().copied().fold(-200., f32::max);
+        (peak, peak)
+    }
+}
+
 fn controls(state: &BackendTrackState) -> TrackControlState {
-    let audio = state.audio_channels > 0;
-    let stereo = state.audio_channels == 2;
+    let direct = matches!(state.topology, BackendTrackTopology::Direct { .. });
+    let dry = if direct {
+        state.audio_channels
+    } else {
+        state.topology.dry_audio_channels()
+    };
+    let wet = if direct {
+        state.audio_channels
+    } else {
+        state.topology.wet_audio_channels()
+    };
+    let wet_midi = state.midi && direct;
+    let (input_left, input_right) = display_peaks(&state.input_peaks, dry == 2);
+    let (output_left, output_right) = display_peaks(&state.output_peaks, wet == 2);
     TrackControlState {
-        has_input: audio || state.midi,
-        has_output: audio || state.midi,
-        has_input_audio: audio,
-        has_output_audio: audio,
-        input_stereo: stereo,
-        output_stereo: stereo,
+        has_input: dry > 0 || state.midi,
+        has_output: wet > 0 || wet_midi,
+        has_input_audio: dry > 0,
+        has_output_audio: wet > 0,
+        input_stereo: dry == 2,
+        output_stereo: wet == 2,
         input_gain_db: state.input_gain_db,
         input_balance: state.input_balance,
         input_monitoring: state.input_monitoring || state.automatic_input_monitoring,
@@ -904,9 +1012,9 @@ fn controls(state: &BackendTrackState) -> TrackControlState {
         latest_input_midi_message: state
             .latest_input_midi_message
             .and_then(|message| LatestMidiMessage::new(message.bytes, message.len)),
-        input_peak_left_db: state.input_peaks.first().copied().unwrap_or(-200.0),
-        input_peak_right_db: state.input_peaks.get(1).copied().unwrap_or(-200.0),
-        output_peak_left_db: state.output_peaks.first().copied().unwrap_or(-200.0),
-        output_peak_right_db: state.output_peaks.get(1).copied().unwrap_or(-200.0),
+        input_peak_left_db: input_left,
+        input_peak_right_db: input_right,
+        output_peak_left_db: output_left,
+        output_peak_right_db: output_right,
     }
 }
