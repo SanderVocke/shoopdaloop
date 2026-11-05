@@ -108,19 +108,32 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         .active
         .clone()
         .unwrap();
+    let parent_length = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .find(|loop_| loop_.id == parent)
+        .unwrap()
+        .length_frames;
+    ensure!(parent_length > 0, "probe arrangement has no period");
     command(
         &mut client,
         &mut connection,
         transition(source, LoopMode::Recording, None),
     )?;
-    std::thread::sleep(Duration::from_millis(600));
+    wait_for_state(&mut client, &mut connection, "longer repeat source", |c| {
+        c.snapshot().unwrap().tracks[0].loops[0].length_frames > 2 * parent_length
+    })?;
     command(
         &mut client,
         &mut connection,
         transition(source, LoopMode::Stopped, None),
     )?;
     wait_for_state(&mut client, &mut connection, "source recorded", |c| {
-        c.snapshot().unwrap().tracks[0].loops[0].length_frames > 0
+        let source = &c.snapshot().unwrap().tracks[0].loops[0];
+        source.mode == LoopMode::Stopped && source.length_frames > 2 * parent_length
     })?;
     let source_length = client.snapshot().unwrap().tracks[0].loops[0].length_frames;
     command(

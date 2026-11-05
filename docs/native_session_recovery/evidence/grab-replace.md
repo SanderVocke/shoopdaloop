@@ -228,3 +228,13 @@ Preparation omits processor-only MIDI banks where processors and external dry/we
 are unavailable; admitted MIDI restoration and normal input/output capacities remain
 intact. Default-policy QEMU recovery peaks at 355,649,560 bytes and ZedBoard
 boot/restart at 248,796,872; both return Rust heap usage to zero.
+
+
+The [macOS debug packaging canary](https://github.com/SanderVocke/shoopdaloop/actions/runs/42118770631/job/127565303540)
+at `efcda1ac` exposed a fixture assumption: the fixed recording sleep yielded a
+17,408-frame sync period equal to the frozen arrangement period. There was then
+no repeat-wait interval to observe after reattachment. Setup now waits for actual
+source frames exceeding twice the arrangement period and for confirmed Stop.
+The same wait/release, delayed-launch, staged-edit, media and recovery assertions
+pass locally on both carriers and in repeated one-CPU socket runs. Production
+composite behavior is unchanged; fresh final-source CI remains required.

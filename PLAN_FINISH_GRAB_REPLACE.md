@@ -625,6 +625,17 @@ the same two-second UI stall as Chromium and verifies the input test reaches
 passes at Q128/44.1 kHz with zero xruns. This harness correction and the firmware
 policy/sync fixes still require fresh final-source CI.
 
+The next main matrix (`efcda1ac`, Build/Test run42118770631) exposed a macOS
+composite-canary setup error. Its fixed 600 ms recording sleep produced a sync
+source of 17,408 frames, exactly the frozen arrangement's 17,408-frame period.
+After phase alignment no repeat-wait interval existed for recovery to observe.
+The probe now waits until actual recorded source frames exceed twice the frozen
+arrangement period and confirms the stopped source before proceeding. The original
+repeat-wait, source-release, accepted-edit and recovery assertions remain intact.
+Local socket/shared-memory canaries and repeated single-CPU socket runs validate
+the correction; it changes probe setup, not production composite semantics.
+Fresh CI is required for this final correction.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
