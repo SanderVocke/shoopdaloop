@@ -148,7 +148,7 @@ impl Service {
             .fold(BackendCapabilities::NONE, |caps, capability| {
                 caps.with(capability, self.backend.capabilities().supports(capability))
             }),
-            connections: Arc::new(connections),
+            connections,
             host_graph: self.host_graph.clone(),
             track_processors: self.track_processors.clone(),
             bus_processors: Arc::from([]),
@@ -164,7 +164,7 @@ impl Service {
         })
     }
 
-    fn connections(&self) -> ConnectionViewState {
+    fn connections(&self) -> Arc<ConnectionViewState> {
         let observed = &self.observed.connections;
         let mut confirmed_links = observed
             .confirmed_links
@@ -268,8 +268,8 @@ impl Service {
                     })
             })
             .collect::<Vec<_>>();
-        ConnectionViewState {
-            revision: self.revision.0,
+        let mut view = ConnectionViewState {
+            revision: 0,
             loading: !self.is_ready(),
             backend_available: if self.dynamic_ports() {
                 self.host_graph.status == shoop_port_graph::Status::Ready
@@ -311,7 +311,14 @@ impl Service {
                 })
                 .collect::<Vec<_>>()
                 .into(),
+        };
+        let mut cached = self.connection_view.borrow_mut();
+        view.revision = cached.revision;
+        if view != **cached {
+            view.revision = view.revision.saturating_add(1);
+            *cached = Arc::new(view);
         }
+        Arc::clone(&cached)
     }
 
     pub(super) fn app_port(&self, backend: BackendPortId) -> Option<PortId> {
