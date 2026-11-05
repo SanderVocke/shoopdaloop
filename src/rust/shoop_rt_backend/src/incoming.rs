@@ -212,6 +212,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn state_record(&mut self, record: StateRecord) {
+        if self.resync.is_none() {
+            if let StateRecord::StripControl { strip, control } = record {
+                if let Some(id) = self.mirror.strip_tracks.get(&strip).copied() {
+                    if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                        track.controls.apply(app_control(control));
+                    }
+                }
+            }
+            return;
+        }
         let Some(records) = &mut self.resync else {
             return;
         };
@@ -235,6 +245,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.processor_presets.clear();
         let mut host_ports = Vec::new();
         let mut strips = BTreeSet::new();
+        let mut processors = BTreeSet::new();
         let mut links = BTreeSet::new();
         let mut routes = BTreeSet::new();
         for record in &records {
@@ -247,7 +258,31 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 StateRecord::BusShape { bus, .. } => self.mirror.bus_slots.adopt(bus.0),
                 StateRecord::HostPort(port) => host_ports.push(port),
-                StateRecord::Strip { strip, .. } => {
+                StateRecord::StripProcessor { strip, .. } => {
+                    processors.insert(strip);
+                }
+                StateRecord::Strip { strip, shape } => {
+                    if let Some(track) = self
+                        .mirror
+                        .strip_tracks
+                        .get(&strip)
+                        .and_then(|id| self.mirror.tracks.get(id))
+                    {
+                        let direct = matches!(
+                            track.topology,
+                            shoop_backend::BackendTrackTopology::Direct { .. }
+                        );
+                        let expected = shoop_rt_protocol::StripShape {
+                            audio_inputs: track.topology.dry_audio_channels() as u8,
+                            audio_outputs: track.topology.wet_audio_channels() as u8,
+                            midi_input: track.midi,
+                            midi_output: direct && track.midi,
+                        };
+                        if shape != expected {
+                            self.lose("engine track shape differs from its owner".to_owned());
+                            return;
+                        }
+                    }
                     self.mirror.strip_slots.adopt(strip.0);
                     strips.insert(strip);
                 }
@@ -294,6 +329,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.lose("the engine already has a live session owned by another service".to_owned());
             return;
         }
+        if self
+            .mirror
+            .tracks
+            .values()
+            .filter(|track| strips.contains(&track.strip))
+            .any(|track| {
+                matches!(
+                    track.topology,
+                    shoop_backend::BackendTrackTopology::Direct { .. }
+                ) == processors.contains(&track.strip)
+            })
+        {
+            self.lose("engine track processor ownership record is inconsistent".to_owned());
+            return;
+        }
         let vanished = self
             .mirror
             .tracks
@@ -306,6 +356,37 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         for record in records {
             match record {
+                StateRecord::StripProcessor { strip, kind, slot } => {
+                    let Some(id) = self.mirror.strip_tracks.get(&strip) else {
+                        continue;
+                    };
+                    let Some(track) = self.mirror.tracks.get_mut(id) else {
+                        continue;
+                    };
+                    let matches = match &track.topology {
+                        shoop_backend::BackendTrackTopology::Direct { .. } => false,
+                        shoop_backend::BackendTrackTopology::DryWetExternal { .. } => {
+                            kind == shoop_rt_protocol::ProcessorKind::External
+                        }
+                        shoop_backend::BackendTrackTopology::DryWetProcessor {
+                            processor_type,
+                            ..
+                        } => match kind {
+                            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
+                                processor_type == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
+                            }
+                            shoop_rt_protocol::ProcessorKind::OxiSynth => {
+                                processor_type == shoop_app_api::TrackProcessorTypeId::OXISYNTH
+                            }
+                            shoop_rt_protocol::ProcessorKind::External => false,
+                        },
+                    };
+                    if !matches {
+                        self.lose("engine track processor differs from its owner".to_owned());
+                        return;
+                    }
+                    track.processor_slot = slot;
+                }
                 StateRecord::StripControl { strip, control } => {
                     let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                         continue;

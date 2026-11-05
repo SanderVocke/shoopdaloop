@@ -106,6 +106,8 @@ impl Controls {
 
 pub(crate) struct Track {
     pub port_name_base: String,
+    pub topology: BackendTrackTopology,
+    pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
     pub strip: StripId,
     pub audio_channels: u32,
     pub midi: bool,
@@ -125,13 +127,31 @@ impl Track {
     /// The position of a strip port in `ports`.
     pub fn port_index(&self, kind: PortKind, index: u8) -> Option<usize> {
         let index = usize::from(index);
-        let audio = self.audio_channels as usize;
-        match kind {
-            PortKind::AudioIn if index < audio => Some(2 * index),
-            PortKind::AudioOut if index < audio => Some(2 * index + 1),
-            PortKind::MidiIn if index == 0 && self.midi => Some(2 * audio),
-            PortKind::MidiOut if index == 0 && self.midi => Some(2 * audio + 1),
-            _ => None,
+        let dry = self.topology.dry_audio_channels() as usize;
+        let wet = self.topology.wet_audio_channels() as usize;
+        match &self.topology {
+            BackendTrackTopology::Direct { .. } => match kind {
+                PortKind::AudioIn if index < dry => Some(2 * index),
+                PortKind::AudioOut if index < wet => Some(2 * index + 1),
+                PortKind::MidiIn if index == 0 && self.midi => Some(2 * dry),
+                PortKind::MidiOut if index == 0 && self.midi => Some(2 * dry + 1),
+                _ => None,
+            },
+            BackendTrackTopology::DryWetExternal { .. } => match kind {
+                PortKind::AudioIn if index < dry => Some(2 * index),
+                PortKind::AudioSend if index < dry => Some(2 * index + 1),
+                PortKind::AudioReturn if index < wet => Some(2 * dry + 2 * index),
+                PortKind::AudioOut if index < wet => Some(2 * dry + 2 * index + 1),
+                PortKind::MidiIn if index == 0 && self.midi => Some(2 * (dry + wet)),
+                PortKind::MidiSend if index == 0 && self.midi => Some(2 * (dry + wet) + 1),
+                _ => None,
+            },
+            BackendTrackTopology::DryWetProcessor { .. } => match kind {
+                PortKind::AudioIn if index < dry => Some(index),
+                PortKind::AudioOut if index < wet => Some(dry + index),
+                PortKind::MidiIn if index == 0 && self.midi => Some(dry + wet),
+                _ => None,
+            },
         }
     }
 }
@@ -552,10 +572,7 @@ impl Mirror {
         let channels = track.audio_channels as usize;
         let controls = track.controls;
         BackendTrackState {
-            topology: BackendTrackTopology::Direct {
-                audio_channels: track.audio_channels,
-                midi: track.midi,
-            },
+            topology: track.topology.clone(),
             audio_channels: track.audio_channels,
             midi: track.midi,
             output_gain_db: controls.output_gain_db,
@@ -564,7 +581,9 @@ impl Mirror {
             input_gain_db: controls.input_gain_db,
             input_balance: controls.input_balance,
             input_monitoring: controls.input_monitoring,
-            input_peaks: track.input_meter.take_db(channels),
+            input_peaks: track
+                .input_meter
+                .take_db(track.topology.dry_audio_channels() as usize),
             output_peaks: track.output_meter.take_db(channels),
             input_midi_activity: core::mem::take(&mut track.midi_in),
             output_midi_activity: core::mem::take(&mut track.midi_out),

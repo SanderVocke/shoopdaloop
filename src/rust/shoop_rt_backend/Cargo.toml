@@ -26,6 +26,7 @@ shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 tracing = { workspace = true }
 
 [dev-dependencies]
+shoop_host_processors = { path = "../shoop_host_processors", features = ["builtin-fx", "oxisynth"] }
 shoop_backend = { path = "../shoop_backend", features = ["contracts"] }
 shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

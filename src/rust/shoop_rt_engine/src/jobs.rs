@@ -829,7 +829,7 @@ impl ControlEndpoint {
                 return true;
             }
         }
-        if !self.room(3) {
+        if !self.room(3 + self.configuration_nodes()) {
             return false;
         }
         let (model, next) = (&self.model, &self.next);
@@ -937,6 +937,9 @@ impl ControlEndpoint {
                 Step::StageGraph,
                 false,
             );
+        }
+        if !self.prepare_node_configuration(job) {
+            return false;
         }
         job.phase = Phase::Append;
         true

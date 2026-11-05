@@ -347,3 +347,32 @@ cleanup saturation. All render/request paths are heap-guarded. Full core/protoco
 worklet native tests and all-target checks pass, as does a warning-denying workspace
 build. Wasm Node passes 74 core and 18 worklet tests. Native JACK publication and
 service/UI mapping are still pending; these fixtures are not platform acceptance.
+
+### Adapter role and dry-playback integration milestone
+
+The production adapter retains processed topologies and generation-owned slots
+through admission, confirmed snapshots and resynchronization. External tracks
+publish independent dry input/send, wet return/output and optional dry MIDI/send
+roles. Hosted tracks publish dry inputs, wet outputs and dry MIDI only; processor
+endpoints remain internal. Per-type limits count all admitted channel widths.
+The existing native dynamic-port publisher consumes these ordinary descriptors;
+real-driver publication acceptance remains open.
+
+Dry audio playback now traverses the loop presence fader before the processor
+send. Removing one dry-playing loop fades only that loop while other loops keep
+sounding, and the meter observes the selected dry role. Hosted regular wet
+playback retains its pure Q delay. Preparing node configuration concurrently with
+graph staging keeps configuration acknowledged before activation and preserves
+the existing Direct three-poll routing and six-poll creation bounds.
+
+Rerecord/prerouting monitoring changes update the authoritative model after
+execution. Reliable unsolicited control records retry when the outbox is full,
+use the current strip generation and follow pending control outcomes. Reconnect
+retains the forced-off value, and subsequent explicit changes can enable it.
+
+Native validation: 131 tests across the core, adapter and real host banks pass,
+including role/connection round trips, cross-width type limits, dry removal fade,
+dry-role meters, monitoring/resync and existing latency regressions. The workspace
+build passes with warnings denied; test-attribute and four-target production
+boundary audits pass. Public feature bits remain gated while controls, media and
+persistence work continues.

@@ -11,6 +11,7 @@ use shoop_backend::{
     BackendBusChannelId, BackendBusControl, BackendConfirmedLink, BackendLoopId, BackendMixerLink,
     BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
     BackendPortOwner, BackendPortRole, BackendTrackControl, BackendTrackCreation, BackendTrackId,
+    BackendTrackTopology,
 };
 use shoop_rt_protocol::{
     BusControl, BusPort, EnginePort, LoopSlotId, PortKind, Request, StripControl, StripId,
@@ -42,14 +43,109 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         midi: bool,
         initial_loops: usize,
     ) -> Result<BackendTrackCreation> {
+        self.create_track_topology(
+            port_name_base,
+            BackendTrackTopology::Direct {
+                audio_channels,
+                midi,
+            },
+            initial_loops,
+        )
+    }
+
+    pub(crate) fn create_track_topology(
+        &mut self,
+        port_name_base: &str,
+        topology: BackendTrackTopology,
+        initial_loops: usize,
+    ) -> Result<BackendTrackCreation> {
         self.ready()?;
+        let dry = topology.dry_audio_channels();
+        let wet = topology.wet_audio_channels();
+        let midi = topology.has_midi();
+        let kind = match &topology {
+            BackendTrackTopology::Direct { .. } => None,
+            BackendTrackTopology::DryWetExternal { .. } => {
+                Some(shoop_rt_protocol::ProcessorKind::External)
+            }
+            BackendTrackTopology::DryWetProcessor { processor_type, .. } => {
+                Some(match processor_type.as_str() {
+                    shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => {
+                        shoop_rt_protocol::ProcessorKind::BuiltInFx
+                    }
+                    shoop_app_api::TrackProcessorTypeId::OXISYNTH => {
+                        shoop_rt_protocol::ProcessorKind::OxiSynth
+                    }
+                    _ => return Err(anyhow!("unsupported track processor {processor_type}")),
+                })
+            }
+        };
+        if kind.is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External) {
+            let kind = kind.expect("hosted processor");
+            if dry == 0
+                || dry != wet
+                || !midi
+                || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth && dry != 2)
+            {
+                return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
+            }
+            let processors = self
+                .processors
+                .ok_or_else(|| anyhow!("host processor limits are unavailable"))?;
+            let available = if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                processors.effective.fx_instances
+            } else {
+                processors.effective.synth_instances
+            };
+            let used = self
+                .mirror
+                .tracks
+                .values()
+                .filter(|track| match (&track.topology, &topology) {
+                    (
+                        BackendTrackTopology::DryWetProcessor {
+                            processor_type: before,
+                            ..
+                        },
+                        BackendTrackTopology::DryWetProcessor {
+                            processor_type: after,
+                            ..
+                        },
+                    ) => before == after,
+                    _ => false,
+                })
+                .count();
+            if available == 0 {
+                let reason = if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                    processors.effective.fx_unavailable
+                } else {
+                    processors.effective.synth_unavailable
+                };
+                return Err(anyhow!(
+                    "track processor unavailable: {}",
+                    reason.map_or("no prepared instances", |reason| reason.message())
+                ));
+            }
+            if used >= available as usize {
+                return Err(anyhow!(
+                    "the host's prepared processor capacity is exhausted"
+                ));
+            }
+        }
+        if kind == Some(shoop_rt_protocol::ProcessorKind::External) && dry == 0 && wet == 0 && !midi
+        {
+            return Err(anyhow!("an External track needs audio or MIDI"));
+        }
+        let audio_channels = wet;
         self.require_mutation_capacity(
             initial_loops
                 .checked_add(1)
                 .ok_or_else(|| anyhow!("too many initial loops"))?,
         )?;
         let limits = self.limits();
-        if audio_channels > u32::from(limits.strip_audio_channels) {
+        if dry > u32::from(limits.strip_audio_channels)
+            || wet > u32::from(limits.strip_audio_channels)
+        {
             return Err(anyhow!(
                 "tracks of this engine have at most {} audio channels",
                 limits.strip_audio_channels
@@ -66,46 +162,122 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let track_id = self.mirror.next_track_id();
         let mut descriptors = Vec::new();
         let mut shapes = Vec::new();
-        for index in 0..audio_channels {
-            let suffix = if audio_channels == 1 {
-                String::new()
-            } else {
-                format!("_{}", index + 1)
-            };
+        let mut audio = |name, direction, role, kind, index| {
             shapes.push((
-                format!("{port_name_base}_direct_in{suffix}"),
+                name,
                 BackendPortDataType::Audio,
-                BackendPortDirection::Input,
-                BackendPortRole::AudioInput,
-                PortKind::AudioIn,
-                index as u8,
-            ));
-            shapes.push((
-                format!("{port_name_base}_direct_out{suffix}"),
-                BackendPortDataType::Audio,
-                BackendPortDirection::Output,
-                BackendPortRole::AudioOutput,
-                PortKind::AudioOut,
-                index as u8,
-            ));
+                direction,
+                role,
+                kind,
+                index,
+            ))
+        };
+        match &topology {
+            BackendTrackTopology::Direct { .. } => {
+                for index in 0..dry {
+                    let suffix = if dry == 1 {
+                        String::new()
+                    } else {
+                        format!("_{}", index + 1)
+                    };
+                    audio(
+                        format!("{port_name_base}_direct_in{suffix}"),
+                        BackendPortDirection::Input,
+                        BackendPortRole::AudioInput,
+                        PortKind::AudioIn,
+                        index as u8,
+                    );
+                    audio(
+                        format!("{port_name_base}_direct_out{suffix}"),
+                        BackendPortDirection::Output,
+                        BackendPortRole::AudioOutput,
+                        PortKind::AudioOut,
+                        index as u8,
+                    );
+                }
+            }
+            BackendTrackTopology::DryWetExternal { .. }
+            | BackendTrackTopology::DryWetProcessor { .. } => {
+                let external = matches!(topology, BackendTrackTopology::DryWetExternal { .. });
+                for index in 0..dry {
+                    audio(
+                        format!("{port_name_base}_audio_dry_in_{}", index + 1),
+                        BackendPortDirection::Input,
+                        BackendPortRole::AudioInput,
+                        PortKind::AudioIn,
+                        index as u8,
+                    );
+                    if external {
+                        audio(
+                            format!("{port_name_base}_audio_dry_send_{}", index + 1),
+                            BackendPortDirection::Output,
+                            BackendPortRole::AudioSend,
+                            PortKind::AudioSend,
+                            index as u8,
+                        );
+                    }
+                }
+                for index in 0..wet {
+                    if external {
+                        audio(
+                            format!("{port_name_base}_audio_wet_return_{}", index + 1),
+                            BackendPortDirection::Input,
+                            BackendPortRole::AudioReturn,
+                            PortKind::AudioReturn,
+                            index as u8,
+                        );
+                    }
+                    audio(
+                        format!("{port_name_base}_audio_wet_out_{}", index + 1),
+                        BackendPortDirection::Output,
+                        BackendPortRole::AudioOutput,
+                        PortKind::AudioOut,
+                        index as u8,
+                    );
+                }
+            }
         }
         if midi {
-            shapes.push((
-                format!("{port_name_base}_direct_midi_in"),
-                BackendPortDataType::Midi,
-                BackendPortDirection::Input,
-                BackendPortRole::MidiInput,
-                PortKind::MidiIn,
-                0,
-            ));
-            shapes.push((
-                format!("{port_name_base}_direct_midi_out"),
-                BackendPortDataType::Midi,
-                BackendPortDirection::Output,
-                BackendPortRole::MidiOutput,
-                PortKind::MidiOut,
-                0,
-            ));
+            match &topology {
+                BackendTrackTopology::Direct { .. } => {
+                    shapes.push((
+                        format!("{port_name_base}_direct_midi_in"),
+                        BackendPortDataType::Midi,
+                        BackendPortDirection::Input,
+                        BackendPortRole::MidiInput,
+                        PortKind::MidiIn,
+                        0,
+                    ));
+                    shapes.push((
+                        format!("{port_name_base}_direct_midi_out"),
+                        BackendPortDataType::Midi,
+                        BackendPortDirection::Output,
+                        BackendPortRole::MidiOutput,
+                        PortKind::MidiOut,
+                        0,
+                    ));
+                }
+                _ => {
+                    shapes.push((
+                        format!("{port_name_base}_dry_midi_in"),
+                        BackendPortDataType::Midi,
+                        BackendPortDirection::Input,
+                        BackendPortRole::MidiInput,
+                        PortKind::MidiIn,
+                        0,
+                    ));
+                    if matches!(topology, BackendTrackTopology::DryWetExternal { .. }) {
+                        shapes.push((
+                            format!("{port_name_base}_dry_midi_send"),
+                            BackendPortDataType::Midi,
+                            BackendPortDirection::Output,
+                            BackendPortRole::MidiSend,
+                            PortKind::MidiSend,
+                            0,
+                        ));
+                    }
+                }
+            }
         }
         for (name, data_type, direction, role, kind, index) in shapes {
             let id = self.mirror.next_port_id();
@@ -134,6 +306,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             track_id,
             Track {
                 port_name_base: port_name_base.to_owned(),
+                topology: topology.clone(),
+                processor_slot: None,
                 strip,
                 audio_channels,
                 midi,
@@ -149,19 +323,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             },
         );
         self.mirror.strip_tracks.insert(strip, track_id);
-        let channels = audio_channels as u8;
-        self.requests.push(
-            Request::CreateStrip {
-                strip,
-                shape: StripShape {
-                    audio_inputs: channels,
-                    audio_outputs: channels,
-                    midi_input: midi,
-                    midi_output: midi,
-                },
-            },
-            Purpose::CreateStrip(track_id),
-        );
+        let shape = StripShape {
+            audio_inputs: dry as u8,
+            audio_outputs: wet as u8,
+            midi_input: midi,
+            midi_output: kind.is_none() && midi,
+        };
+        let request = kind.map_or(Request::CreateStrip { strip, shape }, |kind| {
+            Request::CreateProcessedStrip { strip, shape, kind }
+        });
+        self.requests.push(request, Purpose::CreateStrip(track_id));
         let loops = (0..initial_loops)
             .map(|_| self.add_loop(track_id))
             .collect::<Result<Vec<_>>>()?;
@@ -426,5 +597,251 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Purpose::BusControl(id, control),
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod track_role_tests {
+    use super::*;
+    use crate::Mirror;
+    use core::time::Duration;
+    use shoop_backend::Backend;
+    use shoop_rt_engine::{
+        testing::{OfflineClient, OfflineRender},
+        ControlEndpoint, EngineDescription, HostPorts, Segment,
+    };
+    use shoop_rt_transport::carrier::InProcess;
+    use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
+    struct Clock(OfflineRender);
+    impl EngineClock for Clock {
+        fn advance(&mut self, _: Duration) {
+            assert_no_heap(|| self.0.process(16)).unwrap();
+        }
+        fn wait(&mut self) -> bool {
+            self.advance(Duration::ZERO);
+            true
+        }
+    }
+    type Stack = RtBackend<InProcess<ControlEndpoint>, Clock>;
+    fn stack() -> Stack {
+        let d = EngineDescription {
+            external_dry_wet: true,
+            sample_rate: 8000,
+            quantum: 16,
+            max_frames: 128,
+            strip_channels: 8,
+            host: HostPorts::numbered(16, 16, 1),
+            segments: alloc::vec![Segment {
+                strips: 4,
+                loops: 8
+            }],
+            resource_pages: 2048,
+            page_bytes: 512,
+            ramp_frames: 0,
+            processors: shoop_rt_protocol::ProcessorSettings {
+                fx_instances: 1,
+                synth_instances: 1,
+                memory_mb: 256,
+                ..Default::default()
+            },
+            ..EngineDescription::default()
+        };
+        let (render, client): (_, OfflineClient) =
+            OfflineRender::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap())
+                .unwrap();
+        RtBackend::connect(client, Clock(render)).unwrap()
+    }
+    fn refresh(stack: &mut Stack) {
+        stack.link = crate::Link::Resyncing;
+        stack.resync = Some(Vec::new());
+        stack.client.resync().unwrap();
+        for _ in 0..4000 {
+            stack.pump();
+            if stack.is_ready() {
+                return;
+            }
+            assert!(
+                !matches!(stack.link, crate::Link::Disconnected(_)),
+                "{:?}",
+                stack.link
+            );
+            stack.clock.wait();
+        }
+        panic!("resynchronization did not finish");
+    }
+    #[shoop_test]
+    fn real_host_roles_round_trip_connections_and_keep_hosted_endpoints_private() {
+        let mut stack = stack();
+        let topology = BackendTrackTopology::DryWetExternal {
+            dry_audio_channels: 1,
+            wet_audio_channels: 3,
+            dry_midi: true,
+        };
+        let external = stack
+            .create_track_topology("external", topology.clone(), 1)
+            .unwrap();
+        stack.wait_idle();
+        assert!(stack.poll().unwrap().mutation_failures.is_empty());
+        assert_eq!(external.ports.len(), 10);
+        assert_eq!(
+            Mirror::track_state(stack.mirror.tracks.get_mut(&external.track_id).unwrap()).topology,
+            topology
+        );
+        for port in &external.ports {
+            let target = stack.mirror.ports[&port.id].target;
+            let PortTarget::Strip { kind, index, .. } = target else {
+                panic!("strip port");
+            };
+            let name = match kind {
+                PortKind::AudioIn => format!("audio_in_{}", index + 1),
+                PortKind::AudioSend => format!("audio_out_{}", index + 9),
+                PortKind::AudioReturn => format!("audio_in_{}", index + 9),
+                PortKind::AudioOut => format!("audio_out_{}", index + 1),
+                PortKind::MidiIn => "midi_in_1".to_owned(),
+                PortKind::MidiSend => "midi_out_1".to_owned(),
+                PortKind::MidiOut => panic!("no wet MIDI"),
+            };
+            stack.set_port_connected(port.id, &name, true).unwrap();
+            assert_eq!(
+                stack
+                    .mirror
+                    .port_of(stack.mirror.engine_port(target).unwrap()),
+                Some(port.id)
+            );
+        }
+        stack.wait_idle();
+        assert!(stack.poll().unwrap().mutation_failures.is_empty());
+        let links = stack.mirror.links.clone();
+        refresh(&mut stack);
+        assert_eq!(stack.mirror.links, links);
+        for (kind, channels) in [
+            (shoop_app_api::TrackProcessorTypeId::BUILTIN_FX, 1),
+            (shoop_app_api::TrackProcessorTypeId::OXISYNTH, 2),
+        ] {
+            let created = stack
+                .create_track_topology(
+                    kind,
+                    BackendTrackTopology::DryWetProcessor {
+                        processor_type: kind.to_owned(),
+                        dry_audio_channels: channels,
+                        wet_audio_channels: channels,
+                        dry_midi: true,
+                    },
+                    1,
+                )
+                .unwrap();
+            stack.wait_idle();
+            assert!(stack.poll().unwrap().mutation_failures.is_empty());
+            assert_eq!(created.ports.len(), (2 * channels + 1) as usize);
+            assert!(created.ports.iter().all(|port| matches!(
+                port.role,
+                BackendPortRole::AudioInput
+                    | BackendPortRole::AudioOutput
+                    | BackendPortRole::MidiInput
+            )));
+            refresh(&mut stack);
+            assert!(stack.mirror.tracks[&created.track_id]
+                .processor_slot
+                .is_some());
+        }
+    }
+    #[shoop_test]
+    fn rerecord_monitoring_is_confirmed_and_survives_resync_and_a_later_user_change() {
+        let mut stack = stack();
+        let created = stack
+            .create_track_topology(
+                "external",
+                BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                1,
+            )
+            .unwrap();
+        stack.wait_idle();
+        stack
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        stack.wait_idle();
+        assert!(
+            stack.mirror.tracks[&created.track_id]
+                .controls
+                .input_monitoring
+        );
+        let loop_id = stack.mirror.loops[&created.loops[0]].slot;
+        let mut transition = |mode| {
+            stack
+                .client
+                .request(Request::LoopTransition {
+                    loop_id,
+                    mode,
+                    delay: None,
+                })
+                .unwrap();
+            for _ in 0..8 {
+                stack.clock.wait();
+                stack.pump();
+            }
+        };
+        transition(shoop_rt_protocol::LoopMode::Recording);
+        transition(shoop_rt_protocol::LoopMode::Playing);
+        transition(shoop_rt_protocol::LoopMode::RecordingDryIntoWet);
+        assert!(
+            !stack.mirror.tracks[&created.track_id]
+                .controls
+                .input_monitoring
+        );
+        refresh(&mut stack);
+        assert!(
+            !stack.mirror.tracks[&created.track_id]
+                .controls
+                .input_monitoring
+        );
+        stack
+            .client
+            .request(Request::LoopTransition {
+                loop_id,
+                mode: shoop_rt_protocol::LoopMode::Playing,
+                delay: None,
+            })
+            .unwrap();
+        for _ in 0..8 {
+            stack.clock.wait();
+            stack.pump();
+        }
+        stack
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        stack.wait_idle();
+        assert!(
+            stack.mirror.tracks[&created.track_id]
+                .controls
+                .input_monitoring
+        );
+        refresh(&mut stack);
+        assert!(
+            stack.mirror.tracks[&created.track_id]
+                .controls
+                .input_monitoring
+        );
+    }
+    #[shoop_test]
+    fn a_processor_type_limit_covers_different_track_widths_without_reserving_failed_ids() {
+        let mut stack = stack();
+        let topology = |channels| BackendTrackTopology::DryWetProcessor {
+            processor_type: shoop_app_api::TrackProcessorTypeId::BUILTIN_FX.to_owned(),
+            dry_audio_channels: channels,
+            wet_audio_channels: channels,
+            dry_midi: true,
+        };
+        stack.create_track_topology("mono", topology(1), 1).unwrap();
+        stack.wait_idle();
+        let free = stack.mirror.strip_slots.free();
+        assert!(stack
+            .create_track_topology("stereo", topology(2), 1)
+            .is_err());
+        assert_eq!(stack.mirror.strip_slots.free(), free);
+        assert_eq!(stack.mirror.tracks.len(), 1);
     }
 }

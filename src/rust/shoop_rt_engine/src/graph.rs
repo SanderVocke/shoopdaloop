@@ -95,6 +95,23 @@ impl Builder {
                 self.step(plan, pool.playback(slot), 0, &mut end)?;
             }
         }
+        for (slot, entry) in model.loops.iter().enumerate() {
+            if entry.is_none() {
+                continue;
+            }
+            let mut count = 0;
+            for channel in 0..2 * channels {
+                push(
+                    &mut self.edges,
+                    &mut count,
+                    link(
+                        audio(pool.playback(slot), channel),
+                        audio(pool.fader(slot), channel),
+                    ),
+                )?;
+            }
+            self.step(plan, pool.fader(slot), count, &mut end)?;
+        }
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };
             let node = pool.strip_input(slot);
@@ -149,7 +166,7 @@ impl Builder {
                                 &mut self.edges,
                                 &mut count,
                                 link(
-                                    audio(pool.playback(loop_slot), channels + channel),
+                                    audio(pool.fader(loop_slot), channels + channel),
                                     audio(node, 2 * channels + channel),
                                 ),
                             )?;
@@ -260,17 +277,6 @@ impl Builder {
                 )?;
             }
             self.step(plan, capture, count, &mut end)?;
-            let playback = pool.playback(slot);
-            let fader = pool.fader(slot);
-            let mut count = 0;
-            for channel in 0..channels {
-                push(
-                    &mut self.edges,
-                    &mut count,
-                    link(audio(playback, channel), audio(fader, channel)),
-                )?;
-            }
-            self.step(plan, fader, count, &mut end)?;
         }
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };

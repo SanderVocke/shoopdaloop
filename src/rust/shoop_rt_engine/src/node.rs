@@ -3,6 +3,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec;
+use core::sync::atomic::Ordering;
 
 use crate::cells::{Cells, Peak};
 use crate::stream::BulkReader;
@@ -488,8 +489,8 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
 impl Processor<LoopPlanner, EngineOp> for LoopFader {
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_inputs: self.channels,
-            audio_outputs: self.channels,
+            audio_inputs: 2 * self.channels,
+            audio_outputs: 2 * self.channels,
             ..PortCounts::default()
         }
     }
@@ -1009,15 +1010,17 @@ impl LoopFader {
             .processor
             .is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External);
         let quantum = block.quantum.frames();
-        for channel in 0..self.channels {
+        let dry =
+            crate::cells::mode_from_code(self.cells.loops[self.slot].mode.load(Ordering::Relaxed))
+                .dry_playback();
+        for port in 0..2 * self.channels {
+            let channel = port % self.channels;
+            let auxiliary = port >= self.channels;
             let mut presence = self.presence;
-            let (input, output) = block
-                .audio
-                .pair(channel, channel)
-                .ok_or(Error::InvalidShape)?;
+            let (input, output) = block.audio.pair(port, port).ok_or(Error::InvalidShape)?;
             let mut peak = 0f32;
             for i in 0..frames {
-                let sample = if delayed {
+                let sample = if delayed && !auxiliary {
                     let index = channel * quantum + (self.position + i) % quantum;
                     let old = self.delay[index];
                     self.delay[index] = input[i];
@@ -1029,8 +1032,10 @@ impl LoopFader {
                 output[i] = value;
                 peak = peak.max(value.abs());
             }
-            peaks.raise(channel, peak);
-            if channel + 1 == self.channels {
+            if auxiliary == dry {
+                peaks.raise(channel, peak);
+            }
+            if port + 1 == 2 * self.channels {
                 self.presence = presence;
             }
         }

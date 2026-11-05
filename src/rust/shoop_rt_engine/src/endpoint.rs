@@ -74,6 +74,11 @@ pub(crate) struct Planned {
 pub(crate) enum Purpose {
     /// Answer `correlation` with the execution's outcome.
     Reply(Option<u64>),
+    StripControl {
+        correlation: Option<u64>,
+        strip: StripId,
+        control: StripControl,
+    },
     /// A loop transition: answered when executed, or once scheduled if delayed.
     Transition {
         correlation: Option<u64>,
@@ -478,9 +483,9 @@ impl ControlEndpoint {
         self.protocol_error = false;
         for pending in self.pending.iter_mut().flatten() {
             match &mut pending.purpose {
-                Purpose::Reply(correlation) | Purpose::Transition { correlation, .. } => {
-                    *correlation = None
-                }
+                Purpose::Reply(correlation)
+                | Purpose::StripControl { correlation, .. }
+                | Purpose::Transition { correlation, .. } => *correlation = None,
                 Purpose::Content { correlation, .. } => *correlation = None,
                 _ => {}
             }
@@ -542,6 +547,17 @@ impl ControlEndpoint {
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
+            Purpose::StripControl {
+                correlation,
+                strip,
+                control,
+            } => {
+                if matches!(&result, RuntimeResult::Execution(execution) if execution_outcome(execution) == Outcome::Done)
+                {
+                    self.apply_strip_control(strip, control);
+                }
+                self.reply_result(correlation, result);
+            }
             Purpose::Transition {
                 correlation,
                 delayed,
@@ -1002,19 +1018,63 @@ impl ControlEndpoint {
             _ => return Err(Refusal::InvalidValue),
         };
         let at = self.at();
-        self.submit_op(at, node, operation, Purpose::Reply(Some(correlation)))?;
-        self.model
-            .strip_mut(strip)
-            .expect("validated strip")
-            .controls
-            .apply(control);
+        self.submit_op(
+            at,
+            node,
+            operation,
+            Purpose::StripControl {
+                correlation: Some(correlation),
+                strip,
+                control,
+            },
+        )?;
+        Ok(None)
+    }
+
+    fn apply_strip_control(&mut self, strip: StripId, control: StripControl) {
+        let Some(entry) = self.model.strip_mut(strip) else {
+            return;
+        };
+        entry.controls.apply(control);
         self.model.revision += 1;
         if self.job.is_some() {
             if let Some(entry) = self.next.strip_mut(strip) {
                 entry.controls.apply(control);
             }
         }
-        Ok(None)
+    }
+
+    fn forced_monitoring(&mut self, mut out: Option<&mut Outbox>) {
+        for slot in 0..self.model.strips.len() {
+            let generation = self.cells.strips[slot]
+                .forced_monitor_off
+                .load(Ordering::Acquire);
+            let Some(strip) = self.model.strips[slot].filter(|s| s.id.0.generation == generation)
+            else {
+                continue;
+            };
+            if strip.controls.monitoring {
+                self.apply_strip_control(strip.id, StripControl::Monitoring(false));
+            }
+            if let Some(out) = out.as_deref_mut() {
+                if out
+                    .push(EngineMessage::State(
+                        shoop_rt_protocol::StateRecord::StripControl {
+                            strip: strip.id,
+                            control: StripControl::Monitoring(false),
+                        },
+                    ))
+                    .is_ok()
+                {
+                    let _ = self.cells.strips[slot].forced_monitor_off.compare_exchange(
+                        generation,
+                        0,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    );
+                }
+            }
+        }
     }
 
     fn bus_control(
@@ -1254,12 +1314,16 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.forced_monitoring(None);
         self.advance_job();
         self.process_queue(true);
         self.advance_bulk();
         self.advance_preview();
         self.advance_content();
         self.flush(out);
+        if self.connected {
+            self.forced_monitoring(Some(out));
+        }
         self.telemetry(out);
     }
 }

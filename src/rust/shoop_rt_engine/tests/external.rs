@@ -117,6 +117,76 @@ fn mode(h: &mut OfflineHost, mode: LoopMode) {
     );
 }
 #[shoop_test]
+fn removing_dry_playback_fades_its_send_and_keeps_the_other_loop_and_meter() {
+    let mut d = description();
+    d.quantum = 1;
+    d.ramp_frames = 4;
+    d.telemetry_interval_frames = 0;
+    let mut h = OfflineHost::new(&d).unwrap();
+    create(&mut h, 1, 1, false);
+    h.input_mut(0).fill(1.);
+    mode(&mut h, LoopMode::Recording);
+    tick(&mut h, 64);
+    mode(&mut h, LoopMode::Stopped);
+    let other = LoopSlotId(SlotId::new(1, 1));
+    done(
+        &mut h,
+        Request::CreateLoop {
+            strip: strip(),
+            loop_id: other,
+        },
+    );
+    h.input_mut(0).fill(2.);
+    let transition = |loop_id, mode| Request::LoopTransition {
+        loop_id,
+        mode,
+        delay: None,
+    };
+    done(&mut h, transition(other, LoopMode::Recording));
+    tick(&mut h, 64);
+    done(&mut h, transition(other, LoopMode::PlayingDryThroughWet));
+    mode(&mut h, LoopMode::PlayingDryThroughWet);
+    tick(&mut h, 128);
+    assert_eq!(&h.output(8)[16..128], &[3.; 112]);
+    let mut metered = false;
+    while let Some(message) = h.receive() {
+        if let EngineMessage::Telemetry(Telemetry::Loop { loop_id, peaks, .. }) = message {
+            if loop_id == looped() && peaks.as_slice().first() == Some(&1.) {
+                metered = true;
+            }
+        }
+    }
+    assert!(metered, "dry playback must meter the dry role");
+    let id = h
+        .request(Request::RemoveLoop { loop_id: looped() })
+        .unwrap();
+    let mut samples = Vec::new();
+    let mut completed = false;
+    for _ in 0..64 {
+        tick(&mut h, 128);
+        samples.extend_from_slice(h.output(8));
+        while let Some(message) = h.receive() {
+            if let EngineMessage::Result {
+                correlation,
+                outcome,
+            } = message
+            {
+                if correlation == id {
+                    assert_eq!(outcome, Outcome::Done);
+                    completed = true;
+                }
+            }
+        }
+        if completed {
+            break;
+        }
+    }
+    assert!(completed);
+    assert!(samples.windows(4).any(|w| w == [2.75, 2.5, 2.25, 2.]));
+    tick(&mut h, 128);
+    assert_eq!(&h.output(8)[..128], &[2.; 128]);
+}
+#[shoop_test]
 fn unequal_external_roles_capture_play_dry_and_rerecord_without_a_dsp_bank() {
     for (dry, wet) in [(1, 8), (8, 1), (8, 8), (2, 5), (5, 2)] {
         let mut h = OfflineHost::new(&description()).unwrap();

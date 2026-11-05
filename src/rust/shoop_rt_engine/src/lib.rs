@@ -181,7 +181,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
     let pending = description.pending_transitions;
     let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
     let ports = strips * (14 * channels + 9)
-        + loops * (6 * channels + 2)
+        + loops * (8 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
         + pool.processors() * (3 * channels + 3);

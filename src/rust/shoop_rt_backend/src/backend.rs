@@ -340,9 +340,11 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 midi,
                 initial_loops: request.initial_loops,
             }),
-            BackendTrackTopology::DryWetExternal { .. }
-            | BackendTrackTopology::DryWetProcessor { .. } => {
-                Err(unavailable(BackendCapability::DryWetTracks))
+            topology => {
+                if !self.capabilities.contains(Capabilities::DRY_WET) {
+                    return Err(unavailable(BackendCapability::DryWetTracks));
+                }
+                self.create_track_topology(&request.port_name_base, topology, request.initial_loops)
             }
         }
     }

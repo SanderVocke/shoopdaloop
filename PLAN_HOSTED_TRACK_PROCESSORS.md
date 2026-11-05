@@ -356,6 +356,18 @@ cleanup saturation without repeated recovery. Wasm engine/worklet suites pass.
 Service/backend port mapping and actual JACK publication still require integration
 and validation; this checkpoint does not close the stage or enable capabilities.
 
+Adapter role milestone: track admission and resynchronization now retain topology,
+independent External send/return roles and processor slot generations. External
+ports use the native role order and naming; hosted tracks expose only dry inputs,
+wet outputs and dry MIDI, leaving DSP endpoints inside the graph. Type limits
+cover all admitted widths together. Dry playback now passes through the loop's
+presence fade and meter before the processor send. Node configuration runs beside
+graph preparation, preserving the existing Direct-routing latency limits.
+Automatic rerecord monitoring changes update the authoritative model after
+execution, retry reliable projection when the outbox is full, and survive resync.
+This remains internal foundation work: capabilities are still gated pending
+public controls, media/persistence and end-to-end validation.
+
 ### 6. Restore service operations, editors and track control MIDI
 
 - [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace

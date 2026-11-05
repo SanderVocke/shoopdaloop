@@ -45,6 +45,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 shoop_rt_protocol::Request::CreateBus { .. }
                 | shoop_rt_protocol::Request::RemoveBus { .. }
                 | shoop_rt_protocol::Request::CreateStrip { .. }
+                | shoop_rt_protocol::Request::CreateProcessedStrip { .. }
                 | shoop_rt_protocol::Request::RemoveStrip { .. }
                 | shoop_rt_protocol::Request::CreateLoop { .. }
                 | shoop_rt_protocol::Request::RemoveLoop { .. }
@@ -52,7 +53,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | shoop_rt_protocol::Request::CancelBulk => true,
                 shoop_rt_protocol::Request::LoopTransition {
                     loop_id,
-                    mode: LoopMode::Recording,
+                    mode: LoopMode::Recording | LoopMode::RecordingDryIntoWet,
                     ..
                 } => only.is_none_or(|id| self.mirror.loops[&id].slot == loop_id),
                 _ => false,
@@ -62,8 +63,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         if self.mirror.loops.iter().any(|(id, entry)| {
             only.is_none_or(|target| target == *id)
-                && (entry.view.mode == LoopMode::Recording
-                    || entry.view.next_mode == Some(LoopMode::Recording))
+                && (entry.view.mode.records()
+                    || entry.view.next_mode.is_some_and(LoopMode::records))
         }) {
             bail!("stop recording and settle pending recording transitions before saving or exporting");
         }
@@ -246,10 +247,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 BackendSessionTrack {
                     source_id: id.raw(),
                     port_name_base: track.port_name_base.clone(),
-                    topology: BackendTrackTopology::Direct {
-                        audio_channels: track.audio_channels,
-                        midi: track.midi,
-                    },
+                    topology: track.topology.clone(),
                     state: Mirror::track_state(track),
                     loops,
                     ports: track.ports.iter().map(|id| ports[id].clone()).collect(),
