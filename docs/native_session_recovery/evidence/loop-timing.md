@@ -4,7 +4,24 @@ Status: COMPLETE. All nine acceptance criteria are met. Implementation
 branch: `feat/p12-loop-timing`. Initial acceptance used target
 `a192b0ce77325bc8bb55b7b749e8d68b324f0a43`; the follow-up reconciliation below
 incorporates profiling graph target `eb4287a5`. PR target is
-`feat/fixed-quantum-runtime`. The [plan](../../../PLAN_P12.md) defines completion.
+`feat/backend-replacement`, as subsequently requested. The [plan](../../../PLAN_P12.md) defines completion.
+
+## Backend replacement retarget
+
+The user subsequently selected `feat/backend-replacement` as the PR base. Its
+squash history caused artificial overlap with P12. Reconciliation joins target
+`32179102` to accepted P12 head `a3dfff10`, retaining all P12 code exactly and
+copying the target's only two additional files: Host Manager branding and updated
+mandates. The target includes the embedded `resources/logo-small.png`, its header
+image and the updated background; those files match the target exactly.
+
+The warning-denying workspace build and **33 Linux Host Manager/process tests**
+pass, including rendering and real child-process inspection. Formatting, tracing
+and parity checks pass. This targeted verification follows the updated mandates;
+earlier full native/Node/browser records remain tied to their original source.
+The inventory records this ancestry reconciliation separately. App/RT versions
+remain **25/11**. [Current PR checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+report the new target's CI.
 
 ## Profiling graph target integration
 
@@ -176,7 +193,7 @@ without the missing-backend allowance. Miri's exact inventory is available from
 ## PR and review
 
 [PR #943](https://github.com/SanderVocke/shoopdaloop/pull/943) targets
-`feat/fixed-quantum-runtime`. The workflow filters include that requested base.
+`feat/backend-replacement`. The workflow filters include this requested base.
 The [implementation platform/browser/coverage matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606480),
 [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606641)
 and [docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606481)

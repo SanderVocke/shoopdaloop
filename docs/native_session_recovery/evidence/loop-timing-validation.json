@@ -742,5 +742,54 @@
       "ci_checks": "https://github.com/SanderVocke/shoopdaloop/pull/943/checks",
       "provenance": "Logs validate the staged merge source identified by the hash of git ls-files --stage for source_index_paths. The merge commit and current PR checks identify its final committed head. Original acceptance reports remain at their actual earlier checkpoints; no new Miri run is claimed for the unchanged loop/runtime core."
     }
+  ],
+  "retarget_reconciliations": [
+    {
+      "base_ref": "feat/backend-replacement",
+      "base_commit": "321791026b37eb3ae3d089196aac361b151cc417",
+      "previous_accepted_head": "a3dfff10fc6ec3d54490fc4509c0c364c0f65b93",
+      "equivalent_runtime_snapshot": "eb4287a57356f13388ba3f55f6b236abc0980e61",
+      "target_only_paths": [
+        ".agents/rules/mandates.md",
+        "src/rust/shoop_host_manager/src/host_manager.rs"
+      ],
+      "source_git_index_entries_sha256": "d9f570746b6b10a810d3d6c2b6af0cfafad6b1a6227591a79c4ad924e8b42505",
+      "source_index_paths": [
+        "src/rust",
+        "third_party",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tests",
+        "scripts",
+        ".github"
+      ],
+      "branding": {
+        "source_path": "src/rust/shoop_host_manager/src/host_manager.rs",
+        "source_blob": "9d36229431c1d0c71950c1a2ffad7402df1171ac",
+        "logo_path": "resources/logo-small.png",
+        "logo_blob": "848be0639f697cff2f2aa55453ccb5b56da98480",
+        "matches_target": true
+      },
+      "protocols": {
+        "app": 25,
+        "rt": 11
+      },
+      "targeted_linux_tests": {
+        "passed": 33,
+        "skipped": 0
+      },
+      "logs": [
+        {
+          "report": "backend-base-merge-build.log",
+          "sha256": "6002751e7112c3950788fa11d6d81cfa1cdd9de127f9ab8b879ff51c6586518f"
+        },
+        {
+          "report": "backend-base-merge-tests.log",
+          "sha256": "93af54ea8bc5d6ab9206d27e0608056a6af86e5a42442f2e484d880726163b6c"
+        }
+      ],
+      "ci_checks": "https://github.com/SanderVocke/shoopdaloop/pull/943/checks",
+      "provenance": "Runtime and P12 sources are unchanged from the prior accepted head; only target Host Manager branding is added to code. Earlier full-suite reports remain at their original checkpoints. The merge records the squashed target ancestry without discarding its two actual differences."
+    }
   ]
 }

@@ -3,7 +3,7 @@
 Status: COMPLETE on `feat/p12-loop-timing`. Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
-- Base and PR target: **`feat/fixed-quantum-runtime`**, inspected at
+- Original implementation base: **`feat/fixed-quantum-runtime`**, inspected at
   `df4683527dbde0ec7483c3e522fc3873e39a81c8`; reconciled with target
   `2e19210bdbb5e32510322f8b8344715ce7cbefe5`, then
   `a192b0ce77325bc8bb55b7b749e8d68b324f0a43` before final validation.
@@ -11,9 +11,9 @@ Status: COMPLETE on `feat/p12-loop-timing`. Written under
   target; remote head was unchanged when implementation began.
 - Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, including
   range editing from #895 and its preserved `shoop_app_reference`/legacy fixtures.
-- Deliver through a PR into `feat/fixed-quantum-runtime`, with green checks and
-  reviewed evidence on the final head. Do not target `master` or
-  `feat/backend-replacement`, or merge the PR without instructions.
+- Current PR target: **`feat/backend-replacement`**, retargeted at the user's
+  explicit request after initial closure. See the retarget reconciliation below.
+  Do not target `master` or merge the PR without instructions.
 
 ## Goals and scope
 
@@ -507,3 +507,24 @@ The [inventory](docs/native_session_recovery/evidence/loop-timing-validation.jso
 records the merge parents, source-index hash and new report/artifact hashes.
 The PR's [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
 verify this integration head. Original goals and acceptance criteria are unchanged.
+
+## Backend replacement retarget reconciliation
+
+The user retargeted PR #943 to `feat/backend-replacement`. Its fixed-quantum work
+was squash-integrated in `0ef7581b`, so Git initially selected the much older
+`a6e2554c` merge base despite equivalent runtime content. The profiling graph
+patches in `eb4287a5` and `e4b180f6` are identical. Against the original runtime
+snapshot, target `32179102` differs only in Host Manager branding and updated
+mandates.
+
+Join the target ancestry with the validated P12 head `a3dfff10`, preserving that
+head's complete P12 implementation and copying both target-only files exactly.
+The Host Manager includes the target logo, header rendering and background. App/RT
+protocols remain **25/11**. The warning-denying workspace build and all **33 Linux
+Host Manager/process tests** pass, including rendering, real process inspection
+and reattachment. Formatting, tracing inventory and parity policy checks pass.
+Testing is targeted under the updated mandates: P12/runtime code is unchanged,
+so the previous full native, Node and browser evidence retains its actual source.
+
+The PR's [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+identify CI for the new target. Merging the PR remains a separate instruction.
