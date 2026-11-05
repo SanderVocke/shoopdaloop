@@ -124,7 +124,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 8;
+const engineProtocolVersion = 10;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);

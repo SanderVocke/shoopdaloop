@@ -685,3 +685,13 @@ and retain the normal/full test groups required before behavioral commits/pushes
   pause/refusal cases **2 passed**. Complete milestone checks are being run before
   the automatic monitoring checkpoint is pushed. Files and the public capability
   remain gated; the full P03 dependency gate remains open.
+
+- Automatic-monitoring checkpoint `730148bb` passed the full warning-denying
+  native build and suite: **2,824 passed / 7 skipped**. Node and Chrome both passed
+  app **55**, client **11**, app protocol **17**, editor **234**, adapter **50**,
+  engine **92**, worklet host **17** and engine protocol **6**.
+- Its web CI artifact check found a stale engine-protocol pin (**8** instead of
+  **10**) in the simulated MessagePort contract. The pin is corrected; rebuilding
+  the maintained worklet and codec artifacts passed both actual-artifact contracts,
+  including profiling. No submitted reviews or inline threads were present on PR
+  **941** when rechecked. Persistence implementation and validation are in progress.
