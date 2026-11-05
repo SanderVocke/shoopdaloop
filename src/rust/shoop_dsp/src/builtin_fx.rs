@@ -1168,8 +1168,20 @@ impl BuiltInFxProcessor {
 
     pub fn process(&mut self, frames: usize) {
         self.synchronize_runtime_values();
-        let channels = self.audio_channels();
         let frames = frames.min(self.max_frames());
+        let _span = (!self.state.all_stages_disabled()).then(|| {
+            shoop_tracing::realtime_span_detail!("engine.rt.fx.builtin_fx_process", value = frames)
+        });
+        self.process_ready(frames);
+    }
+
+    pub(crate) fn process_block(&mut self, frames: usize) {
+        self.synchronize_runtime_values();
+        self.process_ready(frames.min(self.max_frames()));
+    }
+
+    fn process_ready(&mut self, frames: usize) {
+        let channels = self.audio_channels();
         if self.state.all_stages_disabled() {
             for channel in 0..self.audio_channels() {
                 self.outputs[channel][..frames].copy_from_slice(&self.inputs[channel][..frames]);
@@ -1177,8 +1189,6 @@ impl BuiltInFxProcessor {
             return;
         }
 
-        let _span =
-            shoop_tracing::realtime_span_detail!("engine.rt.fx.builtin_fx_process", value = frames);
         for channel in 0..self.audio_channels() {
             self.stage_a[channel][..frames].copy_from_slice(&self.inputs[channel][..frames]);
         }

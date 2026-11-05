@@ -294,7 +294,7 @@ mod fx {
                         &batch.audio.input(channel).ok_or(Error::InvalidShape)?[start..end],
                     );
             }
-            self.processor.process(frames);
+            self.processor.process_block(frames);
             for channel in 0..self.channels {
                 let output =
                     &mut batch.audio.output(channel).ok_or(Error::InvalidShape)?[start..end];
@@ -494,7 +494,7 @@ mod synth {
             if frames == 0 {
                 return Ok(());
             }
-            self.processor.process(frames, &[]);
+            self.processor.process_block(frames, &[]);
             for channel in 0..2 {
                 batch.audio.output(channel).ok_or(Error::InvalidShape)?[start..end]
                     .copy_from_slice(
@@ -540,7 +540,7 @@ mod synth {
         }
         fn midi(&mut self, data: &[u8]) {
             if let Some(event) = MidiStorageElem::new(0, data) {
-                self.processor.process(0, &[event]);
+                self.processor.process_block(0, &[event]);
             }
         }
     }

@@ -119,7 +119,7 @@ src/rust/shoop_engine/src/audio_channel.rs,mixed_realtime_and_control,instrument
 src/rust/shoop_engine/src/audio_midi_loop.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/basic_loop.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/buffer_queue.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_dsp/src/builtin_fx.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoop_dsp/src/builtin_fx.rs,mixed_realtime_and_control,instrumented_direct,Legacy processing retains gated rack tracing; prepared host processing uses the owning runtime profiler without SDK calls.
 src/rust/shoop_engine/src/builtin_fx.rs,legacy_dsp_reexport,excluded,Compatibility reexport of extracted optional host DSP; no execution to trace.
 src/rust/shoop_dsp/src/builtin_fx/chorus.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
 src/rust/shoop_dsp/src/builtin_fx/compressor.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
@@ -176,7 +176,7 @@ src/rust/shoop_engine/src/midi_state.rs,mixed_realtime_and_control,instrumented_
 src/rust/shoop_engine/src/midi_storage.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midir_driver.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/multichannel_audio.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
-src/rust/shoop_dsp/src/oxisynth.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoop_dsp/src/oxisynth.rs,mixed_realtime_and_control,instrumented_direct,Legacy processing retains gated synth tracing; prepared host processing uses the owning runtime profiler without SDK calls.
 src/rust/shoop_engine/src/oxisynth.rs,legacy_dsp_reexport,excluded,Compatibility reexport of extracted optional host DSP; no execution to trace.
 src/rust/shoop_engine/src/pending_midi_control.rs,realtime_processing,instrumented_indirect,Runs within the traced processor routing boundary; a separate per-control span would add callback overhead.
 src/rust/shoop_engine/src/port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

@@ -526,6 +526,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
+                    && self.mirror.loops.values().all(|entry| {
+                        entry.view.mode.records()
+                            || entry.timing.content_revision == entry.rt_content_revision
+                    })
                     && self
                         .replacement
                         .as_ref()

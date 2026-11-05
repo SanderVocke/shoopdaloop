@@ -752,3 +752,53 @@ application workflow, the processed JACK fixture and four portable board-profile
 contracts. Changed native products and the no-default Zynq client build with
 warnings denied; test/tracing inventories pass (457 modules). Firmware execution,
 Wasm and cross-platform matrices remain CI gates on the next delivered revision.
+
+### CI startup, memory and callback measurements
+
+The both-DSP job passes at candidate `fe714c4c` in
+[run 42003214102](https://github.com/SanderVocke/shoopdaloop/actions/runs/42003214102/job/127163405535).
+Its measurement artifact is `hosted-processor-measurements-42003214102`
+([artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42003214102/artifacts/13403998708)).
+The recorded checkout is PR merge `db52310c9638f1b5f62151b5de14bec01c9ab277`;
+its Git tree matches `fe714c4c2ce9efa7e60a7850a8c23abf1c64f202` exactly.
+The Ubuntu x86_64 runner exposes four logical CPUs on an AMD EPYC 9V74 under
+Microsoft virtualization; rustc is 1.99.1, LLVM 23.1.1.
+
+Preparation uses the default active/candidate banks and a 512 MiB configured
+ceiling. Mono cannot host the required stereo synth. Peak requested allocations
+stay below the complete declared DSP reservation:
+
+| Host audio width | Peak requested bytes | Retained bytes | Reserved bytes | Preparation ms |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 8,799,344 | 8,799,344 | 54,532,576 | 24 |
+| 2 | 84,578,472 | 84,570,312 | 198,793,088 | 293 |
+| 8 | 137,316,376 | 137,308,216 | 346,273,664 | 389 |
+
+Release callback observations use 48 kHz, Q=128, M=1/S=0, 256 callbacks and
+1,024 equal-offset MIDI events per callback. FX has eight channels and all six
+stages enabled. Synth has two output channels and saturates its 256-voice limit.
+
+| Processor | Mean microseconds | Peak microseconds | Block period microseconds |
+| --- | ---: | ---: | ---: |
+| Built-in FX | 752 | 793 | 2,666.67 |
+| OxiSynth | 2,501 | 2,675 | 2,666.67 |
+
+These are wall-clock observations on a shared CI VM, not execution-time bounds.
+At maximum voice load, this synth run exceeds the block period and demonstrates
+no deadline margin. Simulated callbacks have no hardware xrun measurement;
+distributed event offsets and simultaneously saturated processor instances are
+not measured by this fixture. Allocation/lifetime guards and finite work bounds
+still apply, but supported shapes and memory admission do not certify that every
+CPU/configuration can sustain maximum polyphony in real time. Synchronous slack
+adds no execution budget. Third-party DSP is outside the selected Miri claim.
+
+
+Tracing-enabled CI exposed legacy native SDK spans inside buffered DSP calls.
+The prepared backends now enter the processing body directly; the owning runtime
+profiler observes host nodes with its bounded RT records. Legacy/reference entry
+points retain their existing spans. The allocator guards remain enabled with
+native detailed tracing: all 32 buffered-DSP, graph and public service cases pass.
+All 15 adapter integration tests also pass after `wait_idle` waits for matching
+committed timing on settled loops. Changed DSP/host/adapter products build with
+warnings denied. This reconciles the coverage job without disabling tracing or
+weakening allocation assertions.

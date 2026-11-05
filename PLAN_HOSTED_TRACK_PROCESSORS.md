@@ -700,6 +700,27 @@ contracts. Changed native products and the no-default Zynq client build with
 warnings denied; test/tracing inventories pass (457 modules). Firmware execution,
 Wasm and cross-platform matrices remain CI gates on the next delivered revision.
 
+The both-DSP CI job at `fe714c4c` now passes native and Node Wasm tests, asset/
+import checks and measurements. On its four-vCPU AMD EPYC 9V74 VM, release FX
+(eight channels/all stages) averaged 752 us and peaked at 793 us; synth at 256
+voices averaged 2,501 us and peaked at 2,675 us, against 2,666.67 us per Q=128
+block at 48 kHz. The saturated synth has no demonstrated deadline margin on this
+runner. Startup measured 24/293/389 ms for host widths 1/2/8; requested peaks are
+below their full active/candidate reservations. Exact source, hardware, numbers,
+artifact links and measurement limits are recorded in `track-processors.md`.
+Portable Miri passes; remaining feature/platform/firmware gates are still pending.
+
+
+Tracing-enabled CI exposed legacy native SDK spans inside buffered DSP calls.
+The prepared backends now enter the processing body directly; the owning runtime
+profiler observes host nodes with its bounded RT records. Legacy/reference entry
+points retain their existing spans. The allocator guards remain enabled with
+native detailed tracing: all 32 buffered-DSP, graph and public service cases pass.
+All 15 adapter integration tests also pass after `wait_idle` waits for matching
+committed timing on settled loops. Changed DSP/host/adapter products build with
+warnings denied. This reconciles the coverage job without disabling tracing or
+weakening allocation assertions.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or
@@ -713,7 +734,7 @@ Wasm and cross-platform matrices remain CI gates on the next delivered revision.
   dummy/CPAL/JACK integration, Windows/macOS builds/tests, and real hosted/self-contained
   Chromium plus existing Firefox browser acceptance. Use Web MIDI fixtures/audio-output
   assertions where hardware is unavailable; do not call a mock-only path platform proof.
-- [ ] Measure bounded callback cost at maximum admitted channel/voice/control load,
+- [x] Measure bounded callback cost at maximum admitted channel/voice/control load,
   startup latency and memory. Report hardware/configuration, peak cost/xruns and
   limits; synthetic stream slack is not a deadline guarantee. Use one representative
   measurement job and selected CI Miri

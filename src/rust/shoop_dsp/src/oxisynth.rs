@@ -632,6 +632,10 @@ impl OxiSynthProcessor {
     pub fn process(&mut self, frames: usize, events: &[MidiStorageElem]) {
         let _span =
             shoop_tracing::realtime_span_detail!("engine.rt.fx.oxisynth_process", value = frames);
+        self.process_block(frames, events);
+    }
+
+    pub(crate) fn process_block(&mut self, frames: usize, events: &[MidiStorageElem]) {
         self.synchronize_runtime_values();
         let frames = frames.min(self.max_frames());
         let mut cursor = 0;
