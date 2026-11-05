@@ -225,6 +225,13 @@ impl Fixture {
         Self::from_engine(engine, q, partition, &d)
     }
     fn new_production(q: usize, partition: usize) -> (Self, crate::HistoryCapacity) {
+        Self::new_production_loops(q, partition, 2)
+    }
+    fn new_production_loops(
+        q: usize,
+        partition: usize,
+        loops: u32,
+    ) -> (Self, crate::HistoryCapacity) {
         let d = EngineDescription {
             history: protocol::host::InputHistorySettings {
                 seconds: 30,
@@ -236,10 +243,7 @@ impl Fixture {
             quantum: q,
             sample_rate: 1000,
             max_frames: 128,
-            segments: vec![Segment {
-                strips: 2,
-                loops: 2,
-            }],
+            segments: vec![Segment { strips: 2, loops }],
             resource_pages: 512,
             page_bytes: 256,
             midi_events: 64,
@@ -3667,6 +3671,157 @@ fn fresh_recording_has_identity_media_while_monitoring_previous_channel_windows(
     }
     let old_midi = h.read(old.view.midi.unwrap().snapshot);
     assert_eq!(midi_events(&old_midi), expected_midi(first, take.frames, q));
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn synchronized_replacing_waits_between_passes_and_resumes_exact_audio_and_midi() {
+    use protocol::{InputEdit, InputIntent, LoopMode, LoopSlotId, Request, SlotId};
+    let q = 32;
+    let (mut h, capacity) = Fixture::new_production_loops(q, 128, 3);
+    let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+    h.request(Request::CreateLoop {
+        loop_id: id(2),
+        strip: protocol::StripId(SlotId::new(0, 1)),
+    });
+    for slot in [0, 2] {
+        h.request(Request::LoopSync {
+            loop_id: id(slot),
+            source: Some(id(1)),
+        });
+        h.request(Request::LoopRepeatSync {
+            loop_id: id(slot),
+            enabled: true,
+        });
+    }
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.drain_protocol();
+    h.run_to(h.aligned_future(128 * q as u64));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    h.drain_protocol();
+    h.run_to(h.aligned_future(256 * q as u64));
+    h.drain_protocol();
+    h.public_input(
+        1,
+        &[0, 2].map(|slot| InputEdit {
+            loop_id: id(slot),
+            intent: InputIntent::Grab {
+                sync: Some(id(1)),
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                mode: LoopMode::Stopped,
+                maximum_frames: 0,
+            },
+        }),
+        None,
+    );
+    let originals = [0, 2].map(|slot| {
+        let exported = h.export(slot);
+        let audio = h.read(exported.view.audio.unwrap().snapshot);
+        let midi = h.read(exported.view.midi.unwrap().snapshot);
+        (exported, audio, midi)
+    });
+    let period = originals[0].0.view.description.frames;
+    let Reply::State(clock) = h.op(Operation::State { target: target(1) }) else {
+        panic!("clock")
+    };
+    let replacement = h.public_input(
+        2,
+        &[0, 2].map(|slot| InputEdit {
+            loop_id: id(slot),
+            intent: InputIntent::Mode {
+                mode: LoopMode::Replacing,
+                position: None,
+            },
+        }),
+        None,
+    );
+    h.drain_protocol();
+    let start = replacement.effective_frame.unwrap();
+    let phase = (clock.state.position + start - clock.frame.0) % period;
+    assert_ne!(
+        phase, 0,
+        "replacement must reach its end between sync pulses"
+    );
+    let resume = start + 2 * period - phase;
+    h.run_to(start + 6 * period);
+    for slot in [0, 2] {
+        let Reply::State(state) = h.op(Operation::State {
+            target: target(slot),
+        }) else {
+            panic!("replacing state")
+        };
+        assert_eq!(state.state.mode, shoop_loops::Mode::Replacing);
+        assert!(!state.state.capture_incomplete);
+        h.request(Request::LoopTransition {
+            loop_id: id(slot),
+            mode: LoopMode::Stopped,
+            delay: None,
+        });
+    }
+    for (slot, (original, original_audio, original_midi)) in [0, 2].into_iter().zip(originals) {
+        let replaced = h.export(slot);
+        assert_eq!(replaced.view.description.frames, period);
+        let end = replaced.view.audio.unwrap().snapshot.cut_frame.0;
+        let mut audio = original_audio.clone();
+        let mut midi = midi_events(&original_midi);
+        for frame in (start..end).step_by(q) {
+            if (start + period..resume).contains(&frame) {
+                continue;
+            }
+            let position = if frame < resume {
+                frame - start
+            } else {
+                (frame - resume) % period
+            };
+            midi.retain(|(at, _)| *at < position || *at >= position + q as u64);
+            for offset in 0..q as u64 {
+                let sample = (frame + offset + 1) as f32;
+                let at = (position + offset) as usize * 8;
+                audio[at..at + 4].copy_from_slice(&sample.to_le_bytes());
+                audio[at + 4..at + 8].copy_from_slice(&(-2. * sample).to_le_bytes());
+                for packet in packets(frame + offset, q) {
+                    midi.push((position + offset, packet));
+                }
+            }
+        }
+        midi.sort_by_key(|(frame, _)| *frame);
+        let actual = h.read(replaced.view.audio.unwrap().snapshot);
+        assert_eq!(actual.len(), audio.len());
+        for (offset, (actual, expected)) in actual
+            .chunks_exact(4)
+            .zip(audio.chunks_exact(4))
+            .enumerate()
+        {
+            assert_eq!(
+                actual,
+                expected,
+                "slot={slot} sample={offset} end={end} actual={} expected={}",
+                f32::from_le_bytes(actual.try_into().unwrap()),
+                f32::from_le_bytes(expected.try_into().unwrap())
+            );
+        }
+        assert_eq!(
+            midi_events(&h.read(replaced.view.midi.unwrap().snapshot)),
+            midi
+        );
+        assert_eq!(
+            h.read(original.view.audio.unwrap().snapshot),
+            original_audio
+        );
+        assert_eq!(h.read(original.view.midi.unwrap().snapshot), original_midi);
+    }
+    assert_eq!(h.midi_overflows, 0);
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
 }

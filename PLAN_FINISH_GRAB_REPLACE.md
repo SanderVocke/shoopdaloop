@@ -24,7 +24,7 @@ profiling budgets), now reconciled on top of target `78d39677`.
 | F5 | Complete service gesture/exact-list policy, default Grab, solo, lifecycle fencing and persistence/recovery ownership. |
 | F6 | Complete normal UI, keyboard and Lua routes, Replacing menu, capabilities and incomplete-capture projection. |
 | F7 | Complete: lifecycle, exact file round trips, protected resource pressure, native stack/reset corrections and complete pool/callback measurements pass local acceptance. |
-| F8 | Phase A complete: packaged default socket/shared-memory, strict JACK and rebuilt Chromium workflows pass. Phase B target refresh, final CI correction/review and parity closure remain. |
+| F8 | Local acceptance complete: packaged native carriers, real JACK, Chromium/Firefox and enabled firmware on both board memory profiles pass. Final CI correction/review and parity closure remain. |
 
 Grab and Replacing are enabled through negotiated application support. P04/P05
 remain OPEN until the complete acceptance and final CI gates pass. No Phase A CI
@@ -580,21 +580,50 @@ launcher resolves Cargo's actual target directory so coverage instrumentation
 runs its newly built executable instead of a nonexistent default-target binary.
 These corrections do not waive any CI gates. Fresh source/base CI remains required.
 
-The next CI round exposed firmware memory regressions. The separate FreeRTOS
-adapter inherited the new desktop history default despite its pre-existing direct
-record/play scope. It now explicitly retains that scope, advertises no input-batch
-or Replacing capability, and keeps its recording/media/arena budgets unchanged.
-The plan's native OS companion and browser acceptance scope still uses the normal
-thirty-second history; no application retention or recording capacity is reduced.
+The next CI round exposed firmware memory regressions. The initial correction
+hard-disabled firmware histories; the user clarified that a configuration policy
+may disable a feature, but every target must have a working way to enable it.
+The firmware now consumes explicit engine pool/history settings, with a checked
+`--engine-config` build path and resolved policy in the image manifest. Its shipped
+policy can retain the existing eight-track/thirty-two-loop allocation; the enabled
+example selects three tracks/twenty loops, thirty-second history and explicit
+shared audio/MIDI/writer reservations within the same board arenas. Core input
+preparation and capability negotiation are shared across targets. No target-specific
+feature exclusion is permitted.
+
 Core preparation also stops reserving processor-send, global-controller and dry-
 playback MIDI banks when neither prepared processors nor external dry/wet support
 can use them. Hosts with those features retain complete original capacities.
-A native allocation regression reserves three simultaneous media owners within
-both existing board arenas, including the sixteen-port USB shape. Actual QEMU
-recovery passes upload-loss/reattachment/exact download and ownerless shutdown at
-355,649,560 peak bytes with zero Rust owners after teardown. ZedBoard production
-boot/restart passes at 248,796,872 peak bytes with the same zero-owner result.
-Full fixture and final firmware CI still validate the resulting source.
+Default-policy QEMU recovery passes upload-loss/reattachment/exact download and
+ownerless shutdown at 355,649,560 peak bytes with zero Rust owners after teardown.
+Default-policy ZedBoard boot/restart passes at 248,796,872 peak bytes with the same
+zero-owner result. Enabled-policy acceptance now passes real Grab, two synchronized Replacing
+writers with scheduled exit, detached prefix completion, reload/re-edit and cleanup
+failure/retry on both board memory profiles. Peaks are 335,593,044 bytes on the
+1 GiB profile and 233,298,772 on ZedBoard; both return Rust heap usage to zero.
+The [firmware acceptance record](docs/native_session_recovery/evidence/grab-replace-firmware.json)
+binds resolved policies, board contracts and memory/stack evidence to source hashes.
+The default eight-track/thirty-two-loop disabled policy also passes fresh boot,
+restart, unavailable-capability negotiation and zero-owner shutdown on both profiles.
+
+This acceptance exposed a shared repeat-sync bug: a Replacing loop tried to
+advance beyond its completed period while waiting for the sync source. The fixed
+writer now remains admitted at the end position, pauses audio edits and observes
+zero-width MIDI ticks to preserve its input-frame fence. The next sync pulse
+resumes the same owners at zero. The new production-engine regression compares
+all audio samples, MIDI packets and retained exports for two simultaneous writers
+through the wait and subsequent wraps; it failed before the correction.
+All 361 affected loop/engine tests pass (the existing opt-in release measurement
+is excluded from this debug run). The warnings-denied workspace build, attributes,
+formatting, tracing, parity and dependency checks pass. Freshly staged native
+socket/shared-memory input canaries also pass on this corrected tree.
+
+The prior Build/Test round at `ed179738` passed native/platform checks but Firefox
+waited for an input-stall signal its harness never generated. Firefox now induces
+the same two-second UI stall as Chromium and verifies the input test reaches
+`Passed`. Its complete local workflow against the untouched packaged web release
+passes at Q128/44.1 kHz with zero xruns. This harness correction and the firmware
+policy/sync fixes still require fresh final-source CI.
 
 ## Findings that determine the work
 
@@ -881,6 +910,10 @@ reconciliation does not turn those earlier partial stages into completed ones.
 ## Goals, scope and immutable acceptance criteria
 
 Goals and these criteria require explicit user approval to change.
+
+User clarification: features may be disabled by an explicit resource/configuration
+policy. Every supported target must retain a documented and validated configuration
+that enables Grab and Replacing; target-specific permanent exclusions are forbidden.
 
 1. **Usable by default:** normal native and browser application startup prepares
    the required resources and advertises supported Grab/Replacing capabilities.
@@ -1351,6 +1384,10 @@ do not multiply the full workflow across all media/carrier/platform combinations
   tracks and multiple sources/users across a small complementary set of scenarios;
   do not rerun the entire sequence for every combination. Verify actual
   packets/samples and outcomes.
+- [x] Verify configuration-based firmware support: the shipped disabled policy
+  negotiates unavailable capabilities, while a documented enabled policy uses the
+  common engine/service path and passes exact Grab/Replacing, owned completion,
+  persistence/re-edit and teardown on both supported board memory profiles.
 - [ ] Only after the complete implementation and local acceptance are finished,
   start Phase B: refresh/reconcile the target, run affected local checks and push
   the complete implementation. Obtain fresh applicable CI on the final

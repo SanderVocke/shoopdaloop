@@ -18,3 +18,21 @@ pub const MIDI_BLOCK_BYTES: usize = if cfg!(feature = "usb-midi") {
     2048
 };
 include!(concat!(env!("OUT_DIR"), "/memory.rs"));
+
+pub fn engine_description() -> shoop_rt_engine::EngineDescription {
+    shoop_rt_engine::EngineDescription {
+        history: INPUT_HISTORY,
+        quantum: PROCESSING_QUANTUM,
+        host: shoop_rt_engine::HostPorts::numbered(2, 2, MIDI_PORTS),
+        max_frames: QUANTUM,
+        midi_bytes: MIDI_BLOCK_BYTES,
+        resource_pages: RECORDING_BYTES / 4096,
+        segments: alloc::vec![shoop_rt_engine::Segment {
+            strips: ENGINE_TRACKS,
+            loops: ENGINE_LOOPS,
+        }],
+        control_lead_frames: QUANTUM as u32,
+        smoothing_limit_frames: 4800,
+        ..Default::default()
+    }
+}

@@ -8,7 +8,7 @@ use shoop_app_api::{
 use shoop_app_connection::{HeartbeatConfig, Management, Session};
 use shoop_app_protocol::{codec, WireMessage};
 use shoop_rt_backend::{EngineClock, RtBackend};
-use shoop_rt_engine::{prepare, EngineDescription, HostPorts, HostStatus, Phase, Render, Segment};
+use shoop_rt_engine::{prepare, HostStatus, Phase, Render};
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
 use shoop_transport::{
@@ -250,6 +250,14 @@ fn log(text: &str) {
     }
 }
 
+struct TerminalLog;
+impl core::fmt::Write for TerminalLog {
+    fn write_str(&mut self, text: &str) -> core::fmt::Result {
+        log(text);
+        Ok(())
+    }
+}
+
 struct Socket(i32);
 impl Drop for Socket {
     fn drop(&mut self) {
@@ -426,10 +434,15 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
     for input in &mut dummy.midi_in {
         input.clear();
     }
-    let Ok(report) = result else {
-        #[cfg(feature = "usb-midi")]
-        shoop_usb_begin_stop();
-        return -1;
+    let report = match result {
+        Ok(report) => report,
+        Err(error) => {
+            use core::fmt::Write;
+            let _ = writeln!(TerminalLog, "SHOOP_RENDER_ERROR {error}");
+            #[cfg(feature = "usb-midi")]
+            shoop_usb_begin_stop();
+            return -1;
+        }
     };
     #[cfg(feature = "usb-midi")]
     if report.phase != Phase::Disconnected {
@@ -564,25 +577,7 @@ fn authenticate(
 }
 
 pub fn run() {
-    let description = EngineDescription {
-        // The board arena retains its direct recording/playback reservation.
-        history: shoop_rt_protocol::host::InputHistorySettings {
-            seconds: 0,
-            ..Default::default()
-        },
-        quantum: crate::PROCESSING_QUANTUM,
-        host: HostPorts::numbered(2, 2, crate::MIDI_PORTS),
-        max_frames: crate::QUANTUM,
-        midi_bytes: crate::MIDI_BLOCK_BYTES,
-        resource_pages: crate::RECORDING_BYTES / 4096,
-        segments: vec![Segment {
-            strips: 8,
-            loops: 32,
-        }],
-        control_lead_frames: crate::QUANTUM as u32,
-        smoothing_limit_frames: 4800,
-        ..EngineDescription::default()
-    };
+    let description = crate::engine_description();
     let engine =
         prepare(&description, driver(DriverRunState::Running)).expect("engine preparation");
     let outbox = engine.outbox();
@@ -643,8 +638,8 @@ pub fn run() {
                     quantum: crate::PROCESSING_QUANTUM as u32,
                     buses: description.buses as u32,
                     bus_channels: description.bus_channels as u32,
-                    tracks: 8,
-                    loops: 32,
+                    tracks: description.strips() as u32,
+                    loops: description.loops() as u32,
                     channels: 2,
                     loop_memory_mb: (crate::RECORDING_BYTES / (1024 * 1024)) as u32,
                 },

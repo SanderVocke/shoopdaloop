@@ -27,6 +27,7 @@ def status_of(driver) -> dict:
         "new_engine": status.get_attribute("data-new-engine"),
         "microphone": status.get_attribute("data-new-engine-microphone"),
         "self_test": status.get_attribute("data-new-engine-self-test"),
+        "input_test": status.get_attribute("data-input-self-test"),
         "frames": int(status.get_attribute("data-processed-frames") or 0),
         "sample_rate": int(status.get_attribute("data-sample-rate") or 0),
         "quantum": int(status.get_attribute("data-render-quantum") or 0),
@@ -51,8 +52,16 @@ def new_engine_workflow(driver) -> None:
     driver.find_element(By.ID, "enable_audio").click()
     deadline = time.monotonic() + 300
     last_step = None
+    input_stalled = False
     while time.monotonic() < deadline:
         state = status_of(driver)
+        if not input_stalled and state["input_test"] == "Stall":
+            driver.execute_script("""
+                const end = performance.now() + 2000;
+                while (performance.now() < end) {}
+                document.getElementById('runtime_status').setAttribute('data-input-stalled', 'true');
+            """)
+            input_stalled = True
         outputs = driver.find_elements(By.ID, "rfd-output")
         if outputs:
             if state["self_test"] == "CancelSaving":
@@ -81,6 +90,8 @@ def new_engine_workflow(driver) -> None:
         and state["frames"] > frames
         and state["quantum"] == 128
         and state["host_ports"] >= 2
+        and input_stalled
+        and state["input_test"] == "Passed"
     ):
         raise RuntimeError(f"Firefox new engine evidence is incomplete: {state}")
     print(f"Firefox new engine workflow passed: {state}")

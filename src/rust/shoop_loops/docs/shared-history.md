@@ -149,3 +149,8 @@ Application admission, selection/sync policy, UI/Lua and continuous fixed/growin
 writers are implemented through the normal production path; the
 [acceptance evidence](../../../../docs/native_session_recovery/evidence/grab-replace.md)
 records final validation and capacity limits.
+
+A fixed Replacing writer keeps its admission while repeat-sync waits at the end
+of a pass. Its position stays at the logical length and audio edits pause. MIDI
+receives zero-width window ticks to preserve the input-frame fence without
+changing packets or initial state. The next sync pulse resumes both media at zero.

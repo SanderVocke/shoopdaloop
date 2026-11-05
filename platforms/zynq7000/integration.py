@@ -9,6 +9,7 @@ import sys
 from qemu import Qemu, ROOT
 from remote_profile import write_profile
 import boards
+import engine_policy
 
 
 def main():
@@ -17,17 +18,24 @@ def main():
     mode.add_argument("--fixture", action="store_true")
     mode.add_argument("--ui", action="store_true")
     mode.add_argument("--recovery", action="store_true")
+    mode.add_argument("--input", action="store_true", help="Verify configured Grab and Replacing with exact media")
+    parser.add_argument("--engine-config", type=Path)
+    parser.add_argument("--fetch", action="store_true")
     parser.add_argument("--small-fixture", action="store_true", help="development run; omits the 40 MiB and full recording-pool gates")
     parser.add_argument("--port-base", type=int, default=15400)
     parser.add_argument("--soak-cycles", type=int, default=100)
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
+    policy = engine_policy.load(args.engine_config)
+    if args.input and policy["input_history"]["seconds"] == 0:
+        parser.error("--input requires an enabled --engine-config policy")
+    fixture = args.fixture or args.input
     if args.fixture and args.board != boards.DEFAULT and not args.small_fixture:
         parser.error("Reduced-memory profiles require --small-fixture")
     if not 100 <= args.soak_cycles <= 100_000:
         parser.error("--soak-cycles must be between 100 and 100000")
-    directory = ROOT / "work/zynq" / ("fixture-test" if args.fixture else "ui-test" if args.ui else "recovery-test" if args.recovery else "integration")
+    directory = ROOT / "work/zynq" / ("input-test" if args.input else "fixture-test" if args.fixture else "ui-test" if args.ui else "recovery-test" if args.recovery else "integration")
     if args.board != boards.DEFAULT:
         directory = directory.parent / "boards" / args.board / directory.name
     directory.mkdir(parents=True, exist_ok=True)
@@ -40,8 +48,12 @@ def main():
     profile = directory / "profile.json"
     write_profile(profile, credential, args.port_base)
     build = [sys.executable, "platforms/zynq7000/build.py", "--app", "host", "--credential-file", str(credential), "--board", args.board]
-    if args.fixture:
+    if fixture:
         build += ["--fixture"]
+    if args.engine_config:
+        build += ["--engine-config", str(args.engine_config)]
+    if args.fetch:
+        build += ["--fetch"]
     subprocess.run(build, cwd=ROOT, check=True)
     if args.ui:
         build_client = ["cargo", "test", "--locked", "-p", "shoopdaloop", "--no-default-features", "--bin", "shoopdaloop", "--no-run", "--message-format=json"]
@@ -52,15 +64,15 @@ def main():
     else:
         subprocess.run(["cargo", "build", "--locked", "-p", "shoop_host", "--no-default-features", "--example", "zynq_probe"], cwd=ROOT, check=True)
         client_command = [ROOT / "target/debug/examples/zynq_probe", profile]
-    elf = board.build_dir(ROOT) / ("host-fixture.elf" if args.fixture else "host.elf")
-    boots = 1 if args.fixture or args.ui or args.recovery else 2
+    elf = board.build_dir(ROOT) / ("host-fixture.elf" if fixture else "host.elf")
+    boots = 1 if fixture or args.ui or args.recovery else 2
     previous_nonce = None
     for boot in range(boots):
         run_directory = directory if boot == 0 else directory / "restart"
         run_directory.mkdir(parents=True, exist_ok=True)
         (run_directory / "result.json").write_text(json.dumps({"passed": False, "state": "running"}) + "\n")
         nonce = (2 if previous_nonce != 2 else 3) if boot else None
-        with Qemu(elf, run_directory, [(args.port_base, 15400), (args.port_base+1, 15401)], driver=args.fixture, boot_nonce=nonce, board=board) as emulator:
+        with Qemu(elf, run_directory, [(args.port_base, 15400), (args.port_base+1, 15401)], driver=fixture, boot_nonce=nonce, board=board) as emulator:
             previous_nonce = emulator.boot_nonce
             emulator.ready("SHOOP_HOST_READY", timeout=60)
             environment = dict(os.environ)
@@ -72,9 +84,14 @@ def main():
                 environment["SHOOP_ZYNQ_AUTHORITY_OUTPUT"] = str(directory / "authority.json")
             else:
                 environment["SHOOP_ZYNQ_PREVIOUS_AUTHORITY"] = str(directory / "authority.json")
-            if args.fixture:
+            if fixture:
                 environment["SHOOP_ZYNQ_DRIVER_SOCKET"] = str(emulator.driver_path)
                 environment["SHOOP_ZYNQ_SOAK_CYCLES"] = str(args.soak_cycles)
+            environment["SHOOP_ZYNQ_INPUT_ENABLED"] = str(int(policy["input_history"]["seconds"] > 0))
+            environment["SHOOP_ZYNQ_TRACKS"] = str(policy["tracks"])
+            environment["SHOOP_ZYNQ_LOOPS"] = str(policy["loops"])
+            if args.input:
+                environment["SHOOP_ZYNQ_INPUT"] = "1"
             if args.small_fixture:
                 if not args.fixture:
                     raise ValueError("--small-fixture requires --fixture")
@@ -93,7 +110,7 @@ def main():
                 raise RuntimeError("Host cleanup was not confirmed")
             if "SHOOP_DUMMY_MIDI_RESET packets=32" not in serial:
                 raise RuntimeError("Dummy sink did not acknowledge the complete MIDI reset")
-            if args.fixture:
+            if fixture:
                 for marker in ["SHOOP_FPU_PASS", "SHOOP_ALLOC_ATOMIC_PASS"]:
                     if marker not in serial:
                         raise RuntimeError("Missing runtime check: " + marker)
@@ -119,8 +136,8 @@ def main():
             if args.recovery:
                 assert uptime[-1] > 13_000, "recovery did not exercise the timer low-word carry"
             (run_directory / "result.json").write_text(json.dumps({
-                "kind": "fixture" if args.fixture else "ui" if args.ui else "recovery" if args.recovery else "production",
-                "passed": True,
+                "kind": "input" if args.input else "fixture" if args.fixture else "ui" if args.ui else "recovery" if args.recovery else "production",
+                "passed": True, "engine_policy": policy,
                 "large_media_gate": args.fixture and not args.small_fixture,
                 "full_pool_gate": args.fixture and not args.small_fixture,
                 **board.manifest(), "ram_bytes": board.ram, "boot_nonce": emulator.boot_nonce, "memory": memory, "c_memory": c_memory, "stacks": stacks}, indent=2) + "\n")

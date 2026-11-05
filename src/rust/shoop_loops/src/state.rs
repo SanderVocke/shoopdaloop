@@ -55,7 +55,7 @@ impl State {
     }
 
     pub fn advances(self) -> bool {
-        self.plays() || (self.mode == Mode::Replacing && self.content_length != 0)
+        self.plays() || (self.mode == Mode::Replacing && self.position < self.content_length)
     }
 
     pub fn plays(self) -> bool {

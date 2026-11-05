@@ -536,6 +536,22 @@ impl Shared {
                 if generation != job.source.generation || staged != Some(frame.checked_add(q)?) {
                     return Err(failure.unwrap_or(Error::StaleRevision));
                 }
+                if job.kind == indexed_midi::WriteKind::Fixed && job.position == job.frames {
+                    // Observe MIDI input while waiting for the next sync pulse.
+                    if let Some(writer) = job.writer {
+                        io.render().write_indexed_midi_window_tick(
+                            writer,
+                            midi_source.ok_or(Error::InvalidShape)?,
+                            frame,
+                            indexed_midi::WriteSpan {
+                                position: 0,
+                                offset: 0,
+                                frames: 0,
+                            },
+                        )?;
+                    }
+                    return Ok(());
+                }
                 let staged = if let Some(resource) = job.audio {
                     let channels = h.settings.audio.ok_or(Error::InvalidShape)?.channels as usize;
                     if job.kind == indexed_midi::WriteKind::Fixed {
@@ -630,7 +646,7 @@ impl Shared {
     }
     pub fn seek_live(&mut self, id: LiveWriterId, position: u64) -> Result<(), Error> {
         let job = self.live_job(id)?;
-        if !job.active || job.kind != indexed_midi::WriteKind::Fixed || position >= job.frames {
+        if !job.active || job.kind != indexed_midi::WriteKind::Fixed || position > job.frames {
             return Err(Error::InvalidFrame);
         }
         if job.position == position {

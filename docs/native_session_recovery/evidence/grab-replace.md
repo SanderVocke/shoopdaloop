@@ -190,13 +190,41 @@ shared-engine cases, the raw worklet/profiling contract and five trace-transport
 cases pass. The fresh binary also passes the archive's compiled-script rejection
 check. Final CI is required for the corrected source before closing P04/P05.
 
-The FreeRTOS firmware adapter retains its existing direct record/play scope;
-this native OS/browser application delivery does not add firmware input editing.
-It explicitly avoids desktop input-history reservations and negotiates those
-capabilities as unavailable. Its existing 32/128-MiB recording, 16/64-MiB media
-and 320/768-MiB arena contracts remain unchanged. Preparation now omits processor-
-only MIDI banks where processors and external dry/wet are unavailable; all
-admitted MIDI restoration and normal input/output capacities remain intact.
-Native allocation tests retain room for three simultaneous media owners. Actual
-QEMU recovery peaks at 355,649,560 bytes and ZedBoard boot/restart at 248,796,872;
-both return Rust heap usage to zero. Fresh final-source firmware CI is required.
+Firmware uses the same input preparation, transactions and capability negotiation.
+Its default resource policy can disable histories; an explicit engine policy can
+enable Grab and Replacing on every supported board. The checked-in
+`platforms/zynq7000/input-history.json` uses three tracks/twenty loops, thirty-second
+history and explicit shared reservations within the existing board arenas.
+`build.py --engine-config` records the resolved configuration in the image manifest.
+Enabled-policy acceptance passes on both board memory profiles: selected Grab
+exports exact stereo PCM/MIDI; two Replacing writers remain active across sync
+waits and wraps, erase old MIDI and exit on schedule; an adopted prefix finishes
+without its client; saved media reloads and can be replaced again; cleanup failure
+is reported and retry releases every Rust owner. Peaks are 335,593,044 bytes on
+the 1 GiB profile and 233,298,772 on ZedBoard. The
+[raw firmware record](grab-replace-firmware.json) retains policy, board contracts,
+source hashes, memory and stack evidence. Default-policy boot/restart also passes
+on both boards, verifies unavailable capabilities and returns all owners. Physical
+board execution remains outside
+this emulation evidence. USB CI also runs its real-transfer direct-HS case with
+the enabled policy, alongside the default-policy sixteen-port cases.
+
+This exposed the common engine's repeat-sync wait bug. The Replacing position now
+waits at the period end; admitted audio/MIDI owners survive until the sync pulse
+resumes them at zero. Zero-width MIDI window ticks preserve the input-frame fence
+through the wait. `synchronized_replacing_waits_between_passes_and_resumes_exact_audio_and_midi`
+failed before the fix and now compares every sample, packet and retained export
+for two writers through six periods. All 361 affected loop/engine tests pass; the
+existing opt-in release measurement is excluded from that debug suite.
+
+The Firefox CI input-stall failure was a missing harness action: Firefox now stalls
+the UI for two seconds and verifies `data-input-self-test=Passed`. Its full local
+workflow passes against the untouched packaged release at 44.1 kHz/Q128 with zero
+xruns. Newly staged native socket/shared-memory input canaries, the warnings-denied
+workspace build, formatting, attributes, tracing, parity and affected dependency
+gates also pass. Fresh final-source CI remains required before parity closure.
+
+Preparation omits processor-only MIDI banks where processors and external dry/wet
+are unavailable; admitted MIDI restoration and normal input/output capacities remain
+intact. Default-policy QEMU recovery peaks at 355,649,560 bytes and ZedBoard
+boot/restart at 248,796,872; both return Rust heap usage to zero.

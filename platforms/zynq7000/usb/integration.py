@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from qemu import Qemu, ROOT
 from remote_profile import write_profile
 from probe import attach, usb0_bus, usb_emulator
+import engine_policy
 
 
 def main():
@@ -25,11 +26,13 @@ def main():
     parser.add_argument('--port-base', type=int, default=28400)
     parser.add_argument('--devices', type=int, choices=[1, 4], default=1)
     parser.add_argument('--fetch', action='store_true')
+    parser.add_argument('--engine-config', type=Path)
     parser.add_argument('--hotplug-cycles', type=int, default=1)
     parser.add_argument('--fault', choices=['stall', 'nak'])
     parser.add_argument('--directory', type=Path)
     parser.add_argument('--corrupt', action='store_true', help='Require the independent content-mismatch assertion to fail')
     args = parser.parse_args()
+    policy = engine_policy.load(args.engine_config)
     if args.devices * args.cables > 16 or (args.devices > 1 and not args.tiers):
         parser.error('Multiple devices require a hub, with at most 16 cables in aggregate')
     if not 1 <= args.hotplug_cycles <= 100:
@@ -50,7 +53,8 @@ def main():
     profile = directory / 'profile.json'
     write_profile(profile, credential, args.port_base)
     subprocess.run([sys.executable, 'platforms/zynq7000/build.py', '--app', 'host', '--usb',
-                    '--credential-file', credential, *(['--fetch'] if args.fetch else [])], cwd=ROOT, check=True)
+                    '--credential-file', credential, *(['--fetch'] if args.fetch else []),
+                    *(['--engine-config', str(args.engine_config)] if args.engine_config else [])], cwd=ROOT, check=True)
     subprocess.run(['cargo', 'build', '--locked', '-p', 'shoop_host', '--no-default-features',
                     '--example', 'zynq_probe'], cwd=ROOT, check=True)
     emulator, manifest = usb_emulator()
@@ -62,6 +66,8 @@ def main():
                        SHOOP_ZYNQ_USB_CABLES=str(args.cables), SHOOP_ZYNQ_USB_DEVICES=str(args.devices),
                        SHOOP_ZYNQ_USB_CYCLES=str(args.hotplug_cycles),
                        SHOOP_ZYNQ_USB_CONTROL=str(directory / 'control.sock'))
+    environment.update(SHOOP_ZYNQ_INPUT_ENABLED=str(int(policy['input_history']['seconds'] > 0)),
+                       SHOOP_ZYNQ_TRACKS=str(policy['tracks']), SHOOP_ZYNQ_LOOPS=str(policy['loops']))
     if args.corrupt:
         environment['SHOOP_ZYNQ_USB_CORRUPT'] = '1'
     if args.fault:
@@ -233,7 +239,7 @@ def main():
                     assert actual.endswith(expected), f'Unrelated device {index} cable {cable} reset failed'
         result_path.write_text(json.dumps({'passed': True, 'gate': 'usb-' + args.fault if args.fault else 'usb-content-canary' if args.corrupt else 'usb-engine-integration',
             'cables': args.cables, 'devices': args.devices, 'hub_tiers': args.tiers, 'highspeed_capable': not args.full_speed,
-            'hotplug_cycles': args.hotplug_cycles,
+            'hotplug_cycles': args.hotplug_cycles, 'engine_policy': policy,
             'emulator': manifest, 'firmware': json.loads((ROOT / 'work/zynq/build/host-usb.json').read_text()),
             'metrics': metrics}, indent=2) + '\n')
         print(result_path)

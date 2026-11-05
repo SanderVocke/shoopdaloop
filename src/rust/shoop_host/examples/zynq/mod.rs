@@ -129,8 +129,30 @@ pub fn run() {
         report.requested.as_ref().unwrap().pools.loop_memory_mb,
         recording_mib
     );
+    if let Ok(enabled) = std::env::var("SHOOP_ZYNQ_INPUT_ENABLED") {
+        for capability in [
+            shoop_app_api::BackendCapability::Grab,
+            shoop_app_api::BackendCapability::ReplacingMode,
+        ] {
+            assert_eq!(
+                client.snapshot().unwrap().capabilities.supports(capability),
+                enabled == "1"
+            );
+        }
+    }
+    let settings = &report.requested.as_ref().unwrap().pools;
+    for (name, actual) in [
+        ("SHOOP_ZYNQ_TRACKS", settings.tracks),
+        ("SHOOP_ZYNQ_LOOPS", settings.loops),
+    ] {
+        if let Ok(expected) = std::env::var(name) {
+            assert_eq!(actual, expected.parse::<u32>().unwrap());
+        }
+    }
     println!("Management settings confirmed");
-    if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {
+    if std::env::var_os("SHOOP_ZYNQ_INPUT").is_some() {
+        fixture::run_input(&profile, &mut client, &mut connection);
+    } else if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {
         fixture::run(&mut client, &mut connection);
     }
     let mut usb = std::env::var_os("SHOOP_ZYNQ_USB_SOCKET")
