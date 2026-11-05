@@ -286,16 +286,24 @@ fn legacy_composite_migration_uses_saved_lengths_and_unsupported_modes_refuse_wh
         .as_mut()
         .unwrap()
         .kind = CompositeKindDocument::Script;
-    for event in &mut bundle.document.track_groups[1].tracks[0].loops[1]
-        .composite
-        .as_mut()
-        .unwrap()
-        .instances
-    {
-        event.mode = Some("replacing".into());
+    for (mode, diagnostic) in [
+        ("replacing", "replacing composite events"),
+        ("playing_dry_through_wet", "dry/wet composite events"),
+        ("recording_dry_into_wet", "dry/wet composite events"),
+    ] {
+        for event in &mut bundle.document.track_groups[1].tracks[0].loops[1]
+            .composite
+            .as_mut()
+            .unwrap()
+            .instances
+        {
+            event.mode = Some(mode.into());
+        }
+        let error = document::from_bundle(bundle.clone())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(diagnostic), "{mode}: {error}");
     }
-    let error = document::from_bundle(bundle).unwrap_err().to_string();
-    assert!(error.contains("replacing composite events"), "{error}");
 }
 
 #[shoop_test]

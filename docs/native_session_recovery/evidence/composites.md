@@ -82,6 +82,53 @@ evidence that the new contract uses source ticks or a client fallback.
 Full P03 is still gated on dependent modes and the final integrated-head platform
 matrix/review. No narrower closure has been approved.
 
+## Reference surface and dependency integration
+
+| Retained surface | Production route and disposition |
+| --- | --- |
+| Convert an empty primitive or create a standalone composite | Service conversion and raw backend creation use generation fences and the same prepared plan receiver; initial Play waits for its accepted plan. |
+| Serial/parallel append and nesting | Unchanged Lua `loop_compose_add_to_end` and UI intents enter service documents; parent preparation can use a child's accepted pending duration. |
+| Positioned insertion, group move/copy/delete, natural/forced duration | Editor widget gestures emit stable event IDs; service edits retain relative positions and frozen geometry. Natural child changes create new versions. |
+| Kind/event modes, Play/Stop/iteration seek and child control | Service prevalidates complete target sets. Frame snapshots and arbitration execute in the resolver; the outer Play/Stop restriction remains. |
+| Live edits, cancellation and structural lifecycle | Service-owned candidate/results and adapter owning swaps preserve working plans; Clear/removal/New Session/shutdown reclaim references and report stopped ancestors. |
+| Auto-arm, files and accepted-work recovery | Render demand, confirmed captures, frozen timing, fresh-ID replacement and socket authority recovery replace client-local execution. VMs remain client-local. |
+| Source tick/elapsed fallback behavior | Deliberately replaced by the agreed frame timeline and shared launch/repeat policy, with completed nested one-pass reentry and unfinished nested phase preservation. |
+| Replacing/dry-wet event modes and corresponding tracks/processors | Still unavailable; full parity cannot close. Atomic edit/mixed-control refusal and whole-file diagnostics cover each mode until actual execution support is integrated. |
+
+Readiness checked after `dc313d59`, against fixed-runtime target `a192b0ce`:
+
+- [P04/P05 PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940), branch
+  `feat/finish-grab-replace` at `0d2f525f`, explicitly remains unfinished. Its
+  current work covers Grab policy, storage sizing/ownership and indexing proofs;
+  its status still says normal application Replacing is unavailable. Its loop
+  mode representation has not supplied an executable replacing mode for P03.
+- No P06/P07 production implementation branch was published among the inspected
+  remote heads/open PRs. The current adapter accepts direct tracks and refuses
+  dry/wet track construction and track FX. `DryWetModes`, `DryWetTracks` and
+  `TrackFx` cannot be inferred from composite capability publication.
+- Once supplied, integrate real mode semantics through the loop/compiler and RT
+  representations, adapter conversion, service control/event admission, monitoring
+  and persistence requirements. Preserve the distinct recorded/playback roles and
+  original native/browser processor scope. Do not translate the mode tags to core
+  playback/recording or enable capabilities from encoding alone.
+
+`unavailable_dependent_modes_refuse_edits_and_mixed_transport_while_the_active_plan_keeps_playing`
+checks typed and encoded commands for Replacing, PlayingDryThroughWet and
+RecordingDryIntoWet. Codec legacy-document checks require the corresponding P05
+or P06 diagnostic for all three modes. These are safety gates, not evidence of
+restored execution.
+
+The first core CI matrix found a macOS canary assertion that incorrectly froze an
+end wait across attachment. Its follow-up permits the source clock to continue,
+requires unchanged plan identity and nondecreasing completed passes, then observes
+a repeat wait before testing source-stop release. The socket canary now also saves,
+loads fresh stopped IDs and resaves after live source growth and recovered editing.
+The prior full matrix is not represented as green at `dc313d59`.
+Follow-up local verification passed the warning-denying full-feature build and
+native **2,839 passed / 7 skipped**, app **60** / codec **21** in Node and Chrome,
+and the expanded actual socket workflow. Production runtime code is unchanged
+by this canary/dependency-audit follow-up; its fresh platform matrix is pending.
+
 ## Reproduction and limits
 
 Use the repository build/test setup and deny Rust warnings. Native full-feature

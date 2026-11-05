@@ -611,6 +611,122 @@ fn editor_group_copy_delete_duration_and_modes_keep_stable_event_identity_and_re
 }
 
 #[shoop_test]
+fn unavailable_dependent_modes_refuse_edits_and_mixed_transport_while_the_active_plan_keeps_playing(
+) {
+    for encoded in [false, true] {
+        let (mut f, mut client, _, loops) = setup_composites(encoded);
+        let target = loops[2];
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(target, vec![loops[0]], false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let event = f.service.snapshot().composites[0]
+            .active
+            .as_ref()
+            .unwrap()
+            .document
+            .instances[0]
+            .instance_id;
+        for value in [
+            arrangement::Edit::Kind {
+                target,
+                kind: CompositeKind::Script,
+            },
+            arrangement::Edit::Duration {
+                target,
+                event,
+                n_cycles: Some(10_000),
+            },
+        ] {
+            assert!(matches!(
+                command(
+                    &mut f.service,
+                    &mut client,
+                    ConnectionId(1),
+                    Command::Composite(value)
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                transition(vec![target], LoopMode::Playing)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let before = f.service.snapshot();
+        let active = before.composites[0].active.clone();
+        let frame = before.composites[0].position_frames;
+        for mode in [
+            LoopMode::Replacing,
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+        ] {
+            for value in [
+                Command::Composite(arrangement::Edit::Mode {
+                    target,
+                    event,
+                    mode,
+                }),
+                transition(vec![loops[1], target], mode),
+            ] {
+                let message = client.command(value, None).unwrap();
+                let message = if encoded {
+                    let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+                    let used = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+                    let WireMessage::Client(message) = codec::decode(&bytes[..used]).unwrap()
+                    else {
+                        panic!()
+                    };
+                    message
+                } else {
+                    message
+                };
+                let ClientMessage::Submit { operation, .. } = &message else {
+                    panic!()
+                };
+                let operation = *operation;
+                f.service.handle(ConnectionId(1), message).unwrap();
+                let outcome = complete(
+                    &mut f.service,
+                    &mut client,
+                    ConnectionId(1),
+                    operation,
+                    encoded,
+                );
+                assert!(
+                    matches!(
+                        outcome,
+                        Outcome::Refused {
+                            reason: Refusal::Unsupported,
+                            ..
+                        }
+                    ),
+                    "{mode:?}: {outcome:?}"
+                );
+                let after = f.service.snapshot();
+                let view = &after.composites[0];
+                assert_eq!(view.active, active);
+                assert!(view.pending.is_none() && view.working.is_none());
+                assert_eq!(view.mode, LoopMode::Playing);
+                assert_eq!(after.tracks[1].loops[1].mode, LoopMode::Stopped);
+                assert_eq!(after.tracks[1].id, before.tracks[1].id);
+                f.service.tick(STEP);
+            }
+        }
+        assert!(f.service.snapshot().composites[0].position_frames > frame);
+    }
+}
+
+#[shoop_test]
 fn child_commands_do_not_move_parent_frames_and_new_authored_actions_still_apply() {
     let (mut f, mut client, _, loops) = setup_composites(true);
     let target = loops[2];

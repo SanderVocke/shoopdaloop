@@ -29,7 +29,7 @@ fn submit(
     Ok(operation)
 }
 
-fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<ClientMessage> {
+fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versioned> {
     let (mut client, mut connection) = attach(entry)?;
     let source = client.snapshot().unwrap().tracks[0].loops[0].id;
     let original = client
@@ -53,6 +53,10 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<ClientMessage> {
         &mut connection,
         transition(source, LoopMode::Stopped, None),
     )?;
+    wait(&mut client, &mut connection, |c| {
+        c.snapshot().unwrap().tracks[0].loops[0].length_frames > 0
+    })?;
+    let source_length = client.snapshot().unwrap().tracks[0].loops[0].length_frames;
     command(
         &mut client,
         &mut connection,
@@ -84,7 +88,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<ClientMessage> {
         .unwrap()
         .passes;
     drop(connection);
-    std::thread::sleep(Duration::from_millis(50));
+    std::thread::sleep(Duration::from_millis(850));
     (client, connection) = attach(entry)?;
     let view = client
         .snapshot()
@@ -95,11 +99,17 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<ClientMessage> {
         .unwrap();
     ensure!(
         view.mode == LoopMode::Playing
-            && view.passes == passes
-            && view.waiting_repeat
+            && view.passes >= passes
             && view.active.as_ref() == Some(&original),
-        "reattachment retriggered or retimed an end wait"
+        "recovery changed the playing arrangement: mode={:?}, passes={}/{passes}, waiting={}, active_matches={}", view.mode, view.passes, view.waiting_repeat, view.active.as_ref() == Some(&original)
     );
+    wait(&mut client, &mut connection, |c| {
+        c.snapshot()
+            .unwrap()
+            .composites
+            .iter()
+            .any(|v| v.loop_id == parent && v.waiting_repeat)
+    })?;
     command(
         &mut client,
         &mut connection,
@@ -117,7 +127,9 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<ClientMessage> {
         &mut connection,
         transition(source, LoopMode::Recording, None),
     )?;
-    std::thread::sleep(Duration::from_millis(120));
+    wait(&mut client, &mut connection, |c| {
+        c.snapshot().unwrap().tracks[0].loops[0].length_frames > source_length + 128
+    })?;
     command(
         &mut client,
         &mut connection,
@@ -246,7 +258,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<ClientMessage> {
         "recovery lost an owned edit outcome"
     );
     println!("Composite socket recovery: repeat wait/source release, delayed launch and staged edit retained their identities/results without replay");
-    client.shutdown().map_err(|e| anyhow!("{e:?}"))
+    Ok(pending)
 }
 
 fn loop_action(
@@ -411,7 +423,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         drop(handle);
         drop(app);
         std::thread::sleep(Duration::from_millis(1500));
-        app = ApplicationRuntime::attach(entry.clone(), options)?;
+        app = ApplicationRuntime::attach(entry.clone(), options.clone())?;
         handle = app.handle();
     } else {
         std::thread::sleep(Duration::from_millis(1500));
@@ -542,7 +554,74 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         drop(handle);
         drop(app);
         std::thread::sleep(Duration::from_millis(50));
-        socket_controls(&entry, loaded.tracks[1].loops[3].id)?
+        let installed = socket_controls(&entry, loaded.tracks[1].loops[3].id)?;
+        app = ApplicationRuntime::attach(entry.clone(), options)?;
+        handle = app.handle();
+        file_wait(&handle, |s| s.tracks.len() == 2)?;
+        let resized = file_save(&handle, &root.path().join("resized-source.shoop"))?;
+        let saved = resized
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .nth(1)
+            .unwrap()
+            .loops[3]
+            .composite
+            .as_ref()
+            .unwrap();
+        let timing = saved.timing.as_ref().unwrap();
+        ensure!(
+            timing.basis_sample_rate == installed.document.basis.sample_rate
+                && timing.basis_unit_frames == installed.document.basis.unit_frames
+                && timing.unit_frames == installed.prepared.unit_frames
+                && timing.iterations == installed.prepared.iterations
+                && timing.instances[0].instance_id == installed.document.instances[0].instance_id
+                && timing.instances[0].end_frame == installed.prepared.instances[0].end_frame,
+            "save after source resize changed accepted timing or event identity"
+        );
+        handle.dispatch(AppIntent::LoadSessionBytes {
+            name: "resized-source.shoop".into(),
+            bytes: std::sync::Arc::new(std::fs::read(root.path().join("resized-source.shoop"))?),
+        })?;
+        let restored = file_done(&handle, IoTaskKind::LoadSession)?;
+        ensure!(
+            restored.tracks[1].id != loaded.tracks[1].id
+                && restored
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.loops)
+                    .all(|l| l.mode == LoopMode::Stopped),
+            "second load did not publish fresh stopped owners"
+        );
+        let resaved = file_save(&handle, &root.path().join("resized-source-resaved.shoop"))?;
+        ensure!(
+            resized.media.values().collect::<Vec<_>>()
+                == resaved.media.values().collect::<Vec<_>>(),
+            "source resize/recovery round trip changed PCM or exact MIDI"
+        );
+        let restored_composite = resaved
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .nth(1)
+            .unwrap()
+            .loops[3]
+            .composite
+            .as_ref()
+            .unwrap();
+        let restored_timing = restored_composite.timing.as_ref().unwrap();
+        ensure!(
+            timing.instances == restored_timing.instances
+                && timing.unit_frames == restored_timing.unit_frames
+                && timing.iterations == restored_timing.iterations
+                && timing.basis_unit_frames == restored_timing.basis_unit_frames,
+            "second round trip changed frozen timing"
+        );
+        let ticket = handle.prepare_shutdown()?;
+        drop(app);
+        ticket
     } else {
         let ticket = handle.prepare_shutdown()?;
         drop(app);

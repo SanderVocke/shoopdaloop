@@ -480,7 +480,7 @@ the client is absent; check state and audible/rendered output, not only enabled 
 - [ ] Validate nested explicit/regular combinations, mixed selections, event-mode
   edits, capture/monitoring, child independence, persistence and recovery for every
   restored dependent mode and its original platform scope.
-- [ ] Audit the complete master/reference composite surface against this plan's
+- [x] Audit the complete master/reference composite surface against this plan's
   intentional timing changes. Record remaining dependencies as partial scope;
   keep P03 OPEN until this gate is satisfied or narrower closure is user-approved.
 
@@ -493,11 +493,11 @@ is advertised solely because its mode tag can be encoded.
 - [ ] Run the complete regression gates below and final-head native platform matrix,
   Node/Wasm suites, actual browser/worklet scenarios and selected ownership/capture
   Miri cases. Record exact source pins, commands, profiles, capacities and limits.
-- [ ] Run a production scenario that records/imports children, authors a nested
+- [x] Run a production scenario that records/imports children, authors a nested
   regular and explicit recording arrangement through UI/Lua, resizes/stops/restarts
   the source, waits/repeats, edits live, disconnects/reattaches the UI, saves, loads
   fresh IDs and repeats. Check media and monitoring as well as all projections.
-- [ ] Add implementation/acceptance links to P03, P01/P02 and relevant dependency
+- [x] Add implementation/acceptance links to P03, P01/P02 and relevant dependency
   rows; update current architecture and public loop/program/host guides. Create
   `docs/native_session_recovery/evidence/composites.md` with criterion-to-test mapping
   and explicit differences from the old tick/fallback behavior. Reconcile capability
@@ -762,3 +762,18 @@ and retain the normal/full test groups required before behavioral commits/pushes
   public-core working tree after `b40ec30b`, not the unmodified report HEAD.
   Full P03 remains OPEN for Stage 9 dependent-mode integration and Stage 10 final
   integrated-head matrix/review. No narrower closure has been approved.
+
+- Public core committed/pushed as `dc313d59`; PR #941 remains draft. Stage 9 audit
+  identifies unfinished P04/P05 PR #940 (`feat/finish-grab-replace`, `0d2f525f`) and
+  no published P06/P07 implementation to integrate. Required execution modes and
+  topologies are still unavailable; this is an integration blocker, not narrower
+  approved closure. Per-mode edit/mixed-control and whole-file refusal checks
+  cover all three missing modes without touching the active playing plan.
+- Its first matrix exposed an over-strict macOS probe assertion: attachment must
+  allow natural source boundaries and pass progression. The follow-up preserves
+  active plan identity/pass history, reobserves the wait and tests source release.
+  The production socket scenario additionally grows the source while playing and
+  saves/loads/resaves after recovered editing, preserving prepared timing and media.
+  Follow-up validation passed: warning-denying workspace build, native **2,839
+  passed / 7 skipped**, app/codec **81 passed** in native, Node and Chrome, and
+  the expanded production socket canary. The fresh platform matrix remains.
