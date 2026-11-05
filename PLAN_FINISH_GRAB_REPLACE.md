@@ -324,6 +324,19 @@ reattachment. Physical-device deadline certification is not implied by CI timing
 
 ## Development verification strategy
 
+The continuous MIDI core now stages each input packet once, shares immutable
+bodies between users and commits a complete semantic root after each successful
+fixed or growing write. Whole-tick metadata preflight precedes root changes;
+positive empty ticks erase originals, logical-zero state follows the input cut,
+and exit consumes the complete view without suffix repair. Bounded admission
+checks existing quantum density/bytes. Two focused Q=32 native tests cover
+48 ticks/twelve wraps, two replacing users plus a growing prefix, full/equal-time
+packets, old/intermediate exports, complete state, pressure refusal and exit
+without write space. Required index work is accounted. All sixteen focused
+writer/packet/index tests pass with warnings denied. Source-history/coordinator
+publication, reserved production credits and the application stack remain open;
+these core tests do not finish F3 or enable P04/P05.
+
 The first targeted native pass after adopting this strategy passed four packet
 slab tests and ten complete-query/tree/category tests, with warnings denied.
 Tracing inventory and test-attribute checks passed. It includes the type-annotation

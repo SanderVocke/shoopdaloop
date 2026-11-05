@@ -30,6 +30,15 @@ impl Cut {
     pub(crate) fn includes(self, point: Point) -> bool {
         Self::at(point) <= self
     }
+    pub(crate) fn shifted(self, frames: u64) -> Option<Self> {
+        Some(Self {
+            point: Point {
+                frame: Frame(self.point.frame.0.checked_add(frames)?),
+                order: self.point.order,
+            },
+            inclusive: self.inclusive,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

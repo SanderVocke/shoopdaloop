@@ -15,6 +15,9 @@ type Link = Option<NonZeroU32>;
 pub(crate) trait Lookup<V> {
     fn point(&self, value: V) -> Point;
     fn event(&self, value: V) -> Option<Event>;
+    fn packet_bytes(&self, _: V) -> usize {
+        0
+    }
 }
 impl Lookup<Event> for () {
     fn point(&self, value: Event) -> Point {
@@ -39,6 +42,31 @@ pub(crate) trait Summary<V>: Copy + Default {
 impl<V> Summary<V> for () {
     fn value(_: V, _: &impl Lookup<V>) -> Self {}
     fn then(self, _: Self) -> Self {}
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Totals {
+    pub(crate) events: usize,
+    pub(crate) bytes: usize,
+    pub(crate) overflow: bool,
+}
+impl<V> Summary<V> for Totals {
+    fn value(value: V, lookup: &impl Lookup<V>) -> Self {
+        let bytes = lookup.packet_bytes(value).checked_add(12);
+        Self {
+            events: 1,
+            bytes: bytes.unwrap_or(usize::MAX),
+            overflow: bytes.is_none(),
+        }
+    }
+    fn then(self, later: Self) -> Self {
+        let events = self.events.checked_add(later.events);
+        let bytes = self.bytes.checked_add(later.bytes);
+        Self {
+            events: events.unwrap_or(usize::MAX),
+            bytes: bytes.unwrap_or(usize::MAX),
+            overflow: self.overflow || later.overflow || events.is_none() || bytes.is_none(),
+        }
+    }
 }
 impl<V> Summary<V> for HoldSummary {
     fn value(value: V, lookup: &impl Lookup<V>) -> Self {

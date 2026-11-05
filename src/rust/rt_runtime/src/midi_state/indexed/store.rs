@@ -73,7 +73,7 @@ impl Config {
             })
             .ok_or(Error::Capacity)?;
         for more in [
-            Pool::<V, ()>::prepared_bytes(self.packet_nodes)?,
+            Pool::<V, Totals>::prepared_bytes(self.packet_nodes)?,
             Pool::<V, ()>::prepared_bytes(self.scalar_nodes)?,
             Pool::<V, HoldSummary>::prepared_bytes(self.hold_nodes)?,
             Pool::<V, SostenutoIndex<V>>::prepared_bytes(self.sostenuto_nodes)?,
@@ -141,6 +141,33 @@ pub(crate) struct Work {
     pub(crate) root_retains: usize,
     pub(crate) retired_tables: usize,
     pub(crate) retired_categories: usize,
+    pub(crate) counter_overflow: bool,
+}
+impl Work {
+    fn add(
+        &mut self,
+        tables: usize,
+        categories: usize,
+        roots: usize,
+        retired_tables: usize,
+        retired_categories: usize,
+    ) {
+        for (counter, amount) in [
+            (&mut self.table_copies, tables),
+            (&mut self.category_copies, categories),
+            (&mut self.root_retains, roots),
+            (&mut self.retired_tables, retired_tables),
+            (&mut self.retired_categories, retired_categories),
+        ] {
+            match counter.checked_add(amount) {
+                Some(value) => *counter = value,
+                None => {
+                    *counter = usize::MAX;
+                    self.counter_overflow = true;
+                }
+            }
+        }
+    }
 }
 pub(crate) struct Store<V: Copy> {
     scope: u32,
@@ -152,7 +179,7 @@ pub(crate) struct Store<V: Copy> {
     pages: Vec<Option<CategoryPage>>,
     free_pages: Vec<NonZeroU32>,
     retired_pages: Vec<NonZeroU32>,
-    packets: Pool<V, ()>,
+    packets: Pool<V, Totals>,
     scalars: Pool<V, ()>,
     holds: Pool<V, HoldSummary>,
     sostenuto: Pool<V, SostenutoIndex<V>>,
@@ -308,7 +335,7 @@ impl<V: Copy> Store<V> {
         }
         .expect("preflighted root credit");
         let mut work = self.work.get();
-        work.root_retains += 1;
+        work.add(0, 0, 1, 0, 0);
         self.work.set(work);
     }
     fn release_root(&mut self, kind: Kind, root: Root) {
@@ -436,7 +463,7 @@ impl<V: Copy> Store<V> {
         let id = self.free_tables.pop().expect("preflighted version credit");
         self.tables[slot(id)].table = Some(table);
         let mut work = self.work.get();
-        work.table_copies += 1;
+        work.add(1, 0, 0, 0, 0);
         self.work.set(work);
         self.version(id)
     }
@@ -454,7 +481,7 @@ impl<V: Copy> Store<V> {
             }
             self.pages[slot(id)].as_mut().unwrap().references -= 1;
             let mut work = self.work.get();
-            work.category_copies += 1;
+            work.add(0, 1, 0, 0, 0);
             self.work.set(work);
             roots
         } else {
@@ -548,6 +575,151 @@ impl<V: Copy> Store<V> {
             _ => Ok(version),
         }
     }
+    fn preflight_records(
+        &self,
+        version: Version,
+        removals: &[V],
+        insertions: &[V],
+        values: &impl Lookup<V>,
+    ) -> Result<(), Error>
+    where
+        V: Eq,
+    {
+        let table = self.table(version)?;
+        for records in [removals, insertions] {
+            if records
+                .windows(2)
+                .any(|pair| values.point(pair[0]) >= values.point(pair[1]))
+            {
+                return Err(Error::InvalidEvent);
+            }
+        }
+        for &value in removals {
+            if self.last(version, Cut::at(values.point(value)), values)? != Some(value) {
+                return Err(Error::InvalidEvent);
+            }
+        }
+        for &value in insertions {
+            let point = values.point(value);
+            if self
+                .last(version, Cut::at(point), values)?
+                .is_some_and(|old| values.point(old) == point)
+                && removals
+                    .binary_search_by_key(&point, |old| values.point(*old))
+                    .is_err()
+            {
+                return Err(Error::InvalidEvent);
+            }
+        }
+        let shared = table.references > 1;
+        if shared && self.free_tables.is_empty() {
+            return Err(Error::Capacity);
+        }
+        let upper_count = self
+            .len(version)?
+            .checked_add(insertions.len())
+            .and_then(|n| n.checked_add(1))
+            .ok_or(Error::Capacity)?;
+        let height = 2 * upper_count.ilog2() as usize + 2;
+        let mut nodes = [0usize; 4];
+        let mut roots = [0usize; 4];
+        let mut affected = [false; LEAVES];
+        for (records, inserting) in [(removals, false), (insertions, true)] {
+            for &value in records {
+                let credit = if inserting {
+                    height + 1
+                } else {
+                    4 * (height + 1) + 8
+                };
+                nodes[0] = nodes[0].checked_add(credit).ok_or(Error::Capacity)?;
+                roots[0] += usize::from(inserting);
+                for key in values
+                    .event(value)
+                    .map_or([None; 3], Event::keys)
+                    .into_iter()
+                    .flatten()
+                {
+                    let key = key.slot();
+                    let kind = Kind::category(key).index();
+                    affected[key / LEAF] = true;
+                    nodes[kind] = nodes[kind].checked_add(credit).ok_or(Error::Capacity)?;
+                    roots[kind] += usize::from(inserting);
+                }
+            }
+        }
+        roots[0] += usize::from(shared && self.root_len(Kind::Packet, table.packets) > 0);
+        let mut pages = 0;
+        for (page, affected) in affected.into_iter().enumerate() {
+            if !affected {
+                continue;
+            }
+            let old = table.pages[page].map(|id| self.pages[slot(id)].unwrap());
+            if old.is_none_or(|old| shared || old.references > 1) {
+                pages += 1;
+                if let Some(old) = old {
+                    for (offset, root) in old.roots.into_iter().enumerate() {
+                        let kind = Kind::category(page * LEAF + offset);
+                        roots[kind.index()] += usize::from(self.root_len(kind, root) > 0);
+                    }
+                }
+            }
+        }
+        let available_nodes = [
+            self.packets.free_nodes(),
+            self.scalars.free_nodes(),
+            self.holds.free_nodes(),
+            self.sostenuto.free_nodes(),
+        ];
+        let available_roots = [
+            self.packets.available_roots(),
+            self.scalars.available_roots(),
+            self.holds.available_roots(),
+            self.sostenuto.available_roots(),
+        ];
+        if pages > self.free_pages.len()
+            || (0..4).any(|i| nodes[i] > available_nodes[i] || roots[i] > available_roots[i])
+        {
+            return Err(Error::Capacity);
+        }
+        Ok(())
+    }
+    /// Both lists are strictly ordered. Preflight reserves the worst path work for
+    /// the whole edit; no intermediate version escapes and refusal preserves it.
+    pub(crate) fn replace_records(
+        &mut self,
+        mut version: Version,
+        removals: &[V],
+        insertions: &[V],
+        values: &mut impl Values<V>,
+    ) -> Result<Version, Error>
+    where
+        V: Eq,
+    {
+        self.preflight_records(version, removals, insertions, values)?;
+        for (records, inserting) in [(removals, false), (insertions, true)] {
+            for &value in records {
+                version = self
+                    .edit(version, value, inserting, values)
+                    .expect("preflighted whole record batch");
+            }
+        }
+        Ok(version)
+    }
+    pub(crate) fn totals(
+        &self,
+        version: Version,
+        after: Cut,
+        cut: Cut,
+        values: &impl Lookup<V>,
+    ) -> Result<Totals, Error> {
+        let totals = self
+            .packets
+            .interval(self.table(version)?.packets, after, cut, values)?;
+        if totals.overflow {
+            return Err(Error::Capacity);
+        }
+        Ok(totals)
+    }
     pub(crate) fn last(
         &self,
         version: Version,
@@ -568,6 +740,9 @@ impl<V: Copy> Store<V> {
     }
     pub(crate) fn len(&self, version: Version) -> Result<usize, Error> {
         self.packets.len(self.table(version)?.packets)
+    }
+    pub(crate) fn leases(&self) -> usize {
+        self.leases
     }
     pub(crate) fn timeline<'a, L: Lookup<V>>(
         &'a self,
@@ -624,7 +799,7 @@ impl<V: Copy> Store<V> {
                                 self.free_tables.push(id);
                             }
                             let mut work = self.work.get();
-                            work.retired_tables += 1;
+                            work.add(0, 0, 0, 1, 0);
                             self.work.set(work);
                             progress = true;
                         }
@@ -640,7 +815,7 @@ impl<V: Copy> Store<V> {
                             }
                             self.free_pages.push(id);
                             let mut work = self.work.get();
-                            work.retired_categories += 1;
+                            work.add(0, 0, 0, 0, 1);
                             self.work.set(work);
                             progress = true;
                         }

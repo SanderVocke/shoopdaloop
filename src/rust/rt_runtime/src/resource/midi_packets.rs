@@ -207,6 +207,13 @@ impl Packets {
     pub fn available_records(&self) -> usize {
         self.free_records.len()
     }
+    pub fn fork_record(&mut self, value: NonZeroU32, point: Point) -> Result<RecordId, Error> {
+        let body = self.records[slot(value)]
+            .value
+            .ok_or(Error::InvalidId)?
+            .body;
+        self.make_record(self.body_id(body), point)
+    }
     pub fn available_bodies(&self) -> usize {
         self.free_bodies.len()
     }
@@ -518,6 +525,9 @@ impl Packets {
     }
 }
 impl Lookup<NonZeroU32> for Packets {
+    fn packet_bytes(&self, value: NonZeroU32) -> usize {
+        self.packet_len(value)
+    }
     fn point(&self, value: NonZeroU32) -> Point {
         self.records[slot(value)]
             .value

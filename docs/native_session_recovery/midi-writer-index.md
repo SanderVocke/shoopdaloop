@@ -55,7 +55,14 @@ writer. Packed append-only slabs now preserve full packets across callbacks and
 page boundaries. Compact ordered records independently retain their shared bodies;
 node, record, body and page retirement are incremental. Targeted heap-guarded tests
 cover short-message packing, spanning SysEx, immutable versions, pressure refusal
-and complete reclamation. No host preparation or live writer uses these slabs yet.
+and complete reclamation. The continuous writer core now uses the slabs; normal
+host preparation does not. It shares staged bodies across independent fixed/growing
+writers and preflights the whole ordered edit before mutation. Each successful
+tick has a complete index, including empty erasure and logical-zero state; exit
+needs no suffix finalization. Native tests cover twelve wraps, a growing prefix,
+old/intermediate exports, complete state/order and pressure refusal. Production
+source capture, shared reservation policy, cross-media/graph publication and the
+public application path still need integration and CI acceptance.
 Sostenuto aggregates can store compact record IDs and map only their result
 markers to ordered points. Subtree ownership keeps those records alive without
 repeating full timestamps in every aggregate.
