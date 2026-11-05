@@ -12,11 +12,27 @@ use core::{
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 type Link = Option<NonZeroU32>;
 
+pub(crate) fn maximum_height(nodes: usize) -> usize {
+    let (mut previous, mut minimum, mut height) = (0usize, 1usize, 0usize);
+    while minimum <= nodes {
+        let Some(next) = minimum.checked_add(previous).and_then(|n| n.checked_add(1)) else {
+            return height + 1;
+        };
+        previous = minimum;
+        minimum = next;
+        height += 1;
+    }
+    height
+}
+
 pub(crate) trait Lookup<V> {
     fn point(&self, value: V) -> Point;
     fn event(&self, value: V) -> Option<Event>;
     fn packet_bytes(&self, _: V) -> usize {
         0
+    }
+    fn packet_pages(&self, _: V) -> (usize, Option<NonZeroU32>, Option<NonZeroU32>) {
+        (0, None, None)
     }
 }
 impl Lookup<Event> for () {
@@ -47,12 +63,19 @@ impl<V> Summary<V> for () {
 pub(crate) struct Totals {
     pub(crate) events: usize,
     pub(crate) bytes: usize,
+    pub(crate) pages: usize,
+    first_page: Option<NonZeroU32>,
+    last_page: Option<NonZeroU32>,
     pub(crate) overflow: bool,
 }
-impl<V> Summary<V> for Totals {
+impl<V: Copy> Summary<V> for Totals {
     fn value(value: V, lookup: &impl Lookup<V>) -> Self {
         let bytes = lookup.packet_bytes(value).checked_add(12);
+        let (pages, first_page, last_page) = lookup.packet_pages(value);
         Self {
+            pages,
+            first_page,
+            last_page,
             events: 1,
             bytes: bytes.unwrap_or(usize::MAX),
             overflow: bytes.is_none(),
@@ -61,10 +84,22 @@ impl<V> Summary<V> for Totals {
     fn then(self, later: Self) -> Self {
         let events = self.events.checked_add(later.events);
         let bytes = self.bytes.checked_add(later.bytes);
+        let shared = usize::from(self.last_page.is_some() && self.last_page == later.first_page);
+        let pages = self
+            .pages
+            .checked_add(later.pages)
+            .and_then(|n| n.checked_sub(shared));
         Self {
+            pages: pages.unwrap_or(usize::MAX),
+            first_page: self.first_page.or(later.first_page),
+            last_page: later.last_page.or(self.last_page),
             events: events.unwrap_or(usize::MAX),
             bytes: bytes.unwrap_or(usize::MAX),
-            overflow: self.overflow || later.overflow || events.is_none() || bytes.is_none(),
+            overflow: self.overflow
+                || later.overflow
+                || events.is_none()
+                || bytes.is_none()
+                || pages.is_none(),
         }
     }
 }
@@ -200,6 +235,9 @@ impl<V: Copy, S: Summary<V>> Pool<V, S> {
             link: None,
             generation: 0,
         }
+    }
+    pub(crate) fn has_retired(&self) -> bool {
+        !self.retired.is_empty()
     }
     pub(crate) fn free_nodes(&self) -> usize {
         self.free.len()

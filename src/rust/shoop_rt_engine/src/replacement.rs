@@ -23,6 +23,8 @@ pub(crate) enum State {
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Initial {
     pub frames: u64,
+    pub dry_audio: Option<u64>,
+    pub recorded_state: Option<shoop_rt_protocol::RecordedProcessorState>,
     pub audio: Option<u64>,
     pub midi: Option<u64>,
 }
@@ -33,22 +35,32 @@ pub(crate) struct Replacement {
     base_revision: u64,
     pub candidate: Model,
     pub initial: Box<[Option<Initial>]>,
+    pub processor_states: Box<[Option<shoop_rt_protocol::processors::Control>]>,
 }
 impl Replacement {
-    pub(crate) fn new(strips: usize, loops: usize, buses: usize) -> Self {
+    pub(crate) fn new(strips: usize, loops: usize, buses: usize, program_segments: usize) -> Self {
         Self {
             id: None,
             state: State::Empty,
             last_id: 0,
             base_revision: 0,
-            candidate: Model::new(strips, loops, buses, 0, Default::default()),
+            candidate: Model::new(
+                strips,
+                loops,
+                buses,
+                0,
+                Default::default(),
+                program_segments,
+            ),
             initial: vec![None; loops].into_boxed_slice(),
+            processor_states: vec![None; strips].into_boxed_slice(),
         }
     }
     pub(crate) fn clear(&mut self) {
         self.id = None;
         self.state = State::Empty;
         self.initial.fill(None);
+        self.processor_states.fill(None);
     }
 }
 
@@ -76,10 +88,13 @@ impl ControlEndpoint {
                 stage.state = State::Receiving;
                 stage.base_revision = self.model.revision;
                 stage.candidate.copy_from(&self.model);
+                stage.candidate.global_midi = crate::model::HostMask::EMPTY;
                 stage.candidate.strips.fill(None);
                 stage.candidate.loops.fill(None);
+                stage.candidate.spans.fill(None);
                 stage.candidate.buses.fill(None);
                 stage.initial.fill(None);
+                stage.processor_states.fill(None);
                 return Ok(Some(Outcome::Done));
             }
             Request::ReplacementEdit { id, .. }
@@ -165,6 +180,113 @@ impl ControlEndpoint {
 
     fn replacement_edit(&mut self, edit: ReplacementEdit) -> Result<(), Refusal> {
         let request = match edit {
+            ReplacementEdit::Composite(d) => {
+                let slot = d.loop_id.0.index as usize;
+                if self.next.find_loop(d.loop_id).is_none() {
+                    match self.stage(
+                        Request::CreateComposite {
+                            loop_id: d.loop_id,
+                            strip: None,
+                        },
+                        true,
+                    ) {
+                        Staged::Change(change) => self.next.apply(change),
+                        Staged::Refused(reason) => return Err(reason),
+                        _ => return Err(Refusal::Busy),
+                    }
+                    self.next.loops[slot].as_mut().unwrap().program = None;
+                    self.replacement.initial[slot] = Some(Initial::default());
+                }
+                let entry = self.next.find_loop(d.loop_id).ok_or(Refusal::InvalidId)?;
+                if entry.program.is_some()
+                    || d.previous.is_some()
+                    || d.expected_version != 0
+                    || d.version == 0
+                    || d.unit_frames == 0
+                    || d.unit_frames % u64::from(self.limits.quantum) != 0
+                    || d.quantum != self.limits.quantum
+                    || d.sample_rate != self.cells.driver().sample_rate
+                    || d.unit_frames.checked_mul(d.iterations).is_none()
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                if d.entries > self.limits.composite_entries
+                    || d.segments > self.limits.composite_segments
+                {
+                    return Err(Refusal::Capacity);
+                }
+                let entry = self.next.loops[slot].as_mut().unwrap();
+                entry.program = Some(d);
+                entry.sync = d.sync;
+                return Ok(());
+            }
+            ReplacementEdit::CompositeSpan {
+                loop_id,
+                index,
+                span,
+            } => {
+                let d = self
+                    .next
+                    .find_loop(loop_id)
+                    .and_then(|l| l.program)
+                    .ok_or(Refusal::InvalidId)?;
+                if index as usize != self.next.program_spans(loop_id).count() || index >= d.segments
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                let child = self.next.find_loop(span.target).ok_or(Refusal::InvalidId)?;
+                if matches!(
+                    span.mode,
+                    shoop_rt_protocol::LoopMode::PlayingDryThroughWet
+                        | shoop_rt_protocol::LoopMode::RecordingDryIntoWet
+                ) || child
+                    .strip
+                    .and_then(|id| self.next.strip(id))
+                    .is_some_and(|strip| strip.processor.is_some())
+                {
+                    return Err(Refusal::Unsupported);
+                }
+                if span.target == loop_id
+                    || span.start >= span.end
+                    || span.end > d.iterations
+                    || span.occurrence_start != span.start
+                    || span.ordinal >= d.entries
+                    || d.kind == shoop_rt_protocol::CompositeKind::Regular
+                        && span.mode != shoop_rt_protocol::LoopMode::Playing
+                    || child.program.is_some()
+                        && span.mode == shoop_rt_protocol::LoopMode::Recording
+                    || self.next.program_spans(loop_id).last().is_some_and(|old| {
+                        old.target > span.target
+                            || old.target == span.target
+                                && (old.end > span.start
+                                    || old.end == span.start && old.mode == span.mode)
+                    })
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                let free = self
+                    .next
+                    .spans
+                    .iter_mut()
+                    .find(|s| s.is_none())
+                    .ok_or(Refusal::Capacity)?;
+                *free = Some(crate::model::OwnedSpan {
+                    source: loop_id,
+                    span,
+                });
+                return Ok(());
+            }
+            ReplacementEdit::RepeatSync { loop_id, enabled } => {
+                let entry = self
+                    .next
+                    .loops
+                    .get_mut(loop_id.0.index as usize)
+                    .and_then(Option::as_mut)
+                    .filter(|l| l.id == loop_id)
+                    .ok_or(Refusal::InvalidId)?;
+                entry.repeat_sync = enabled;
+                return Ok(());
+            }
             ReplacementEdit::Bus { bus, channels } => Request::CreateBus { bus, channels },
             ReplacementEdit::BusControl { bus, control } => {
                 self.set_replacement_bus(bus, control)?;
@@ -175,36 +297,32 @@ impl ControlEndpoint {
                 shape,
                 controls,
             } => {
-                if !controls.input_gain.is_finite()
-                    || controls.input_gain < 0.
-                    || !controls.output_gain.is_finite()
-                    || controls.output_gain < 0.
-                    || !(-1.0..=1.0).contains(&controls.input_balance)
-                    || !(-1.0..=1.0).contains(&controls.output_balance)
-                {
-                    return Err(Refusal::InvalidValue);
-                }
-                let change = match self.stage(Request::CreateStrip { strip, shape }, true) {
-                    Staged::Change(change) => change,
-                    Staged::Refused(reason) => return Err(reason),
-                    _ => return Err(Refusal::Busy),
-                };
-                self.next.apply(change);
-                self.next.strip_mut(strip).expect("created strip").controls = Controls {
-                    input_gain: controls.input_gain,
-                    input_balance: controls.input_balance,
-                    monitoring: controls.monitoring,
-                    output_gain: controls.output_gain,
-                    output_balance: controls.output_balance,
-                    output_mute: controls.output_mute,
-                };
-                return Ok(());
+                return self.replacement_strip(strip, shape, controls, None, false, None);
+            }
+            ReplacementEdit::ProcessedStrip {
+                strip,
+                shape,
+                controls,
+                kind,
+                default_dry,
+                state,
+            } => {
+                return self.replacement_strip(
+                    strip,
+                    shape,
+                    controls,
+                    Some(kind),
+                    default_dry,
+                    state,
+                );
             }
             ReplacementEdit::Loop {
                 loop_id,
                 strip,
                 sync,
                 frames,
+                dry_audio,
+                recorded_state,
                 audio,
                 midi,
                 gain,
@@ -226,11 +344,14 @@ impl ControlEndpoint {
                 let slot = loop_id.0.index as usize;
                 let entry = self.next.loops[slot].as_mut().expect("created loop");
                 entry.sync = sync;
+                entry.seed_frames = frames;
                 entry.gain = gain;
                 entry.balance = balance;
                 entry.timing = self.uploads.timing(audio, midi, frames)?;
                 self.replacement.initial[slot] = Some(Initial {
                     frames,
+                    dry_audio,
+                    recorded_state,
                     audio,
                     midi,
                 });
@@ -258,6 +379,73 @@ impl ControlEndpoint {
         }
     }
 
+    fn replacement_strip(
+        &mut self,
+        strip: shoop_rt_protocol::StripId,
+        shape: shoop_rt_protocol::StripShape,
+        controls: shoop_rt_protocol::StripPreset,
+        kind: Option<shoop_rt_protocol::ProcessorKind>,
+        default_dry: bool,
+        state: Option<shoop_rt_protocol::processors::Control>,
+    ) -> Result<(), Refusal> {
+        if !controls.input_gain.is_finite()
+            || controls.input_gain < 0.
+            || !controls.output_gain.is_finite()
+            || controls.output_gain < 0.
+            || !(-1.0..=1.0).contains(&controls.input_balance)
+            || !(-1.0..=1.0).contains(&controls.output_balance)
+            || (default_dry && (kind.is_none() || shape.audio_outputs == 0))
+        {
+            return Err(Refusal::InvalidValue);
+        }
+        if let Some(state) = state {
+            let shoop_rt_protocol::processors::Control::Restore {
+                values,
+                replace_mappings: true,
+            } = state
+            else {
+                return Err(Refusal::InvalidValue);
+            };
+            let kind = kind.ok_or(Refusal::InvalidValue)?;
+            crate::recorded::validate_state(
+                Some(kind),
+                Some(shoop_rt_protocol::RecordedProcessorState {
+                    source_frame: 0,
+                    kind,
+                    values,
+                }),
+            )?;
+            if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx
+                && values[55] != shape.audio_inputs as f32
+            {
+                return Err(Refusal::InvalidValue);
+            }
+        }
+        let request = match kind {
+            Some(kind) => Request::CreateProcessedStrip { strip, shape, kind },
+            None => Request::CreateStrip { strip, shape },
+        };
+        let change = match self.stage(request, true) {
+            Staged::Change(change) => change,
+            Staged::Refused(reason) => return Err(reason),
+            _ => return Err(Refusal::Busy),
+        };
+        self.next.apply(change);
+        let entry = self.next.strip_mut(strip).expect("created strip");
+        entry.default_dry = default_dry;
+        entry.controls = Controls {
+            input_gain: controls.input_gain,
+            input_balance: controls.input_balance,
+            monitoring: controls.monitoring,
+            automatic_monitoring: controls.automatic_monitoring,
+            output_gain: controls.output_gain,
+            output_balance: controls.output_balance,
+            output_mute: controls.output_mute,
+        };
+        self.replacement.processor_states[strip.0.index as usize] = state;
+        Ok(())
+    }
+
     fn set_replacement_bus(
         &mut self,
         bus: shoop_rt_protocol::BusId,
@@ -280,7 +468,18 @@ impl ControlEndpoint {
     }
 
     fn validate_replacement(&self) -> Result<(), Refusal> {
-        for (slot, entry) in self.replacement.candidate.loops.iter().enumerate() {
+        let model = &self.replacement.candidate;
+        let entries: u64 = model
+            .loops
+            .iter()
+            .flatten()
+            .filter_map(|l| l.program)
+            .map(|p| u64::from(p.entries))
+            .sum();
+        if entries > u64::from(self.limits.composite_entries) {
+            return Err(Refusal::Capacity);
+        }
+        for (slot, entry) in model.loops.iter().enumerate() {
             let Some(entry) = entry else { continue };
             if let Some(source) = entry.sync {
                 if self.replacement.candidate.find_loop(source).is_none()
@@ -290,18 +489,58 @@ impl ControlEndpoint {
                 }
             }
             let initial = self.replacement.initial[slot].ok_or(Refusal::InvalidValue)?;
+            let kind = entry
+                .strip
+                .and_then(|id| self.replacement.candidate.strip(id))
+                .and_then(|strip| strip.processor)
+                .map(|owner| owner.kind);
+            self.validate_recorded_kind(kind, initial.recorded_state)?;
+            if (kind.is_none() && initial.dry_audio.is_some())
+                || (initial.frames > 0 && kind.is_some() && initial.dry_audio.is_none())
+            {
+                return Err(Refusal::InvalidValue);
+            }
+            if let Some(d) = entry.program {
+                if kind.is_some() {
+                    return Err(Refusal::Unsupported);
+                }
+                if initial.frames != 0
+                    || initial.audio.is_some()
+                    || initial.midi.is_some()
+                    || model.program_spans(entry.id).count() != d.segments as usize
+                    || model
+                        .program_spans(entry.id)
+                        .map(|span| span.end)
+                        .max()
+                        .unwrap_or(0)
+                        != d.iterations
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+            }
             if initial.frames > 0 && (initial.audio.is_none() || initial.midi.is_none()) {
                 return Err(Refusal::InvalidValue);
             }
-            for (token, midi) in [(initial.audio, false), (initial.midi, true)] {
+            for (token, midi) in [
+                (initial.audio, false),
+                (initial.dry_audio, false),
+                (initial.midi, true),
+            ] {
                 let Some(token) = token else { continue };
                 self.uploads.source(token, midi, initial.frames)?;
                 for prior in self.replacement.initial[..slot].iter().flatten() {
-                    if prior.audio == Some(token) || prior.midi == Some(token) {
+                    if prior.audio == Some(token)
+                        || prior.midi == Some(token)
+                        || prior.dry_audio == Some(token)
+                    {
                         return Err(Refusal::InvalidValue);
                     }
                 }
-                if initial.audio == initial.midi {
+                if initial.audio == initial.midi
+                    || (initial.dry_audio.is_some()
+                        && (initial.dry_audio == initial.audio
+                            || initial.dry_audio == initial.midi))
+                {
                     return Err(Refusal::InvalidValue);
                 }
             }

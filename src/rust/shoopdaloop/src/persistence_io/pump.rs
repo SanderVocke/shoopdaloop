@@ -177,11 +177,16 @@ impl Provider {
                             mime_type: mime,
                             bytes,
                         });
-                        task.output_warning = warning.clone();
-                        task.view.message = if warning.is_empty() {
+                        if !warning.is_empty() {
+                            if !task.output_warning.is_empty() {
+                                task.output_warning.push(' ');
+                            }
+                            task.output_warning.push_str(&warning);
+                        }
+                        task.view.message = if task.output_warning.is_empty() {
                             "Awaiting platform file output".into()
                         } else {
-                            format!("{warning} Awaiting platform file output")
+                            format!("{} Awaiting platform file output", task.output_warning)
                         };
                         task.view.progress = 0.9;
                         self.phase = Phase::Output;
@@ -212,6 +217,13 @@ impl Provider {
             }
             let key = reply.key();
             match reply {
+                transfer::Reply::CaptureNotice { message, .. } => {
+                    self.task
+                        .as_mut()
+                        .unwrap()
+                        .output_warning
+                        .push_str(&message);
+                }
                 transfer::Reply::Captured(description)
                     if matches!(self.phase, Phase::CaptureSent) =>
                 {

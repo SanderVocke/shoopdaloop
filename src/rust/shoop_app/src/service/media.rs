@@ -17,19 +17,30 @@ impl Service {
         let result = (|| {
             let entry = self.loops.get(&loop_id).ok_or(Refusal::Invalid)?;
             let track = &self.tracks[&entry.track];
-            if entry.view.mode == LoopMode::Recording {
+            if matches!(
+                entry.view.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            ) {
                 return Err(Refusal::NotReady);
             }
+            let channels = match track.view.topology {
+                TrackTopology::Direct => track.audio_channels,
+                TrackTopology::DryWet {
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    ..
+                } => dry_audio_channels + wet_audio_channels,
+            };
             if entry
                 .view
                 .length_frames
-                .saturating_mul(u64::from(track.audio_channels))
+                .saturating_mul(u64::from(channels))
                 .saturating_mul(4)
                 > (MAX_MEDIA_BYTES - 4096) as u64
             {
                 return Err(Refusal::Overloaded);
             }
-            let has_audio = track.audio_channels > 0;
+            let has_audio = channels > 0;
             let has_midi = track.midi;
             let audio = if has_audio {
                 self.read_audio(connection, authority, loop_id)

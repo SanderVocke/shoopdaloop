@@ -81,7 +81,7 @@ impl Service {
             .loops
             .get(&entry.backend)
             .ok_or_else(|| CommandError::invalid("loop state is unavailable"))?;
-        if updates.len() > 9 {
+        if updates.len() > MAX_LOOP_CHANNEL_TIMING_UPDATES {
             return Err(CommandError::invalid("too many channel updates"));
         }
         let mut seen = BTreeSet::new();

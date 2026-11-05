@@ -215,19 +215,26 @@ impl Buffers {
             bytes: limits.midi_bytes_per_port,
         };
         settings.prepared_bytes(ports, default)?;
-        let midi = |count, capacity: crate::buffer::MidiCapacity| {
+        let midi = |count, input, overrides| {
             (0..count)
-                .map(|_| MidiBuffer::new(capacity.events, capacity.bytes))
+                .map(|port| {
+                    let capacity = if overrides {
+                        settings.capacity(input, port, default)
+                    } else {
+                        default
+                    };
+                    MidiBuffer::new(capacity.events, capacity.bytes)
+                })
                 .collect::<Result<Vec<_>, _>>()
         };
         let mut buffers = Self {
             input: vec![0.0; ports.audio_inputs * frames].into_boxed_slice(),
             output: vec![0.0; ports.audio_outputs * frames].into_boxed_slice(),
-            midi_input: midi(ports.midi_inputs, settings.input.unwrap_or(default))?,
-            midi_output: midi(ports.midi_outputs, settings.output.unwrap_or(default))?,
+            midi_input: midi(ports.midi_inputs, true, true)?,
+            midi_output: midi(ports.midi_outputs, false, true)?,
             midi_output_recovery: vec![false; ports.midi_outputs],
             midi_input_recovery: vec![false; ports.midi_inputs],
-            injected: midi(ports.midi_inputs, default)?,
+            injected: midi(ports.midi_inputs, true, false)?,
             midi_settings: settings,
             midi_forwarded: vec![false; ports.midi_outputs],
         };

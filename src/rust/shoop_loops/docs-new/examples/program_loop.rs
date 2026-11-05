@@ -10,18 +10,14 @@ use rt_runtime::{
 };
 use shoop_loops::{
     audio::Smoothing,
-    compile,
+    compile, media,
     runtime::{Binding, LoopPlanner, Operation, Options, Prepared, Reply, Settings},
-    media, Entry, Limits, LoopId, LoopKind, LoopSpec, Outcome, ProgramDescription, Section, Timing,
+    Entry, Limits, LoopId, LoopKind, LoopSpec, Outcome, ProgramDescription, Section, Timing,
     TopologyDescription, Transition,
 };
 
 // Upload interleaved little-endian f32 samples as a new resource revision and return a source handle for importing it as a loop's initial content.
-fn load_stereo(
-    resources: &mut ResourceStore,
-    left: &[f32],
-    right: &[f32],
-) -> media::Source {
+fn load_stereo(resources: &mut ResourceStore, left: &[f32], right: &[f32]) -> media::Source {
     let mut bytes = Vec::new();
     for (l, r) in left.iter().zip(right.iter()) {
         bytes.extend_from_slice(&l.to_le_bytes());
@@ -64,11 +60,17 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), None, CaptureGroupConfig {
+    let quantum = rt_runtime::Quantum::new(1).unwrap();
+    let mut resources = ResourceStore::with_capture_groups(
+        config,
+        quantum,
+        None,
+        CaptureGroupConfig {
             groups: 6,
             members_per_group: 1,
             staging_bytes_per_group: 128,
-        })
+        },
+    )
     .unwrap();
 
     let bar = LoopId::from_parts(0, 1).unwrap();
@@ -109,7 +111,7 @@ fn main() {
                     sync_source: Some(bar),
                 },
             ],
-    // The program: 1 unit = 1 bar (nominal_unit_frames: 4). Bass plays for bar 1, drums for bars 2-3.
+            // The program: 1 unit = 1 bar (nominal_unit_frames: 4). Bass plays for bar 1, drums for bars 2-3.
             programs: vec![ProgramDescription {
                 source: arranger,
                 nominal_unit_frames: 4,
@@ -141,6 +143,8 @@ fn main() {
     };
     let node = |slot: u32| NodeId::from_parts(slot, 1).unwrap();
     let binding = |target, playback, capture, channels| Binding {
+dry_wet: false,
+auxiliary_channels: 0,
         target,
         playback,
         capture,
@@ -201,7 +205,9 @@ fn main() {
     );
     let imports = vec![
         media::Input {
+auxiliary: None,
             description: media::Description {
+auxiliary_channels: 0,
                 owner: bass,
                 revision: Revision(0),
                 frames: 4,
@@ -212,7 +218,9 @@ fn main() {
             midi: None,
         },
         media::Input {
+auxiliary: None,
             description: media::Description {
+auxiliary_channels: 0,
                 owner: drums,
                 revision: Revision(0),
                 frames: 8,
@@ -223,16 +231,25 @@ fn main() {
             midi: None,
         },
     ];
-    let prepared = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
+    let prepared = LoopPlanner::prepare(
+        config,
+        quantum,
+        topology,
+        &mut resources,
+        Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 5,
             media_slots: 16,
             export_slots: 0,
-        }, vec![
+        },
+        vec![
             binding(bar, bar_playback, bar_capture, 2),
             binding(bass, bass_playback, bass_capture, 2),
             binding(drums, drums_playback, drums_capture, 2),
-        ], imports, Options::default());
+        ],
+        imports,
+        Options::default(),
+    );
     let Prepared {
         planner,
         nodes,
@@ -245,7 +262,9 @@ fn main() {
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config, quantum, nodes, planner, resources, &graph,
+    )
     .unwrap();
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
@@ -253,14 +272,14 @@ fn main() {
     // Record the bar loop, play it from frame 4, start the arranger, stop both at 12.
     let mut sequences = Vec::new();
     let submit = |at: u64,
-                      target: LoopId,
-                      transition: Transition,
-                      control: &mut rt_runtime::executor::Control<
+                  target: LoopId,
+                  transition: Transition,
+                  control: &mut rt_runtime::executor::Control<
         shoop_loops::runtime::LoopNode,
         shoop_loops::runtime::LoopPlanner,
     >,
-                      client: &shoop_loops::runtime::LoopClient,
-                      sequences: &mut Vec<(rt_runtime::Sequence, Frame)>| {
+                  client: &shoop_loops::runtime::LoopClient,
+                  sequences: &mut Vec<(rt_runtime::Sequence, Frame)>| {
         let command = client.command(
             Frame(at),
             Operation::Transition {
@@ -324,7 +343,9 @@ fn main() {
     );
 
     // One 16-frame block; the bar loop records frames 0-3.
-    let bar_in = [1.0, 1.0, 1.0, 1.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
+    let bar_in = [
+        1.0, 1.0, 1.0, 1.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0,
+    ];
     let silent2 = [0.0; 16];
     let bass_in = silent2;
     let drums_in = silent2;
@@ -379,7 +400,10 @@ fn main() {
     );
     assert_eq!(
         drums_right_out,
-        [0.0, 0.0, 0.0, 0.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 0.0, 0.0, 0.0, 0.0]
+        [
+            0.0, 0.0, 0.0, 0.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 0.0, 0.0, 0.0,
+            0.0
+        ]
     );
     assert_eq!(runtime.next_frame(), Frame(16));
 
@@ -395,7 +419,11 @@ fn main() {
         let Some(Reply::Transition(completion)) = execution.operation_result else {
             panic!("expected a transition result");
         };
-        applied.push((execution.sequence, execution.actual_frame, completion.outcome));
+        applied.push((
+            execution.sequence,
+            execution.actual_frame,
+            completion.outcome,
+        ));
     }
     for &(sequence, frame) in &sequences {
         assert!(

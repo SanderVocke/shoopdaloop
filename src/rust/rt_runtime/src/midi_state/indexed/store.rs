@@ -17,7 +17,7 @@ const SOSTENUTO: usize = 8304;
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 
 impl Key {
-    fn slot(self) -> usize {
+    pub(crate) fn slot(self) -> usize {
         let note = |base, channel, key| base + usize::from(channel) * 128 + usize::from(key);
         match self {
             Self::NoteOn(ch, key) => note(0, ch, key),
@@ -190,6 +190,7 @@ pub(crate) struct Store<V: Copy> {
     sostenuto: Pool<V, SostenutoIndex<V>>,
     cursor: usize,
     trim_turn: usize,
+    trimming: usize,
     next_bounds: u64,
     work: Cell<Work>,
 }
@@ -251,6 +252,7 @@ impl<V: Copy> Store<V> {
             sostenuto: Pool::prepare(config.sostenuto_nodes)?,
             cursor: 0,
             trim_turn: 0,
+            trimming: 0,
             next_bounds: 1,
             work: Cell::new(Work::default()),
         })
@@ -311,6 +313,9 @@ impl<V: Copy> Store<V> {
         table.references -= 1;
         self.leases -= 1;
         if table.references == 0 {
+            if table.bounds.is_some() && table.trim < KEYS {
+                self.trimming -= 1;
+            }
             self.retired_tables.push(version.slot);
         }
         Ok(())
@@ -397,6 +402,9 @@ impl<V: Copy> Store<V> {
         let root = self.clip_root(Kind::Packet, root, (after, cut), values);
         let table = self.tables[slot(version.slot)].table.as_mut().unwrap();
         table.packets = root;
+        if table.bounds.is_none() || table.trim == KEYS {
+            self.trimming += 1;
+        }
         table.bounds = Some((after, cut));
         table.bound_id = self.next_bounds;
         table.trim = 0;
@@ -555,6 +563,9 @@ impl<V: Copy> Store<V> {
             self.pages[slot(page)].as_mut().unwrap().references += 1;
         }
         table.references = 1;
+        if table.bounds.is_some() && table.trim < KEYS {
+            self.trimming += 1;
+        }
         let id = self.free_tables.pop().expect("preflighted version credit");
         self.tables[slot(id)].table = Some(table);
         let mut work = self.work.get();
@@ -722,18 +733,12 @@ impl<V: Copy> Store<V> {
         if shared && self.free_tables.is_empty() {
             return Err(Error::Capacity);
         }
-        let upper_count = [
-            self.config.packet_nodes,
-            self.config.scalar_nodes,
-            self.config.hold_nodes,
-            self.config.sostenuto_nodes,
-        ]
-        .into_iter()
-        .max()
-        .unwrap()
-        .checked_add(1)
-        .ok_or(Error::Capacity)?;
-        let height = 2 * upper_count.ilog2() as usize + 2;
+        let upper_count = self
+            .packets
+            .len(table.packets)?
+            .checked_add(insertions.len())
+            .ok_or(Error::Capacity)?;
+        let height = super::tree::maximum_height(upper_count);
         let mut nodes = [0usize; 4];
         let mut roots = [0usize; 4];
         let mut affected = [false; LEAVES];
@@ -930,6 +935,9 @@ impl<V: Copy> Store<V> {
         self.work.set(work);
     }
     fn trim_one(&mut self, values: &mut impl Values<V>) -> bool {
+        if self.trimming == 0 {
+            return false;
+        }
         for _ in 0..self.tables.len() {
             let index = self.trim_turn;
             self.trim_turn = (index + 1) % self.tables.len();
@@ -944,6 +952,9 @@ impl<V: Copy> Store<V> {
             let end = ((page + 1) * LEAF).min(KEYS);
             if table.pages[page].is_none() {
                 self.tables[index].table.as_mut().unwrap().trim = end;
+                if end == KEYS {
+                    self.trimming -= 1;
+                }
                 return true;
             }
             let mut next = end;
@@ -1009,9 +1020,21 @@ impl<V: Copy> Store<V> {
                 entry.bounds[key % LEAF] = table.bound_id;
             }
             self.tables[index].table.as_mut().unwrap().trim = next;
+            if next == KEYS {
+                self.trimming -= 1;
+            }
             return true;
         }
         false
+    }
+    pub(crate) fn has_pending_retirement(&self) -> bool {
+        !self.retired_tables.is_empty()
+            || !self.retired_pages.is_empty()
+            || self.packets.has_retired()
+            || self.scalars.has_retired()
+            || self.holds.has_retired()
+            || self.sostenuto.has_retired()
+            || self.trimming != 0
     }
     pub(crate) fn maintain(&mut self, budget: usize, values: &mut impl Values<V>) -> usize {
         let mut reclaimed = 0;

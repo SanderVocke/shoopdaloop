@@ -109,6 +109,8 @@ fn encode_decision(frame: Frame, decision: &Decision) -> [u8; STRIDE] {
         Mode::Stopped => 0,
         Mode::Playing => 1,
         Mode::Recording => 2,
+        Mode::PlayingDryThroughWet => 3,
+        Mode::RecordingDryIntoWet => 4,
     };
     bytes[2] = u8::from(decision.playback_discontinuity)
         | (u8::from(state.capture_incomplete) << 1)
@@ -173,6 +175,11 @@ fn encode_event(event: &Event) -> [u8; STRIDE] {
                 retrigger,
             } => (7, retrigger, iteration, 0),
             Transition::Program => (8, false, 0, 0),
+            Transition::PlayDry {
+                position,
+                retrigger,
+            } => (15, retrigger, position, 0),
+            Transition::Rerecord => (16, false, 0, 0),
         },
         EventKind::Wrap => (9, false, 0, 0),
         EventKind::Pulse => (10, false, 0, 0),
@@ -392,6 +399,7 @@ mod tests {
         state.composite = Some(CompositeState {
             iteration: u64::MAX - 7,
             passes: u64::MAX - 8,
+            waiting_repeat: false,
             entered_at: Some(Frame(u64::MAX - 9)),
         });
         let mut decision = Decision {

@@ -9,7 +9,9 @@ description = "Independent native session service and RT engine composition"
 workspace = true
 
 [features]
-default = ["cpal", "jack"]
+builtin-fx = ["shoop_rt_host_native/builtin-fx"]
+oxisynth = ["shoop_rt_host_native/oxisynth"]
+default = ["cpal", "jack", "builtin-fx", "oxisynth"]
 jack = ["shoop_rt_host_native/jack", "dep:jack"]
 cpal = ["shoop_rt_host_native/cpal"]
 testing = []

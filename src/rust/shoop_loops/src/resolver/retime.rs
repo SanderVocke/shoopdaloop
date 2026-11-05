@@ -368,6 +368,7 @@ impl Resolver {
                     && matches!(
                         record.request.transition,
                         Transition::Record { .. }
+                            | Transition::Rerecord
                             | Transition::RecordPrefix { .. }
                             | Transition::ReplaceInput { .. }
                     )
@@ -411,7 +412,7 @@ impl Resolver {
 
     /// Prediction from the settled preview only. No renderer advances or guesses
     /// a clock, and an idle source cannot produce an imminent start.
-    pub(crate) fn preplay_eta(&self, target: LoopId) -> Option<u64> {
+    pub(crate) fn preplay_eta(&self, target: LoopId) -> Option<(u64, Transition)> {
         let state = self.scratch.states.get(target.slot() as usize)?.as_ref()?;
         if state.mode != Mode::Stopped || state.content_length == 0 {
             return None;
@@ -432,9 +433,7 @@ impl Resolver {
                             return None;
                         }
                         let source = self.scratch.states.get(source.slot() as usize)?.as_ref()?;
-                        if !matches!(source.mode, Mode::Playing | Mode::Replacing)
-                            || source.content_length == 0
-                        {
+                        if !source.advances() || source.content_length == 0 {
                             return None;
                         }
                         source
@@ -447,8 +446,13 @@ impl Resolver {
             })
             .min_by_key(|(eta, sequence, _)| (*eta, *sequence))
             .and_then(|(eta, _, transition)| {
-                (eta > 0 && matches!(transition, Transition::Play { position: 0, .. }))
-                    .then_some(eta)
+                (eta > 0
+                    && matches!(
+                        transition,
+                        Transition::Play { position: 0, .. }
+                            | Transition::PlayDry { position: 0, .. }
+                    ))
+                .then_some((eta, transition))
             })
     }
 }

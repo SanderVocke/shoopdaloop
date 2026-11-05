@@ -17,7 +17,8 @@ use core::time::Duration;
 
 use crate::description::MAX_HOST_PORTS;
 use crate::{
-    prepare, ControlEndpoint, EngineDescription, HostStatus, PrepareError, Render, Report,
+    prepare_with_processors, ControlEndpoint, EngineDescription, HostStatus, PrepareError, Render,
+    Report,
 };
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::Error;
@@ -47,13 +48,27 @@ pub struct OfflineRender {
 impl OfflineRender {
     /// Prepares an engine and returns its render half and an unconnected client.
     pub fn new(description: &EngineDescription) -> Result<(Self, OfflineClient), PrepareError> {
+        let mut processors = crate::PreparedProcessors::default();
+        processors.effective = description
+            .processors
+            .resolve(
+                shoop_rt_protocol::processors::Support::default(),
+                description.sample_rate,
+            )
+            .map_err(|_| Error::InvalidConfig)?;
+        Self::new_with_processors(description, processors)
+    }
+    pub fn new_with_processors(
+        description: &EngineDescription,
+        processors: crate::PreparedProcessors,
+    ) -> Result<(Self, OfflineClient), PrepareError> {
         let driver = DriverStatus {
             kind: DriverKind::Dummy,
             state: DriverRunState::Running,
             sample_rate: description.sample_rate,
             buffer_frames: description.max_frames as u32,
         };
-        let engine = prepare(description, driver)?;
+        let engine = prepare_with_processors(description, driver, processors)?;
         let outbox = engine.outbox();
         let frames = description.max_frames;
         let buffers = |count: usize| {
@@ -211,6 +226,14 @@ impl DerefMut for OfflineHost {
 impl OfflineHost {
     pub fn new(description: &EngineDescription) -> Result<Self, PrepareError> {
         let (offline, client) = OfflineRender::new(description)?;
+        Ok(Self { client, offline })
+    }
+
+    pub fn new_with_processors(
+        description: &EngineDescription,
+        processors: crate::PreparedProcessors,
+    ) -> Result<Self, PrepareError> {
+        let (offline, client) = OfflineRender::new_with_processors(description, processors)?;
         Ok(Self { client, offline })
     }
 

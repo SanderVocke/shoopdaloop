@@ -22,7 +22,7 @@ impl ResourceStore {
     /// Pin the current version and reserve the final snapshot/view capacity.
     /// The resource may change its complete content in place, within the supplied
     /// maximum duration; replacing its version invalidates publication.
-    pub fn reserve_snapshot(
+    pub fn reserve_writer_snapshot(
         &mut self,
         resource: ResourceId,
         cut: Frame,
@@ -167,13 +167,14 @@ impl ResourceStore {
 }
 
 impl ResourceIo<'_> {
-    pub fn reserve_snapshot(
+    pub fn reserve_writer_snapshot(
         &mut self,
         resource: ResourceId,
         cut: Frame,
         maximum_frames: u64,
     ) -> Result<ReservedSnapshotId, Error> {
-        self.store.reserve_snapshot(resource, cut, maximum_frames)
+        self.store
+            .reserve_writer_snapshot(resource, cut, maximum_frames)
     }
     pub fn cancel_reserved_snapshot(&mut self, id: ReservedSnapshotId) -> Result<(), Error> {
         self.store.cancel_reserved_snapshot(id)

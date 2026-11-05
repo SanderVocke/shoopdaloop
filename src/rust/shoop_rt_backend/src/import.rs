@@ -35,8 +35,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if self.requests.timing_pending() {
             bail!("a timing edit is pending");
         }
-        if self.mirror.live_loop(loop_id).is_none() {
-            bail!("unknown loop {loop_id:?}");
+        let entry = self
+            .mirror
+            .live_loop(loop_id)
+            .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
+        if self.input.as_ref().is_some_and(|job| job.touches(loop_id))
+            || entry.view.recording_armed
+            || entry.view.mode.records()
+            || entry
+                .view
+                .next_mode
+                .is_some_and(shoop_rt_protocol::LoopMode::records)
+        {
+            bail!("stop affected recording and settle input edits before importing");
         }
         if !self.canonical_content.contains_key(&loop_id) {
             if let BackendAsyncResult::Pending(progress) = self.capture_core(Some(loop_id))? {
@@ -135,26 +146,41 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ok_or_else(|| anyhow!("persistence identity exhausted"))?;
         let mut work = VecDeque::new();
         let mut uploads = Vec::new();
-        let mut pair = [None; 2];
+        let track = &self.mirror.tracks[&self.mirror.loops[&loop_id]
+            .track
+            .ok_or_else(|| anyhow!("composites have no media channels"))?];
+        let roles = !matches!(track.topology, BackendTrackTopology::Direct { .. });
+        let recorded_state = crate::processor_controls::recorded_state(
+            &track.topology,
+            content.recorded_processor_state.as_deref(),
+        )?;
+        // Primary is wet; auxiliary is dry. Canonical channel indices remain dry first.
+        let mut pair = [None; 3];
         let mut bytes = 0;
         if content.length > 0
-            || content
-                .audio
-                .iter()
-                .any(|channel| !channel.samples.is_empty())
-            || content.midi.iter().any(|channel| channel.length > 0)
+            || content.audio.iter().any(|c| !c.samples.is_empty())
+            || content.midi.iter().any(|c| c.length > 0)
         {
-            for (index, midi) in [false, true].into_iter().enumerate() {
+            for index in 0..if roles { 3 } else { 2 } {
                 let token = self.next_persistence;
                 self.next_persistence = token
                     .checked_add(1)
                     .ok_or_else(|| anyhow!("persistence identity exhausted"))?;
-                let upload = Upload::new(
-                    token,
-                    midi,
-                    Arc::clone(&content),
-                    usize::from(self.limits().strip_audio_channels),
-                )?;
+                let width = usize::from(self.limits().strip_audio_channels);
+                let upload = if roles && index != 1 {
+                    Upload::audio_role(
+                        token,
+                        Arc::clone(&content),
+                        width,
+                        if index == 0 {
+                            BackendChannelMode::Wet
+                        } else {
+                            BackendChannelMode::Dry
+                        },
+                    )?
+                } else {
+                    Upload::new(token, index == 1, Arc::clone(&content), width)?
+                };
                 bytes += upload.description.bytes;
                 if bytes > self.resource_limits.media_bytes {
                     bail!("prepared loop content exceeds the host budget");
@@ -175,6 +201,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         work.push_back(Work::Request(Request::ContentApply {
             loop_id: self.mirror.loops[&loop_id].slot,
             frames: u64::from(content.length),
+            dry_audio: pair[2],
+            recorded_state,
             audio: pair[0],
             midi: pair[1],
         }));

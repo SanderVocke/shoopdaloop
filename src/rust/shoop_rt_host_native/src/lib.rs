@@ -43,7 +43,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use shoop_rt_engine::{
-    prepare, ControlEndpoint, EngineDescription, HostPorts, PrepareError, Render, Stopped,
+    ControlEndpoint, EngineDescription, HostPorts, PrepareError, Render, Stopped,
 };
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, Name, MAX_NAME_BYTES};
 use shoop_rt_transport::carrier::{InProcess, Outbox};
@@ -103,6 +103,8 @@ pub struct HostLayout {
 pub enum StartError {
     #[error("the buffer of {requested} frames exceeds the prepared maximum of {max}")]
     BufferTooLarge { requested: u32, max: u32 },
+    #[error("processor preparation failed: {0}")]
+    Processors(shoop_host_processors::Error),
     #[error("the device does not support {requested} frames per buffer ({min} to {max})")]
     BufferUnsupported { requested: u32, min: u32, max: u32 },
     #[error("invalid driver configuration: {0}")]
@@ -413,7 +415,10 @@ impl Prepared {
             sample_rate,
             buffer_frames,
         };
-        let mut engine = prepare(&description, driver)?;
+        let processors =
+            shoop_host_processors::prepare(&description).map_err(StartError::Processors)?;
+        let mut engine =
+            shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
         engine
             .render
             .set_profiling_clock(crate::status::profiling_clock());

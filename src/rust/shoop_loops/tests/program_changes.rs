@@ -123,7 +123,9 @@ fn expected_events(f: u64) -> Vec<Event> {
         event(&mut out, f, 5, EventKind::Transition(play(false)));
     }
     if f % 2 == 0 {
-        pulse(&mut out, f, 5);
+        if f == 0 || (f >= 6 && (f - 6) % 4 == 0) {
+            pulse(&mut out, f, 5);
+        }
         event(
             &mut out,
             f,
@@ -227,6 +229,7 @@ fn running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_e
                                         ((frame - 6) / 2) % 2
                                     },
                                     passes: if frame < 6 { 0 } else { 1 + (frame - 6) / 4 },
+                                    waiting_repeat: false,
                                     entered_at: Some(Frame(frame / 2 * 2))
                                 }
                             );
@@ -323,6 +326,7 @@ fn fixed_program_replacement_preserves_phase_and_exact_boundary_journals() {
                                 ((tick - 6) / 2) % 2
                             },
                             passes: if tick < 6 { 0 } else { 1 + (tick - 6) / 4 },
+                            waiting_repeat: false,
                             entered_at: Some(Frame(tick / 2 * 2 * q)),
                         }
                     );
@@ -431,7 +435,7 @@ fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_w
 }
 
 #[shoop_test]
-fn idle_clock_cancellation_staleness_and_owner_backpressure_do_not_publish_early_or_block_music() {
+fn source_stop_cancellation_staleness_and_owner_backpressure_preserve_frame_publication() {
     for case in 0..4 {
         let mut r = Resolver::prepare(
             prepared(&description(false, false), 1),
@@ -454,11 +458,14 @@ fn idle_clock_cancellation_staleness_and_owner_backpressure_do_not_publish_early
                 submit(&mut r, 0, 4, 4, Transition::Stop);
                 submit(&mut r, 0, 5, 10, play(false));
                 advance(&mut r, 10);
-                assert_eq!(r.completion(change).unwrap(), None);
+                assert_eq!(
+                    r.completion(change).unwrap().unwrap().outcome,
+                    Outcome::Applied { frame: Frame(6) }
+                );
                 advance(&mut r, 13);
                 assert_eq!(
                     r.completion(change).unwrap().unwrap().outcome,
-                    Outcome::Applied { frame: Frame(12) }
+                    Outcome::Applied { frame: Frame(6) }
                 );
             }
             1 => {
@@ -475,7 +482,7 @@ fn idle_clock_cancellation_staleness_and_owner_backpressure_do_not_publish_early
                 advance(&mut r, 13);
                 assert_eq!(
                     r.completion(change).unwrap().unwrap().outcome,
-                    Outcome::Cancelled { frame: Frame(2) }
+                    Outcome::Applied { frame: Frame(2) }
                 );
             }
             _ => {
@@ -499,7 +506,11 @@ fn idle_clock_cancellation_staleness_and_owner_backpressure_do_not_publish_early
             .unwrap();
         assert_eq!(
             result.activated_epoch,
-            if case == 0 { Some(Epoch(1)) } else { None }
+            if case == 0 || case == 2 {
+                Some(Epoch(1))
+            } else {
+                None
+            }
         );
         drop(result);
     }
@@ -558,7 +569,7 @@ fn same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut
         assert_no_heap(|| r.finish()).unwrap();
         advance(&mut r, 10);
         let expected = match case {
-            3 | 7 => Outcome::Cancelled { frame: Frame(4) },
+            7 => Outcome::Cancelled { frame: Frame(4) },
             2 => Outcome::Applied { frame: Frame(8) },
             5 | 6 => Outcome::Applied { frame: Frame(6) },
             _ => Outcome::Applied { frame: Frame(4) },
@@ -568,7 +579,7 @@ fn same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut
             expected,
             "case {case}"
         );
-        assert_eq!(r.epoch(), Epoch(if case == 3 || case == 7 { 0 } else { 1 }));
+        assert_eq!(r.epoch(), Epoch(if case == 7 { 0 } else { 1 }));
         assert_eq!(
             r.state(id(5)).unwrap().mode,
             if case == 3 || case == 4 {
@@ -771,7 +782,7 @@ fn invalid_candidate_shapes_epochs_and_raw_program_tags_return_owners_without_mu
         let mut candidate_limits = limits(0);
         match case {
             0 => new.loops[4].id = LoopId::from_parts(4, 2).unwrap(),
-            1 => new.loops[5].sync_source = None,
+            1 => new.loops[4].sync_source = Some(id(0)),
             2 => new.triggers.push(Trigger {
                 source: id(0),
                 target: id(4),
@@ -833,6 +844,8 @@ fn retained_change_and_full_request_slots_allow_all_128_one_sample_boundaries() 
         let mut new = description(true, false);
         old.loops[0].length = 1;
         new.loops[0].length = 1;
+        old.programs[0].nominal_unit_frames = 1;
+        new.programs[0].nominal_unit_frames = 1;
         let mut bounds = limits(journal);
         bounds.pending_requests = 3;
         let mut r = Resolver::prepare(
@@ -864,6 +877,7 @@ fn retained_change_and_full_request_slots_allow_all_128_one_sample_boundaries() 
                 CompositeState {
                     iteration: if f < 3 { f } else { (f - 3) % 2 },
                     passes: if f < 3 { 0 } else { 1 + (f - 3) / 2 },
+                    waiting_repeat: false,
                     entered_at: Some(Frame(f))
                 }
             );
@@ -890,6 +904,7 @@ fn old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_app
     for refuse in [false, true] {
         let mut old = description(false, false);
         old.loops[0].length = 1;
+        old.programs[0].nominal_unit_frames = 1;
         old.programs[0].sections[0].entries = vec![entry(1, 0, 1, None), entry(4, 1, 2, None)];
         old.triggers.push(Trigger {
             source: id(1),
@@ -1055,4 +1070,37 @@ fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_withou
         assert_eq!(error, Error::InvalidState);
         drop(candidate);
     }
+}
+
+#[shoop_test]
+fn a_paired_program_source_update_waits_for_a_real_restart_without_changing_pass_timing() {
+    let old = description(false, false);
+    let mut new = old.clone();
+    new.loops[5].sync_source = None;
+    let mut r =
+        Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
+    start(&mut r);
+    advance(&mut r, 1);
+    let candidate = prepared(&new, 1024);
+    let change =
+        assert_no_heap(|| r.stage_program(Epoch(0), id(5), Sequence(3), Frame(1), candidate))
+            .unwrap();
+    advance(&mut r, 6);
+    assert_eq!(r.epoch(), Epoch(0));
+    assert_eq!(r.state(id(5)).unwrap().position, 6);
+    assert_eq!(r.topology().node(id(5)).unwrap().sync_source, Some(id(0)));
+    advance(&mut r, 7);
+    assert_eq!(r.epoch(), Epoch(1));
+    assert_eq!(r.state(id(5)).unwrap().position, 1);
+    assert_eq!(r.state(id(5)).unwrap().content_length, 6);
+    assert_eq!(r.topology().node(id(5)).unwrap().sync_source, None);
+    let returned = assert_no_heap(|| r.take_program_change(change))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        returned.completion.outcome,
+        Outcome::Applied { frame: Frame(6) }
+    );
+    assert_eq!(returned.activated_epoch, Some(Epoch(1)));
+    drop(returned);
 }

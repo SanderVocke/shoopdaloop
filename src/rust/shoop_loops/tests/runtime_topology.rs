@@ -25,6 +25,9 @@ use support::assert_no_heap;
 mod configuration_scenarios;
 #[path = "support/program_graph_scenarios.rs"]
 mod program_graph_scenarios;
+
+#[path = "support/repeat_alignment.rs"]
+mod repeat_alignment;
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -475,7 +478,9 @@ impl Harness {
             }
             imports.extend([audio.snapshot.resource, midi.snapshot.resource]);
             owned.push(media::Input {
+                auxiliary: None,
                 description: media::Description {
+                    auxiliary_channels: 0,
                     owner: id(1),
                     revision: Revision(0),
                     frames: 4,
@@ -488,6 +493,8 @@ impl Harness {
         }
         let mut bindings: Vec<_> = (0..2)
             .map(|slot| Binding {
+                dry_wet: false,
+                auxiliary_channels: 0,
                 target: id(slot),
                 playback: node(slot * 2),
                 capture: node(slot * 2 + 1),
@@ -502,6 +509,8 @@ impl Harness {
             .collect();
         if spare {
             bindings.push(Binding {
+                dry_wet: false,
+                auxiliary_channels: 0,
                 target: LoopId::from_parts(2, 2).unwrap(),
                 playback: node(5),
                 capture: node(6),
@@ -936,7 +945,9 @@ fn expected_events() -> Vec<Event> {
             if [2, 6].contains(&frame) {
                 push(2, Changed(play));
             }
-            push(2, Pulse);
+            if [2, 6, 9].contains(&frame) {
+                push(2, Pulse);
+            }
             push(
                 2,
                 Iteration {
@@ -1717,7 +1728,14 @@ fn staged_fixed_graph_activation_preserves_media_and_matches_independent_timelin
             );
             assert_eq!(cursor.passes, u64::from(frame >= 9));
             assert_eq!(cursor.entered_at, Some(Frame(frame)));
-            assert_eq!(cut.state.position, 0);
+            assert_eq!(
+                cut.state.position,
+                if cut.state.mode == Mode::Playing {
+                    cursor.iteration
+                } else {
+                    0
+                }
+            );
             assert_eq!(cut.state.cycles, 0);
             assert_eq!(cut.state.content_revision, Revision(0));
             assert_eq!(cut.state.capture_frames, 0);
@@ -1885,12 +1903,25 @@ fn staged_fixed_graph_activation_preserves_media_and_matches_independent_timelin
                         } else {
                             Mode::Stopped
                         };
+                        expected.position = if expected.mode == Mode::Playing {
+                            if frame < 5 {
+                                frame - 2
+                            } else {
+                                (frame - 6) % 3
+                            }
+                        } else {
+                            0
+                        };
                         expected.last_pulse = if frame < 2 {
                             None
-                        } else if frame == 5 {
-                            Some(Frame(4))
                         } else {
-                            Some(Frame(frame.min(11)))
+                            Some(Frame(if frame < 6 {
+                                2
+                            } else if frame < 9 {
+                                6
+                            } else {
+                                9
+                            }))
                         };
                         expected.composite = Some(state::CompositeState {
                             iteration: if frame < 2 || frame == 5 || frame >= 12 {
@@ -1901,6 +1932,7 @@ fn staged_fixed_graph_activation_preserves_media_and_matches_independent_timelin
                                 (frame - 6) % 3
                             },
                             passes: u64::from(frame >= 9),
+                            waiting_repeat: false,
                             entered_at: (frame >= 2).then_some(Frame(frame.min(12))),
                         });
                     }
@@ -2083,7 +2115,9 @@ fn running_program_bank_activation_matches_independent_media_states_and_ordered_
                         }),
                     );
                 }
-                push(2, EventKind::Pulse);
+                if [2, 6, 9].contains(&f) {
+                    push(2, EventKind::Pulse);
+                }
                 push(
                     2,
                     EventKind::Iteration {
@@ -2162,7 +2196,22 @@ fn running_program_bank_activation_matches_independent_media_states_and_ordered_
                             Mode::Stopped
                         };
                         expected.content_length = if f < 6 { 4 } else { 3 };
-                        expected.last_pulse = (f >= 2).then_some(Frame(f.min(11) as u64));
+                        expected.position = if expected.mode == Mode::Playing {
+                            if f < 6 {
+                                (f - 2) as u64
+                            } else {
+                                ((f - 6) % 3) as u64
+                            }
+                        } else {
+                            0
+                        };
+                        expected.last_pulse = (f >= 2).then_some(Frame(if f < 6 {
+                            2
+                        } else if f < 9 {
+                            6
+                        } else {
+                            9
+                        }));
                         expected.composite = Some(state::CompositeState {
                             iteration: if f < 2 || f == 12 {
                                 0
@@ -2176,6 +2225,7 @@ fn running_program_bank_activation_matches_independent_media_states_and_ordered_
                             } else {
                                 (1 + (f.min(11) - 6) / 3) as u64
                             },
+                            waiting_repeat: false,
                             entered_at: (f >= 2).then_some(Frame(f as u64)),
                         });
                     }
@@ -2393,11 +2443,14 @@ fn pending_program_cancellation_disconnect_and_fault_extraction_return_every_ban
         let mut h = Harness::options(phase == 4, 0, false, staging(), 8, fault);
         let candidate = compile(limits(0), &description(true, false)).unwrap();
         let staged = h.ready(0, &candidate);
-        h.op(2, play(0));
-        h.op(2, play(2));
-        let change = h.op(3, program_activate(staged));
+        let competing = (phase == 3)
+            .then(|| h.ready(1, &compile(limits(0), &description(false, false)).unwrap()));
+        let start = h.engine.next_frame().0;
+        h.op(start, play(0));
+        h.op(start, play(2));
+        let change = h.op(start + 1, program_activate(staged));
         if phase != 4 {
-            h.op(4, stop(0));
+            h.op(start + 2, stop(0));
         }
         h.step(3);
         h.drain();
@@ -2436,9 +2489,7 @@ fn pending_program_cancellation_disconnect_and_fault_extraction_return_every_ban
                 }
             );
         } else if phase == 3 {
-            // A second candidate changes the epoch while the first waits on a stopped clock.
-            let replacement = compile(limits(0), &description(false, false)).unwrap();
-            let other = h.ready(1, &replacement);
+            let other = competing.unwrap();
             let at = h.engine.next_frame().0;
             h.op(at, activate(other, 0));
             h.step(1);
@@ -2846,8 +2897,23 @@ fn assert_pair_states(log: &Log) {
                         mode = Mode::Playing;
                     }
                     if f >= 2 {
-                        pulse = Some(Frame(if f == 5 { 5 } else { f.min(11) + 1 }));
+                        pulse = Some(Frame(if f < 6 {
+                            3
+                        } else if f < 9 {
+                            7
+                        } else {
+                            10
+                        }));
                     }
+                    position = if mode == Mode::Playing {
+                        if f < 5 {
+                            f - 2
+                        } else {
+                            (f - 6) % 3
+                        }
+                    } else {
+                        0
+                    };
                     composite = Some(state::CompositeState {
                         iteration: if f < 2 || f == 5 || f >= 12 {
                             0
@@ -2857,6 +2923,7 @@ fn assert_pair_states(log: &Log) {
                             (f - 6) % 3
                         },
                         passes: u64::from(f >= 9),
+                        waiting_repeat: false,
                         entered_at: (f >= 2).then_some(Frame(f.min(12) + 1)),
                     });
                 }

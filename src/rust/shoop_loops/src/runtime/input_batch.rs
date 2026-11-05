@@ -7,6 +7,13 @@ pub const INPUT_BATCH_RECORD_BYTES: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputAction {
+    Gesture {
+        source: u32,
+        history: Option<HistoryId>,
+        sync: LoopId,
+        target: Option<LoopId>,
+        spec: crate::grab::GestureSpec,
+    },
     Mode {
         mode: Mode,
         position: Option<u64>,
@@ -30,19 +37,56 @@ impl InputEdit {
         if bytes.len() != INPUT_BATCH_RECORD_BYTES {
             return Err(Error::InvalidShape);
         }
+        if let InputAction::Gesture {
+            source,
+            history,
+            sync,
+            target,
+            spec,
+        } = self.action
+        {
+            Self {
+                target: self.target,
+                action: InputAction::Grab {
+                    source,
+                    history,
+                    sync: Some(sync),
+                    window: WindowSpec {
+                        cycles_length: Some(spec.cycles),
+                        ..Default::default()
+                    },
+                    mode: Mode::Stopped,
+                    maximum_frames: 0,
+                },
+            }
+            .encode(bytes)?;
+            bytes[8] = 2;
+            bytes[11] = u8::from(spec.synced) | u8::from(spec.play_after_record) << 1;
+            if let Some(target) = target {
+                bytes[10] |= 32;
+                bytes[24..28].copy_from_slice(&target.slot().to_le_bytes());
+                bytes[28..32].copy_from_slice(&target.generation().to_le_bytes());
+            }
+            return Ok(());
+        }
         bytes.fill(0);
         let mode = match self.action {
             InputAction::Mode { mode, .. } | InputAction::Grab { mode, .. } => mode,
+            InputAction::Gesture { .. } => unreachable!(),
         };
         bytes[9] = match mode {
             Mode::Stopped => 0,
             Mode::Playing => 1,
             Mode::Recording => 2,
-            Mode::Replacing => 3,
+            Mode::Replacing => 5,
+            Mode::PlayingDryThroughWet | Mode::RecordingDryIntoWet => {
+                return Err(Error::InvalidShape)
+            }
         };
         bytes[..4].copy_from_slice(&self.target.slot().to_le_bytes());
         bytes[4..8].copy_from_slice(&self.target.generation().to_le_bytes());
         match self.action {
+            InputAction::Gesture { .. } => unreachable!(),
             InputAction::Mode { position, .. } => {
                 if position.is_some() && matches!(mode, Mode::Stopped | Mode::Recording) {
                     return Err(Error::InvalidEvent);
@@ -101,7 +145,7 @@ impl InputEdit {
         if bytes.len() != INPUT_BATCH_RECORD_BYTES {
             return Err(Error::InvalidShape);
         }
-        if bytes[10] & !31 != 0 {
+        if bytes[10] & !63 != 0 {
             return Err(Error::InvalidEvent);
         }
         let u32_at = |at| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
@@ -109,7 +153,7 @@ impl InputEdit {
             0 => Mode::Stopped,
             1 => Mode::Playing,
             2 => Mode::Recording,
-            3 => Mode::Replacing,
+            5 => Mode::Replacing,
             _ => return Err(Error::InvalidEvent),
         };
         let edit = Self {
@@ -119,6 +163,30 @@ impl InputEdit {
                     mode,
                     position: (bytes[10] & 1 != 0)
                         .then(|| u64::from_le_bytes(bytes[24..32].try_into().unwrap())),
+                },
+                2 => InputAction::Gesture {
+                    source: u32_at(12),
+                    history: if bytes[10] & 16 != 0 {
+                        Some(HistoryId {
+                            scope: u32_at(44),
+                            source: u32_at(12),
+                            graph: Epoch(u64::from_le_bytes(bytes[48..56].try_into().unwrap())),
+                            generation: u64::from_le_bytes(bytes[56..64].try_into().unwrap()),
+                        })
+                    } else {
+                        None
+                    },
+                    sync: LoopId::from_parts(u32_at(16), u32_at(20)).map_err(runtime_error)?,
+                    target: if bytes[10] & 32 != 0 {
+                        Some(LoopId::from_parts(u32_at(24), u32_at(28)).map_err(runtime_error)?)
+                    } else {
+                        None
+                    },
+                    spec: crate::grab::GestureSpec {
+                        synced: bytes[11] & 1 != 0,
+                        play_after_record: bytes[11] & 2 != 0,
+                        cycles: u32_at(36),
+                    },
                 },
                 1 => InputAction::Grab {
                     source: u32_at(12),
@@ -163,12 +231,15 @@ struct Entry {
     media: Option<media::MediaId>,
     pin: Option<media::PinId>,
     writer: Option<LiveWriterId>,
+    finish: Option<(LoopId, crate::grab::Finish, Option<Frame>)>,
+    finish_request: Option<RequestId>,
 }
 pub(super) struct InputBatch {
     entries: Vec<Entry>,
     requests: Vec<crate::Request>,
     ids: Box<[Option<RequestId>]>,
     witnesses: Vec<State>,
+    automatic: Box<[Option<RequestId>]>,
     requested: Frame,
 }
 impl InputBatch {
@@ -193,7 +264,9 @@ impl InputBatch {
                 },
                 media: None,
                 pin: None,
-                writer: None
+                writer: None,
+                finish: None,
+                finish_request: None,
             };
             slots
         ];
@@ -229,6 +302,7 @@ impl InputBatch {
             requests,
             ids,
             witnesses,
+            automatic: vec![None; 2 * slots].into_boxed_slice(),
             requested: Frame(0),
         })
     }
@@ -241,6 +315,94 @@ impl LoopPlanner {
         io: &mut ResourceIo<'_>,
     ) -> Result<Transition, Failure> {
         let entry = self.input_batch.entries[index];
+        if let InputAction::Gesture {
+            source,
+            history,
+            sync,
+            target,
+            spec,
+        } = entry.edit.action
+        {
+            let state_at = |id| {
+                self.resolver
+                    .decisions()?
+                    .iter()
+                    .find(|d| d.state.id == id)
+                    .map(|d| d.state)
+                    .ok_or(crate::Error::InvalidId)
+            };
+            let sync_state = state_at(sync)?;
+            let target_state = target.map(state_at).transpose()?;
+            for witness in [Some(sync_state), target_state].into_iter().flatten() {
+                if !self
+                    .input_batch
+                    .witnesses
+                    .iter()
+                    .any(|old| old.id == witness.id)
+                {
+                    self.input_batch.witnesses.push(witness);
+                }
+            }
+            let target = target_state
+                .map(|state| {
+                    Ok::<_, Error>(crate::grab::Target {
+                        frames: if state.mode == Mode::Recording {
+                            state.capture_frames
+                        } else {
+                            state.content_length
+                        },
+                        position: state.position,
+                        next_transition_delay: self
+                            .resolver
+                            .pending_delay(state.id)
+                            .map(|n| u32::try_from(n).map_err(|_| Error::Capacity))
+                            .transpose()?,
+                    })
+                })
+                .transpose()?;
+            let gesture = spec.resolve(sync_state.content_length, target)?;
+            self.input_batch.entries[index].finish =
+                gesture.finish.map(|finish| (sync, finish, None));
+            let maximum_frames = if let Some(finish) = gesture.finish {
+                let prefix = gesture
+                    .window
+                    .resolve(
+                        Frame(0)..frame,
+                        sync_state.content_length,
+                        sync_state.position,
+                    )?
+                    .frames;
+                sync_state
+                    .content_length
+                    .checked_mul(u64::from(finish.delay) + 1)
+                    .and_then(|tail| tail.checked_sub(sync_state.position))
+                    .and_then(|tail| prefix.checked_add(tail))
+                    .ok_or(Error::Capacity)?
+            } else {
+                0
+            };
+            if sync == entry.edit.target {
+                if let Some((_, finish, _)) = self.input_batch.entries[index].finish {
+                    let remaining = sync_state
+                        .content_length
+                        .checked_mul(u64::from(finish.delay) + 1)
+                        .and_then(|n| n.checked_sub(sync_state.position))
+                        .and_then(|n| n.checked_add(frame.0))
+                        .ok_or(Error::Capacity)?;
+                    let deadline = self.resolver.quantum().ceil(Frame(remaining))?;
+                    self.input_batch.entries[index].finish = Some((sync, finish, Some(deadline)));
+                }
+            }
+            self.input_batch.entries[index].edit.action = InputAction::Grab {
+                source,
+                history,
+                sync: Some(sync),
+                window: gesture.window,
+                mode: gesture.mode,
+                maximum_frames,
+            };
+            return self.prepare_grab_entry(index, frame, io);
+        }
         let InputAction::Grab {
             source,
             history,
@@ -384,7 +546,9 @@ impl LoopPlanner {
                     .transpose()
             };
             let input = media::Input {
+                auxiliary: None,
                 description: media::Description {
+                    auxiliary_channels: 0,
                     owner: state.id,
                     revision,
                     frames: take.frames,
@@ -450,10 +614,37 @@ impl LoopPlanner {
                 payload[..count * INPUT_BATCH_RECORD_BYTES].chunks_exact(INPUT_BATCH_RECORD_BYTES)
             {
                 let edit = InputEdit::decode(bytes)?;
-                if timing != Timing::At && matches!(edit.action, InputAction::Grab { .. }) {
+                if timing != Timing::At
+                    && matches!(
+                        edit.action,
+                        InputAction::Grab { .. } | InputAction::Gesture { .. }
+                    )
+                {
                     return Err(Error::InvalidEvent.into());
                 }
-                self.row(edit.target)?;
+                self.resolver.state(edit.target).map_err(runtime_error)?;
+                let transport = matches!(
+                    edit.action,
+                    InputAction::Mode {
+                        mode: Mode::Stopped | Mode::Playing,
+                        position: None,
+                    }
+                );
+                let row = self.row(edit.target);
+                if row.is_err() && !transport {
+                    return Err(Error::InvalidId.into());
+                }
+                if row.is_ok_and(|row| row.dry_wet)
+                    && !matches!(
+                        edit.action,
+                        InputAction::Mode {
+                            mode: Mode::Stopped | Mode::Playing,
+                            ..
+                        }
+                    )
+                {
+                    return Err(Error::InvalidShape.into());
+                }
                 if self
                     .input_batch
                     .entries
@@ -467,13 +658,17 @@ impl LoopPlanner {
                     media: None,
                     pin: None,
                     writer: None,
+                    finish: None,
+                    finish_request: None,
                 });
             }
             self.resolver.preview_tick(&[])?;
             for index in 0..count {
                 let entry = self.input_batch.entries[index];
                 let transition = match entry.edit.action {
-                    InputAction::Grab { .. } => self.prepare_grab_entry(index, frame, io)?,
+                    InputAction::Grab { .. } | InputAction::Gesture { .. } => {
+                        self.prepare_grab_entry(index, frame, io)?
+                    }
                     InputAction::Mode { mode, position } => match mode {
                         Mode::Stopped => Transition::Stop,
                         Mode::Playing => Transition::Play {
@@ -484,6 +679,9 @@ impl LoopPlanner {
                             monitor_previous: false,
                         },
                         Mode::Replacing => Transition::ReplaceInput { position },
+                        Mode::PlayingDryThroughWet | Mode::RecordingDryIntoWet => {
+                            return Err(Error::InvalidEvent.into())
+                        }
                     },
                 };
                 self.input_batch.requests.push(crate::Request {
@@ -498,11 +696,62 @@ impl LoopPlanner {
                 &self.input_batch.requests,
                 &mut self.input_batch.ids[..count],
             )?;
+            for index in 0..count {
+                let entry = self.input_batch.entries[index];
+                if let Some((source, finish, deadline)) = entry.finish {
+                    let free = self
+                        .input_batch
+                        .automatic
+                        .iter()
+                        .position(Option::is_none)
+                        .ok_or(Error::Capacity)?;
+                    let request = self.resolver.submit_followup(
+                        self.input_batch.ids[index].ok_or(Error::InvalidState)?,
+                        crate::Request {
+                            target: entry.edit.target,
+                            sequence,
+                            at: deadline
+                                .unwrap_or(frame.checked_add(self.resolver.quantum().frames())?),
+                            timing: if deadline.is_some() {
+                                Timing::At
+                            } else {
+                                Timing::AfterTicks {
+                                    source,
+                                    skip: u64::from(finish.delay),
+                                }
+                            },
+                            transition: match finish.mode {
+                                Mode::Stopped => Transition::Stop,
+                                Mode::Playing => Transition::Play {
+                                    position: 0,
+                                    retrigger: false,
+                                },
+                                _ => return Err(Error::InvalidEvent.into()),
+                            },
+                        },
+                    )?;
+                    self.input_batch.automatic[free] = Some(request);
+                    self.input_batch.entries[index].finish_request = Some(request);
+                }
+            }
             self.input_batch.requested = requested;
             Ok(())
         })();
         if result.is_err() {
+            for id in self.input_batch.ids[..self.input_batch.entries.len()]
+                .iter()
+                .flatten()
+            {
+                self.resolver.cancel(*id).map_err(runtime_error)?;
+            }
+            for id in self.input_batch.ids[..self.input_batch.entries.len()]
+                .iter()
+                .flatten()
+            {
+                self.resolver.take_completion(*id).map_err(runtime_error)?;
+            }
             self.release_input_batch(io)?;
+            self.collect_automatic_finishes()?;
         }
         result
     }
@@ -590,6 +839,23 @@ impl LoopPlanner {
         }))
     }
     pub(super) fn collect_input_batch(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+        let applied = self.input_batch.ids[..self.input_batch.entries.len()]
+            .iter()
+            .flatten()
+            .all(|id| {
+                matches!(
+                    self.resolver.completion(*id),
+                    Ok(Some(crate::Completion {
+                        outcome: crate::Outcome::Applied { .. },
+                        ..
+                    }))
+                )
+            });
+        if applied {
+            for entry in &mut self.input_batch.entries {
+                entry.finish_request = None;
+            }
+        }
         for id in self.input_batch.ids[..self.input_batch.entries.len()]
             .iter()
             .flatten()
@@ -601,8 +867,26 @@ impl LoopPlanner {
         }
         self.release_input_batch(io)
     }
+    pub(super) fn collect_automatic_finishes(&mut self) -> Result<(), Error> {
+        for entry in &mut self.input_batch.automatic {
+            if let Some(id) = *entry {
+                if self
+                    .resolver
+                    .take_completion(id)
+                    .map_err(runtime_error)?
+                    .is_some()
+                {
+                    *entry = None;
+                }
+            }
+        }
+        Ok(())
+    }
     pub(super) fn release_input_batch(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
         for entry in &self.input_batch.entries {
+            if let Some(request) = entry.finish_request {
+                self.resolver.cancel(request).map_err(runtime_error)?;
+            }
             if let Some(writer) = entry.writer {
                 let authoritative = self.rows[entry.edit.target.slot() as usize]
                     .and_then(|row| row.active)
@@ -641,6 +925,20 @@ mod tests {
     fn input_records_require_canonical_tags_options_padding_and_exact_size() {
         let target = LoopId::from_parts(0, 1).unwrap();
         for edit in [
+            InputEdit {
+                target,
+                action: InputAction::Gesture {
+                    source: u32::MAX,
+                    history: None,
+                    sync: target,
+                    target: Some(LoopId::from_parts(1, 2).unwrap()),
+                    spec: crate::grab::GestureSpec {
+                        synced: true,
+                        cycles: u32::MAX,
+                        play_after_record: false,
+                    },
+                },
+            },
             InputEdit {
                 target,
                 action: InputAction::Mode {

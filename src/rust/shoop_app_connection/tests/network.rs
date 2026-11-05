@@ -213,6 +213,7 @@ fn throttled_upload_and_download_preserve_control_latency_heartbeat_and_snapshot
             audio: vec![AudioUpdate {
                 channel: 0,
                 content: Channel {
+                    mode: Default::default(),
                     object: Some(1),
                     frames: frames as u64,
                     gain: 1.,

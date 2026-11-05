@@ -55,6 +55,24 @@ pub fn resample_session(
             for loop_ in &mut track.loops {
                 loop_.length_frames =
                     scale_duration(loop_.length_frames, source, target_sample_rate)?;
+                if let Some(timing) = loop_
+                    .composite
+                    .as_mut()
+                    .and_then(|composite| composite.timing.as_mut())
+                {
+                    *timing = timing.converted(crate::ConversionTarget {
+                        sample_rate: target_sample_rate,
+                        quantum_frames: 1,
+                    })?;
+                    loop_.length_frames = timing
+                        .unit_frames
+                        .checked_mul(timing.iterations)
+                        .ok_or_else(|| {
+                            SessionError::Validation(
+                                "resampled composite length overflow".to_owned(),
+                            )
+                        })?;
+                }
                 for channel in &mut loop_.channels {
                     let compensated = channel.capture_alignment_frames != 0;
                     channel.data_length_frames =

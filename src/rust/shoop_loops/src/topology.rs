@@ -250,7 +250,7 @@ pub fn compile(
         }
         for entry in program.sections.iter().flat_map(|section| &section.entries) {
             let target = index(&nodes, entry.target)?;
-            if nodes[target].kind == LoopKind::Composite && entry.mode == Some(Mode::Recording) {
+            if nodes[target].kind == LoopKind::Composite && entry.mode.is_some_and(Mode::records) {
                 return Err(Error::InvalidProgram);
             }
         }
@@ -290,7 +290,7 @@ pub fn compile(
             return Err(Error::Capacity);
         }
         let source_index = index(&nodes, source)?;
-        nodes[source_index].length = program.nominal_frames()?;
+        nodes[source_index].length = program.nominal_frames().map_err(|_| Error::Exhausted)?;
         compiled.insert(source, program);
     }
 
@@ -309,7 +309,7 @@ pub fn compile(
     for trigger in &triggers {
         let source = index(&nodes, trigger.source)?;
         let target = index(&nodes, trigger.target)?;
-        if nodes[target].kind == LoopKind::Composite && trigger.mode == Mode::Recording {
+        if nodes[target].kind == LoopKind::Composite && trigger.mode.records() {
             return Err(Error::InvalidProgram);
         }
         relations.insert((source, target, true));

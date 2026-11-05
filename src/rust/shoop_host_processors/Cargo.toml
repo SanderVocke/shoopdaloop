@@ -1,0 +1,41 @@
+[package]
+name = "shoop_host_processors"
+version.workspace = true
+edition = "2021"
+description = "Host startup preparation of optional DSP banks"
+
+[lints]
+workspace = true
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[features]
+default = []
+builtin-fx = ["dep:shoop_dsp", "shoop_dsp/builtin-fx"]
+oxisynth = ["dep:shoop_dsp", "shoop_dsp/oxisynth"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+rt_buffered = { path = "../rt_buffered" }
+rt_runtime = { path = "../rt_runtime" }
+shoop_dsp = { path = "../shoop_dsp", optional = true }
+thiserror = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+shoop_persistence_codec = { path = "../shoop_persistence_codec" }
+shoop_app = { path = "../shoop_app" }
+shoop_app_api = { path = "../shoop_app_api" }
+shoop_app_client = { path = "../shoop_app_client" }
+shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_rt_backend = { path = "../shoop_rt_backend", default-features = false }
+shoop_rt_transport = { path = "../shoop_rt_transport" }
+shoop_transport = { path = "../shoop_transport" }
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

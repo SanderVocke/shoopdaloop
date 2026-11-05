@@ -36,6 +36,14 @@ pub(crate) fn db_amplitude(db: f32) -> f32 {
     libm::powf(10.0, db / 20.0)
 }
 
+pub(crate) fn reconciled_db(previous: f32, amplitude: f32) -> f32 {
+    if db_amplitude(previous).to_bits() == amplitude.to_bits() {
+        previous
+    } else {
+        amplitude_db(amplitude)
+    }
+}
+
 /// Peaks received since the previous snapshot; without new telemetry the previous reading
 /// holds.
 #[derive(Clone, Debug, Default)]
@@ -105,7 +113,12 @@ impl Controls {
 }
 
 pub(crate) struct Track {
+    pub processor_visible: bool,
+    pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
+    pub default_playback_mode: shoop_backend::BackendDefaultPlaybackMode,
     pub port_name_base: String,
+    pub topology: BackendTrackTopology,
+    pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
     pub strip: StripId,
     pub audio_channels: u32,
     pub midi: bool,
@@ -119,19 +132,40 @@ pub(crate) struct Track {
     pub output_meter: Meter,
     pub midi_in: bool,
     pub midi_out: bool,
+    pub latest_input_midi: Option<shoop_backend::BackendLatestMidiMessage>,
+    pub automatic_enabled: bool,
+    pub automatic_monitoring: bool,
 }
 
 impl Track {
     /// The position of a strip port in `ports`.
     pub fn port_index(&self, kind: PortKind, index: u8) -> Option<usize> {
         let index = usize::from(index);
-        let audio = self.audio_channels as usize;
-        match kind {
-            PortKind::AudioIn if index < audio => Some(2 * index),
-            PortKind::AudioOut if index < audio => Some(2 * index + 1),
-            PortKind::MidiIn if index == 0 && self.midi => Some(2 * audio),
-            PortKind::MidiOut if index == 0 && self.midi => Some(2 * audio + 1),
-            _ => None,
+        let dry = self.topology.dry_audio_channels() as usize;
+        let wet = self.topology.wet_audio_channels() as usize;
+        match &self.topology {
+            BackendTrackTopology::Direct { .. } => match kind {
+                PortKind::AudioIn if index < dry => Some(2 * index),
+                PortKind::AudioOut if index < wet => Some(2 * index + 1),
+                PortKind::MidiIn if index == 0 && self.midi => Some(2 * dry),
+                PortKind::MidiOut if index == 0 && self.midi => Some(2 * dry + 1),
+                _ => None,
+            },
+            BackendTrackTopology::DryWetExternal { .. } => match kind {
+                PortKind::AudioIn if index < dry => Some(2 * index),
+                PortKind::AudioSend if index < dry => Some(2 * index + 1),
+                PortKind::AudioReturn if index < wet => Some(2 * dry + 2 * index),
+                PortKind::AudioOut if index < wet => Some(2 * dry + 2 * index + 1),
+                PortKind::MidiIn if index == 0 && self.midi => Some(2 * (dry + wet)),
+                PortKind::MidiSend if index == 0 && self.midi => Some(2 * (dry + wet) + 1),
+                _ => None,
+            },
+            BackendTrackTopology::DryWetProcessor { .. } => match kind {
+                PortKind::AudioIn if index < dry => Some(index),
+                PortKind::AudioOut if index < wet => Some(dry + index),
+                PortKind::MidiIn if index == 0 && self.midi => Some(dry + wet),
+                _ => None,
+            },
         }
     }
 }
@@ -139,6 +173,7 @@ impl Track {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoopView {
     pub recording_armed: bool,
+    pub capture_incomplete: bool,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_delay: Option<u32>,
@@ -150,6 +185,7 @@ impl Default for LoopView {
     fn default() -> Self {
         Self {
             recording_armed: false,
+            capture_incomplete: false,
             mode: LoopMode::Stopped,
             next_mode: None,
             next_delay: None,
@@ -160,9 +196,14 @@ impl Default for LoopView {
 }
 
 pub(crate) struct Loop {
+    pub recorded: Option<(u64, shoop_rt_protocol::RecordedProcessorState)>,
     pub timing: shoop_rt_protocol::TimingState,
     pub slot: LoopSlotId,
-    pub track: BackendTrackId,
+    pub program: Option<shoop_rt_protocol::CompositeDescription>,
+    pub program_spans: Vec<shoop_rt_protocol::CompositeSpan>,
+    pub composite: Option<shoop_rt_protocol::Telemetry>,
+    pub repeat_sync: bool,
+    pub track: Option<BackendTrackId>,
     pub confirmed: bool,
     pub sync: Option<BackendLoopId>,
     pub gain: f32,
@@ -172,6 +213,17 @@ pub(crate) struct Loop {
     /// Changes whenever the recorded content may have changed.
     pub content: u64,
     pub rt_content_revision: u64,
+}
+
+impl Loop {
+    pub(crate) fn recorded_state(&self) -> Option<alloc::string::String> {
+        let (_, recorded) = self
+            .recorded
+            .filter(|(revision, _)| *revision == self.rt_content_revision)?;
+        let mut state = shoop_processor_protocol::state::State::new(recorded.kind).ok()?;
+        state.values = recorded.values;
+        Some(state.encode())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -250,6 +302,16 @@ impl Slots {
         self.used[index] = true;
         self.generations[index] = self.generations[index].max(self.floor) + 1;
         Some(SlotId::new(index as u32, self.generations[index]))
+    }
+
+    pub fn bump_generation(&mut self, current: SlotId) -> Option<SlotId> {
+        let index = current.index as usize;
+        if !self.used.get(index).copied().unwrap_or(false) {
+            return None;
+        }
+        let generation = self.generations[index].max(self.floor).checked_add(1)?;
+        self.generations[index] = generation;
+        Some(SlotId::new(current.index, generation))
     }
 
     /// The engine used no generation above `floor` on any slot.
@@ -452,9 +514,11 @@ impl Mirror {
 
     /// A loop whose track exists and is not being removed.
     pub fn live_loop(&self, id: BackendLoopId) -> Option<&Loop> {
-        self.loops
-            .get(&id)
-            .filter(|entry| self.live_track(entry.track).is_some())
+        self.loops.get(&id).filter(|entry| {
+            entry
+                .track
+                .is_none_or(|track| self.live_track(track).is_some())
+        })
     }
 
     /// A port whose owner exists and is not being removed.
@@ -476,13 +540,14 @@ impl Mirror {
                 bus: self.buses.get(&id)?.slot,
                 index,
             })),
-            PortTarget::GlobalFx => None,
+            PortTarget::GlobalFx => Some(EnginePort::GlobalFxControl),
         }
     }
 
     /// The application port of an engine port.
     pub fn port_of(&self, port: EnginePort) -> Option<BackendPortId> {
         match port {
+            EnginePort::GlobalFxControl => Some(GLOBAL_FX_PORT_ID),
             EnginePort::Strip(port) => {
                 let track = self.tracks.get(self.strip_tracks.get(&port.strip)?)?;
                 track
@@ -556,7 +621,7 @@ impl Mirror {
         if self.slot_loops.get(&entry.slot) == Some(&id) {
             self.slot_loops.remove(&entry.slot);
         }
-        if let Some(track) = self.tracks.get_mut(&entry.track) {
+        if let Some(track) = entry.track.and_then(|track| self.tracks.get_mut(&track)) {
             track.loops.retain(|candidate| *candidate != id);
         }
         for other in self.loops.values_mut() {
@@ -570,10 +635,9 @@ impl Mirror {
         let channels = track.audio_channels as usize;
         let controls = track.controls;
         BackendTrackState {
-            topology: BackendTrackTopology::Direct {
-                audio_channels: track.audio_channels,
-                midi: track.midi,
-            },
+            fx: crate::processor_controls::track_fx_state(track),
+            default_playback_mode: track.default_playback_mode,
+            topology: track.topology.clone(),
             audio_channels: track.audio_channels,
             midi: track.midi,
             output_gain_db: controls.output_gain_db,
@@ -582,18 +646,44 @@ impl Mirror {
             input_gain_db: controls.input_gain_db,
             input_balance: controls.input_balance,
             input_monitoring: controls.input_monitoring,
-            input_peaks: track.input_meter.take_db(channels),
+            automatic_monitoring_enabled: track.automatic_enabled,
+            automatic_input_monitoring: track.automatic_enabled && track.automatic_monitoring,
+            input_peaks: track
+                .input_meter
+                .take_db(track.topology.dry_audio_channels() as usize),
             output_peaks: track.output_meter.take_db(channels),
+            latest_input_midi_message: track.latest_input_midi,
             input_midi_activity: core::mem::take(&mut track.midi_in),
             output_midi_activity: core::mem::take(&mut track.midi_out),
             ..Default::default()
         }
     }
 
-    pub fn loop_state(entry: &mut Loop, channels: u32, midi: bool) -> BackendLoopState {
+    pub fn loop_state(
+        entry: &mut Loop,
+        channels: u32,
+        dry_channels: u32,
+        midi: bool,
+        roles: bool,
+    ) -> BackendLoopState {
         let view = entry.view;
         let timing = entry.timing;
-        let channel_timings = (0..channels as usize)
+        let processor_alignment_frames = if roles && channels > 0 && view.length > 0 {
+            let dry = if dry_channels > 0 {
+                Some(timing.windows.audio[0].capture_alignment)
+            } else {
+                midi.then_some(timing.windows.midi.capture_alignment)
+            };
+            dry.and_then(|dry| {
+                timing.windows.audio[dry_channels as usize]
+                    .capture_alignment
+                    .checked_sub(dry)
+                    .and_then(|difference| u32::try_from(difference).ok())
+            })
+        } else {
+            None
+        };
+        let channel_timings = (0..(channels + if roles { dry_channels } else { 0 }) as usize)
             .map(|channel| {
                 let window = timing.windows.audio[channel];
                 shoop_backend::BackendChannelTimingState {
@@ -618,10 +708,14 @@ impl Mirror {
             }))
             .collect();
         BackendLoopState {
+            recorded_processor_state: entry.recorded_state(),
+            repeat_sync: entry.repeat_sync,
             recording_armed: view.recording_armed,
+            capture_incomplete: view.capture_incomplete,
             timing_revision: timing.revision,
             channel_timings,
-            capture_alignment_frames: if channels > 0 {
+            processor_alignment_frames,
+            capture_alignment_frames: if channels > 0 || (roles && dry_channels > 0) {
                 timing.windows.audio[0].capture_alignment
             } else {
                 timing.windows.midi.capture_alignment
@@ -636,7 +730,17 @@ impl Mirror {
             stereo: channels == 2,
             gain: entry.gain,
             balance: entry.balance,
-            audio_peaks: entry.meter.take_db(channels as usize),
+            audio_peaks: entry.meter.take_db(
+                if matches!(
+                    view.mode,
+                    shoop_rt_protocol::LoopMode::PlayingDryThroughWet
+                        | shoop_rt_protocol::LoopMode::RecordingDryIntoWet
+                ) {
+                    dry_channels as usize
+                } else {
+                    channels as usize
+                },
+            ),
             ..Default::default()
         }
     }
@@ -816,6 +920,8 @@ pub(crate) fn app_mode(mode: LoopMode) -> BackendLoopMode {
         LoopMode::Playing => BackendLoopMode::Playing,
         LoopMode::Recording => BackendLoopMode::Recording,
         LoopMode::Replacing => BackendLoopMode::Replacing,
+        LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
     }
 }
 

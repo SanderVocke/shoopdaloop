@@ -9,7 +9,7 @@
 //! Absolute indices are what make that possible: a ring offset cannot tell
 //! "still the message I was on" from "that slot was refilled".
 
-pub const MAX_MSG_BYTES: usize = 4;
+pub use shoop_dsp::midi_storage::MAX_MSG_BYTES;
 
 /// Orders messages by time, stably and without allocating.
 ///
@@ -31,46 +31,7 @@ pub fn sort_by_time(messages: &mut [MidiStorageElem]) {
     }
 }
 
-/// One stored message. `time` is absolute within the storage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct MidiStorageElem {
-    pub time: u32,
-    size: u16,
-    bytes: [u8; MAX_MSG_BYTES],
-}
-
-impl MidiStorageElem {
-    /// `None` when the payload is empty or longer than [`MAX_MSG_BYTES`].
-    pub fn new(time: u32, data: &[u8]) -> Option<Self> {
-        if data.is_empty() || data.len() > MAX_MSG_BYTES {
-            return None;
-        }
-        let mut bytes = [0u8; MAX_MSG_BYTES];
-        bytes[..data.len()].copy_from_slice(data);
-        Some(Self {
-            time,
-            size: data.len() as u16,
-            bytes,
-        })
-    }
-
-    /// Same payload, different time.
-    pub fn at_time(mut self, time: u32) -> Self {
-        self.time = time;
-        self
-    }
-
-    pub fn data(&self) -> &[u8] {
-        &self.bytes[..self.size as usize]
-    }
-    pub fn size(&self) -> usize {
-        self.size as usize
-    }
-    /// Compares payloads only, ignoring time.
-    pub fn contents_equal(&self, other: &Self) -> bool {
-        self.data() == other.data()
-    }
-}
+pub use shoop_dsp::midi_storage::MidiStorageElem;
 
 /// Which end of the storage a truncation removes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,7 +285,10 @@ impl MidiStorage {
         allow_replace: bool,
         mut dropped: Option<&mut dyn FnMut(&MidiStorageElem)>,
     ) -> bool {
-        if data.is_empty() || data.len() > MAX_MSG_BYTES || self.data.is_empty() {
+        let Some(event) = MidiStorageElem::new(time, data) else {
+            return false;
+        };
+        if self.data.is_empty() {
             return false;
         }
         if self.is_full() && !allow_replace {
@@ -351,10 +315,7 @@ impl MidiStorage {
         // Write one past the newest.
         let slot = ((self.tail as i64 + self.n_events as i64) % cap as i64) as usize;
         let elem = &mut self.data[slot];
-        elem.time = time;
-        elem.size = data.len() as u16;
-        elem.bytes = [0; MAX_MSG_BYTES];
-        elem.bytes[..data.len()].copy_from_slice(data);
+        *elem = event;
         self.n_events += 1;
         true
     }
@@ -362,7 +323,10 @@ impl MidiStorage {
     /// Inserts before the oldest message. Refuses when full, or when the message
     /// is newer than the current oldest.
     pub fn prepend(&mut self, time: u32, data: &[u8]) -> bool {
-        if data.is_empty() || data.len() > MAX_MSG_BYTES || self.data.is_empty() {
+        let Some(event) = MidiStorageElem::new(time, data) else {
+            return false;
+        };
+        if self.data.is_empty() {
             return false;
         }
         if self.is_full() {
@@ -378,10 +342,7 @@ impl MidiStorage {
         self.n_events += 1;
 
         let elem = &mut self.data[self.tail as usize];
-        elem.time = time;
-        elem.size = data.len() as u16;
-        elem.bytes = [0; MAX_MSG_BYTES];
-        elem.bytes[..data.len()].copy_from_slice(data);
+        *elem = event;
         true
     }
 

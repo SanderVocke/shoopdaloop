@@ -43,6 +43,7 @@ impl Progress {
                 || i32::try_from(channel.start_offset).is_err()
                 || i32::try_from(channel.capture_alignment).is_err()
                 || u32::try_from(channel.preplay).is_err()
+                || (midi && channel.mode == ChannelMode::Wet)
                 || channel
                     .recording_started_at
                     .as_ref()
@@ -110,6 +111,16 @@ impl Progress {
                 {
                     return Err(Refusal::Invalid);
                 }
+                if session.tracks.iter().any(|track| {
+                    track
+                        .processor_state
+                        .as_ref()
+                        .is_some_and(|s| s.len() > 1024)
+                        || track.builtin_fx_midi_cc_assignments.len() > 23
+                        || track.oxisynth_midi_cc_assignments.len() > 2
+                }) {
+                    return Err(Refusal::Invalid);
+                }
                 if session.buses.len() > 8
                     || session
                         .buses
@@ -131,7 +142,13 @@ impl Progress {
                 {
                     return Err(Refusal::Identity);
                 }
-                session.tracks.iter().flat_map(|t| &t.loops).collect()
+                let loops = session
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.loops)
+                    .collect::<Vec<_>>();
+                validate_relations(&loops, session.sample_rate)?;
+                loops
             }
             Manifest::Loop {
                 sample_rate,
@@ -150,7 +167,7 @@ impl Progress {
             } => {
                 if *sample_rate == 0
                     || frames.is_some_and(|f| f > u32::MAX as u64)
-                    || audio.len() > 2
+                    || audio.len() > 16
                     || midi.len() > 1
                 {
                     return Err(Refusal::Invalid);
@@ -166,14 +183,61 @@ impl Progress {
         };
         for content in loops {
             if !content.id.is_valid()
-                || content.frames > u32::MAX as u64
+                || content.composite.is_none() && content.frames > u32::MAX as u64
                 || !content.gain.is_finite()
                 || !(-1.0..=1.0).contains(&content.balance)
                 || content.name.len() > 128
-                || content.audio.len() > 2
+                || content.audio.len() > 16
                 || content.midi.len() > 1
+                || content
+                    .recorded_processor_state
+                    .as_ref()
+                    .is_some_and(|s| s.len() > 1024)
             {
                 return Err(Refusal::Invalid);
+            }
+            let direct = content
+                .audio
+                .iter()
+                .filter(|c| c.mode == ChannelMode::Direct)
+                .count();
+            let dry = content
+                .audio
+                .iter()
+                .filter(|c| c.mode == ChannelMode::Dry)
+                .count();
+            let wet = content
+                .audio
+                .iter()
+                .filter(|c| c.mode == ChannelMode::Wet)
+                .count();
+            if direct > 8
+                || dry > 8
+                || wet > 8
+                || (direct > 0 && dry + wet > 0)
+                || content
+                    .audio
+                    .windows(2)
+                    .any(|pair| pair[0].mode as u8 > pair[1].mode as u8)
+                || content.midi.iter().any(|m| {
+                    (direct > 0 && m.channel.mode != ChannelMode::Direct)
+                        || (dry + wet > 0 && m.channel.mode != ChannelMode::Dry)
+                })
+            {
+                return Err(Refusal::Invalid);
+            }
+            if let Some(composite) = &content.composite {
+                if !composite.valid()
+                    || !content.audio.is_empty()
+                    || !content.midi.is_empty()
+                    || composite
+                        .prepared
+                        .unit_frames
+                        .checked_mul(composite.prepared.iterations)
+                        != Some(content.frames)
+                {
+                    return Err(Refusal::Invalid);
+                }
             }
             for channel in &content.audio {
                 check(channel, false)?;
@@ -281,6 +345,79 @@ impl Progress {
         }
         Ok(self.payload == image.payloads.len())
     }
+}
+
+fn validate_relations(loops: &[&Loop], sample_rate: u32) -> Result<(), Refusal> {
+    use alloc::collections::BTreeMap;
+    let indexed = loops
+        .iter()
+        .map(|content| (content.id, *content))
+        .collect::<BTreeMap<_, _>>();
+    if indexed.len() != loops.len() {
+        return Err(Refusal::Identity);
+    }
+    let mut edges = BTreeMap::<LoopId, BTreeSet<LoopId>>::new();
+    let mut quantum = None;
+    for content in loops {
+        if let Some(source) = content.sync_source {
+            if !indexed.contains_key(&source) {
+                return Err(Refusal::Identity);
+            }
+            edges.entry(source).or_default().insert(content.id);
+        }
+        if let Some(composite) = &content.composite {
+            if composite.prepared.sample_rate != sample_rate
+                || quantum.is_some_and(|q| q != composite.prepared.quantum)
+            {
+                return Err(Refusal::Invalid);
+            }
+            quantum = Some(composite.prepared.quantum);
+            for event in &composite.document.instances {
+                let target = indexed.get(&event.loop_id).ok_or(Refusal::Identity)?;
+                if target.composite.is_some()
+                    && !matches!(
+                        event.mode,
+                        None | Some(LoopMode::Playing | LoopMode::Stopped)
+                    )
+                {
+                    return Err(Refusal::Invalid);
+                }
+                edges.entry(content.id).or_default().insert(event.loop_id);
+            }
+        }
+    }
+    fn visit(
+        id: LoopId,
+        edges: &BTreeMap<LoopId, BTreeSet<LoopId>>,
+        visiting: &mut BTreeSet<LoopId>,
+        visited: &mut BTreeSet<LoopId>,
+    ) -> bool {
+        if visited.contains(&id) {
+            return true;
+        }
+        if !visiting.insert(id) {
+            return false;
+        }
+        if edges.get(&id).is_some_and(|targets| {
+            targets
+                .iter()
+                .any(|id| !visit(*id, edges, visiting, visited))
+        }) {
+            return false;
+        }
+        visiting.remove(&id);
+        visited.insert(id);
+        true
+    }
+    let mut visiting = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    if edges
+        .keys()
+        .any(|id| !visit(*id, &edges, &mut visiting, &mut visited))
+    {
+        return Err(Refusal::Invalid);
+    }
+    Ok(())
 }
 
 pub struct Validation {

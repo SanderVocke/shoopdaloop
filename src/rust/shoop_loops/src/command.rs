@@ -25,6 +25,11 @@ pub enum Transition {
         position: u64,
         retrigger: bool,
     },
+    PlayDry {
+        position: u64,
+        retrigger: bool,
+    },
+    Rerecord,
     Record {
         monitor_previous: bool,
     },
@@ -64,6 +69,14 @@ pub struct Request {
     pub transition: Transition,
 }
 
+/// An admitted nonterminal transition, observed at a settled boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PendingTransition {
+    pub request: Request,
+    pub effective: Frame,
+    pub remaining_ticks: Option<u64>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
     Applied { frame: Frame },
@@ -95,4 +108,5 @@ pub(crate) struct Record {
     pub remaining: u64,
     pub terminal: Option<Outcome>,
     pub batch: Option<RequestId>,
+    pub followup: bool,
 }

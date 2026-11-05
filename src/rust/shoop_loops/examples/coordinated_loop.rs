@@ -241,6 +241,8 @@ fn main() {
             export_slots: 2,
         },
         vec![Binding {
+            dry_wet: false,
+            auxiliary_channels: 0,
             target,
             playback,
             capture,

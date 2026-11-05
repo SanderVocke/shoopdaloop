@@ -34,6 +34,8 @@ let previewSuspended = false;
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
 const largeMedia = process.env.LARGE_MEDIA === '1';
+const composites = process.env.COMPOSITES === '1';
+let compositeStalled = false;
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
@@ -258,11 +260,22 @@ try {
     let diagnosticAt = 0;
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
+      if (composites && !compositeStalled && state?.compositeSelfTest === 'Stall') {
+        compositeStalled = true;
+        await evaluate(`(() => {
+          const end = performance.now() + 1800;
+          while (performance.now() < end) {}
+          document.getElementById('runtime_status').setAttribute('data-composite-stalled', 'true');
+        })()`);
+      }
+      if (composites && ['Saving', 'Resaving'].includes(state?.compositeSelfTest)) {
+        await evaluate("document.getElementById('rfd-output')?.click()");
+      }
       if (process.env.UPLOAD_DIAGNOSTICS === '1' && Date.now() >= diagnosticAt) {
         console.log('Timer diagnostic', await evaluate('({time:performance.now(),ticks:globalThis.shoopTimerProbe?.ticks,visibility:document.visibilityState})'));
         diagnosticAt = Date.now() + 10000;
       }
-      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving', 'BusZeroSaving'].includes(state?.newEngineSelfTest)) {
+      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving', 'BusZeroSaving', 'HostedSaving', 'HostedResaving'].includes(state?.newEngineSelfTest)) {
         await evaluate(`(() => {
           const output = document.getElementById('rfd-output');
           if (!output) return;
@@ -426,7 +439,7 @@ try {
     });
   }
   let entryUrl;
-  const newEngineQuery = `?new-engine-self-test=1${previewOnly ? '&preview-only=1' : ''}${previewResume ? '&preview-denied=1' : ''}${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}`;
+  const newEngineQuery = `?new-engine-self-test=1${previewOnly ? '&preview-only=1' : ''}${previewResume ? '&preview-denied=1' : ''}${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}${composites ? '&composites=1' : ''}`;
   if (newEngine) {
     entryUrl = selfContained
       ? `${selfContainedUrl}${newEngineQuery}`
@@ -521,6 +534,7 @@ try {
     newEngine: document.getElementById('runtime_status')?.getAttribute('data-new-engine'),
     newEngineMicrophone: document.getElementById('runtime_status')?.getAttribute('data-new-engine-microphone'),
     newEngineSelfTest: document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test'),
+    compositeSelfTest: document.getElementById('runtime_status')?.getAttribute('data-composite-self-test'),
   })`;
 
   async function navigateWithAudio(url) {
@@ -556,11 +570,16 @@ try {
       await clickEnable('enable_audio');
     }
     let step;
+    let compositeStep;
     const state = await waitFor(
       candidate => {
         if (candidate.newEngineSelfTest !== step) {
           step = candidate.newEngineSelfTest;
           console.log(`new engine self-test: ${step}`);
+        }
+        if (composites && candidate.compositeSelfTest !== compositeStep) {
+          compositeStep = candidate.compositeSelfTest;
+          console.log(`composite self-test: ${compositeStep}`);
         }
         if (candidate.newEngineSelfTest?.startsWith('failed')) {
           throw new Error(`new engine workflow failed: ${JSON.stringify({ candidate, failures })}`);
@@ -568,8 +587,11 @@ try {
         return candidate.newEngineSelfTest === 'passed';
       },
       'the new engine workflow did not finish',
-      largeMedia ? 600_000 : 300_000,
+      largeMedia ? 900_000 : 300_000,
     );
+    if (composites && (!compositeStalled || state.compositeSelfTest !== 'Passed')) {
+      throw new Error(`composite acceptance incomplete: ${JSON.stringify(state)}`);
+    }
     if (state.newEngine !== 'Running' || (!outputOnly && state.newEngineMicrophone !== 'Connected') || state.quantum !== 128) {
       throw new Error(`new engine evidence is incomplete: ${JSON.stringify(state)}`);
     }

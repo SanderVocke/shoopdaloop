@@ -8,9 +8,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 mod commands;
+mod composites;
 mod deployment;
 mod management;
 mod media;
+mod monitoring;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
 mod preview;
@@ -49,6 +51,7 @@ struct Track {
     audio_channels: u32,
     midi: bool,
     monitoring_intent: Option<(u64, bool)>,
+    default_playback_intent: Option<(u64, DefaultPlaybackMode)>,
     view: TrackState,
     loops: Vec<LoopId>,
 }
@@ -75,6 +78,7 @@ struct Port {
 #[derive(Clone, Debug)]
 enum Effect {
     None,
+    CompositeEdit(LoopId),
     BusCreated(BusId),
     BusRemoved(BusId),
     BusControl(BusId),
@@ -153,6 +157,7 @@ pub struct Service {
     graph_connections: BTreeMap<shoop_port_graph::OperationId, (PortId, String)>,
     master_graph_auto_done: bool,
     backend: Box<dyn Backend>,
+    track_processors: Arc<[TrackProcessorDescriptor]>,
     preview: ClickTrackState,
     preview_bus: Option<BusId>,
     preview_stage: Option<preview::Stage>,
@@ -172,6 +177,10 @@ pub struct Service {
     tracks: BTreeMap<TrackId, Track>,
     track_order: Vec<TrackId>,
     loops: BTreeMap<LoopId, Loop>,
+    composites: BTreeMap<LoopId, composites::Owner>,
+    next_composite_event: u64,
+    automatic_monitoring_intent: BTreeMap<TrackId, u64>,
+    composite_structure: Option<composites::structure::Job>,
     ports: BTreeMap<PortId, Port>,
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
     buses: BTreeMap<BusId, Bus>,
@@ -221,10 +230,17 @@ impl Service {
             return Err(anyhow!("invalid host resource limits"));
         }
         let observed = backend.poll()?;
-        if !observed.tracks.is_empty() || !observed.loops.is_empty() {
+        if !observed.tracks.is_empty()
+            || !observed.loops.is_empty()
+            || !observed.composites.is_empty()
+        {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
         }
+        let track_processors = backend
+            .track_processor_catalog()
+            .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            track_processors,
             host_graph_controller: None,
             host_graph: Arc::default(),
             publications: BTreeMap::new(),
@@ -250,6 +266,10 @@ impl Service {
             tracks: BTreeMap::new(),
             track_order: Vec::new(),
             loops: BTreeMap::new(),
+            composites: BTreeMap::new(),
+            next_composite_event: 1,
+            automatic_monitoring_intent: BTreeMap::new(),
+            composite_structure: None,
             ports: BTreeMap::new(),
             channels: BTreeMap::new(),
             buses: BTreeMap::new(),
@@ -293,7 +313,15 @@ impl Service {
         })?;
         service.bootstrap_track = Some(created.track_id);
         service.bootstrap_loop = created.loops.first().copied();
-        service.insert_track(created, "Sync".to_owned(), 1, false, true)?;
+        service.insert_track(
+            created,
+            "Sync".to_owned(),
+            BackendTrackTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            true,
+        )?;
         service
             .backend
             .set_loop_smoothing_ms(service.options.loop_smoothing_ms)?;
@@ -748,6 +776,11 @@ impl Service {
             Some((Refusal::Identity, "the session was replaced"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
             Some((Refusal::RevisionConflict, "the shared state changed"))
+        } else if self.composite_structure_busy(command.as_ref()) {
+            Some((
+                Refusal::Busy,
+                "a composite lifecycle operation is preserving dependent arrangements",
+            ))
         } else if self.persistence_busy(command.as_ref()) {
             Some((
                 Refusal::Busy,
@@ -756,7 +789,12 @@ impl Service {
         } else if command.as_ref().is_some_and(|command| !command.bounded()) {
             Some((Refusal::Invalid, "the command exceeds protocol bounds"))
         } else if self.pending.len() == MAX_PENDING_OPERATIONS
-            || self.backend.mutation_capacity() < self.request_budget(command.as_ref())
+            || self.backend.mutation_capacity()
+                < self.request_budget(command.as_ref()).saturating_add(
+                    self.composite_structure
+                        .as_ref()
+                        .map_or(0, |job| job.reserve()),
+                )
         {
             Some((Refusal::Overloaded, "operation tracking is full"))
         } else {
@@ -799,6 +837,13 @@ impl Service {
             None => self.prepare_shutdown(),
         };
         let after = self.backend.mutation_cursor();
+        if let Some(job) = self
+            .composite_structure
+            .as_mut()
+            .filter(|job| job.operation.is_none())
+        {
+            job.operation = Some(id);
+        }
         let pending = self.pending.get_mut(&id).expect("reserved operation");
         pending.last = after;
         pending.effect = self.active_effect.clone();
@@ -871,10 +916,31 @@ impl Service {
             self.pending.insert(id, pending);
             return;
         }
+        let stopped_ancestors = self
+            .composite_structure
+            .as_ref()
+            .filter(|job| job.operation == Some(id))
+            .map(|job| job.stopped.clone())
+            .unwrap_or_default();
+        if self
+            .composite_structure
+            .as_ref()
+            .is_some_and(|job| job.operation == Some(id))
+        {
+            self.composite_structure = None;
+        }
         self.settle_effect(&pending.effect, pending.error.is_none());
         self.bump();
         let is_shutdown = matches!(pending.effect, Effect::Shutdown);
         let outcome = match pending.error {
+            Some(error) if !stopped_ancestors.is_empty() => {
+                let message = alloc::format!(
+                    "{} ({} dependent arrangements were stopped.)",
+                    error.message.chars().take(400).collect::<String>(),
+                    stopped_ancestors.len()
+                );
+                refused_outcome(error.reason, &message)
+            }
             Some(error) => refused_outcome(error.reason, &error.message),
             None => match pending.effect {
                 Effect::TrackCreated(track, loops) => Outcome::TrackCreated {
@@ -886,6 +952,10 @@ impl Service {
                     revision: self.revision,
                     track,
                     loop_id,
+                },
+                _ if !stopped_ancestors.is_empty() => Outcome::AncestorsStopped {
+                    revision: self.revision,
+                    loops: stopped_ancestors,
                 },
                 _ => Outcome::Confirmed {
                     revision: self.revision,
@@ -959,9 +1029,20 @@ impl Service {
         self.advance_preview();
         match self.backend.poll() {
             Ok(mut observed) => {
+                if let Ok(catalog) = self.backend.track_processor_catalog() {
+                    if catalog != self.track_processors {
+                        self.track_processors = catalog;
+                        self.bump();
+                    }
+                }
+                self.observe_composites(&observed);
+                self.observe_composite_structure(&observed.mutation_completions);
                 let completions = core::mem::take(&mut observed.mutation_completions);
                 self.apply_observation(observed);
+                self.refresh_natural_composites();
                 for completion in completions {
+                    self.automatic_monitoring_intent
+                        .retain(|_, sequence| *sequence != completion.sequence);
                     publication::engine_complete(&mut self.publications, &completion);
                     for track in self.tracks.values_mut() {
                         if track
@@ -969,6 +1050,12 @@ impl Service {
                             .is_some_and(|(sequence, _)| sequence == completion.sequence)
                         {
                             track.monitoring_intent = None;
+                        }
+                        if track
+                            .default_playback_intent
+                            .is_some_and(|(sequence, _)| sequence == completion.sequence)
+                        {
+                            track.default_playback_intent = None;
                         }
                     }
                     for intent in self
@@ -998,6 +1085,8 @@ impl Service {
                         }
                     }
                 }
+                self.advance_composite_structure();
+                self.reconcile_monitoring_policy();
                 self.advance_publications();
                 self.advance_graph_connections();
                 let done = self.completed_operations();

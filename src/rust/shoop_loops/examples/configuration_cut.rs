@@ -414,6 +414,8 @@ fn run(parts: &[usize]) {
             export_slots: 3,
         },
         vec![Binding {
+            dry_wet: false,
+            auxiliary_channels: 0,
             target: owner(1),
             playback: node(0),
             capture: node(1),
@@ -536,6 +538,10 @@ fn run(parts: &[usize]) {
                 id: node_pairs,
                 previous: Some(owner(1)),
                 initial: Some(NodePairInitial {
+                    history_source: 0,
+                    audio_widths: None,
+                    dry_wet: false,
+                    auxiliary: None,
                     target: owner(2),
                     frames: 2,
                     audio: Some(source),

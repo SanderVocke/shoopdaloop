@@ -84,6 +84,7 @@ pub fn simulate(input: &TopologyDescription, frames: u64) -> Expected {
             })
         };
         let tick = frame % period == 0;
+        let program_tick = frame % program.nominal_unit_frames == 0;
         let previous = iteration;
         let mut ended = false;
         if frame == 0 {
@@ -106,8 +107,15 @@ pub fn simulate(input: &TopologyDescription, frames: u64) -> Expected {
             emit(0, EventKind::Wrap);
             emit(0, EventKind::Pulse);
         }
-        if tick {
+        if running
+            && (frame == 0
+                || (program_tick
+                    && !explicit
+                    && frame / program.nominal_unit_frames % table.len() as u64 == 0))
+        {
             emit(1, EventKind::Pulse);
+        }
+        if program_tick {
             if running {
                 if frame != 0 {
                     iteration += 1;
@@ -151,7 +159,7 @@ pub fn simulate(input: &TopologyDescription, frames: u64) -> Expected {
         for (target, child) in children.iter_mut().enumerate().skip(2) {
             let current = table[iteration][target];
             let old = table[previous][target];
-            let action = ended || (running && tick && (frame == 0 || old != current));
+            let action = ended || (running && program_tick && (frame == 0 || old != current));
             let mut pulse = false;
             if action {
                 let desired = if ended {
@@ -160,6 +168,9 @@ pub fn simulate(input: &TopologyDescription, frames: u64) -> Expected {
                     current.unwrap_or(Mode::Stopped)
                 };
                 match desired {
+                    Mode::PlayingDryThroughWet | Mode::RecordingDryIntoWet | Mode::Replacing => {
+                        unreachable!("ordinary composite reference fixture")
+                    }
                     Mode::Stopped => {
                         if child.mode != Mode::Stopped {
                             emit(target, EventKind::Transition(Transition::Stop));

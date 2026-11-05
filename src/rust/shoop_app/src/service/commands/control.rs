@@ -15,8 +15,52 @@ impl Service {
                 let mode = control_mode(mode)?;
                 for id in &loops {
                     self.loop_entry(*id)?;
+                    self.require_restored_composite(*id, mode)?;
+                    if self.composites.contains_key(id) {
+                        if mode == BackendLoopMode::Replacing {
+                            return Err(CommandError {
+                                reason: Refusal::Unsupported,
+                                message: "Composite loops do not support Replacing.".into(),
+                            });
+                        }
+                        if matches!(
+                            mode,
+                            BackendLoopMode::PlayingDryThroughWet
+                                | BackendLoopMode::RecordingDryIntoWet
+                        ) {
+                            return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+                        }
+                        if mode != BackendLoopMode::Stopped && mode != BackendLoopMode::Playing {
+                            return Err(CommandError::invalid(
+                                "a composite's outer mode is Play or Stop",
+                            ));
+                        }
+                        self.composite_transport_iteration(*id, align_to_sync_at)?;
+                        if align_to_sync_at.is_some() && mode != BackendLoopMode::Playing {
+                            return Err(CommandError::invalid(
+                                "composite iteration alignment requires Play",
+                            ));
+                        }
+                    } else if align_to_sync_at.is_some() {
+                        return Err(CommandError::invalid(
+                            "aligned primitive transitions are unavailable",
+                        ));
+                    }
+                }
+                if mode == BackendLoopMode::Replacing {
+                    self.replacing(loops, cycles_delay, false)?;
+                    return Ok(Effect::None);
                 }
                 for id in loops {
+                    if self.composites.contains_key(&id) {
+                        self.transition_authored_composite(
+                            id,
+                            mode,
+                            cycles_delay,
+                            align_to_sync_at,
+                        )?;
+                        continue;
+                    }
                     self.backend.transition_loop_aligned(
                         self.loops[&id].backend,
                         mode,
@@ -31,9 +75,8 @@ impl Service {
                 self.global.sync.then(|| self.target_delay()),
                 Some(self.global.apply_n_cycles),
             )?,
-            TriggerDefaultPlayback { loops } => self.transition(
+            TriggerDefaultPlayback { loops } => self.transition_default(
                 loops,
-                BackendLoopMode::Playing,
                 self.global.sync.then(|| self.target_delay()),
                 Some(self.global.apply_n_cycles),
             )?,
@@ -90,28 +133,66 @@ impl Service {
             }
             SetTarget { target } => return self.execute(Command::SetTarget(target)),
             ClearLoops { loops } => {
-                for id in &loops {
-                    self.loop_entry(*id)?;
-                }
-                for id in loops {
-                    self.backend.clear_loop(self.loops[&id].backend)?;
-                }
+                return self.clear_composite_slots(loops);
             }
             SetRepeatSync { loops, active } => {
                 for id in &loops {
                     self.loop_entry(*id)?;
                 }
-                let sync = if active { self.sync_backend() } else { None };
                 for id in loops {
                     self.backend
-                        .set_loop_sync_source(self.loops[&id].backend, sync)?;
+                        .set_loop_repeat_sync(self.loops[&id].backend, active)?;
                 }
             }
-            Grab { .. } | AdoptRingbuffers { .. } => {
-                return Err(CommandError::unsupported(BackendCapability::Grab))
+            Grab { loops } => self.grab_gesture(loops)?,
+            AdoptRingbuffers {
+                loops,
+                reverse_cycle_start,
+                cycles_length,
+                go_to_cycle,
+                go_to_mode,
+            } => {
+                if loops.is_empty() {
+                    return Ok(Effect::None);
+                }
+                self.require_input(BackendCapability::Grab)?;
+                let number = |value| {
+                    i32::try_from(value).map_err(|_| {
+                        CommandError::invalid("Grab cycle exceeds the supported range")
+                    })
+                };
+                let mode = if go_to_mode == LoopMode::Unknown {
+                    BackendLoopMode::Stopped
+                } else {
+                    control_mode(go_to_mode)?
+                };
+                let mut unique = BTreeSet::new();
+                let mut edits = Vec::with_capacity(loops.len());
+                for id in loops {
+                    if !unique.insert(id) {
+                        return Err(CommandError::invalid("duplicate Grab target"));
+                    }
+                    edits.push(BackendInputEdit::Grab(BackendGrabRequest {
+                        loop_id: self.input_target(id)?,
+                        reverse_start_cycle: Some(number(reverse_cycle_start)?),
+                        cycles_length: Some(number(cycles_length)?),
+                        go_to_cycle: Some(number(go_to_cycle)?),
+                        go_to_mode: mode,
+                    }));
+                }
+                self.backend.input_edits(&edits, None)?;
             }
-            ComposeAddToEnd { .. } => {
-                return Err(CommandError::unsupported(BackendCapability::CompositeLoops))
+            ComposeAddToEnd {
+                target,
+                add,
+                parallel,
+            } => {
+                return self.edit_composite(shoop_app_protocol::composite::Edit::Append {
+                    target,
+                    add,
+                    parallel,
+                    convert_if_empty: true,
+                })
             }
             SetTrackGain { tracks, gain_db } => {
                 self.control_tracks(tracks, TrackAction::OutputGainChanged(gain_db))?
@@ -229,10 +310,9 @@ fn control_mode(mode: LoopMode) -> Result<BackendLoopMode, CommandError> {
         LoopMode::Stopped => Ok(BackendLoopMode::Stopped),
         LoopMode::Playing => Ok(BackendLoopMode::Playing),
         LoopMode::Recording => Ok(BackendLoopMode::Recording),
-        LoopMode::Replacing => Err(CommandError::unsupported(BackendCapability::ReplacingMode)),
-        LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet => {
-            Err(CommandError::unsupported(BackendCapability::DryWetModes))
-        }
+        LoopMode::Replacing => Ok(BackendLoopMode::Replacing),
+        LoopMode::PlayingDryThroughWet => Ok(BackendLoopMode::PlayingDryThroughWet),
+        LoopMode::RecordingDryIntoWet => Ok(BackendLoopMode::RecordingDryIntoWet),
         LoopMode::Unknown => Err(CommandError::invalid("unknown loop mode")),
     }
 }

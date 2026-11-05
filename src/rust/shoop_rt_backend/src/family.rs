@@ -30,6 +30,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.pump();
         self.ready()?;
+        if self.input.is_some() {
+            bail!("an input edit is pending");
+        }
         if self.requests.timing_pending() {
             bail!("a timing edit is pending");
         }
@@ -65,16 +68,39 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             if let Some(image) = &member.content {
                 if entry.view.recording_armed
-                    || entry.view.mode == LoopMode::Recording
-                    || entry.view.next_mode == Some(LoopMode::Recording)
+                    || entry.view.mode.records()
+                    || entry.view.next_mode.is_some_and(LoopMode::records)
                 {
                     bail!("stop affected recording before replacing family content");
                 }
-                let track = &self.mirror.tracks[&entry.track];
+                let track = &self.mirror.tracks[&entry
+                    .track
+                    .ok_or_else(|| anyhow!("composites have no media channels"))?];
+                let direct = matches!(track.topology, BackendTrackTopology::Direct { .. });
+                let dry = track.topology.dry_audio_channels() as usize;
+                let wet = track.topology.wet_audio_channels() as usize;
                 if image.source_id != member.loop_id.raw()
                     || image.length % update.quantum_frames != 0
-                    || image.audio.len() != track.audio_channels as usize
+                    || image.audio.len() != if direct { wet } else { dry + wet }
                     || image.midi.len() != usize::from(track.midi)
+                    || image.audio.iter().enumerate().any(|(index, channel)| {
+                        channel.mode
+                            != if direct {
+                                BackendChannelMode::Direct
+                            } else if index < dry {
+                                BackendChannelMode::Dry
+                            } else {
+                                BackendChannelMode::Wet
+                            }
+                    })
+                    || image.midi.iter().any(|channel| {
+                        channel.mode
+                            != if direct {
+                                BackendChannelMode::Direct
+                            } else {
+                                BackendChannelMode::Dry
+                            }
+                    })
                 {
                     bail!("family content has invalid identity, channels or length");
                 }
@@ -126,23 +152,42 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             quantum: self.limits().quantum,
         }));
         for member in &update.members {
-            let mut pair = [None; 2];
+            let entry = &self.mirror.loops[&member.loop_id];
+            let topology = self.mirror.tracks[&entry
+                .track
+                .ok_or_else(|| anyhow!("composites have no media channels"))?]
+                .topology
+                .clone();
+            let roles = !matches!(topology, BackendTrackTopology::Direct { .. });
+            let recorded_state = crate::processor_controls::recorded_state(
+                &topology,
+                content
+                    .get(&member.loop_id)
+                    .and_then(|image| image.recorded_processor_state.as_deref()),
+            )?;
+            let mut pair = [None; 3];
             if let Some(image) = content.get(&member.loop_id).filter(|image| {
                 image.length > 0
-                    || image
-                        .audio
-                        .iter()
-                        .any(|channel| !channel.samples.is_empty())
-                    || image.midi.iter().any(|channel| channel.length > 0)
+                    || image.audio.iter().any(|c| !c.samples.is_empty())
+                    || image.midi.iter().any(|c| c.length > 0)
             }) {
-                for (index, midi) in [false, true].into_iter().enumerate() {
+                for index in 0..if roles { 3 } else { 2 } {
                     let token = self.family_token()?;
-                    let upload = Upload::new(
-                        token,
-                        midi,
-                        Arc::clone(image),
-                        usize::from(self.limits().strip_audio_channels),
-                    )?;
+                    let width = usize::from(self.limits().strip_audio_channels);
+                    let upload = if roles && index != 1 {
+                        Upload::audio_role(
+                            token,
+                            Arc::clone(image),
+                            width,
+                            if index == 0 {
+                                BackendChannelMode::Wet
+                            } else {
+                                BackendChannelMode::Dry
+                            },
+                        )?
+                    } else {
+                        Upload::new(token, index == 1, Arc::clone(image), width)?
+                    };
                     uploads.push(token);
                     pair[index] = Some(token);
                     work.push_back(Work::Upload {
@@ -179,6 +224,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             u64::from(image.length)
                         }),
                     audio: pair[0],
+                    dry_audio: pair[2],
+                    recorded_state,
                     midi: pair[1],
                     replace: member.content.is_some(),
                     restart: member.restart,

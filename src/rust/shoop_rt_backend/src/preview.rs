@@ -110,6 +110,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ok_or_else(|| anyhow!("preview identity exhausted"))?;
         let channels = usize::from(self.limits().strip_audio_channels);
         let content = Arc::new(BackendLoopContent {
+            recorded_processor_state: None,
             source_id: token,
             length: samples.len() as u32,
             gain: 1.,

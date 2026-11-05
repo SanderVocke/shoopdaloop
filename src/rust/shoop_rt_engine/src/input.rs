@@ -140,6 +140,8 @@ fn mode(mode: LoopMode) -> Mode {
         LoopMode::Playing => Mode::Playing,
         LoopMode::Recording => Mode::Recording,
         LoopMode::Replacing => Mode::Replacing,
+        LoopMode::PlayingDryThroughWet => Mode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet => Mode::RecordingDryIntoWet,
     }
 }
 impl ControlEndpoint {
@@ -227,6 +229,10 @@ impl ControlEndpoint {
                     };
                 }
                 match edit.intent {
+                    InputIntent::Mode {
+                        mode: LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet,
+                        ..
+                    } => return Err(Refusal::Unsupported),
                     InputIntent::Mode { mode, position }
                         if position.is_some()
                             && matches!(mode, LoopMode::Stopped | LoopMode::Recording) =>
@@ -239,9 +245,14 @@ impl ControlEndpoint {
                     } if position % u64::from(self.limits.quantum) != 0 => {
                         return Err(Refusal::InvalidValue)
                     }
-                    InputIntent::Grab {
+                    InputIntent::Gesture { sync, .. }
+                    | InputIntent::Grab {
                         sync: Some(sync), ..
                     } if self.model.find_loop(sync).is_none() => return Err(Refusal::InvalidId),
+                    InputIntent::Gesture {
+                        target: Some(target),
+                        ..
+                    } if self.model.find_loop(target).is_none() => return Err(Refusal::InvalidId),
                     InputIntent::Grab {
                         mode,
                         maximum_frames,
@@ -295,13 +306,12 @@ impl ControlEndpoint {
                 }
                 let mut timing = Timing::At;
                 if let Some(skip) = delay {
-                    if self
-                        .input
-                        .entries
-                        .iter()
-                        .flatten()
-                        .any(|entry| matches!(entry.edit.intent, InputIntent::Grab { .. }))
-                    {
+                    if self.input.entries.iter().flatten().any(|entry| {
+                        matches!(
+                            entry.edit.intent,
+                            InputIntent::Grab { .. } | InputIntent::Gesture { .. }
+                        )
+                    }) {
                         return Err(Refusal::InvalidValue);
                     }
                     let first = self.input.entries[0].ok_or(Refusal::Internal)?.edit.loop_id;
@@ -335,6 +345,29 @@ impl ControlEndpoint {
                         .enumerate()
                     {
                         let action = match entry.edit.intent {
+                            InputIntent::Gesture {
+                                sync,
+                                target,
+                                synced,
+                                cycles,
+                                play_after_record,
+                            } => {
+                                let owner = self
+                                    .model
+                                    .find_loop(entry.edit.loop_id)
+                                    .ok_or(Refusal::InvalidId)?;
+                                InputAction::Gesture {
+                                    source: owner.strip.ok_or(Refusal::InvalidId)?.0.index,
+                                    history: entry.source,
+                                    sync: loop_id(sync),
+                                    target: target.map(loop_id),
+                                    spec: shoop_loops::grab::GestureSpec {
+                                        synced,
+                                        cycles,
+                                        play_after_record,
+                                    },
+                                }
+                            }
                             InputIntent::Mode {
                                 mode: value,
                                 position,
@@ -355,7 +388,7 @@ impl ControlEndpoint {
                                     .find_loop(entry.edit.loop_id)
                                     .ok_or(Refusal::InvalidId)?;
                                 InputAction::Grab {
-                                    source: owner.strip.0.index,
+                                    source: owner.strip.ok_or(Refusal::Unsupported)?.0.index,
                                     history: entry.source,
                                     sync: sync.map(loop_id),
                                     window: shoop_loops::grab::WindowSpec {
@@ -559,6 +592,7 @@ impl ControlEndpoint {
             let needs_source = matches!(
                 entry.edit.intent,
                 InputIntent::Grab { .. }
+                    | InputIntent::Gesture { .. }
                     | InputIntent::Mode {
                         mode: LoopMode::Replacing,
                         ..
@@ -569,9 +603,13 @@ impl ControlEndpoint {
                     self.input_fail(Refusal::InvalidId);
                     return;
                 };
+                let Some(strip) = owner.strip else {
+                    self.input_fail(Refusal::Unsupported);
+                    return;
+                };
                 self.input_submit(
                     Operation::HistoryStatus {
-                        source: owner.strip.0.index,
+                        source: strip.0.index,
                     },
                     Step::History(index),
                 );

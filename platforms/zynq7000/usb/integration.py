@@ -178,6 +178,8 @@ def main():
                 with open(directory / 'client.log', 'w') as log:
                     client = subprocess.run([ROOT / 'target/debug/examples/zynq_probe', profile], cwd=ROOT,
                                             env=environment, stdout=log, stderr=log, timeout=240)
+                if client.returncode == 0 and not args.corrupt and args.fault != 'nak':
+                    vm.ready('SHOOP_HOST_RETURNED', timeout=15)
             finally:
                 done.set()
                 thread.join(timeout=6)

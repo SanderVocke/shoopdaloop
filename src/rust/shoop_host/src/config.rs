@@ -40,9 +40,20 @@ mod tests {
         assert_eq!(config.pools.quantum, 32);
         let mut custom = config.clone();
         custom.settings.pools.quantum = 64;
+        custom.settings.processors = shoop_app_api::ProcessorSettings {
+            builtin_fx: shoop_app_api::ProcessorPolicy::Off,
+            oxisynth: shoop_app_api::ProcessorPolicy::On,
+            fx_instances: 5,
+            synth_instances: 3,
+            memory_mb: 384,
+        };
         let decoded: super::HostConfig =
             serde_json::from_slice(&serde_json::to_vec(&custom).unwrap()).unwrap();
         assert_eq!(decoded.pools.quantum, 64);
+        assert_eq!(decoded.processors, custom.processors);
+        let mut invalid_width = config.clone();
+        invalid_width.pools.channels = 9;
+        assert!(invalid_width.validate().is_err());
         custom.settings.pools.quantum = 17;
         assert!(custom.validate().is_err());
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"misspelled_setting":7}"#).is_err());

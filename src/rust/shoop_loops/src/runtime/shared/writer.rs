@@ -205,7 +205,7 @@ impl Shared {
                 } else {
                     maximum
                 };
-                job.audio_export = Some(io.reserve_snapshot(resource, frame, maximum)?);
+                job.audio_export = Some(io.reserve_writer_snapshot(resource, frame, maximum)?);
             }
             if let Some(snapshot) = snapshots[1] {
                 let store = midi_store.ok_or(Error::InvalidShape)?;
@@ -333,7 +333,7 @@ impl Shared {
                 job.midi = Some(resource);
                 job.writer = Some(writer);
                 job.import = Some(import);
-                job.midi_export = Some(io.reserve_snapshot(resource, frame, u64::MAX)?);
+                job.midi_export = Some(io.reserve_writer_snapshot(resource, frame, u64::MAX)?);
             }
             Ok(())
         })();
@@ -366,7 +366,7 @@ impl Shared {
             let resource = io.fork_audio(store, snapshot.id)?;
             let result = (|| {
                 let revision = io.info(resource)?.revision;
-                let export = io.reserve_snapshot(resource, frame, job.frames)?;
+                let export = io.reserve_writer_snapshot(resource, frame, job.frames)?;
                 Ok((revision, export))
             })();
             match result {
@@ -419,7 +419,7 @@ impl Shared {
                     indexed_midi::WriteKind::Fixed => job.midi_frames,
                     indexed_midi::WriteKind::Growing { maximum_frames } => maximum_frames,
                 };
-                job.midi_export = Some(io.reserve_snapshot(resource, frame, maximum)?);
+                job.midi_export = Some(io.reserve_writer_snapshot(resource, frame, maximum)?);
             }
             if io.progress_indexed_midi_writer(job.writer.unwrap(), steps)?
                 != indexed_midi::Status::Ready
@@ -862,6 +862,7 @@ impl LoopPlanner {
             return Err(Error::InvalidShape);
         }
         let media = self.ledger.reserve(media::Description {
+            auxiliary_channels: 0,
             owner: decision.state.id,
             revision: decision.state.capture_revision,
             frames: 0,
@@ -873,7 +874,7 @@ impl LoopPlanner {
                 let audio = if row.binding.channels > 0 {
                     Some(
                         io.snapshot(
-                            row.resources[row.active.ok_or(Error::InvalidState)?.bank][0]
+                            row.resources[row.active.ok_or(Error::InvalidState)?.bank][0][0]
                                 .ok_or(Error::InvalidState)?,
                             self.resolver.frame(),
                         )?,
@@ -899,6 +900,10 @@ impl LoopPlanner {
         Ok(Some(Take {
             windows: job.windows,
             writer: Some(id),
+            edit: None,
+            snapshot_credit: None,
+            auxiliary: None,
+            midi: None,
             revision: decision.state.capture_revision,
             media,
             bank: 0,

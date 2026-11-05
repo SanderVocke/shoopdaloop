@@ -9,6 +9,7 @@ pub struct StripPreset {
     pub input_gain: f32,
     pub input_balance: f32,
     pub monitoring: bool,
+    pub automatic_monitoring: bool,
     pub output_gain: f32,
     pub output_balance: f32,
     pub output_mute: bool,
@@ -16,6 +17,16 @@ pub struct StripPreset {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReplacementEdit {
+    Composite(crate::CompositeDescription),
+    CompositeSpan {
+        loop_id: LoopSlotId,
+        index: u32,
+        span: crate::CompositeSpan,
+    },
+    RepeatSync {
+        loop_id: LoopSlotId,
+        enabled: bool,
+    },
     Bus {
         bus: crate::BusId,
         channels: u8,
@@ -29,11 +40,21 @@ pub enum ReplacementEdit {
         shape: StripShape,
         controls: StripPreset,
     },
+    ProcessedStrip {
+        strip: StripId,
+        shape: StripShape,
+        controls: StripPreset,
+        kind: crate::ProcessorKind,
+        default_dry: bool,
+        state: Option<crate::processors::Control>,
+    },
     Loop {
         loop_id: LoopSlotId,
         strip: StripId,
         sync: Option<LoopSlotId>,
         frames: u64,
+        dry_audio: Option<u64>,
+        recorded_state: Option<crate::RecordedProcessorState>,
         audio: Option<u64>,
         midi: Option<u64>,
         gain: f32,

@@ -188,6 +188,8 @@ fn prepare_mode(
             export_slots: 2,
         },
         vec![Binding {
+            auxiliary_channels: 0,
+            dry_wet: false,
             target,
             playback,
             capture,

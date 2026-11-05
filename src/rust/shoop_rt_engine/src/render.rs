@@ -31,7 +31,7 @@ pub struct Report {
 }
 
 pub struct Render {
-    runtime: GraphRuntime<EngineNode, LoopPlanner, EngineOp>,
+    runtime: Box<GraphRuntime<EngineNode, LoopPlanner, EngineOp>>,
     cells: Arc<Cells>,
     recovery: Box<[MidiBuffer]>,
     resets: Box<[ResetState]>,
@@ -51,7 +51,7 @@ impl Render {
     ) -> Result<Self, Error> {
         let outputs = shape[3];
         Ok(Self {
-            runtime,
+            runtime: Box::new(runtime),
             cells,
             recovery: (0..outputs)
                 .map(|_| MidiBuffer::new(2 * ResetState::EVENTS, 2 * ResetState::BYTES))
@@ -211,7 +211,7 @@ impl Render {
 
     /// Only after the host has stopped callbacks.
     pub fn into_stopped(self) -> Stopped {
-        let (planner, resources) = self.runtime.into_planner_and_resources();
+        let (planner, resources) = (*self.runtime).into_planner_and_resources();
         Stopped {
             planner,
             resources,
@@ -244,7 +244,9 @@ impl Stopped {
             Err(Error::Busy) => {
                 for _ in 0..self.reclaim_bound {
                     self.resources.begin_callback();
-                    self.resources.reclaim();
+                    if self.resources.reclaim() == 0 {
+                        break;
+                    }
                 }
                 self.planner.cleanup(&mut self.resources)?;
             }
@@ -252,7 +254,9 @@ impl Stopped {
         }
         for _ in 0..self.reclaim_bound {
             self.resources.begin_callback();
-            self.resources.reclaim();
+            if self.resources.reclaim() == 0 {
+                break;
+            }
         }
         Ok(())
     }

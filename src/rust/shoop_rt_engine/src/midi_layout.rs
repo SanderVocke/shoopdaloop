@@ -4,6 +4,10 @@ use rt_runtime::{buffer::MidiCapacity, Error};
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Layout {
     pub monitor: MidiCapacity,
+    pub playback_merge: MidiCapacity,
+    pub global: MidiCapacity,
+    pub send: MidiCapacity,
+    pub input: MidiCapacity,
     pub mixer: MidiCapacity,
     pub tick: MidiCapacity,
     pub callback: MidiCapacity,
@@ -20,6 +24,8 @@ impl Layout {
             bytes: 3 * shoop_loops::midi_restore::CLEANUP_MAX_EVENTS,
         })?;
         let loops = playback.checked_mul(d.loops())?;
+        let global = input.checked_mul(d.host.midi_inputs.len())?;
+        let send = loops.checked_add(monitor)?.checked_add(global)?;
         let mixer = loops.checked_add(monitor)?;
         let tick = loops.checked_add(monitor.checked_mul(d.strips())?)?;
         let ticks = if d.quantum == 0 {
@@ -30,7 +36,11 @@ impl Layout {
                 .checked_add(1)
                 .ok_or(Error::Capacity)?
         };
-        let callback = tick.checked_mul(ticks)?;
+        let callback = if d.host.midi_outputs.is_empty() {
+            MidiCapacity::default()
+        } else {
+            tick.checked_mul(ticks)?
+        };
         // Refuse unsupported portable allocations before preparing the engine.
         let default = input.prepared_bytes()?;
         let total = playback
@@ -73,6 +83,10 @@ impl Layout {
         let _ = total;
         Ok(Self {
             monitor,
+            playback_merge: loops,
+            global,
+            send,
+            input,
             mixer,
             tick,
             callback,
@@ -83,5 +97,14 @@ impl EngineDescription {
     /// Host output storage includes routed playback and complete MIDI restoration.
     pub fn midi_output_capacity(&self) -> Result<MidiCapacity, Error> {
         Layout::new(self).map(|layout| layout.callback)
+    }
+}
+
+impl EngineDescription {
+    pub fn global_midi_input_capacity(&self) -> Result<MidiCapacity, Error> {
+        Layout::new(self).map(|layout| layout.global)
+    }
+    pub fn processor_midi_input_capacity(&self) -> Result<MidiCapacity, Error> {
+        Layout::new(self).map(|layout| layout.send)
     }
 }

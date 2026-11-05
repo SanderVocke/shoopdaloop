@@ -831,7 +831,7 @@ mod tests {
     use super::*;
     use crate::{
         CompositeDetailsState, CompositeEventDetailsState, CompositeKind,
-        CompositeTrackDetailsState, MidiEventState, MidiSequenceChannelState, TrackId,
+        CompositeTrackDetailsState, LoopMode, MidiEventState, MidiSequenceChannelState, TrackId,
         WaveformChannelState,
     };
     use std::sync::Arc;
@@ -846,6 +846,13 @@ mod tests {
             loop_id,
             title: "Arrangement".to_owned(),
             composite: Some(CompositeDetailsState {
+                timing: None,
+                execution: Default::default(),
+                available_event_modes: vec![
+                    LoopMode::Playing,
+                    LoopMode::Recording,
+                    LoopMode::Stopped,
+                ],
                 kind: CompositeKind::Script,
                 cycle_length_frames: 100,
                 timeline_length_frames: 200,

@@ -12,6 +12,7 @@ pub(crate) struct Entry {
     pub timing: shoop_rt_protocol::TimingState,
     pub edit: ContentFamilyEdit,
     pub media: Option<shoop_loops::media::MediaId>,
+    pub revision: Option<rt_runtime::Revision>,
 }
 
 pub(crate) struct Stage {
@@ -116,10 +117,15 @@ impl ControlEndpoint {
                     || edit.frames % u64::from(self.limits.quantum) != 0
                     || (edit.replace && !edit.fence_content)
                     || (!edit.replace
-                        && (edit.audio.is_some() || edit.midi.is_some() || edit.restart))
+                        && (edit.audio.is_some()
+                            || edit.dry_audio.is_some()
+                            || edit.recorded_state.is_some()
+                            || edit.midi.is_some()
+                            || edit.restart))
                 {
                     return Err(Refusal::InvalidValue);
                 }
+                self.validate_recorded(edit.loop_id, edit.recorded_state)?;
                 let audio = edit
                     .audio
                     .map(|id| self.uploads.source(id, false, edit.frames))
@@ -128,16 +134,29 @@ impl ControlEndpoint {
                     .midi
                     .map(|id| self.uploads.source(id, true, edit.frames))
                     .transpose()?;
+                let auxiliary = edit
+                    .dry_audio
+                    .map(|id| self.uploads.source(id, false, edit.frames))
+                    .transpose()?;
                 self.family.entries[slot] = Some(Entry {
                     timing: self.uploads.timing(edit.audio, edit.midi, edit.frames)?,
                     edit,
                     media: None,
+                    revision: None,
                 });
                 if !edit.replace {
                     return Ok(Some(Outcome::Done));
                 }
                 self.touched_loops[slot] = crate::queue::HARD;
-                let mut job = Job::family_append(slot, edit.loop_id, edit.frames, audio, midi);
+                let mut job = Job::family_append(
+                    slot,
+                    edit.loop_id,
+                    edit.frames,
+                    audio,
+                    auxiliary,
+                    midi,
+                    edit.recorded_state,
+                );
                 job.correlation = Some(correlation);
                 self.job = Some(job);
                 Ok(None)

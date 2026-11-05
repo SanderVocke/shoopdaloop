@@ -19,6 +19,7 @@ pub(in crate::service) struct Candidate {
     routes: BTreeMap<MixerRouteState, Intent>,
     global: GlobalControlState,
     annotations: BTreeMap<(LoopId, bool, u32), (u64, Option<String>)>,
+    composites: BTreeMap<LoopId, shoop_app_protocol::composite::Content>,
 }
 fn next(counter: &mut u64) -> Result<u64> {
     let id = *counter;
@@ -59,7 +60,9 @@ fn backend_port(port: &image::Port, owner: BackendPortOwner) -> Result<BackendSe
                 PortRole::AudioOutput => BackendPortRole::AudioOutput,
                 PortRole::MidiInput => BackendPortRole::MidiInput,
                 PortRole::MidiOutput => BackendPortRole::MidiOutput,
-                _ => return Err(anyhow!("session requires unsupported port roles")),
+                PortRole::AudioSend => BackendPortRole::AudioSend,
+                PortRole::AudioReturn => BackendPortRole::AudioReturn,
+                PortRole::MidiSend => BackendPortRole::MidiSend,
             },
         },
         external_connections: port.external_connections.clone(),
@@ -92,8 +95,13 @@ pub(super) fn backend_loop(
     content: &image::Loop,
 ) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
+        recorded_processor_state: content.recorded_processor_state.clone(),
         source_id: content.id.raw(),
-        length: content.frames as u32,
+        length: if content.composite.is_some() {
+            0
+        } else {
+            u32::try_from(content.frames)?
+        },
         gain: content.gain,
         balance: content.balance,
         audio: content
@@ -101,7 +109,7 @@ pub(super) fn backend_loop(
             .iter()
             .map(|channel| {
                 Ok(BackendAudioContent {
-                    mode: BackendChannelMode::Direct,
+                    mode: backend_mode(channel.mode),
                     samples: audio_samples(image, channel)?,
                     gain: channel.gain,
                     start_offset: channel.start_offset as i32,
@@ -118,7 +126,7 @@ pub(super) fn backend_loop(
                     return Err(anyhow!("MIDI channel gain is unsupported"));
                 }
                 Ok(BackendMidiContent {
-                    mode: BackendChannelMode::Direct,
+                    mode: backend_mode(channel.channel.mode),
                     length: channel.channel.frames as u32,
                     start_state: channel.initial.clone(),
                     events: midi_events(image, &channel.channel)?,
@@ -130,7 +138,45 @@ pub(super) fn backend_loop(
             .collect::<Result<_>>()?,
     })
 }
-fn controls(state: &image::Controls, channels: u32, midi: bool) -> TrackControlState {
+fn backend_mode(mode: image::ChannelMode) -> BackendChannelMode {
+    match mode {
+        image::ChannelMode::Direct => BackendChannelMode::Direct,
+        image::ChannelMode::Dry => BackendChannelMode::Dry,
+        image::ChannelMode::Wet => BackendChannelMode::Wet,
+    }
+}
+fn topology(track: &image::Track) -> BackendTrackTopology {
+    match &track.topology {
+        TrackTopology::Direct => BackendTrackTopology::Direct {
+            audio_channels: track.audio_channels,
+            midi: track.midi,
+        },
+        TrackTopology::DryWet {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+            processor_type,
+        } if processor_type.as_str() == TrackProcessorTypeId::EXTERNAL => {
+            BackendTrackTopology::DryWetExternal {
+                dry_audio_channels: *dry_audio_channels,
+                wet_audio_channels: *wet_audio_channels,
+                dry_midi: *dry_midi,
+            }
+        }
+        TrackTopology::DryWet {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+            processor_type,
+        } => BackendTrackTopology::DryWetProcessor {
+            dry_audio_channels: *dry_audio_channels,
+            wet_audio_channels: *wet_audio_channels,
+            dry_midi: *dry_midi,
+            processor_type: processor_type.as_str().into(),
+        },
+    }
+}
+fn controls(state: &image::Controls, dry: u32, channels: u32, midi: bool) -> TrackControlState {
     TrackControlState {
         has_output: channels > 0 || midi,
         has_output_audio: channels > 0,
@@ -138,9 +184,9 @@ fn controls(state: &image::Controls, channels: u32, midi: bool) -> TrackControlS
         output_gain_db: state.output_gain_db,
         output_balance: state.output_balance,
         output_muted: state.muted,
-        has_input: channels > 0 || midi,
-        has_input_audio: channels > 0,
-        input_stereo: channels == 2,
+        has_input: dry > 0 || midi,
+        has_input_audio: dry > 0,
+        input_stereo: dry == 2,
         input_gain_db: state.input_gain_db,
         input_balance: state.input_balance,
         input_monitoring: state.monitoring,
@@ -198,7 +244,11 @@ impl Candidate {
         session: &image::Session,
     ) -> Result<(Self, BackendSessionData, BTreeMap<u64, u64>)> {
         if session.sample_rate != service.observed.status.sample_rate
-            || session.global.default_recording_action != DefaultRecordingAction::Record
+            || (session.global.default_recording_action == DefaultRecordingAction::Grab
+                && !service
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::Grab))
         {
             return Err(anyhow!(
                 "session requires a different sample rate or unsupported recording policy"
@@ -223,6 +273,7 @@ impl Candidate {
             routes: BTreeMap::new(),
             global: session.global.clone(),
             annotations: BTreeMap::new(),
+            composites: BTreeMap::new(),
         };
         let mut track_ids = BTreeSet::new();
         let mut loop_ids = BTreeMap::new();
@@ -230,11 +281,46 @@ impl Candidate {
         let mut tracks = Vec::new();
         let mut sync_source = None;
         for track in &session.tracks {
+            let topology = topology(track);
+            let dry = topology.dry_audio_channels();
+            let wet = topology.wet_audio_channels();
+            let processed = !matches!(track.topology, TrackTopology::Direct);
+            let audio_count = if processed { dry + wet } else { wet } as usize;
+            let spec_topology = match &track.topology {
+                TrackTopology::Direct => TrackSpecTopology::Direct {
+                    audio_channels: wet,
+                    midi: track.midi,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    dry_midi,
+                    processor_type,
+                } => TrackSpecTopology::DryWet {
+                    dry_audio_channels: *dry_audio_channels,
+                    wet_audio_channels: *wet_audio_channels,
+                    dry_midi: *dry_midi,
+                    processor_type: processor_type.clone(),
+                    default_playback_mode: track.default_playback_mode,
+                },
+            };
+            TrackSpec {
+                name: "loaded track".into(),
+                topology: spec_topology,
+                latency: Default::default(),
+                initial_output_bus_names: Vec::new(),
+                creation_request_id: None,
+            }
+            .validate(&service.track_processors)
+            .map_err(|error| anyhow!("unsupported loaded track: {error:?}"))?;
             if !track.id.is_valid()
                 || !track_ids.insert(track.id)
                 || track.name.len() > 128
                 || track.port_name_base.len() > 128
-                || track.audio_channels > 2
+                || dry > 8
+                || wet > 8
+                || track.audio_channels != wet
+                || track.midi != topology.has_midi()
                 || (track.sync && (track.loops.len() != 1 || sync_source.is_some()))
             {
                 return Err(anyhow!("invalid or unsupported session track"));
@@ -282,8 +368,28 @@ impl Candidate {
             let mut loops = Vec::new();
             for content in &track.loops {
                 if content.sync != track.sync
-                    || content.audio.len() != track.audio_channels as usize
-                    || content.midi.len() != usize::from(track.midi)
+                    || content.composite.is_none()
+                        && (content.audio.len() != audio_count
+                            || content.midi.len() != usize::from(track.midi)
+                            || content.audio.iter().enumerate().any(|(i, c)| {
+                                c.mode
+                                    != if !processed {
+                                        image::ChannelMode::Direct
+                                    } else if i < dry as usize {
+                                        image::ChannelMode::Dry
+                                    } else {
+                                        image::ChannelMode::Wet
+                                    }
+                            })
+                            || content.midi.iter().any(|m| {
+                                m.channel.mode
+                                    != if processed {
+                                        image::ChannelMode::Dry
+                                    } else {
+                                        image::ChannelMode::Direct
+                                    }
+                            }))
+                    || content.composite.is_some() && (track.sync || processed)
                 {
                     return Err(anyhow!("session loop shape does not match its track"));
                 }
@@ -293,6 +399,16 @@ impl Candidate {
                 }
                 if track.sync {
                     sync_source = Some(content.id.raw());
+                }
+                if let Some(composite) = &content.composite {
+                    if composite.prepared.sample_rate != session.sample_rate
+                        || composite.prepared.quantum != service.observed.status.quantum_frames
+                    {
+                        return Err(anyhow!(
+                            "composite timing requires explicit format conversion"
+                        ));
+                    }
+                    candidate.composites.insert(live, composite.clone());
                 }
                 loops.push(live);
                 candidate.loops.insert(
@@ -308,12 +424,13 @@ impl Candidate {
                             empty: content.frames == 0,
                             mode: LoopMode::Stopped,
                             sync: content.sync,
-                            has_audio: track.audio_channels > 0,
+                            has_audio: audio_count > 0,
                             has_midi: track.midi,
-                            show_gain: track.audio_channels > 0,
+                            show_gain: audio_count > 0,
                             stereo: track.audio_channels == 2,
                             gain: content.gain,
                             balance: content.balance,
+                            has_recorded_fx_state: content.recorded_processor_state.is_some(),
                             ..Default::default()
                         },
                     },
@@ -338,9 +455,10 @@ impl Candidate {
                 }
             }
             let state = BackendTrackState {
-                topology: BackendTrackTopology::Direct {
-                    audio_channels: track.audio_channels,
-                    midi: track.midi,
+                topology,
+                default_playback_mode: match track.default_playback_mode {
+                    DefaultPlaybackMode::Regular => BackendDefaultPlaybackMode::Regular,
+                    DefaultPlaybackMode::DryThroughWet => BackendDefaultPlaybackMode::DryThroughWet,
                 },
                 audio_channels: track.audio_channels,
                 midi: track.midi,
@@ -350,6 +468,7 @@ impl Candidate {
                 input_gain_db: track.controls.input_gain_db,
                 input_balance: track.controls.input_balance,
                 input_monitoring: track.controls.monitoring,
+                automatic_monitoring_enabled: session.global.auto_arm_track_inputs && !track.sync,
                 ..Default::default()
             };
             tracks.push(BackendSessionTrack {
@@ -367,9 +486,25 @@ impl Candidate {
                     .iter()
                     .map(|port| backend_port(port, BackendPortOwner::Track))
                     .collect::<Result<_>>()?,
-                processor_state: None,
-                builtin_fx_midi_cc_assignments: Vec::new(),
-                oxisynth_midi_cc_assignments: Vec::new(),
+                processor_state: track.processor_state.clone(),
+                builtin_fx_midi_cc_assignments: track
+                    .builtin_fx_midi_cc_assignments
+                    .iter()
+                    .map(|a| BackendBuiltInFxMidiCcAssignment {
+                        parameter: a.parameter,
+                        channel: a.channel,
+                        controller: a.controller,
+                    })
+                    .collect(),
+                oxisynth_midi_cc_assignments: track
+                    .oxisynth_midi_cc_assignments
+                    .iter()
+                    .map(|a| BackendOxiSynthMidiCcAssignment {
+                        parameter: a.parameter,
+                        channel: a.channel,
+                        controller: a.controller,
+                    })
+                    .collect(),
             });
             candidate.tracks.insert(
                 id,
@@ -378,12 +513,15 @@ impl Candidate {
                     audio_channels: track.audio_channels,
                     midi: track.midi,
                     monitoring_intent: None,
+                    default_playback_intent: None,
                     view: TrackState {
                         id,
                         name: track.name.clone(),
                         is_sync: track.sync,
+                        topology: track.topology.clone(),
+                        default_playback_mode: track.default_playback_mode,
                         structural_state: StructuralState::Confirmed,
-                        controls: controls(&track.controls, track.audio_channels, track.midi),
+                        controls: controls(&track.controls, dry, wet, track.midi),
                         port_ids: ports.into(),
                         ..Default::default()
                     },
@@ -563,23 +701,95 @@ impl Candidate {
                 },
             );
         }
-        let sync = if session.global.sync {
-            sync_source.map_or_else(BTreeMap::new, |source| {
-                session
-                    .tracks
-                    .iter()
-                    .filter(|track| !track.sync)
-                    .flat_map(|track| {
-                        track
-                            .loops
-                            .iter()
-                            .map(move |content| (content.id.raw(), source))
-                    })
-                    .collect()
+        let sync = session
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .filter_map(|content| {
+                content
+                    .sync_source
+                    .map(|source| (content.id.raw(), source.raw()))
             })
-        } else {
-            BTreeMap::new()
-        };
+            .collect::<BTreeMap<_, _>>();
+        for composite in candidate.composites.values_mut() {
+            for event in &mut composite.document.instances {
+                event.loop_id = *loop_ids
+                    .get(&event.loop_id)
+                    .ok_or_else(|| anyhow!("unknown persisted composite child"))?;
+            }
+            for span in &mut composite.prepared.spans {
+                span.target = *loop_ids
+                    .get(&span.target)
+                    .ok_or_else(|| anyhow!("unknown persisted composite target"))?;
+            }
+        }
+        let composite_ids = session
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .filter(|content| content.composite.is_some())
+            .map(|content| content.id)
+            .collect::<BTreeSet<_>>();
+        let composites = session
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .filter_map(|content| {
+                content.composite.as_ref().map(|composite| {
+                    Ok(BackendSessionComposite {
+                        source_id: content.id.raw(),
+                        version: 0,
+                        plan: BackendPreparedCompositePlan {
+                            kind: if composite.prepared.spans.is_empty()
+                                || composite.document.kind == CompositeKind::Regular
+                            {
+                                BackendCompositeKind::Regular
+                            } else {
+                                BackendCompositeKind::Script
+                            },
+                            sync_source: content
+                                .sync_source
+                                .map(|id| BackendLoopId::from_raw(id.raw())),
+                            unit_frames: composite.prepared.unit_frames,
+                            iterations: composite.prepared.iterations,
+                            entries: u32::try_from(composite.document.instances.len())?,
+                            spans: composite
+                                .prepared
+                                .spans
+                                .iter()
+                                .map(|span| {
+                                    Ok(BackendCompositeSpan {
+                                        target: if composite_ids.contains(&span.target) {
+                                            BackendCompositeTarget::Composite(
+                                                BackendCompositeId::from_raw(span.target.raw()),
+                                            )
+                                        } else {
+                                            BackendCompositeTarget::Loop(BackendLoopId::from_raw(
+                                                span.target.raw(),
+                                            ))
+                                        },
+                                        start: span.start,
+                                        end: span.end,
+                                        occurrence_start: span.occurrence_start,
+                                        ordinal: span.ordinal,
+                                        mode: match span.mode {
+                                            LoopMode::Playing => BackendLoopMode::Playing,
+                                            LoopMode::Stopped => BackendLoopMode::Stopped,
+                                            LoopMode::Recording => BackendLoopMode::Recording,
+                                            _ => {
+                                                return Err(anyhow!(
+                                                    "unsupported persisted composite event mode"
+                                                ))
+                                            }
+                                        },
+                                    })
+                                })
+                                .collect::<Result<_>>()?,
+                        },
+                    })
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         if service.dynamic_ports() {
             for port in tracks
                 .iter_mut()
@@ -598,6 +808,15 @@ impl Candidate {
         Ok((
             candidate,
             BackendSessionData {
+                composites,
+                loop_sync: sync.clone(),
+                repeat_sync: session
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .filter(|content| content.repeat_sync)
+                    .map(|content| content.id.raw())
+                    .collect(),
                 sample_rate: session.sample_rate,
                 tracks,
                 buses,
@@ -619,6 +838,7 @@ impl Candidate {
         mut self,
         service: &mut Service,
         mapping: &BackendSessionReplacement,
+        observed: &BackendSnapshot,
     ) -> Result<()> {
         let epoch = service
             .persistence_epoch
@@ -636,6 +856,55 @@ impl Candidate {
                 .loops
                 .get(&entry.backend.raw())
                 .ok_or_else(|| anyhow!("backend omitted loop mapping"))?;
+        }
+        for entry in self.loops.values_mut() {
+            entry.view.content_revision = if self.composites.contains_key(&entry.view.id) {
+                observed
+                    .composites
+                    .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+                    .ok_or_else(|| anyhow!("backend omitted restored composite"))?
+                    .active_plan_version
+            } else {
+                observed
+                    .loops
+                    .get(&entry.backend)
+                    .ok_or_else(|| anyhow!("backend omitted restored primitive"))?
+                    .content_revision
+            };
+        }
+        let mut owners = BTreeMap::new();
+        for (id, content) in self.composites {
+            let revisions = content
+                .document
+                .instances
+                .iter()
+                .map(|event| {
+                    (
+                        event.loop_id,
+                        (
+                            self.loops[&event.loop_id].view.content_revision,
+                            self.loops[&event.loop_id].view.length_frames,
+                        ),
+                    )
+                })
+                .collect();
+            let active = shoop_app_protocol::composite::Versioned {
+                version: self.loops[&id].view.content_revision,
+                document: content.document,
+                prepared: content.prepared,
+            };
+            for event in &active.document.instances {
+                service.next_composite_event = service.next_composite_event.max(
+                    event
+                        .instance_id
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow!("persisted event identity space exhausted"))?,
+                );
+            }
+            owners.insert(
+                id,
+                super::super::composites::Owner::restored(active, revisions),
+            );
         }
         for port in self.ports.values_mut() {
             port.backend = *mapping
@@ -661,6 +930,8 @@ impl Candidate {
         service.preview_bus = self.preview_bus;
         service.tracks = self.tracks;
         service.track_order = self.order;
+        service.automatic_monitoring_intent.clear();
+        service.composites = owners;
         service.loops = self.loops;
         service.ports = self.ports;
         service.channels = self.channels;

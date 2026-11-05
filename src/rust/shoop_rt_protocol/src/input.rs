@@ -4,6 +4,13 @@ use crate::{LoopMode, LoopSlotId, Refusal};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputIntent {
+    Gesture {
+        sync: LoopSlotId,
+        target: Option<LoopSlotId>,
+        synced: bool,
+        cycles: u32,
+        play_after_record: bool,
+    },
     Mode {
         mode: LoopMode,
         position: Option<u64>,

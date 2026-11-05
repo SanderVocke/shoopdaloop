@@ -427,6 +427,7 @@ fn persistence_recovery(
             audio: vec![AudioUpdate {
                 channel: 0,
                 content: Channel {
+                    mode: ChannelMode::Direct,
                     object: Some(1),
                     frames: samples.len() as u64,
                     gain: 1.,

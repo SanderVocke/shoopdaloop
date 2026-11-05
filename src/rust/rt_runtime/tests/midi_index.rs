@@ -134,6 +134,13 @@ fn initial_packets_are_validated_before_any_indexed_event_and_retained_at_zero()
     let index = store.read_index(snapshot.id).unwrap();
     assert_no_heap(|| {
         let initial = store.render_io().midi_seek(index, 0).unwrap();
+        let (channel, reset) = store.render_io().midi_initial_channel(index, 0).unwrap();
+        assert_eq!(channel, *initial.state.channel(0).unwrap());
+        assert_eq!(reset, initial.state.system_reset_seen());
+        assert_eq!(
+            store.render_io().midi_initial_channel(index, 16),
+            Err(Error::InvalidId)
+        );
         let state = initial.state.channel(0).unwrap();
         assert_eq!(state.controller(7), Some(91));
         assert_eq!(state.note(60).unwrap().velocity(), 99);

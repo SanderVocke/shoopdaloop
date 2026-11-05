@@ -196,7 +196,16 @@ fn check(report: &DenseReport, stalled: bool) {
         packet(135, [0x80, 60, 0]);
     }
     assert_eq!(report.midi, expected);
-    assert_eq!(report.semantic, expected::semantic(stalled));
+    let expected = expected::semantic(stalled);
+    assert_eq!(report.semantic.len(), expected.len());
+    assert_eq!(&report.semantic[..40], &expected[..40]);
+    for (index, (actual, expected)) in report.semantic[40..]
+        .chunks_exact(160)
+        .zip(expected[40..].chunks_exact(160))
+        .enumerate()
+    {
+        assert_eq!(actual, expected, "semantic block {index}");
+    }
     assert_eq!(&report.semantic[16..40], &[0; 24]);
     assert_eq!(
         report.semantic.len(),

@@ -45,6 +45,9 @@ struct Fixture {
     initial_waits: usize,
     refuse_next_loop: Rc<Cell<bool>>,
     refuse_next_bus: Rc<Cell<bool>>,
+    refuse_next_lifecycle: Rc<Cell<bool>>,
+    refuse_composite_after: Rc<Cell<Option<u32>>>,
+    refuse_next_monitoring: Rc<Cell<bool>>,
 }
 fn fixture() -> Fixture {
     fixture_with_inventory(None)
@@ -57,11 +60,22 @@ fn fixture_with_inventory(
 fn fixture_with_outputs(outputs: usize) -> Fixture {
     fixture_with_options(outputs, None)
 }
+fn fixture_with_dry_wet(outputs: usize, dry_wet: bool) -> Fixture {
+    fixture_configured(outputs, dry_wet, None)
+}
 fn fixture_with_options(
     outputs: usize,
     inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
 ) -> Fixture {
+    fixture_configured(outputs, false, inventory)
+}
+fn fixture_configured(
+    outputs: usize,
+    dry_wet: bool,
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
     let description = EngineDescription {
+        external_dry_wet: dry_wet,
         quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
@@ -97,10 +111,16 @@ fn fixture_with_options(
     };
     let refuse_next_loop = Rc::new(Cell::new(false));
     let refuse_next_bus = Rc::new(Cell::new(false));
+    let refuse_next_lifecycle = Rc::new(Cell::new(false));
+    let refuse_composite_after = Rc::new(Cell::new(None));
+    let refuse_next_monitoring = Rc::new(Cell::new(false));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
         refuse_bus: Rc::clone(&refuse_next_bus),
+        refuse_lifecycle: Rc::clone(&refuse_next_lifecycle),
+        refuse_composite_after: Rc::clone(&refuse_composite_after),
+        refuse_monitoring: Rc::clone(&refuse_next_monitoring),
         reply: None,
     });
     let mut backend = RtBackend::connect(client, clock).unwrap();
@@ -136,6 +156,9 @@ fn fixture_with_options(
         initial_waits,
         refuse_next_loop,
         refuse_next_bus,
+        refuse_next_lifecycle,
+        refuse_composite_after,
+        refuse_next_monitoring,
     }
 }
 fn wire_message(client: &mut Client, message: WireMessage) {
@@ -223,6 +246,316 @@ fn new_track(name: &str, midi: bool) -> Command {
         initial_output_bus_names: vec!["Master".to_owned()],
         creation_request_id: None,
     })
+}
+
+#[shoop_test]
+fn fixed_cycle_recording_resolves_each_tracks_default_post_record_playback() {
+    let mut f = fixture_with_dry_wet(2, true);
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    let run = |f: &mut Fixture, client: &mut Client, value| {
+        let id = submit(&mut f.service, client, connection, value);
+        complete(&mut f.service, client, connection, id, true)
+    };
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let sync = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .clone();
+    let sync_action = |action| Command::Loop {
+        track: sync.id,
+        loop_id: sync.loops[0].id,
+        action,
+    };
+    run(&mut f, &mut client, sync_action(LoopAction::RecordClicked));
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    run(&mut f, &mut client, sync_action(LoopAction::StopClicked));
+    run(&mut f, &mut client, sync_action(LoopAction::PlayClicked));
+    let (track, loops) = created(run(
+        &mut f,
+        &mut client,
+        Command::AddTrack(TrackSpec {
+            name: "Post-record defaults".into(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                default_playback_mode: DefaultPlaybackMode::Regular,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    ));
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(true)),
+    );
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetApplyNCycles(1)),
+    );
+    for (index, (default, autoplay, expected)) in [
+        (DefaultPlaybackMode::Regular, true, LoopMode::Playing),
+        (
+            DefaultPlaybackMode::DryThroughWet,
+            true,
+            LoopMode::PlayingDryThroughWet,
+        ),
+        (DefaultPlaybackMode::DryThroughWet, false, LoopMode::Stopped),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        run(
+            &mut f,
+            &mut client,
+            Command::Track {
+                track,
+                action: TrackAction::DefaultPlaybackModeChanged(default),
+            },
+        );
+        run(
+            &mut f,
+            &mut client,
+            Command::Global(GlobalControlAction::SetPlayAfterRecord(autoplay)),
+        );
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[index],
+                    action: LoopAction::DefaultClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut finished = false;
+        for _ in 0..100 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, true);
+            let state = client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap();
+            let state = &state.loops[index];
+            if !state.empty && state.mode == expected && state.next_transition_delay.is_none() {
+                finished = true;
+                break;
+            }
+        }
+        assert!(finished, "default={default:?} autoplay={autoplay}");
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[index],
+                    action: LoopAction::PlayClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut explicit_wet = false;
+        for _ in 0..100 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, true);
+            let state = client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap();
+            if state.loops[index].mode == LoopMode::Playing {
+                explicit_wet = true;
+                break;
+            }
+        }
+        assert!(explicit_wet);
+    }
+}
+
+#[shoop_test]
+fn dry_wet_service_orders_defaults_and_keeps_explicit_play_wet_over_the_wire() {
+    for encoded in [false, true] {
+        let mut f = fixture_with_dry_wet(2, true);
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 1, connection, encoded);
+        let run = |f: &mut Fixture, client: &mut Client, command| {
+            let id = submit(&mut f.service, client, connection, command);
+            complete(&mut f.service, client, connection, id, encoded)
+        };
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .track_processors
+            .iter()
+            .any(|p| p.id.as_str() == TrackProcessorTypeId::EXTERNAL && p.available));
+        run(
+            &mut f,
+            &mut client,
+            Command::Global(GlobalControlAction::SetSync(false)),
+        );
+        let (track, loops) = created(run(
+            &mut f,
+            &mut client,
+            Command::AddTrack(TrackSpec {
+                name: "External".into(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                    default_playback_mode: DefaultPlaybackMode::Regular,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            }),
+        ));
+        let action = |action| Command::Loop {
+            track,
+            loop_id: loops[0],
+            action,
+        };
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::RecordClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        f.service.tick(STEP);
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::StopClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        let mode = |client: &Client| {
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap()
+                .loops[0]
+                .mode
+        };
+        for final_mode in [
+            DefaultPlaybackMode::Regular,
+            DefaultPlaybackMode::DryThroughWet,
+        ] {
+            let mut pending = Vec::new();
+            for choice in [
+                DefaultPlaybackMode::DryThroughWet,
+                DefaultPlaybackMode::Regular,
+                final_mode,
+            ] {
+                pending.push(submit(
+                    &mut f.service,
+                    &mut client,
+                    connection,
+                    Command::Track {
+                        track,
+                        action: TrackAction::DefaultPlaybackModeChanged(choice),
+                    },
+                ));
+            }
+            let playback = submit(
+                &mut f.service,
+                &mut client,
+                connection,
+                Command::Control(ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loops[0]],
+                }),
+            );
+            for id in pending.into_iter().chain([playback]) {
+                assert!(matches!(
+                    complete(&mut f.service, &mut client, connection, id, encoded),
+                    Outcome::Confirmed { .. }
+                ));
+            }
+            assert_eq!(
+                mode(&client),
+                if final_mode == DefaultPlaybackMode::Regular {
+                    LoopMode::Playing
+                } else {
+                    LoopMode::PlayingDryThroughWet
+                }
+            );
+            assert!(matches!(
+                run(&mut f, &mut client, action(LoopAction::StopClicked)),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::PlayClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(mode(&client), LoopMode::Playing);
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::StopClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        assert!(matches!(
+            run(&mut f, &mut client, action(LoopAction::DefaultClicked)),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(mode(&client), LoopMode::PlayingDryThroughWet);
+        let projected = client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .unwrap()
+            .clone();
+        assert!(matches!(
+            projected.topology,
+            TrackTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                ..
+            }
+        ));
+        assert!(!projected.controls.input_stereo);
+        assert!(projected.controls.output_stereo);
+        let snapshot = client.snapshot().unwrap();
+        let wet = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                projected.port_ids.contains(&port.id) && port.role == PortRole::AudioOutput
+            })
+            .map(|port| port.id)
+            .collect::<Vec<_>>();
+        let routed = snapshot
+            .connections
+            .mixer_links
+            .iter()
+            .filter(|link| projected.port_ids.contains(&link.source_port_id))
+            .collect::<Vec<_>>();
+        assert_eq!(routed.len(), 2);
+        assert!(routed.iter().all(|link| wet.contains(&link.source_port_id)));
+    }
 }
 
 #[shoop_test]
@@ -1364,6 +1697,9 @@ struct RefuseLoop<C> {
     inner: C,
     refuse: Rc<Cell<bool>>,
     refuse_bus: Rc<Cell<bool>>,
+    refuse_lifecycle: Rc<Cell<bool>>,
+    refuse_composite_after: Rc<Cell<Option<u32>>>,
+    refuse_monitoring: Rc<Cell<bool>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
@@ -1373,6 +1709,70 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request:
+                shoop_rt_protocol::Request::StripControl {
+                    control: shoop_rt_protocol::StripControl::AutomaticMonitoring(_),
+                    ..
+                },
+        } = message
+        {
+            if self.refuse_monitoring.replace(false) {
+                assert!(self.reply.is_none());
+                self.reply = Some(shoop_rt_protocol::EngineMessage::Result {
+                    correlation,
+                    outcome: shoop_rt_protocol::Outcome::Refused(
+                        shoop_rt_protocol::Refusal::Capacity,
+                    ),
+                });
+                return Ok(());
+            }
+        }
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request:
+                shoop_rt_protocol::Request::Composite(shoop_rt_protocol::CompositeCommand::Begin(
+                    description,
+                )),
+        } = message
+        {
+            if let Some(remaining) = self
+                .refuse_composite_after
+                .get()
+                .filter(|_| description.entries > 0)
+            {
+                self.refuse_composite_after.set(remaining.checked_sub(1));
+                if remaining == 0 {
+                    assert!(self.reply.is_none());
+                    self.reply = Some(shoop_rt_protocol::EngineMessage::Result {
+                        correlation,
+                        outcome: shoop_rt_protocol::Outcome::Refused(
+                            shoop_rt_protocol::Refusal::Capacity,
+                        ),
+                    });
+                    return Ok(());
+                }
+            }
+        }
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request:
+                shoop_rt_protocol::Request::ResetComposite { .. }
+                | shoop_rt_protocol::Request::RemoveStrip { .. },
+        } = message
+        {
+            if self.refuse_lifecycle.replace(false) {
+                assert!(self.reply.is_none());
+                self.reply = Some(shoop_rt_protocol::EngineMessage::Result {
+                    correlation,
+                    outcome: shoop_rt_protocol::Outcome::Refused(
+                        shoop_rt_protocol::Refusal::Capacity,
+                    ),
+                });
+                return Ok(());
+            }
+        }
         if let shoop_rt_protocol::ClientMessage::Request {
             correlation,
             request:
@@ -1794,7 +2194,10 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
             matches!(
                 capability,
                 BackendCapability::MidiInjection
+                    | BackendCapability::Grab
+                    | BackendCapability::ReplacingMode
                     | BackendCapability::BusManagement
+                    | BackendCapability::CompositeLoops
                     | BackendCapability::LoopTimingEdits
             )
         );
@@ -3797,6 +4200,8 @@ fn session_replacement_retains_publications_until_unpublish_admission_and_comple
     }
 }
 
+#[path = "support/composite_cases.rs"]
+mod composite_cases;
 #[shoop_test]
 fn timing_commands_are_atomic_while_recording_and_reconcile_once_after_ui_loss() {
     for encoded in [false, true] {
@@ -3998,3 +4403,6 @@ fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() 
         script.logs
     );
 }
+
+#[path = "support/input_cases.rs"]
+mod input_cases;

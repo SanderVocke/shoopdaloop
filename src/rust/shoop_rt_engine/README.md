@@ -78,6 +78,13 @@ the same bounds.
 
 ## Signal chain
 
+Composite slots are timing-only. They share the logical loop pool but have no
+active signal nodes, media or host ports. A strip owner is optional and controls
+lifecycle; standalone composites need no strip. Prepared sparse programs progress
+in frames, with synchronization used for launches and repeat alignment. See the
+[composite contract](../../../docs/native_session_recovery/composites.md) for
+versioning, capacity, conversion fences and the application enablement boundary.
+
 | Node | Ports | Function |
 | --- | --- | --- |
 | Strip input | two banks of input channels; capture and monitoring feeds; MIDI in; MIDI capture and monitor feeds | Bank cross-fade, input gain and balance, monitoring ramp with release of monitored notes, input meters, injected MIDI |

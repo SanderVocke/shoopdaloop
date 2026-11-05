@@ -10,6 +10,38 @@ for upcoming parity work. Recovery is independent of disk persistence.
 
 For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
 
+## Hosted track processors
+
+Default native and browser worklet builds include `builtin-fx` and `oxisynth`.
+Native `--no-default-features` builds include neither; add either Cargo feature
+independently to the app/host packages. For browser worklets, `build_worklet.py
+--no-default-features --features builtin-fx` includes only FX. The UI reads the
+connected host catalog, including unavailable reasons, widths and instance usage.
+
+Host launch settings and the Host Manager expose independent `auto`/`on`/`off`
+policies. CLI equivalents are `--builtin-fx`, `--oxisynth`, `--fx-instances`,
+`--synth-instances` and `--processor-memory-mb`. Defaults allow two instances of
+each type within 256 MiB, with another complete bank reserved for session loads.
+Off prepares no instances; On fails clearly when unsupported; Auto enables each
+compiled implementation at supported rates. Settings apply to a newly started
+host. Existing hosts keep their own configuration.
+
+Built-in FX accepts matching mono/N dry and wet sides up to the host limit.
+OxiSynth uses two dry/two wet audio channels and dry MIDI. Both run synchronously
+in the host render graph with one quantum of processor buffering; host buffering
+is reported separately. Regular playback uses the recorded wet take. Dry playback
+feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
+and preserves dry media. Embedded editors, MIDI Learn, track-only global control
+MIDI, recorded-state restoration and role-aware files use the production service.
+External supports independent side widths; Carla and bus FX remain unavailable.
+
+The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
+UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The native
+archive smoke runs it over socket/shared memory and independent startup policies.
+Browser acceptance includes the corresponding AudioWorklet workflow. See the
+[processor contract and evidence](../../../docs/native_session_recovery/track-processors.md)
+for resource, timing and platform limits.
+
 ## Native roles and delivery
 
 ```sh
@@ -128,7 +160,7 @@ settings, Host Manager, CLI and JSON profiles. Obsolete JSON fields are rejected
 Connections are persisted in the session through dynamically published ports.
 
 Driver and capacity changes apply at host startup. Live driver switching is a
-tracked temporary gap, as are FX/synths, composite/grab/dry-wet
+tracked temporary gap, as are FX/synths, grab/dry-wet
 operations, timing/alignment edits and loop duplication.
 The authoritative capability checks refuse unsupported operations.
 
@@ -142,6 +174,10 @@ Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical select
 targets/policies, supported track/bus controls, routes/connections, piano MIDI and
 bounded waveform/MIDI detail reads are available. Configured track/loop/channel/media
 pools are prepared at startup; exhausted capacity produces a refusal.
+Regular and explicit Play/Stop/Record composite arrangements support public Lua
+composition, nesting, editor operations, automatic monitoring and socket recovery.
+Their prepared frame timeline continues through source changes and UI loss.
+Replacing/dry-wet events remain gated under P05/P06/P07; full P03 remains open.
 
 Core session save/load and standalone WAV, loop-audio, exact-MIDI and Standard MIDI
 import/export use the session service. Save while playing is supported; active or
@@ -150,7 +186,9 @@ and asks before resampling or retiming to the prepared sample rate and quantum.
 Live length-changing imports retime retained media and sync dependents in one
 atomic family cut; other playback, recording and controls remain active. Source
 files and the prepared device format are unchanged. Unsupported
-FX/dry-wet/composite/script documents and buses exceeding prepared limits refuse as a whole. Audio mapping, channel
+FX/dry-wet/session-script documents and buses exceeding prepared limits refuse as a whole. Composite
+files preserve authored event IDs, the original basis and frozen frame geometry.
+Audio mapping, channel
 selection, optional import length changes and SMF loss warnings remain explicit.
 Native output replaces its target atomically; browser completion means download
 handoff. Limits and supported fields are in the
@@ -237,6 +275,11 @@ The workspace suite includes the isolated `shoop_app_reference` and independent 
 engine fixtures for parity evidence. `shoop_engine/app_backend` in that test command
 is a reference-test feature, never a production frontend dependency.
 
+The replacement and retained engine libraries' Chromium tests run in dedicated
+Workers. CPU-heavy DSP tests can then run without blocking WebDriver progress
+collection on the main thread. Per-test capture and the existing runner deadlines
+still apply.
+
 A packaged, windowless canary exercises the actual companion, keyless attach,
 recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 
@@ -246,6 +289,9 @@ target/debug/shoopdaloop --probe-engine-transport --session-transport shared_mem
 # Separate large-file canaries; the transport canary retains its existing deadline.
 target/debug/shoopdaloop --probe-persistence --session-transport socket
 target/debug/shoopdaloop --probe-persistence --session-transport shared_memory
+# Composite Lua/editor, exact recording during client absence and file round trip:
+target/debug/shoopdaloop --probe-composites --session-transport socket
+target/debug/shoopdaloop --probe-composites --session-transport shared_memory
 ```
 
 Browser core workflow after a Trunk build (Chromium and pinned Node 22.22.2):
@@ -257,6 +303,9 @@ NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket 
 python3 browser_firefox_smoke.py --backend new_engine
 # After a release Trunk build, test the >32 MiB file round-trip through the codec worker and AudioWorklet:
 NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+# Composite public authoring and recording through a blocked browser main thread:
+COMPOSITES=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+COMPOSITES=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
 
 `SELF_CONTAINED_URL` can point the self-contained smoke at an already served HTML

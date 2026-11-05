@@ -117,8 +117,12 @@ fn paired_publication_uses_reserved_owners_after_every_generic_and_media_slot_is
         resources
             .prepare_audio_growth(audio, Revision(1), 128)
             .unwrap();
-        let audio_exit = resources.reserve_snapshot(audio, Frame(32), 128).unwrap();
-        let midi_exit = resources.reserve_snapshot(midi, Frame(32), 128).unwrap();
+        let audio_exit = resources
+            .reserve_writer_snapshot(audio, Frame(32), 128)
+            .unwrap();
+        let midi_exit = resources
+            .reserve_writer_snapshot(midi, Frame(32), 128)
+            .unwrap();
         let writer = resources
             .prepare_indexed_midi_writer(
                 midi,
@@ -264,7 +268,9 @@ fn cancelled_stale_and_abandoned_publications_return_their_future_owners() {
         let midi = resources
             .grab_indexed_midi(source, Frame(0)..Frame(0), 32)
             .unwrap();
-        let first = resources.reserve_snapshot(midi, Frame(0), 64).unwrap();
+        let first = resources
+            .reserve_writer_snapshot(midi, Frame(0), 64)
+            .unwrap();
         assert_eq!(
             foreign.cancel_reserved_snapshot(first),
             Err(Error::InvalidId)
@@ -275,7 +281,9 @@ fn cancelled_stale_and_abandoned_publications_return_their_future_owners() {
             Err(Error::InvalidId)
         );
         drain(&mut resources);
-        let second = resources.reserve_snapshot(midi, Frame(0), 64).unwrap();
+        let second = resources
+            .reserve_writer_snapshot(midi, Frame(0), 64)
+            .unwrap();
         let upload = resources
             .begin_upload(
                 midi,
@@ -299,7 +307,9 @@ fn cancelled_stale_and_abandoned_publications_return_their_future_owners() {
         let midi = resources
             .grab_indexed_midi(source, Frame(0)..Frame(0), 32)
             .unwrap();
-        let abandoned = resources.reserve_snapshot(midi, Frame(0), 64).unwrap();
+        let abandoned = resources
+            .reserve_writer_snapshot(midi, Frame(0), 64)
+            .unwrap();
         resources.remove(midi).unwrap();
         assert_eq!(
             resources.publish_reserved_snapshot(abandoned, Frame(32)),

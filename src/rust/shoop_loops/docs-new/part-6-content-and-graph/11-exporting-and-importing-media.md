@@ -72,7 +72,7 @@ Ready, or Failed. Advance `NodePairSourceValidate` across callbacks until Ready;
 per query. A source also checks the largest MIDI packet against the destination's
 prepared packet capacity. A successful byte upload alone is not that proof.
 
-`Operation::Adopt { target, frames, audio, midi }` creates target-owned media from
+`Operation::Adopt { target, frames, audio, auxiliary, midi }` creates target-owned media from
 Ready source handles. Successful adoption consumes the source ownership; select
 the returned media to publish playback, then retire the temporary ledger owner.
 On refusal, the caller still owns the sources and must release them with
@@ -85,3 +85,12 @@ in [chapter 13](12-editing-the-graph-around-loops.md). Neither path reads files 
 provides application-level save/load operation tracking.
 
 [Previous: Programs](../part-5-composites-and-programs/10-programs.md) · [Next: Editing the graph around loops](12-editing-the-graph-around-loops.md)
+
+
+Dry/wet bindings prepare an independent auxiliary audio width alongside primary
+wet audio. `media::Description::auxiliary_channels` and `media::Input::auxiliary`
+preserve that source's shape and lease. `NodePairInitial` carries the auxiliary
+source and dry/wet role at the same activation cut as the logical owner. Every
+source needs its own snapshot lease, even when it references the same revision.
+Dry-into-wet transitions use the binding's prepared audio history store as COW
+edit storage, retaining dry audio and MIDI and replacing only wet samples.

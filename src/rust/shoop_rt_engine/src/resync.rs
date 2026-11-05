@@ -20,21 +20,147 @@ pub(crate) struct Resync {
 /// The stage after `Begin` that reports generation floors.
 const GENERATIONS: u8 = 7;
 
-const PORT_KINDS: [PortKind; 4] = [
+const PORT_KINDS: [PortKind; 7] = [
     PortKind::AudioIn,
     PortKind::AudioOut,
     PortKind::MidiIn,
     PortKind::MidiOut,
+    PortKind::AudioSend,
+    PortKind::AudioReturn,
+    PortKind::MidiSend,
 ];
 
 impl ControlEndpoint {
+    fn recorded_record(
+        &self,
+        id: shoop_rt_protocol::LoopSlotId,
+    ) -> Result<Option<StateRecord>, ()> {
+        let entry = self.model.find_loop(id).ok_or(())?;
+        let strip = self.model.strip(entry.strip.ok_or(())?).ok_or(())?;
+        if strip.processor.and_then(|owner| owner.slot).is_none() {
+            return Ok(None);
+        }
+        let cells = &self.cells.loops[id.0.index as usize];
+        let current =
+            cells.generation.load(core::sync::atomic::Ordering::Relaxed) == id.0.generation;
+        let revision = if current {
+            cells
+                .content_revision
+                .load(core::sync::atomic::Ordering::Relaxed)
+        } else {
+            0
+        };
+        let state = cells.recorded.read(id.0.generation, revision)?;
+        Ok(Some(StateRecord::RecordedProcessorState {
+            loop_id: id,
+            content_revision: revision,
+            state,
+        }))
+    }
+
+    pub(crate) fn project_recorded(&mut self, out: &mut Outbox) {
+        if !self.connected || self.resync.is_some() {
+            return;
+        }
+        for index in 0..self.model.loops.len() {
+            let Some(entry) = self.model.loops[index] else {
+                self.projected_recorded[index] = None;
+                continue;
+            };
+            let Ok(Some(
+                record @ StateRecord::RecordedProcessorState {
+                    loop_id,
+                    content_revision,
+                    state,
+                },
+            )) = self.recorded_record(entry.id)
+            else {
+                continue;
+            };
+            let key = (loop_id, content_revision, state.is_some());
+            if self.projected_recorded[index] == Some(key) {
+                continue;
+            }
+            if out.push(EngineMessage::State(record)).is_err() {
+                return;
+            }
+            self.projected_recorded[index] = Some(key);
+        }
+    }
+
+    pub(crate) fn processor_record(
+        &self,
+        strip: shoop_rt_protocol::StripId,
+    ) -> Option<StateRecord> {
+        let owner = self.model.strip(strip)?.processor?.slot?;
+        let state = self.processor_cells.get(owner.index as usize)?.read()?;
+        if state.generation != owner.generation {
+            return None;
+        }
+        Some(StateRecord::ProcessorState {
+            strip,
+            slot: owner,
+            snapshot: shoop_rt_protocol::processors::Snapshot {
+                source_frame: state.frame.0,
+                phase: state.phase,
+                global_midi: state.global_midi,
+                values: state.values,
+            },
+        })
+    }
+
+    pub(crate) fn project_processors(&mut self, out: &mut Outbox) {
+        if !self.connected || self.resync.is_some() {
+            return;
+        }
+        for index in 0..self.model.strips.len() {
+            let Some(strip) = self.model.strips[index] else {
+                self.projected_processors[index] = None;
+                continue;
+            };
+            let Some(StateRecord::ProcessorState {
+                strip,
+                slot,
+                snapshot,
+            }) = self.processor_record(strip.id)
+            else {
+                continue;
+            };
+            if self.projected_processors[index].is_some_and(
+                |(previous_strip, previous_slot, previous)| {
+                    previous_strip == strip
+                        && previous_slot == slot
+                        && previous.phase == snapshot.phase
+                        && previous.global_midi == snapshot.global_midi
+                        && previous
+                            .values
+                            .iter()
+                            .zip(snapshot.values)
+                            .all(|(a, b)| a.to_bits() == b.to_bits())
+                },
+            ) {
+                continue;
+            }
+            if out
+                .push(EngineMessage::State(StateRecord::ProcessorState {
+                    strip,
+                    slot,
+                    snapshot,
+                }))
+                .is_err()
+            {
+                return;
+            }
+            self.projected_processors[index] = Some((strip, slot, snapshot));
+        }
+    }
     fn host_port_id(&self, kind: PortKind, index: usize) -> HostPortId {
         let [audio_in, audio_out, midi_in, _] = self.settings.host;
         let first = match kind {
-            PortKind::AudioIn => 0,
-            PortKind::AudioOut => audio_in,
+            PortKind::AudioIn | PortKind::AudioReturn => 0,
+            PortKind::AudioOut | PortKind::AudioSend => audio_in,
             PortKind::MidiIn => audio_in + audio_out,
-            PortKind::MidiOut => audio_in + audio_out + midi_in,
+            PortKind::MidiOut | PortKind::MidiSend => audio_in + audio_out + midi_in,
         };
         HostPortId((first + index) as u32)
     }
@@ -44,7 +170,30 @@ impl ControlEndpoint {
         let strip = self.model.strips[cursor.index]?;
         while cursor.part < PORT_KINDS.len() {
             let kind = PORT_KINDS[cursor.part];
+            let external = strip
+                .processor
+                .is_some_and(|owner| owner.kind == shoop_rt_protocol::ProcessorKind::External);
             let (channels, masks): (usize, &[crate::model::HostMask]) = match kind {
+                PortKind::AudioSend => (
+                    if external {
+                        strip.shape.audio_inputs as usize
+                    } else {
+                        0
+                    },
+                    strip.sends.current(),
+                ),
+                PortKind::AudioReturn => (
+                    if external {
+                        strip.shape.audio_outputs as usize
+                    } else {
+                        0
+                    },
+                    strip.returns.current(),
+                ),
+                PortKind::MidiSend => (
+                    usize::from(external && strip.shape.midi_input),
+                    core::slice::from_ref(&strip.midi_send),
+                ),
                 PortKind::AudioIn => (strip.shape.audio_inputs as usize, strip.inputs.current()),
                 PortKind::AudioOut => (strip.shape.audio_outputs as usize, strip.outputs.current()),
                 PortKind::MidiIn => (
@@ -91,6 +240,19 @@ impl ControlEndpoint {
                         epoch: cursor.epoch,
                     });
                 }
+                12 => {
+                    while cursor.bit < crate::MAX_HOST_PORTS {
+                        let bit = cursor.bit;
+                        cursor.bit += 1;
+                        if self.model.global_midi.contains(bit) {
+                            return Some(StateRecord::Connection {
+                                port: EnginePort::GlobalFxControl,
+                                host: self.host_port_id(PortKind::MidiIn, bit),
+                            });
+                        }
+                    }
+                    cursor.stage = 5;
+                }
                 GENERATIONS => {
                     cursor.stage = 8;
                     let floor = |generations: &[u32]| generations.iter().copied().max();
@@ -100,7 +262,7 @@ impl ControlEndpoint {
                     });
                 }
                 8 => {
-                    cursor.stage = 1;
+                    cursor.stage = 9;
                     return Some(StateRecord::BusGenerations {
                         generation: self
                             .model
@@ -110,6 +272,58 @@ impl ControlEndpoint {
                             .max()
                             .unwrap_or(0),
                     });
+                }
+                9 => {
+                    cursor.stage = 10;
+                    cursor.index = 0;
+                    return Some(StateRecord::Processors(
+                        shoop_rt_protocol::ProcessorLimits {
+                            effective: self.processor_catalog.effective,
+                            reserved_bytes: self.processor_catalog.reserved_bytes,
+                            channels: self.settings.channels as u8,
+                            builtin_latency_frames: self.limits.quantum,
+                        },
+                    ));
+                }
+                10 => {
+                    if let Some(preset) = self.processor_catalog.presets.get(cursor.index) {
+                        cursor.index += 1;
+                        return Some(StateRecord::ProcessorPreset(*preset));
+                    }
+                    cursor.stage = 13;
+                }
+                13 => {
+                    cursor.stage = 14;
+                    return Some(StateRecord::CompositeStageFloor {
+                        id: self.composite.last_id,
+                    });
+                }
+                14 => {
+                    cursor.stage = 15;
+                    cursor.index = 0;
+                    if let Some(description) = self.composite.description {
+                        return Some(StateRecord::CompositePending {
+                            description,
+                            received: self.composite.received as u32,
+                            committed: self.composite.committed,
+                            admitted: self.composite.admitted,
+                        });
+                    }
+                }
+                15 => {
+                    if let Some(description) = self.composite.description {
+                        if cursor.index < self.composite.received {
+                            let index = cursor.index;
+                            cursor.index += 1;
+                            return Some(StateRecord::CompositeStagedSpan {
+                                id: description.id,
+                                index: index as u32,
+                                span: self.composite.spans[index],
+                            });
+                        }
+                    }
+                    cursor.stage = 1;
+                    cursor.index = 0;
                 }
                 1 => {
                     if let Some(port) = self.host_ports.get(cursor.index) {
@@ -182,14 +396,39 @@ impl ControlEndpoint {
                             cursor.channel = 0;
                             cursor.part += 1;
                         }
+                        part if part == controls.len() + 2 => {
+                            cursor.part += 1;
+                            if let Some(owner) = strip.processor {
+                                return Some(StateRecord::StripProcessor {
+                                    strip: strip.id,
+                                    kind: owner.kind,
+                                    slot: owner.slot,
+                                });
+                            }
+                        }
+                        part if part == controls.len() + 3 => {
+                            cursor.part += 1;
+                            return Some(StateRecord::StripDefaultPlayback {
+                                strip: strip.id,
+                                dry_through_wet: strip.default_dry,
+                            });
+                        }
+                        part if part == controls.len() + 4 => {
+                            if strip.processor.and_then(|owner| owner.slot).is_some() {
+                                let record = self.processor_record(strip.id)?;
+                                cursor.part += 1;
+                                return Some(record);
+                            }
+                            cursor.part += 1;
+                        }
                         _ => {
                             let mut connections = Resync {
                                 index: cursor.index,
-                                part: cursor.part - controls.len() - 2,
+                                part: cursor.part - controls.len() - 5,
                                 ..*cursor
                             };
                             let record = self.next_connection(&mut connections);
-                            cursor.part = connections.part + controls.len() + 2;
+                            cursor.part = connections.part + controls.len() + 5;
                             cursor.channel = connections.channel;
                             cursor.bit = connections.bit;
                             if record.is_some() {
@@ -211,29 +450,81 @@ impl ControlEndpoint {
                         };
                         continue;
                     };
-                    if let Some(entry) = slot {
-                        if cursor.part == 1 {
-                            cursor.part = 0;
-                            cursor.index += 1;
-                            return Some(StateRecord::LoopTiming {
+                    let Some(entry) = slot else {
+                        cursor.index += 1;
+                        continue;
+                    };
+                    match cursor.part {
+                        0 => {
+                            cursor.part = 1;
+                            if let Some(description) = entry.program {
+                                return Some(StateRecord::Composite {
+                                    description,
+                                    strip: entry.strip,
+                                    sync: entry.sync,
+                                    gain: entry.gain,
+                                    balance: entry.balance,
+                                    repeat_sync: entry.repeat_sync,
+                                });
+                            }
+                            return Some(StateRecord::Loop {
                                 loop_id: entry.id,
-                                timing: self.current_timing(*entry),
+                                strip: entry.strip.expect("primitive owner"),
+                                sync: entry.sync,
+                                gain: entry.gain,
+                                balance: entry.balance,
                             });
                         }
-                        cursor.part = 1;
-                        return Some(StateRecord::Loop {
-                            loop_id: entry.id,
-                            strip: entry.strip,
-                            sync: entry.sync,
-                            gain: entry.gain,
-                            balance: entry.balance,
-                        });
+                        1 => {
+                            cursor.part = 2;
+                            return Some(StateRecord::RepeatSync {
+                                loop_id: entry.id,
+                                enabled: entry.repeat_sync,
+                            });
+                        }
+                        2 => {
+                            if entry.program.is_none() {
+                                let timing = self.current_timing(*entry)?;
+                                cursor.part = 3;
+                                return Some(StateRecord::LoopTiming {
+                                    loop_id: entry.id,
+                                    timing,
+                                });
+                            }
+                            cursor.part = 3;
+                        }
+                        3 => {
+                            let record = if entry.program.is_none() {
+                                self.recorded_record(entry.id).ok()?
+                            } else {
+                                None
+                            };
+                            cursor.part = 4;
+                            if record.is_some() {
+                                return record;
+                            }
+                        }
+                        _ => {
+                            if let Some(span) =
+                                self.model.program_spans(entry.id).nth(cursor.part - 4)
+                            {
+                                let index = (cursor.part - 4) as u32;
+                                cursor.part += 1;
+                                return Some(StateRecord::CompositeSpan {
+                                    loop_id: entry.id,
+                                    index,
+                                    span,
+                                });
+                            }
+                            cursor.index += 1;
+                            cursor.part = 0;
+                        }
                     }
-                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
-                        cursor.stage = 5;
+                        cursor.stage = 12;
+                        cursor.bit = 0;
                         continue;
                     };
                     let Some(bus) = slot else {
@@ -299,7 +590,10 @@ impl ControlEndpoint {
         };
         while out.available(Lane::Reliable) > 0 {
             let before = cursor;
-            let publication = if cursor.stage == 3 && cursor.part == 1 {
+            let publication = if cursor.stage == 3
+                && cursor.part == 2
+                && self.model.loops[cursor.index].is_some_and(|entry| entry.program.is_none())
+            {
                 let cells = &self.cells.loops[cursor.index];
                 let serial = cells.publication.load(core::sync::atomic::Ordering::SeqCst);
                 if serial % 2 != 0
@@ -331,7 +625,7 @@ impl ControlEndpoint {
                     let _ = out.push(EngineMessage::State(record));
                 }
                 None => {
-                    self.resync = None;
+                    self.resync = (cursor.stage < 6).then_some(cursor);
                     return;
                 }
             }

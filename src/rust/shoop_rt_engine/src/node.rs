@@ -3,6 +3,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec;
+use core::sync::atomic::Ordering;
 
 use crate::cells::{Cells, Peak};
 use crate::stream::BulkReader;
@@ -21,11 +22,16 @@ const INJECTED: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeConfiguration {
+    pub recorded_state: Option<shoop_rt_protocol::RecordedProcessorState>,
+    pub processor: Option<shoop_rt_protocol::ProcessorKind>,
+    pub generation: u32,
     pub token: u64,
     pub epoch: rt_runtime::Epoch,
     pub inputs: u8,
     pub outputs: u8,
     pub bank: u8,
+    pub send_bank: u8,
+    pub return_bank: u8,
     pub gain: f32,
     pub balance: f32,
     pub monitoring: bool,
@@ -36,6 +42,38 @@ pub struct NodeConfiguration {
 /// immediately before their frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineOp {
+    RecordedState {
+        generation: u32,
+        revision: u64,
+        state: Option<shoop_rt_protocol::RecordedProcessorState>,
+    },
+    ProcessorControl {
+        generation: u32,
+        control: shoop_rt_protocol::processors::Control,
+    },
+    ProcessorClaim {
+        generation: u32,
+    },
+    ProcessorBind {
+        generation: u32,
+        strip_generation: u32,
+        source: u32,
+        epoch: rt_runtime::Epoch,
+    },
+    ProcessorStart {
+        generation: u32,
+    },
+    ProcessorSuspend {
+        generation: u32,
+    },
+    ProcessorRetire {
+        generation: u32,
+    },
+    ProcessorParameter {
+        generation: u32,
+        parameter: u32,
+        value: f32,
+    },
     /// Retain values for the next graph epoch without changing the active processor.
     Configure(NodeConfiguration),
     InputSource {
@@ -49,6 +87,7 @@ pub enum EngineOp {
     Reset {
         inputs: u8,
         outputs: u8,
+        generation: u32,
     },
     Gain(f32),
     Balance(f32),
@@ -58,11 +97,18 @@ pub enum EngineOp {
     Presence(bool),
     /// Move to the other connection bank over the prepared ramp.
     Crossfade,
+    CrossfadeSend,
+    CrossfadeReturn,
     Inject(MidiMessage),
     /// Stream `bytes` of an exported medium from `cursor` into the bulk ring.
     ReadStart {
         cursor: Cursor,
         bytes: u64,
+    },
+    ReadRolesStart {
+        cursors: [Cursor; 2],
+        bytes: u64,
+        channels: u8,
     },
     ReadStop,
     PreviewStart {
@@ -182,7 +228,10 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
-    midi_capacity: rt_runtime::buffer::MidiCapacity,
+    midi_capacity: crate::midi_layout::Layout,
+    global: Option<crate::global_midi::GlobalMidi>,
+    processor: Option<shoop_rt_protocol::ProcessorKind>,
+    generation: u32,
     pending_history: Option<(rt_runtime::Epoch, bool)>,
     history_token: u64,
     midi_history_token: u64,
@@ -193,7 +242,12 @@ pub struct StripInput {
     ramp: u32,
     inputs: usize,
     bank: Ramp,
+    send_bank: Ramp,
+    return_bank: Ramp,
+    send_weights: Box<[f32]>,
+    return_weights: Box<[f32]>,
     monitor: Ramp,
+    manual_monitoring: bool,
     unity: Ramp,
     gains: Gains,
     weights: Box<[f32]>,
@@ -202,6 +256,8 @@ pub struct StripInput {
     injected: [Option<MidiMessage>; INJECTED],
     /// Notes sounding through the monitoring feed, released when monitoring stops.
     monitored: Box<MidiState>,
+    live_midi: Box<MidiState>,
+    live_midi_active: bool,
     release: bool,
 }
 
@@ -209,6 +265,8 @@ pub struct StripInput {
 /// balance, mute and a presence fade, written to two connection banks.
 pub struct StripOutput {
     midi_capacity: rt_runtime::buffer::MidiCapacity,
+    processor: Option<shoop_rt_protocol::ProcessorKind>,
+    wet_gate: Box<[f32]>,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -227,6 +285,9 @@ pub struct StripOutput {
 /// A loop's playback fader, used to remove a sounding loop without a step, and
 /// its level meter.
 pub struct LoopFader {
+    processor: Option<shoop_rt_protocol::ProcessorKind>,
+    delay: Box<[f32]>,
+    position: usize,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -257,6 +318,7 @@ pub struct BusMixer {
 }
 
 pub enum EngineNode {
+    Processor(crate::HostedProcessor),
     Loop(LoopNode),
     StripInput(StripInput),
     StripOutput(StripOutput),
@@ -267,6 +329,7 @@ pub enum EngineNode {
 
 pub(crate) struct NodeSettings {
     pub midi: crate::midi_layout::Layout,
+    pub external_midi: Option<(usize, usize)>,
     pub cells: Arc<Cells>,
     pub channels: usize,
     pub master_channels: usize,
@@ -276,14 +339,38 @@ pub(crate) struct NodeSettings {
 
 impl StripInput {
     fn reset(&mut self, inputs: u8) {
+        if let Some(global) = &mut self.global {
+            global.reset();
+        }
+        self.processor = None;
+        self.cells.strips[self.slot]
+            .forced_monitor_off
+            .store(0, core::sync::atomic::Ordering::Relaxed);
+        self.cells.strips[self.slot]
+            .processor_demand
+            .store(false, core::sync::atomic::Ordering::Relaxed);
+        self.generation = 0;
+        self.cells.strips[self.slot]
+            .owner_generation
+            .store(0, core::sync::atomic::Ordering::Relaxed);
         self.inputs = (inputs as usize).min(self.channels);
         self.bank = Ramp::at(0.);
+        self.send_bank = Ramp::at(0.);
+        self.return_bank = Ramp::at(0.);
         self.monitor = Ramp::at(0.);
+        self.manual_monitoring = false;
+        self.cells.strips[self.slot]
+            .automatic_monitoring
+            .store(false, core::sync::atomic::Ordering::Relaxed);
         self.gains.reset();
         self.injected = [None; INJECTED];
         *self.monitored = MidiState::default();
+        *self.live_midi = MidiState::default();
+        self.live_midi_active = false;
         self.release = false;
         let cells = &self.cells.strips[self.slot];
+        cells.routing_state.store(0, Ordering::Relaxed);
+        cells.latest_input_midi.store(0, Ordering::Relaxed);
         cells.input.clear();
         cells
             .midi_in
@@ -292,7 +379,13 @@ impl StripInput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
-            midi_capacity: settings.midi.monitor,
+            midi_capacity: settings.midi,
+            global: settings.external_midi.map(|_| {
+                crate::global_midi::GlobalMidi::new(settings.midi.send, settings.midi.global)
+                    .expect("prepared MIDI capacity")
+            }),
+            processor: None,
+            generation: 0,
             history_token: 1,
             midi_history_token: 1,
             pending_history: None,
@@ -303,7 +396,12 @@ impl StripInput {
             ramp: settings.ramp,
             inputs: 0,
             bank: Ramp::at(0.),
+            send_bank: Ramp::at(0.),
+            return_bank: Ramp::at(0.),
+            send_weights: vec![0.; frames].into_boxed_slice(),
+            return_weights: vec![0.; frames].into_boxed_slice(),
             monitor: Ramp::at(0.),
+            manual_monitoring: false,
             unity: Ramp::at(1.),
             gains: Gains::new(frames),
             weights: vec![0.; frames].into_boxed_slice(),
@@ -311,12 +409,16 @@ impl StripInput {
             scratch: vec![0.; frames].into_boxed_slice(),
             injected: [None; INJECTED],
             monitored: Box::default(),
+            live_midi: Box::default(),
+            live_midi_active: false,
             release: false,
         }
     }
 }
 impl StripOutput {
     fn reset(&mut self, outputs: u8) {
+        self.processor = None;
+        self.wet_gate.fill(0.);
         self.outputs = (outputs as usize).min(self.channels);
         self.bank = Ramp::at(0.);
         self.mute = Ramp::at(1.);
@@ -332,6 +434,8 @@ impl StripOutput {
         let frames = settings.frames;
         Self {
             midi_capacity: settings.midi.mixer,
+            processor: None,
+            wet_gate: vec![0.; frames].into_boxed_slice(),
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -351,6 +455,9 @@ impl StripOutput {
 impl LoopFader {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         Self {
+            processor: None,
+            delay: vec![0.; settings.frames * settings.channels].into_boxed_slice(),
+            position: 0,
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -386,24 +493,40 @@ impl BusMixer {
 fn copy_midi(source: &MidiBuffer, target: &mut MidiBuffer, frames: usize) -> Result<bool, Error> {
     for index in 0..source.len() {
         let (offset, packet) = source.get(index).ok_or(Error::InvalidState)?;
-        target.push(offset, frames, packet)?;
+        target.insert(offset, frames, packet)?;
     }
     Ok(!source.is_empty())
 }
 
 impl Processor<LoopPlanner, EngineOp> for StripInput {
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
-        Ok(rt_runtime::processor::MidiBufferSettings {
-            output: Some(self.midi_capacity),
-            ..Default::default()
-        })
+        use rt_runtime::processor::{MidiBufferSettings, MidiPortCapacity};
+        let mut settings = MidiBufferSettings::default();
+        for (index, (input, port, capacity)) in [
+            (true, 1, self.midi_capacity.playback_merge),
+            (true, 2, self.midi_capacity.global),
+            (false, 0, self.midi_capacity.input),
+            (false, 1, self.midi_capacity.monitor),
+            (false, 2, self.midi_capacity.send),
+            (false, 3, self.midi_capacity.global),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            settings.ports[index] = Some(MidiPortCapacity {
+                input,
+                port,
+                capacity,
+            });
+        }
+        Ok(settings)
     }
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_inputs: 2 * self.channels,
-            audio_outputs: 2 * self.channels,
-            midi_inputs: 1,
-            midi_outputs: 2,
+            audio_inputs: 5 * self.channels,
+            audio_outputs: 5 * self.channels,
+            midi_inputs: 3,
+            midi_outputs: 4,
         }
     }
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
@@ -424,7 +547,7 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
     }
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_inputs: self.channels,
+            audio_inputs: 2 * self.channels,
             audio_outputs: 2 * self.channels,
             midi_inputs: 1,
             midi_outputs: 1,
@@ -441,8 +564,8 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
 impl Processor<LoopPlanner, EngineOp> for LoopFader {
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_inputs: self.channels,
-            audio_outputs: self.channels,
+            audio_inputs: 2 * self.channels,
+            audio_outputs: 2 * self.channels,
             ..PortCounts::default()
         }
     }
@@ -487,19 +610,37 @@ impl EngineNode {
                 node.history_token = node.history_token.checked_add(1).unwrap_or(0);
                 node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
                 node.reset(configuration.inputs);
+                node.processor = configuration.processor;
+                node.generation = configuration.generation;
+                node.cells.strips[node.slot].owner_generation.store(
+                    configuration.generation,
+                    core::sync::atomic::Ordering::Relaxed,
+                );
                 node.bank = Ramp::at(f32::from(configuration.bank));
+                node.send_bank = Ramp::at(f32::from(configuration.send_bank));
+                node.return_bank = Ramp::at(f32::from(configuration.return_bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
+                node.manual_monitoring = configuration.monitoring;
                 node.monitor = Ramp::at(f32::from(u8::from(configuration.monitoring)));
             }
             Self::StripOutput(node) => {
                 node.reset(configuration.outputs);
+                node.processor = configuration.processor;
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
                 node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
             }
             Self::Fader(node) => {
+                if let Some(state) = configuration.recorded_state {
+                    let cell = &node.cells.loops[node.slot];
+                    cell.recorded
+                        .publish(cell, configuration.generation, 0, Some(state));
+                }
+                node.processor = configuration.processor;
+                node.delay.fill(0.);
+                node.position = 0;
                 node.presence = Ramp::at(1.);
                 node.cells.loops[node.slot].peaks.clear();
             }
@@ -523,6 +664,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Loop(node) => node.midi_buffer_settings(),
             Self::StripInput(node) => node.midi_buffer_settings(),
             Self::StripOutput(node) => node.midi_buffer_settings(),
+            Self::Processor(node) => node.midi_buffer_settings(),
             _ => Ok(Default::default()),
         }
     }
@@ -541,6 +683,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Fader(node) => node.ports(),
             Self::Bus(node) => node.ports(),
             Self::Reader(node) => node.ports(),
+            Self::Processor(node) => node.ports(),
         }
     }
     fn operation(
@@ -548,6 +691,37 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         operation: EngineOp,
         context: OperationContext<'_>,
     ) -> Result<(), Error> {
+        if let Self::Processor(node) = self {
+            return match operation {
+                EngineOp::ProcessorClaim { generation } => node.claim(context.frame, generation),
+                EngineOp::ProcessorBind {
+                    generation,
+                    strip_generation,
+                    source,
+                    epoch,
+                } => {
+                    if context.graph_epoch.checked_next()? != epoch {
+                        return Err(Error::StaleEpoch);
+                    }
+                    node.bind(generation, source, strip_generation, epoch)
+                }
+                EngineOp::ProcessorStart { generation } => node.start(context.frame, generation),
+                EngineOp::ProcessorSuspend { generation } => {
+                    node.suspend(context.frame, generation)
+                }
+                EngineOp::ProcessorRetire { generation } => node.retire(context.frame, generation),
+                EngineOp::ProcessorParameter {
+                    generation,
+                    parameter,
+                    value,
+                } => node.parameter(context.frame, generation, parameter, value),
+                EngineOp::ProcessorControl {
+                    generation,
+                    control,
+                } => node.control(context.frame, generation, control),
+                _ => Err(Error::InvalidEvent),
+            };
+        }
         self.apply_signal(operation, context.graph_epoch)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -577,15 +751,72 @@ impl StripInput {
         &mut self,
         block: &mut ProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
+        let result = self.render_sources(block);
+        if result == Err(Error::Full) {
+            *self.monitored = MidiState::default();
+            *self.live_midi = MidiState::default();
+            self.live_midi_active = false;
+            self.release = false;
+        }
+        result
+    }
+    fn render_sources(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.inputs == 2;
+        let activity = block.domain.source_activity(self.slot as u32);
+        let processed = self.processor.is_some();
+        let forced_off = processed && (activity.rerecording || activity.pre_rerecording);
+        let cells = &self.cells.strips[self.slot];
+        if forced_off {
+            self.manual_monitoring = false;
+            if self.monitor.target() > 0. {
+                self.release = true;
+                self.monitor = Ramp::at(0.);
+                cells
+                    .forced_monitor_off
+                    .store(self.generation, core::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        let automatic = !forced_off
+            && cells.policy_enabled(self.generation)
+            && cells
+                .automatic_demand
+                .load(core::sync::atomic::Ordering::Relaxed);
+        cells
+            .automatic_monitoring
+            .store(automatic, core::sync::atomic::Ordering::Relaxed);
+        let target = f32::from(u8::from(self.manual_monitoring || automatic));
+        if self.monitor.target() != target {
+            self.release |= target == 0. && self.monitor.target() > 0.;
+            self.monitor.set(target, self.ramp);
+        }
         self.gains.fill(frames, &mut self.unity);
+        let cells = &self.cells.strips[self.slot];
+        cells.routing_state.store(
+            u32::from(self.monitor.target() > 0.)
+                | (u32::from(activity.recording) << 1)
+                | (u32::from(activity.pre_recording) << 2)
+                | (u32::from(activity.playing_dry) << 3)
+                | (u32::from(activity.rerecording) << 4)
+                | (u32::from(activity.pre_rerecording) << 5),
+            Ordering::Relaxed,
+        );
+        let live_record = activity.recording || activity.pre_recording;
+        let dry_play = activity.playing_dry || activity.rerecording || activity.pre_rerecording;
+        let mut demand = live_record || dry_play;
         for i in 0..frames {
             self.weights[i] = self.bank.next();
+            self.send_weights[i] = self.send_bank.next();
+            self.return_weights[i] = self.return_bank.next();
             self.monitoring[i] = self.monitor.next();
+            demand |= self.monitoring[i] > 0.;
+            let gate = if dry_play { 1. } else { self.monitoring[i] };
+            cells.wet_gate[i].store(gate.to_bits(), core::sync::atomic::Ordering::Relaxed);
         }
-        let cells = &self.cells.strips[self.slot];
+        cells
+            .processor_demand
+            .store(demand, core::sync::atomic::Ordering::Relaxed);
         for channel in 0..channels {
             {
                 let first = block.audio.input(channel).ok_or(Error::InvalidShape)?;
@@ -610,16 +841,46 @@ impl StripInput {
                 .output(channel)
                 .ok_or(Error::InvalidShape)?
                 .copy_from_slice(&self.scratch[..frames]);
-            let monitor = block
-                .audio
-                .output(channels + channel)
-                .ok_or(Error::InvalidShape)?;
             for i in 0..frames {
-                monitor[i] = self.scratch[i] * self.monitoring[i];
+                block
+                    .audio
+                    .output(channels + channel)
+                    .ok_or(Error::InvalidShape)?[i] = self.scratch[i] * self.monitoring[i];
+                let playback = block
+                    .audio
+                    .input(2 * channels + channel)
+                    .ok_or(Error::InvalidShape)?[i];
+                let live = if !forced_off && (live_record || self.monitoring[i] > 0.) {
+                    self.scratch[i]
+                } else {
+                    0.
+                };
+                let send = live + playback;
+                block
+                    .audio
+                    .output(2 * channels + channel)
+                    .ok_or(Error::InvalidShape)?[i] = send * (1. - self.send_weights[i]);
+                block
+                    .audio
+                    .output(3 * channels + channel)
+                    .ok_or(Error::InvalidShape)?[i] = send * self.send_weights[i];
+                let first = block
+                    .audio
+                    .input(3 * channels + channel)
+                    .ok_or(Error::InvalidShape)?[i];
+                let second = block
+                    .audio
+                    .input(4 * channels + channel)
+                    .ok_or(Error::InvalidShape)?[i];
+                block
+                    .audio
+                    .output(4 * channels + channel)
+                    .ok_or(Error::InvalidShape)?[i] =
+                    first * (1. - self.return_weights[i]) + second * self.return_weights[i];
             }
         }
         let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
-        let [capture, monitor] = block.midi_outputs else {
+        let [capture, monitor, send, global] = block.midi_outputs else {
             return Err(Error::InvalidShape);
         };
         if self.release {
@@ -636,6 +897,7 @@ impl StripInput {
         let mut active = false;
         for message in self.injected.iter_mut() {
             if let Some(packet) = message.take() {
+                cells.observe_midi(packet.as_bytes());
                 capture.push(0, frames, packet.as_bytes())?;
                 if monitoring {
                     monitor.push(0, frames, packet.as_bytes())?;
@@ -647,11 +909,51 @@ impl StripInput {
             }
         }
         active |= copy_midi(input, capture, frames)?;
+        for index in 0..input.len() {
+            let (_, packet) = input.get(index).ok_or(Error::InvalidState)?;
+            cells.observe_midi(packet);
+        }
         if monitoring {
             for index in 0..input.len() {
                 let (offset, packet) = input.get(index).ok_or(Error::InvalidState)?;
                 monitor.push(offset, frames, packet)?;
                 let _ = self.monitored.apply_packet(packet, packet.len());
+            }
+        }
+        if processed {
+            let live = !forced_off && (live_record || monitoring);
+            if self.live_midi_active && !live {
+                for channel in 0..16u8 {
+                    let state = self.live_midi.channel(channel).ok_or(Error::InvalidState)?;
+                    for (key, _) in state.projected_notes() {
+                        send.insert(0, frames, &[0x80 | channel, key, 0])?;
+                    }
+                    if state.controller(64).is_some_and(|value| value > 0) {
+                        send.insert(0, frames, &[0xb0 | channel, 64, 0])?;
+                    }
+                }
+                *self.live_midi = MidiState::default();
+            }
+            self.live_midi_active = live;
+            if live {
+                copy_midi(capture, send, frames)?;
+                for index in 0..capture.len() {
+                    let (_, packet) = capture.get(index).ok_or(Error::InvalidState)?;
+                    self.live_midi.apply_packet(packet, packet.len())?;
+                }
+            }
+            copy_midi(&block.midi_inputs[1], send, frames)?;
+            copy_midi(&block.midi_inputs[2], global, frames)?;
+        }
+        if input.is_recovery() || block.midi_inputs[1].is_recovery() {
+            *self.live_midi = MidiState::default();
+            self.live_midi_active = false;
+            return Err(Error::Full);
+        }
+        if self.processor == Some(shoop_rt_protocol::ProcessorKind::External) {
+            if let Some(global) = &mut self.global {
+                global.render(&block.midi_inputs[2], send, frames, demand)?;
+                global.merge_into(send, frames)?;
             }
         }
         if active {
@@ -666,7 +968,10 @@ impl StripInput {
 impl StripInput {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
-            EngineOp::Reset { inputs, .. } => {
+            EngineOp::Reset {
+                inputs, generation, ..
+            } => {
+                self.generation = generation;
                 self.pending_history = None;
                 self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 self.midi_history_token = self.midi_history_token.checked_add(1).unwrap_or(0);
@@ -675,9 +980,15 @@ impl StripInput {
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
             EngineOp::Monitor(on) => {
-                self.release |= !on && self.monitor.target() > 0.;
-                self.monitor.set(f32::from(u8::from(on)), self.ramp)
+                self.cells.strips[self.slot]
+                    .forced_monitor_off
+                    .store(0, core::sync::atomic::Ordering::Relaxed);
+                self.manual_monitoring = on;
             }
+            EngineOp::CrossfadeSend => self.send_bank.set(1. - self.send_bank.target(), self.ramp),
+            EngineOp::CrossfadeReturn => self
+                .return_bank
+                .set(1. - self.return_bank.target(), self.ramp),
             EngineOp::Crossfade => {
                 self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 let target = 1. - self.bank.target();
@@ -697,9 +1008,18 @@ impl StripInput {
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Presence(_)
             | EngineOp::ReadStart { .. }
+            | EngineOp::ReadRolesStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
-            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
+            | EngineOp::PreviewStop
+            | EngineOp::ProcessorBind { .. }
+            | EngineOp::ProcessorClaim { .. }
+            | EngineOp::ProcessorStart { .. }
+            | EngineOp::ProcessorSuspend { .. }
+            | EngineOp::ProcessorRetire { .. }
+            | EngineOp::ProcessorParameter { .. }
+            | EngineOp::ProcessorControl { .. }
+            | EngineOp::RecordedState { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -722,10 +1042,25 @@ impl StripOutput {
         for channel in 0..channels {
             {
                 let input = block.audio.input(channel).ok_or(Error::InvalidShape)?;
+                let wet = block
+                    .audio
+                    .input(channels + channel)
+                    .ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
                 let mut peak = 0f32;
                 for i in 0..frames {
-                    let value = input[i] * gains[i] * self.scales[i];
+                    let gate = if self.processor.is_some() {
+                        if self.processor == Some(shoop_rt_protocol::ProcessorKind::External) {
+                            f32::from_bits(
+                                cells.wet_gate[i].load(core::sync::atomic::Ordering::Relaxed),
+                            )
+                        } else {
+                            self.wet_gate[i]
+                        }
+                    } else {
+                        0.
+                    };
+                    let value = (input[i] + wet[i] * gate) * gains[i] * self.scales[i];
                     self.scratch[i] = value;
                     peak = peak.max(value.abs());
                 }
@@ -743,6 +1078,12 @@ impl StripOutput {
                 .ok_or(Error::InvalidShape)?;
             for i in 0..frames {
                 second[i] = self.scratch[i] * self.weights[i];
+            }
+        }
+        if self.processor.is_some() {
+            for i in 0..frames {
+                self.wet_gate[i] =
+                    f32::from_bits(cells.wet_gate[i].load(core::sync::atomic::Ordering::Relaxed));
             }
         }
         if self.mute.target() > 0. && self.presence.target() > 0. {
@@ -772,15 +1113,26 @@ impl StripOutput {
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
             }
-            EngineOp::Monitor(_)
+            EngineOp::CrossfadeSend
+            | EngineOp::CrossfadeReturn
+            | EngineOp::Monitor(_)
             | EngineOp::InputSource { .. }
             | EngineOp::Configure(_)
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Inject(_)
             | EngineOp::ReadStart { .. }
+            | EngineOp::ReadRolesStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
-            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
+            | EngineOp::PreviewStop
+            | EngineOp::ProcessorBind { .. }
+            | EngineOp::ProcessorClaim { .. }
+            | EngineOp::ProcessorStart { .. }
+            | EngineOp::ProcessorSuspend { .. }
+            | EngineOp::ProcessorRetire { .. }
+            | EngineOp::ProcessorParameter { .. }
+            | EngineOp::ProcessorControl { .. }
+            | EngineOp::RecordedState { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -793,22 +1145,37 @@ impl LoopFader {
     ) -> Result<(), Error> {
         let frames = block.frames;
         let peaks: &Peak = &self.cells.loops[self.slot].peaks;
-        for channel in 0..self.channels {
+        let delayed = self
+            .processor
+            .is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External);
+        let quantum = block.quantum.frames();
+        let dry =
+            crate::cells::mode_from_code(self.cells.loops[self.slot].mode.load(Ordering::Relaxed))
+                .dry_playback();
+        for port in 0..2 * self.channels {
+            let channel = port % self.channels;
+            let auxiliary = port >= self.channels;
             let mut presence = self.presence;
-            let (input, output) = block
-                .audio
-                .pair(channel, channel)
-                .ok_or(Error::InvalidShape)?;
+            let (input, output) = block.audio.pair(port, port).ok_or(Error::InvalidShape)?;
             let mut peak = 0f32;
-            if presence.remaining == 0 {
+            if delayed && !auxiliary {
+                for i in 0..frames {
+                    let index = channel * quantum + (self.position + i) % quantum;
+                    let sample = self.delay[index];
+                    self.delay[index] = input[i];
+                    let value = sample * presence.next();
+                    output[i] = value;
+                    peak = peak.max(value.abs());
+                }
+            } else if presence.remaining == 0 {
                 let gain = presence.value;
                 if gain == 1. {
-                    output.copy_from_slice(input);
-                    for sample in input {
+                    output[..frames].copy_from_slice(&input[..frames]);
+                    for sample in &input[..frames] {
                         peak = peak.max(sample.abs());
                     }
                 } else {
-                    for (sample, value) in input.iter().zip(output.iter_mut()) {
+                    for (sample, value) in input[..frames].iter().zip(output[..frames].iter_mut()) {
                         *value = *sample * gain;
                         peak = peak.max(value.abs());
                     }
@@ -820,11 +1187,14 @@ impl LoopFader {
                     peak = peak.max(value.abs());
                 }
             }
-            peaks.raise(channel, peak);
-            if channel + 1 == self.channels {
+            if auxiliary == dry {
+                peaks.raise(channel, peak);
+            }
+            if port + 1 == 2 * self.channels {
                 self.presence = presence;
             }
         }
+        self.position = (self.position + frames) % quantum;
         Ok(())
     }
 }
@@ -832,7 +1202,25 @@ impl LoopFader {
 impl LoopFader {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
+            EngineOp::RecordedState {
+                generation,
+                revision,
+                state,
+            } => {
+                crate::recorded::validate_state(self.processor, state)
+                    .map_err(|_| Error::InvalidParameter)?;
+                let cell = &self.cells.loops[self.slot];
+                if cell.generation.load(Ordering::Relaxed) != generation
+                    || cell.content_revision.load(Ordering::Relaxed) != revision
+                {
+                    return Err(Error::InvalidId);
+                }
+                cell.recorded.publish(cell, generation, revision, state);
+            }
             EngineOp::Reset { .. } => {
+                self.processor = None;
+                self.delay.fill(0.);
+                self.position = 0;
                 self.presence = Ramp::at(1.);
                 self.cells.loops[self.slot].peaks.clear();
             }
@@ -1009,10 +1397,17 @@ impl EngineNode {
             }
             if configuration.token == 0
                 || configuration.bank > 1
+                || configuration.send_bank > 1
+                || configuration.return_bank > 1
                 || !configuration.gain.is_finite()
                 || configuration.gain < 0.
                 || !(-1.0..=1.0).contains(&configuration.balance)
             {
+                return Err(Error::InvalidParameter);
+            }
+            crate::recorded::validate_state(configuration.processor, configuration.recorded_state)
+                .map_err(|_| Error::InvalidParameter)?;
+            if configuration.recorded_state.is_some() && !matches!(self, Self::Fader(_)) {
                 return Err(Error::InvalidParameter);
             }
             if matches!(self, Self::StripInput(node) if configuration.inputs as usize > node.channels)
@@ -1029,7 +1424,7 @@ impl EngineNode {
             return Ok(());
         }
         match self {
-            Self::Loop(_) => Err(Error::InvalidEvent),
+            Self::Loop(_) | Self::Processor(_) => Err(Error::InvalidEvent),
             Self::StripInput(node) => node.apply(operation),
             Self::StripOutput(node) => node.apply(operation),
             Self::Fader(node) => node.apply(operation),
@@ -1064,6 +1459,7 @@ impl EngineNode {
             Self::Fader(node) => node.render(block),
             Self::Bus(node) => node.render(block),
             Self::Reader(node) => node.render(block),
+            Self::Processor(node) => node.process(block),
         }
     }
 }
@@ -1100,6 +1496,77 @@ mod tests {
         assert_eq!(&gains.plain[4..], &[42.; 4]);
         assert_eq!(&gains.left[4..], &[42.; 4]);
         assert_eq!(&gains.right[4..], &[42.; 4]);
+    }
+
+    #[shoop_test]
+    fn activating_a_prepared_strip_preserves_a_policy_change_confirmed_before_its_first_process() {
+        let cells = Cells::new(
+            1,
+            1,
+            1,
+            32,
+            DriverStatus {
+                kind: DriverKind::Dummy,
+                state: DriverRunState::Running,
+                sample_rate: 1000,
+                buffer_frames: 4,
+            },
+            4,
+        );
+        let settings = NodeSettings {
+            midi: crate::midi_layout::Layout::new(&crate::EngineDescription::default()).unwrap(),
+            external_midi: None,
+            cells: cells.clone(),
+            channels: 1,
+            master_channels: 1,
+            frames: 4,
+            ramp: 0,
+        };
+        let mut node = EngineNode::StripInput(StripInput::new(0, &settings));
+        let configuration = NodeConfiguration {
+            recorded_state: None,
+            processor: None,
+            send_bank: 0,
+            return_bank: 0,
+            token: 1,
+            epoch: rt_runtime::Epoch(1),
+            inputs: 1,
+            outputs: 1,
+            bank: 0,
+            gain: 1.,
+            balance: 0.,
+            monitoring: false,
+            generation: 1,
+            muted: false,
+        };
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            cells.strips[0].configure_policy(1, 0, true);
+            node.configure(configuration);
+            cells.strips[0].configure_policy(2, 1, false);
+            assert!(cells.strips[0].policy_enabled(1));
+            assert!(!cells.strips[0].policy_enabled(2));
+            assert!(cells.strips[0].set_policy(2, true));
+            node.configure(NodeConfiguration {
+                generation: 2,
+                ..configuration
+            });
+            let EngineNode::StripInput(ref input) = node else {
+                unreachable!()
+            };
+            assert!(cells.strips[0].policy_enabled(input.generation));
+            cells.strips[0].configure_policy(3, 2, true);
+            cells.strips[0].configure_policy(3, 2, false);
+            assert!(cells.strips[0].policy_enabled(2));
+            node.configure(NodeConfiguration {
+                generation: 3,
+                ..configuration
+            });
+            let EngineNode::StripInput(ref input) = node else {
+                unreachable!()
+            };
+            assert!(!cells.strips[0].policy_enabled(input.generation));
+            assert!(!cells.strips[0].set_policy(1, false));
+        });
     }
 
     fn tick(host: &mut OfflineHost) {
@@ -1191,11 +1658,16 @@ mod tests {
         let node = host.endpoint().pool.strip_input(0);
         let at = host.endpoint().at();
         let configuration = NodeConfiguration {
+            recorded_state: None,
+            processor: None,
+            generation: 1,
             token: 1,
             epoch: epoch.checked_next().unwrap(),
             inputs: 1,
             outputs: 1,
             bank: 1,
+            send_bank: 0,
+            return_bank: 0,
             gain: 0.5,
             balance: 0.,
             monitoring: true,

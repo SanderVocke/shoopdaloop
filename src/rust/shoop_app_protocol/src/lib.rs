@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod codec;
+pub mod composite;
 #[cfg(feature = "std")]
 pub mod local;
 pub mod persistence;
@@ -25,7 +26,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 26;
+pub const VERSION: u16 = 30;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -72,6 +73,7 @@ pub struct OperationId {
 /// Shared operations only. Platform dialogs, script VMs and UI drafts are local.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Command {
+    Composite(composite::Edit),
     SetLoopTimeline {
         loop_id: LoopId,
         start_offset: Option<i64>,
@@ -137,7 +139,10 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
-            Self::SetLoopChannelTimings { updates, .. } => updates.len() <= 9,
+            Self::Composite(edit) => edit.bounded(),
+            Self::SetLoopChannelTimings { updates, .. } => {
+                updates.len() <= MAX_LOOP_CHANNEL_TIMING_UPDATES
+            }
             Self::InspectProfiling(r) => {
                 r.capture != 0
                     && r.generation != 0
@@ -211,6 +216,10 @@ pub enum Refusal {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Outcome {
+    AncestorsStopped {
+        revision: Revision,
+        loops: Vec<LoopId>,
+    },
     Confirmed {
         revision: Revision,
     },
@@ -245,6 +254,7 @@ pub struct OperationResult {
 /// Ordinary shared state, without Lua, file workflows, editor drafts or media reads.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
+    pub composites: Vec<composite::View>,
     pub profiling: ProfilingView,
     pub preview: ClickTrackState,
     pub preview_bus: Option<BusId>,
@@ -271,6 +281,39 @@ pub struct SessionSnapshot {
 impl SessionSnapshot {
     pub fn valid(&self) -> bool {
         let mut bindings = alloc::collections::BTreeSet::new();
+        let loops = self
+            .tracks
+            .iter()
+            .flat_map(|track| track.loops.iter().map(|entry| entry.id))
+            .collect::<alloc::collections::BTreeSet<_>>();
+        let mut composites = alloc::collections::BTreeSet::new();
+        if self.composites.len() > loops.len()
+            || !self.composites.iter().all(|view| {
+                view.valid()
+                    && loops.contains(&view.loop_id)
+                    && composites.insert(view.loop_id)
+                    && view.working.as_ref().is_none_or(|content| {
+                        content
+                            .document
+                            .instances
+                            .iter()
+                            .all(|event| loops.contains(&event.loop_id))
+                    })
+                    && view
+                        .active
+                        .iter()
+                        .chain(view.pending.iter())
+                        .all(|version| {
+                            version
+                                .document
+                                .instances
+                                .iter()
+                                .all(|event| loops.contains(&event.loop_id))
+                        })
+            })
+        {
+            return false;
+        }
         self.connections.application_ports.iter().all(|port| {
             port.publication.is_none_or(|key| {
                 key.0 != 0
@@ -302,6 +345,9 @@ fn operation_valid(id: OperationId) -> bool {
 impl Outcome {
     pub fn bounded(&self) -> bool {
         match self {
+            Self::AncestorsStopped { loops, .. } => {
+                loops.len() <= 256 && loops.iter().all(|id| id.is_valid())
+            }
             Self::Confirmed { .. } => true,
             Self::TrackCreated { track, loops, .. } => {
                 track.is_valid() && loops.len() <= 128 && loops.iter().all(|id| id.is_valid())

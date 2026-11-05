@@ -1,7 +1,7 @@
 //! Fixed-size timing edits and confirmed playback windows.
 
 use crate::MAX_STRIP_CHANNELS;
-pub const MAX_TIMING_UPDATES: usize = MAX_STRIP_CHANNELS + 1;
+pub const MAX_TIMING_UPDATES: usize = MAX_STRIP_CHANNELS * 2 + 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChannelWindow {
@@ -25,7 +25,7 @@ impl Default for ChannelWindow {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PlaybackWindows {
-    pub audio: [ChannelWindow; MAX_STRIP_CHANNELS],
+    pub audio: [ChannelWindow; MAX_STRIP_CHANNELS * 2],
     pub midi: ChannelWindow,
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

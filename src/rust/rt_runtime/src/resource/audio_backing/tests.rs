@@ -806,3 +806,43 @@ fn staged_mixed_tick_audio_is_invisible_until_commit_and_cancellation_recovers_w
         assert_eq!(store.usage(), baseline);
     });
 }
+
+#[shoop_test]
+fn edit_only_pool_reserves_full_block_scratch_and_keeps_unselected_channels_and_old_exports() {
+    let mut store = resources();
+    let baseline = store.usage();
+    let pool = audio(&mut store, 5, 0);
+    assert_no_heap(|| {
+        let resource = store.empty_audio(pool).unwrap();
+        let revision = store.info(resource).unwrap().revision;
+        store.prepare_audio_growth(resource, revision, 8).unwrap();
+        let revision = store
+            .render_io()
+            .append_audio_take(resource, revision, &[3.; 40])
+            .unwrap();
+        store.finish_audio_growth(resource, revision).unwrap();
+        let old = store.snapshot(resource, Frame(8)).unwrap();
+        store
+            .render_io()
+            .replace_audio_channel(resource, revision, 3, 0, &[7.; 8])
+            .unwrap();
+        let changed = store.snapshot(resource, Frame(8)).unwrap();
+        for (index, sample) in read::<160>(&mut store, changed).chunks_exact(4).enumerate() {
+            assert_eq!(
+                f32::from_le_bytes(sample.try_into().unwrap()),
+                if index % 5 == 3 { 7. } else { 3. }
+            );
+        }
+        for sample in read::<160>(&mut store, old).chunks_exact(4) {
+            assert_eq!(f32::from_le_bytes(sample.try_into().unwrap()), 3.);
+        }
+        for snapshot in [old, changed] {
+            store.release_snapshot(snapshot.id).unwrap();
+        }
+        store.remove(resource).unwrap();
+        drain(&mut store);
+        store.cleanup_audio_store(pool).unwrap();
+        drain(&mut store);
+        assert_eq!(store.usage(), baseline);
+    });
+}

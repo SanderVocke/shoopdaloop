@@ -1397,6 +1397,7 @@ fn composite_with_appended_sources(
     serial_step_cycles: &[u64],
 ) -> Result<CompositeDocument, String> {
     let mut composite = existing.cloned().unwrap_or(CompositeDocument {
+        timing: None,
         kind: CompositeKindDocument::Regular,
         instances: Vec::new(),
     });
@@ -2138,6 +2139,9 @@ impl ApplicationModel {
                 target_loop_id,
                 kind,
             } => self.set_composite_kind(backend, target_loop_id, kind),
+            AppIntent::SetCompositeTimingBasis { .. } | AppIntent::CancelCompositeEdit { .. } => {
+                Err("prepared timing edits require the session service".to_owned())
+            }
             AppIntent::SetCompositeEventMode {
                 target_loop_id,
                 event,
@@ -2367,6 +2371,7 @@ impl ApplicationModel {
                     require(Capability::DryWetModes)
                 }
                 LoopAction::GrabClicked => require(Capability::Grab),
+                LoopAction::ReplaceClicked => require(Capability::ReplacingMode),
                 LoopAction::RestoreRecordedFxState => require(Capability::TrackFx),
                 LoopAction::ConvertToComposite
                 | LoopAction::ComposeIntoEnd(_)
@@ -6447,6 +6452,9 @@ impl ApplicationModel {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Recording)
             }
             LoopAction::GrabClicked => self.grab_targets(backend, loop_id),
+            LoopAction::ReplaceClicked => {
+                self.transition_targets(backend, loop_id, BackendLoopMode::Replacing)
+            }
             LoopAction::RerecordClicked => self.rerecord_targets(backend, loop_id),
             LoopAction::StopClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Stopped)
@@ -6512,6 +6520,7 @@ impl ApplicationModel {
                     return Err(format!("loop {loop_id} is already a composite"));
                 }
                 let composite = CompositeDocument {
+                    timing: None,
                     kind: CompositeKindDocument::Regular,
                     instances: Vec::new(),
                 };
@@ -11161,6 +11170,7 @@ impl ApplicationModel {
                     });
                 }
                 loops.push(LoopDocument {
+                    execution: None,
                     id: loop_id.raw(),
                     name: model.name.clone(),
                     length_frames: u64::from(model.length),
@@ -12177,6 +12187,16 @@ impl ApplicationModel {
             });
         }
         CompositeDetailsState {
+            timing: None,
+            execution: Default::default(),
+            available_event_modes: vec![
+                LoopMode::Playing,
+                LoopMode::Recording,
+                LoopMode::Replacing,
+                LoopMode::PlayingDryThroughWet,
+                LoopMode::RecordingDryIntoWet,
+                LoopMode::Stopped,
+            ],
             kind: match composite.kind {
                 CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
                 CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
@@ -12777,6 +12797,7 @@ fn new_session_document(sample_rate: u32) -> SessionDocument {
             controls: TrackControlsDocument::default(),
             latency: TrackLatencyDocument::default(),
             loops: vec![LoopDocument {
+                execution: None,
                 id: 1,
                 name: "sync loop".to_owned(),
                 length_frames: 0,
@@ -13683,6 +13704,7 @@ fn session_bundle_to_backend(
                 return Err(format!("loop {} channel shape is invalid", loop_.id));
             }
             loops.push(BackendLoopContent {
+                recorded_processor_state: None,
                 source_id: loop_.id,
                 length: u32::try_from(loop_.length_frames)
                     .map_err(|_| "loop length exceeds engine range".to_owned())?,
@@ -13851,6 +13873,9 @@ fn session_bundle_to_backend(
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(BackendSessionData {
+        composites: Default::default(),
+        loop_sync: Default::default(),
+        repeat_sync: Default::default(),
         sample_rate: bundle.document.sample_rate,
         tracks,
         buses,
@@ -14310,6 +14335,7 @@ mod tests {
         model.loops.get_mut(&same_track_peer).unwrap().length = 10;
         model.tracks[4].controls.has_input = false;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![
                 CompositeLoopInstanceDocument {
@@ -14545,6 +14571,7 @@ mod tests {
         );
         let dependent = model.tracks[4].loops[0];
         let dependent_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14620,6 +14647,7 @@ mod tests {
 
         let peer = model.tracks[4].loops[0];
         let peer_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14644,6 +14672,7 @@ mod tests {
         let primitive_target_version = global_version + 1;
         model.remember_auto_arm_composite_plan(root, primitive_target_version, &plan_a);
         model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14743,6 +14772,7 @@ mod tests {
         }
         model.loops.get_mut(&nested).unwrap().length = 30;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14753,6 +14783,7 @@ mod tests {
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![
                 CompositeLoopInstanceDocument {
@@ -14808,6 +14839,7 @@ mod tests {
         assert!(model.auto_arm_demanded_tracks().is_empty());
 
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14868,6 +14900,7 @@ mod tests {
         assert!(model.auto_arm_demanded_tracks().is_empty());
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14908,6 +14941,7 @@ mod tests {
             .unwrap()
             .auto_arm_active_target_kinds = BTreeMap::from([(first, true)]);
         model.loops.get_mut(&first).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14942,6 +14976,7 @@ mod tests {
         );
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14963,6 +14998,7 @@ mod tests {
             .active_composite_children
             .clear();
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -14990,6 +15026,7 @@ mod tests {
         );
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15000,6 +15037,7 @@ mod tests {
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15034,6 +15072,7 @@ mod tests {
         );
 
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15053,6 +15092,7 @@ mod tests {
             root_model.auto_arm_active_target_kinds = BTreeMap::from([(nested, true)]);
         }
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15087,6 +15127,7 @@ mod tests {
         model.loops.get_mut(&first).unwrap().composite = None;
         model.loops.get_mut(&first).unwrap().backend_composite = None;
         model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15097,6 +15138,7 @@ mod tests {
             }],
         });
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15130,6 +15172,7 @@ mod tests {
         let child = model.tracks[2].loops[0];
         let primitive = model.tracks[3].loops[0];
         let child_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15143,6 +15186,7 @@ mod tests {
             .commit_composite_editor_change(&mut backend, child, child_document)
             .unwrap();
         let parent_document = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -15215,6 +15259,7 @@ mod tests {
         let second_track = model.tracks[3].id;
         for root in [first_root, second_root] {
             model.loops.get_mut(&root).unwrap().composite = Some(CompositeDocument {
+                timing: None,
                 kind: CompositeKindDocument::Script,
                 instances: vec![CompositeLoopInstanceDocument {
                     instance_id: 1,
@@ -16073,6 +16118,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn application_publishes_backend_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
             label: "Future browser FX".to_owned(),
             available: true,
@@ -16107,6 +16153,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn application_adds_external_dry_wet_tracks_from_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -16732,6 +16779,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
             ),
@@ -16880,6 +16928,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn failed_recorded_fx_restore_leaves_the_processed_track_usable() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
             ),
@@ -18312,6 +18361,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model.loops.get_mut(&rhythm_b).unwrap().length = 40;
         model.loops.get_mut(&melody).unwrap().length = 60;
         let composite = CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![
                 CompositeLoopInstanceDocument {
@@ -18511,6 +18561,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(updated.instances.iter().all(|event| event.mode.is_none()));
 
         model.loops.get_mut(&target).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: Vec::new(),
         });
@@ -18724,6 +18775,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(
             converted.composite.as_ref().unwrap(),
             &CompositeDocument {
+                timing: None,
                 kind: CompositeKindDocument::Regular,
                 instances: Vec::new(),
             }
@@ -18799,6 +18851,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(model.loops[&target].composite, before);
 
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -19064,6 +19117,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 track.loops[1].length_frames = 100;
                 track.loops[2].length_frames = 200;
                 let composite = CompositeDocument {
+                    timing: None,
                     kind: CompositeKindDocument::Script,
                     instances: vec![
                         CompositeLoopInstanceDocument {
@@ -21085,6 +21139,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let previews = Arc::new(Mutex::new(VecDeque::new()));
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -24996,6 +25051,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn dry_wet_media_io_maps_and_exports_role_order_without_flattening() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -26115,6 +26171,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -26306,6 +26363,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn failed_track_default_playback_update_keeps_application_state_unchanged() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            resources: None,
             id: shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::EXTERNAL,
             ),
@@ -26816,6 +26874,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let source = track.loops[1].id;
         track.loops[0].channels.clear();
         track.loops[0].composite = Some(CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Regular,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,
@@ -26913,6 +26972,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             midi_cc_assignments: Vec::new(),
         };
         let composite = |mode: Option<&str>| CompositeDocument {
+            timing: None,
             kind: CompositeKindDocument::Script,
             instances: vec![CompositeLoopInstanceDocument {
                 instance_id: 1,

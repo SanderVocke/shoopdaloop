@@ -1143,6 +1143,14 @@ impl Shared {
     pub fn work(&self) -> SharedWork {
         self.work
     }
+    pub(super) fn audio_store(&self, source: u32) -> Result<AudioStoreId, Error> {
+        self.lookup
+            .get(source as usize)
+            .copied()
+            .flatten()
+            .and_then(|index| self.histories[index].audio)
+            .ok_or(Error::InvalidShape)
+    }
     pub fn capacity(&self) -> SharedCapacity {
         self.capacity
     }
@@ -1376,6 +1384,9 @@ impl LoopPlanner {
             }
             Operation::WriterPrepareReplacing { target, source } => {
                 let row = self.row(target)?;
+                if row.dry_wet {
+                    return Err(Error::InvalidShape.into());
+                }
                 let state = self.resolver.state(target)?;
                 if row.prepared.is_some() {
                     return Err(Error::Busy.into());
@@ -1473,13 +1484,10 @@ impl LoopPlanner {
                     topology: self.resolver.epoch(),
                 };
                 let midi = if row.binding.midi {
-                    Some(
-                        io.snapshot(
-                            row.resources[take.bank][usize::from(row.binding.channels > 0)]
-                                .ok_or(Error::InvalidState)?,
-                            frame,
-                        )?,
-                    )
+                    Some(io.snapshot(
+                        row.resources[take.bank][0][2].ok_or(Error::InvalidState)?,
+                        frame,
+                    )?)
                 } else {
                     None
                 };
@@ -1541,7 +1549,8 @@ impl LoopPlanner {
             Operation::CandidateBegin { target, take } => {
                 let row = self.row(target)?;
                 let state = self.resolver.state(target)?;
-                if row.active.is_some()
+                if row.dry_wet
+                    || row.active.is_some()
                     || row.prepared.is_some()
                     || state.writes()
                     || (row.binding.channels > 0) != take.audio.is_some()
@@ -1699,7 +1708,9 @@ impl LoopPlanner {
             }
         };
         let input = media::Input {
+            auxiliary: None,
             description: media::Description {
+                auxiliary_channels: 0,
                 owner: job.fence.target,
                 revision,
                 frames: job.take.frames,

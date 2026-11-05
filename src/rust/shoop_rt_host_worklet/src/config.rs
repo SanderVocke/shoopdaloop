@@ -1,7 +1,8 @@
 //! The configuration record that prepares the module before its first quantum.
 //!
 //! All numbers are little-endian `u32`, in this order: the record version, the
-//! sample rate, the largest callback, the graph quantum, strip channels, Master channels, smoothing,
+//! sample rate, the largest callback, the graph quantum, strip and Master channels,
+//! bus slots and channels, smoothing,
 //! the smoothing limit, the ramp, the control lead, resource pages, page bytes,
 //! MIDI events and bytes per port, pending transitions, reliable and bulk credits,
 //! the telemetry interval, history seconds/shared audio pages/MIDI pages/MIDI records/writers,
@@ -16,7 +17,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 4;
+pub const CONFIG_VERSION: u32 = 7;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -71,6 +72,10 @@ impl WorkletConfig {
     /// The worklet's own bounds; the engine validates its description when it is
     /// prepared.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.engine
+            .processors
+            .validate()
+            .map_err(|_| ConfigError::Range)?;
         let record_lanes = MAX_RECORD_BYTES..=MAX_LANE_BYTES;
         let midi_lanes = MAX_EVENT_BYTES..=MAX_LANE_BYTES;
         if !record_lanes.contains(&self.records_in_bytes)
@@ -97,6 +102,12 @@ impl WorkletConfig {
             engine.sample_rate as usize,
             engine.max_frames,
             engine.quantum,
+            engine.processors.builtin_fx as usize,
+            engine.processors.oxisynth as usize,
+            engine.processors.fx_instances as usize,
+            engine.processors.synth_instances as usize,
+            engine.processors.memory_mb as usize,
+            usize::from(engine.external_dry_wet),
             engine.strip_channels.into(),
             engine.master_channels.into(),
             engine.buses.into(),
@@ -123,6 +134,9 @@ impl WorkletConfig {
             self.midi_in_bytes,
             self.midi_out_bytes,
             self.records_per_quantum,
+            engine.composite_entries,
+            engine.composite_segments,
+            engine.timing_relations,
             engine.segments.len(),
         ] {
             put(&mut out, value)?;
@@ -164,6 +178,25 @@ impl WorkletConfig {
         let sample_rate = r.u32()?;
         let max_frames = r.usize()?;
         let quantum = r.usize()?;
+        let policy = |value: u32| match value {
+            0 => Ok(shoop_rt_protocol::ProcessorPolicy::Auto),
+            1 => Ok(shoop_rt_protocol::ProcessorPolicy::On),
+            2 => Ok(shoop_rt_protocol::ProcessorPolicy::Off),
+            _ => Err(ConfigError::Range),
+        };
+        let processors = shoop_rt_protocol::ProcessorSettings {
+            builtin_fx: policy(r.u32()?)?,
+            oxisynth: policy(r.u32()?)?,
+            fx_instances: r.narrow()?,
+            synth_instances: r.narrow()?,
+            memory_mb: r.u32()?,
+        };
+        processors.validate().map_err(|_| ConfigError::Range)?;
+        let external_dry_wet = match r.u32()? {
+            0 => false,
+            1 => true,
+            _ => return Err(ConfigError::Range),
+        };
         let strip_channels = r.narrow()?;
         let master_channels = r.narrow()?;
         let buses = r.narrow()?;
@@ -192,6 +225,9 @@ impl WorkletConfig {
         let midi_in_bytes = r.usize()?;
         let midi_out_bytes = r.usize()?;
         let records_per_quantum = r.usize()?;
+        let composite_entries = r.usize()?;
+        let composite_segments = r.usize()?;
+        let timing_relations = r.usize()?;
         let segments = (0..r.count(MAX_SEGMENTS)?)
             .map(|_| {
                 Ok(Segment {
@@ -218,6 +254,11 @@ impl WorkletConfig {
         Ok(Self {
             engine: EngineDescription {
                 history,
+                processors,
+                external_dry_wet,
+                composite_entries,
+                composite_segments,
+                timing_relations,
                 sample_rate,
                 max_frames,
                 quantum,
@@ -294,6 +335,7 @@ mod tests {
 
     fn config() -> WorkletConfig {
         let mut engine = EngineDescription {
+            external_dry_wet: true,
             segments: vec![
                 Segment {
                     strips: 2,
@@ -340,6 +382,9 @@ mod tests {
         let mut channels = record.clone();
         channels[16..20].copy_from_slice(&300u32.to_le_bytes());
         assert_eq!(WorkletConfig::decode(&channels), Err(ConfigError::Range));
+        let mut external = record.clone();
+        external[36..40].copy_from_slice(&2u32.to_le_bytes());
+        assert_eq!(WorkletConfig::decode(&external), Err(ConfigError::Range));
         let name = record.len() - "Keystep ✓".len() - 4;
         let mut invalid = record;
         invalid[name] = 0xff;

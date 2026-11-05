@@ -121,7 +121,9 @@ pub(crate) fn prepare(
         let midi = upload(&mut store, Format::Midi, frames, &bytes, Some(&initial));
         resources.extend([audio.snapshot.resource, midi.snapshot.resource]);
         inputs.push(media::Input {
+            auxiliary: None,
             description: media::Description {
+                auxiliary_channels: 0,
                 owner: id(0),
                 revision: Revision(revision),
                 frames,
@@ -162,6 +164,8 @@ pub(crate) fn prepare(
     graph.nodes.extend([node(3), node(4)]);
     let bindings = vec![
         Binding {
+            auxiliary_channels: 0,
+            dry_wet: false,
             target: id(0),
             playback: node(0),
             capture: node(1),
@@ -174,6 +178,8 @@ pub(crate) fn prepare(
             packet_bytes: 512,
         },
         Binding {
+            auxiliary_channels: 0,
+            dry_wet: false,
             target: id(1),
             playback: node(3),
             capture: node(4),

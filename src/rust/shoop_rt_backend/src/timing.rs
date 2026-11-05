@@ -46,6 +46,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         {
             return;
         }
+        if state.content_revision != entry.rt_content_revision {
+            entry.content += 1;
+            self.canonical_content.remove(&id);
+            self.prepared_content.remove(&id);
+            self.canonical_imports.remove(&id);
+        }
+        entry.rt_content_revision = state.content_revision;
         entry.timing = state;
         if entry.view.mode != shoop_rt_protocol::LoopMode::Recording {
             entry.view.length = state.length;

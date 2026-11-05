@@ -18,8 +18,10 @@ looping, sync, tracks, routes, musical selection/targeting, controls and client-
 Lua. Native socket hosts keep playback and recording running when a UI exits or
 crashes; a replacement UI can attach to the live session.
 
-Full feature parity is the next workstream. Session content save/load, FX/synths,
-composites, grab, dry/wet processing and other temporary gaps are explicitly tracked
+Host-advertised dry/wet tracks support External routing, built-in FunDSP FX and
+OxiSynth, including editors, MIDI Learn, dry playback/rerecording and session files.
+Both DSP backends are independently optional at build and host startup. Composites,
+grab, Carla, bus FX and other temporary gaps are explicitly tracked
 in the [feature parity ledger](docs/native_session_recovery/feature-parity.md), with
 preserved UI/code, reference tests and completion criteria. Existing feature UI and
 configuration are retained for restoration; unavailable operations are refused.
@@ -37,6 +39,10 @@ cargo run -p shoopdaloop
 
 # Dummy-driver build without CPAL or Rodio.
 cargo run -p shoopdaloop --no-default-features
+
+# Optional DSP without native audio drivers; build the companion with the same features.
+cargo build -p shoopdaloop -p shoop_host --no-default-features --features builtin-fx,oxisynth
+target/debug/shoopdaloop --builtin-fx on --oxisynth off
 ```
 
 For browser development:

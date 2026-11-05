@@ -290,12 +290,12 @@ fn hostile_container_lengths_and_midi_message_lengths_are_refused() {
 fn heartbeat_records_have_a_canonical_cross_platform_representation() {
     let mut bytes = [0; 1280];
     let n = codec::encode(&WireMessage::Ping(42), &mut bytes).unwrap();
-    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 26, 0, 0, 42]);
+    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 29, 0, 0, 42]);
     let n = codec::encode(&WireMessage::Pong(0x1122334455667788), &mut bytes).unwrap();
     assert_eq!(
         &bytes[..n],
         &[
-            18, 0, b'S', b'A', b'P', b'P', 26, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
+            18, 0, b'S', b'A', b'P', b'P', 29, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
             0x11
         ]
     );
@@ -311,10 +311,102 @@ fn attachment_and_greeting_carry_no_host_or_session_identifiers() {
     .unwrap();
     assert_eq!(
         &bytes[..n],
-        &[11, 0, b'S', b'A', b'P', b'P', 26, 0, 3, 1, 26]
+        &[11, 0, b'S', b'A', b'P', b'P', 29, 0, 3, 1, 29]
     );
     let n = codec::encode(&WireMessage::CarrierReady, &mut bytes).unwrap();
-    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 26, 0, 19]);
+    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 29, 0, 19]);
+}
+
+#[shoop_test]
+fn composite_editor_commands_roundtrip_and_validate_their_bounded_public_identities() {
+    use shoop_app_api::{CompositeKind, LoopMode};
+    use shoop_app_protocol::composite::{Edit, TimingBasis};
+    let target = LoopId::from_raw(10);
+    let source = LoopId::from_raw(11);
+    for edit in [
+        Edit::Convert { target },
+        Edit::Append {
+            target,
+            add: vec![source],
+            parallel: true,
+            convert_if_empty: true,
+        },
+        Edit::Insert {
+            target,
+            source,
+            start_cycle: 2,
+        },
+        Edit::Delete {
+            target,
+            events: vec![1, 2],
+        },
+        Edit::Relocate {
+            target,
+            events: vec![1, 2],
+            start_cycle: 7,
+            duplicate: true,
+        },
+        Edit::Duration {
+            target,
+            event: 1,
+            n_cycles: Some(3),
+        },
+        Edit::Kind {
+            target,
+            kind: CompositeKind::Script,
+        },
+        Edit::Mode {
+            target,
+            event: 1,
+            mode: LoopMode::Recording,
+        },
+        Edit::Timing {
+            target,
+            basis: TimingBasis {
+                sample_rate: 48000,
+                unit_frames: 32,
+            },
+        },
+        Edit::Cancel { target, version: 4 },
+    ] {
+        assert!(edit.bounded());
+        roundtrip(WireMessage::Client(ClientMessage::Submit {
+            authority: AUTHORITY,
+            session_epoch: 1,
+            operation: OperationId {
+                client: AUTHORITY.client,
+                sequence: 77,
+            },
+            expected_revision: None,
+            command: Command::Composite(edit),
+        }));
+    }
+    for edit in [
+        Edit::Convert {
+            target: LoopId::INVALID,
+        },
+        Edit::Insert {
+            target,
+            source: LoopId::INVALID,
+            start_cycle: 0,
+        },
+        Edit::Duration {
+            target,
+            event: 1,
+            n_cycles: Some(0),
+        },
+        Edit::Mode {
+            target,
+            event: 1,
+            mode: LoopMode::Unknown,
+        },
+        Edit::Delete {
+            target,
+            events: vec![0],
+        },
+    ] {
+        assert!(!edit.bounded());
+    }
 }
 
 #[shoop_test]
@@ -326,12 +418,12 @@ fn oversized_timing_batches_are_refused_before_wire_encoding() {
     };
     let valid = Command::SetLoopChannelTimings {
         loop_id: LoopId::from_raw(9),
-        updates: vec![update.clone(); 9],
+        updates: vec![update.clone(); shoop_app_api::MAX_LOOP_CHANNEL_TIMING_UPDATES],
     };
     assert!(valid.bounded());
     let invalid = Command::SetLoopChannelTimings {
         loop_id: LoopId::from_raw(9),
-        updates: vec![update; 10],
+        updates: vec![update; shoop_app_api::MAX_LOOP_CHANNEL_TIMING_UPDATES + 1],
     };
     let message = WireMessage::Client(ClientMessage::Submit {
         session_epoch: 1,

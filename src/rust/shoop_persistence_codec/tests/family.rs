@@ -24,6 +24,7 @@ fn capture() -> Arc<image::Image> {
             let id = LoopId::from_raw(index as u64 + 1);
             payloads.push(image::Payload::Audio(Arc::new(vec![0.25; frames as usize])));
             let channel = image::Channel {
+                mode: image::ChannelMode::Direct,
                 object: Some(payloads.len() as u32),
                 frames,
                 gain: 1.,
@@ -50,6 +51,10 @@ fn capture() -> Arc<image::Image> {
                 fence_content: true,
                 restart: index == 0,
                 content: Some(image::Loop {
+                    recorded_processor_state: None,
+                    sync_source: None,
+                    repeat_sync: false,
+                    composite: None,
                     id,
                     name: "Chain".into(),
                     sync: false,
@@ -59,6 +64,7 @@ fn capture() -> Arc<image::Image> {
                     audio: vec![channel.clone()],
                     midi: vec![image::MidiChannel {
                         channel: image::Channel {
+                            mode: image::ChannelMode::Direct,
                             object: Some(payloads.len() as u32),
                             ..channel
                         },
@@ -149,6 +155,63 @@ fn family_chain_combines_rate_and_grid_once_and_cancel_leaves_input_untouched() 
     .run_with_cancel(|| true)
     .is_err());
     assert_eq!(*base, original);
+}
+
+#[shoop_test]
+fn family_audio_and_midi_imports_keep_dry_wet_roles_and_recorded_settings() {
+    let mut base = (*capture()).clone();
+    let image::Manifest::FamilyUpdate { members, .. } = &mut base.manifest else {
+        panic!()
+    };
+    for member in members {
+        let content = member.content.as_mut().unwrap();
+        content.audio[0].mode = image::ChannelMode::Dry;
+        let mut wet = content.audio[0].clone();
+        wet.mode = image::ChannelMode::Wet;
+        base.payloads.push(image::Payload::Audio(Arc::new(vec![
+            -0.5;
+            wet.frames as usize
+        ])));
+        wet.object = Some(base.payloads.len() as u32);
+        content.audio.push(wet);
+        content.midi[0].channel.mode = image::ChannelMode::Dry;
+        content.recorded_processor_state = Some("retained take checkpoint".into());
+    }
+    let base = Arc::new(base);
+    for audio in [true, false] {
+        let decoded = if audio {
+            let mut audio = incoming(1000);
+            audio.channels.push(audio.channels[0].clone());
+            Decoded::Audio(audio)
+        } else {
+            Decoded::Midi(ExactMidi {
+                sample_rate: 1000,
+                length_frames: 112,
+                start_state: vec![vec![0xb0, 7, 91]],
+                events: Vec::new(),
+            })
+        };
+        let Value::Image(output) = (Work::ConvertFamily {
+            decoded,
+            base: base.clone(),
+        })
+        .run()
+        .unwrap() else {
+            panic!()
+        };
+        let image::Manifest::FamilyUpdate { members, .. } = &output.manifest else {
+            panic!()
+        };
+        for member in members {
+            let content = member.content.as_ref().unwrap();
+            assert_eq!(content.audio_labels(), ["Dry 1", "Wet 1"]);
+            assert_eq!(content.midi[0].channel.mode, image::ChannelMode::Dry);
+            assert_eq!(
+                content.recorded_processor_state.as_deref(),
+                Some("retained take checkpoint")
+            );
+        }
+    }
 }
 
 fn receive(worker: &mut Worker, command: Command) -> Response {

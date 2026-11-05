@@ -47,7 +47,13 @@ impl HostPorts {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
     pub history: shoop_rt_protocol::host::InputHistorySettings,
+    pub composite_entries: usize,
+    pub composite_segments: usize,
+    pub timing_relations: usize,
     pub sample_rate: u32,
+    pub processors: shoop_rt_protocol::ProcessorSettings,
+    /// Prepare External dry/wet routing and its bounded wet edit storage.
+    pub external_dry_wet: bool,
     /// Largest callback the host will render.
     pub max_frames: usize,
     /// Fixed graph tick. Changing it requires preparing a new engine.
@@ -91,7 +97,12 @@ impl Default for EngineDescription {
     fn default() -> Self {
         Self {
             history: shoop_rt_protocol::host::InputHistorySettings::default(),
+            external_dry_wet: false,
+            composite_entries: 256,
+            composite_segments: 1024,
+            timing_relations: 512,
             sample_rate: 48_000,
+            processors: shoop_rt_protocol::ProcessorSettings::disabled(),
             max_frames: 512,
             quantum: 32,
             host: HostPorts::numbered(2, 2, 1),
@@ -129,10 +140,16 @@ impl EngineDescription {
     }
 
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
+        self.processors
+            .validate()
+            .map_err(|_| rt_runtime::Error::InvalidConfig)?;
         use rt_runtime::Error;
         let host = &self.host;
         rt_runtime::Quantum::new(self.quantum)?;
-        if self.sample_rate == 0
+        if self.composite_entries == 0
+            || self.composite_segments == 0
+            || self.timing_relations == 0
+            || self.sample_rate == 0
             || self.max_frames == 0
             || self.strip_channels == 0
             || self.master_channels == 0
@@ -157,7 +174,14 @@ impl EngineDescription {
         {
             return Err(Error::InvalidConfig);
         }
-        if self.strip_channels as usize > MAX_STRIP_CHANNELS
+        if [
+            self.composite_entries,
+            self.composite_segments,
+            self.timing_relations,
+        ]
+        .iter()
+        .any(|&n| n > u32::MAX as usize)
+            || self.strip_channels as usize > MAX_STRIP_CHANNELS
             || self.master_channels as usize > MAX_STRIP_CHANNELS
             || [
                 host.audio_inputs.len(),

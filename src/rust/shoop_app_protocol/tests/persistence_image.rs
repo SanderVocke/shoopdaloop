@@ -25,6 +25,7 @@ fn target() -> Target {
 }
 fn channel(object: u32, frames: u64) -> Channel {
     Channel {
+        mode: ChannelMode::Direct,
         object: Some(object),
         frames,
         gain: 1.,
@@ -39,6 +40,10 @@ fn image(samples: usize) -> Arc<Image> {
         manifest: Manifest::Loop {
             sample_rate: 48000,
             content: Loop {
+                recorded_processor_state: None,
+                composite: None,
+                sync_source: None,
+                repeat_sync: false,
                 id: LoopId::from_raw(1),
                 name: "Music".to_owned(),
                 sync: false,

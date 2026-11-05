@@ -1184,7 +1184,10 @@ fn seeded_dags_match_an_independent_scalar_reference_for_varying_blocks() {
 
 #[shoop_test]
 fn midi_forwarding_uses_prepared_merge_capacity_and_clears_each_tick() {
-    use rt_runtime::{buffer::MidiCapacity, processor::MidiBufferSettings};
+    use rt_runtime::{
+        buffer::MidiCapacity,
+        processor::{MidiBufferSettings, MidiPortCapacity},
+    };
     struct Forward;
     impl Processor for Forward {
         fn ports(&self) -> PortCounts {
@@ -1196,10 +1199,23 @@ fn midi_forwarding_uses_prepared_merge_capacity_and_clears_each_tick() {
         }
         fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
             Ok(MidiBufferSettings {
-                input: Some(MidiCapacity {
-                    events: 4,
-                    bytes: 12,
-                }),
+                ports: [
+                    Some(MidiPortCapacity {
+                        input: true,
+                        port: 0,
+                        capacity: MidiCapacity {
+                            events: 4,
+                            bytes: 12,
+                        },
+                    }),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
                 forward_input: Some(0),
                 ..Default::default()
             })

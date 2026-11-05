@@ -23,7 +23,7 @@ fn description() -> EngineDescription {
         quantum: 1,
         sample_rate: 48_000,
         max_frames: 256,
-        host: HostPorts::numbered(2, 2, 1),
+        host: HostPorts::numbered(2, 2, 0),
         segments: vec![Segment {
             strips: 16,
             loops: 128,

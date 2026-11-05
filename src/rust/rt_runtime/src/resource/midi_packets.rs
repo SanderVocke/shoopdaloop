@@ -77,6 +77,7 @@ struct Slab {
 #[derive(Clone, Copy)]
 struct Body {
     first: NonZeroU32,
+    last: NonZeroU32,
     offset: usize,
     bytes: usize,
     references: u32,
@@ -326,6 +327,7 @@ impl Packets {
         let body = self.free_bodies.pop().unwrap();
         self.bodies[slot(body)].value = Some(Body {
             first: NonZeroU32::new(1).unwrap(),
+            last: NonZeroU32::new(1).unwrap(),
             offset,
             bytes,
             references: 1,
@@ -361,6 +363,9 @@ impl Packets {
     }
     pub fn available_bodies(&self) -> usize {
         self.free_bodies.len()
+    }
+    pub fn page_bytes(&self) -> usize {
+        self.page_bytes
     }
     pub fn available_pages(&self) -> usize {
         self.free_slabs.len()
@@ -471,6 +476,7 @@ impl Packets {
         let id = self.free_bodies.pop().expect("preflighted body descriptor");
         self.bodies[slot(id)].value = Some(Body {
             first: first.unwrap(),
+            last: self.tail.unwrap(),
             offset: first_offset,
             bytes: bytes.len(),
             references: 1,
@@ -734,6 +740,19 @@ impl Packets {
     }
 }
 impl Lookup<NonZeroU32> for Packets {
+    fn packet_pages(&self, value: NonZeroU32) -> (usize, Option<NonZeroU32>, Option<NonZeroU32>) {
+        let record = self.records[slot(value)].value.expect("owned record");
+        let body = self.bodies[slot(record.body)].value.expect("owned body");
+        if body.base.is_some() {
+            (0, None, None)
+        } else {
+            (
+                (body.offset + body.bytes).div_ceil(self.page_bytes),
+                Some(body.first),
+                Some(body.last),
+            )
+        }
+    }
     fn packet_bytes(&self, value: NonZeroU32) -> usize {
         self.packet_len(value)
     }

@@ -26,6 +26,9 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
@@ -35,6 +38,7 @@ use alloc::vec::Vec;
 mod backend;
 mod capture;
 mod clock;
+mod composites;
 mod family;
 mod import;
 mod incoming;
@@ -44,6 +48,8 @@ mod outgoing;
 mod persistence;
 mod prepared;
 mod preview;
+mod processor_controls;
+mod processors;
 mod reads;
 mod requests;
 mod session;
@@ -71,7 +77,8 @@ use crate::requests::Requests;
 const MAX_WAITS: usize = 10_000;
 pub const MAX_TRACKED_MUTATIONS: usize = 4096;
 /// Rounds of sending and receiving in one pump.
-const MAX_PUMP_ROUNDS: usize = 1_000;
+const MAX_PUMP_ROUNDS: usize = 8;
+const MAX_MESSAGES_PER_PUMP_ROUND: usize = 64;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Link {
@@ -166,6 +173,9 @@ pub struct RtBackend<C, K> {
     clock: K,
     link: Link,
     capabilities: Capabilities,
+    processors: Option<shoop_rt_protocol::ProcessorLimits>,
+    processor_presets: Vec<shoop_rt_protocol::ProcessorPreset>,
+
     limits: Option<Limits>,
     driver: Option<DriverStatus>,
     driver_profile: Option<shoop_app_api::ResolvedAudioDriverConfig>,
@@ -195,6 +205,7 @@ pub struct RtBackend<C, K> {
     prepared_content:
         alloc::collections::BTreeMap<shoop_backend::BackendLoopId, prepared::Prepared>,
     capture_validation: Option<prepared::Validation>,
+    composites: composites::Composites,
 }
 
 pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
@@ -225,6 +236,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             clock,
             link: Link::Connecting,
             capabilities: Capabilities::default(),
+            processors: None,
+            processor_presets: Vec::new(),
             limits: None,
             driver: None,
             driver_profile: None,
@@ -249,6 +262,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             canonical_imports: Default::default(),
             prepared_content: Default::default(),
             capture_validation: None,
+            composites: Default::default(),
         })
     }
 
@@ -423,6 +437,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub fn clock(&self) -> &K {
         &self.clock
     }
+    /// Refresh reliable configuration while preserving accepted operations and live playback.
+    pub fn request_resync(&mut self) -> Result<()> {
+        self.ready()?;
+        self.client
+            .resync()
+            .map_err(|error| anyhow!("resynchronization failed: {error:?}"))?;
+        self.link = Link::Resyncing;
+        self.resync = Some(Vec::new());
+        Ok(())
+    }
+
     /// The confirmed synchronization source of a live loop.
     pub fn loop_sync_source(
         &self,
@@ -449,8 +474,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         (self.client, self.clock)
     }
 
-    /// Sends queued requests and reads as credits allow and handles every engine message that
-    /// has arrived. Never waits.
+    /// Makes a bounded pass through queued requests, reads and engine messages. Never waits.
     pub fn pump(&mut self) {
         self.reads.advance();
         if let Some(replacement) = self.replacement.as_mut() {
@@ -471,11 +495,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.read_cancel_needed = false;
             }
             self.advance_input();
+            self.advance_composites();
             self.advance_preview();
             self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
-            while let Some(message) = self.client.poll() {
+            for _ in 0..MAX_MESSAGES_PER_PUMP_ROUND {
+                let Some(message) = self.client.poll() else {
+                    break;
+                };
                 self.handle(message);
                 received += 1;
             }
@@ -501,6 +529,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn require_mutation_capacity(&self, count: usize) -> Result<()> {
         let used = self.requests.outstanding()
             + self.mutation_completions.len()
+            + self.composites.jobs.len()
+            + self.composites.controls.len()
+            + self
+                .composites
+                .jobs
+                .iter()
+                .map(|job| job.cancel_waiters.len())
+                .sum::<usize>()
             + usize::from(self.input.is_some());
         if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
             || self
@@ -521,11 +557,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn idle(&self) -> bool {
         match self.link {
             Link::Ready => {
-                self.requests.is_empty()
+                self.composites.controls.is_empty()
+                    && self.composites.jobs.is_empty()
+                    && self.requests.is_empty()
                     && self.input.is_none()
                     && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
+                    && self.mirror.loops.values().all(|entry| {
+                        entry.view.mode.records()
+                            || entry.timing.content_revision == entry.rt_content_revision
+                    })
                     && self
                         .replacement
                         .as_ref()
@@ -636,7 +678,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .iter()
             .chain(self.requests.in_flight.values())
         {
-            if pending.purpose == crate::requests::Purpose::Input {
+            if pending.sequence == 0 {
                 continue;
             }
             self.mutation_completions.push(BackendMutationCompletion {
@@ -650,6 +692,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 result: Err(reason.clone()),
             });
         }
+        self.disconnect_composites();
         self.requests.clear();
         self.reads.clear();
         if let Some(preview) = &mut self.preview {

@@ -54,12 +54,7 @@ impl Layout {
     ) -> Result<Self, Error> {
         let channels = config.channels as usize;
         let page_bytes = runtime.limits().page_bytes;
-        if channels == 0
-            || config.history_frames == 0
-            || config.views == 0
-            || histories == 0
-            || page_bytes / 4 < channels
-        {
+        if channels == 0 || config.views == 0 || histories == 0 || page_bytes / 4 < channels {
             return Err(Error::InvalidConfig);
         }
         let page_frames = page_bytes / 4 / channels;
@@ -77,11 +72,14 @@ impl Layout {
             .and_then(usize::checked_next_power_of_two)
             .ok_or(Error::Capacity)?;
         let max_frames = runtime.limits().max_frames;
-        let mut transaction_pages = max_frames
-            .div_ceil(page_frames)
-            .min(ring_pages)
-            .checked_add(4)
-            .ok_or(Error::Capacity)?;
+        let transaction_span = max_frames.div_ceil(page_frames);
+        let mut transaction_pages = if config.history_frames == 0 {
+            transaction_span
+        } else {
+            transaction_span.min(ring_pages)
+        }
+        .checked_add(4)
+        .ok_or(Error::Capacity)?;
         if windowed {
             let windows = max_frames
                 .div_ceil(page_frames)
@@ -90,7 +88,11 @@ impl Layout {
                 .ok_or(Error::Capacity)?;
             transaction_pages = transaction_pages.max(windows);
         }
-        let history_pages = ring_pages.checked_mul(histories).ok_or(Error::Capacity)?;
+        let history_pages = if config.history_frames == 0 {
+            0
+        } else {
+            ring_pages.checked_mul(histories).ok_or(Error::Capacity)?
+        };
         let baseline = history_pages
             .checked_add(transaction_pages)
             .ok_or(Error::Capacity)?;
@@ -107,11 +109,15 @@ impl Layout {
         let owner_limit = config.views.min(debt_limit);
         // A wrapped prefix and its disjoint growing tail occupy at most three
         // intervals. Keep a displaced history and write scratch as well.
-        let history_nodes = ring_pages
-            .checked_mul(2)
-            .and_then(|n| n.checked_add(depth.checked_mul(4)?))
-            .and_then(|n| n.checked_mul(histories))
-            .ok_or(Error::Capacity)?;
+        let history_nodes = if config.history_frames == 0 {
+            0
+        } else {
+            ring_pages
+                .checked_mul(2)
+                .and_then(|n| n.checked_add(depth.checked_mul(4)?))
+                .and_then(|n| n.checked_mul(histories))
+                .ok_or(Error::Capacity)?
+        };
         let node_limit = history_nodes
             .checked_mul(2)
             .and_then(|n| n.checked_add(debt_limit.checked_mul(2)?))

@@ -13,6 +13,9 @@ fn image() -> Arc<Image> {
         manifest: Manifest::Loop {
             sample_rate: 48000,
             content: Loop {
+                composite: None,
+                sync_source: None,
+                repeat_sync: false,
                 id: shoop_app_api::LoopId::from_raw(1),
                 name: "Backpressure".into(),
                 sync: false,
@@ -20,6 +23,7 @@ fn image() -> Arc<Image> {
                 gain: 1.,
                 balance: 0.,
                 audio: vec![Channel {
+                    mode: shoop_app_protocol::persistence_image::ChannelMode::Direct,
                     object: Some(1),
                     frames,
                     gain: 1.,
@@ -29,6 +33,7 @@ fn image() -> Arc<Image> {
                     recording_started_at: None,
                 }],
                 midi: Vec::new(),
+                recorded_processor_state: None,
             },
         },
         payloads: vec![Payload::Audio(Arc::new(vec![0.25; frames as usize]))],

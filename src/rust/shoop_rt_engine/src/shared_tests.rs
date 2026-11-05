@@ -650,6 +650,7 @@ impl Fixture {
         let audio = take.audio.map(|id| self.node_source(id));
         let midi = take.midi.map(|id| self.node_source(id));
         let Reply::Adopted { media, .. } = self.op(Operation::Adopt {
+            auxiliary: None,
             target: target(slot),
             frames: take.frames,
             audio,
@@ -2689,6 +2690,12 @@ fn source_reset_stops_a_live_prefix_at_its_last_complete_paired_cut() {
     };
     assert_eq!(state.state.mode, shoop_loops::Mode::Stopped);
     assert!(state.state.capture_incomplete);
+    assert!(
+        h.engine.endpoint.cells.loops[0]
+            .snapshot()
+            .unwrap()
+            .capture_incomplete
+    );
     assert!(state.capture_failure.is_some());
     let Reply::Export {
         media: complete, ..
@@ -4040,4 +4047,107 @@ fn public_input_cancellation_survives_disconnect_and_late_refusal_preserves_solo
     assert_eq!(h.read(old.view.midi.unwrap().snapshot), old_midi);
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn public_gesture_continues_the_prefix_and_finishes_without_controller_polling() {
+    use protocol::{InputEdit, InputIntent, LoopMode, LoopSlotId, Request, SlotId};
+    for (play_after_record, self_clock) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let q = 32;
+        let (mut h, capacity) = Fixture::new_production(q, 7);
+        let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+        let target_slot = if self_clock { 1 } else { 0 };
+        h.request(Request::LoopTransition {
+            loop_id: id(1),
+            mode: LoopMode::Recording,
+            delay: None,
+        });
+        h.run_to(h.aligned_future(16 * q as u64));
+        h.request(Request::LoopTransition {
+            loop_id: id(1),
+            mode: LoopMode::Playing,
+            delay: None,
+        });
+        let clock = h.export(1);
+        let period = clock.view.description.frames;
+        let before = h.engine.endpoint.cells.loops[1].snapshot().unwrap();
+        let applied = h.public_input(
+            1,
+            &[InputEdit {
+                loop_id: id(target_slot),
+                intent: InputIntent::Gesture {
+                    sync: id(1),
+                    target: None,
+                    synced: false,
+                    cycles: 2,
+                    play_after_record,
+                },
+            }],
+            None,
+        );
+        let cut = applied.effective_frame.unwrap();
+        let phase = (before.position + cut - before.frame) % period;
+        let first = cut - period - phase;
+        let state = h.engine.endpoint.cells.loops[target_slot as usize]
+            .snapshot()
+            .unwrap();
+        assert_eq!(state.mode, shoop_loops::Mode::Recording);
+        let (delay, mode) = state.pending.expect("owned automatic finish");
+        assert_eq!(
+            mode,
+            if play_after_record {
+                shoop_loops::Mode::Playing
+            } else {
+                shoop_loops::Mode::Stopped
+            }
+        );
+        if self_clock {
+            assert!(delay > 0);
+        } else {
+            assert_eq!(delay, 0);
+        }
+        // Render-side ownership completes the take even while control is detached.
+        let end = h.aligned_future(3 * period);
+        h.run_to(end);
+        let state = h.engine.endpoint.cells.loops[target_slot as usize]
+            .snapshot()
+            .unwrap();
+        assert_eq!(
+            state.mode,
+            if play_after_record {
+                shoop_loops::Mode::Playing
+            } else {
+                shoop_loops::Mode::Stopped
+            }
+        );
+        assert_eq!(state.pending, None);
+        let take = h.export(target_slot);
+        assert_eq!(take.view.description.frames, 2 * period);
+        for (offset, bytes) in h
+            .read(take.view.audio.unwrap().snapshot)
+            .chunks_exact(8)
+            .enumerate()
+        {
+            let frame = first + offset as u64;
+            let sample = if frame >= h.stimulus.unwrap() {
+                (frame + 1) as f32
+            } else {
+                0.
+            };
+            assert_eq!(f32::from_le_bytes(bytes[..4].try_into().unwrap()), sample);
+            assert_eq!(
+                f32::from_le_bytes(bytes[4..].try_into().unwrap()),
+                -2. * sample
+            );
+        }
+        assert_eq!(
+            midi_events(&h.read(take.view.midi.unwrap().snapshot)),
+            expected_midi(first, 2 * period, q)
+        );
+        assert_eq!(h.midi_overflows, 0);
+        let mut stopped = h.engine.render.into_stopped();
+        recover_all(&mut stopped, capacity.total_resource_pages);
+    }
 }

@@ -5,7 +5,7 @@
 //! Pure logic plus the application-facing backend driver interface used by the frontend.
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
-shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_dedicated_worker);
 
 #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 pub mod app_backend;
@@ -51,7 +51,6 @@ pub mod latency_runtime;
 pub mod loop_mode;
 pub mod midi;
 pub mod midi_buffering_input_port;
-mod midi_cc;
 pub mod midi_channel;
 pub mod midi_event;
 pub mod midi_port;

@@ -17,6 +17,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod composites;
+pub use composites::run as composites;
+
 struct ProbeHost(Child);
 impl Drop for ProbeHost {
     fn drop(&mut self) {
@@ -105,13 +108,9 @@ fn launch(
     transport: EngineTransportKind,
     memory_mb: u32,
 ) -> Result<(tempfile::TempDir, ProbeHost, HostEntry)> {
-    ensure!(
-        transport != EngineTransportKind::InProcess,
-        "session companion probe requires socket or shared_memory"
-    );
-    let root = tempfile::tempdir()?;
-    let config = HostConfig {
-        settings: shoop_host::config::HostSettings {
+    launch_with_settings(
+        transport,
+        shoop_host::config::HostSettings {
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
             pools: shoop_egui::NewEnginePools {
                 quantum: 32,
@@ -124,6 +123,19 @@ fn launch(
             },
             ..Default::default()
         },
+    )
+}
+fn launch_with_settings(
+    transport: EngineTransportKind,
+    settings: shoop_host::config::HostSettings,
+) -> Result<(tempfile::TempDir, ProbeHost, HostEntry)> {
+    ensure!(
+        transport != EngineTransportKind::InProcess,
+        "session companion probe requires socket or shared_memory"
+    );
+    let root = tempfile::tempdir()?;
+    let config = HostConfig {
+        settings,
         transport: if transport == EngineTransportKind::Socket {
             AppTransport::Socket
         } else {
@@ -139,6 +151,7 @@ fn launch(
     );
     let mut options = shoop_host::serve::StartOptions::new()?;
     options.lan = lan;
+    let started = Instant::now();
     let (child, entry) = shoop_host::launch::spawn(&config, options, &companion)?;
     let host = ProbeHost(child);
     ensure!(
@@ -155,6 +168,14 @@ fn launch(
         );
     }
     shoop_host_manager::verify_host_discovery(&entry, Some((false, true)))?;
+    println!(
+        "Host readiness: {} ms, driver={:?}, channels={}, processor policies={:?}/{:?}",
+        started.elapsed().as_millis(),
+        config.settings.driver,
+        config.settings.pools.channels,
+        config.settings.processors.builtin_fx,
+        config.settings.processors.oxisynth
+    );
     Ok((root, host, entry))
 }
 
@@ -943,4 +964,362 @@ fn socket_file_loss(
     );
     println!("Socket file loss: abandoned upload/capture reclaimed; fresh connection observed accepted host load once without replay");
     client.management_shutdown().map_err(|e| anyhow!("{e:?}"))
+}
+
+pub fn hosted(
+    transport: EngineTransportKind,
+    processors: shoop_app_api::ProcessorSettings,
+) -> Result<()> {
+    use shoop_egui::*;
+    use shoop_session::*;
+    let (root, mut host, entry) = launch_with_settings(
+        transport,
+        shoop_app_api::HostSettings {
+            driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                sample_rate: 8000,
+                buffer_size: 128,
+            }),
+            pools: NewEnginePools {
+                quantum: 32,
+                buses: 2,
+                bus_channels: 2,
+                tracks: 5,
+                loops: 40,
+                channels: 3,
+                loop_memory_mb: 32,
+            },
+            processors,
+            master_auto_connect: true,
+            loop_smoothing_ms: 0,
+        },
+    )?;
+    let app = crate::application::ApplicationRuntime::attach(
+        entry.clone(),
+        crate::application::ApplicationStartOptions {
+            master_auto_connect: true,
+            loop_smoothing_ms: 0,
+            ..Default::default()
+        },
+    )?;
+    let handle = app.handle();
+    let state = file_wait(&handle, |s| !s.tracks.is_empty())?;
+    let descriptors = state.track_processors.clone();
+    ensure!(
+        state.bus_processors.is_empty(),
+        "bus FX must remain unavailable"
+    );
+    handle.dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
+    let mut admitted = Vec::new();
+    for (kind, widths) in [
+        (TrackProcessorTypeId::BUILTIN_FX, vec![1, 3]),
+        (TrackProcessorTypeId::OXISYNTH, vec![2]),
+        (TrackProcessorTypeId::EXTERNAL, vec![1]),
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|d| d.id.as_str() == kind)
+            .ok_or_else(|| anyhow!("missing processor descriptor {kind}"))?;
+        if !descriptor.available {
+            ensure!(
+                descriptor.unavailable_reason.is_some(),
+                "missing unavailable reason"
+            );
+            continue;
+        }
+        for width in widths {
+            let name = format!("Packaged {kind} {width}");
+            handle.dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: name.clone(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: width,
+                    wet_audio_channels: width,
+                    dry_midi: true,
+                    processor_type: descriptor.id.clone(),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            }))?;
+            let state = file_wait(&handle, |s| {
+                s.tracks.iter().any(|t| {
+                    t.name == name
+                        && !t.loops.is_empty()
+                        && t.structural_state == StructuralState::Confirmed
+                })
+            })?;
+            let track = state.tracks.iter().find(|t| t.name == name).unwrap();
+            let (track_id, loop_id) = (track.id, track.loops[0].id);
+            if kind != TrackProcessorTypeId::EXTERNAL {
+                handle.dispatch(AppIntent::Track {
+                    track_id,
+                    action: TrackAction::FxVisibilityChanged(true),
+                })?;
+                let action = if kind == TrackProcessorTypeId::BUILTIN_FX {
+                    TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false))
+                } else {
+                    TrackAction::OxiSynth(OxiSynthControl::SelectPreset("0:40".into()))
+                };
+                handle.dispatch(AppIntent::Track { track_id, action })?;
+                file_wait(&handle, |s| {
+                    s.tracks.iter().find(|t| t.id == track_id).is_some_and(|t| {
+                        t.fx.as_ref()
+                            .is_some_and(|f| f.visible && f.editor.is_some())
+                    })
+                })?;
+            }
+            let channels = (0..width * 2)
+                .map(|channel| LoopAudioChannel {
+                    label: format!("role {channel}"),
+                    role: if channel < width { "dry" } else { "wet" }.into(),
+                    samples: vec![if channel < width { 0.25 } else { 0. }; 4096],
+                })
+                .collect();
+            handle.dispatch(AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name: "roles.wav".into(),
+                bytes: encode_float_wav(&LoopAudio {
+                    sample_rate: 8000,
+                    channels,
+                })?
+                .into(),
+                update_loop_length: true,
+            })?;
+            let mapping = file_wait(&handle, |s| {
+                s.io_task.as_ref().is_some_and(|t| {
+                    t.status == IoTaskStatus::AwaitingChannelMapping
+                        || t.status == IoTaskStatus::Failed
+                })
+            })?;
+            ensure!(
+                mapping.io_task.as_ref().unwrap().status == IoTaskStatus::AwaitingChannelMapping,
+                "role import failed: {:?}",
+                mapping.io_task
+            );
+            handle.dispatch(AppIntent::ConfirmAudioChannelMapping {
+                task_id: mapping.io_task.as_ref().unwrap().id,
+                source_for_destination: (0..width * 2).collect(),
+            })?;
+            file_done(&handle, IoTaskKind::ImportLoopAudio)?;
+            let midi = ExactMidi {
+                sample_rate: 8000,
+                length_frames: 4096,
+                start_state: vec![],
+                events: vec![
+                    ExactMidiEvent {
+                        frame: 3,
+                        order: 0,
+                        data: vec![0x90, 60, 100],
+                    },
+                    ExactMidiEvent {
+                        frame: 2048,
+                        order: 1,
+                        data: vec![0x80, 60, 0],
+                    },
+                ],
+            };
+            handle.dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "notes.shoop-midi".into(),
+                bytes: encode_exact_midi(&midi)?.into(),
+                update_loop_length: false,
+            })?;
+            file_done(&handle, IoTaskKind::ImportLoopMidi)?;
+            handle.dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })?;
+            file_wait(&handle, |s| {
+                s.tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .is_some_and(|t| t.loops[0].mode == LoopMode::PlayingDryThroughWet)
+            })?;
+            if kind != TrackProcessorTypeId::EXTERNAL {
+                file_wait(&handle, |s| {
+                    s.tracks
+                        .iter()
+                        .find(|t| t.id == track_id)
+                        .is_some_and(|t| t.controls.output_peak_left_db > -70.)
+                })?;
+            }
+            let coordinate = handle
+                .snapshot()
+                .tracks
+                .iter()
+                .filter(|t| !t.is_sync)
+                .position(|t| t.id == track_id)
+                .ok_or_else(|| anyhow!("script coordinate missing"))?;
+            for (label, call, mode) in [
+                (
+                    "explicit",
+                    format!("c.loop_trigger({{{coordinate},0}}, c.constants.LoopMode_Playing)"),
+                    LoopMode::Playing,
+                ),
+                (
+                    "default",
+                    format!("c.loop_trigger_default_playback({{{coordinate},0}})"),
+                    LoopMode::PlayingDryThroughWet,
+                ),
+            ] {
+                let script = format!("{name} {label}");
+                handle.dispatch(AppIntent::AddEphemeralScript {
+                    name: script.clone(),
+                    source: format!("shoop_announce_api_version(1, 6); local c = require('shoop_control'); {call}").into(),
+                    source_path: None,
+                })?;
+                let state = file_wait(&handle, |s| {
+                    s.scripting.scripts.iter().any(|entry| {
+                        entry.name == script
+                            && matches!(
+                                entry.lifecycle,
+                                ScriptLifecycle::Finished | ScriptLifecycle::Error
+                            )
+                    })
+                })?;
+                let result = state
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|entry| entry.name == script)
+                    .unwrap();
+                ensure!(
+                    result.lifecycle == ScriptLifecycle::Finished,
+                    "Lua hosted command failed: {:?}",
+                    result.latest_error
+                );
+                file_wait(&handle, |s| {
+                    s.tracks
+                        .iter()
+                        .find(|t| t.id == track_id)
+                        .is_some_and(|t| t.loops[0].mode == mode)
+                })?;
+            }
+            handle.dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })?;
+            file_wait(&handle, |s| {
+                s.tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .is_some_and(|t| t.loops[0].mode == LoopMode::Playing)
+            })?;
+            handle.dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })?;
+            file_wait(&handle, |s| {
+                s.tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .is_some_and(|t| t.loops[0].mode == LoopMode::Stopped)
+            })?;
+            admitted.push((name, width, kind != TrackProcessorTypeId::EXTERNAL));
+        }
+    }
+    let saved_path = root.path().join("hosted.shoop");
+    let before = file_save(&handle, &saved_path)?;
+    ensure!(
+        before
+            .media
+            .values()
+            .filter(|m| matches!(m, MediaPayload::Audio(_)))
+            .count()
+            >= admitted.len() * 2,
+        "role media missing"
+    );
+    handle.dispatch(AppIntent::LoadSessionBytes {
+        name: "hosted.shoop".into(),
+        bytes: std::fs::read(&saved_path)?.into(),
+    })?;
+    file_done(&handle, IoTaskKind::LoadSession)?;
+    let after = file_save(&handle, &root.path().join("hosted-again.shoop"))?;
+    for (name, _, _) in &admitted {
+        let previous = before
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .find(|t| &t.name == name)
+            .unwrap();
+        let loaded = after
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .find(|t| &t.name == name)
+            .unwrap();
+        for (old_loop, new_loop) in previous.loops.iter().zip(&loaded.loops) {
+            for (old_channel, new_channel) in old_loop.channels.iter().zip(&new_loop.channels) {
+                let old_media = old_channel
+                    .media_id
+                    .as_ref()
+                    .and_then(|id| before.media.get(id));
+                let new_media = new_channel
+                    .media_id
+                    .as_ref()
+                    .and_then(|id| after.media.get(id));
+                ensure!(
+                    old_media == new_media && old_channel.mode == new_channel.mode,
+                    "{name}: role media changed on reload"
+                );
+            }
+        }
+    }
+    for (name, width, hosted) in &admitted {
+        let state = handle.snapshot();
+        let track = state
+            .tracks
+            .iter()
+            .find(|t| &t.name == name)
+            .ok_or_else(|| anyhow!("loaded track missing"))?;
+        ensure!(
+            track.loops[0].mode == LoopMode::Stopped
+                && track.loops[0].channel_timings.len() == *width as usize * 2 + 1,
+            "loaded role shape changed"
+        );
+        ensure!(
+            track.default_playback_mode == DefaultPlaybackMode::DryThroughWet
+                && track.fx.is_some() == *hosted,
+            "loaded processor/default changed"
+        );
+    }
+    let ticket = if transport == EngineTransportKind::Socket {
+        drop(handle);
+        drop(app);
+        std::thread::sleep(Duration::from_millis(50));
+        let (mut client, connection) = attach(&entry)?;
+        ensure!(
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .filter(|t| t.name.starts_with("Packaged "))
+                .count()
+                == admitted.len(),
+            "reconnect lost processors"
+        );
+        let ticket = client.shutdown().map_err(|error| anyhow!("{error:?}"))?;
+        drop(connection);
+        ticket
+    } else {
+        let ticket = handle.prepare_shutdown()?;
+        drop(app);
+        ticket
+    };
+    crate::recovery::shutdown(&entry, ticket)
+        .0
+        .map_err(anyhow::Error::msg)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while host.0.try_wait()?.is_none() {
+        ensure!(Instant::now() < deadline, "host shutdown timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    println!("Hosted processor {}: {} tracks, UI intents, role imports, defaults, audio, save/reload and recovery passed", transport.id(), admitted.len());
+    Ok(())
 }

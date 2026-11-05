@@ -72,6 +72,11 @@ pub(super) struct Media {
     pub initial: MidiState,
     pub revision: Revision,
     density_checked: bool,
+    credit: Option<usize>,
+    retained_events: usize,
+    retained_pages: usize,
+    categories: u128,
+    retained_epoch: u64,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Kind {
@@ -101,11 +106,31 @@ pub(super) struct Packet {
     pub order: u64,
     pub bytes: usize,
 }
+#[derive(Clone, Copy, Default)]
+struct OwnerCredit {
+    references: usize,
+    events: usize,
+    pages: usize,
+    categories: usize,
+    desired_events: usize,
+    desired_pages: usize,
+}
+struct Credits {
+    owners: Box<[OwnerCredit]>,
+    events: usize,
+    pages: usize,
+    event_limit: usize,
+    page_limit: usize,
+    categories: usize,
+    category_limit: usize,
+}
 pub(super) struct Core {
     indexes: store::Store<NonZeroU32>,
     packets: Packets,
     pub(super) config: Config,
     q: usize,
+    credits: Option<Credits>,
+    retirement_epoch: u64,
     removals: Vec<NonZeroU32>,
     insertions: Box<[NonZeroU32]>,
     records: Box<[Option<RecordId>]>,
@@ -158,10 +183,201 @@ impl Core {
             packets,
             config,
             q: q.frames(),
+            credits: None,
+            retirement_epoch: 0,
             removals,
             insertions,
             records,
         })
+    }
+    pub fn owner_limits(
+        config: Config,
+        sources: usize,
+        history_events: usize,
+        history_bytes: usize,
+        page_bytes: usize,
+    ) -> Result<(usize, usize, usize), Error> {
+        let live = sources.checked_mul(history_events).ok_or(Error::Capacity)?;
+        let staged = sources
+            .checked_add(1)
+            .and_then(|n| n.checked_mul(config.events_per_tick))
+            .ok_or(Error::Capacity)?;
+        let path_workspace =
+            super::indexed_midi::Config::index_workspace(config.events_per_tick, history_events)?;
+        let mut limit = config
+            .packets
+            .records
+            .min(config.packets.bodies)
+            .checked_sub(live)
+            .and_then(|n| n.checked_sub(staged))
+            .ok_or(Error::Capacity)?;
+        for (nodes, multiplicity) in [
+            (config.indexes.packet_nodes, 1),
+            (config.indexes.scalar_nodes, 2),
+            (config.indexes.hold_nodes, 1),
+            (config.indexes.sostenuto_nodes, 1),
+        ] {
+            let owner = nodes
+                .checked_sub(
+                    path_workspace
+                        .checked_mul(multiplicity)
+                        .ok_or(Error::Capacity)?,
+                )
+                .map(|n| n / multiplicity)
+                .and_then(|n| n.checked_sub(live))
+                .ok_or(Error::Capacity)?;
+            limit = limit.min(owner);
+        }
+        let workspace_pages = config.bytes_per_tick.div_ceil(page_bytes) + 2;
+        let source_pages = sources
+            .checked_mul(history_bytes.div_ceil(page_bytes))
+            .ok_or(Error::Capacity)?;
+        let pages = config
+            .packets
+            .pages
+            .checked_sub(source_pages)
+            .and_then(|n| n.checked_sub(workspace_pages))
+            .ok_or(Error::Capacity)?;
+        let categories = config
+            .indexes
+            .category_pages
+            .checked_sub(sources.checked_mul(66).ok_or(Error::Capacity)?)
+            .and_then(|n| n.checked_sub(config.events_per_tick.saturating_mul(3).min(66)))
+            .ok_or(Error::Capacity)?;
+        Ok((limit, pages, categories))
+    }
+    fn packet_categories(&self, value: NonZeroU32) -> u128 {
+        self.packets
+            .event(value)
+            .map_or([None; 3], Event::keys)
+            .into_iter()
+            .flatten()
+            .fold(0u128, |mask, key| mask | (1u128 << (key.slot() / 128)))
+    }
+    pub fn prepare_owner_credits(
+        &mut self,
+        sources: usize,
+        history_events: usize,
+        history_bytes: usize,
+    ) -> Result<(), Error> {
+        let (event_limit, page_limit, category_limit) = Self::owner_limits(
+            self.config,
+            sources,
+            history_events,
+            history_bytes,
+            self.packets.page_bytes(),
+        )?;
+        self.credits = Some(Credits {
+            owners: vec![OwnerCredit::default(); self.config.indexes.leases].into_boxed_slice(),
+            events: 0,
+            pages: 0,
+            categories: 0,
+            event_limit,
+            page_limit,
+            category_limit,
+        });
+        Ok(())
+    }
+    pub fn owner_credit_bytes(leases: usize) -> Result<usize, Error> {
+        leases
+            .checked_mul(size_of::<OwnerCredit>())
+            .ok_or(Error::Capacity)
+    }
+    fn owner_credit(
+        &mut self,
+        media: &mut Media,
+        events: usize,
+        pages: usize,
+    ) -> Result<(), Error> {
+        let Some(credits) = self.credits.as_mut() else {
+            return Ok(());
+        };
+        let old = media
+            .credit
+            .map(|id| credits.owners[id])
+            .unwrap_or_default();
+        let events = events.max(old.events);
+        let pages = pages.max(old.pages);
+        let unique = old.references == 1;
+        let total_events = credits
+            .events
+            .checked_sub(if unique { old.events } else { 0 })
+            .and_then(|n| n.checked_add(events))
+            .ok_or(Error::Capacity)?;
+        let total_pages = credits
+            .pages
+            .checked_sub(if unique { old.pages } else { 0 })
+            .and_then(|n| n.checked_add(pages))
+            .ok_or(Error::Capacity)?;
+        let total_categories = credits.categories - if unique { old.categories } else { 0 }
+            + media.categories.count_ones() as usize;
+        if total_events > credits.event_limit
+            || total_pages > credits.page_limit
+            || total_categories > credits.category_limit
+        {
+            return Err(Error::Capacity);
+        }
+        let id = if unique {
+            media.credit.unwrap()
+        } else {
+            credits
+                .owners
+                .iter()
+                .position(|c| {
+                    c.references == 0 && c.events == 0 && c.pages == 0 && c.categories == 0
+                })
+                .ok_or(Error::Capacity)?
+        };
+        if let Some(old_id) = media.credit.filter(|_| !unique) {
+            credits.owners[old_id].references -= 1;
+        }
+        credits.owners[id] = OwnerCredit {
+            references: 1,
+            events,
+            pages,
+            categories: media.categories.count_ones() as usize,
+            desired_events: events
+                .saturating_sub(media.retained_events)
+                .max(old.desired_events),
+            desired_pages: pages
+                .saturating_sub(media.retained_pages)
+                .max(old.desired_pages),
+        };
+        credits.events = total_events;
+        credits.pages = total_pages;
+        credits.categories = total_categories;
+        media.credit = Some(id);
+        Ok(())
+    }
+    fn settled_media(&self, media: &mut Media) {
+        if media.retained_epoch != self.retirement_epoch {
+            media.retained_events = 0;
+            media.retained_pages = 0;
+            media.retained_epoch = self.retirement_epoch;
+        }
+    }
+    fn retain_credit(&mut self, media: &Media) {
+        if let Some(id) = media.credit {
+            self.credits.as_mut().unwrap().owners[id].references += 1;
+        }
+    }
+    fn release_credit(&mut self, media: &Media) {
+        if let Some(id) = media.credit {
+            let credits = self.credits.as_mut().unwrap();
+            let owner = &mut credits.owners[id];
+            owner.references -= 1;
+            // Keep debt charged until deferred roots, packets and slabs have retired.
+        }
+    }
+    pub fn required_maintenance(&self, minimum: usize) -> usize {
+        let height = 2 * self.config.indexes.packet_nodes.ilog2() as usize + 2;
+        // Three semantic categories, packet paths, packet/body retirement and category tables.
+        minimum.max(
+            self.config
+                .events_per_tick
+                .saturating_mul(24 * (height + 1) + 16)
+                .saturating_add(256),
+        )
     }
     fn account(&self, io: &mut RenderIo<'_>) {
         let (pages, trees) = self.indexes.work();
@@ -217,11 +433,23 @@ impl Core {
             initial: *initial,
             revision: Revision(0),
             density_checked: true,
+            credit: None,
+            retained_events: 0,
+            retained_pages: 0,
+            categories: 0,
+            retained_epoch: self.retirement_epoch,
         })
     }
     pub fn retain(&mut self, media: &Media) -> Result<Media, Error> {
+        let root = self.indexes.retain(media.root)?;
+        self.retain_credit(media);
         Ok(Media {
-            root: self.indexes.retain(media.root)?,
+            root,
+            credit: media.credit,
+            retained_events: media.retained_events,
+            retained_pages: media.retained_pages,
+            categories: media.categories,
+            retained_epoch: media.retained_epoch,
             origin: media.origin,
             frames: media.frames,
             initial: media.initial,
@@ -239,6 +467,13 @@ impl Core {
             .indexes
             .retain(source.root)
             .expect("reserved lease credit");
+        self.release_credit(empty);
+        self.retain_credit(source);
+        empty.credit = source.credit;
+        empty.retained_events = source.retained_events;
+        empty.retained_pages = source.retained_pages;
+        empty.categories = source.categories;
+        empty.retained_epoch = source.retained_epoch;
         empty.origin = source.origin;
         empty.frames = source.frames;
         empty.initial = source.initial;
@@ -247,7 +482,9 @@ impl Core {
         Ok(())
     }
     pub fn release(&mut self, media: Media) -> Result<(), Error> {
-        self.indexes.release(media.root)
+        self.indexes.release(media.root)?;
+        self.release_credit(&media);
+        Ok(())
     }
     pub fn stage(
         &mut self,
@@ -323,6 +560,17 @@ impl Core {
         if self.packets.available_records() == 0 {
             return Err(Error::Capacity);
         }
+        let totals = self.indexes.totals(
+            media.root,
+            Cut::frame(media.origin),
+            Cut::frame(Frame(media.origin.0 + media.frames)),
+            &self.packets,
+        )?;
+        self.owner_credit(
+            media,
+            totals.events + 1,
+            totals.pages + bytes.len().div_ceil(self.packets.page_bytes()) + 1,
+        )?;
         media.density_checked = false;
         self.indexes.reset_work();
         let result = (|| {
@@ -338,11 +586,15 @@ impl Core {
                 )
                 .expect("reserved import record");
             self.packets.release_body(body).unwrap();
-            let result = self.indexes.insert(
-                media.root,
-                self.packets.value(record).unwrap(),
-                &mut self.packets,
-            );
+            let value = self.packets.value(record).unwrap();
+            media.categories |= self.packet_categories(value);
+            let result = self
+                .owner_credit(
+                    media,
+                    totals.events + 1,
+                    totals.pages + bytes.len().div_ceil(self.packets.page_bytes()) + 1,
+                )
+                .and_then(|()| self.indexes.insert(media.root, value, &mut self.packets));
             self.packets.release_record(record).unwrap();
             media.root = result?;
             Ok(())
@@ -376,6 +628,13 @@ impl Core {
         if self.packets.available_records() == 0 {
             return Err(Error::Capacity);
         }
+        let totals = self.indexes.totals(
+            media.root,
+            Cut::frame(media.origin),
+            Cut::frame(Frame(media.origin.0 + media.frames)),
+            &self.packets,
+        )?;
+        self.owner_credit(media, totals.events + 1, totals.pages)?;
         media.density_checked = false;
         self.indexes.reset_work();
         let result = (|| {
@@ -391,11 +650,11 @@ impl Core {
                 )
                 .expect("preflighted imported reference");
             self.packets.release_body(body).unwrap();
-            let result = self.indexes.insert(
-                media.root,
-                self.packets.value(row).unwrap(),
-                &mut self.packets,
-            );
+            let value = self.packets.value(row).unwrap();
+            media.categories |= self.packet_categories(value);
+            let result = self
+                .owner_credit(media, totals.events + 1, totals.pages)
+                .and_then(|()| self.indexes.insert(media.root, value, &mut self.packets));
             self.packets.release_record(row).unwrap();
             media.root = result?;
             Ok(())
@@ -430,7 +689,11 @@ impl Core {
         writer.position = 0;
         Ok(())
     }
-    pub fn begin_writer(&self, media: Media, kind: Kind) -> Result<Admission, (Error, Media)> {
+    pub fn begin_writer(
+        &mut self,
+        mut media: Media,
+        kind: Kind,
+    ) -> Result<Admission, (Error, Media)> {
         if let Err(error) = self.indexes.len(media.root) {
             return Err((error, media));
         }
@@ -439,6 +702,36 @@ impl Core {
             || matches!(kind, Kind::Growing { maximum_frames } if maximum_frames < media.frames || media.origin.0.checked_add(maximum_frames).is_none())
         {
             return Err((Error::InvalidShape, media));
+        }
+        self.settled_media(&mut media);
+        let admission = (|| {
+            let totals = self.indexes.totals(
+                media.root,
+                Cut::frame(media.origin),
+                Cut::frame(Frame(media.origin.0 + media.frames)),
+                &self.packets,
+            )?;
+            let events = totals
+                .events
+                .checked_add(media.retained_events)
+                .and_then(|n| n.checked_add(self.config.events_per_tick))
+                .ok_or(Error::Capacity)?;
+            let pages = totals
+                .pages
+                .checked_add(media.retained_pages)
+                .and_then(|n| {
+                    n.checked_add(
+                        self.config
+                            .bytes_per_tick
+                            .div_ceil(self.packets.page_bytes())
+                            + 1,
+                    )
+                })
+                .ok_or(Error::Capacity)?;
+            self.owner_credit(&mut media, events, pages)
+        })();
+        if let Err(error) = admission {
+            return Err((error, media));
         }
         let after = Cut::frame(media.origin);
         let end = Cut::frame(Frame(match kind {
@@ -613,6 +906,7 @@ impl Core {
         staged: &Staging,
         span: WriteSpan,
     ) -> Result<(), Error> {
+        self.settled_media(&mut writer.media);
         let next = span
             .position
             .checked_add(span.frames as u64)
@@ -675,6 +969,29 @@ impl Core {
                 selected += 1;
             }
         }
+        let totals = self.indexes.totals(
+            writer.media.root,
+            Cut::frame(writer.media.origin),
+            Cut::frame(Frame(writer.media.origin.0 + writer.media.frames)),
+            &self.packets,
+        )?;
+        let incoming_pages = staged.values[..staged.count]
+            .iter()
+            .try_fold(0usize, |n, &v| {
+                n.checked_add(self.packets.packet_pages(v).0)
+                    .ok_or(Error::Capacity)
+            })?;
+        for &value in &staged.values[..staged.count] {
+            writer.media.categories |= self.packet_categories(value);
+        }
+        let owned_events =
+            totals.events - self.removals.len() + selected + writer.media.retained_events;
+        let owned_pages = totals
+            .pages
+            .checked_add(writer.media.retained_pages)
+            .and_then(|n| n.checked_add(incoming_pages))
+            .ok_or(Error::Capacity)?;
+        self.owner_credit(&mut writer.media, owned_events, owned_pages)?;
         if selected > self.packets.available_records() {
             return Err(Error::Capacity);
         }
@@ -926,6 +1243,27 @@ impl Core {
             let indexes = self.indexes.maintain(1, &mut self.packets);
             let packets = self.packets.maintain(io, 1)?;
             if indexes == 0 && packets == 0 {
+                if !self.indexes.has_pending_retirement() {
+                    if let Some(credits) = self.credits.as_mut() {
+                        for owner in &mut credits.owners {
+                            if owner.references == 0 {
+                                credits.events -= owner.events;
+                                credits.pages -= owner.pages;
+                                credits.categories -= owner.categories;
+                                *owner = OwnerCredit::default();
+                            } else {
+                                credits.events -= owner.events - owner.desired_events;
+                                credits.pages -= owner.pages - owner.desired_pages;
+                                owner.events = owner.desired_events;
+                                owner.pages = owner.desired_pages;
+                            }
+                        }
+                    }
+                    self.retirement_epoch = self
+                        .retirement_epoch
+                        .checked_add(1)
+                        .ok_or(Error::Exhausted)?;
+                }
                 break;
             }
             work += 1;

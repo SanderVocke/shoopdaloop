@@ -69,6 +69,8 @@ fn main() {
     let playback = NodeId::from_parts(0, 1).unwrap();
     let capture = NodeId::from_parts(1, 1).unwrap();
     let binding = Binding {
+dry_wet: false,
+auxiliary_channels: 0,
         target,
         playback,
         capture,

@@ -129,6 +129,8 @@ impl Layout {
             add(mul(views, 2)?, mul(writers, 2)?)?,
             add(d.strips(), imports)?,
         )?;
+        let index_workspace = indexed_midi::Config::index_workspace(d.midi_events, history_events)?;
+        let nodes_with_workspace = add(records, index_workspace)?;
         let midi = indexed_midi::Config {
             packets: indexed_midi::PacketLimits {
                 pages: d.history.midi_pages as usize,
@@ -140,11 +142,17 @@ impl Layout {
             indexes: indexed_midi::IndexLimits {
                 leases,
                 versions: add(add(views, writers)?, add(d.strips(), imports)?)?,
-                category_pages: add(mul(records.div_ceil(128), 4)?, mul(views, 2)?)?,
-                packet_nodes: mul(records, 2)?,
-                scalar_nodes: mul(records, 2)?,
-                hold_nodes: mul(records, 2)?,
-                sostenuto_nodes: records,
+                category_pages: add(
+                    add(
+                        add(mul(records.div_ceil(128), 4)?, mul(views, 2)?)?,
+                        mul(d.strips(), 66)?,
+                    )?,
+                    66,
+                )?,
+                packet_nodes: mul(records, 2)?.max(nodes_with_workspace),
+                scalar_nodes: mul(nodes_with_workspace, 2)?,
+                hold_nodes: mul(records, 2)?.max(nodes_with_workspace),
+                sostenuto_nodes: nodes_with_workspace,
             },
             sources: d.strips(),
             history_frames: frames,

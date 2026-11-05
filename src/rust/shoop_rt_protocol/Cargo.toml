@@ -21,5 +21,6 @@ shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 wasm-bindgen-test = "=0.3.77"
 
 [dependencies]
+shoop_processor_protocol = { path = "../shoop_processor_protocol" }
 rt_profiling = { path = "../rt_profiling" }
 shoop_transport = { path = "../shoop_transport" }

@@ -629,6 +629,43 @@ impl RenderIo<'_> {
         self.store.versions[active.slot as usize].value = Some(version);
         Ok(revision)
     }
+
+    /// Edit one lane of a private COW candidate without changing its other lanes.
+    pub fn replace_audio_channel(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        channel: usize,
+        position: u64,
+        samples: &[f32],
+    ) -> Result<Revision, Error> {
+        let mut owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let mut version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidState)?;
+        let revision = if samples.is_empty() {
+            owner.revision
+        } else {
+            owner.revision.checked_next()?
+        };
+        self.store.with_audio(take.store, |store, audio| {
+            audio.replace_channel(
+                &mut store.render_io(),
+                take.take,
+                channel,
+                position,
+                samples,
+            )
+        })?;
+        owner.revision = revision;
+        version.revision = revision;
+        self.store.resources[resource.slot() as usize].value = Some(owner);
+        self.store.versions[active.slot as usize].value = Some(version);
+        Ok(revision)
+    }
 }
 
 impl ResourceIo<'_> {

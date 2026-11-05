@@ -20,9 +20,38 @@ impl NativeDriver {
     }
 }
 
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum ProcessorChoice {
+    Auto,
+    On,
+    Off,
+}
+impl From<ProcessorChoice> for shoop_app_api::ProcessorPolicy {
+    fn from(value: ProcessorChoice) -> Self {
+        match value {
+            ProcessorChoice::Auto => Self::Auto,
+            ProcessorChoice::On => Self::On,
+            ProcessorChoice::Off => Self::Off,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, clap::Args)]
 #[group(id = "audio_options", multiple = true)]
 pub struct AudioArgs {
+    /// Built-in FX availability for the new host.
+    #[arg(long, value_enum, help_heading = "Track processors")]
+    pub builtin_fx: Option<ProcessorChoice>,
+    /// Built-in synth availability for the new host.
+    #[arg(long, value_enum, help_heading = "Track processors")]
+    pub oxisynth: Option<ProcessorChoice>,
+    #[arg(long, help_heading = "Track processors")]
+    pub fx_instances: Option<u16>,
+    #[arg(long, help_heading = "Track processors")]
+    pub synth_instances: Option<u16>,
+    #[arg(long, help_heading = "Track processors")]
+    pub processor_memory_mb: Option<u32>,
+
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long, value_enum, help_heading = "Audio")]
     pub audio_driver: Option<NativeDriver>,
@@ -31,6 +60,29 @@ pub struct AudioArgs {
     pub jack_client_name: Option<String>,
 }
 impl AudioArgs {
+    pub fn apply_processors(
+        &self,
+        mut base: shoop_app_api::ProcessorSettings,
+    ) -> Result<shoop_app_api::ProcessorSettings> {
+        if let Some(value) = self.builtin_fx {
+            base.builtin_fx = value.into();
+        }
+        if let Some(value) = self.oxisynth {
+            base.oxisynth = value.into();
+        }
+        if let Some(value) = self.fx_instances {
+            base.fx_instances = value;
+        }
+        if let Some(value) = self.synth_instances {
+            base.synth_instances = value;
+        }
+        if let Some(value) = self.processor_memory_mb {
+            base.memory_mb = value;
+        }
+        base.validate()?;
+        Ok(base)
+    }
+
     pub fn apply(&self, base: AudioDriverConfig) -> Result<AudioDriverConfig> {
         let Some(driver) = self.audio_driver else {
             return Ok(base);
@@ -173,6 +225,50 @@ mod tests {
     }
 
     #[shoop_test]
+    fn processor_cli_merges_independent_policy_and_capacity_overrides() {
+        use shoop_app_api::{ProcessorPolicy, ProcessorSettings};
+        let cli = Cli::parse_from([
+            "host",
+            "--builtin-fx",
+            "off",
+            "--oxisynth=on",
+            "--fx-instances",
+            "7",
+            "--synth-instances=3",
+            "--processor-memory-mb",
+            "384",
+        ]);
+        assert_eq!(
+            cli.audio
+                .apply_processors(ProcessorSettings::default())
+                .unwrap(),
+            ProcessorSettings {
+                builtin_fx: ProcessorPolicy::Off,
+                oxisynth: ProcessorPolicy::On,
+                fx_instances: 7,
+                synth_instances: 3,
+                memory_mb: 384,
+            }
+        );
+        assert!(
+            Cli::parse_from(["host", "--oxisynth=on", "--synth-instances=0"])
+                .audio
+                .apply_processors(ProcessorSettings::default())
+                .is_err()
+        );
+        assert!(Cli::parse_from(["host", "--fx-instances=65"])
+            .audio
+            .apply_processors(ProcessorSettings::default())
+            .is_err());
+        assert_eq!(
+            AudioArgs::default()
+                .apply_processors(ProcessorSettings::disabled())
+                .unwrap(),
+            ProcessorSettings::disabled()
+        );
+    }
+
+    #[shoop_test]
     fn ui_child_arguments_exclude_all_audio_startup_overrides() {
         let original = [
             "--session-transport=socket",
@@ -182,6 +278,14 @@ mod tests {
             "--session",
             "path with spaces.shoop",
             "--tracing",
+            "--builtin-fx=off",
+            "--oxisynth",
+            "on",
+            "--fx-instances",
+            "7",
+            "--synth-instances=3",
+            "--processor-memory-mb",
+            "384",
         ];
         assert_eq!(
             AudioArgs::without_overrides(original.map(OsString::from)),

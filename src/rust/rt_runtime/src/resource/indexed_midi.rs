@@ -232,6 +232,14 @@ pub struct Capacity {
     pub history_frames: u64,
 }
 impl Config {
+    /// Worst complete source edit: one quantum of erasure and insertion plus AVL path slack.
+    pub fn index_workspace(events_per_tick: usize, history_events: usize) -> Result<usize, Error> {
+        events_per_tick
+            .checked_mul(
+                5 * (crate::midi_state::indexed::tree::maximum_height(history_events) + 2) + 8,
+            )
+            .ok_or(Error::Capacity)
+    }
     fn core(self) -> writer::Config {
         writer::Config {
             packets: midi_packets::Config {
@@ -254,7 +262,7 @@ impl Config {
             bytes_per_tick: self.bytes_per_tick,
         }
     }
-    /// Allocation-free sizing; production history and writer reservations require additional admission policy.
+    /// Allocation-free sizing of protected capture and retained-owner pools.
     pub fn capacity(self, runtime: crate::PreparedConfig, q: Quantum) -> Result<Capacity, Error> {
         self.sources
             .checked_add(self.writers)
@@ -284,8 +292,18 @@ impl Config {
         {
             return Err(Error::InvalidConfig);
         }
+        writer::Core::owner_limits(
+            self.core(),
+            self.sources,
+            self.history_events,
+            self.history_bytes,
+            runtime.limits().page_bytes,
+        )?;
         let mut bytes = size_of::<Store>()
             .checked_add(writer::Core::prepared_bytes(self.core())?)
+            .and_then(|n| {
+                n.checked_add(writer::Core::owner_credit_bytes(self.indexes.leases).ok()?)
+            })
             .ok_or(Error::Capacity)?;
         for (count, size) in [
             (
@@ -335,6 +353,7 @@ impl Store {
         let imports = Arena::prepare(config.imports)?;
         let q = resources.quantum;
         let mut core = writer::Core::prepare(resources, q, config.core())?;
+        core.prepare_owner_credits(config.sources, config.history_events, config.history_bytes)?;
         for _ in 0..config.sources {
             sources.insert(Source {
                 history: Some(core.begin_source_with_bytes(
@@ -354,6 +373,7 @@ impl Store {
         for entry in &mut views.entries {
             core::hint::black_box(entry);
         }
+        let maintenance_steps = core.required_maintenance(config.maintenance_steps_per_tick);
         Ok(Self {
             core,
             views,
@@ -362,7 +382,7 @@ impl Store {
             writers,
             imports,
             closed: false,
-            maintenance_steps: config.maintenance_steps_per_tick,
+            maintenance_steps,
         })
     }
     pub(super) fn reserve_export(&mut self) -> Result<Key, Error> {
@@ -878,7 +898,9 @@ impl ResourceStore {
             owner.active.unwrap().generation,
         )?;
         let take = version.indexed_midi.ok_or(Error::InvalidShape)?;
-        self.with_indexed_midi(take.store, |_, pool| {
+        self.with_indexed_midi(take.store, |resources, pool| {
+            pool.core
+                .maintain(&mut resources.render_io(), pool.maintenance_steps)?;
             pool.writers.available()?;
             if pool
                 .writers

@@ -6,6 +6,7 @@ pub(in crate::resource) struct Source {
     horizon: u64,
     events: usize,
     bytes: usize,
+    pages: usize,
     current: MidiState,
 }
 impl Source {
@@ -52,6 +53,7 @@ impl Core {
             horizon,
             events,
             bytes,
+            pages: bytes.div_ceil(self.packets.page_bytes()),
             current: *initial,
         })
     }
@@ -146,6 +148,40 @@ impl Core {
                     .0,
             );
         }
+        let mut incoming = Totals::default();
+        for &value in &staged.values[..staged.count] {
+            incoming = <Totals as crate::midi_state::indexed::tree::Summary<NonZeroU32>>::then(
+                incoming,
+                <Totals as crate::midi_state::indexed::tree::Summary<NonZeroU32>>::value(
+                    value,
+                    &self.packets,
+                ),
+            );
+        }
+        let keep_pages = source
+            .pages
+            .checked_sub(incoming.pages)
+            .ok_or(Error::Capacity)?;
+        let mut low = origin.div_ceil(self.q as u64);
+        let mut high = next.0 / self.q as u64;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            let pages = self
+                .indexes
+                .totals(
+                    source.media.root,
+                    Cut::frame(Frame(middle * self.q as u64)),
+                    Cut::frame(next),
+                    &self.packets,
+                )?
+                .pages;
+            if pages > keep_pages {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        origin = low * self.q as u64;
         let discarded = self
             .indexes
             .totals(
@@ -155,7 +191,7 @@ impl Core {
                 &self.packets,
             )?
             .events;
-        let bulk = discarded > self.config.events_per_tick * 2;
+        let bulk = discarded > self.config.events_per_tick;
         self.removals.clear();
         let initial = if discarded == 0 {
             None
@@ -233,6 +269,9 @@ impl Core {
         for &value in &staged.values[..staged.count] {
             self.packets.apply(value, &mut source.current);
         }
+        for &value in &staged.values[..staged.count] {
+            source.media.categories |= self.packet_categories(value);
+        }
         source.media.origin = Frame(origin);
         source.media.frames = end - origin;
         source.media.revision = Revision(revision);
@@ -255,20 +294,68 @@ impl Core {
             return Err(Error::InvalidFrame);
         }
         let initial = self.state(io, &source.media, range.start.0 - coverage.start.0)?;
+        let totals = self.indexes.totals(
+            source.media.root,
+            Cut::frame(coverage.start),
+            Cut::frame(coverage.end),
+            &self.packets,
+        )?;
+        let kept = self.indexes.totals(
+            source.media.root,
+            Cut::frame(range.start),
+            Cut::frame(range.end),
+            &self.packets,
+        )?;
+        let mut media = Media {
+            root: source.media.root,
+            origin: range.start,
+            frames,
+            initial,
+            revision: Revision(0),
+            density_checked: range.start.0 % self.q as u64 == 0,
+            credit: None,
+            retained_events: totals.events - kept.events,
+            retained_pages: totals.pages,
+            retained_epoch: self.retirement_epoch,
+            categories: source.media.categories,
+        };
+        self.owner_credit(
+            &mut media,
+            totals.events,
+            totals
+                .pages
+                .checked_add(kept.pages)
+                .ok_or(Error::Capacity)?,
+        )?;
         self.indexes.reset_work();
-        let root = self.indexes.retain(source.media.root)?;
+        let root = match self.indexes.retain(source.media.root) {
+            Ok(root) => root,
+            Err(error) => {
+                self.release_credit(&media);
+                return Err(error);
+            }
+        };
         let result = self.indexes.window(
             root,
             Cut::frame(range.start),
             Cut::frame(range.end),
             &mut self.packets,
         );
-        if result.is_err() {
-            self.indexes.release(root).unwrap();
+        if let Err(error) = result {
+            media.root = root;
+            self.release(media)?;
+            return Err(error);
         }
         self.account(io);
+        let root = result?;
+
         Ok(Media {
-            root: result?,
+            root,
+            credit: media.credit,
+            retained_events: totals.events - kept.events,
+            retained_pages: totals.pages,
+            categories: media.categories,
+            retained_epoch: self.retirement_epoch,
             origin: range.start,
             frames,
             initial,

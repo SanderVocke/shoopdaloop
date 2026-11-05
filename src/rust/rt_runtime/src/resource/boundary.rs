@@ -65,6 +65,9 @@ impl CaptureBoundaryIo<'_> {
     pub fn cancel_take(&mut self, id: CaptureTakeId) -> Result<(), Error> {
         self.store.cancel_capture_take(id)
     }
+    pub fn abort(&mut self, id: CaptureTakeId) -> Result<(), Error> {
+        self.store.abort_capture_take(id)
+    }
     pub fn activate(&mut self, id: CaptureTakeId, frame: Frame) -> Result<(), Error> {
         self.check_frame(frame)?;
         self.store.activate_capture_take(id, frame)

@@ -42,6 +42,21 @@ content-import capability.
 
 ## Lifecycle
 
+Protocol v8 adds bounded composite plans: `CreateComposite`, `Composite(Begin /
+Span / Commit / Cancel)`, `LoopIteration` and `LoopRepeatSync`. The description
+fences the active version and generation, fixes the frame unit, and declares the
+entry/segment counts and prepared format. A conversion names its previous empty
+primitive identity and uses a fresh generation. Begin/Span acknowledge staging;
+Commit waits for owning activation or terminal refusal. A committed running edit
+may wait for a real restart; unrelated controls continue.
+
+Negotiated limits include aggregate composite entries, segments and timing
+relations. Resync includes complete active plans, optional strip ownership, source
+and repeat intent, plus the lifetime staging-ID floor. Composite telemetry reports
+the settled frame, playhead, cursor, pass/repeat wait and active/pending versions.
+Private replacement records carry the same plans and repeat intent. This low-level
+vocabulary does not enable the application's composite capability by itself.
+
 - `Hello { version }` is answered with `Welcome { version, capabilities, limits,
   driver }`, or `Rejected` if the version differs; both sides must speak
   `PROTOCOL_VERSION` exactly.

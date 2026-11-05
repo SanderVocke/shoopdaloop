@@ -17,6 +17,7 @@ mod layout;
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
     pub channels: u32,
+    /// Zero prepares an edit-only store with no input history.
     pub history_frames: usize,
     pub views: usize,
     /// Includes live history, retained versions and transaction workspace.
@@ -875,8 +876,9 @@ impl AudioStore {
         samples: &[f32],
         wrapping: bool,
         base: Option<usize>,
+        selected_channel: Option<usize>,
     ) -> Result<Option<usize>, Error> {
-        self.stage_map(store, root, samples, base, |frame, _| {
+        self.stage_map(store, root, samples, base, selected_channel, |frame, _| {
             let local = if wrapping {
                 (position + frame) % frames
             } else {
@@ -891,14 +893,23 @@ impl AudioStore {
         root: Option<usize>,
         samples: &[f32],
         base: Option<usize>,
+        selected_channel: Option<usize>,
         physical: impl Fn(usize, usize) -> Option<usize>,
     ) -> Result<Option<usize>, Error> {
-        let count = samples.len() / self.channels;
+        let stride = if selected_channel.is_some() {
+            1
+        } else {
+            self.channels
+        };
+        let count = samples.len() / stride;
         self.generation = self.generation.checked_add(1).ok_or(Error::Exhausted)?;
         self.plans.clear();
         let mut writes = 0usize;
         for frame in 0..count {
             for channel in 0..self.channels {
+                if selected_channel.is_some_and(|selected| selected != channel) {
+                    continue;
+                }
                 let Some(physical) = physical(frame, channel) else {
                     continue;
                 };
@@ -947,6 +958,9 @@ impl AudioStore {
         }
         for frame in 0..count {
             for channel in 0..self.channels {
+                if selected_channel.is_some_and(|selected| selected != channel) {
+                    continue;
+                }
                 let Some(physical) = physical(frame, channel) else {
                     continue;
                 };
@@ -954,8 +968,15 @@ impl AudioStore {
                 let destination = plan * self.page_bytes
                     + physical % self.page_frames * self.channels * 4
                     + channel * 4;
-                self.scratch[destination..destination + 4]
-                    .copy_from_slice(&samples[frame * self.channels + channel].to_le_bytes());
+                self.scratch[destination..destination + 4].copy_from_slice(
+                    &samples[frame * stride
+                        + if selected_channel.is_some() {
+                            0
+                        } else {
+                            channel
+                        }]
+                    .to_le_bytes(),
+                );
             }
         }
         store
@@ -1001,6 +1022,9 @@ impl AudioStore {
         samples: &[f32],
     ) -> Result<(), Error> {
         self.check(io.store)?;
+        if self.keep == 0 {
+            return Err(Error::InvalidState);
+        }
         let history = self.history(id)?;
         if frame != history.next {
             return Err(Error::InvalidFrame);
@@ -1025,6 +1049,7 @@ impl AudioStore {
             0,
             samples,
             false,
+            None,
             None,
         )?;
         self.release_immediate(io.store, history.root);
@@ -1083,6 +1108,7 @@ impl AudioStore {
             samples,
             wrapping,
             view.base,
+            None,
         )?;
         view.frames = frames;
         Ok(Write {
@@ -1132,13 +1158,20 @@ impl AudioStore {
             view.revision = view.revision.checked_next()?;
         }
         let mapping = view.mapping;
-        view.root = self.stage_map(io.store, view.root, samples, view.base, |frame, channel| {
-            let span = spans.iter().find(|span| span.channel == channel)?;
-            if frame < span.offset || frame >= span.offset + span.frames {
-                return None;
-            }
-            Some(mapping.physical(span.position as usize + frame - span.offset))
-        })?;
+        view.root = self.stage_map(
+            io.store,
+            view.root,
+            samples,
+            view.base,
+            None,
+            |frame, channel| {
+                let span = spans.iter().find(|span| span.channel == channel)?;
+                if frame < span.offset || frame >= span.offset + span.frames {
+                    return None;
+                }
+                Some(mapping.physical(span.position as usize + frame - span.offset))
+            },
+        )?;
         Ok(Write {
             take,
             expected,
@@ -1208,6 +1241,51 @@ impl AudioStore {
             samples,
             true,
             view.base,
+            None,
+        )?;
+        self.release_immediate(io.store, view.root);
+        view.root = root;
+        view.revision = revision;
+        self.views[take.0.slot as usize].value = Some(view);
+        Ok(revision)
+    }
+
+    pub fn replace_channel(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        take: TakeId,
+        channel: usize,
+        position: u64,
+        samples: &[f32],
+    ) -> Result<Revision, Error> {
+        self.check(io.store)?;
+        let mut view = self.view(take.0)?;
+        if !view.writable {
+            return Err(Error::InvalidState);
+        }
+        if channel >= self.channels || samples.len() > self.max_frames {
+            return Err(Error::InvalidShape);
+        }
+        if position
+            .checked_add(samples.len() as u64)
+            .is_none_or(|end| end > view.frames as u64)
+        {
+            return Err(Error::InvalidOffset);
+        }
+        if samples.is_empty() {
+            return Ok(view.revision);
+        }
+        let revision = view.revision.checked_next()?;
+        let root = self.stage(
+            io.store,
+            view.root,
+            view.mapping,
+            view.frames,
+            position as usize,
+            samples,
+            false,
+            view.base,
+            Some(channel),
         )?;
         self.release_immediate(io.store, view.root);
         view.root = root;
@@ -1354,6 +1432,7 @@ impl AudioStore {
             samples,
             false,
             view.base,
+            None,
         )?;
         self.release_immediate(io.store, view.root);
         view.root = root;

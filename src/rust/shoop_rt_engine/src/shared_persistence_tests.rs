@@ -65,6 +65,7 @@ impl Pinned {
     }
     fn image(&self) -> Arc<image::Image> {
         let channel = |object| image::Channel {
+            mode: image::ChannelMode::Direct,
             object: Some(object),
             frames: self.frames,
             gain: 1.,
@@ -74,6 +75,10 @@ impl Pinned {
             recording_started_at: None,
         };
         let content = image::Loop {
+            recorded_processor_state: None,
+            sync_source: None,
+            repeat_sync: false,
+            composite: None,
             id: api::LoopId::from_raw(1),
             name: "fixed shared take".into(),
             sync: false,
@@ -96,6 +101,11 @@ impl Pinned {
                 sample_rate: 1000,
                 global: api::GlobalControlState::default(),
                 tracks: vec![image::Track {
+                    topology: shoop_app_api::TrackTopology::Direct,
+                    default_playback_mode: Default::default(),
+                    processor_state: None,
+                    builtin_fx_midi_cc_assignments: Vec::new(),
+                    oxisynth_midi_cc_assignments: Vec::new(),
                     id: api::TrackId::from_raw(1),
                     name: "input".into(),
                     port_name_base: "input".into(),
@@ -648,6 +658,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
                 expected_revision: cut.state.content_revision.0,
                 expected_frames: take.frames,
                 frames: take.frames,
+                dry_audio: None,
+                recorded_state: None,
                 audio: Some(source),
                 midi: Some(source + 1),
                 replace: true,
@@ -682,6 +694,7 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
                 midi_output: true,
             },
             controls: protocol::StripPreset {
+                automatic_monitoring: false,
                 input_gain: 1.,
                 input_balance: 0.,
                 monitoring: false,
@@ -694,6 +707,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     h.request(protocol::Request::ReplacementEdit {
         id: 1,
         edit: protocol::ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: protocol::LoopSlotId(protocol::SlotId::new(0, 2)),
             strip,
             sync: None,

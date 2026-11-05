@@ -54,6 +54,7 @@ pub enum QuantumError {
 pub enum PrepareFailure {
     Config(ConfigError),
     Engine(PrepareError),
+    Processors(shoop_host_processors::Error),
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -110,8 +111,10 @@ impl WorkletHost {
             sample_rate: description.sample_rate,
             buffer_frames: description.max_frames as u32,
         };
-        let engine =
-            shoop_rt_engine::prepare(description, driver).map_err(PrepareFailure::Engine)?;
+        let processors =
+            shoop_host_processors::prepare(description).map_err(PrepareFailure::Processors)?;
+        let engine = shoop_rt_engine::prepare_with_processors(description, driver, processors)
+            .map_err(PrepareFailure::Engine)?;
         let outbox = engine.outbox();
         let output_capacity = description
             .midi_output_capacity()

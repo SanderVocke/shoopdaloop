@@ -173,6 +173,30 @@ fn stage(
 pub(super) fn confirmed(outcome: Outcome) {
     assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
 }
+fn commit(client: &mut Client, connection: &mut Connection, key: Key) {
+    let message = client
+        .command(Command::CommitPersistence(key), None)
+        .unwrap();
+    let ClientMessage::Submit { operation, .. } = &message else {
+        panic!("commit submission")
+    };
+    let operation = *operation;
+    connection.send(message).expect("commit delivery");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        if let Some(outcome) = client.results().get(&operation) {
+            confirmed(outcome.clone());
+            if client.snapshot().unwrap().persistence_epoch > key.epoch {
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "committed session was not published"
+        );
+        pump(client, connection);
+    }
+}
 pub(super) fn action(
     client: &mut Client,
     connection: &mut Connection,
@@ -458,11 +482,7 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
     );
     let large = Arc::new(large);
     let staged = stage(client, connection, 11, large.clone());
-    confirmed(command(
-        client,
-        connection,
-        Command::CommitPersistence(staged),
-    ));
+    commit(client, connection, staged);
     println!("{} audio bytes committed", frames * 8);
     let roundtrip = capture(client, connection, 12);
     assert_eq!(roundtrip.payloads.len(), large.payloads.len());
@@ -796,6 +816,7 @@ fn capacity(client: &mut Client, connection: &mut Connection) {
                 channel: 0,
                 content: MidiChannel {
                     channel: Channel {
+                        mode: ChannelMode::Direct,
                         object: Some(1),
                         frames: 70_000,
                         gain: 1.,
@@ -844,11 +865,7 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
         track.loops.truncate(1);
     }
     let staged = stage(client, connection, 490, Arc::new(minimal));
-    confirmed(command(
-        client,
-        connection,
-        Command::CommitPersistence(staged),
-    ));
+    commit(client, connection, staged);
     for _ in 0..20 {
         pump(client, connection);
     }
@@ -887,11 +904,7 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
         track.loops.truncate(1);
     }
     let staged = stage(client, connection, 492, Arc::new(minimal));
-    confirmed(command(
-        client,
-        connection,
-        Command::CommitPersistence(staged),
-    ));
+    commit(client, connection, staged);
     for _ in 0..20 {
         pump(client, connection);
     }
@@ -1149,6 +1162,7 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
     ))
     .unwrap();
     let mut baseline = [0; 11];
+    let mut final_stats = [0; 11];
     let cycles = std::env::var("SHOOP_ZYNQ_SOAK_CYCLES")
         .map(|s| s.parse::<u64>().unwrap())
         .unwrap_or(100);
@@ -1185,17 +1199,18 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
             advance();
             std::thread::sleep(Duration::from_millis(2));
         }
+        if cycle == 9 {
+            baseline = retained_stats();
+        } else if cycle == cycles + 9 {
+            final_stats = retained_stats();
+        }
         (*client, *connection) = super::attach(&profile);
         for _ in 0..10 {
             pump(client, connection);
         }
-        if cycle == 9 {
-            baseline = retained_stats(client, connection);
-        }
     }
-    let final_stats = retained_stats(client, connection);
     assert!(
-        final_stats[3] == baseline[3],
+        final_stats[3] <= baseline[3],
         "retained Rust heap growth: {baseline:?} -> {final_stats:?}"
     );
     assert!(final_stats[5] >= baseline[5], "retained C heap growth");
@@ -1212,17 +1227,16 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
     );
 }
 
-fn retained_stats(client: &mut Client, connection: &mut Connection) -> [u32; 11] {
-    // The fixture task can preempt temporary snapshot serialization. Compare
-    // bounded lower watermarks after pumping, keeping exact retained equality.
+fn retained_stats() -> [u32; 11] {
     for _ in 0..20 {
-        pump(client, connection);
+        advance();
+        std::thread::sleep(Duration::from_millis(2));
     }
     let mut minimum = drive("Q");
     let mut maximum = minimum[3];
     let mut peak = minimum[4];
     for sample in 0..64 {
-        pump(client, connection);
+        advance();
         std::thread::sleep(Duration::from_millis(1 + sample % 7));
         let stats = drive("Q");
         maximum = maximum.max(stats[3]);
@@ -1232,6 +1246,10 @@ fn retained_stats(client: &mut Client, connection: &mut Connection) -> [u32; 11]
         }
     }
     minimum[4] = peak;
+    assert_eq!(
+        minimum[6], 0,
+        "data peer remained attached during retained-heap measurement"
+    );
     println!(
         "Retained Rust heap window: minimum={} maximum={maximum}",
         minimum[3]

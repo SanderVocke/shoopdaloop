@@ -12,12 +12,20 @@ use shoop_rt_protocol::Request;
 /// What a request is for, so that its outcome updates the mirror or becomes a failure.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    Composite(u64),
+    CompositeControl(u64),
+    RepeatSync(BackendLoopId, bool),
+    RemoveComposite(BackendLoopId),
+    ResetComposite(BackendLoopId, shoop_rt_protocol::LoopSlotId),
     CreateBus(BackendBusId),
     RemoveBus(BackendBusId),
     CreateStrip(BackendTrackId),
     RemoveStrip(BackendTrackId),
     CreateLoop(BackendLoopId),
     StripControl(BackendTrackId, BackendTrackControl),
+    DefaultPlayback(BackendTrackId, shoop_backend::BackendDefaultPlaybackMode),
+    ProcessorControl(BackendTrackId, shoop_backend::BackendTrackFxControl),
+    AutomaticMonitoring(BackendTrackId, bool),
     LoopSync(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId),
     Clear(BackendLoopId),
@@ -60,26 +68,27 @@ pub(crate) struct Requests {
 }
 
 impl Requests {
+    pub fn reserve_mutation(&mut self) -> u64 {
+        self.next_sequence += 1;
+        self.next_sequence
+    }
+
+    pub fn push_internal(&mut self, request: Request, purpose: Purpose) {
+        self.outgoing.push_back(Pending {
+            sequence: 0,
+            request,
+            purpose,
+        });
+    }
+
     pub fn push(&mut self, request: Request, purpose: Purpose) -> u64 {
-        let sequence = self.reserve_sequence();
+        let sequence = self.reserve_mutation();
         self.outgoing.push_back(Pending {
             sequence,
             request,
             purpose,
         });
         self.next_sequence
-    }
-
-    pub fn reserve_sequence(&mut self) -> u64 {
-        self.next_sequence += 1;
-        self.next_sequence
-    }
-    pub fn input(&mut self, request: Request) {
-        self.outgoing.push_front(Pending {
-            sequence: 0,
-            request,
-            purpose: Purpose::Input,
-        });
     }
 
     pub fn timing_pending(&self) -> bool {
@@ -108,7 +117,8 @@ impl Requests {
             .iter()
             .chain(self.in_flight.values())
             .all(|pending| {
-                matches!(pending.purpose, Purpose::Preview | Purpose::Input)
+                pending.sequence == 0
+                    || pending.purpose == Purpose::Preview
                     || pending.sequence > sequence
             })
     }

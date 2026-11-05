@@ -85,9 +85,11 @@ fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
             sample_rate: 48000,
             buffer_frames: 128,
         },
+        quantum.frames(),
     );
     let settings = NodeSettings {
         midi: crate::midi_layout::Layout::new(&crate::EngineDescription::default()).unwrap(),
+        external_midi: None,
         cells,
         channels: 2,
         master_channels: 2,
@@ -172,6 +174,7 @@ fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
         EngineOp::Reset {
             inputs: 2,
             outputs: 2,
+            generation: 0,
         },
         EngineOp::Gain(0.5),
     ] {

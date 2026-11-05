@@ -26,6 +26,10 @@ impl MidiEvent {
     pub fn byte_len(self) -> usize {
         self.bytes
     }
+    /// Header position of this validated record in its immutable MIDI prefix.
+    pub fn byte_position(self) -> usize {
+        self.offset - 12
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiPosition {
@@ -35,6 +39,38 @@ pub struct MidiPosition {
 }
 
 impl ResourceStore {
+    fn midi_initial_channel_impl(
+        &mut self,
+        index: ReadIndex,
+        channel: u8,
+    ) -> Result<(crate::midi_state::ChannelState, bool), Error> {
+        let lease = self.midi_lease(index)?;
+        let select = |state: &MidiState| {
+            Ok((
+                *state.channel(channel).ok_or(Error::InvalidId)?,
+                state.system_reset_seen(),
+            ))
+        };
+        if let Some(midi) = lease.indexed_midi {
+            return self.with_indexed_midi(midi.store, |store, pool| {
+                let state =
+                    pool.core
+                        .state(&mut store.render_io(), pool.views.get(midi.media)?, 0)?;
+                select(&state)
+            });
+        }
+        if let Some(midi) = lease.shared_midi {
+            return self.with_midi(midi.store, |_, store| {
+                select(store.initial_state(midi.index)?)
+            });
+        }
+        let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
+        select(self.midi_indexes.initial_state(
+            version.midi.ok_or(Error::InvalidState)?,
+            lease.version,
+            lease.snapshot.description.bytes,
+        )?)
+    }
     pub(super) fn midi_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
         let lease = self.index_lease(index)?;
         if lease.snapshot.description.format != Format::Midi {
@@ -67,8 +103,14 @@ impl ResourceStore {
         Ok(())
     }
     pub(super) fn midi_cursor_impl(&self, index: ReadIndex) -> Result<MidiCursor, Error> {
-        self.midi_lease(index)?;
-        Ok(MidiCursor { index, offset: 0 })
+        self.midi_cursor_at_impl(index, 0)
+    }
+    fn midi_cursor_at_impl(&self, index: ReadIndex, offset: usize) -> Result<MidiCursor, Error> {
+        let lease = self.midi_lease(index)?;
+        if offset > lease.snapshot.description.bytes {
+            return Err(Error::InvalidOffset);
+        }
+        Ok(MidiCursor { index, offset })
     }
     pub(super) fn midi_next_impl(
         &mut self,
@@ -229,8 +271,21 @@ impl ResourceStore {
     }
 }
 impl RenderIo<'_> {
+    /// Export one initial channel without copying all sixteen channel states.
+    pub fn midi_initial_channel(
+        &mut self,
+        index: ReadIndex,
+        channel: u8,
+    ) -> Result<(crate::midi_state::ChannelState, bool), Error> {
+        self.store.midi_initial_channel_impl(index, channel)
+    }
     pub fn midi_cursor(&self, index: ReadIndex) -> Result<MidiCursor, Error> {
         self.store.midi_cursor_impl(index)
+    }
+    /// Resume at a previously obtained record boundary without replaying state.
+    /// Subsequent reads still validate the lease, headers and packet bounds.
+    pub fn midi_cursor_at(&self, index: ReadIndex, offset: usize) -> Result<MidiCursor, Error> {
+        self.store.midi_cursor_at_impl(index, offset)
     }
     pub fn midi_next(&mut self, cursor: &mut MidiCursor) -> Result<Option<MidiEvent>, Error> {
         self.store.midi_next_impl(cursor)

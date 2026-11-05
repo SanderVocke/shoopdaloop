@@ -12,8 +12,22 @@ pub(in crate::service) struct Cut {
     external: BTreeMap<PortId, BTreeSet<String>>,
     routes: BTreeSet<MixerRouteState>,
     annotations: BTreeMap<(LoopId, bool, u32), (u64, Option<String>)>,
+    recorded: BTreeMap<LoopId, Option<String>>,
+    manual_monitoring: BTreeMap<TrackId, bool>,
+    sync: BTreeMap<LoopId, LoopId>,
 }
 impl Cut {
+    pub(super) fn matches_composites(&self, capture: &BackendSessionData) -> bool {
+        self.state.composites.iter().all(|view| {
+            view.active.as_ref().is_none_or(|active| {
+                capture
+                    .composites
+                    .iter()
+                    .find(|c| c.source_id == self.loops[&view.loop_id].raw())
+                    .is_some_and(|c| c.version == active.version)
+            })
+        })
+    }
     pub(super) fn new(service: &Service) -> Self {
         let state = service.snapshot();
         let mut external = BTreeMap::<PortId, BTreeSet<String>>::new();
@@ -59,6 +73,55 @@ impl Cut {
             external,
             routes,
             annotations: service.channel_annotations.clone(),
+            manual_monitoring: service
+                .tracks
+                .iter()
+                .map(|(id, track)| {
+                    (
+                        *id,
+                        service
+                            .observed
+                            .tracks
+                            .get(&track.backend)
+                            .is_some_and(|state| state.input_monitoring),
+                    )
+                })
+                .collect(),
+            sync: service
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let source = service
+                        .observed
+                        .loops
+                        .get(&entry.backend)
+                        .and_then(|state| state.sync_source)
+                        .or_else(|| {
+                            service
+                                .observed
+                                .composites
+                                .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+                                .and_then(|state| state.sync_source)
+                        })?;
+                    service.loops.iter().find_map(|(source_id, source_entry)| {
+                        (source_entry.backend == source).then_some((*id, *source_id))
+                    })
+                })
+                .collect(),
+            recorded: service
+                .loops
+                .iter()
+                .map(|(id, entry)| {
+                    (
+                        *id,
+                        service
+                            .observed
+                            .loops
+                            .get(&entry.backend)
+                            .and_then(|s| s.recorded_processor_state.clone()),
+                    )
+                })
+                .collect(),
         }
     }
     fn port(&self, id: PortId) -> Result<image::Port> {
@@ -97,9 +160,6 @@ impl Cut {
                 .and_then(|(_, value)| value.clone())
         };
         for (index, channel) in content.audio.into_iter().enumerate() {
-            if channel.mode != BackendChannelMode::Direct {
-                return Err(anyhow!("capture requires unsupported audio channel modes"));
-            }
             let frames = channel.samples.len() as u64;
             let object = if channel.samples.is_empty() {
                 None
@@ -108,6 +168,11 @@ impl Cut {
                 Some(payloads.len() as u32)
             };
             audio.push(image::Channel {
+                mode: match channel.mode {
+                    BackendChannelMode::Direct => image::ChannelMode::Direct,
+                    BackendChannelMode::Dry => image::ChannelMode::Dry,
+                    BackendChannelMode::Wet => image::ChannelMode::Wet,
+                },
                 object,
                 frames,
                 gain: channel.gain,
@@ -118,9 +183,6 @@ impl Cut {
             });
         }
         for (index, channel) in content.midi.into_iter().enumerate() {
-            if channel.mode != BackendChannelMode::Direct {
-                return Err(anyhow!("capture requires unsupported MIDI channel modes"));
-            }
             let object = if channel.events.is_empty() {
                 None
             } else {
@@ -129,6 +191,11 @@ impl Cut {
             };
             midi.push(image::MidiChannel {
                 channel: image::Channel {
+                    mode: match channel.mode {
+                        BackendChannelMode::Direct => image::ChannelMode::Direct,
+                        BackendChannelMode::Dry => image::ChannelMode::Dry,
+                        BackendChannelMode::Wet => return Err(anyhow!("MIDI cannot be wet")),
+                    },
                     object,
                     frames: u64::from(channel.length),
                     gain: 1.,
@@ -141,10 +208,31 @@ impl Cut {
             });
         }
         Ok(image::Loop {
+            recorded_processor_state: self.recorded.get(&state.id).cloned().flatten(),
+            sync_source: self.sync.get(&state.id).copied(),
+            repeat_sync: state.repeat_sync,
+            composite: self
+                .state
+                .composites
+                .iter()
+                .find(|view| view.loop_id == state.id)
+                .and_then(|view| view.active.as_ref())
+                .map(|active| shoop_app_protocol::composite::Content {
+                    document: active.document.clone(),
+                    prepared: active.prepared.clone(),
+                }),
             id: state.id,
             name: state.name.clone(),
             sync: state.sync,
-            frames: u64::from(content.length),
+            frames: self
+                .state
+                .composites
+                .iter()
+                .find(|view| view.loop_id == state.id)
+                .and_then(|view| view.active.as_ref())
+                .map_or(u64::from(content.length), |active| {
+                    active.prepared.unit_frames * active.prepared.iterations
+                }),
             gain: state.gain,
             balance: state.balance,
             audio,
@@ -158,6 +246,22 @@ impl Cut {
     ) -> Result<Arc<image::Image>> {
         let mut payloads = Vec::new();
         let mut tracks = Vec::new();
+        for view in &self.state.composites {
+            if let Some(active) = &view.active {
+                let source = self.loops[&view.loop_id].raw();
+                if capture
+                    .composites
+                    .iter()
+                    .find(|c| c.source_id == source)
+                    .map(|c| c.version)
+                    != Some(active.version)
+                {
+                    return Err(anyhow!(
+                        "an arrangement changed during capture; retry saving its confirmed version"
+                    ));
+                }
+            }
+        }
         for track in &self.state.tracks {
             let backend = self.tracks[&track.id];
             let position = capture
@@ -184,20 +288,35 @@ impl Cut {
                 )?);
             }
             let controls = &track.controls;
+            let editor = track.fx.as_ref().and_then(|fx| fx.editor.as_ref());
+            let processor_state = editor
+                .map(TrackProcessorEditorState::canonical_state)
+                .transpose()?;
+            let (builtin_fx_midi_cc_assignments, oxisynth_midi_cc_assignments) = match editor {
+                Some(TrackProcessorEditorState::BuiltInFx(fx)) => {
+                    (fx.midi_cc_assignments.to_vec(), Vec::new())
+                }
+                Some(TrackProcessorEditorState::OxiSynth(synth)) => {
+                    (Vec::new(), synth.midi_cc_assignments.to_vec())
+                }
+                None => (Vec::new(), Vec::new()),
+            };
             tracks.push(image::Track {
+                topology: track.topology.clone(),
+                default_playback_mode: track.default_playback_mode,
+                processor_state,
+                builtin_fx_midi_cc_assignments,
+                oxisynth_midi_cc_assignments,
                 id: track.id,
                 name: track.name.clone(),
                 port_name_base: captured.port_name_base,
                 sync: track.is_sync,
-                audio_channels: match captured.topology {
-                    BackendTrackTopology::Direct { audio_channels, .. } => audio_channels,
-                    _ => return Err(anyhow!("capture requires unsupported track topology")),
-                },
+                audio_channels: captured.topology.wet_audio_channels(),
                 midi: captured.state.midi,
                 controls: image::Controls {
                     input_gain_db: controls.input_gain_db,
                     input_balance: controls.input_balance,
-                    monitoring: controls.input_monitoring,
+                    monitoring: self.manual_monitoring[&track.id],
                     output_gain_db: controls.output_gain_db,
                     output_balance: controls.output_balance,
                     muted: controls.output_muted,

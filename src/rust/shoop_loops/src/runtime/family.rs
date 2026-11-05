@@ -171,6 +171,7 @@ impl LoopPlanner {
                     return Err(Error::Busy.into());
                 }
                 let view = self.ledger.view(media)?;
+                Self::validate_media_shape(row, view)?;
                 if view.description.owner != entry.target {
                     return Err(Error::InvalidId.into());
                 }

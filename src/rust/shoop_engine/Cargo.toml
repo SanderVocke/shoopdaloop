@@ -10,6 +10,7 @@ browser-feature = "wasm-test-browser"
 [lib]
 
 [dependencies]
+shoop_dsp = { path = "../shoop_dsp", features = ["builtin-fx", "oxisynth"] }
 thiserror = { workspace = true, features = ["std"] }
 anyhow = { workspace = true, features = ["std"] }
 log = { workspace = true }
@@ -36,12 +37,6 @@ shoop_settings = { path = "../shoop_settings" }
 tracing = { workspace = true, features = ["std"] }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
-oxisynth = { workspace = true }
-fundsp = { workspace = true }
-sha2 = { workspace = true }
-
-[build-dependencies]
-soundfont = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libc = { workspace = true }
@@ -67,6 +62,7 @@ app_backend = ["jack"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dev-dependencies]
+shoop_dsp = { path = "../shoop_dsp", features = ["testing"] }
 assert2 = { workspace = true }
 rtrb = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

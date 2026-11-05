@@ -17,7 +17,7 @@ use shoop_rt_protocol::{
 };
 use shoop_rt_transport::carrier::Carrier;
 
-use crate::mirror::{amplitude_db, LoopView};
+use crate::mirror::{amplitude_db, reconciled_db, LoopView};
 use crate::requests::{Pending, Purpose};
 use crate::{EngineClock, Link, RtBackend};
 
@@ -34,15 +34,16 @@ pub(crate) fn refusal_text(refusal: Refusal) -> &'static str {
     }
 }
 
-fn app_control(control: StripControl) -> BackendTrackControl {
-    match control {
+fn app_control(control: StripControl) -> Option<BackendTrackControl> {
+    Some(match control {
+        StripControl::AutomaticMonitoring(_) => return None,
         StripControl::InputGain(value) => BackendTrackControl::InputGainDb(amplitude_db(value)),
         StripControl::InputBalance(value) => BackendTrackControl::InputBalance(value),
         StripControl::Monitoring(value) => BackendTrackControl::InputMonitoring(value),
         StripControl::OutputGain(value) => BackendTrackControl::OutputGainDb(amplitude_db(value)),
         StripControl::OutputBalance(value) => BackendTrackControl::OutputBalance(value),
         StripControl::OutputMute(value) => BackendTrackControl::OutputMute(value),
-    }
+    })
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
@@ -144,6 +145,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::Composite { .. } => self.composite_telemetry(record),
             Telemetry::Preview { request_id } => self.preview_playing = request_id,
             Telemetry::Engine {
                 frame,
@@ -176,6 +178,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 output_peaks,
                 midi_in,
                 midi_out,
+                latest_input_midi,
+                automatic_monitoring,
             } => {
                 let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                     return;
@@ -185,6 +189,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     track.output_meter.record(output_peaks.as_slice());
                     track.midi_in |= midi_in;
                     track.midi_out |= midi_out;
+                    track.latest_input_midi = latest_input_midi.and_then(|message| {
+                        let packet = message.as_bytes();
+                        if packet.len() > 4 {
+                            return None;
+                        }
+                        let mut bytes = [0; 4];
+                        bytes[..packet.len()].copy_from_slice(packet);
+                        Some(shoop_backend::BackendLatestMidiMessage {
+                            bytes,
+                            len: packet.len() as u8,
+                        })
+                    });
+                    track.automatic_monitoring = automatic_monitoring;
                 }
             }
             Telemetry::Loop {
@@ -194,6 +211,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 next_delay,
                 content_revision,
                 recording_armed,
+                capture_incomplete,
                 timing_revision,
                 length,
                 position,
@@ -203,11 +221,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     return;
                 };
                 if let Some(entry) = self.mirror.loops.get_mut(id) {
+                    if entry.program.is_some() {
+                        entry.view.next_mode = next_mode;
+                        entry.view.next_delay = next_delay;
+                        return;
+                    }
                     let previous = entry.view;
                     if timing_revision != entry.timing.revision {
                         return;
                     }
-                    if content_revision < entry.rt_content_revision {
+                    if content_revision
+                        < entry.rt_content_revision.max(entry.timing.content_revision)
+                    {
                         return;
                     }
                     if (mode == LoopMode::Recording && previous.mode != LoopMode::Recording)
@@ -219,25 +244,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         self.prepared_content.remove(id);
                         self.canonical_imports.remove(id);
                     }
-                    if content_revision != entry.timing.content_revision {
-                        let track = &self.mirror.tracks[&entry.track];
-                        entry.timing.content_revision = content_revision;
-                        for window in entry
-                            .timing
-                            .windows
-                            .audio
-                            .iter_mut()
-                            .chain(core::iter::once(&mut entry.timing.windows.midi))
-                        {
-                            window.raw_frames = None;
-                        }
-                        entry.timing.length = length;
-                        entry.timing.raw_audio_frames =
-                            if track.audio_channels > 0 { length } else { 0 };
-                        entry.timing.raw_midi_frames = if track.midi { length } else { 0 };
-                    }
                     entry.view = LoopView {
                         recording_armed,
+                        capture_incomplete,
                         mode,
                         next_mode,
                         next_delay,
@@ -256,7 +265,71 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
+    fn recorded_snapshot(
+        &mut self,
+        loop_id: shoop_rt_protocol::LoopSlotId,
+        revision: u64,
+        state: Option<shoop_rt_protocol::RecordedProcessorState>,
+    ) {
+        let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() else {
+            return;
+        };
+        if let Some(recorded) = state {
+            let Some(track_id) = self.mirror.loops[&id].track else {
+                return;
+            };
+            let track = &self.mirror.tracks[&track_id];
+            let valid = crate::processor_controls::track_kind(track) == Some(recorded.kind)
+                && shoop_processor_protocol::state::State::new(recorded.kind).is_ok_and(
+                    |mut state| {
+                        state.values = recorded.values;
+                        state.validate().is_ok()
+                    },
+                );
+            if !valid {
+                self.lose("engine recorded processor state is invalid".to_owned());
+                return;
+            }
+        }
+        self.mirror.loops.get_mut(&id).unwrap().recorded = state.map(|state| (revision, state));
+    }
+
     fn state_record(&mut self, record: StateRecord) {
+        if self.resync.is_none() {
+            if let StateRecord::LoopTiming { loop_id, timing } = record {
+                if let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() {
+                    self.apply_timing(id, timing);
+                }
+            }
+            if let StateRecord::RecordedProcessorState {
+                loop_id,
+                content_revision,
+                state,
+            } = record
+            {
+                self.recorded_snapshot(loop_id, content_revision, state);
+            }
+            if let StateRecord::ProcessorState {
+                strip,
+                slot,
+                snapshot,
+            } = record
+            {
+                self.processor_snapshot(strip, slot, snapshot);
+            }
+            if let StateRecord::StripControl { strip, control } = record {
+                if let Some(id) = self.mirror.strip_tracks.get(&strip).copied() {
+                    if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                        if let Some(control) = app_control(control) {
+                            track.controls.apply(control);
+                        } else if let StripControl::AutomaticMonitoring(enabled) = control {
+                            track.automatic_enabled = enabled;
+                        }
+                    }
+                }
+            }
+            return;
+        }
         let Some(records) = &mut self.resync else {
             return;
         };
@@ -274,24 +347,86 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
+    fn processor_snapshot(
+        &mut self,
+        strip: shoop_rt_protocol::StripId,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        snapshot: shoop_rt_protocol::processors::Snapshot,
+    ) {
+        let Some(id) = self.mirror.strip_tracks.get(&strip) else {
+            return;
+        };
+        let Some(track) = self.mirror.tracks.get_mut(id) else {
+            return;
+        };
+        if !matches!(
+            track.topology,
+            shoop_backend::BackendTrackTopology::DryWetProcessor { .. }
+        ) || track.removing
+            || track
+                .processor_slot
+                .is_some_and(|expected| expected != slot)
+        {
+            return;
+        }
+        track.processor_slot = Some(slot);
+        track.processor_snapshot = Some(snapshot);
+    }
+
     /// Reconciles known mappings without deleting engine-owned session objects.
     fn apply_resync(&mut self, records: Vec<StateRecord>) {
+        self.processors = None;
+        self.processor_presets.clear();
         let mut host_ports = Vec::new();
         let mut strips = BTreeSet::new();
+        let mut processors = BTreeSet::new();
         let mut links = BTreeSet::new();
         let mut routes = BTreeSet::new();
         for record in &records {
             match *record {
+                StateRecord::Processors(limits) => self.processors = Some(limits),
+                StateRecord::ProcessorPreset(preset) => self.processor_presets.push(preset),
+
                 StateRecord::BusGenerations { generation } => {
                     self.mirror.bus_slots.raise_floor(generation)
                 }
                 StateRecord::BusShape { bus, .. } => self.mirror.bus_slots.adopt(bus.0),
                 StateRecord::HostPort(port) => host_ports.push(port),
-                StateRecord::Strip { strip, .. } => {
+                StateRecord::StripProcessor { strip, .. } => {
+                    processors.insert(strip);
+                }
+                StateRecord::Strip { strip, shape } => {
+                    if let Some(track) = self
+                        .mirror
+                        .strip_tracks
+                        .get(&strip)
+                        .and_then(|id| self.mirror.tracks.get(id))
+                    {
+                        let direct = matches!(
+                            track.topology,
+                            shoop_backend::BackendTrackTopology::Direct { .. }
+                        );
+                        let expected = shoop_rt_protocol::StripShape {
+                            audio_inputs: track.topology.dry_audio_channels() as u8,
+                            audio_outputs: track.topology.wet_audio_channels() as u8,
+                            midi_input: track.midi,
+                            midi_output: direct && track.midi,
+                        };
+                        if shape != expected {
+                            self.lose("engine track shape differs from its owner".to_owned());
+                            return;
+                        }
+                    }
                     self.mirror.strip_slots.adopt(strip.0);
                     strips.insert(strip);
                 }
                 StateRecord::Loop { loop_id, .. } => self.mirror.loop_slots.adopt(loop_id.0),
+                StateRecord::Composite { description, .. } => {
+                    self.mirror.loop_slots.adopt(description.loop_id.0)
+                }
+                StateRecord::CompositeStageFloor { id } => {
+                    self.composites.next_stage = self.composites.next_stage.max(id)
+                }
                 StateRecord::Generations { strips, loops } => {
                     self.mirror.strip_slots.raise_floor(strips);
                     self.mirror.loop_slots.raise_floor(loops);
@@ -334,6 +469,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.lose("the engine already has a live session owned by another service".to_owned());
             return;
         }
+        if self
+            .mirror
+            .tracks
+            .values()
+            .filter(|track| strips.contains(&track.strip))
+            .any(|track| {
+                matches!(
+                    track.topology,
+                    shoop_backend::BackendTrackTopology::Direct { .. }
+                ) == processors.contains(&track.strip)
+            })
+        {
+            self.lose("engine track processor ownership record is inconsistent".to_owned());
+            return;
+        }
         let vanished = self
             .mirror
             .tracks
@@ -344,14 +494,171 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         for id in vanished {
             self.mirror.drop_track(id);
         }
+        if records.iter().any(|record| {
+            let slot = match record {
+                StateRecord::Loop { loop_id, .. } => Some(*loop_id),
+                StateRecord::Composite { description, .. } => Some(description.loop_id),
+                _ => None,
+            };
+            slot.is_some_and(|slot| {
+                !self.mirror.slot_loops.contains_key(&slot)
+                    && !self
+                        .composites
+                        .jobs
+                        .iter()
+                        .any(|job| job.description.is_some_and(|d| d.loop_id == slot))
+            })
+        }) {
+            self.lose("engine loops belong to another service".to_owned());
+            return;
+        }
+        let mut pending_slots = BTreeSet::new();
         for record in records {
             match record {
+                StateRecord::RecordedProcessorState {
+                    loop_id,
+                    content_revision,
+                    state,
+                } => self.recorded_snapshot(loop_id, content_revision, state),
+                StateRecord::ProcessorState {
+                    strip,
+                    slot,
+                    snapshot,
+                } => self.processor_snapshot(strip, slot, snapshot),
+                StateRecord::StripDefaultPlayback {
+                    strip,
+                    dry_through_wet,
+                } => {
+                    if let Some(id) = self.mirror.strip_tracks.get(&strip) {
+                        if let Some(track) = self.mirror.tracks.get_mut(id) {
+                            track.default_playback_mode = if dry_through_wet {
+                                shoop_backend::BackendDefaultPlaybackMode::DryThroughWet
+                            } else {
+                                shoop_backend::BackendDefaultPlaybackMode::Regular
+                            };
+                        }
+                    }
+                }
+                StateRecord::StripProcessor { strip, kind, slot } => {
+                    let Some(id) = self.mirror.strip_tracks.get(&strip) else {
+                        continue;
+                    };
+                    let Some(track) = self.mirror.tracks.get_mut(id) else {
+                        continue;
+                    };
+                    let matches = match &track.topology {
+                        shoop_backend::BackendTrackTopology::Direct { .. } => false,
+                        shoop_backend::BackendTrackTopology::DryWetExternal { .. } => {
+                            kind == shoop_rt_protocol::ProcessorKind::External
+                        }
+                        shoop_backend::BackendTrackTopology::DryWetProcessor {
+                            processor_type,
+                            ..
+                        } => match kind {
+                            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
+                                processor_type == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
+                            }
+                            shoop_rt_protocol::ProcessorKind::OxiSynth => {
+                                processor_type == shoop_app_api::TrackProcessorTypeId::OXISYNTH
+                            }
+                            shoop_rt_protocol::ProcessorKind::External => false,
+                        },
+                    };
+                    if !matches {
+                        self.lose("engine track processor differs from its owner".to_owned());
+                        return;
+                    }
+                    track.processor_slot = slot;
+                }
+                StateRecord::Composite {
+                    description,
+                    sync,
+                    gain,
+                    balance,
+                    repeat_sync,
+                    ..
+                } => {
+                    if self.composites.jobs.iter().any(|job| {
+                        job.version == description.version
+                            && job
+                                .description
+                                .is_some_and(|d| d.loop_id == description.loop_id)
+                    }) {
+                        pending_slots.insert(description.loop_id);
+                        continue;
+                    }
+                    let sync = sync.and_then(|slot| self.mirror.slot_loops.get(&slot).copied());
+                    if let Some(entry) = self
+                        .mirror
+                        .slot_loops
+                        .get(&description.loop_id)
+                        .and_then(|id| self.mirror.loops.get_mut(id))
+                    {
+                        self.composites.next_version =
+                            self.composites.next_version.max(description.version);
+                        entry.program = Some(description);
+                        entry.program_spans.clear();
+                        entry.repeat_sync = repeat_sync;
+                        entry.sync = sync;
+                        entry.gain = gain;
+                        entry.balance = balance;
+                        entry.confirmed = true;
+                    }
+                }
+                StateRecord::CompositeSpan {
+                    loop_id,
+                    index,
+                    span,
+                } => {
+                    if pending_slots.contains(&loop_id) {
+                        continue;
+                    }
+                    if let Some(entry) = self
+                        .mirror
+                        .slot_loops
+                        .get(&loop_id)
+                        .and_then(|id| self.mirror.loops.get_mut(id))
+                    {
+                        if entry.program_spans.len() == index as usize {
+                            entry.program_spans.push(span);
+                        }
+                    }
+                }
+                StateRecord::RepeatSync { loop_id, enabled } => {
+                    if let Some(entry) = self
+                        .mirror
+                        .slot_loops
+                        .get(&loop_id)
+                        .and_then(|id| self.mirror.loops.get_mut(id))
+                    {
+                        entry.repeat_sync = enabled;
+                    }
+                }
                 StateRecord::StripControl { strip, control } => {
                     let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                         continue;
                     };
                     if let Some(track) = self.mirror.tracks.get_mut(id) {
-                        track.controls.apply(app_control(control));
+                        match control {
+                            StripControl::InputGain(value) => {
+                                track.controls.apply(BackendTrackControl::InputGainDb(
+                                    reconciled_db(track.controls.input_gain_db, value),
+                                ))
+                            }
+                            StripControl::OutputGain(value) => {
+                                track.controls.apply(BackendTrackControl::OutputGainDb(
+                                    reconciled_db(track.controls.output_gain_db, value),
+                                ))
+                            }
+                            StripControl::AutomaticMonitoring(enabled) => {
+                                track.automatic_enabled = enabled
+                            }
+                            _ => {
+                                if let Some(control) = app_control(control) {
+                                    track.controls.apply(control);
+                                }
+                            }
+                        }
                     }
                 }
                 StateRecord::Loop {
@@ -405,7 +712,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 StateRecord::Bus { bus, control } => {
                     if let Some(entry) = self.mirror.buses.values_mut().find(|b| b.slot == bus) {
                         entry.apply(match control {
-                            BusControl::Gain(v) => BackendBusControl::GainDb(amplitude_db(v)),
+                            BusControl::Gain(v) => {
+                                BackendBusControl::GainDb(reconciled_db(entry.gain_db, v))
+                            }
                             BusControl::Balance(v) => BackendBusControl::Balance(v),
                             BusControl::Mute(v) => BackendBusControl::Mute(v),
                         });
@@ -452,6 +761,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.input_answered(pending.request, outcome);
             return;
         }
+        if let Purpose::CompositeControl(sequence) = pending.purpose {
+            self.composite_control_answer(sequence, outcome);
+            return;
+        }
+        if let Purpose::Composite(sequence) = pending.purpose {
+            self.composite_answer(sequence, pending.request, outcome);
+            return;
+        }
         if pending.purpose == Purpose::CancelReads {
             return;
         }
@@ -479,7 +796,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 sequence,
                 result: match outcome {
                     Outcome::Done | Outcome::TimingApplied(_) => Ok(()),
-                    Outcome::ContentApplied { .. }
+                    Outcome::CompositeApplied { .. }
+                    | Outcome::ContentApplied { .. }
                     | Outcome::ContentPrepared { .. }
                     | Outcome::Input(_)
                     | Outcome::InputCapacity(_) => Err("unexpected transaction outcome".to_owned()),
@@ -488,13 +806,46 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             });
         let refusal = match outcome {
             Outcome::Done | Outcome::TimingApplied(_) => None,
-            Outcome::ContentApplied { .. }
+            Outcome::CompositeApplied { .. }
+            | Outcome::ContentApplied { .. }
             | Outcome::ContentPrepared { .. }
             | Outcome::Input(_)
             | Outcome::InputCapacity(_) => Some(Refusal::Internal),
             Outcome::Refused(refusal) => Some(refusal),
         };
         match (purpose, refusal) {
+            (Purpose::RepeatSync(id, enabled), None) => {
+                if let Some(entry) = self.mirror.loops.get_mut(&id) {
+                    entry.repeat_sync = enabled;
+                }
+            }
+            (Purpose::ResetComposite(id, slot), None) => {
+                self.confirm_composite_reset(id, slot);
+            }
+            (Purpose::RemoveComposite(id), None) => {
+                if let Some(entry) = self.mirror.loops.get(&id) {
+                    self.mirror.loop_slots.release(entry.slot.0);
+                }
+                self.mirror.drop_loop(id);
+                self.composites.applied_frames.remove(&id);
+                self.composites
+                    .removed
+                    .push(shoop_backend::BackendCompositeId::from_raw(id.raw()));
+            }
+            (
+                Purpose::ResetComposite(..) | Purpose::RemoveComposite(_) | Purpose::RepeatSync(..),
+                Some(refusal),
+            ) => {
+                self.failure(
+                    BackendMutationKind::LoopControl,
+                    None,
+                    None,
+                    refusal_text(refusal).to_owned(),
+                );
+            }
+            (Purpose::CompositeControl(_) | Purpose::Composite(_), _) => {
+                unreachable!("internal result handled above")
+            }
             (Purpose::Timing(id), None) => {
                 if let Outcome::TimingApplied(state) = outcome {
                     self.apply_timing(id, state);
@@ -606,7 +957,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     self.mirror.loop_slots.release(entry.slot.0);
                     self.mirror.drop_loop(id);
                     self.reads.forget(id);
-                    if self.mirror.tracks.contains_key(&track) {
+                    if let Some(track) =
+                        track.filter(|track| self.mirror.tracks.contains_key(track))
+                    {
                         self.failure(
                             BackendMutationKind::TrackStructure,
                             Some(track.raw()),
@@ -616,6 +969,49 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     }
                 }
             }
+            (Purpose::ProcessorControl(_, _), None) => {}
+            (Purpose::ProcessorControl(id, control), Some(refusal)) => {
+                if self.mirror.tracks.contains_key(&id) {
+                    self.failure(
+                        BackendMutationKind::TrackFxControl,
+                        Some(id.raw()),
+                        Some(BackendMutationDetail::TrackFxControl(control)),
+                        format!("processor control was refused: {}", refusal_text(refusal)),
+                    );
+                }
+            }
+            (Purpose::DefaultPlayback(id, mode), None) => {
+                if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                    track.default_playback_mode = mode;
+                }
+            }
+            (Purpose::DefaultPlayback(id, mode), Some(refusal)) => {
+                if self.mirror.tracks.contains_key(&id) {
+                    self.failure(
+                        BackendMutationKind::TrackControl,
+                        Some(id.raw()),
+                        Some(BackendMutationDetail::TrackDefaultPlaybackMode(mode)),
+                        format!(
+                            "default playback mode was refused: {}",
+                            refusal_text(refusal)
+                        ),
+                    );
+                }
+            }
+            (Purpose::AutomaticMonitoring(id, enabled), None) => {
+                if let Some(track) = self.mirror.tracks.get_mut(&id) {
+                    track.automatic_enabled = enabled;
+                }
+            }
+            (Purpose::AutomaticMonitoring(id, _), Some(refusal)) => self.failure(
+                BackendMutationKind::TrackControl,
+                Some(id.raw()),
+                None,
+                format!(
+                    "automatic input monitoring was refused: {}",
+                    refusal_text(refusal)
+                ),
+            ),
             (Purpose::StripControl(id, control), None) => {
                 if let Some(track) = self.mirror.tracks.get_mut(&id) {
                     track.controls.apply(control);
@@ -632,6 +1028,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
             (Purpose::LoopSync(id, source), None) => {
+                for job in &mut self.composites.jobs {
+                    if job.id == id {
+                        job.plan.sync_source = source;
+                    }
+                }
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.sync = source;
                 }

@@ -18,6 +18,46 @@ pub struct InlineTestProcessor {
     scratch: Box<[u8]>,
 }
 
+impl crate::Backend for InlineTestProcessor {
+    fn ports(&self) -> rt_runtime::graph::PortCounts {
+        rt_runtime::graph::PortCounts {
+            audio_inputs: 2,
+            audio_outputs: 2,
+            midi_inputs: 1,
+            midi_outputs: 1,
+        }
+    }
+
+    fn process(&mut self, batch: &mut crate::Batch<'_, '_>) -> Result<(), Error> {
+        if batch.audio.input_count() != 2 || batch.audio.output_count() != 2 {
+            return Err(Error::InvalidShape);
+        }
+        for channel in 0..2 {
+            for frame in 0..batch.frames {
+                let value = batch.audio.input(channel).ok_or(Error::InvalidShape)?[frame];
+                batch.audio.output(channel).ok_or(Error::InvalidShape)?[frame] = value * 2.;
+            }
+        }
+        // The helper also checks and transforms MIDI; its audio slice may be empty.
+        self.submit(
+            Job {
+                generation: batch.tag.generation,
+                sequence: batch.tag.sequence,
+                source: batch.tag.source,
+            },
+            batch.frames,
+            &mut [],
+            batch.midi_input(0).ok_or(Error::InvalidShape)?,
+            batch.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
+        )?;
+        Ok(())
+    }
+
+    fn reset(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
 impl InlineTestProcessor {
     pub(crate) fn new(max_packet_bytes: usize) -> Self {
         let mut scratch = vec![0; max_packet_bytes].into_boxed_slice();
@@ -25,30 +65,30 @@ impl InlineTestProcessor {
         Self { scratch }
     }
 
-    pub(crate) fn submit(
+    pub(crate) fn submit<'a>(
         &mut self,
         job: Job,
         frames: usize,
         audio: &mut [f32],
-        input: &MidiBuffer,
+        input: impl Into<crate::MidiInput<'a>>,
         output: &mut MidiBuffer,
     ) -> Result<Completion, Error> {
-        if frames.checked_mul(2) != Some(audio.len()) {
+        let input = input.into();
+        if !audio.is_empty() && frames.checked_mul(2) != Some(audio.len()) {
             return Err(Error::InvalidShape);
         }
         if input.len() > output.remaining_events() || input.byte_len() > output.remaining_bytes() {
             return Err(Error::Capacity);
         }
-        for i in 0..input.len() {
-            if input.get(i).ok_or(Error::InvalidState)?.1.len() > self.scratch.len() {
+        for (_, packet) in input.iter() {
+            if packet.len() > self.scratch.len() {
                 return Err(Error::Capacity);
             }
         }
         for sample in audio {
             *sample *= 2.;
         }
-        for i in 0..input.len() {
-            let (offset, packet) = input.get(i).ok_or(Error::InvalidState)?;
+        for (offset, packet) in input.iter() {
             let bytes = &mut self.scratch[..packet.len()];
             bytes.copy_from_slice(packet);
             if bytes[0] < 0xf0 {

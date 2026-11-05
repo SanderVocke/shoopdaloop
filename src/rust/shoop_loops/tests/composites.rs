@@ -230,7 +230,7 @@ fn run(resolver: &mut Resolver, parts: &[u64]) -> (Vec<Event>, Vec<Vec<State>>) 
 }
 
 #[shoop_test]
-fn regular_program_uses_clock_ticks_and_preserves_contiguous_playback() {
+fn regular_program_uses_prepared_frames_and_preserves_contiguous_playback() {
     let mut input = base();
     let mut whole = prepare(&input);
     input.loops.reverse();
@@ -245,7 +245,7 @@ fn regular_program_uses_clock_ticks_and_preserves_contiguous_playback() {
             (cursor.iteration, cursor.passes),
             ((frame / 2 % 3) as u64, (frame / 6) as u64)
         );
-        assert_eq!(states[1].position, 0);
+        assert_eq!(states[1].position, (frame % 6) as u64);
         if frame % 6 < 2 {
             assert_eq!(
                 (states[2].mode, states[2].position),
@@ -263,7 +263,7 @@ fn regular_program_uses_clock_ticks_and_preserves_contiguous_playback() {
 }
 
 #[shoop_test]
-fn nominal_units_do_not_create_ticks_and_an_idle_source_stalls() {
+fn prepared_units_advance_independently_of_source_edges_and_source_activity() {
     let mut input = base();
     input.loops[0].length = 7;
     input.programs[0].nominal_unit_frames = 100;
@@ -271,22 +271,15 @@ fn nominal_units_do_not_create_ticks_and_an_idle_source_stalls() {
     start(&mut resolver);
     run(&mut resolver, &[10]);
     let state = resolver.state(id(1)).unwrap();
-    assert_eq!(state.composite.unwrap().iteration, 1);
-    assert_eq!(state.composite.unwrap().entered_at, Some(Frame(7)));
+    assert_eq!(state.composite.unwrap().iteration, 0);
+    assert_eq!(state.composite.unwrap().entered_at, Some(Frame(0)));
+    assert_eq!(state.position, 10);
     assert_eq!(state.content_length, 300);
     input.loops[1].sync_source = None;
     let mut unsynchronized = prepare(&input);
     start(&mut unsynchronized);
     run(&mut unsynchronized, &[20]);
-    assert_eq!(
-        unsynchronized
-            .state(id(1))
-            .unwrap()
-            .composite
-            .unwrap()
-            .iteration,
-        0
-    );
+    assert_eq!(unsynchronized.state(id(1)).unwrap().position, 20);
     let mut stopped_source = prepare(&base());
     start(&mut stopped_source);
     submit(&mut stopped_source, 0, 3, 1, Transition::Stop);
@@ -300,6 +293,7 @@ fn nominal_units_do_not_create_ticks_and_an_idle_source_stalls() {
             .iteration,
         0
     );
+    assert_eq!(stopped_source.state(id(1)).unwrap().position, 2);
 }
 
 #[shoop_test]
@@ -450,8 +444,12 @@ fn pure_sync_component_may_contain_a_composite_but_not_action_feedback() {
     let mut resolver = prepare(&input);
     start(&mut resolver);
     let (events, rows) = run(&mut resolver, &[8]);
-    for frame in [0, 2, 4, 6] {
-        for target in [0, 1] {
+    for target in [0, 1] {
+        for frame in if target == 0 {
+            vec![0, 2, 4, 6]
+        } else {
+            vec![0, 6]
+        } {
             assert_eq!(
                 events
                     .iter()
@@ -659,6 +657,9 @@ fn deep_nested_programs_execute_all_dense_ticks_without_wave_or_subrange_caps() 
             .programs
             .push(program(source, vec![vec![entry(source + 1, 0, 1, None)]]));
     }
+    for program in &mut input.programs {
+        program.nominal_unit_frames = 1;
+    }
     input.loops.push(primitive(depth + 1, 1, None));
     let limits = Limits {
         loop_slots: (depth + 2) as usize,
@@ -723,7 +724,7 @@ fn maximum_sparse_iteration_seek_is_indexed_and_wraps_without_overflow() {
 }
 
 #[shoop_test]
-fn stopped_relay_can_clock_a_program_without_starting_its_own_media() {
+fn stopped_relay_does_not_own_a_running_programs_frame_clock() {
     let input = TopologyDescription {
         loops: vec![
             primitive(0, 2, None),

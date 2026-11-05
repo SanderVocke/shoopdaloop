@@ -16,6 +16,11 @@ pub fn description() -> EngineDescription {
             midi_records: 4096,
             writers: 4,
         },
+        external_dry_wet: false,
+        processors: shoop_rt_protocol::ProcessorSettings::disabled(),
+        composite_entries: 256,
+        composite_segments: 1024,
+        timing_relations: 512,
         sample_rate: 1000,
         max_frames: 16,
         quantum: 1,
@@ -242,7 +247,15 @@ impl Harness {
     }
     pub fn done(&mut self, request: Request) {
         let outcome = self.apply(request);
-        if matches!(request, Request::ContentApply { .. }) {
+        if matches!(
+            request,
+            Request::Composite(shoop_rt_protocol::CompositeCommand::Commit { .. })
+        ) {
+            assert!(
+                matches!(outcome, Outcome::CompositeApplied { .. }),
+                "{request:?}: {outcome:?}"
+            );
+        } else if matches!(request, Request::ContentApply { .. }) {
             assert!(
                 matches!(outcome, Outcome::ContentApplied { .. }),
                 "{request:?}: {outcome:?}"

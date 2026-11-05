@@ -83,10 +83,14 @@ pub struct ChannelState {
     parameter_family: Option<ParameterFamily>,
     parameter_history_untracked: bool,
 }
-impl Default for ChannelState {
-    fn default() -> Self {
+impl ChannelState {
+    const INITIAL: Self = {
         Self {
-            notes: [NoteState::default(); 128],
+            notes: [NoteState {
+                velocity: 0,
+                flags: 0,
+                pressure: 128,
+            }; 128],
             controllers: [0; 128],
             note_keys: 0,
             controller_keys: (1 << 64) | (1 << 66) | (1 << 69),
@@ -98,6 +102,11 @@ impl Default for ChannelState {
             parameter_family: None,
             parameter_history_untracked: false,
         }
+    };
+}
+impl Default for ChannelState {
+    fn default() -> Self {
+        Self::INITIAL
     }
 }
 impl ChannelState {
@@ -261,10 +270,18 @@ impl ChannelState {
         }
     }
 }
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiState {
     channels: [ChannelState; 16],
     system_reset: bool,
+}
+impl Default for MidiState {
+    fn default() -> Self {
+        Self {
+            channels: [ChannelState::INITIAL; 16],
+            system_reset: false,
+        }
+    }
 }
 impl MidiState {
     /// Reassemble exported opaque channel projections. Callers must use channels

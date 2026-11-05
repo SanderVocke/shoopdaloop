@@ -67,6 +67,9 @@ impl Wire for InputHistorySettings {
 }
 impl Wire for EngineSettings {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.composite_entries)?;
+        w.u32(self.composite_segments)?;
+        w.u32(self.timing_relations)?;
         w.u32(self.max_frames)?;
         w.u32(self.quantum)?;
         w.u32(self.strip_channels)?;
@@ -89,6 +92,9 @@ impl Wire for EngineSettings {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
+            composite_entries: r.u32()?,
+            composite_segments: r.u32()?,
+            timing_relations: r.u32()?,
             max_frames: r.u32()?,
             quantum: r.u32()?,
             strip_channels: r.u32()?,

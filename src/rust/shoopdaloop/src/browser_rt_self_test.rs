@@ -15,6 +15,8 @@ use web_time::Instant;
 
 use crate::Runtime;
 
+mod composites;
+
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_RECORDING: Duration = Duration::from_millis(600);
 const LARGE_FRAMES: usize = 33 * 1024 * 1024 / 4;
@@ -67,6 +69,7 @@ enum Step {
     Loaded,
     Resaving,
     RestoredPlayback,
+    Composites,
     LargeMapping,
     LargeImport,
     LargeSaving,
@@ -80,6 +83,18 @@ enum Step {
     PreviewSwitchSystem,
     PreviewStopped,
     PreviewCompleted,
+    HostedStart,
+    HostedCreated,
+    HostedMapping,
+    HostedAudio,
+    HostedAudioConverting,
+    HostedMidi,
+    HostedDry,
+    HostedWet,
+    HostedStopped,
+    HostedSaving,
+    HostedLoaded,
+    HostedResaving,
     Passed,
     Failed,
 }
@@ -93,6 +108,8 @@ struct Ids {
 }
 
 pub struct NewEngineSelfTest {
+    hosted_index: usize,
+    composites: Option<composites::Canary>,
     preview_only: bool,
     preview_denied: bool,
     stress: bool,
@@ -122,6 +139,10 @@ impl NewEngineSelfTest {
             .and_then(|w| w.location().search().ok())
             .unwrap_or_default();
         Self {
+            hosted_index: 0,
+            composites: query
+                .contains("composites=1")
+                .then(composites::Canary::default),
             preview_only: query.contains("preview-only=1"),
             preview_denied: query.contains("preview-denied=1"),
             stress,
@@ -141,6 +162,10 @@ impl NewEngineSelfTest {
     }
 
     pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
+        if self.step == Step::Composites {
+            self.composites.as_mut().unwrap().file_output(output);
+            return;
+        }
         if !matches!(
             self.step,
             Step::Saving
@@ -148,6 +173,8 @@ impl NewEngineSelfTest {
                 | Step::LargeSaving
                 | Step::LargeResaving
                 | Step::BusZeroSaving
+                | Step::HostedSaving
+                | Step::HostedResaving
         ) {
             return;
         }
@@ -155,7 +182,7 @@ impl NewEngineSelfTest {
             Ok(bundle)
                 if matches!(
                     self.step,
-                    Step::Saving | Step::LargeSaving | Step::BusZeroSaving
+                    Step::Saving | Step::LargeSaving | Step::BusZeroSaving | Step::HostedSaving
                 ) =>
             {
                 self.saved_file = Some(Arc::clone(&output.bytes));
@@ -187,6 +214,7 @@ impl NewEngineSelfTest {
                     < if matches!(
                         self.step,
                         Step::LargeMapping
+                            | Step::Composites
                             | Step::LargeImport
                             | Step::LargeSaving
                             | Step::LargeLoaded
@@ -195,7 +223,7 @@ impl NewEngineSelfTest {
                     ) || (self.large
                         && matches!(self.step, Step::BusZeroSaving | Step::BusZeroLoaded))
                     {
-                        Duration::from_secs(120)
+                        if self.step == Step::Composites { Duration::from_secs(300) } else { Duration::from_secs(240) }
                     } else {
                         STEP_TIMEOUT
                     } => {}
@@ -903,6 +931,9 @@ impl NewEngineSelfTest {
                     Some(position) if position == entry.position => return Ok(None),
                     _ => {}
                 }
+                if self.composites.is_some() {
+                    return Ok(Some(Step::Composites));
+                }
                 if !self.large {
                     for bus in snapshot.buses.iter() {
                         send(AppIntent::Bus {
@@ -936,6 +967,23 @@ impl NewEngineSelfTest {
                     update_loop_length: true,
                 })?;
                 Step::LargeMapping
+            }
+            Step::Composites => {
+                if !self
+                    .composites
+                    .as_mut()
+                    .unwrap()
+                    .advance(snapshot, pending, &mut send)?
+                {
+                    return Ok(None);
+                }
+                for bus in snapshot.buses.iter() {
+                    send(AppIntent::Bus {
+                        bus_id: bus.id,
+                        action: BusAction::Remove,
+                    })?;
+                }
+                Step::BusZero
             }
             Step::LargeMapping => {
                 let Some(task) = snapshot
@@ -1291,7 +1339,332 @@ impl NewEngineSelfTest {
                 if snapshot.profiling.requested || snapshot.profiling.active {
                     return Ok(None);
                 }
-                Step::Passed
+                Step::HostedStart
+            }
+            Step::HostedStart => {
+                use shoop_egui::*;
+                if pending {
+                    return Ok(None);
+                }
+                let kinds = [
+                    TrackProcessorTypeId::BUILTIN_FX,
+                    TrackProcessorTypeId::OXISYNTH,
+                    TrackProcessorTypeId::EXTERNAL,
+                ];
+                let Some(kind) = kinds.get(self.hosted_index) else {
+                    return Ok(Some(Step::Passed));
+                };
+                let descriptor = snapshot
+                    .track_processors
+                    .iter()
+                    .find(|d| d.id.as_str() == *kind)
+                    .ok_or("hosted descriptor missing")?;
+                if !descriptor.available {
+                    if descriptor.unavailable_reason.is_none() {
+                        return Err("unavailable processor has no reason".into());
+                    }
+                    self.hosted_index += 1;
+                    return Ok(Some(Step::HostedStart));
+                }
+                let width = if *kind == TrackProcessorTypeId::OXISYNTH {
+                    2
+                } else if *kind == TrackProcessorTypeId::BUILTIN_FX {
+                    descriptor
+                        .constraints
+                        .max_dry_audio_channels
+                        .unwrap_or(1)
+                        .min(3)
+                } else {
+                    1
+                };
+                send(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
+                send(AppIntent::AddTrackWithTopology(TrackSpec {
+                    name: format!("Hosted {}", self.hosted_index),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: width,
+                        wet_audio_channels: width,
+                        dry_midi: true,
+                        processor_type: descriptor.id.clone(),
+                        default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: vec!["Master".into()],
+                    creation_request_id: None,
+                }))?;
+                Step::HostedCreated
+            }
+            Step::HostedCreated => {
+                use shoop_egui::*;
+                use shoop_session::*;
+                if pending {
+                    return Ok(None);
+                }
+                let name = format!("Hosted {}", self.hosted_index);
+                let Some(track) = snapshot.tracks.iter().find(|t| {
+                    t.name == name
+                        && t.structural_state == StructuralState::Confirmed
+                        && !t.loops.is_empty()
+                }) else {
+                    return Ok(None);
+                };
+                let TrackTopology::DryWet {
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    ..
+                } = &track.topology
+                else {
+                    return Err("hosted topology flattened".into());
+                };
+                if self.hosted_index < 2 {
+                    let action = if self.hosted_index == 0 {
+                        TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false))
+                    } else {
+                        TrackAction::OxiSynth(OxiSynthControl::SelectPreset("0:40".into()))
+                    };
+                    send(AppIntent::Track {
+                        track_id: track.id,
+                        action,
+                    })?;
+                    send(AppIntent::Track {
+                        track_id: track.id,
+                        action: TrackAction::FxVisibilityChanged(true),
+                    })?;
+                }
+                let audio = LoopAudio {
+                    sample_rate: snapshot.status.sample_rate,
+                    channels: (0..dry_audio_channels + wet_audio_channels)
+                        .map(|channel| LoopAudioChannel {
+                            label: format!("Role {channel}"),
+                            role: if channel < *dry_audio_channels {
+                                "dry"
+                            } else {
+                                "wet"
+                            }
+                            .into(),
+                            samples: vec![
+                                if channel < *dry_audio_channels {
+                                    0.25
+                                } else {
+                                    0.
+                                };
+                                snapshot.status.sample_rate as usize
+                            ],
+                        })
+                        .collect(),
+                };
+                send(AppIntent::ImportLoopAudioBytes {
+                    loop_id: track.loops[0].id,
+                    name: "hosted.wav".into(),
+                    bytes: encode_float_wav(&audio).map_err(|e| e.to_string())?.into(),
+                    update_loop_length: true,
+                })?;
+                Step::HostedMapping
+            }
+            Step::HostedMapping => {
+                use shoop_egui::*;
+                let Some(task) = snapshot.io_task.as_ref() else {
+                    return Ok(None);
+                };
+                if task.status == IoTaskStatus::Failed {
+                    return Err(format!("hosted import: {task:?}"));
+                }
+                if task.status != IoTaskStatus::AwaitingChannelMapping {
+                    return Ok(None);
+                }
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                let count = track.topology.audio_channel_labels(0).len();
+                send(AppIntent::ConfirmAudioChannelMapping {
+                    task_id: task.id,
+                    source_for_destination: (0..count as u32).collect(),
+                })?;
+                Step::HostedAudio
+            }
+            Step::HostedAudio | Step::HostedAudioConverting => {
+                use shoop_session::*;
+                if self.step == Step::HostedAudio {
+                    if let Some(task) = snapshot.io_task.as_ref().filter(|task| {
+                        task.status
+                            == shoop_egui::IoTaskStatus::AwaitingFormatConversionConfirmation
+                    }) {
+                        send(AppIntent::ConfirmFormatConversion {
+                            task_id: task.id,
+                            accept: true,
+                        })?;
+                        return Ok(Some(Step::HostedAudioConverting));
+                    }
+                }
+                if !io_completed(snapshot, shoop_egui::IoTaskKind::ImportLoopAudio) {
+                    return Ok(None);
+                }
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                let rate = snapshot.status.sample_rate;
+                let midi = ExactMidi {
+                    sample_rate: rate,
+                    length_frames: u64::from(rate),
+                    start_state: vec![],
+                    events: vec![
+                        ExactMidiEvent {
+                            frame: 3,
+                            order: 0,
+                            data: vec![0x90, 60, 100],
+                        },
+                        ExactMidiEvent {
+                            frame: u64::from(rate / 2),
+                            order: 1,
+                            data: vec![0x80, 60, 0],
+                        },
+                    ],
+                };
+                send(AppIntent::ImportLoopMidiBytes {
+                    loop_id: track.loops[0].id,
+                    name: "hosted.shoop-midi".into(),
+                    bytes: encode_exact_midi(&midi).map_err(|e| e.to_string())?.into(),
+                    update_loop_length: false,
+                })?;
+                Step::HostedMidi
+            }
+            Step::HostedMidi => {
+                if !io_completed(snapshot, shoop_egui::IoTaskKind::ImportLoopMidi) {
+                    return Ok(None);
+                }
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                send(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::DefaultClicked,
+                })?;
+                Step::HostedDry
+            }
+            Step::HostedDry => {
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                if track.loops[0].mode != LoopMode::PlayingDryThroughWet
+                    || (self.hosted_index < 2 && track.controls.output_peak_left_db <= SIGNAL_DB)
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::PlayClicked,
+                })?;
+                Step::HostedWet
+            }
+            Step::HostedWet => {
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                if track.loops[0].mode != LoopMode::Playing {
+                    return Ok(None);
+                }
+                send(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::StopClicked,
+                })?;
+                Step::HostedStopped
+            }
+            Step::HostedStopped => {
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                if pending || track.loops[0].mode != LoopMode::Stopped {
+                    return Ok(None);
+                }
+                self.saved_file = None;
+                self.saved_bundle = None;
+                self.resaved_bundle = None;
+                send(AppIntent::RequestSaveSession)?;
+                Step::HostedSaving
+            }
+            Step::HostedSaving => {
+                if !io_completed(snapshot, shoop_egui::IoTaskKind::SaveSession) {
+                    return Ok(None);
+                }
+                let Some(bytes) = self.saved_file.as_ref() else {
+                    return Ok(None);
+                };
+                send(AppIntent::LoadSessionBytes {
+                    name: "hosted.shoop".into(),
+                    bytes: Arc::clone(bytes),
+                })?;
+                Step::HostedLoaded
+            }
+            Step::HostedLoaded => {
+                if !io_completed(snapshot, shoop_egui::IoTaskKind::LoadSession) {
+                    return Ok(None);
+                }
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .ok_or("loaded hosted track missing")?;
+                if track.loops[0].mode != LoopMode::Stopped
+                    || track.default_playback_mode != shoop_egui::DefaultPlaybackMode::DryThroughWet
+                {
+                    return Err("loaded hosted mode/default changed".into());
+                }
+                send(AppIntent::RequestSaveSession)?;
+                Step::HostedResaving
+            }
+            Step::HostedResaving => {
+                if !io_completed(snapshot, shoop_egui::IoTaskKind::SaveSession) {
+                    return Ok(None);
+                }
+                let (Some(before), Some(after)) = (&self.saved_bundle, &self.resaved_bundle) else {
+                    return Ok(None);
+                };
+                let name = format!("Hosted {}", self.hosted_index);
+                let old = before
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .find(|t| t.name == name)
+                    .ok_or("saved hosted track missing")?;
+                let new = after
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .find(|t| t.name == name)
+                    .ok_or("resaved hosted track missing")?;
+                if old.topology != new.topology {
+                    return Err("hosted topology changed on reload".into());
+                }
+                for (a, b) in old
+                    .loops
+                    .iter()
+                    .flat_map(|l| &l.channels)
+                    .zip(new.loops.iter().flat_map(|l| &l.channels))
+                {
+                    let left = a.media_id.as_ref().and_then(|id| before.media.get(id));
+                    let right = b.media_id.as_ref().and_then(|id| after.media.get(id));
+                    if a.mode != b.mode || left != right {
+                        return Err("hosted role media changed on reload".into());
+                    }
+                }
+                self.hosted_index += 1;
+                Step::HostedStart
             }
         };
         Ok(Some(next))
@@ -1410,4 +1783,11 @@ fn preview_intent(
         },
         output,
     })
+}
+
+fn io_completed(snapshot: &AppSnapshot, kind: shoop_egui::IoTaskKind) -> bool {
+    snapshot
+        .io_task
+        .as_ref()
+        .is_some_and(|task| task.kind == kind && task.status == IoTaskStatus::Completed)
 }

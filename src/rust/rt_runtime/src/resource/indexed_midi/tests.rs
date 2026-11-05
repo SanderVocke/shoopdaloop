@@ -14,7 +14,7 @@ fn config() -> Config {
         indexes: IndexLimits {
             leases: 32,
             versions: 16,
-            category_pages: 128,
+            category_pages: 256,
             packet_nodes: 4096,
             scalar_nodes: 4096,
             hold_nodes: 1024,
@@ -23,7 +23,7 @@ fn config() -> Config {
         sources: 2,
         history_frames: 128,
         history_events: 32,
-        history_bytes: 4096,
+        history_bytes: 1024,
         views: 8,
         writers: 4,
         imports: 2,
@@ -789,7 +789,9 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
         .unwrap();
     while resources.progress_indexed_midi_writer(writer, 1).unwrap() != Status::Ready {}
     resources.start_indexed_midi_writer(writer, 0).unwrap();
-    let publication = resources.reserve_snapshot(take, Frame(0), 39).unwrap();
+    let publication = resources
+        .reserve_writer_snapshot(take, Frame(0), 39)
+        .unwrap();
     let mut input = MidiBuffer::new(8, 128).unwrap();
     let mut expected = [0; 92];
     let mut at = 0;
@@ -1068,4 +1070,122 @@ fn recording_prefix_import_captures_live_tail_and_cannot_publish_holes() {
         drain(&mut resources);
         assert_eq!(resources.usage(), baseline);
     });
+}
+
+#[shoop_test]
+fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance() {
+    for fragmented in [false, true] {
+        let mut resources = resources();
+        let baseline = resources.usage();
+        let mut limits = config();
+        limits.packets.records = 128;
+        limits.packets.bodies = 128;
+        limits.history_bytes = 512;
+        if fragmented {
+            limits.packets.pages = 32;
+            limits.history_frames = 1024;
+        }
+        let pool = resources.prepare_indexed_midi_store(limits).unwrap();
+        let sources = [
+            resources.indexed_midi_source(pool, 0).unwrap(),
+            resources.indexed_midi_source(pool, 1).unwrap(),
+        ];
+        let mut input = MidiBuffer::new(8, 128).unwrap();
+        let mut sysex_input = MidiBuffer::new(8, 128).unwrap();
+        let mut sysex = [7; 64];
+        sysex[0] = 0xf0;
+        sysex[63] = 0xf7;
+        sysex_input.push(0, Q, &sysex).unwrap();
+        sysex_input.push(1, Q, &sysex).unwrap();
+        let mut held = [None; 8];
+        let mut admitted = 0;
+        let mut refused = false;
+        let mut old = None;
+        let mut expected = [0; 120];
+        let mut expected_bytes = 0;
+        assert_no_heap(|| {
+            for tick in 0..200u64 {
+                resources.begin_callback();
+                resources.copy_remaining = 0;
+                resources.steps_remaining = 0;
+                input.clear();
+                for event in 0..if fragmented { 1 } else { 8 } {
+                    input
+                        .push(event, Q, &[0x90, event as u8, (tick % 127 + 1) as u8])
+                        .unwrap();
+                }
+                for (index, source) in sources.into_iter().enumerate() {
+                    let begin = Frame(tick * Q as u64);
+                    let packets = if fragmented && index == 1 {
+                        &sysex_input
+                    } else {
+                        &input
+                    };
+                    resources
+                        .render_io()
+                        .append_indexed_midi_source(source, begin, packets)
+                        .unwrap_or_else(|error| {
+                            panic!("live source at tick {tick}, fragmented={fragmented}: {error:?}")
+                        });
+                    assert_eq!(
+                        resources.indexed_midi_coverage(source).unwrap().end,
+                        Frame((tick + 1) * Q as u64)
+                    );
+                }
+                if tick > 3 && tick % 4 == 0 && admitted < held.len() {
+                    match resources.grab_indexed_midi(
+                        sources[0],
+                        Frame(tick * Q as u64)..Frame((tick + 1) * Q as u64),
+                        Q as u64,
+                    ) {
+                        Ok(resource) => {
+                            held[admitted] = Some(resource);
+                            admitted += 1;
+                            if old.is_none() {
+                                old = Some(
+                                    resources
+                                        .snapshot(resource, Frame((tick + 1) * Q as u64))
+                                        .unwrap(),
+                                );
+                                expected_bytes = input.len() * 15;
+                                for i in 0..input.len() {
+                                    let (frame, packet) = input.get(i).unwrap();
+                                    encode_midi_record(
+                                        u64::from(frame),
+                                        packet,
+                                        &mut expected[i * 15..(i + 1) * 15],
+                                    )
+                                    .unwrap();
+                                }
+                            }
+                        }
+                        Err(Error::Capacity) => refused = true,
+                        Err(error) => panic!("unexpected admission: {error:?}"),
+                    }
+                }
+            }
+            assert!(admitted > 0);
+            assert!(refused, "owner admission must reserve live source storage");
+            if fragmented {
+                assert!(
+                    resources.indexed_midi_coverage(sources[0]).unwrap().start.0
+                        > (200 * Q - 1024) as u64
+                );
+            }
+            let old = old.unwrap();
+            if fragmented {
+                assert_eq!(bytes::<15>(&mut resources, old), expected[..expected_bytes]);
+            } else {
+                assert_eq!(bytes::<120>(&mut resources, old), expected);
+            }
+            resources.release_snapshot(old.id).unwrap();
+            for resource in held.into_iter().flatten() {
+                resources.remove(resource).unwrap();
+            }
+            drain(&mut resources);
+            resources.cleanup_indexed_midi_store(pool).unwrap();
+            drain(&mut resources);
+            assert_eq!(resources.usage(), baseline);
+        });
+    }
 }

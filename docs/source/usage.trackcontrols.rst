@@ -12,8 +12,10 @@ complete draft for the next track. Dry + Wet tracks may use regular wet playback
 or replay their dry recording through live effects as their default; other track
 types always use regular playback.
 
-Native processor choices are External, **Built-in FX**, **Built-in Synth**, and
-feature-dependent Carla modes. Browser builds offer both built-ins. Built-in FX
+The connected host advertises External, **Built-in FX**, and **Built-in Synth**
+when available. Both built-ins are optional at build time and host startup;
+unavailable choices show the host's reason. Carla and bus FX remain unavailable.
+Native and browser hosts can provide both built-ins. Built-in FX
 accepts matching mono, stereo, or higher dry/wet audio counts and requires one
 MIDI input. Built-in Synth has two dry inputs, two wet outputs, and one MIDI
 input.

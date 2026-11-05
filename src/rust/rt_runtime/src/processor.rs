@@ -13,14 +13,33 @@ pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     fn prepare(self, config: PreparedConfig) -> Result<Self::Prepared, Error>;
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MidiPortCapacity {
+    pub input: bool,
+    pub port: usize,
+    pub capacity: MidiCapacity,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MidiBufferSettings {
+    /// Bounded overrides for independently routed ports; other ports use defaults.
+    pub ports: [Option<MidiPortCapacity>; 8],
     pub input: Option<MidiCapacity>,
     pub output: Option<MidiCapacity>,
     /// Forwarded MIDI outputs borrow this input after processing.
     pub forward_input: Option<usize>,
 }
 impl MidiBufferSettings {
+    pub fn capacity(self, input: bool, port: usize, default: MidiCapacity) -> MidiCapacity {
+        self.ports
+            .iter()
+            .flatten()
+            .find(|entry| entry.input == input && entry.port == port)
+            .map_or_else(
+                || if input { self.input } else { self.output }.unwrap_or(default),
+                |entry| entry.capacity,
+            )
+    }
     pub fn prepared_bytes(self, ports: PortCounts, default: MidiCapacity) -> Result<usize, Error> {
         if self
             .forward_input
@@ -29,20 +48,41 @@ impl MidiBufferSettings {
         {
             return Err(Error::InvalidConfig);
         }
-        let input = self.input.unwrap_or(default).prepared_bytes()?;
-        let output = self.output.unwrap_or(default).prepared_bytes()?;
-        let injected = default.prepared_bytes()?;
-        ports
+        for (index, entry) in self
+            .ports
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| entry.map(|entry| (index, entry)))
+        {
+            if entry.port
+                >= if entry.input {
+                    ports.midi_inputs
+                } else {
+                    ports.midi_outputs
+                }
+                || self.ports[..index]
+                    .iter()
+                    .flatten()
+                    .any(|old| old.input == entry.input && old.port == entry.port)
+            {
+                return Err(Error::InvalidConfig);
+            }
+        }
+        let mut bytes = ports
             .midi_inputs
-            .checked_mul(input.checked_add(injected).ok_or(Error::Capacity)?)
-            .and_then(|bytes| {
-                ports
-                    .midi_outputs
-                    .checked_mul(output)
-                    .and_then(|output| bytes.checked_add(output))
-            })
-            .filter(|bytes| *bytes <= i32::MAX as usize)
-            .ok_or(Error::Capacity)
+            .checked_mul(default.prepared_bytes()?)
+            .ok_or(Error::Capacity)?;
+        for (input, count) in [(true, ports.midi_inputs), (false, ports.midi_outputs)] {
+            for port in 0..count {
+                bytes = bytes
+                    .checked_add(self.capacity(input, port, default).prepared_bytes()?)
+                    .ok_or(Error::Capacity)?;
+            }
+        }
+        if bytes > i32::MAX as usize {
+            return Err(Error::Capacity);
+        }
+        Ok(bytes)
     }
 }
 

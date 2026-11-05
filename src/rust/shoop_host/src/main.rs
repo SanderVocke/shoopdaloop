@@ -98,6 +98,7 @@ fn run() -> anyhow::Result<()> {
         }
     };
     config.settings.driver = args.audio.apply(config.settings.driver)?;
+    config.settings.processors = args.audio.apply_processors(config.settings.processors)?;
     config.validate()?;
     tracing::info!(
         "Starting host {} (PID {})",

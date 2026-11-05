@@ -170,6 +170,7 @@ fn main() {
                 midi_output: true,
             },
             controls: StripPreset {
+                automatic_monitoring: false,
                 input_gain: 1.,
                 input_balance: 0.,
                 monitoring: true,
@@ -179,6 +180,8 @@ fn main() {
             },
         });
         edit(ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: loop_id(slot),
             strip: strip(slot),
             sync: None,

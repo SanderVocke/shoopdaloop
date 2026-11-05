@@ -89,6 +89,14 @@ pub struct AppArgs {
         conflicts_with = "probe_engine_transport"
     )]
     pub probe_persistence: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise host-advertised processors and role media through application intents.
+    #[arg(long, requires = "engine_transport")]
+    pub probe_hosted_processors: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise public composite authoring, recording, files and client lifetime.
+    #[arg(long, requires = "engine_transport", conflicts_with_all = ["probe_engine_transport", "probe_persistence"])]
+    pub probe_composites: bool,
     #[cfg(target_arch = "wasm32")]
     /// Disable browser audio (the session remains unavailable).
     #[arg(long)]
@@ -139,6 +147,16 @@ impl AppArgs {
             .unwrap_or_else(|| shoop_egui::selected_audio_driver(settings))?;
         let config = shoop_egui::audio_driver_config_from_snapshot(settings, kind)?;
         self.audio.apply(config).map_err(|error| error.to_string())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn configured_processors(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<shoop_app_api::ProcessorSettings> {
+        self.audio.apply_processors(
+            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        )
     }
 
     #[cfg(not(target_arch = "wasm32"))]

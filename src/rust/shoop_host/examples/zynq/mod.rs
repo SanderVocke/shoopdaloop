@@ -66,6 +66,7 @@ fn wait_for_result(
         if let Some(outcome) = client.results().get(&operation) {
             let published = match outcome {
                 Outcome::Confirmed { revision }
+                | Outcome::AncestorsStopped { revision, .. }
                 | Outcome::TrackCreated { revision, .. }
                 | Outcome::LoopCreated { revision, .. } => {
                     !wait_for_snapshot

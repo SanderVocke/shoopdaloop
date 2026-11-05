@@ -8,28 +8,25 @@ the final iterative CI correction loop described below.
 
 Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
-`feat/backend-replacement`, with merged parent `0ef7581b` and refreshed target
-`a068ce72` reconciled on 2026-11-05. The latest
-implementation connects continuous paired writers to resolver transitions, including
-growing prefix Recording, fixed Replacing and reserved complete-cut publication.
-The normal host constructor now prepares thirty-second shared histories with a
-separate reservation; global per-owner MIDI admission and application action routing
-remain outstanding.
+`feat/backend-replacement`. Target `78d39677` (composites and hosted FX) has
+been reconciled locally with source `d0451596`; the saved gesture WIP was ported
+selectively onto its role-aware planner, shared ownership and processor interfaces.
 
 | Stage | Current status |
 | --- | --- |
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
-| F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
-| F2 | Partial: normal native/worklet constructors prepare common thirty-second histories with separately budgeted storage; removal/reuse and typed sizing/readiness pass locally. Global retained-owner MIDI admission and measured default callback limits remain. |
-| F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; long ordinary-recording preparation now follows live input; global admission and final lifecycle acceptance remain. |
-| F4 | Partial: public protocol/controller now own bounded atomic input transactions, preparation, delayed commit, cancellation and retained terminal identity; application adapter and musical finish plans remain. |
-| F5–F8 | Outstanding: service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
+| F1 | Behavior matrix and public service/keyboard/Lua expectations implemented; final measured limits and application evidence are being completed. |
+| F2 | Normal hosts prepare shared thirty-second histories; bounded owner, live-source, index-workspace and retirement-debt admission now passes sustained record/page-pressure tests. Full-shape acceptance is in progress. |
+| F3 | Continuous fixed/growing paired writers, reserved exits, immutable exports, fault/reset outcomes and self-clocked automatic finish pass local tests. Production-density measurements are in progress. |
+| F4 | Negotiated public transactions, adapter ownership, atomic settlement, cancellation and render-owned musical finishes are implemented and locally exercised. |
+| F5 | Service routes implement selected gestures, exact explicit lists, solo, default Grab, Replacing and persistence guards. Lifecycle acceptance continues. |
+| F6 | Capabilities and button/keyboard/Lua routes are enabled; normal Replacing menu and incomplete-capture projection are implemented. Packaged acceptance continues. |
+| F7 | Save/load and role-aware regressions pass locally. Global MIDI pressure protection is implemented; complete pool/callback measurements and final recovery acceptance continue. |
+| F8 | Outstanding: complete packaged native/browser sequence, final-only CI correction, evidence/parity closure and PR handoff. |
 
-Grab and Replacing are still disabled in the normal application. Normal engine
-preparation negotiates the implemented protocol input-batch and Replacing bits;
-the application capability map stays disabled pending adapter/service acceptance. P04/P05 remain
-OPEN. Targeted native tests validate the library increments; fresh applicable CI
-and application acceptance have not been established for the latest implementation.
+Grab and Replacing are enabled through negotiated application support. P04/P05
+remain OPEN until the complete acceptance and final CI gates pass. No Phase A CI
+inspection or push has occurred.
 
 Execution originally started from fixed-runtime head
 `2e19210bdbb5e32510322f8b8344715ce7cbefe5`. Written using
@@ -443,6 +440,75 @@ affected builds, formatting, tracing and test-attribute checks. This advances F3
 ordinary long Recording-to-Replacing preparation, global live MIDI reservations
 and application batch/service/UI delivery remain outstanding. CI stays deferred.
 
+2026-11-05 reconciliation and application integration in progress: the merge of
+`78d39677` is resolved locally and preserved WIP is retained in stash
+`1e70974f`. Protocol 22 / host setup 8 / worklet configuration 7 and Replacing
+mode tag 5 coexist with target FX/composite contracts. Shared takes now preserve
+primary/auxiliary/MIDI role indices, metadata-only wet-edit snapshot reservations
+coexist with writer backing reservations, and normal processor startup installs
+histories without taking the wet-edit budget. Edit-only audio scratch now covers
+blocks wider than its absent history ring. The wet refusal fixture budgets retained
+pages independently from window scratch, reflecting clipped owner accounting.
+
+Automatic gesture finishes now belong to resolver requests, use a candidate pending
+clock query and become eligible at A+Q. Pending mode/delay publish with the same
+checked LoopSnapshot as confirmed state. Explicit clock requests can settle across
+unrelated topology components through bounded candidate retries. Local guarded
+oracles cover prefix/sample/packet continuity, both finish modes without controller
+polling, and rollback during active composite playback including children, cursors,
+pulses and existing pending clocks.
+
+The service now routes button/default/control Grab and explicit/triggered Replacing
+through one adapter-owned input mutation, with all-target preflight and atomic
+solo peers. Control Grab preserves its explicit list; UI selection expansion follows
+the reference policy. Negotiated service capabilities expose implemented routes.
+Media/save/import/family/session guards include Replacing; default-Grab settings
+survive application-image and file conversion. A real service-wire scenario passed
+selected Grab, exact lists, stale-member refusal without solo effects, Replacing,
+save/load and another edit. The combined processor-host test passed direct Grab and
+Replacing while a composite runs, rejected a mixed FX input list atomically and
+retained hosted state and role-aware archives. These results are local; P04/P05
+remain OPEN pending the remaining acceptance gates.
+
+Remaining work includes final indexed MIDI owner/workspace admission and maintenance,
+combined default MIDI output/processor memory and callback measurements, additional
+UI/keyboard/Lua and recovery acceptance, packaged native/browser execution, then the
+final-only CI/review correction loop. No CI inspection or push has occurred during
+this reconciliation.
+
+The combined tree now builds with warnings denied across the workspace, including
+native FX/reference features. Local core verification passes 90 runtime, loop
+resolver/runtime and 52 engine unit scenarios (one opt-in measurement is separate).
+CPAL callback and device-fault subprocess shutdown checks pass after stopping idle
+reclamation promptly; all real JACK scenarios have passed locally across the focused
+runs with a dummy JACK server. No backend-unavailable skip is counted as execution.
+The Replacing context-menu action and unsupported-capability menu tests pass.
+
+Global MIDI admission now protects live source quotas and edit workspace before
+charging retained owners. Ownership includes lazily retained outside-window data;
+credits remain charged through deferred retirement and shrink only after bounds are
+materialized. Required maintenance scales with configured event/path work. Page-run
+summaries account for sparse interleaved SysEx slabs, and source density eviction
+reports actual coverage. The small resource fixture now reserves 256 category pages for its protected
+live sources, workspace and owners. Its 1,024-byte source quota still exceeds the
+896 serialized bytes possible over its entire four-tick horizon; record and payload
+page counts remain unchanged. A new allocator-guarded test reproduces the former tick-36
+starvation, then proves 200 dense ticks on two sources with held immutable exports,
+explicit owner refusals, zero optional maintenance and complete recovery. The
+existing integration fixture budgets and functional assertions are preserved.
+Production index sizing now adds explicit live-category and source-edit workspace
+reservations to the existing owner arrays; ordinary loop payload and the configured
+MIDI record/page budgets are unchanged. Metadata remains under its existing gate.
+
+A full normal engine/host-buffer measurement at 16 sources, 128 loop slots, stereo,
+Q=32 and 256 events per source tick prepares 3,157,467,205 requested bytes at peak
+in a debug build, and recovers every page after two simultaneous continuous writers.
+All raw callback timings and work counts are retained in the local measurement log;
+this deliberately extreme debug run misses every device-time budget. Release and
+representative-density measurements, largest channel shape, complete hosted-bank
+accounting and packaged acceptance remain required. No timing certification is
+inferred from a debug or CI run.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -488,6 +554,242 @@ backend and `shoop_engine`. Important facts to preserve:
   channel flags are REPLACE, not PLAYBACK. Its cursor advances/repeats like a
   playing mode; Playing -> Replacing preserves position. Input monitoring is a
   separate route. Audio duration does not grow; positive empty MIDI input erases.
+
+## Target update impact — 2026-11-05
+
+Read-only impact analysis compared the reconciled base `a068ce72` with target
+`78d39677171c1ccd4583e4d29db415a40847168a`. The target adds composite restoration
+[#941](https://github.com/SanderVocke/shoopdaloop/pull/941), master reconciliation
+`2cec7c8e`, and built-in FX/OxiSynth/External dry-wet support
+[#946](https://github.com/SanderVocke/shoopdaloop/pull/946). It changes 479 files,
+including vendored DSP dependencies. Fifty-eight paths overlap our committed work.
+Object-only merge simulations against local head `d0451596` and against a
+snapshot including the unfinished gesture work each report 35 conflicted paths.
+Neither simulation changed the index, checkout or branch. The target has been
+fetched but is **not reconciled**. Existing local results validate the earlier
+base, not a combined implementation.
+
+This is a material integration dependency, not a replacement of the shared COW
+writer design. Reconcile it in Phase A before continuing service/UI integration;
+CI remains deferred until all implementation and local acceptance are complete.
+
+- **Protocol:** target engine version 21, worklet configuration 6 and host version
+  7 must be combined with our engine 13/configuration 4/host 7 changes. Host version
+  7 denotes different layouts on the two branches. Target request tags 38–45
+  overlap our 38–44, target dry-play uses loop-mode tag 3, target timing outcome
+  uses tag 5, and target processor/global-FX capabilities occupy our new bits 8/9.
+  Allocate fresh combined versions/tags/bits and update every carrier, configuration
+  conversion and malformed/old-peer test together; retaining the larger version
+  alone does not repair these collisions.
+- **Production preparation:** native and worklet startup now call
+  `prepare_with_processors`; its default empty SharedSettings would bypass our
+  normal histories. Apply the same separately budgeted history policy there and
+  preserve the explicit-settings constructor. Reconcile the edit-only wet store
+  with shared audio pools without silently consuming or changing loop-memory
+  capacity. Recalculate total preparation, including both processor banks and
+  the documented 256 MiB processor ceiling, histories, MIDI and output workspaces.
+- **Modes and scheduling:** Mode moves to the shared `shoop_loop_plan` crate.
+  Preserve dry-play/rerecord, frame-driven composite progression, repeat alignment,
+  retiming, child independence and coherent snapshots when adding Replacing,
+  atomic batches and musical finishes. Reuse the target's PendingTransition query
+  and internal mutation ownership seam instead of retaining duplicate mechanisms.
+- **Capture and routes:** media now has primary/wet, auxiliary/dry and MIDI roles;
+  capture resource banks and loop ports changed shape. Preserve those roles and
+  source-aligned buffered wet taps, processor demand/sleep, automatic monitoring,
+  recorded processor settings and fault isolation. Direct histories still observe
+  the direct capture feed once. Unsupported processed/composite input actions must
+  refuse the entire batch before media or solo peers change.
+- **Storage/API compatibility:** both branches independently add a different
+  `reserve_snapshot` API; a textual auto-merge of resource/mod.rs would still leave
+  duplicate incompatible methods. Keep metadata reservation and complete final
+  backing reservation distinct. Port edit-only/channel audio writes into our
+  pooled layout and preserve compact MIDI projection defaults. New initial-channel
+  MIDI reads must handle indexed-MIDI leases as well as flat/shared MIDI.
+- **Adapter, persistence and UI:** combine input mutation ownership/cancellation
+  with pending composite conversion and processor jobs, optional primitive strip
+  ownership, role-aware caches, recorded FX state, family/session imports and
+  telemetry. Preserve newly working default playback/editor/Lua capabilities and
+  whole-document refusals; global Grab/Replacing support must not accidentally
+  advertise dependent composite support.
+
+The existing Grab/Replacing scope stays direct audio/MIDI/trigger tracks. This
+update does not add FX-track Grab/Replacing or dependent composite event modes to
+that scope. The target explicitly preserves the latter in OPEN P17 under its
+user-approved split. Newly delivered composite and FX/dry-wet workflows are now
+regression requirements, rather than capabilities to keep globally disabled.
+The target's processor evidence documents remaining validation failures and a
+saturated-synth deadline limitation; these are provenance, not fresh CI results
+or an inherited waiver of this plan's final gates.
+
+- [x] R0: complete the ordered reconciliation checklist below against target
+  `78d39677`, preserving both deliveries. Check off R0 only after every R0 item
+  and the R1 combined-tree verification checkpoints pass; resolving Git conflicts
+  alone does not complete this step. R0/R1 precede further F4/F5 service/UI work.
+- [x] R1: run focused warnings-denied codec/configuration, shared writer/resource,
+  resolver/composite, normal processor-host startup and adapter checks before
+  resuming F4/F5 integration. Verify direct Grab/Replacing alongside unrelated FX
+  and composite playback, and atomic refusal of unsupported mixed batches.
+- [ ] R2: include role-aware persistence, processor fault/retirement and combined
+  memory/MIDI output accounting in F7/F8. Retain final-only CI correction, review
+  and PR handoff; no autonomous PR merge.
+
+### R0 — Reconcile the target before continuing F4/F5
+
+The initial impact assessment identified collisions and risks. The deeper source
+review below fixes the intended disposition and ordering; it is not a claim that
+a merged tree compiles or passes. The execution record below records the completed local checks.
+
+**Use the target's application/graph/composite structure, retaining our shared
+storage and writer algorithms.** Do not resolve whole integration files by taking
+either branch wholesale. Checkpoint the unfinished gesture patch separately,
+reconcile committed `d0451596` first, and then reapply the gesture changes against
+the combined interfaces. Preserve the existing branch/PR history with a local
+merge. Keep the earlier base/head and WIP snapshot as provenance. Execute R0.1–R0.8
+in order; later integration depends on the vocabulary, ownership and lifecycle
+decisions established by the preceding items. Commit the reconciled milestone
+locally after R1 passes, then resume application implementation. Do not push or
+start CI inspection/correction at this checkpoint.
+
+- [x] **R0.1 — Preserve work and establish the reconciliation base.** Checkpoint
+   unfinished gesture changes separately, record source/base/WIP identities, and
+   merge target `78d39677` into committed `d0451596` locally. Use the target's
+   application/graph/composite structure and retain our shared storage/writer
+   algorithms. Keep unfinished gesture changes separate until the combined
+   interfaces in R0.2–R0.8 are established; reapply their required behavior through
+   those interfaces before R1. Preserve the feature branch and existing PR.
+
+- [x] **R0.2 — Unify vocabulary and wire formats first.** Add Replacing to the shared
+   `shoop_loop_plan::Mode` instead of restoring a private mode definition in
+   `shoop_loops::program`. Keep the target's dry/wet enum order and encodings.
+   For the pinned target, assign Replacing tag 5; input request tags 46–52 in
+   begin/append/prepare/commit/cancel/status/capacity order; input progress and
+   capacity outcome tags 6/7; capability bits 12/13. Retain target timing bit 11
+   and processor/global bits 8/9. Use engine protocol 23, host setup 8 and worklet
+   configuration 7 for the combined layouts. Application protocol 30 also carries
+   the incomplete-capture projection and normal Replace input action. Update host conversions,
+   worklet configuration fields, codec fixtures and old-version refusals together.
+   Private batch records must also distinguish every mode canonically and reject
+   unsupported dry/wet input intents without translating them into a direct mode.
+
+- [x] **R0.3 — Reconcile resource ownership before planner integration.** Preserve target
+   `SnapshotReservation` and its no-argument `reserve_snapshot` metadata API for
+   wet edits. Rename our unpublished backing-reservation entry point to
+   `reserve_writer_snapshot(resource, cut, maximum_frames)`; keep the complete
+   future audio/MIDI backing and publication/cancellation guarantees. These credits
+   solve different problems and neither substitutes for the other. Extend our
+   allocation-free shared-audio Layout with the target's edit-only, zero-history
+   case and channel writes. Keep multi-source history reservations, clipped COW
+   roots, owner credits, window transactions and growing tails. Implement target
+   MIDI initial-channel reads for indexed leases as well as flat/shared leases;
+   retain its byte-boundary cursor API. Preserve packed note/controller state and
+   the pressure-unknown sentinel when porting the target's const initial state.
+
+- [x] **R0.4 — Port continuous takes onto role-aware banks.** Retain target primary/wet,
+   auxiliary/dry and MIDI media fields, independent widths, sixteen audio window
+   slots and `resources[bank][roles][member]`. In that physical layout primary is
+   member 0, auxiliary 1 and MIDI 2, including MIDI-only direct loops. Replace
+   arithmetic based on channel presence with explicit role selection. Direct
+   continuous writers still operate on their audio/MIDI pair; they must not
+   flatten, replace or drop auxiliary dry leases in existing FX operations.
+   Combine the target's Take token/edit/snapshot-credit fields with our writer,
+   prefix and reserved-publication fields, with cleanup dispatched by actual take
+   kind. Retain separate active-take and monitored-playback windows; apply our
+   fresh direct-capture origin reset without overwriting wet alignment policy.
+   Preserve the target's source-tagged wet completion tap, recorded processor
+   settings and Q node/host delay accounting.
+
+- [x] **R0.5 — Layer atomic settlement onto the frame resolver.** Keep the target's frame
+   arrangement progression, natural-boundary/react ordering, repeat waiting,
+   frozen retiming and child arbitration. Port our batch IDs, failure retry,
+   all-member cancellation, Adopt/RecordPrefix/ReplaceInput transitions and
+   receipt cleanup into that resolver. A failed batch must roll back any effects
+   on composite cursors, pulses, children and monitoring demand as well as media.
+   Audit writing, growing, playback and cursor advancement separately: Replacing
+   writes and advances a fixed period without playing its own old media or
+   accumulating a new growing capture length. Keep P17's explicit event-mode and
+   whole-document gates even after primitive Replacing becomes a valid Mode.
+   Preserve target CaptureAborted rollback for unpublished wet captures; an
+   admitted continuous writer instead closes at its last complete paired cut.
+
+- [x] **R0.6 — Consolidate finish ownership and coherent state.** Reuse the target's
+   `PendingTransition`, observer `settled(resolver)` hook and publication-checked
+   LoopSnapshot. Replace the unfinished gesture patch's separate
+   Decision.planned/auto-mode cells with a bounded pending-plan projection through
+   that observer and snapshot. Musical resolution needs candidate-preview pending
+   delays, not just the target's committed-record iterator, so add a corresponding
+   bounded preview query. Reserve initial transitions and finish requests together;
+   failed initial settlement cancels and reclaims every finish. Start finish
+   eligibility at A+Q so the entry boundary cannot immediately consume its clock.
+   New actions, removal, fault and shutdown must cancel/collect owned follow-ups.
+   Requested/effective cuts and request identity stay attached to the operation.
+
+- [x] **R0.7 — Unify normal startup and capacity calculation.** Keep the processor-aware
+   constructor chain and effective compiled-host policy. Both `prepare` and
+   `prepare_with_processors` must install default history policy before entering
+   the common constructor; explicit shared-settings constructors retain caller
+   limits. Use target node/edge/port counts and resource-slot shape, adding our
+   reservations rather than replacing those counts with the old direct-only
+   formula. Keep the default wet-edit reservation independent of retrospective
+   histories: merely making histories present must not silently redirect existing
+   FX rerecords into the Grab owner budget or remove their previous reservation.
+   Account for these reservations once, preserving the target's ordinary-media
+   accounting and processor memory ceiling.
+
+   MIDI sizing must cover the new route, not merely strip output. Strip-input
+   ports now separately receive host capture, dry-loop playback and global controls;
+   processor sends combine live input, restored playback and cleanup. Introduce
+   preparation-time per-port capacity overrides so capture admission stays E/B
+   while playback/merge/send buffers use their derived bounds. Keep strip-output
+   input forwarding. Thread the appropriate send capacity through hosted buffered
+   input and GlobalMidi preparation and its processor-budget calculation. Uniformly
+   applying the worst merge bound to all three inputs/four outputs would multiply
+   memory needlessly. The final admitted fan-in and combined default memory/work
+   envelope still require F2/F7 measurement and admission closure; no fit or
+   realtime guarantee is established by this source analysis.
+
+- [x] **R0.8 — Combine controller and adapter ownership before service work.** Keep target
+   composite conversion/reset deferrals, processor jobs, optional strip ownership,
+   role-aware reads, recorded-state caches and resync. Use its
+   reserve_mutation/push_internal sequence-zero seam for our input job instead of
+   keeping duplicate sequence allocators. Extend ordering/cancellation fences to
+   clear, conversion, removal and session replacement; a deferred composite reset
+   must not be overtaken by an input job addressing the old slot generation.
+   Revalidate all targets before preparation and again at the cut. Grab/Replacing
+   require supported direct primitive targets; preserve legal existing mode actions
+   and witness roles without a blanket rejection of unrelated FX/composite state.
+   Whole-batch refusal must precede any target/solo mutation. Keep normal input
+   jobs independent of unrelated processor controls and playback.
+
+### R1 — Verify the combined tree locally
+
+R1 is the reconciliation exit gate. Run these three focused checkpoints after the
+relevant code compiles, rather than a build/test cycle for every conflict hunk.
+Record actual results and leave failed or unexecuted checkpoints unchecked.
+
+- [x] **R1.1 — Vocabulary/resources:** warnings-denied affected builds, protocol/host/worklet
+  round trips and malformed/old-version cases; shared-audio edit-only/history
+  layouts, compact MIDI state, initial-channel reads from all backing kinds,
+  metadata-slot versus final-backing pressure and exact reclamation.
+- [x] **R1.2 — Resolver/planner:** existing batch refusal/delay oracle and seeded resolver
+  reference, target frame/nested/repeat/retime tests and dry/wet capture tests.
+  Add one failing batch during active composite playback to prove cursors,
+  children, clocks and old pending plans roll back together. Keep allocation
+  guards and immediate-exit/old-export assertions.
+- [x] **R1.3 — Normal hosts/adapter:** our public_input scenarios and
+  public_grab_and_replacing_have_one_owned_mutation_and_preserve_old_exports,
+  plus target tests for exact hosted delay, wet bypass versus dry processing,
+  recorded-take state, isolated processor faults, composite resync/conversion and
+  automatic finish without polling. Add a compact mixed direct/FX/composite
+  scenario that uses normal processor startup, checks history capability/coverage,
+  performs direct Grab/Replacing, refuses an unsupported mixed input batch
+  atomically, and retains unrelated FX/composite data and controls. Keep strict
+  zero-overflow diagnostics for admitted routed MIDI, with a distinct deliberate
+  overflow-recovery case. Reuse role-aware archive fixtures in F7.
+
+After these checks pass, resume remaining F4/F5 service and gesture work on the
+combined tree. Final-only CI/review correction remains unchanged. Existing known
+MIDI owner/workspace admission and sustained-capacity work remains open; target
+reconciliation does not turn those earlier partial stages into completed ones.
 
 ## Goals, scope and immutable acceptance criteria
 
@@ -546,9 +848,10 @@ Goals and these criteria require explicit user approval to change.
 
 Supported scope is the current production direct audio/MIDI/trigger core on native
 typed/socket/shared-memory carriers and browser MessagePort/worklets. Preserve
-existing limits and refusals for composites, FX/dry-wet, latency/timing editing,
-duplication and unsupported MIDI initial/preroll state under their own parity
-rows. Do not enable those capabilities as a side effect. This plan adds neither
+capabilities already delivered by the current target, including ordinary
+composites, FX/dry-wet and timing editing. Preserve remaining limits/refusals and
+the separate P17 dependent-composite boundary, duplication and unsupported MIDI
+initial/preroll rules. Do not expand this delivery's feature scope as a side effect. This plan adds neither
 host-crash durability nor recovery of a Lua VM, UI drafts or shared-memory
 reattachment. Physical-device deadline certification is not implied by CI timing.
 
@@ -796,7 +1099,8 @@ legacy production backend is used.
   `production_keyboard_default_action_covers_stopped_cancel_and_grab_policy`,
   relevant `expanded_loop_actions_route_modes_grab_and_balance`,
   `fake_grab_preflights_every_target`, and channel replace/erase/wrap tests.
-  Keep unrelated dry/wet expectations under P06.
+  Keep unrelated dry/wet expectations under the delivered processor contract;
+  dependent composite modes remain P17.
 - [ ] Specify request ownership, requested/effective cuts, preparation/finalization,
   cancellation, insufficient history, admission failure and pressure outcomes.
   Select production budgets/defaults with a calculation for default and largest
@@ -810,13 +1114,13 @@ additional feature-scope exclusion requires user approval, not a ledger footnote
 
 ### F2 — Prepare and expose real input histories
 
-- [ ] Thread shared preparation through EngineDescription, host settings and the
+- [x] Thread shared preparation through EngineDescription, host settings and the
   normal engine constructor used by dummy/CPAL/JACK/native child and AudioWorklet
   hosts. Version worklet configuration and surface finite limits/readiness.
-- [ ] Implement source-slot activation/reset/removal, global page/index/state
+- [x] Implement source-slot activation/reset/removal, global page/index/state
   allocation and bounded retirement. Preserve track/slot generations, full routing
   masks, independent MIDI input projection and source coverage across graph cuts.
-- [ ] Provide the intended retention without duplicating histories per loop.
+- [x] Provide the intended retention without duplicating histories per loop.
   Resolve MIDI metadata scaling before choosing default capacities; account for
   retained cuts, simultaneous writers and existing ordinary recording/imports.
 
@@ -858,7 +1162,7 @@ exhausted ordinary transfer budgets, and every cancellation/fault frees its cred
 
 ### F4 — Deliver engine operations through the public protocol and adapter
 
-- [ ] Add negotiated Grab/Replacing support and bounded batch preparation/commit,
+- [x] Add negotiated Grab/Replacing support and bounded batch preparation/commit,
   status, cancellation and completion records to `shoop_rt_protocol`; update codecs,
   limits, carrier bounds and malformed/old-peer tests. Keep public control actions
   stable where possible; extend internal backend intent when needed to carry an
@@ -867,7 +1171,7 @@ exhausted ordinary transfer budgets, and every cancellation/fault frees its cred
   at one cut, including post-mode/position, prefix continuation, finish plans and
   solo effects. Preflight snapshots, writers, media, receipts and transitions;
   rollback the whole refused batch before changing any loop or peer.
-- [ ] Implement `shoop_rt_backend::grab_loops`, Replacing conversion, pending job
+- [x] Implement `shoop_rt_backend::grab_loops`, Replacing conversion, pending job
   ownership, completion correlation and mirror/cache updates. Support typed, socket,
   supported shared-memory and MessagePort carriers with identical semantics.
 
@@ -881,11 +1185,11 @@ socket/shared-memory/MessagePort coverage.
 
 ### F5 — Restore authoritative service policy
 
-- [ ] Implement GrabClicked, default recording Grab, global controls and explicit
+- [x] Implement GrabClicked, default recording Grab, global controls and explicit
   Grab/AdoptRingbuffers commands through one service-owned job path. Port target,
   selection, sync/apply-N, solo and play-after-record policy, including unsynced
   adopted-prefix recording and its scheduled completion.
-- [ ] Admit Replacing through explicit/triggered/scheduled mode commands; include
+- [x] Admit Replacing through explicit/triggered/scheduled mode commands; include
   it in the appropriate writer, cancellation, solo, sync and media guards. Keep
   explicit loop lists distinct from selection-aware gestures and preserve ordering.
 - [ ] Fence pending work against deletion, slot reuse, routing/source reset, target
@@ -901,7 +1205,7 @@ iterating; exercise the complete public sequence at F8.
 
 ### F6 — Enable the actual UI, keyboard and Lua workflows
 
-- [ ] Derive each capability from negotiated, implemented host support; remove its
+- [x] Derive each capability from negotiated, implemented host support; remove its
   production service/adapter refusal only after the corresponding route works.
   Keep per-request warmup/capacity errors distinct from unsupported capability.
 - [ ] Wire normal loop/global Grab controls, default-action settings, targeting,
