@@ -985,3 +985,12 @@ fixture now waits for queued/submitted/pending client operations to finish with 
 finite limit. Its event identity, geometry, mode and empty-notification assertions
 remain unchanged. All 24 composite service cases and both affected cases under
 actual detailed capture pass; warning-denying app/host builds and test policy pass.
+
+Client composite details expose the current Play/Record/Stop event-mode subset
+separately from primitive capabilities. The editor requires both, preserving
+disabled P17 actions when dry/wet primitives are available. The menu regression
+fails with the previous admission condition and passes with the subset, while
+Record and the broader retained reference editor remain usable. All seventeen
+composite-widget cases and the real-service projection case pass; client/UI/product
+and reference packages build with warnings denied. This local UI projection adds
+no wire format or additional composite execution support.

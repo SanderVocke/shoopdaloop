@@ -12185,6 +12185,14 @@ impl ApplicationModel {
         CompositeDetailsState {
             timing: None,
             execution: Default::default(),
+            available_event_modes: vec![
+                LoopMode::Playing,
+                LoopMode::Recording,
+                LoopMode::Replacing,
+                LoopMode::PlayingDryThroughWet,
+                LoopMode::RecordingDryIntoWet,
+                LoopMode::Stopped,
+            ],
             kind: match composite.kind {
                 CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
                 CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,

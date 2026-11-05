@@ -1586,6 +1586,7 @@ pub struct CompositeDetailsState {
     pub timing: Option<CompositeTimingState>,
     pub execution: CompositeExecutionState,
     pub kind: CompositeKind,
+    pub available_event_modes: Vec<LoopMode>,
     pub cycle_length_frames: u64,
     pub timeline_length_frames: u64,
     pub played_frame: Option<u64>,

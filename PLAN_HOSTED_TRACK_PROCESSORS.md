@@ -846,6 +846,16 @@ service tests and both formerly failing cases under actual detailed tracing pass
 changed application and host products build with warnings denied. Full platform
 and browser CI remains the final gate.
 
+Editor admission reconciliation: client composite details now publish the core's
+Play/Record/Stop event-mode subset independently of primitive dry/wet capability.
+The actual menu respects that subset, so enabling hosted dry/wet tracks cannot
+enable P17 composite actions. The retained reference projection keeps its broader
+mode set. The menu regression fails with the former admission condition and passes
+afterward, including enabled Record and reference dry-mode controls. All seventeen
+composite widget cases and the real-service details projection pass; changed client,
+UI, product and reference packages build with warnings denied. This UI-local
+projection change does not alter the wire versions or execute deferred modes.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or
