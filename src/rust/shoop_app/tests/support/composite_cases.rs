@@ -1632,7 +1632,14 @@ fn public_lua_composes_nested_plans_in_one_turn_and_editor_intents_keep_confirme
         },
     ] {
         runtime.dispatch(intent).unwrap();
-        pump_runtime(&mut f.service, &mut runtime, &port, 8);
+        for _ in 0..100 {
+            pump_runtime(&mut f.service, &mut runtime, &port, 1);
+            if !runtime.has_pending_commands() && !runtime.client().has_unfinished_operations() {
+                break;
+            }
+        }
+        assert!(!runtime.has_pending_commands());
+        assert!(!runtime.client().has_unfinished_operations());
     }
     let edited = runtime
         .snapshot()

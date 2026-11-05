@@ -104,6 +104,50 @@ FX remain separately refused. P06/P07 remain open until evidence is linked.
 
 ## Validation evidence
 
+### Integrated validation at `649d1fbe`
+
+Candidate: `649d1fbe3ea71c63fe32e13b3d6ad49037080f28`, reconciled against
+`feat/backend-replacement` at `40db766d95b62eeb5de5c830e012f422fc9517ca` in
+[PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946). Engine/application/
+worklet configuration versions are 21/29/6. Automated review reports no major
+issues for this candidate
+([receipt](https://github.com/SanderVocke/shoopdaloop/pull/946#issuecomment-6659058625));
+the applicable owner-admission finding is fixed and resolved. The following
+checkpoint CI gates expose the two service gaps addressed below; P06 and final
+plan acceptance remain open pending a complete passing integration run.
+
+| Gate | Evidence |
+| --- | --- |
+| Native Linux/macOS/Windows debug/release, coverage, packaged carriers, Node/Chrome Wasm, hosted/self-contained Chromium, Firefox, JACK, bare-metal and policy checks | [Build and Test 42034699325](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699325) |
+| Independent neither/FX/synth/both builds and startup, excluded assets/imports, real Node DSP, selected Miri, startup/memory/callback measurements | [Hosted processors 42034699772](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699772) |
+| Firmware, board profiles, USB and network deployment | [Firmware 42034699431](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699431) |
+| Static analysis and documentation | [CodeQL 42034699471](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699471), [Docs 42034699652](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699652) |
+
+Focused local reconciliation validation uses real DSP, guarded engine calls,
+public service archives and packaged native/browser paths. Counts and the exact
+admission, latency and profiling regressions appear below. Broad suites and the
+platform matrix run in CI rather than being repeated locally. Historical entries
+retain their original source pins and superseded intermediate status.
+
+The [current measurement artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699772/artifacts/13417757962)
+records PR merge checkout `09e41a9a2bb105f4504f808d8eab82db1b39633f`. Its tree
+`8bcf5145d1b74e891c127df42bd9f2c0b3334c0e` equals the candidate's tree. The Ubuntu
+runner exposes four logical CPUs on Intel Xeon 6975P-C under KVM, using rustc
+1.99.1 / LLVM 23.1.1. At 48 kHz/Q128, M=1/S=0, 256 callbacks and 1,024
+equal-offset MIDI events per callback, eight-channel/all-stage FX observes
+508/545 microseconds mean/peak; stereo/256-voice synth observes 2,251/2,689
+microseconds. The block period is 2,666.67 microseconds: this run again provides
+no saturated-synth deadline margin. Shared-VM wall-clock observations and the
+browser smoke's zero-xrun workload do not establish a maximum-load guarantee.
+Earlier higher peaks remain documented below.
+
+Widths 1/2/8 prepare in 15/190/260 ms. Requested allocation peaks are
+8,799,344/84,578,472/137,316,376 bytes, below complete reservations of
+54,532,576/198,793,088/346,273,664 bytes; retained storage is
+8,799,344/84,570,312/137,308,216 bytes. Hardware xruns, distributed event offsets
+and simultaneously saturated instances are not measured by this synthetic fixture.
+Selected Miri covers portable ownership/lifecycle logic, not third-party DSP.
+
 Baseline on `2e19210b` exposed duplicate test global allocators in the engine;
 the test crate now shares one allocator. With that fixture correction,
 `cargo test --locked -p rt_buffered -p shoop_rt_engine -p shoop_app_reference --lib`
@@ -930,3 +974,14 @@ processor-owned program before preparation. The guarded direct-protocol regressi
 demonstrates acceptance before the fix and refusal afterward, unchanged playing
 audio, candidate cancellation and successful preparation of a valid Direct retry.
 All eleven replacement tests pass; warning-denying engine/host builds pass.
+
+Broad native CI on this checkpoint passes 3,004 of 3,006 tests; the two remaining
+failures are composite service integration cases. Mixed raw transport must still
+return Unsupported for deferred composite dry/wet modes when primitive capability
+is enabled; that preflight diagnostic is restored before any target is changed.
+The detailed local Perfetto trace shows the editor fixture submitting version 7
+while version 6 is still pending, causing legitimate supersession. The serial-edit
+fixture now waits for queued/submitted/pending client operations to finish with a
+finite limit. Its event identity, geometry, mode and empty-notification assertions
+remain unchanged. All 24 composite service cases and both affected cases under
+actual detailed capture pass; warning-denying app/host builds and test policy pass.

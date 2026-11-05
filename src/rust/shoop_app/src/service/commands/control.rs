@@ -17,6 +17,13 @@ impl Service {
                     self.loop_entry(*id)?;
                     self.require_restored_composite(*id, mode)?;
                     if self.composites.contains_key(id) {
+                        if matches!(
+                            mode,
+                            BackendLoopMode::PlayingDryThroughWet
+                                | BackendLoopMode::RecordingDryIntoWet
+                        ) {
+                            return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+                        }
                         if mode != BackendLoopMode::Stopped && mode != BackendLoopMode::Playing {
                             return Err(CommandError::invalid(
                                 "a composite's outer mode is Play or Stop",

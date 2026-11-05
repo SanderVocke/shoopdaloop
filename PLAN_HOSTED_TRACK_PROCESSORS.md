@@ -5,15 +5,14 @@
 Implementation started on `feat/hosted-track-processors` from `2e19210b`. Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
-Current progress: Stages 1–3 are complete. Stages 4–7 are implemented, with their
-final acceptance gates still open. Stage 8 is validating the delivered integration:
-the dedicated hosted-processor matrix and firmware workflow are green at
-`2e6ac94d`. Broad native CI isolated a three-poll topology latency regression;
-the focused fix passes without changing its latency assertions. P03 reconciliation
-with target `40db766d` passes the focused DSP/composite, persistence, packaged
-native and Chromium checks below; final integrated CI and review remain pending.
-Do not interpret
-implemented checkboxes as a claim that all required delivery gates have passed.
+Current progress: Stages 1–4 are complete. Stages 5–7 are implemented, with their
+final acceptance gates still open. Stage 8 validates the P03 reconciliation with
+target `40db766d`. The dedicated processor matrix, Miri, JACK, shared media and
+all platform process inspections pass at `649d1fbe`; automated review reports no
+major issues after the RT owner-admission fix. Broad CI passes 3,004 of 3,006
+native tests and finds two composite-service reconciliation gaps. Targeted fixes
+below pass all 24 composite-service cases; final integrated CI must run again.
+Implemented checkboxes do not claim that all delivery gates have passed.
 
 - Start from `feat/fixed-quantum-runtime`, inspected at `2e19210b`.
 - Reference: fetched `master` at `92079fb6`, plus executable behavior retained in
@@ -835,6 +834,17 @@ composite. A heap-guarded direct-protocol regression fails before the fix, then
 passes with uninterrupted old audio and a subsequent valid Direct candidate.
 All eleven replacement tests pass with the existing assertions; changed engine
 and host products build with warnings denied. P17 scope stays deferred.
+
+Broad CI at `649d1fbe` isolates two composite service failures. Raw mixed transport
+now returns Unsupported for deferred composite dry/wet modes even though primitive
+dry/wet capability is available, preserving the entire selection. Perfetto shows
+the editor fixture's fixed eight ticks can submit a new version before the prior
+one confirms under bounded callback pacing. The fixture now waits on actual
+queued/submitted/pending client completion with a finite limit; original event
+identity, geometry, mode and empty-error assertions remain. All 24 composite
+service tests and both formerly failing cases under actual detailed tracing pass;
+changed application and host products build with warnings denied. Full platform
+and browser CI remains the final gate.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 
