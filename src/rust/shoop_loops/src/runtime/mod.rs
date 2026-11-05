@@ -132,6 +132,14 @@ pub enum Operation {
         start: Frame,
         end: Frame,
     },
+    /// Resolve a raw lookback window at a completed input cut; publication and
+    /// musical target/solo admission remain separate.
+    HistoryWindow {
+        source: HistoryId,
+        window: crate::grab::WindowSpec,
+        sync_frames: u64,
+        sync_position: u64,
+    },
     CandidateBegin {
         target: LoopId,
         take: SharedTake,
@@ -353,6 +361,12 @@ pub enum Reply {
     Timing(Cut),
     History(HistoryStatus),
     Grabbed(SharedTake),
+    WindowGrabbed {
+        take: SharedTake,
+        position: u64,
+        padding: u64,
+        frame: Frame,
+    },
     Candidate {
         id: CandidateId,
         status: CandidateStatus,

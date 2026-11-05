@@ -6,8 +6,8 @@ Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
 `feat/backend-replacement`, with merged parent `0ef7581b` and refreshed target
 `a068ce72` reconciled on 2026-11-05. The latest
-implementation connects continuous MIDI sources/writers to ordinary resource and
-snapshot IDs, including immutable loaded bases and indexed serialized reads.
+implementation connects pooled indexed MIDI capture to the coordinator, bounds
+history bytes and adds paired padded lookback windows through ordinary resources.
 
 | Stage | Current status |
 | --- | --- |
@@ -303,6 +303,24 @@ Five indexed resource tests, ten neighboring semantic index tests and the mixed
 coordinator scenario pass with warnings denied, as do affected builds, formatting,
 tracing and test-attribute checks. Global admission reservations, normal host
 preparation and application delivery are not yet established by these results.
+
+Raw musical lookback windows can now be resolved at a current completed
+coordinator cut and returned as paired ordinary resources with explicit requested
+duration, destination position and padding. Audio represents the empty tail
+without allocating/copying silence; its sparse reads, later growth and wrapping
+edits preserve declared zeros and old exports. Indexed MIDI uses its clipped
+window and retained boundary state over the same duration. Empty unsynced prefixes
+are supported. Unknown/gapped source ranges and noncurrent coverage are refused,
+not padded. The checkpoint fixture path retains its explicit padding refusal.
+A guarded resource oracle checks silence, edits, continuation and gap refusal;
+an engine oracle checks a short mixed history against exact input packets/samples,
+excludes later source data from padding, adopts/exports ordinary media and checks
+empty prefix acquisition and cleanup. This raw helper does not publish targets,
+settle service musical policy or enable an application capability; F4 still needs
+RT-authoritative batch intent and owned completion/publication resources.
+All 59 native resource tests and 23 engine shared-media tests pass with warnings
+denied (one CI release measurement intentionally ignored), along with the affected
+builds, formatting, tracing, test-attribute and parity checks.
 
 ## Findings that determine the work
 

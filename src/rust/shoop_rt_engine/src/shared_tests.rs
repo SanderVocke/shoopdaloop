@@ -2182,3 +2182,105 @@ fn pooled_indexed_midi_histories_drive_mixed_grabs_ordinary_playback_and_reclaim
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, 12288);
 }
+
+#[shoop_test]
+fn indexed_grab_windows_pad_requested_duration_without_copying_hidden_future_media() {
+    let q = 32;
+    let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    let at = h.aligned_future(256);
+    let sequence = h.send(
+        at,
+        Operation::HistoryWindow {
+            source: status.id,
+            window: shoop_loops::grab::WindowSpec {
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                ..Default::default()
+            },
+            sync_frames: 4096,
+            sync_position: 32,
+        },
+    );
+    let Reply::WindowGrabbed {
+        take,
+        position,
+        padding,
+        frame,
+    } = h.result(sequence)
+    else {
+        panic!("padded window")
+    };
+    assert_eq!(
+        (take.frames, position, padding, frame),
+        (4096, 32, 4096 - 31 * 32, Frame(at))
+    );
+    let start = at - 32 * q as u64;
+    let end = at - q as u64;
+    let audio = h.snapshot(take.audio.unwrap());
+    let samples = h.read(audio);
+    assert_eq!(samples.len(), 4096 * 8);
+    for (local, bytes) in samples.chunks_exact(8).enumerate() {
+        let value = if local < 31 * q && start + local as u64 >= h.stimulus.unwrap() {
+            (start + local as u64 + 1) as f32
+        } else {
+            0.
+        };
+        assert_eq!(f32::from_le_bytes(bytes[..4].try_into().unwrap()), value);
+        assert_eq!(
+            f32::from_le_bytes(bytes[4..].try_into().unwrap()),
+            -2. * value
+        );
+    }
+    let midi = h.snapshot(take.midi.unwrap());
+    let actual = h.read(midi);
+    let mut expected = Vec::new();
+    for frame in start.max(h.stimulus.unwrap())..end {
+        for packet in packets(frame, q) {
+            let mut record = vec![0; packet.len() + 12];
+            resource::encode_midi_record(frame - start, &packet, &mut record).unwrap();
+            expected.extend_from_slice(&record);
+        }
+    }
+    assert_eq!(actual, expected);
+    h.adopt(0, take);
+    h.run_to(h.aligned_future(32 * q as u64));
+    assert_eq!(h.read(audio), samples);
+    assert_eq!(h.read(midi), expected);
+    let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    let reply = h.op(Operation::HistoryWindow {
+        source: status.id,
+        window: shoop_loops::grab::WindowSpec {
+            continue_recording: true,
+            ..Default::default()
+        },
+        sync_frames: 4096,
+        sync_position: 0,
+    });
+    let Reply::WindowGrabbed {
+        take: empty,
+        padding: 0,
+        ..
+    } = reply
+    else {
+        panic!("empty prefix")
+    };
+    assert_eq!(empty.frames, 0);
+    let empty_audio = h.snapshot(empty.audio.unwrap());
+    let empty_midi = h.snapshot(empty.midi.unwrap());
+    assert_eq!(
+        (empty_audio.description.bytes, empty_midi.description.bytes),
+        (0, 0)
+    );
+    for snapshot in [audio, midi, empty_audio, empty_midi] {
+        h.resource(ResourceRequest::ReleaseSnapshot {
+            snapshot: snapshot.id,
+        });
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}

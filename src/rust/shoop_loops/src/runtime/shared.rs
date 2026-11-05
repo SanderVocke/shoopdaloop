@@ -688,6 +688,66 @@ impl Shared {
         self.track(take);
         Ok(take)
     }
+    fn grab_window(
+        &mut self,
+        id: HistoryId,
+        window: &crate::grab::Window,
+        q: usize,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<SharedTake, Error> {
+        let status = self.status(id.source, id.graph, io)?;
+        if status.id != id {
+            return Err(Error::InvalidId);
+        }
+        if let Some(error) = status.failure {
+            return Err(error);
+        }
+        if window.source.start < status.start
+            || window.source.end > status.end
+            || window.source.start > window.source.end
+            || window.frames % q as u64 != 0
+            || window.go_to_frame % q as u64 != 0
+        {
+            return Err(Error::InvalidFrame);
+        }
+        let h = self.source(id.source)?;
+        if h.midi.is_some()
+            && (window.trailing_empty_frames != 0 || window.source.start == window.source.end)
+        {
+            return Err(Error::InvalidState);
+        }
+        let audio = h
+            .audio_source
+            .map(|source| io.grab_audio_window(source, window.source.clone(), window.frames))
+            .transpose()?;
+        let midi = if let Some(source) = h.indexed_midi {
+            io.grab_indexed_midi(source, window.source.clone(), window.frames)
+                .map(Some)
+        } else {
+            h.midi
+                .map(|store| io.grab_midi(store, window.source.clone()))
+                .transpose()
+        };
+        let midi = match midi {
+            Ok(midi) => midi,
+            Err(error) => {
+                if let Some(audio) = audio {
+                    io.remove(audio)?;
+                }
+                return Err(error);
+            }
+        };
+        let take = SharedTake {
+            frames: window.frames,
+            audio,
+            midi,
+            audio_store: h.audio,
+            midi_store: h.midi,
+            indexed_midi_store: h.indexed_midi.map(|source| source.store()),
+        };
+        self.track(take);
+        Ok(take)
+    }
     pub fn candidate(&self, id: CandidateId) -> Result<Candidate, Error> {
         if self.closed || id.scope != self.scope {
             return Err(Error::InvalidId);
@@ -1159,6 +1219,30 @@ impl LoopPlanner {
                         .ok_or(Error::InvalidState)?
                         .grab(source, start, end, q, io)?,
                 ))
+            }
+            Operation::HistoryWindow {
+                source,
+                window,
+                sync_frames,
+                sync_position,
+            } => {
+                if source.graph != graph {
+                    return Err(Error::StaleEpoch.into());
+                }
+                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                let status = shared.status(source.source, graph, io)?;
+                if status.end != frame {
+                    return Err(Error::Busy.into());
+                }
+                let window =
+                    window.resolve(status.start..status.end, sync_frames, sync_position)?;
+                let take = shared.grab_window(source, &window, q, io)?;
+                Ok(Reply::WindowGrabbed {
+                    take,
+                    position: window.go_to_frame,
+                    padding: window.trailing_empty_frames,
+                    frame: status.end,
+                })
             }
             Operation::CandidateBegin { target, take } => {
                 let row = self.row(target)?;

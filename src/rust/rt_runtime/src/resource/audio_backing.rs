@@ -180,6 +180,22 @@ impl ResourceStore {
         })
     }
 
+    pub fn grab_audio_window(
+        &mut self,
+        source: AudioHistoryId,
+        range: Range<Frame>,
+        frames: u64,
+    ) -> Result<ResourceId, Error> {
+        self.audio_resource_credit()?;
+        let take = self.with_audio(source.store, |resources, audio| {
+            audio.grab_history_window(&mut resources.render_io(), source.history, range, frames)
+        })?;
+        self.audio_resource(Take {
+            store: source.store,
+            take,
+        })
+    }
+
     /// Loaded PCM remains an immutable base. Only edited pages are copied. A
     /// shared snapshot must come from this prepared audio store.
     pub fn fork_audio(
@@ -474,6 +490,15 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn grab_audio_window(
+        &mut self,
+        source: AudioHistoryId,
+        range: Range<Frame>,
+        frames: u64,
+    ) -> Result<ResourceId, Error> {
+        self.store.grab_audio_window(source, range, frames)
+    }
+
     pub fn audio_source_coverage(&self, id: AudioHistoryId) -> Result<Range<Frame>, Error> {
         self.store.audio_source_coverage(id)
     }

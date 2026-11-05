@@ -660,3 +660,82 @@ fn wrapped_prefix_grows_beyond_history_then_replaces_across_both_storage_boundar
         assert_eq!(store.usage(), baseline);
     });
 }
+
+#[shoop_test]
+fn declared_padding_is_silent_shared_editable_and_cannot_cover_a_source_gap() {
+    let mut store = resources();
+    let baseline = store.usage();
+    let pool = audio(&mut store, 2, 8);
+    let source = store.audio_history(pool, 0).unwrap();
+    let input = [1., -1., 2., -2., 3., -3.];
+    let live = [9.; 16];
+    assert_no_heap(|| {
+        store.begin_callback();
+        store
+            .render_io()
+            .append_audio_source(source, Frame(0), &input)
+            .unwrap();
+        let take = store
+            .grab_audio_window(source, Frame(0)..Frame(3), 12)
+            .unwrap();
+        let old = store.snapshot(take, Frame(3)).unwrap();
+        let mut expected = [0; 96];
+        for sample in 0..6 {
+            expected[sample * 4..sample * 4 + 4].copy_from_slice(&input[sample].to_le_bytes());
+        }
+        assert_eq!(read::<96>(&mut store, old), expected);
+        let empty = store
+            .grab_audio_window(source, Frame(3)..Frame(3), 12)
+            .unwrap();
+        let empty_snapshot = store.snapshot(empty, Frame(3)).unwrap();
+        assert_eq!(read::<96>(&mut store, empty_snapshot), [0; 96]);
+        store.prepare_audio_growth(take, Revision(1), 20).unwrap();
+        let revision = store
+            .render_io()
+            .append_audio_take(take, Revision(1), &live)
+            .unwrap();
+        store.finish_audio_growth(take, revision).unwrap();
+        let grown = store.snapshot(take, Frame(11)).unwrap();
+        let expected_grown: [u8; 160] = core::array::from_fn(|i| {
+            if i < 96 {
+                expected[i]
+            } else {
+                9f32.to_le_bytes()[i % 4]
+            }
+        });
+        assert_eq!(read::<160>(&mut store, grown), expected_grown);
+        let revision = store
+            .render_io()
+            .replace_audio(take, revision, 19, &[7.; 16])
+            .unwrap();
+        let edited = store.snapshot(take, Frame(19)).unwrap();
+        let mut expected_edited = expected_grown;
+        for frame in (0..7).chain(core::iter::once(19)) {
+            for channel in 0..2 {
+                expected_edited[(frame * 2 + channel) * 4..(frame * 2 + channel + 1) * 4]
+                    .copy_from_slice(&7f32.to_le_bytes());
+            }
+        }
+        assert_eq!(store.revision(take), Ok(revision));
+        assert_eq!(read::<160>(&mut store, edited), expected_edited);
+        assert_eq!(read::<160>(&mut store, grown), expected_grown);
+        assert_eq!(read::<96>(&mut store, old), expected);
+        store
+            .render_io()
+            .audio_source_discontinuity(source, Frame(16))
+            .unwrap();
+        assert_eq!(
+            store.grab_audio_window(source, Frame(3)..Frame(3), 12),
+            Err(Error::InvalidFrame)
+        );
+        for snapshot in [old, grown, edited, empty_snapshot] {
+            store.release_snapshot(snapshot.id).unwrap();
+        }
+        store.remove(take).unwrap();
+        store.remove(empty).unwrap();
+        drain(&mut store);
+        store.cleanup_audio_store(pool).unwrap();
+        drain(&mut store);
+        assert_eq!(store.usage(), baseline);
+    });
+}

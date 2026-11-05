@@ -125,6 +125,7 @@ struct View {
     mapping: Mapping,
     frames: usize,
     growing: Option<usize>,
+    zero_from: Option<usize>,
     revision: Revision,
     writable: bool,
     retiring: bool,
@@ -484,6 +485,7 @@ impl AudioStore {
                 },
                 frames,
                 growing: None,
+                zero_from: None,
                 revision: Revision(0),
                 writable: true,
                 retiring: false,
@@ -492,6 +494,51 @@ impl AudioStore {
             },
             true,
         )))
+    }
+
+    pub fn grab_history_window(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        id: HistoryId,
+        range: Range<Frame>,
+        frames: u64,
+    ) -> Result<TakeId, Error> {
+        self.check(io.store)?;
+        let coverage = self.history_coverage(id)?;
+        if range.start < coverage.start
+            || range.end > coverage.end
+            || range.start > range.end
+            || range.end.0 - range.start.0 > frames
+        {
+            return Err(Error::InvalidFrame);
+        }
+        let take = if range.start == range.end {
+            self.empty_take()?
+        } else {
+            self.grab_history(io, id, range)?
+        };
+        if let Err(error) = self.pad_take(take, frames) {
+            self.release_take(take)?;
+            return Err(error);
+        }
+        Ok(take)
+    }
+
+    /// Extend an owned view with declared empty media, never with unknown source history.
+    pub fn pad_take(&mut self, take: TakeId, frames: u64) -> Result<(), Error> {
+        let old = self.view(take.0)?;
+        if frames == old.frames as u64 {
+            return Ok(());
+        }
+        let revision = old.revision.checked_next()?;
+        self.reserve_growth(take, frames)?;
+        let mut view = self.view(take.0)?;
+        view.frames = frames as usize;
+        view.growing = None;
+        view.zero_from = old.zero_from.or(Some(old.frames));
+        view.revision = revision;
+        self.views[take.0.slot as usize].value = Some(view);
+        Ok(())
     }
 
     pub fn fork(&mut self, take: TakeId) -> Result<TakeId, Error> {
@@ -563,6 +610,7 @@ impl AudioStore {
                 },
                 frames,
                 growing: None,
+                zero_from: None,
                 revision: Revision(0),
                 writable: true,
                 retiring: false,
@@ -911,6 +959,7 @@ impl AudioStore {
                 },
                 frames: 0,
                 growing: None,
+                zero_from: None,
                 revision: Revision(0),
                 writable: true,
                 retiring: false,
@@ -1069,6 +1118,11 @@ impl AudioStore {
             let physical = view.mapping.physical(byte / frame_bytes);
             let start = physical % self.page_frames * frame_bytes + byte % frame_bytes;
             let count = (output.len() - copied)
+                .min(
+                    view.zero_from
+                        .filter(|&frame| byte < frame * frame_bytes)
+                        .map_or(usize::MAX, |frame| frame * frame_bytes - byte),
+                )
                 .min(self.page_frames * frame_bytes - start)
                 .min(
                     view.mapping
@@ -1078,8 +1132,13 @@ impl AudioStore {
                 );
             if let Some(lease) = self.find(view.root, physical / self.page_frames) {
                 self.pages.bytes(store, lease)?;
-            } else if base.is_none() {
-                return Err(Error::Incomplete);
+            } else if !view
+                .zero_from
+                .is_some_and(|frame| byte >= frame * frame_bytes)
+            {
+                if base.is_none_or(|base| byte + count > base.snapshot.description.bytes) {
+                    return Err(Error::Incomplete);
+                }
             }
             copied += count;
             spans += 1;
@@ -1104,6 +1163,11 @@ impl AudioStore {
             let physical = view.mapping.physical(byte / frame_bytes);
             let start = physical % self.page_frames * frame_bytes + byte % frame_bytes;
             let count = (output.len() - copied)
+                .min(
+                    view.zero_from
+                        .filter(|&frame| byte < frame * frame_bytes)
+                        .map_or(usize::MAX, |frame| frame * frame_bytes - byte),
+                )
                 .min(self.page_frames * frame_bytes - start)
                 .min(
                     view.mapping
@@ -1115,6 +1179,11 @@ impl AudioStore {
             if let Some(lease) = self.find(view.root, physical / self.page_frames) {
                 let bytes = self.pages.bytes(store, lease).expect("validated source");
                 destination.copy_from_slice(&bytes[start..start + count]);
+            } else if view
+                .zero_from
+                .is_some_and(|frame| byte >= frame * frame_bytes)
+            {
+                destination.fill(0);
             } else {
                 store.copy_linear_span(
                     base.expect("validated base").index,

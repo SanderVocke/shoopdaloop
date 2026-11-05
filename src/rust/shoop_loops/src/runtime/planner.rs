@@ -769,6 +769,7 @@ impl LoopPlanner {
                 operation,
                 Operation::HistoryStatus { .. }
                     | Operation::HistoryGrab { .. }
+                    | Operation::HistoryWindow { .. }
                     | Operation::CandidateBegin { .. }
                     | Operation::CandidateAudio { .. }
                     | Operation::CandidateMidi { .. }
@@ -1399,6 +1400,7 @@ impl LoopPlanner {
                 Operation::NodePairSourceWindows { .. }
                 | Operation::HistoryStatus { .. }
                 | Operation::HistoryGrab { .. }
+                | Operation::HistoryWindow { .. }
                 | Operation::CandidateBegin { .. }
                 | Operation::CandidateAudio { .. }
                 | Operation::CandidateMidi { .. }

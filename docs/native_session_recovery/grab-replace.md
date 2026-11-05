@@ -157,6 +157,15 @@ takes, immutable exports, capacity refusal and later fixed-period edits use the
 ordinary resource boundary. This remains a kernel/resource path; musical settlement,
 loop mode/output behavior and normal host/application integration are not enabled.
 
+Raw `HistoryWindow` acquisition now resolves a supplied window specification
+against current completed coverage and returns its duration, destination position
+and explicit padding with paired resources. Sparse audio padding is declared
+empty media and remains editable/extendable; it never authorizes a source gap.
+Indexed MIDI retains only the requested packet interval and its boundary state.
+This is a raw resource/coordinator helper. The public batch operation still must
+carry musical intent and settle sync/target phase from authoritative RT state,
+preflight every target/solo peer and own final publication/completion resources.
+
 ## Validation status
 
 No application success is claimed yet. CI will run the new arithmetic/reference
