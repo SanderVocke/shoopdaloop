@@ -1,6 +1,6 @@
 # Interactive runtime profiling graph implementation plan
 
-Status: implementation and local validation complete; final CI delivery gate pending.
+Status: completed. Implementation, local validation and required CI delivery checks pass.
 
 Target branch: `feat/runtime-profiling-graph`, targeting `feat/fixed-quantum-runtime` after basic profiling PR #938 was merged.
 Investigated baseline: `ac4748a4` (2026-11-04).
@@ -337,7 +337,7 @@ Depends on Stages 1–5; this is the final implementation/validation stage.
 - [x] Commit meaningful milestones, push `feat/runtime-profiling-graph` and update its
   dedicated PR against `feat/fixed-quantum-runtime` with final graph scope and evidence.
   Basic profiling PR #938 is already merged. Do not merge this graph PR.
-- [ ] Work through CI failures until required checks are green. Check for automated
+- [x] Work through CI failures until required checks are green. Check for automated
   review as it arrives and repeatedly address applicable feedback through reviewer
   approval; explicitly record an unavailable reviewer. Re-run affected checks after
   fixes, keep this plan current and leave the final PR concrete and reviewable.
@@ -570,9 +570,15 @@ summaries and 14,221,312 raw bytes; 128-node pages have 134.132 µs median query
 
 ### External delivery gate
 
-Required current-head CI remains pending. Live checks:
+Required CI passed for implementation/report commit `d42037273d9be653252ea8b232bc3981582da374`.
+This completion update changes documentation only. Live checks:
 <https://github.com/SanderVocke/shoopdaloop/pull/939/checks>.
 Review and inline-comment queries currently return no reviewers or feedback;
 reviewer approval is unavailable and is not claimed. The Codecov report is
-coverage information, not review approval. Keep the remaining CI checklist item
-open until required checks are green, then record final delivery state.
+coverage information, not review approval. No review approval is claimed without an available reviewer.
+
+
+CI delivery evidence:
+- CodeQL: success — <https://github.com/SanderVocke/shoopdaloop/actions/runs/41937920144>.
+- Build and Test ShoopDaLoop: success — <https://github.com/SanderVocke/shoopdaloop/actions/runs/41937959912>.
+- Docs: success — <https://github.com/SanderVocke/shoopdaloop/actions/runs/41937920230>.
