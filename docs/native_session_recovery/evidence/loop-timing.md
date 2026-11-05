@@ -1,9 +1,30 @@
 # P12 loop timing acceptance evidence
 
 Status: COMPLETE. All nine acceptance criteria are met. Implementation
-branch: `feat/p12-loop-timing`, reconciled target
-`a192b0ce77325bc8bb55b7b749e8d68b324f0a43`. PR target is
+branch: `feat/p12-loop-timing`. Initial acceptance used target
+`a192b0ce77325bc8bb55b7b749e8d68b324f0a43`; the follow-up reconciliation below
+incorporates profiling graph target `eb4287a5`. PR target is
 `feat/fixed-quantum-runtime`. The [plan](../../../PLAN_P12.md) defines completion.
+
+## Profiling graph target integration
+
+The follow-up merge incorporates target `eb4287a5` after the initial acceptance
+and documentation closure `a2f82af0`. Both P12 timing command handlers/validation
+and profiling inspection are retained. Combined app/RT protocols **25/11** reject
+the incompatible parent layouts; timing request tags remain separate from
+profiling graph messages. Canonical app fixtures and the worklet handshake agree.
+
+Reconciliation validation passes: **2,802 native tests** (seven intentional
+skips), **2,322 Node passes across 35 packages** (two opt-in failure canaries skipped), both native transport
+probes, the worklet/codec contracts, hosted/preview/isolated browser workflows with
+zero xruns, and Linux/Windows/macOS/Wasm dependency-boundary audits. Existing Miri
+evidence covers the unchanged loop/runtime core; no new Miri run is claimed.
+
+The inventory's `target_reconciliations` records the merge parents, exact source
+index hash, new logs and built artifacts. Earlier reports below retain their
+original source and protocol versions. The PR's
+[current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks) verify
+the latest integration head.
 
 ## Reference behavior matrix
 
@@ -28,7 +49,7 @@ legacy/native fixtures and the independent legacy `shoop_engine`.
 ## Acceptance mapping
 
 The nine criteria in [PLAN_P12.md](../../../PLAN_P12.md) are unchanged.
-Implementation source is `5fd75d5c` (reconciled target `a192b0ce`). Runtime code
+Initial implementation source is `5fd75d5c` (reconciled target `a192b0ce`). Runtime code
 is unchanged since `1e2faf74`; the final correction removes misplaced reload
 assertions from preview-only browser setup. The validation inventory records
 each report's actual source and hashes.
@@ -65,7 +86,7 @@ lock, second transport clock or media-sized edit upload is introduced.
 The updated target imports only `shoop_profiling.now` in its raw worklet for
 elapsed-time profiling. Disabled profiling makes no profiling-clock reads. That
 measurement clock does not advance musical time. The built worklet contract
-verifies the single allowed import, clock/toggle/capture behavior and protocol 9.
+verifies the single allowed import, clock/toggle/capture behavior and negotiated protocol.
 Both browser workflows also preserve the target's profiling behavior.
 
 The reconciled target includes shared media, buffered processing, hot-path
@@ -75,7 +96,7 @@ checkpoint flags and bounded prefix replay instead of full-state stack copies.
 Prepared shared candidates fence the timing revision. P04/P05 remain OPEN at the
 application boundary despite the target's internal shared-media foundation.
 
-## Validation results
+## Validation results at the initial acceptance checkpoint
 
 - Final combined native reference/production suite after target reconciliation
   and the upload-window refinement: **2,778 passed**, seven intentionally skipped.
@@ -161,7 +182,8 @@ The [implementation platform/browser/coverage matrix](https://github.com/SanderV
 and [docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41947606481)
 pass on production source `5fd75d5c`. The PR's
 [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
-verify the final documentation head, which changes no production code.
+verify the latest integration head. The initial documentation closure `a2f82af0`
+also passed all required checks and changed no production code.
 Reviews and inline feedback were inspected; no automated code review was
 provided. The informational Codecov report was reviewed: patch coverage is
 90.97% (configured floor 80%), with 89.85% total native coverage. Packaged CLI

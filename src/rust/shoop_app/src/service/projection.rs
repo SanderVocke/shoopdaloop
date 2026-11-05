@@ -54,7 +54,44 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
-            profiling: self.observed.profiling.clone(),
+            profiling: {
+                let mut profiling = self.observed.profiling.clone();
+                profiling.groups = profiling
+                    .groups
+                    .iter()
+                    .cloned()
+                    .map(|mut group| {
+                        let name = match group.kind {
+                            1 => self
+                                .tracks
+                                .values()
+                                .find(|t| t.backend.raw() == group.entity)
+                                .map(|t| t.view.name.clone()),
+                            2 => self
+                                .loops
+                                .values()
+                                .find(|l| l.backend.raw() == group.entity)
+                                .and_then(|l| {
+                                    self.tracks
+                                        .get(&l.track)
+                                        .map(|t| format!("{} / {}", t.view.name, l.view.name))
+                                }),
+                            3 => self
+                                .buses
+                                .values()
+                                .find(|b| b.backend.raw() == group.entity)
+                                .map(|b| b.view.name.clone()),
+                            _ => None,
+                        };
+                        if let Some(name) = name {
+                            group.name = name.chars().take(512).collect();
+                        }
+                        group
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
+                profiling
+            },
             preview: {
                 let mut state = self.preview.clone();
                 state.master_preview_available = self.backend.supports_audio_preview()

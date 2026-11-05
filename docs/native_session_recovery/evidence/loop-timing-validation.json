@@ -1,5 +1,5 @@
 {
-  "status": "COMPLETE; final documentation head is verified by current PR checks",
+  "status": "COMPLETE; initial acceptance plus subsequent target integration evidence; latest PR checks verify the current head",
   "production_source": "5fd75d5c92990871ac2a7ebd42b65bede89d60df",
   "runtime_source": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
   "final_correction": "Browser acceptance only: retain timing reload assertions at Loaded, remove duplicate from preview-only NewSession.",
@@ -393,5 +393,354 @@
     ]
   },
   "immutable_plan_sha256": "543bcd78f2f47f75273b010b4834879d7039f022c42d42aaa1af79a303e27ea9",
-  "provenance": "Reports identify the actual current code checkpoint and reconciled target. Runtime unchanged since 1e2faf74; 5fd75d5c corrects browser acceptance preview setup only. Earlier suite logs retain their actual source checkpoints. Earlier checkpoint reports remain in the local work directory. Report hashes preserve local evidence; reproducible platform artifacts are published by the PR workflows."
+  "provenance": "Initial acceptance checkpoint provenance: Reports identify the actual current code checkpoint and reconciled target. Runtime unchanged since 1e2faf74; 5fd75d5c corrects browser acceptance preview setup only. Earlier suite logs retain their actual source checkpoints. Earlier checkpoint reports remain in the local work directory. Report hashes preserve local evidence; reproducible platform artifacts are published by the PR workflows.",
+  "target_reconciliations": [
+    {
+      "target": "eb4287a57356f13388ba3f55f6b236abc0980e61",
+      "previous_accepted_head": "a2f82af0f87a680e626d613acf1a8ca69ecc131d",
+      "reason": "Reconcile the interactive profiling graph target while retaining P12 timing commands, admission and wire fixtures.",
+      "source_git_index_entries_sha256": "ddd73045071dbc897b2cbc3cbb145556fc246b7b1906ad42a1da029f0e906dd3",
+      "source_index_paths": [
+        "src/rust",
+        "third_party",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tests",
+        "scripts",
+        ".github"
+      ],
+      "protocols": {
+        "app": 25,
+        "rt": 11,
+        "worklet_imports": [
+          "shoop_profiling.now"
+        ]
+      },
+      "native": {
+        "passed": 2802,
+        "skipped": 7
+      },
+      "wasm_node": {
+        "passed": 2322,
+        "packages": [
+          {
+            "package": "rt_buffered",
+            "tests": 11,
+            "skipped": 0,
+            "xml_sha256": "37d952539c2c6349e3ab7599eb633961311bc2f160e0e47170d517c121b6c676",
+            "log_sha256": "97f64921080fd6f77f1ce021c462394665e89faf213c3897b34e5b083463364c"
+          },
+          {
+            "package": "rt_profiling",
+            "tests": 21,
+            "skipped": 0,
+            "xml_sha256": "23e80c65bf57977e132f5eab99b9487fa12dac78999e77875438bf0a3e2defb1",
+            "log_sha256": "bde9af1cfc6bc09e38086efb20cffe3e9531ba29adabfd8f009c859c20cd2e34"
+          },
+          {
+            "package": "rt_runtime",
+            "tests": 231,
+            "skipped": 0,
+            "xml_sha256": "abfd09ea5edf3424c92a4b5e7618ac7d3313866e57e076a052ed421de740c96c",
+            "log_sha256": "c322022228db5edc91a45734de02e9cf70b45bdf9bb7e1b922093ff9584f2ad0"
+          },
+          {
+            "package": "shoop_app",
+            "tests": 38,
+            "skipped": 0,
+            "xml_sha256": "6ae261ff24f0fc29a100882988804360d0cfcb7d8948586819ef61a93ad96a1b",
+            "log_sha256": "4fc265caafdae202ddc4e7d21e65e9b898432007e41aa78f6729a7733c98b792"
+          },
+          {
+            "package": "shoop_app_api",
+            "tests": 24,
+            "skipped": 0,
+            "xml_sha256": "0be13605bee6951cabf3006703aa0f37d463ae096c25108f8d501725ffa7c194",
+            "log_sha256": "3bee4963de325229021104824802daf00600be203181b82b8d9edaafc210326d"
+          },
+          {
+            "package": "shoop_app_client",
+            "tests": 12,
+            "skipped": 0,
+            "xml_sha256": "80dfa539a4e571140cd28fa6d4ab01d72249040c2389c303df5a954ec2550ca6",
+            "log_sha256": "91cb069a2782ca9d5b7b9e7a0c170e65b5bf2911f8147a6faa5ade8b22091b48"
+          },
+          {
+            "package": "shoop_app_protocol",
+            "tests": 17,
+            "skipped": 0,
+            "xml_sha256": "f0f2e5885727819c40e21aacb0470955e9f87d2e184376477e869b2ac271ba38",
+            "log_sha256": "25cbd7c085196f5a22599bcad166bf455889e7210bc1e4cce6019de9052e4c6c"
+          },
+          {
+            "package": "shoop_app_reference",
+            "tests": 116,
+            "skipped": 0,
+            "xml_sha256": "8469db99934277e3c9d9960bb1cb6a85795e18d599d07f380fad8c7b651f650b",
+            "log_sha256": "6e001b01569d0cf438e3ec9da974b5ffde73a0e74d54131746bb3123573bdb58"
+          },
+          {
+            "package": "shoop_audio_protocol",
+            "tests": 13,
+            "skipped": 0,
+            "xml_sha256": "cb95249f8f8e3288c2fb812f17b0c8f6b479ef1af35bff113a2fe5df92d5fcea",
+            "log_sha256": "c7f8faec65151d9a9245bf7717c066ce60d63d19c6ff6c30c23a6683e86bf911"
+          },
+          {
+            "package": "shoop_audio_worklet",
+            "tests": 25,
+            "skipped": 0,
+            "xml_sha256": "932e9c31d1e057b3bbf7b21098f68beed05b6f588ed6e60af489f917627023c7",
+            "log_sha256": "db867d225c8a9c2ddfe30dc0edf24366abbdf711dcb83094e8d5aa6605d18fc0"
+          },
+          {
+            "package": "shoop_backend",
+            "tests": 87,
+            "skipped": 0,
+            "xml_sha256": "1b0c290acc45c0d6624206f859e998f454809408414fcfda82d4f96c736c22cc",
+            "log_sha256": "ec575c0d5720c80b4c5a37c30a5f0e3e2b67185c4a250dafcbff9ff73945e625"
+          },
+          {
+            "package": "shoop_egui",
+            "tests": 245,
+            "skipped": 0,
+            "xml_sha256": "09fadd7e3bf0847595405a7161737fefcdbc342d7ecb9ca3dbccca7ecb37d9b4",
+            "log_sha256": "67432391306f165d4b99f447cf1888a3adcff110b5bfa231524ffb30b2200741"
+          },
+          {
+            "package": "shoop_engine",
+            "tests": 873,
+            "skipped": 0,
+            "xml_sha256": "39028def58316e50c1fa8512b0abc9cdb5b5d9053c61237e7f0d2f542630cc52",
+            "log_sha256": "229e063fbfcc53ca9775688942c922d0846d54cf7cad0970eee70305e2ff1c1e"
+          },
+          {
+            "package": "shoop_example_dsp",
+            "tests": 15,
+            "skipped": 0,
+            "xml_sha256": "b39a5ec6dae7bf1c447d242e2446f3e13ec93c81d8ce5e8c2af52832e91b6c53",
+            "log_sha256": "fdd3eefdf1338367e43eca1f5a7f198aee387eae13fd3debd381a302d996d317"
+          },
+          {
+            "package": "shoop_latency",
+            "tests": 4,
+            "skipped": 0,
+            "xml_sha256": "c3de8b86fe69ac8256ec877d100c798a81f324471a54add5bfe9eac6328a70a8",
+            "log_sha256": "e42d48d670ce6f6297c5d9e30fb70c6f2a430119910f8de04c95a11897e83d04"
+          },
+          {
+            "package": "shoop_loops",
+            "tests": 186,
+            "skipped": 0,
+            "xml_sha256": "115a152da9c8d679abd4976972e9f79164b446bf1ebe2fccb13a3b4550830c71",
+            "log_sha256": "5f5bdd4199c2b762ad7011311c244663f22563f2358473f70a2611ca9d493b2a"
+          },
+          {
+            "package": "shoop_loops_test_support",
+            "tests": 5,
+            "skipped": 0,
+            "xml_sha256": "2d409d1755ec18c2e64a44cd74850ef0a96fc38fe1eb51099075202eb11201a7",
+            "log_sha256": "b5d029f1c7b40f721752d138ca670b65723f9d86075ef3e3aa783d3fc76c8209"
+          },
+          {
+            "package": "shoop_persistence_codec",
+            "tests": 17,
+            "skipped": 0,
+            "xml_sha256": "73b4233a31e64a6f338d811b001f0620dc27b0b49cecd3a466538c8f71b7c18a",
+            "log_sha256": "d2328ce8daef634a87bf1e6e5406bac14494f7ece8958f470fd1f2b806a2e3da"
+          },
+          {
+            "package": "shoop_plugin_protocol",
+            "tests": 5,
+            "skipped": 0,
+            "xml_sha256": "75a2c1114a7d9b4dafa95dd91b36a89853ab8dc43aa295bc9d8f1d7aa8d18bfe",
+            "log_sha256": "50f2b919ce4ac45fe103e8184c1635484876bf145e989c03c80bf10f736ccf22"
+          },
+          {
+            "package": "shoop_port_graph",
+            "tests": 6,
+            "skipped": 0,
+            "xml_sha256": "bd11bc1e5114079a32286434d7d14af1923faf09801f2950f2dcb8024a66eb0a",
+            "log_sha256": "b24722ec602cee2f4f7d0b682833458ab29dfd99809cdc4e209b886f148e5f14"
+          },
+          {
+            "package": "shoop_rt_backend",
+            "tests": 43,
+            "skipped": 0,
+            "xml_sha256": "626ee90fef1ee28ecefffc42be47b6f4cee241590118e97161b1a8824c03ac31",
+            "log_sha256": "ce1c5d2d5f7009341a943b8d723b23516f588501671d4360fd13d288bd259589"
+          },
+          {
+            "package": "shoop_rt_engine",
+            "tests": 73,
+            "skipped": 0,
+            "xml_sha256": "a32d8ce88c7fba7982b46d4ce6382abf7dc3d3a1a5834e6847512ed376c7e74d",
+            "log_sha256": "f10e156850dbb33a5480bd724cf224771ba01a8ffdc78a2d4ccaf3a86135284b"
+          },
+          {
+            "package": "shoop_rt_host_worklet",
+            "tests": 17,
+            "skipped": 0,
+            "xml_sha256": "48bea1acd7249800b4c74b01b99fb85fdcf4ec7e979aa54c2f0fbf467202eb33",
+            "log_sha256": "f3a2f21395c7b67b49db46237ef5ecc57206d939686b6926811a83c39584166e"
+          },
+          {
+            "package": "shoop_rt_protocol",
+            "tests": 7,
+            "skipped": 0,
+            "xml_sha256": "f97b592c47f3e2ca19cffa16e95fe83ef0a8e67a5cf4b54acef2f03d863236e7",
+            "log_sha256": "19cec0a6d7a0a8a8d88b596d7c8922dc06a37ea87883e5c3871df8985103b5f5"
+          },
+          {
+            "package": "shoop_rt_transport",
+            "tests": 6,
+            "skipped": 0,
+            "xml_sha256": "23f264efae0800b789b6e0ec878a6ddad911387fc9a6293c585a9d220818e6a0",
+            "log_sha256": "f5810432a5996394a8de2b870ec9955589aaf3e91f356d8f9db0ee674e4555a2"
+          },
+          {
+            "package": "shoop_rt_transport_message_port",
+            "tests": 7,
+            "skipped": 0,
+            "xml_sha256": "8299f74850edf65c876874b31e1a0c946de8138033a78856f95a242f8a380859",
+            "log_sha256": "628c80bdac7611829e992edc2436fa03de9e939cada1823adb9b694973f832ec"
+          },
+          {
+            "package": "shoop_script_resources",
+            "tests": 5,
+            "skipped": 0,
+            "xml_sha256": "cf87ed924f17274c69865553e05700cd07293ab47c46f2944451b227fe465e0f",
+            "log_sha256": "1e45df7725990f7a78e362c66dc6f10130b5abd9f4b3ce8ffec6522246f52362"
+          },
+          {
+            "package": "shoop_scripting",
+            "tests": 32,
+            "skipped": 0,
+            "xml_sha256": "56379a20250f61dd845dcfc5f406468b2df41806f8deb602e8b62794e0c0363f",
+            "log_sha256": "146c5b474abc7e7192f0c0c930962e28dd9f01f648a6350b77f5691f32dd8686"
+          },
+          {
+            "package": "shoop_session",
+            "tests": 54,
+            "skipped": 0,
+            "xml_sha256": "e782d20dbc430917d4193e6e47f76cf7ab9b9b4811e96a0aaed694037203a671",
+            "log_sha256": "207bcb8e8e6f18fb236ac2aff080d10bbf82a543da21419fd0e0ebc7081f6bcc"
+          },
+          {
+            "package": "shoop_settings",
+            "tests": 9,
+            "skipped": 0,
+            "xml_sha256": "4c77553824d6c1437a90160425b93235b2204ce9104db1590cc328273c6851ef",
+            "log_sha256": "fb12d65a459377c1b6df9cd4599b24b932ba236227084b4d710ff93140b3663a"
+          },
+          {
+            "package": "shoop_transport",
+            "tests": 8,
+            "skipped": 0,
+            "xml_sha256": "9730b3e621d8a5fa8e97253c46b4197ef1e035b4c95ab00edcfa2bd067ea0cde",
+            "log_sha256": "b06d3332ad92d4bcd2e76e2b362446dc2ee191dd5c2db37af567002224681c69"
+          },
+          {
+            "package": "shoop_wasm_runtime_tests",
+            "tests": 10,
+            "skipped": 0,
+            "xml_sha256": "dd261fae5cc1915bbbfb90c5ee1f6f3972f5d8481a0871d011c1e494ae1c4a70",
+            "log_sha256": "81fa4c484b4403a31c0ae9ad462957f61f72f6f394d6fa245c3860b88e5d17d1"
+          },
+          {
+            "package": "shoop_wasm_test_support",
+            "tests": 9,
+            "skipped": 2,
+            "xml_sha256": "95fa85c78c0dc0a19809ee74adaad7151b02a987e7479cf9e3c4d6eae2b58a1a",
+            "log_sha256": "48e63a331813810dde4f6a805914100637ea6b3ca2ecf08498aee57252e03fa1"
+          },
+          {
+            "package": "shoop_worklet_client",
+            "tests": 48,
+            "skipped": 0,
+            "xml_sha256": "4a655d2a57b82ce8c743a82477845c6706ea88defd84429e5a20ee826b8c68e4",
+            "log_sha256": "d597897385d31e830d5c9cb4ccc6291fcb4424e791032e819704fbd6f9497705"
+          },
+          {
+            "package": "shoopdaloop",
+            "tests": 45,
+            "skipped": 0,
+            "xml_sha256": "131f154b24ef34dca1c2493b61ca2d9ef8c2c896521d066b86d82bac292087b1",
+            "log_sha256": "5d0b7cf22b54ec42cd831939837362e44d1cb3fd5dde22aaa42c3621965bc848"
+          }
+        ],
+        "skipped": 2
+      },
+      "logs": [
+        {
+          "report": "conflict-graph-build.log",
+          "sha256": "94bb2d52cf160fc1a69c9d372dfad4483c295d2cf243524d4bc0eb64481f9713"
+        },
+        {
+          "report": "conflict-graph-native.log",
+          "sha256": "ccf413eb0d492722968cd4f435cb0a5e70f713422ab1ff3497792ea42744e116"
+        },
+        {
+          "report": "conflict-graph-node.log",
+          "sha256": "b0a2b6a5eb6c2138e24cbf4c4986da4637bece17a76219970c706390fc3d3402"
+        },
+        {
+          "report": "conflict-graph-worklet.log",
+          "sha256": "fb343408d7bce9251a4b95b5fe04d032324a6d818ca62f80cf595a92931e0423"
+        },
+        {
+          "report": "conflict-graph-browser-hosted.log",
+          "sha256": "464535da45d21f6f57f3d2a097148d91175355771d0e59f1d9871b559d288813"
+        },
+        {
+          "report": "conflict-graph-preview.log",
+          "sha256": "8434e6018d0c2829aa13ed03c85319a3bef0f211a4cb70e35909b2d5ae9728f7"
+        },
+        {
+          "report": "conflict-graph-browser-isolated.log",
+          "sha256": "92990bfa8f1e8a6befca37e1a8e9bd376058337a8e44140e099ee6ed0ffefd9f"
+        },
+        {
+          "report": "conflict-graph-socket.log",
+          "sha256": "d670081832ba6ac502df425b43bf03f2962822435a3e893439493c089e3ff7c2"
+        },
+        {
+          "report": "conflict-graph-shared.log",
+          "sha256": "7a60e51a97c6c6dc216ca27ba7b2712be00900ad3c7a1ca679042c99bccf5ae4"
+        },
+        {
+          "report": "conflict-graph-boundaries.log",
+          "sha256": "877a58237f0bd453b29a03e9b2b8ccd453e6df1ef2d7e960d468a17d1439aedb"
+        }
+      ],
+      "browser_artifacts": [
+        {
+          "path": "src/rust/shoopdaloop/dist/shoopdaloop-a1a792a192317858_bg.wasm",
+          "sha256": "a41e8b8a845f557240eb66ca4502a9e04279c2c871937e9315e81b53b236f70f",
+          "bytes": 77641246
+        },
+        {
+          "path": "src/rust/shoopdaloop/dist/generated/shoop_persistence_codec_bg.wasm",
+          "sha256": "9917aa528e651a8c34b2c2dea90fb3688e5386f0504f7f55dfc4c0352b580265",
+          "bytes": 9604161
+        },
+        {
+          "path": "src/rust/shoopdaloop/dist/generated/shoop_rt_host_worklet.wasm",
+          "sha256": "a3242bbe275256ce3e2f3257bb60dfabf047c0c9e0b540981d3a0adf8c863216",
+          "bytes": 3977203
+        },
+        {
+          "path": "src/rust/shoopdaloop/dist/shoopdaloop.html",
+          "sha256": "76f1b8f9b1623114c18c80294344d5e9959637777a7367d12459049e765a7e83",
+          "bytes": 122699037
+        }
+      ],
+      "unchanged_core_paths_from_previous_head": [
+        "src/rust/rt_runtime",
+        "src/rust/shoop_loops"
+      ],
+      "ci_checks": "https://github.com/SanderVocke/shoopdaloop/pull/943/checks",
+      "provenance": "Logs validate the staged merge source identified by the hash of git ls-files --stage for source_index_paths. The merge commit and current PR checks identify its final committed head. Original acceptance reports remain at their actual earlier checkpoints; no new Miri run is claimed for the unchanged loop/runtime core."
+    }
+  ]
 }

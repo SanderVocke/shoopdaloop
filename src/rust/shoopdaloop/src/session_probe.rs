@@ -251,6 +251,26 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             .iter()
             .any(|row| row.samples > 0)
     })?;
+    wait(&mut client, &mut connection, |client| {
+        let view = &client.snapshot().unwrap().profiling;
+        view.topology.as_ref().is_some_and(|t| {
+            t.generation == view.generation && t.epoch == view.live.epoch && t.valid()
+        }) && view
+            .groups
+            .iter()
+            .any(|g| g.kind == 1 && g.name == "Packaged session")
+            && view
+                .groups
+                .iter()
+                .any(|g| g.kind == 2 && g.name.starts_with("Packaged session / "))
+    })?;
+    wait(&mut client, &mut connection, |client| {
+        let wrapping = &client.snapshot().unwrap().profiling.live.wrapping;
+        wrapping.before.count > 0
+            && wrapping.before.count == wrapping.after.count
+            && wrapping.before.count == wrapping.between.count
+            && wrapping.valid()
+    })?;
     let profile_generation = client.snapshot().unwrap().profiling.generation;
     ensure!(
         client

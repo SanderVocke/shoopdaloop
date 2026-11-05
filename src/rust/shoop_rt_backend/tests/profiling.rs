@@ -33,7 +33,7 @@ fn production_protocol_reports_stats_and_resets_every_graph_generation() {
             resolution_ns: 10_000,
         });
         let mut backend = RtBackend::connect(client, clock).unwrap();
-        backend
+        let created = backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "Timing track".into(),
                 audio_channels: 2,
@@ -61,6 +61,41 @@ fn production_protocol_reports_stats_and_resets_every_graph_generation() {
             assert_eq!(row.avg_ns, 10_000.);
             assert_eq!(row.worst_ns, 10_000);
             assert_eq!(row.stddev_ns, 0.);
+        }
+        for _ in 0..8 {
+            backend.pump();
+        }
+        let graph_view = backend.poll().unwrap().profiling;
+        let topology = graph_view
+            .topology
+            .as_ref()
+            .expect("complete executable topology");
+        assert_eq!(topology.generation, graph_view.generation);
+        assert_eq!(topology.epoch, graph_view.live.epoch);
+        assert_eq!(
+            topology.nodes.iter().map(|n| n.key).collect::<Vec<_>>(),
+            graph_view
+                .live
+                .rows
+                .iter()
+                .map(|r| r.key)
+                .collect::<Vec<_>>()
+        );
+        assert!(topology.edges.iter().any(|e| e.source.kind == 0));
+        assert!(topology.edges.iter().any(|e| e.source.kind == 1));
+        assert!(topology.nodes.iter().any(|n| n.group == 2));
+        assert!(graph_view
+            .groups
+            .iter()
+            .any(|g| g.kind == 1 && g.entity == created.track_id.raw()));
+        for loop_id in &created.loops {
+            assert!(graph_view
+                .groups
+                .iter()
+                .any(|g| g.kind == 2 && g.entity == loop_id.raw()));
+        }
+        for (i, row) in graph_view.live.rows.iter().enumerate() {
+            assert_eq!(row.ready_avg_ns, 10_000. * (i + 1) as f64);
         }
         COST.with(|cost| cost.set(30_000));
         backend.clock_mut().render(2 * quantum);
@@ -91,6 +126,32 @@ fn production_protocol_reports_stats_and_resets_every_graph_generation() {
         assert!(capture.complete);
         assert_ne!(capture.trigger & HOST_XRUN, 0);
         assert!(!capture.rows.is_empty());
+        let callback = captured
+            .index
+            .iter()
+            .find(|t| t.flags & shoop_rt_protocol::profiling::CALLBACK != 0)
+            .unwrap();
+        let tick = captured
+            .index
+            .iter()
+            .find(|t| t.flags & shoop_rt_protocol::profiling::CALLBACK == 0 && callback.contains(t))
+            .unwrap();
+        backend
+            .inspect_profiling(shoop_rt_protocol::profiling::CaptureRequest {
+                connection: captured.connection,
+                generation: captured.generation,
+                capture: capture.capture,
+                callback: callback.sequence,
+                tick: tick.sequence,
+                offset: 0,
+            })
+            .unwrap();
+        let selected = backend.poll().unwrap().profiling;
+        assert!(!selected.detail.as_ref().unwrap().nodes.is_empty());
+        assert_eq!(
+            selected.detail.as_ref().unwrap().tick.unwrap().sequence,
+            tick.sequence
+        );
         backend
             .create_bus(BackendBusRequest {
                 name: "New topology".into(),
@@ -103,6 +164,7 @@ fn production_protocol_reports_stats_and_resets_every_graph_generation() {
         let rebuilt = backend.poll().unwrap().profiling;
         assert!(rebuilt.generation > captured.generation);
         assert!(rebuilt.capture.is_none());
+        assert!(rebuilt.detail.is_none() && rebuilt.index.is_empty());
         assert!(rebuilt.live.rows.iter().all(|row| row.avg_ns == 30_000.));
         COST.with(|cost| cost.set(10_000));
     }

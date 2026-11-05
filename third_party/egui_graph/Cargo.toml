@@ -1,0 +1,17 @@
+[package]
+name = "egui_graph"
+version = "0.19.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/nannou-org/egui_graph"
+description = "A general-purpose node graph widget for egui"
+
+[dependencies]
+egui = { version = "0.37", default-features = false }
+siphasher = { version = "1.0", default-features = false }
+serde = { version = "1.0", optional = true }
+
+[features]
+default = ["layout", "serde"]
+layout = []
+serde = ["egui/serde", "dep:serde"]

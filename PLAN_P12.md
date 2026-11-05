@@ -488,3 +488,22 @@ update the acceptance record and ledger; they do not change production code.
   patch coverage exceeds the configured 80% floor; CLI and browser acceptance
   run separately from native coverage. No base coverage delta is claimed.
   The PR is delivered ready for review/merge. Merging remains a separate instruction.
+
+## Follow-up target integration
+
+The target advanced to `eb4287a5` with interactive profiling graphs and xrun tick
+inspection after P12 closure. Merged that target into the P12 branch, preserving
+both timing command handlers/bounds and profiling inspection. The combined wire
+layouts use app protocol **25** and RT protocol **11**, with updated canonical
+fixtures and built-worklet handshake; neither parent's incompatible version is
+reused. P12 request tags and timing/recording rules remain intact.
+
+Local reconciliation validation passes: **2,802 native tests** (seven intentional
+skips), **2,322 Node passes across 35 packages** (two opt-in failure canaries skipped), worklet contracts,
+hosted/preview/isolated browser workflows with zero xruns, both native transport
+probes and all runtime/loop/engine dependency boundaries. The loop/runtime core
+files are unchanged from `a2f82af0`, retaining the existing selected Miri evidence.
+The [inventory](docs/native_session_recovery/evidence/loop-timing-validation.json)
+records the merge parents, source-index hash and new report/artifact hashes.
+The PR's [current checks](https://github.com/SanderVocke/shoopdaloop/pull/943/checks)
+verify this integration head. Original goals and acceptance criteria are unchanged.

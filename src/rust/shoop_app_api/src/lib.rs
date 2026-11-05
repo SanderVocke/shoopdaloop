@@ -2021,6 +2021,7 @@ pub struct AppNotification {
     pub message: String,
 }
 
+pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 
 #[derive(Clone, Debug, Default)]
@@ -2436,6 +2437,7 @@ pub struct ChannelTimelineUpdate {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
     SetProfiling(bool),
+    InspectProfiling(profiling_data::CaptureRequest),
     SetLoopSmoothingMs(u32),
     SetMasterAutoConnect(bool),
     SetLoopTimeline {
@@ -2828,7 +2830,7 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::SetProfiling(_) => "developer.profiling",
+            Self::SetProfiling(_) | Self::InspectProfiling(_) => "developer.profiling",
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
             Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",
