@@ -1,9 +1,14 @@
 """Shared on-card geometry and generated C constants."""
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import boards
 
 ROOT = Path(__file__).resolve().parent
 LAYOUT = json.loads((ROOT / "layout.json").read_text())
+LAYOUT["profile"] = boards.load().profile
 
 
 def header():
@@ -20,7 +25,7 @@ def header():
     lines = ["/* Generated from layout.json; regenerate with layout.py. */",
              "#ifndef SHOOP_DEPLOY_LAYOUT_H", "#define SHOOP_DEPLOY_LAYOUT_H"]
     lines += [f"#define SHOOP_{key} {value}u" for key, value in values.items()]
-    lines += ['#define SHOOP_PROFILE "' + LAYOUT["profile"] + '"', "#endif", ""]
+    lines += ['#include <shoop_board.h>', '#define SHOOP_PROFILE SHOOP_BOARD_PROFILE', "#endif", ""]
     return "\n".join(lines)
 
 

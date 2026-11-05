@@ -1,7 +1,7 @@
 ENTRY(_vector_table)
 MEMORY {
-  platform (rwx) : ORIGIN = 0x00100000, LENGTH = 0x07f00000
-  rust (rw) : ORIGIN = 0x08000000, LENGTH = 0x30000000
+  platform (rwx) : ORIGIN = 0x00100000, LENGTH = @PLATFORM_LENGTH@
+  rust (rw) : ORIGIN = @RUST_START@, LENGTH = @RUST_LENGTH@
 }
 SECTIONS {
   .text : { KEEP(*(.vectors)) KEEP(*(.boot)) *(.text*) *(.rodata*) KEEP(*(.usb_observation)) *(.glue*) *(.vfp11_veneer) } > platform
@@ -34,8 +34,8 @@ SECTIONS {
     __usb_dma_start = .; *(.usb_dma*) . = ALIGN(0x100000); __usb_dma_end = .;
   } > platform
   .dma (NOLOAD) : { . = ALIGN(0x100000); _end = .; . += 0x200000; __platform_end = .; } > platform
-  .rust_heap (NOLOAD) : { __rust_heap = .; . += 0x30000000; __rust_heap_end = .; } > rust
-  ASSERT(__platform_end <= 0x08000000, "platform exceeds 128 MiB")
+  .rust_heap (NOLOAD) : { __rust_heap = .; . += @RUST_LENGTH@; __rust_heap_end = .; } > rust
+  ASSERT(__platform_end <= @RUST_START@, "platform exceeds board region")
   ASSERT(__usb_dma_end - __usb_dma_start <= 0x100000, "USB DMA exceeds 1 MiB")
-  ASSERT(__rust_heap_end <= 0x38000000, "Rust exceeds 768 MiB arena")
+  ASSERT(__rust_heap_end <= @RUST_END@, "Rust exceeds board arena")
 }

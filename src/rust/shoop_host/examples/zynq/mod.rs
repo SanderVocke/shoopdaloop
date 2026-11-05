@@ -93,7 +93,13 @@ pub fn run() {
     println!("Attached: {:?}", client.snapshot().unwrap().status);
     let report =
         connection::host_report(&profile, Duration::from_secs(10)).expect("management settings");
-    assert_eq!(report.requested.as_ref().unwrap().pools.loop_memory_mb, 128);
+    let recording_mib = std::env::var("SHOOP_ZYNQ_RECORDING_MIB")
+        .map(|value| value.parse::<u32>().expect("board recording budget"))
+        .unwrap_or(128);
+    assert_eq!(
+        report.requested.as_ref().unwrap().pools.loop_memory_mb,
+        recording_mib
+    );
     println!("Management settings confirmed");
     if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {
         fixture::run(&mut client, &mut connection);

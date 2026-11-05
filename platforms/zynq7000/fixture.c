@@ -57,16 +57,16 @@ static void reply(void) {
         (unsigned)midi, (unsigned)used, (unsigned)peak, (unsigned)xPortGetFreeHeapSize(),
         shoop_socket_count(), (unsigned)shoop_millis(), (unsigned)on, (unsigned)off, (unsigned)bad);
     configASSERT(size > 0 && (size_t)size < sizeof(line));
-    for (int i = 0; i < size; ++i) XUartPs_SendByte(0xe0000000, line[i]);
+    for (int i = 0; i < size; ++i) XUartPs_SendByte(SHOOP_FIXTURE_UART_BASE, line[i]);
 }
 static void driver(void *unused) {
     (void)unused;
     char command[64];
     unsigned used = 0;
-    XUartPs_WriteReg(0xe0000000, XUARTPS_CR_OFFSET, XUARTPS_CR_TX_EN | XUARTPS_CR_RX_EN);
+    XUartPs_WriteReg(SHOOP_FIXTURE_UART_BASE, XUARTPS_CR_OFFSET, XUARTPS_CR_TX_EN | XUARTPS_CR_RX_EN);
     for (;;) {
-        while (XUartPs_IsReceiveData(0xe0000000)) {
-            char byte = XUartPs_RecvByte(0xe0000000);
+        while (XUartPs_IsReceiveData(SHOOP_FIXTURE_UART_BASE)) {
+            char byte = XUartPs_RecvByte(SHOOP_FIXTURE_UART_BASE);
             if (byte == '\n') {
                 command[used] = 0;
                 unsigned value = used > 1 ? (unsigned)strtoul(command + 1, NULL, 10) : 0;

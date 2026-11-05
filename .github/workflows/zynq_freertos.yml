@@ -74,6 +74,74 @@ jobs:
             work/zynq/integration/restart/*.pcap
             work/zynq/integration/restart/*.txt
           retention-days: 3
+  boards:
+    name: Zynq board profiles (${{ matrix.board }})
+    runs-on: ubuntu-24.04
+    container: debian:13-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+    timeout-minutes: 35
+    strategy:
+      matrix:
+        board: [qemu, zedboard]
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Install firmware, bootloader and emulator tools
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends ca-certificates git patch python3 curl xz-utils \
+            build-essential pkg-config protobuf-compiler libasound2-dev libjack-jackd2-dev \
+            bison flex device-tree-compiler libssl-dev zlib1g-dev python3-venv python3-dev swig \
+            ninja-build libglib2.0-dev libslirp-dev \
+            gcc-arm-none-eabi=15:14.2.rel1-1 binutils-arm-none-eabi=2.44-3+23+b1 \
+            libnewlib-arm-none-eabi=4.5.0.20241231-1 libnewlib-dev=4.5.0.20241231-1 \
+            qemu-system-arm=1:10.0.13+ds-0+deb13u1
+      - uses: actions/checkout@v7
+      - name: Trust the runner checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          targets: armv7a-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            platforms/zynq7000/firmware -> target
+      - name: Validate board contracts
+        run: python3 platforms/zynq7000/tests/boards.py
+      - name: Cross-build board firmware and boot chain
+        run: |
+          python3 platforms/zynq7000/build.py --fetch --board ${{ matrix.board }} --app host --deployment
+          python3 platforms/zynq7000/deployment/build_boot.py --fetch --board ${{ matrix.board }}
+      - name: Exercise signed SD boot and A/B deployment for the board memory map
+        run: |
+          python3 platforms/zynq7000/deployment/build_qemu.py --fetch
+          python3 platforms/zynq7000/tests/deployment.py --board ${{ matrix.board }} --directory work/zynq/board-deployment
+      - name: Exercise board memory profile on the emulated processing system
+        run: |
+          python3 platforms/zynq7000/integration.py --board ${{ matrix.board }}
+          python3 platforms/zynq7000/integration.py --board ${{ matrix.board }} --fixture --small-fixture
+      - name: Save board artifacts and emulation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zynq-board-${{ matrix.board }}
+          path: |
+            work/zynq/board-deployment/result.json
+            platforms/zynq7000/boards/*.json
+            work/zynq/**/build/*.elf
+            work/zynq/**/build/*.map
+            work/zynq/**/build/*.json
+            work/zynq/**/u-boot-build/shoop-build.json
+            work/zynq/**/u-boot-build/spl/boot.bin
+            work/zynq/**/integration/*.json
+            work/zynq/**/integration/*.log
+            work/zynq/**/fixture-test/*.json
+            work/zynq/**/fixture-test/*.log
+          retention-days: 14
+
   deployment:
     name: Zynq network deployment and SD recovery
     runs-on: ubuntu-24.04

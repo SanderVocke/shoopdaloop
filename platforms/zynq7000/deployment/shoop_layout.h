@@ -18,5 +18,6 @@
 #define SHOOP_STATE_1_LBA 133144u
 #define SHOOP_COUNTER_0_LBA 133152u
 #define SHOOP_COUNTER_1_LBA 133160u
-#define SHOOP_PROFILE "shoop-zynq7000-1g-v1"
+#include <shoop_board.h>
+#define SHOOP_PROFILE SHOOP_BOARD_PROFILE
 #endif

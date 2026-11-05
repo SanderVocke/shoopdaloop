@@ -39,7 +39,7 @@ static void network(void *unused) {
     IP4_ADDR(&ip, 10, 0, 2, 15); IP4_ADDR(&mask, 255, 255, 255, 0); IP4_ADDR(&gateway, 10, 0, 2, 2);
     unsigned char mac[] = { 0x02, 0, 0, 0, 0, 1 };
     lwip_init();
-    configASSERT(xemac_add(&interface, &ip, &mask, &gateway, mac, 0xe000b000));
+    configASSERT(xemac_add(&interface, &ip, &mask, &gateway, mac, SHOOP_GEM_BASE));
     netif_set_default(&interface); netif_set_up(&interface);
     sys_thread_new("gem-input", (void (*)(void *))xemacif_input_thread, &interface, 4096, 4);
     sys_thread_new("echo", echo, NULL, 4096, 3);
@@ -48,7 +48,8 @@ static void network(void *unused) {
 int main(void) {
     extern void shoop_platform_init(void);
     shoop_platform_init();
-    xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP 1GiB\r\n");
+    xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP board=%s ram_mib=%u\r\n",
+               SHOOP_BOARD_PROFILE, (unsigned)(SHOOP_RAM_BYTES / (1024 * 1024)));
     configASSERT(xTaskCreate(network, "network", 8192, NULL, 3, NULL) == pdPASS);
     vTaskStartScheduler();
     vApplicationAssert("scheduler returned", 0);

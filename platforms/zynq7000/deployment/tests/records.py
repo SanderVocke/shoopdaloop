@@ -9,12 +9,14 @@ import tempfile
 DEPLOYMENT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEPLOYMENT))
 import records
+from layout import boards
 
 
 def main():
     with tempfile.TemporaryDirectory() as temporary:
+        boards.load().generate(Path(temporary))
         executable = Path(temporary) / "vectors"
-        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", DEPLOYMENT,
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temporary, "-I", DEPLOYMENT,
                         DEPLOYMENT / "tests/vectors.c", DEPLOYMENT / "boot_state.c", "-o", executable], check=True)
         golden = subprocess.check_output([executable])
     expected = b"".join([

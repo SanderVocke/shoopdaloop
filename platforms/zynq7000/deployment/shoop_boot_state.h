@@ -23,7 +23,6 @@
 #define SHOOP_BOOT_NETWORK 2u
 #define SHOOP_TRIAL_ATTEMPTS 2u
 #define SHOOP_HANDOFF_ADDRESS 0x8000u
-#define SHOOP_STAGE_ADDRESS 0x38000000u
 #define SHOOP_RECORD_BYTES 512u
 
 struct shoop_record_header { uint32_t magic, version, kind, reserved; };

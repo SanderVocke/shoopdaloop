@@ -82,6 +82,10 @@ def main():
     if not applied:
         run(["git", "-C", SOURCE, "apply", "--check", PATCH])
         run(["git", "-C", SOURCE, "apply", PATCH])
+    board_patch = PLATFORM / "patches/qemu-board-phy.patch"
+    if subprocess.run(["git", "-C", SOURCE, "apply", "--reverse", "--check", board_patch], capture_output=True).returncode:
+        run(["git", "-C", SOURCE, "apply", "--check", board_patch])
+        run(["git", "-C", SOURCE, "apply", board_patch])
     usb_patch = PLATFORM / "patches/qemu-usb-midi.patch"
     usb_fixture = PLATFORM / "usb/qemu/dev-midi.c"
     if args.usb:
@@ -99,7 +103,7 @@ def main():
                     "include/hw/usb/chipidea.h"}
     if set(changed) - allowed:
         raise SystemExit("Unrecorded QEMU source modifications")
-    verify_sources([PATCH, *([usb_patch] if args.usb else [])], usb_fixture if args.usb else None)
+    verify_sources([PATCH, board_patch, *([usb_patch] if args.usb else [])], usb_fixture if args.usb else None)
     BUILD.mkdir(parents=True, exist_ok=True)
     versions = json.loads(subprocess.check_output([PYTHON, "-c", "import importlib.metadata,json; print(json.dumps({p:importlib.metadata.version(p) for p in ['meson','pycotap']}))"], text=True))
     if versions != {"meson": PINS["qemu_meson"], "pycotap": PINS["qemu_pycotap"]}:
@@ -113,6 +117,7 @@ def main():
     run(["ninja", "-j" + os.environ.get("CARGO_BUILD_JOBS", "5"), "qemu-system-arm"], cwd=BUILD, env=environment)
     binary = BUILD / "qemu-system-arm"
     manifest = {"source": revision, "patch_sha256": hashlib.sha256(PATCH.read_bytes()).hexdigest(),
+                "board_patch_sha256": hashlib.sha256(board_patch.read_bytes()).hexdigest(),
                 "usb_patch_sha256": hashlib.sha256(usb_patch.read_bytes()).hexdigest() if args.usb else None,
                 "usb_fixture_sha256": hashlib.sha256(usb_fixture.read_bytes()).hexdigest() if args.usb else None,
                 "python_packages": versions,
