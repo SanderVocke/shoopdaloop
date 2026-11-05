@@ -115,6 +115,7 @@ pub enum Selection {
 pub enum Operation {
     InputBatch {
         count: usize,
+        timing: Timing,
         graph: Epoch,
         topology: Epoch,
     },

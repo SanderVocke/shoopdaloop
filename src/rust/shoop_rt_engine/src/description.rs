@@ -75,7 +75,7 @@ pub struct EngineDescription {
     pub control_lead_frames: u32,
     pub resource_pages: usize,
     pub page_bytes: usize,
-    /// MIDI capacity of each port and loop per callback.
+    /// Admitted live-input MIDI capacity per fixed tick; output storage is derived.
     pub midi_events: usize,
     pub midi_bytes: usize,
     /// Loop transitions that may be pending at once, including delayed ones.
@@ -173,6 +173,7 @@ impl EngineDescription {
         {
             return Err(Error::Capacity);
         }
+        crate::midi_layout::Layout::new(self)?;
         Ok(())
     }
 }

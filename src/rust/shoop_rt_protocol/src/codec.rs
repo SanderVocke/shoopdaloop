@@ -501,9 +501,161 @@ impl Wire for StripShape {
     }
 }
 
+impl Wire for crate::InputIntent {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Mode { mode, position } => {
+                w.u8(0)?;
+                mode.put(w)?;
+                position.put(w)
+            }
+            Self::Grab {
+                sync,
+                reverse_start_cycle,
+                cycles_length,
+                go_to_cycle,
+                mode,
+                maximum_frames,
+            } => {
+                w.u8(1)?;
+                sync.put(w)?;
+                reverse_start_cycle.put(w)?;
+                cycles_length.put(w)?;
+                go_to_cycle.put(w)?;
+                mode.put(w)?;
+                w.u64(maximum_frames)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Mode {
+                mode: LoopMode::get(r)?,
+                position: Option::get(r)?,
+            },
+            1 => Self::Grab {
+                sync: Option::get(r)?,
+                reverse_start_cycle: Option::get(r)?,
+                cycles_length: Option::get(r)?,
+                go_to_cycle: Option::get(r)?,
+                mode: LoopMode::get(r)?,
+                maximum_frames: r.u64()?,
+            },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for crate::InputPhase {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Receiving => w.u8(0),
+            Self::Preparing => w.u8(1),
+            Self::Ready => w.u8(2),
+            Self::Committing => w.u8(3),
+            Self::Applied => w.u8(4),
+            Self::Cancelled => w.u8(5),
+            Self::Cancelling => w.u8(7),
+            Self::Failed(reason) => {
+                w.u8(6)?;
+                reason.put(w)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Receiving,
+            1 => Self::Preparing,
+            2 => Self::Ready,
+            3 => Self::Committing,
+            4 => Self::Applied,
+            5 => Self::Cancelled,
+            6 => Self::Failed(Refusal::get(r)?),
+            7 => Self::Cancelling,
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for crate::InputProgress {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if self.received > self.expected {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.id)?;
+        self.phase.put(w)?;
+        w.u32(self.received)?;
+        w.u32(self.expected)?;
+        self.requested_frame.put(w)?;
+        self.effective_frame.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let value = Self {
+            id: r.u64()?,
+            phase: crate::InputPhase::get(r)?,
+            received: r.u32()?,
+            expected: r.u32()?,
+            requested_frame: Option::get(r)?,
+            effective_frame: Option::get(r)?,
+        };
+        if value.received > value.expected {
+            return Err(CodecError::Invalid);
+        }
+        Ok(value)
+    }
+}
+impl Wire for crate::InputCapacity {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.retention_frames)?;
+        w.u32(self.writer_slots)?;
+        w.u32(self.events_per_source)?;
+        w.u64(self.bytes_per_source)?;
+        w.u32(self.events_per_tick)?;
+        w.u32(self.bytes_per_tick)?;
+        w.u32(self.maximum_packet)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            retention_frames: r.u64()?,
+            writer_slots: r.u32()?,
+            events_per_source: r.u32()?,
+            bytes_per_source: r.u64()?,
+            events_per_tick: r.u32()?,
+            bytes_per_tick: r.u32()?,
+            maximum_packet: r.u32()?,
+        })
+    }
+}
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::InputBegin { id, count } => {
+                w.u8(38)?;
+                w.u64(id)?;
+                w.u32(count)
+            }
+            Self::InputAppend { id, edit } => {
+                w.u8(39)?;
+                w.u64(id)?;
+                edit.loop_id.put(w)?;
+                edit.intent.put(w)
+            }
+            Self::InputPrepare { id } => {
+                w.u8(40)?;
+                w.u64(id)
+            }
+            Self::InputCommit { id, delay } => {
+                w.u8(41)?;
+                w.u64(id)?;
+                delay.put(w)
+            }
+            Self::InputCancel { id } => {
+                w.u8(42)?;
+                w.u64(id)
+            }
+            Self::InputStatus { id } => {
+                w.u8(43)?;
+                w.u64(id)
+            }
+            Self::InputCapacity => w.u8(44),
             Self::ContentWindow {
                 id,
                 frames,
@@ -739,6 +891,26 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            38 => Self::InputBegin {
+                id: r.u64()?,
+                count: r.u32()?,
+            },
+            39 => Self::InputAppend {
+                id: r.u64()?,
+                edit: crate::InputEdit {
+                    loop_id: LoopSlotId::get(r)?,
+                    intent: crate::InputIntent::get(r)?,
+                },
+            },
+            40 => Self::InputPrepare { id: r.u64()? },
+            41 => Self::InputCommit {
+                id: r.u64()?,
+                delay: Option::get(r)?,
+            },
+            42 => Self::InputCancel { id: r.u64()? },
+            43 => Self::InputStatus { id: r.u64()? },
+            44 => Self::InputCapacity,
+
             37 => Self::ContentWindow {
                 id: r.u64()?,
                 frames: r.u64()?,
@@ -996,6 +1168,15 @@ impl Wire for crate::ReplacementEdit {
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Input(progress) => {
+                w.u8(5)?;
+                progress.put(w)
+            }
+            Self::InputCapacity(capacity) => {
+                w.u8(6)?;
+                capacity.put(w)
+            }
+
             Self::TimingApplied(state) => {
                 w.u8(4)?;
                 state.put(w)
@@ -1017,6 +1198,9 @@ impl Wire for Outcome {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            5 => Self::Input(crate::InputProgress::get(r)?),
+            6 => Self::InputCapacity(crate::InputCapacity::get(r)?),
+
             4 => Self::TimingApplied(TimingState::get(r)?),
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },

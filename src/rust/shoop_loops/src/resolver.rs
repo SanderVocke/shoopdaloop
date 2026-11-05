@@ -326,7 +326,7 @@ impl Resolver {
         }
         if requests.iter().enumerate().any(|(i, request)| {
             request.at != requests[0].at
-                || request.timing != Timing::At
+                || request.timing != requests[0].timing
                 || request.sequence != requests[0].sequence
                 || request.transition == Transition::Program
                 || requests[..i].iter().any(|old| old.target == request.target)
@@ -397,7 +397,7 @@ impl Resolver {
         let target = self.topology.node(request.target)?;
         if let Timing::AfterTicks { source, .. } = request.timing {
             self.topology.node(source)?;
-            if target.sync_source != Some(source) {
+            if target.sync_source != Some(source) && batch.is_none() {
                 return Err(Error::MissingSync);
             }
         }
@@ -1145,8 +1145,16 @@ impl Boundary<'_> {
                 if state != before {
                     self.event(state.id, EventKind::Transition(intent.transition));
                 }
-                if intent.transition == Transition::Stop {
-                    self.scratch.masked[target] = true;
+                let batch_member = intent
+                    .request
+                    .and_then(|slot| self.scratch.records[slot])
+                    .is_some_and(|record| record.batch.is_some());
+                if batch_member
+                    || matches!(
+                        intent.transition,
+                        Transition::Stop | Transition::Adopt { .. }
+                    )
+                {
                     if let Priority::Direct(sequence) = intent.priority {
                         for index in 0..self.scratch.records.len() {
                             let Some(record) = self.scratch.records[index] else {
@@ -1167,6 +1175,17 @@ impl Boundary<'_> {
                             }
                         }
                     }
+                }
+                if intent.transition == Transition::Stop
+                    || matches!(
+                        intent.transition,
+                        Transition::Adopt {
+                            mode: Mode::Stopped,
+                            ..
+                        }
+                    )
+                {
+                    self.scratch.masked[target] = true;
                 } else if pulse {
                     self.scratch.masked[target] = false;
                     self.scratch.pulses[target] = true;

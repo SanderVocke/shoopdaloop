@@ -1181,3 +1181,105 @@ fn seeded_dags_match_an_independent_scalar_reference_for_varying_blocks() {
     }
     assert_eq!(drops.load(Ordering::Relaxed), 64 * 8);
 }
+
+#[shoop_test]
+fn midi_forwarding_uses_prepared_merge_capacity_and_clears_each_tick() {
+    use rt_runtime::{buffer::MidiCapacity, processor::MidiBufferSettings};
+    struct Forward;
+    impl Processor for Forward {
+        fn ports(&self) -> PortCounts {
+            PortCounts {
+                midi_inputs: 1,
+                midi_outputs: 1,
+                ..Default::default()
+            }
+        }
+        fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
+            Ok(MidiBufferSettings {
+                input: Some(MidiCapacity {
+                    events: 4,
+                    bytes: 12,
+                }),
+                forward_input: Some(0),
+                ..Default::default()
+            })
+        }
+        fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
+            block.forward_midi(0)
+        }
+    }
+    let config = Config {
+        max_frames: 1,
+        midi_inputs: 2,
+        midi_outputs: 1,
+        midi_events_per_port: 2,
+        midi_bytes_per_port: 6,
+        audio_inputs: 0,
+        audio_outputs: 0,
+        ..Config::default()
+    }
+    .prepare()
+    .unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        vec![PreparedNode::new(id(0), Forward)],
+    )
+    .unwrap();
+    let graph = GraphDescription {
+        nodes: vec![id(0)],
+        connections: vec![
+            midi(None, 0, Some(id(0)), 0),
+            midi(None, 1, Some(id(0)), 0),
+            midi(Some(id(0)), 0, None, 0),
+        ],
+    };
+    let plan = compile(runtime.catalog(), &graph).unwrap();
+    control
+        .submit(Lane::Normal, Command::commit(Epoch(0), plan))
+        .unwrap_or_else(|error| panic!("submit: {:?}", error.error));
+    let mut inputs = [
+        MidiBuffer::new(2, 6).unwrap(),
+        MidiBuffer::new(2, 6).unwrap(),
+    ];
+    let mut outputs = [MidiBuffer::new(4, 12).unwrap()];
+    let step =
+        |runtime: &mut GraphRuntime<Forward>, inputs: &[MidiBuffer], outputs: &mut [MidiBuffer]| {
+            assert_no_heap(|| {
+                runtime.process(
+                    AudioBlock {
+                        frame: runtime.next_frame(),
+                        frames: 1,
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                    MidiBlock { inputs, outputs },
+                )
+            })
+            .unwrap();
+        };
+    for _ in 0..128 {
+        step(&mut runtime, &inputs, &mut outputs);
+        if control.try_completion().is_some() {
+            break;
+        }
+    }
+    for (port, input) in inputs.iter_mut().enumerate() {
+        for key in 0..2 {
+            input
+                .push(0, 1, &[0x90, (port * 2 + key) as u8, 100])
+                .unwrap();
+        }
+    }
+    step(&mut runtime, &inputs, &mut outputs);
+    assert_eq!(outputs[0].len(), 4);
+    for key in 0..4 {
+        assert_eq!(outputs[0].get(key), Some((0, &[0x90, key as u8, 100][..])));
+    }
+    for input in &mut inputs {
+        input.clear();
+    }
+    step(&mut runtime, &inputs, &mut outputs);
+    assert!(outputs[0].is_empty());
+    assert_eq!(runtime.diagnostics().midi_overflows, 0);
+}

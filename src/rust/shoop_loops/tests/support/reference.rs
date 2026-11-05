@@ -258,7 +258,7 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                     });
                 }
                 machine = candidate;
-                if operation == Transition::Stop {
+                if matches!(operation, Transition::Stop | Transition::Adopt { .. }) {
                     for (other, request) in requests.iter().enumerate() {
                         if result.outcomes[other].is_none()
                             && request.sequence < requests[index].sequence

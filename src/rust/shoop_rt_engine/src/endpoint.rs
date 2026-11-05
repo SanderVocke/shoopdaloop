@@ -71,6 +71,10 @@ pub(crate) struct Planned {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    Input {
+        id: u64,
+        step: crate::input::Step,
+    },
     Timing {
         slot: usize,
         correlation: Option<u64>,
@@ -201,6 +205,7 @@ pub struct ControlEndpoint {
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
     pub(crate) family: crate::family::Stage,
+    pub(crate) input: crate::input::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -222,7 +227,7 @@ fn runtime_refusal(error: rt_runtime::Error) -> Refusal {
         _ => Refusal::Internal,
     }
 }
-fn timeline_refusal(error: shoop_loops::Error) -> Refusal {
+pub(crate) fn timeline_refusal(error: shoop_loops::Error) -> Refusal {
     use shoop_loops::Error;
     match error {
         Error::Capacity | Error::Exhausted => Refusal::Capacity,
@@ -339,14 +344,21 @@ impl ControlEndpoint {
         self.limits
     }
 
-    pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::PROFILING
+    pub(crate) fn capabilities(&self) -> Capabilities {
+        let mut capabilities = Capabilities::PROFILING
             .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
             .union(Capabilities::WIDE_CONTENT_UPLOAD)
-            .union(Capabilities::LOOP_TIMING)
+            .union(Capabilities::LOOP_TIMING);
+        if self.input.supported() {
+            capabilities = capabilities.union(Capabilities::INPUT_BATCH);
+        }
+        if self.input.replacing_supported() {
+            capabilities = capabilities.union(Capabilities::REPLACING);
+        }
+        capabilities
     }
 
     fn free_pending(&self) -> usize {
@@ -438,6 +450,14 @@ impl ControlEndpoint {
                         }
                     ) {
                         self.family.payload = Some(payload);
+                    } else if matches!(
+                        action,
+                        Action::Planner {
+                            operation: Operation::InputBatch { .. },
+                            ..
+                        }
+                    ) {
+                        self.input.payload = Some(payload);
                     } else {
                         self.work.return_payload(payload);
                     }
@@ -483,6 +503,7 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        self.disconnect_input();
         if self.family.id.is_some() && !self.family.committing {
             self.family.cancel_requested = true;
         }
@@ -538,6 +559,7 @@ impl ControlEndpoint {
         let finished = pending.completed && (pending.executed || !pending.expects);
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
+            Purpose::Input { id, step } => self.input_result(id, step, result),
             Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
             Purpose::Transition {
@@ -795,6 +817,25 @@ impl ControlEndpoint {
                 Ok(Some(Outcome::Done))
             }
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. }
+            | Request::InputCancel { .. }
+            | Request::InputStatus { .. }
+            | Request::InputCapacity => {
+                if self.job.is_some()
+                    && !matches!(
+                        request,
+                        Request::InputCancel { .. }
+                            | Request::InputStatus { .. }
+                            | Request::InputCapacity
+                    )
+                {
+                    return Err(());
+                }
+                self.input_request(correlation, request)
+            }
             Request::ContentFamilyBegin { .. }
             | Request::ContentFamilyEdit { .. }
             | Request::ContentFamilyCommit { .. }
@@ -1224,7 +1265,7 @@ impl Endpoint for ControlEndpoint {
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
-                    capabilities: Self::capabilities(),
+                    capabilities: self.capabilities(),
                     limits: self.limits,
                     driver: self.cells.driver(),
                 });
@@ -1291,6 +1332,7 @@ impl Endpoint for ControlEndpoint {
         self.advance_bulk();
         self.advance_preview();
         self.advance_content();
+        self.advance_input();
         self.flush(out);
         self.telemetry(out);
         self.forward_profiling(out);

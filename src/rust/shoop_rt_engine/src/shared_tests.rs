@@ -460,6 +460,52 @@ impl Fixture {
         .unwrap_or_else(|e| panic!("{:?}", e.error))
         .sequence()
     }
+    fn prepare_public_input(
+        &mut self,
+        id: u64,
+        edits: &[protocol::InputEdit],
+    ) -> protocol::InputProgress {
+        assert!(matches!(
+            self.request_outcome(protocol::Request::InputBegin {
+                id,
+                count: edits.len() as u32
+            }),
+            protocol::Outcome::Input(protocol::InputProgress {
+                phase: protocol::InputPhase::Receiving,
+                ..
+            })
+        ));
+        for edit in edits {
+            assert!(matches!(
+                self.request_outcome(protocol::Request::InputAppend { id, edit: *edit }),
+                protocol::Outcome::Input(_)
+            ));
+        }
+        let ready = self.request_outcome(protocol::Request::InputPrepare { id });
+        let protocol::Outcome::Input(progress) = ready else {
+            panic!("prepare {ready:?}")
+        };
+        assert_eq!(progress.phase, protocol::InputPhase::Ready, "{progress:?}");
+        progress
+    }
+    fn public_input(
+        &mut self,
+        id: u64,
+        edits: &[protocol::InputEdit],
+        delay: Option<u32>,
+    ) -> protocol::InputProgress {
+        self.prepare_public_input(id, edits);
+        let result = self.request_outcome(protocol::Request::InputCommit { id, delay });
+        let protocol::Outcome::Input(progress) = result else {
+            panic!("commit {result:?}")
+        };
+        assert_eq!(
+            progress.phase,
+            protocol::InputPhase::Applied,
+            "{progress:?}"
+        );
+        progress
+    }
     fn input_batch(&mut self, at: u64, edits: &[shoop_loops::runtime::InputEdit]) -> Sequence {
         use shoop_loops::runtime::INPUT_BATCH_RECORD_BYTES;
         self.drain_protocol();
@@ -473,6 +519,7 @@ impl Fixture {
         let command = self.engine.endpoint.loops.command_with_payload(
             Frame(at),
             Operation::InputBatch {
+                timing: Timing::At,
                 count: edits.len(),
                 graph: self.engine.endpoint.graph_epoch,
                 topology: self.engine.endpoint.topology_epoch,
@@ -3613,6 +3660,384 @@ fn fresh_recording_has_identity_media_while_monitoring_previous_channel_windows(
     }
     let old_midi = h.read(old.view.midi.unwrap().snapshot);
     assert_eq!(midi_events(&old_midi), expected_midi(first, take.frames, q));
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn public_input_protocol_grabs_replaces_and_retains_terminal_identity_on_normal_preparation() {
+    use protocol::{
+        InputEdit, InputIntent, InputPhase, InputProgress, LoopMode, LoopSlotId, Outcome, Request,
+        SlotId,
+    };
+    let q = 32;
+    let (mut h, capacity) = Fixture::new_production(q, 7);
+    let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+    h.drain_protocol();
+    let Outcome::InputCapacity(limits) = h.request_outcome(Request::InputCapacity) else {
+        panic!("input limits")
+    };
+    assert_eq!(limits.retention_frames, 30_016);
+    assert_eq!(limits.writer_slots, 2);
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.drain_protocol();
+    h.run_to(h.aligned_future(4 * q as u64));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    let old = h.export(1);
+    let raw = InputEdit {
+        loop_id: id(0),
+        intent: InputIntent::Grab {
+            sync: Some(id(1)),
+            reverse_start_cycle: Some(1),
+            cycles_length: Some(1),
+            go_to_cycle: Some(0),
+            mode: LoopMode::Playing,
+            maximum_frames: 0,
+        },
+    };
+    let solo = InputEdit {
+        loop_id: id(1),
+        intent: InputIntent::Mode {
+            mode: LoopMode::Stopped,
+            position: None,
+        },
+    };
+    assert!(matches!(
+        h.request_outcome(Request::InputBegin { id: 1, count: 2 }),
+        Outcome::Input(_)
+    ));
+    assert!(matches!(
+        h.request_outcome(Request::InputAppend { id: 1, edit: raw }),
+        Outcome::Input(_)
+    ));
+    assert_eq!(
+        h.request_outcome(Request::InputAppend {
+            id: 1,
+            edit: InputEdit {
+                loop_id: LoopSlotId(SlotId::new(1, 2)),
+                ..solo
+            }
+        }),
+        Outcome::Refused(protocol::Refusal::InvalidId)
+    );
+    assert_eq!(
+        h.request_outcome(Request::InputPrepare { id: 1 }),
+        Outcome::Refused(protocol::Refusal::Busy)
+    );
+    let Reply::State(peer) = h.op(Operation::State { target: target(1) }) else {
+        panic!("peer")
+    };
+    assert_eq!(peer.state.mode, shoop_loops::Mode::Playing);
+    assert!(matches!(
+        h.request_outcome(Request::InputCancel { id: 1 }),
+        Outcome::Input(InputProgress {
+            phase: InputPhase::Cancelled,
+            ..
+        })
+    ));
+    let Reply::State(before) = h.op(Operation::State { target: target(1) }) else {
+        panic!("clock before grab")
+    };
+    let grabbed = h.public_input(2, &[raw, solo], None);
+    let cut = grabbed.effective_frame.unwrap();
+    let period = old.view.description.frames;
+    let phase = (before.state.position + cut - before.frame.0) % period;
+    let first = cut - phase - period;
+    let grabbed_media = h.export(0);
+    assert_eq!(grabbed_media.view.description.frames, period);
+    let original_audio = h.read(grabbed_media.view.audio.unwrap().snapshot);
+    for (offset, bytes) in original_audio.chunks_exact(8).enumerate() {
+        let sample = if first + offset as u64 >= h.stimulus.unwrap() {
+            (first + offset as u64 + 1) as f32
+        } else {
+            0.
+        };
+        assert_eq!(f32::from_le_bytes(bytes[..4].try_into().unwrap()), sample);
+        assert_eq!(
+            f32::from_le_bytes(bytes[4..].try_into().unwrap()),
+            -2. * sample
+        );
+    }
+    let original_midi = h.read(grabbed_media.view.midi.unwrap().snapshot);
+    assert_eq!(midi_events(&original_midi), expected_midi(first, period, q));
+    assert_eq!(
+        h.request_outcome(Request::InputStatus { id: 2 }),
+        Outcome::Input(grabbed)
+    );
+    assert_eq!(
+        h.request_outcome(Request::InputCommit { id: 2, delay: None }),
+        Outcome::Input(grabbed)
+    );
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    h.request(Request::LoopSync {
+        loop_id: id(0),
+        source: Some(id(1)),
+    });
+    let Reply::State(before) = h.op(Operation::State { target: target(0) }) else {
+        panic!("before replacement")
+    };
+    let replacement = h.public_input(
+        3,
+        &[InputEdit {
+            loop_id: id(0),
+            intent: InputIntent::Mode {
+                mode: LoopMode::Replacing,
+                position: None,
+            },
+        }],
+        Some(1),
+    );
+    let start = replacement.effective_frame.unwrap();
+    assert!(start > replacement.requested_frame.unwrap());
+    h.run_to(h.aligned_future(2 * period));
+    h.request(Request::LoopTransition {
+        loop_id: id(0),
+        mode: LoopMode::Stopped,
+        delay: None,
+    });
+    let replaced = h.export(0);
+    let end = replaced.view.audio.unwrap().snapshot.cut_frame.0;
+    let mut audio = original_audio.clone();
+    let mut midi = midi_events(&original_midi);
+    let mut position = (before.state.position + start - before.frame.0) % period;
+    let mut zero = None;
+    for frame in (start..end).step_by(q) {
+        midi.retain(|(raw, _)| *raw < position || *raw >= position + q as u64);
+        if position == 0 {
+            zero = Some(frame);
+        }
+        for offset in 0..q as u64 {
+            let sample = (frame + offset + 1) as f32;
+            let at = (position + offset) as usize * 8;
+            audio[at..at + 4].copy_from_slice(&sample.to_le_bytes());
+            audio[at + 4..at + 8].copy_from_slice(&(-2. * sample).to_le_bytes());
+            for packet in packets(frame + offset, q) {
+                midi.push((position + offset, packet));
+            }
+        }
+        position = (position + q as u64) % period;
+    }
+    midi.sort_by_key(|(frame, _)| *frame);
+    assert_eq!(h.read(replaced.view.audio.unwrap().snapshot), audio);
+    assert_eq!(
+        midi_events(&h.read(replaced.view.midi.unwrap().snapshot)),
+        midi
+    );
+    assert_eq!(
+        h.read(grabbed_media.view.audio.unwrap().snapshot),
+        original_audio
+    );
+    assert_eq!(
+        h.read(grabbed_media.view.midi.unwrap().snapshot),
+        original_midi
+    );
+    assert_eq!(
+        h.request_outcome(Request::InputStatus { id: 0 }),
+        Outcome::Input(replacement)
+    );
+    assert_eq!(h.midi_overflows, 0);
+    let initial = input_state(h.stimulus.unwrap(), zero.unwrap(), q);
+    let mut stopped = h.engine.render.into_stopped();
+    assert_eq!(
+        stopped
+            .resources
+            .render_io()
+            .midi_seek(replaced.view.midi.unwrap().index, 0)
+            .unwrap()
+            .state,
+        initial
+    );
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn public_input_cancellation_survives_disconnect_and_late_refusal_preserves_solo_peers() {
+    use protocol::{
+        ClientMessage, InputEdit, InputIntent, InputPhase, InputProgress, LoopMode, LoopSlotId,
+        Outcome, Request, SlotId,
+    };
+    let q = 32;
+    let (mut h, capacity) = Fixture::new_production(q, 7);
+    let id = |slot| LoopSlotId(SlotId::new(slot, 1));
+    h.drain_protocol();
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.drain_protocol();
+    h.run_to(h.aligned_future(4 * q as u64));
+    h.request(Request::LoopTransition {
+        loop_id: id(1),
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    h.request(Request::LoopSync {
+        loop_id: id(0),
+        source: Some(id(1)),
+    });
+    h.public_input(
+        1,
+        &[InputEdit {
+            loop_id: id(0),
+            intent: InputIntent::Grab {
+                sync: Some(id(1)),
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                mode: LoopMode::Stopped,
+                maximum_frames: 0,
+            },
+        }],
+        None,
+    );
+    let old = h.export(0);
+    let old_audio = h.read(old.view.audio.unwrap().snapshot);
+    let old_midi = h.read(old.view.midi.unwrap().snapshot);
+    let replace = InputEdit {
+        loop_id: id(0),
+        intent: InputIntent::Mode {
+            mode: LoopMode::Replacing,
+            position: None,
+        },
+    };
+    h.prepare_public_input(2, &[replace]);
+    h.engine.endpoint.deliver(
+        ClientMessage::Request {
+            correlation: 700,
+            request: Request::InputCommit {
+                id: 2,
+                delay: Some(u32::MAX),
+            },
+        },
+        &mut h.outbox,
+    );
+    h.engine.endpoint.poll(&mut h.outbox);
+    h.engine.endpoint.deliver(
+        ClientMessage::Request {
+            correlation: 701,
+            request: Request::InputCancel { id: 2 },
+        },
+        &mut h.outbox,
+    );
+    h.engine.endpoint.disconnect();
+    h.engine.endpoint.deliver(
+        ClientMessage::Hello {
+            version: protocol::PROTOCOL_VERSION,
+        },
+        &mut h.outbox,
+    );
+    let mut cancelled = None;
+    for _ in 0..50 {
+        h.render(q, false);
+        h.engine.endpoint.poll(&mut h.outbox);
+        while let Some(message) = h.outbox.pop() {
+            assert!(!matches!(
+                message,
+                protocol::EngineMessage::Result {
+                    correlation: 700 | 701,
+                    ..
+                }
+            ));
+        }
+        let Outcome::Input(progress) = h.request_outcome(Request::InputStatus { id: 2 }) else {
+            panic!("cancel status")
+        };
+        if progress.phase == InputPhase::Cancelled {
+            cancelled = Some(progress);
+            break;
+        }
+        assert!(matches!(
+            progress.phase,
+            InputPhase::Committing | InputPhase::Cancelling
+        ));
+    }
+    let cancelled = cancelled.expect("cancelled admitted batch survives controller loss");
+    assert!(cancelled.requested_frame.is_some());
+    assert!(cancelled.effective_frame.is_some());
+    h.prepare_public_input(3, &[replace]);
+    h.engine.endpoint.disconnect();
+    h.engine.endpoint.deliver(
+        ClientMessage::Hello {
+            version: protocol::PROTOCOL_VERSION,
+        },
+        &mut h.outbox,
+    );
+    let mut abandoned = false;
+    for _ in 0..50 {
+        h.render(q, false);
+        h.engine.endpoint.poll(&mut h.outbox);
+        while h.outbox.pop().is_some() {}
+        let Outcome::Input(progress) = h.request_outcome(Request::InputStatus { id: 3 }) else {
+            panic!("abandoned preparation")
+        };
+        if progress.phase == InputPhase::Cancelled {
+            abandoned = true;
+            break;
+        }
+    }
+    assert!(abandoned);
+    let solo = InputEdit {
+        loop_id: id(1),
+        intent: InputIntent::Mode {
+            mode: LoopMode::Stopped,
+            position: None,
+        },
+    };
+    h.prepare_public_input(4, &[replace, solo]);
+    let Reply::State(before) = h.op(Operation::State { target: target(0) }) else {
+        panic!("timing fence")
+    };
+    assert!(matches!(
+        h.request_outcome(Request::LoopTiming {
+            loop_id: id(0),
+            expected_revision: before.timing_revision,
+            expected_content: before.state.content_revision.0,
+            edit: protocol::TimingEdit {
+                length: Some(before.state.content_length + q as u64),
+                ..Default::default()
+            },
+        }),
+        Outcome::TimingApplied(_)
+    ));
+    let refused = h.request_outcome(Request::InputCommit { id: 4, delay: None });
+    assert!(
+        matches!(
+            refused,
+            Outcome::Input(InputProgress {
+                phase: InputPhase::Failed(_),
+                effective_frame: Some(_),
+                ..
+            })
+        ),
+        "{refused:?}"
+    );
+    let Reply::State(confirmed) = h.op(Operation::State { target: target(0) }) else {
+        panic!("target")
+    };
+    let Reply::State(peer) = h.op(Operation::State { target: target(1) }) else {
+        panic!("solo peer")
+    };
+    assert_eq!(confirmed.state.mode, shoop_loops::Mode::Stopped);
+    assert_eq!(
+        confirmed.state.content_revision,
+        old.view.description.revision
+    );
+    assert_eq!(peer.state.mode, shoop_loops::Mode::Playing);
+    assert_eq!(h.read(old.view.audio.unwrap().snapshot), old_audio);
+    assert_eq!(h.read(old.view.midi.unwrap().snapshot), old_midi);
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
 }

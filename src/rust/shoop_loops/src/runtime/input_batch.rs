@@ -395,6 +395,7 @@ impl LoopPlanner {
     pub(super) fn begin_input_batch(
         &mut self,
         count: usize,
+        timing: Timing,
         payload: &[u8],
         requested: Frame,
         sequence: Sequence,
@@ -406,13 +407,28 @@ impl LoopPlanner {
         }
         if count == 0
             || count > self.rows.len()
-            || count.checked_mul(INPUT_BATCH_RECORD_BYTES) != Some(payload.len())
+            || payload.len() % INPUT_BATCH_RECORD_BYTES != 0
+            || payload.len() > self.rows.len() * INPUT_BATCH_RECORD_BYTES
+            || count
+                .checked_mul(INPUT_BATCH_RECORD_BYTES)
+                .is_none_or(|bytes| bytes > payload.len())
         {
             return Err(Error::InvalidShape.into());
         }
+        if payload[count * INPUT_BATCH_RECORD_BYTES..]
+            .iter()
+            .any(|byte| *byte != 0)
+        {
+            return Err(Error::InvalidEvent.into());
+        }
         let result = (|| -> Result<(), Failure> {
-            for bytes in payload.chunks_exact(INPUT_BATCH_RECORD_BYTES) {
+            for bytes in
+                payload[..count * INPUT_BATCH_RECORD_BYTES].chunks_exact(INPUT_BATCH_RECORD_BYTES)
+            {
                 let edit = InputEdit::decode(bytes)?;
+                if timing != Timing::At && matches!(edit.action, InputAction::Grab { .. }) {
+                    return Err(Error::InvalidEvent.into());
+                }
                 self.row(edit.target)?;
                 if self
                     .input_batch
@@ -450,7 +466,7 @@ impl LoopPlanner {
                     target: entry.edit.target,
                     at: frame,
                     sequence,
-                    timing: Timing::At,
+                    timing,
                     transition,
                 });
             }
@@ -465,6 +481,9 @@ impl LoopPlanner {
             self.release_input_batch(io)?;
         }
         result
+    }
+    pub(super) fn input_batch_first_request(&self) -> Option<RequestId> {
+        self.input_batch.ids.first().copied().flatten()
     }
     pub(super) fn input_batch_pin(&self, request: RequestId) -> Option<media::PinId> {
         self.input_batch

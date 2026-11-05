@@ -182,6 +182,7 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
+    midi_capacity: rt_runtime::buffer::MidiCapacity,
     pending_history: Option<(rt_runtime::Epoch, bool)>,
     history_token: u64,
     midi_history_token: u64,
@@ -207,6 +208,7 @@ pub struct StripInput {
 /// A strip's output stage: the sum of its loops and monitored input; output gain,
 /// balance, mute and a presence fade, written to two connection banks.
 pub struct StripOutput {
+    midi_capacity: rt_runtime::buffer::MidiCapacity,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -264,6 +266,7 @@ pub enum EngineNode {
 }
 
 pub(crate) struct NodeSettings {
+    pub midi: crate::midi_layout::Layout,
     pub cells: Arc<Cells>,
     pub channels: usize,
     pub master_channels: usize,
@@ -289,6 +292,7 @@ impl StripInput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            midi_capacity: settings.midi.monitor,
             history_token: 1,
             midi_history_token: 1,
             pending_history: None,
@@ -327,6 +331,7 @@ impl StripOutput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            midi_capacity: settings.midi.mixer,
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -387,6 +392,12 @@ fn copy_midi(source: &MidiBuffer, target: &mut MidiBuffer, frames: usize) -> Res
 }
 
 impl Processor<LoopPlanner, EngineOp> for StripInput {
+    fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        Ok(rt_runtime::processor::MidiBufferSettings {
+            output: Some(self.midi_capacity),
+            ..Default::default()
+        })
+    }
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: 2 * self.channels,
@@ -404,6 +415,13 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
 }
 
 impl Processor<LoopPlanner, EngineOp> for StripOutput {
+    fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        Ok(rt_runtime::processor::MidiBufferSettings {
+            input: Some(self.midi_capacity),
+            forward_input: Some(0),
+            ..Default::default()
+        })
+    }
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: self.channels,
@@ -500,6 +518,14 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        match self {
+            Self::Loop(node) => node.midi_buffer_settings(),
+            Self::StripInput(node) => node.midi_buffer_settings(),
+            Self::StripOutput(node) => node.midi_buffer_settings(),
+            _ => Ok(Default::default()),
+        }
+    }
     fn admit(&self, node: rt_runtime::NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
             Self::Loop(processor) => processor.admit(node, domain),
@@ -721,12 +747,12 @@ impl StripOutput {
         }
         if self.mute.target() > 0. && self.presence.target() > 0. {
             let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
-            let output = block.midi_outputs.first_mut().ok_or(Error::InvalidShape)?;
-            if copy_midi(input, output, frames)? {
+            if !input.is_empty() {
                 cells
                     .midi_out
                     .store(true, core::sync::atomic::Ordering::Relaxed);
             }
+            block.forward_midi(0)?;
         }
         Ok(())
     }

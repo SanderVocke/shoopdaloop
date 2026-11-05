@@ -40,12 +40,14 @@ mod bulk;
 mod cells;
 mod content;
 mod history;
+mod input;
 pub use history::HistoryCapacity;
 mod description;
 mod endpoint;
 mod family;
 mod graph;
 mod jobs;
+mod midi_layout;
 mod model;
 mod node;
 mod pool;
@@ -277,7 +279,7 @@ pub fn prepare(
 }
 
 /// Prepare optional retrospective input histories and bounded private edit jobs.
-/// This does not enable application grab/replacing mode or add wire commands.
+/// Explicit storage limits are installed before the runtime takes ownership.
 pub fn prepare_with_shared(
     description: &EngineDescription,
     driver: DriverStatus,
@@ -397,6 +399,7 @@ pub fn prepare_with_shared(
             observer: Some(Box::new(Observer(cells.clone()))),
         },
     )?;
+    let input_capacity = input::Stage::capacity(&shared_settings);
     if !shared_settings.histories.is_empty() || shared_settings.candidates != 0 {
         if shared_settings.histories.iter().any(|h| {
             h.source as usize >= pool.strips()
@@ -412,6 +415,7 @@ pub fn prepare_with_shared(
         master_channels,
         frames: quantum.frames(),
         ramp: description.ramp_frames,
+        midi: midi_layout::Layout::new(description)?,
     };
     let mut nodes: Vec<PreparedNode<EngineNode, LoopPlanner, EngineOp>> = loop_nodes
         .into_iter()
@@ -434,7 +438,7 @@ pub fn prepare_with_shared(
         runtime.set_profiling(recorder);
     }
     if quantum.frames() > 1 {
-        runtime.prepare_host_buffering()?;
+        runtime.prepare_host_buffering_with_midi_output(settings.midi.tick)?;
     }
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
@@ -577,6 +581,7 @@ pub fn prepare_with_shared(
         uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
         replacement: replacement::Replacement::new(strips, loops, buses),
         family: family::Stage::new(loops),
+        input: input::Stage::new(loops, input_capacity),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

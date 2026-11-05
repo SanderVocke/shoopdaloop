@@ -155,6 +155,28 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    InputBegin {
+        id: u64,
+        count: u32,
+    },
+    InputAppend {
+        id: u64,
+        edit: crate::InputEdit,
+    },
+    InputPrepare {
+        id: u64,
+    },
+    InputCommit {
+        id: u64,
+        delay: Option<u32>,
+    },
+    InputCancel {
+        id: u64,
+    },
+    InputStatus {
+        id: u64,
+    },
+    InputCapacity,
     ContentWindow {
         id: u64,
         frames: u64,
@@ -316,6 +338,8 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    Input(crate::InputProgress),
+    InputCapacity(crate::InputCapacity),
     TimingApplied(crate::TimingState),
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
@@ -376,6 +400,8 @@ pub struct HostPort {
 pub struct Capabilities(pub u32);
 
 impl Capabilities {
+    pub const INPUT_BATCH: Self = Self(1 << 8);
+    pub const REPLACING: Self = Self(1 << 9);
     pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
     pub const LOOP_TIMING: Self = Self(1 << 7);

@@ -1,6 +1,6 @@
 //! Processor preparation is separate from bounded rendering.
 
-use crate::buffer::{AudioPorts, MidiBuffer};
+use crate::buffer::{AudioPorts, MidiBuffer, MidiCapacity};
 use crate::graph::PortCounts;
 use crate::planner::{NoPlanner, Planner};
 use crate::{Error, Frame, NodeId, PreparedConfig};
@@ -13,6 +13,39 @@ pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     fn prepare(self, config: PreparedConfig) -> Result<Self::Prepared, Error>;
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MidiBufferSettings {
+    pub input: Option<MidiCapacity>,
+    pub output: Option<MidiCapacity>,
+    /// Forwarded MIDI outputs borrow this input after processing.
+    pub forward_input: Option<usize>,
+}
+impl MidiBufferSettings {
+    pub fn prepared_bytes(self, ports: PortCounts, default: MidiCapacity) -> Result<usize, Error> {
+        if self
+            .forward_input
+            .is_some_and(|input| input >= ports.midi_inputs)
+            || self.forward_input.is_some() && self.output.is_some()
+        {
+            return Err(Error::InvalidConfig);
+        }
+        let input = self.input.unwrap_or(default).prepared_bytes()?;
+        let output = self.output.unwrap_or(default).prepared_bytes()?;
+        let injected = default.prepared_bytes()?;
+        ports
+            .midi_inputs
+            .checked_mul(input.checked_add(injected).ok_or(Error::Capacity)?)
+            .and_then(|bytes| {
+                ports
+                    .midi_outputs
+                    .checked_mul(output)
+                    .and_then(|output| bytes.checked_add(output))
+            })
+            .filter(|bytes| *bytes <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
+}
+
 pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub node: NodeId,
     pub graph_epoch: crate::Epoch,
@@ -23,8 +56,19 @@ pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
+    pub midi_forwarded: &'a mut [bool],
     pub resources: crate::resource::ResourceIo<'a>,
     pub domain: &'a mut L,
+}
+
+impl<L: Planner> ProcessBlock<'_, L> {
+    pub fn forward_midi(&mut self, port: usize) -> Result<(), Error> {
+        *self
+            .midi_forwarded
+            .get_mut(port)
+            .ok_or(Error::InvalidGraph)? = true;
+        Ok(())
+    }
 }
 
 pub struct OperationContext<'a> {
@@ -61,6 +105,9 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     }
     /// Queried during preparation, never by the render callback.
     fn ports(&self) -> PortCounts;
+    fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
+        Ok(MidiBufferSettings::default())
+    }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
@@ -77,6 +124,9 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
+        (**self).midi_buffer_settings()
+    }
     fn admit(&self, node: NodeId, domain: &L) -> Result<(), Error> {
         (**self).admit(node, domain)
     }

@@ -452,3 +452,215 @@ fn batches_settle_all_targets_or_refuse_all_with_no_state_or_pulse_leak() {
         assert_eq!(resolver.retained_requests(), 0);
     });
 }
+
+#[shoop_test]
+fn delayed_batches_apply_or_refuse_every_member_at_the_same_sync_cut() {
+    let id = |slot| LoopId::from_parts(slot, 1).unwrap();
+    let mut resolver = Resolver::prepare(
+        compile(
+            Limits::default(),
+            &TopologyDescription {
+                loops: (0..3)
+                    .map(|slot| LoopSpec {
+                        id: id(slot),
+                        kind: LoopKind::Primitive,
+                        length: 64,
+                        sync_source: (slot > 0).then(|| id(0)),
+                    })
+                    .collect(),
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+        rt_runtime::Quantum::new(32).unwrap(),
+    )
+    .unwrap();
+    assert_no_heap(|| {
+        let clock = resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(1),
+                at: Frame(0),
+                timing: Timing::At,
+                transition: Transition::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        resolver.finish().unwrap();
+        resolver.take_completion(clock).unwrap().unwrap();
+        let mut receipts = [None; 2];
+        for (sequence, skip, effective, refuse) in [(2, 1, 128, true), (3, 0, 192, false)] {
+            let at = resolver.frame();
+            let requests = [1, 2].map(|slot| Request {
+                target: id(slot),
+                sequence: Sequence(sequence),
+                at,
+                timing: Timing::AfterTicks {
+                    source: id(0),
+                    skip,
+                },
+                transition: Transition::Record {
+                    monitor_previous: false,
+                },
+            });
+            resolver.submit_batch(&requests, &mut receipts).unwrap();
+            while resolver.frame() < Frame(effective) {
+                resolver.preview_tick(&[]).unwrap();
+                resolver.commit().unwrap();
+                for slot in 1..3 {
+                    assert_eq!(resolver.state(id(slot)).unwrap().mode, Mode::Stopped);
+                }
+                resolver.finish().unwrap();
+                for receipt in receipts.into_iter().flatten() {
+                    assert_eq!(resolver.completion(receipt).unwrap(), None);
+                }
+            }
+            let refusal = [Observation::Refused {
+                request: receipts[0].unwrap(),
+                reason: Error::Capacity,
+            }];
+            resolver
+                .preview_tick(if refuse { &refusal } else { &[] })
+                .unwrap();
+            resolver.commit().unwrap();
+            assert_eq!(resolver.state(id(0)).unwrap().mode, Mode::Playing);
+            for slot in 1..3 {
+                assert_eq!(
+                    resolver.state(id(slot)).unwrap().mode,
+                    if refuse {
+                        Mode::Stopped
+                    } else {
+                        Mode::Recording
+                    }
+                );
+            }
+            resolver.finish().unwrap();
+            for receipt in receipts.into_iter().flatten() {
+                assert_eq!(
+                    resolver.take_completion(receipt).unwrap().unwrap().outcome,
+                    if refuse {
+                        Outcome::Failed {
+                            frame: Frame(effective),
+                            reason: Error::Capacity,
+                        }
+                    } else {
+                        Outcome::Applied {
+                            frame: Frame(effective),
+                        }
+                    }
+                );
+            }
+        }
+    });
+}
+
+#[shoop_test]
+fn batches_preserve_existing_plans_until_every_member_can_apply() {
+    let id = |slot| LoopId::from_parts(slot, 1).unwrap();
+    let mut resolver = Resolver::prepare(
+        compile(
+            Limits::default(),
+            &TopologyDescription {
+                loops: (0..3)
+                    .map(|slot| LoopSpec {
+                        id: id(slot),
+                        kind: LoopKind::Primitive,
+                        length: 64,
+                        sync_source: (slot > 0).then(|| id(0)),
+                    })
+                    .collect(),
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+        rt_runtime::Quantum::new(32).unwrap(),
+    )
+    .unwrap();
+    assert_no_heap(|| {
+        let play = Transition::Play {
+            position: 0,
+            retrigger: true,
+        };
+        let clock = resolver
+            .submit(Request {
+                target: id(0),
+                at: Frame(0),
+                sequence: Sequence(1),
+                timing: Timing::At,
+                transition: play,
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        resolver.finish().unwrap();
+        resolver.take_completion(clock).unwrap().unwrap();
+        let plan = resolver
+            .submit(Request {
+                target: id(1),
+                at: Frame(32),
+                sequence: Sequence(2),
+                timing: Timing::AfterTicks {
+                    source: id(0),
+                    skip: 2,
+                },
+                transition: Transition::Record {
+                    monitor_previous: false,
+                },
+            })
+            .unwrap();
+        for (sequence, position, succeeds) in [(3, 128, false), (4, 0, true)] {
+            let frame = resolver.frame();
+            let mut ids = [None; 2];
+            resolver
+                .submit_batch(
+                    &[
+                        Request {
+                            target: id(1),
+                            at: frame,
+                            sequence: Sequence(sequence),
+                            timing: Timing::At,
+                            transition: play,
+                        },
+                        Request {
+                            target: id(2),
+                            at: frame,
+                            sequence: Sequence(sequence),
+                            timing: Timing::At,
+                            transition: Transition::Play {
+                                position,
+                                retrigger: true,
+                            },
+                        },
+                    ],
+                    &mut ids,
+                )
+                .unwrap();
+            resolver.preview_tick(&[]).unwrap();
+            resolver.commit().unwrap();
+            assert_eq!(
+                resolver.state(id(1)).unwrap().mode,
+                if succeeds {
+                    Mode::Playing
+                } else {
+                    Mode::Stopped
+                }
+            );
+            resolver.finish().unwrap();
+            for receipt in ids.into_iter().flatten() {
+                resolver.take_completion(receipt).unwrap().unwrap();
+            }
+            if succeeds {
+                assert_eq!(
+                    resolver.take_completion(plan).unwrap().unwrap().outcome,
+                    Outcome::Cancelled { frame }
+                );
+            } else {
+                assert_eq!(resolver.completion(plan).unwrap(), None);
+            }
+        }
+    });
+}

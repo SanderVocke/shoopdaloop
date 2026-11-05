@@ -176,6 +176,41 @@ impl<'a> AudioPorts<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MidiCapacity {
+    pub events: usize,
+    pub bytes: usize,
+}
+impl MidiCapacity {
+    pub fn prepared_bytes(self) -> Result<usize, Error> {
+        self.events
+            .checked_add(crate::midi::ResetState::EVENTS)
+            .and_then(|events| events.checked_mul(size_of::<Event>()))
+            .and_then(|events| {
+                self.bytes
+                    .checked_add(crate::midi::ResetState::BYTES)
+                    .and_then(|bytes| events.checked_add(bytes))
+            })
+            .filter(|bytes| *bytes <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
+    pub fn checked_add(self, other: Self) -> Result<Self, Error> {
+        Ok(Self {
+            events: self
+                .events
+                .checked_add(other.events)
+                .ok_or(Error::Capacity)?,
+            bytes: self.bytes.checked_add(other.bytes).ok_or(Error::Capacity)?,
+        })
+    }
+    pub fn checked_mul(self, count: usize) -> Result<Self, Error> {
+        Ok(Self {
+            events: self.events.checked_mul(count).ok_or(Error::Capacity)?,
+            bytes: self.bytes.checked_mul(count).ok_or(Error::Capacity)?,
+        })
+    }
+}
+
 /// Owned fixed-capacity MIDI/event storage. Construct and destroy outside RT;
 /// clearing and appending never resize or free the backing arenas.
 pub struct MidiBuffer {

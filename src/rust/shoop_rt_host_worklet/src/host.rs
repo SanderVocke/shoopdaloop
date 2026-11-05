@@ -113,9 +113,25 @@ impl WorkletHost {
         let engine =
             shoop_rt_engine::prepare(description, driver).map_err(PrepareFailure::Engine)?;
         let outbox = engine.outbox();
-        let midi = |count: usize| {
+        let output_capacity = description
+            .midi_output_capacity()
+            .map_err(|error| PrepareFailure::Engine(PrepareError::Runtime(error)))?;
+        let midi = |count: usize, output: bool| {
             (0..count)
-                .map(|_| MidiBuffer::new(description.midi_events, description.midi_bytes))
+                .map(|_| {
+                    MidiBuffer::new(
+                        if output {
+                            output_capacity.events
+                        } else {
+                            description.midi_events
+                        },
+                        if output {
+                            output_capacity.bytes
+                        } else {
+                            description.midi_bytes
+                        },
+                    )
+                })
                 .collect::<Result<Box<[_]>, _>>()
                 .map_err(|error| PrepareFailure::Engine(PrepareError::Runtime(error)))
         };
@@ -139,8 +155,8 @@ impl WorkletHost {
             audio_outputs,
             input: vec![0.; audio_inputs * frames].into_boxed_slice(),
             output: vec![0.; audio_outputs * frames].into_boxed_slice(),
-            midi_inputs: midi(host.midi_inputs.len())?,
-            midi_outputs: midi(host.midi_outputs.len())?,
+            midi_inputs: midi(host.midi_inputs.len(), false)?,
+            midi_outputs: midi(host.midi_outputs.len(), true)?,
             midi_in: Stream::new(config.midi_in_bytes),
             midi_out: Batch::new(config.midi_out_bytes),
             records_per_quantum: config.records_per_quantum,

@@ -1216,6 +1216,11 @@ impl LoopPlanner {
                         | PendingKind::Program { request, .. } = pending.kind
                         {
                             self.resolver.cancel(request)?;
+                        } else if let PendingKind::InputBatch = pending.kind {
+                            let request = self
+                                .input_batch_first_request()
+                                .ok_or(Error::InvalidState)?;
+                            self.resolver.cancel(request)?;
                         } else {
                             return Err(Error::InvalidState.into());
                         }
@@ -1528,6 +1533,7 @@ impl LoopPlanner {
                 }
                 Operation::InputBatch {
                     count,
+                    timing,
                     graph,
                     topology,
                 } => {
@@ -1537,6 +1543,7 @@ impl LoopPlanner {
                     let slot = self.pending_slot(context.recovery)?;
                     self.begin_input_batch(
                         count,
+                        timing,
                         context.payload,
                         context.requested_frame,
                         context.token.sequence(),

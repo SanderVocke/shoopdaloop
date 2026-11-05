@@ -39,9 +39,25 @@ impl Cycle {
                 .map(|_| vec![0.; frames].into_boxed_slice())
                 .collect::<Box<[_]>>()
         };
-        let midi = |count: usize| {
+        let output_capacity = description
+            .midi_output_capacity()
+            .map_err(rt_runtime::Error::from)?;
+        let midi = |count: usize, output: bool| {
             (0..count)
-                .map(|_| MidiBuffer::new(description.midi_events, description.midi_bytes))
+                .map(|_| {
+                    MidiBuffer::new(
+                        if output {
+                            output_capacity.events
+                        } else {
+                            description.midi_events
+                        },
+                        if output {
+                            output_capacity.bytes
+                        } else {
+                            description.midi_bytes
+                        },
+                    )
+                })
                 .collect::<Result<Box<[_]>, _>>()
         };
         receivers.resize_with(host.midi_inputs.len(), || None);
@@ -51,8 +67,8 @@ impl Cycle {
             shared,
             inputs: audio(host.audio_inputs.len()),
             outputs: audio(host.audio_outputs.len()),
-            midi_inputs: midi(host.midi_inputs.len())?,
-            midi_outputs: midi(host.midi_outputs.len())?,
+            midi_inputs: midi(host.midi_inputs.len(), false)?,
+            midi_outputs: midi(host.midi_outputs.len(), true)?,
             receivers: receivers.into_boxed_slice(),
             senders: senders.into_boxed_slice(),
             max_frames: frames,

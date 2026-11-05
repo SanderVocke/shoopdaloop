@@ -96,7 +96,10 @@ impl ControlEndpoint {
     ) -> bool {
         if matches!(
             request,
-            Request::CancelBulk
+            Request::InputCancel { .. }
+                | Request::InputStatus { .. }
+                | Request::InputCapacity
+                | Request::CancelBulk
                 | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
                 | Request::ReplacementPrepare { .. }
@@ -137,7 +140,11 @@ impl ControlEndpoint {
         }
         if matches!(
             request,
-            Request::LoopClear { .. }
+            Request::InputBegin { .. }
+                | Request::InputAppend { .. }
+                | Request::InputPrepare { .. }
+                | Request::InputCommit { .. }
+                | Request::LoopClear { .. }
                 | Request::SetSmoothing { .. }
                 | Request::ContentApply { .. }
                 | Request::ContentFamilyBegin { .. }
@@ -186,6 +193,14 @@ impl ControlEndpoint {
                 || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. }
+            | Request::InputCancel { .. }
+            | Request::InputStatus { .. }
+            | Request::InputCapacity => false,
+
             Request::ContentFamilyBegin { root, .. } => loop_(root.0.index, SOFT),
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
@@ -260,6 +275,12 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. } => self.blocked_all = true,
+            Request::InputCancel { .. } | Request::InputStatus { .. } | Request::InputCapacity => {}
+
             Request::ContentFamilyBegin { root, .. } => {
                 if let Some(blocked) = self.blocked_loops.get_mut(root.0.index as usize) {
                     *blocked = true;

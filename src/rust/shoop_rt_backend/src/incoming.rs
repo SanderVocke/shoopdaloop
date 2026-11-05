@@ -475,17 +475,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 sequence,
                 result: match outcome {
                     Outcome::Done | Outcome::TimingApplied(_) => Ok(()),
-                    Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
-                        Err("unexpected content revision outcome".to_owned())
-                    }
+                    Outcome::ContentApplied { .. }
+                    | Outcome::ContentPrepared { .. }
+                    | Outcome::Input(_)
+                    | Outcome::InputCapacity(_) => Err("unexpected transaction outcome".to_owned()),
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
                 },
             });
         let refusal = match outcome {
             Outcome::Done | Outcome::TimingApplied(_) => None,
-            Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
-                Some(Refusal::Internal)
-            }
+            Outcome::ContentApplied { .. }
+            | Outcome::ContentPrepared { .. }
+            | Outcome::Input(_)
+            | Outcome::InputCapacity(_) => Some(Refusal::Internal),
             Outcome::Refused(refusal) => Some(refusal),
         };
         match (purpose, refusal) {

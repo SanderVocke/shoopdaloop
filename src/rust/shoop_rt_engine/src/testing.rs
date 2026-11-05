@@ -61,9 +61,25 @@ impl OfflineRender {
                 .map(|_| vec![0.; frames].into_boxed_slice())
                 .collect::<Box<[_]>>()
         };
-        let midi = |count: usize| {
+        let output_capacity = description
+            .midi_output_capacity()
+            .map_err(rt_runtime::Error::from)?;
+        let midi = |count: usize, output: bool| {
             (0..count)
-                .map(|_| MidiBuffer::new(description.midi_events, description.midi_bytes))
+                .map(|_| {
+                    MidiBuffer::new(
+                        if output {
+                            output_capacity.events
+                        } else {
+                            description.midi_events
+                        },
+                        if output {
+                            output_capacity.bytes
+                        } else {
+                            description.midi_bytes
+                        },
+                    )
+                })
                 .collect::<Result<Box<[_]>, _>>()
         };
         let host = &description.host;
@@ -72,8 +88,8 @@ impl OfflineRender {
             host: engine.host,
             inputs: buffers(host.audio_inputs.len()),
             outputs: buffers(host.audio_outputs.len()),
-            midi_inputs: midi(host.midi_inputs.len())?,
-            midi_outputs: midi(host.midi_outputs.len())?,
+            midi_inputs: midi(host.midi_inputs.len(), false)?,
+            midi_outputs: midi(host.midi_outputs.len(), true)?,
             max_frames: frames,
             sample_rate: description.sample_rate,
             remainder: 0,

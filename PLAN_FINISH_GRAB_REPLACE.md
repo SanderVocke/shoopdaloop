@@ -22,10 +22,12 @@ remain outstanding.
 | F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
 | F2 | Partial: normal native/worklet constructors prepare common thirty-second histories with separately budgeted storage; removal/reuse and typed sizing/readiness pass locally. Global retained-owner MIDI admission and measured default callback limits remain. |
 | F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; long ordinary-recording preparation now follows live input; global admission and final lifecycle acceptance remain. |
-| F4 | Partial: atomic paired media staging, current-playback Replacing preparation and source-generation fences; public protocol/controller and adapter remain. |
+| F4 | Partial: public protocol/controller now own bounded atomic input transactions, preparation, delayed commit, cancellation and retained terminal identity; application adapter and musical finish plans remain. |
 | F5–F8 | Outstanding: service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
-Grab and Replacing are still disabled in the normal application. P04/P05 remain
+Grab and Replacing are still disabled in the normal application. Normal engine
+preparation negotiates the implemented protocol input-batch and Replacing bits;
+the application capability map stays disabled pending adapter/service acceptance. P04/P05 remain
 OPEN. Targeted native tests validate the library increments; fresh applicable CI
 and application acceptance have not been established for the latest implementation.
 
@@ -735,6 +737,23 @@ dependent layer. Complete implementation in this environment before inspecting
 or correcting CI, following the two-phase strategy above. P04/P05 flags may
 be enabled separately after their own public-route gates pass; final completion
 requires both. Keep the checklist and evidence current throughout execution.
+
+Public protocol version 13 now carries bounded input transaction begin/append,
+prepare/commit, cancellation, status and finite-capacity records. The engine owns
+preparation through terminal cleanup, retains requested/effective cuts and request
+identity across controller disconnect, and commits all media targets/solo peers at
+one RT cut. Delayed mode batches roll back clocks, triggers and old plans on any
+member refusal. Normal-constructor public tests cover phase-aware mixed Grab,
+current-media Replacing, delayed entry, exact old/current data, cancellation across
+disconnect and late timing refusal with unchanged peers. A strict output diagnostic
+caught restoration/merge overflow; playback, strip and host buffers now derive
+separate bounded output capacity from state restoration plus routed input density.
+Strip outputs forward their prepared merge input without a duplicate packet copy.
+The public route passes with zero output overflows. Local engine tests pass (42,
+one measurement intentionally ignored), together with targeted runtime/protocol
+checks. Application adapter, musical finish plans, global MIDI owner protection,
+production measurements and application acceptance remain open. No Phase A CI
+inspection or remote push was performed for this milestone.
 
 ### F0 — Establish the new delivery
 
