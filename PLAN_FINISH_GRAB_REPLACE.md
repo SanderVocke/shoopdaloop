@@ -261,6 +261,26 @@ with warnings denied; the CI release measurement was intentionally ignored local
 A missing tracing-inventory entry for the new FreeRTOS build script is reconciled.
 Fresh broad CI and application acceptance remain pending.
 
+The loop coordinator can now use one indexed MIDI pool for every configured MIDI
+source, alongside its shared audio pool. It observes stopped input once, fences
+source resets/routing generations, intersects cross-media coverage, grabs ordinary
+resources at a completed cut and accounts/cleans up the common pool once. A new
+Q=32/irregular-callback engine scenario captures two independent sources, checks
+mixed packets/SysEx against generated input, adopts the take through ordinary
+media/playback validation, retains old exports and reclaims every source/owner.
+The 22-test engine shared-media group and three indexed-resource tests pass with
+warnings denied; the CI-only release measurement is intentionally ignored locally.
+Affected builds, formatting and test-attribute checks pass. This does not yet
+install production history defaults or implement loop writer modes. Indexed
+continuous media intentionally cannot enter the checkpoint-based private-patch
+candidate API; continuous writer integration is a separate path.
+
+CI on `f95c37a559030a6c7f98cebdf1748247952a1886` passed the fixed shared media
+foundation job (including release callback measurements) in run `41999646740`.
+Other platform jobs were running/queued at inspection. That job validates the
+preceding resource/audio milestones, not this later coordinator integration or
+application parity.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record

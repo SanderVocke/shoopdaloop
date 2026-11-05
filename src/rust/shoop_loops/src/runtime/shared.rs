@@ -15,6 +15,8 @@ pub struct SharedSettings {
     pub histories: Vec<HistorySettings>,
     /// Source audio configurations describe shape; this pool owns their common budget.
     pub audio_pool: Option<shared_audio::Config>,
+    /// MIDI source configurations describe shape; this pool owns their common budget.
+    pub midi_pool: Option<indexed_midi::Config>,
     pub candidates: usize,
     pub edit_steps_per_callback: usize,
 }
@@ -43,6 +45,7 @@ pub struct SharedTake {
     pub midi: Option<rt_runtime::ResourceId>,
     pub audio_store: Option<AudioStoreId>,
     pub midi_store: Option<MidiStoreId>,
+    pub indexed_midi_store: Option<indexed_midi::StoreId>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CandidateId {
@@ -83,6 +86,7 @@ struct History {
     audio: Option<AudioStoreId>,
     audio_source: Option<AudioHistoryId>,
     midi: Option<MidiStoreId>,
+    indexed_midi: Option<indexed_midi::SourceId>,
     tracker: Option<midi::MidiCapture>,
     audio_scratch: Box<[f32]>,
     token: Option<u64>,
@@ -127,6 +131,7 @@ pub(super) struct Shared {
     scope: u32,
     histories: Vec<History>,
     audio_pool: Option<(AudioStoreId, bool)>,
+    midi_pool: Option<(indexed_midi::StoreId, bool)>,
     lookup: Box<[Option<usize>]>,
     max_frames: usize,
     jobs: Box<[Job]>,
@@ -185,6 +190,31 @@ impl Shared {
                 }
             }
         }
+        if let Some(config) = settings.midi_pool {
+            if config.sources
+                != settings
+                    .histories
+                    .iter()
+                    .filter(|h| h.midi.is_some())
+                    .count()
+                || settings.histories.iter().filter_map(|h| h.midi).any(|m| {
+                    m.history_frames != config.history_frames
+                        || m.max_events > config.events_per_tick
+                        || m.max_bytes > config.bytes_per_tick
+                        || m.max_packet > config.packets.max_packet
+                })
+            {
+                return Err(Error::InvalidConfig);
+            }
+        }
+        let midi_pool = settings
+            .midi_pool
+            .map(|config| {
+                resources
+                    .prepare_indexed_midi_store(config)
+                    .map(|id| (id, false))
+            })
+            .transpose()?;
         let audio_pool = settings
             .audio_pool
             .map(|config| {
@@ -199,6 +229,7 @@ impl Shared {
             })
             .transpose()?;
         let mut audio_slot = 0;
+        let mut midi_slot = 0;
         let mut histories = Vec::with_capacity(settings.histories.len());
         let mut lookup = vec![None; c.max_nodes].into_boxed_slice();
         let mut channels = 0;
@@ -237,10 +268,18 @@ impl Shared {
                     resources.audio_history(id, slot)
                 })
                 .transpose()?;
-            let midi = setting
-                .midi
-                .map(|m| resources.prepare_midi_store(m, Frame(0), &MidiState::default()))
-                .transpose()?;
+            let (midi, indexed_midi) = match (setting.midi, midi_pool) {
+                (Some(_), Some((pool, _))) => {
+                    let source = resources.indexed_midi_source(pool, midi_slot)?;
+                    midi_slot += 1;
+                    (None, Some(source))
+                }
+                (Some(config), None) => (
+                    Some(resources.prepare_midi_store(config, Frame(0), &MidiState::default())?),
+                    None,
+                ),
+                (None, _) => (None, None),
+            };
             let tracker = setting
                 .midi
                 .map(|m| {
@@ -265,6 +304,7 @@ impl Shared {
                 audio,
                 audio_source,
                 midi,
+                indexed_midi,
                 tracker,
                 audio_scratch: vec![0.; samples].into_boxed_slice(),
                 token: None,
@@ -287,6 +327,7 @@ impl Shared {
             scope,
             histories,
             audio_pool,
+            midi_pool,
             lookup,
             max_frames: c.max_frames,
             jobs: (0..settings.candidates)
@@ -379,6 +420,16 @@ impl Shared {
                 )?;
             }
         }
+        if let Some(config) = settings.midi_pool {
+            let c = config.capacity(resources.config(), resources.quantum())?;
+            add(&mut capacity.store_metadata_bytes, 1, c.metadata_bytes)?;
+            add(&mut capacity.midi_state_bytes, 1, c.state_bytes)?;
+            add(
+                &mut capacity.reserved_payload_bytes,
+                1,
+                c.reserved_payload_bytes,
+            )?;
+        }
         capacity
             .coordinator_bytes
             .checked_add(capacity.store_metadata_bytes)
@@ -431,6 +482,9 @@ impl Shared {
                 .map(|id| io.audio_source_coverage(id))
                 .transpose()?,
             h.midi.map(|id| io.midi_coverage(id)).transpose()?,
+            h.indexed_midi
+                .map(|id| io.indexed_midi_coverage(id))
+                .transpose()?,
         ]
         .into_iter()
         .flatten()
@@ -492,9 +546,22 @@ impl Shared {
             return Err(Error::InvalidFrame);
         }
         let changed = h.token.is_some_and(|old| old != token);
-        if h.midi_token.is_some_and(|old| old != midi_token) {
+        let midi_changed = h.midi_token.is_some_and(|old| old != midi_token);
+        if midi_changed {
             if let Some(tracker) = &mut h.tracker {
                 tracker.reset();
+            }
+        }
+        if let (Some(source), Some(tracker)) = (h.indexed_midi, &h.tracker) {
+            if changed || midi_changed || h.restart || h.observed != frame {
+                h.indexed_midi = Some(io.render().reset_indexed_midi_source(
+                    source,
+                    frame,
+                    tracker.state(),
+                )?);
+                if midi_changed && !changed && !h.restart && h.observed == frame {
+                    h.generation = h.generation.checked_add(1).ok_or(Error::Exhausted)?;
+                }
             }
         }
         if changed || h.restart || h.observed != frame {
@@ -537,6 +604,13 @@ impl Shared {
                     store,
                     frame,
                     q,
+                    midi.ok_or(Error::InvalidShape)?,
+                )?;
+            }
+            if let Some(source) = h.indexed_midi {
+                io.render().append_indexed_midi_source(
+                    source,
+                    frame,
                     midi.ok_or(Error::InvalidShape)?,
                 )?;
             }
@@ -587,11 +661,14 @@ impl Shared {
             .audio_source
             .map(|source| io.grab_audio_source(source, start..end))
             .transpose()?;
-        let midi = match h
-            .midi
-            .map(|store| io.grab_midi(store, start..end))
-            .transpose()
-        {
+        let midi = match if let Some(source) = h.indexed_midi {
+            io.grab_indexed_midi(source, start..end, end.0 - start.0)
+                .map(Some)
+        } else {
+            h.midi
+                .map(|store| io.grab_midi(store, start..end))
+                .transpose()
+        } {
             Ok(midi) => midi,
             Err(error) => {
                 if let Some(audio) = audio {
@@ -606,6 +683,7 @@ impl Shared {
             midi,
             audio_store: h.audio,
             midi_store: h.midi,
+            indexed_midi_store: h.indexed_midi.map(|source| source.store()),
         };
         self.track(take);
         Ok(take)
@@ -639,6 +717,9 @@ impl Shared {
         io: &mut ResourceIo<'_>,
         frame: Frame,
     ) -> Result<CandidateId, Error> {
+        if source.indexed_midi_store.is_some() {
+            return Err(Error::InvalidState);
+        }
         if self.closed || source.frames != fence.length || source.frames == 0 {
             return Err(Error::InvalidFrame);
         }
@@ -1020,6 +1101,15 @@ impl Shared {
                     Ok(()) => h.midi_closed = true,
                     Err(Error::Busy) => busy = true,
                     Err(e) => return Err(e),
+                }
+            }
+        }
+        if let Some((id, closed)) = &mut self.midi_pool {
+            if !*closed {
+                match resources.cleanup_indexed_midi_store(*id) {
+                    Ok(()) => *closed = true,
+                    Err(Error::Busy) => busy = true,
+                    Err(error) => return Err(error),
                 }
             }
         }

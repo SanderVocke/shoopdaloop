@@ -52,6 +52,11 @@ pub struct SourceId {
     store: StoreId,
     key: Key,
 }
+impl SourceId {
+    pub fn store(self) -> StoreId {
+        self.store
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WriterId {
     store: StoreId,
@@ -182,6 +187,7 @@ pub struct Capacity {
     /// Prepared arrays and scratch, excluding allocator and common arena overhead.
     pub metadata_bytes: usize,
     pub reserved_payload_bytes: usize,
+    pub state_bytes: usize,
     pub history_frames: u64,
 }
 impl Config {
@@ -249,6 +255,14 @@ impl Config {
                 .packets
                 .pages
                 .checked_mul(runtime.limits().page_bytes)
+                .ok_or(Error::Capacity)?,
+            state_bytes: self
+                .sources
+                .checked_mul(3)
+                .and_then(|n| n.checked_add(self.views))
+                .and_then(|n| n.checked_add(self.writers.checked_mul(2)?))
+                .and_then(|n| n.checked_add(self.imports))
+                .and_then(|n| n.checked_mul(size_of::<MidiState>()))
                 .ok_or(Error::Capacity)?,
             history_frames: q.ceil(Frame(self.history_frames))?.0,
         })
@@ -350,18 +364,24 @@ impl ResourceStore {
         Ok(SourceId { store: id, key })
     }
     pub fn indexed_midi_coverage(
-        &mut self,
+        &self,
         source: SourceId,
     ) -> Result<core::ops::Range<Frame>, Error> {
-        self.with_indexed_midi(source.store, |_, pool| {
-            Ok(pool
-                .sources
-                .get(source.key)?
-                .history
-                .as_ref()
-                .ok_or(Error::InvalidState)?
-                .coverage())
-        })
+        if source.store.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        let pool = self
+            .indexed_midi_stores
+            .get(source.store.slot)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?;
+        Ok(pool
+            .sources
+            .get(source.key)?
+            .history
+            .as_ref()
+            .ok_or(Error::InvalidState)?
+            .coverage())
     }
     fn indexed_midi_resource(&mut self, take: Take) -> Result<ResourceId, Error> {
         let description = self.with_indexed_midi(take.store, |resources, pool| {
@@ -906,6 +926,23 @@ impl RenderIo<'_> {
             job.next = Some(next);
             Ok(writer.position)
         })
+    }
+}
+
+impl ResourceIo<'_> {
+    pub fn indexed_midi_coverage(
+        &self,
+        source: SourceId,
+    ) -> Result<core::ops::Range<Frame>, Error> {
+        self.store.indexed_midi_coverage(source)
+    }
+    pub fn grab_indexed_midi(
+        &mut self,
+        source: SourceId,
+        range: core::ops::Range<Frame>,
+        frames: u64,
+    ) -> Result<ResourceId, Error> {
+        self.store.grab_indexed_midi(source, range, frames)
     }
 }
 

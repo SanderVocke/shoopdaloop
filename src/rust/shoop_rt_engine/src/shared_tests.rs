@@ -113,10 +113,10 @@ impl Fixture {
         Self::new_shapes(q, partition, rate, true, true)
     }
     fn new_shapes(q: usize, partition: usize, rate: u32, audio: bool, midi: bool) -> Self {
-        Self::new_prepared_shapes(q, partition, rate, audio, midi, false)
+        Self::new_prepared_shapes(q, partition, rate, audio, midi, false, false)
     }
     fn new_pooled(q: usize, partition: usize) -> Self {
-        Self::new_prepared_shapes(q, partition, 1000, true, false, true)
+        Self::new_prepared_shapes(q, partition, 1000, true, false, true, false)
     }
     fn new_prepared_shapes(
         q: usize,
@@ -125,6 +125,7 @@ impl Fixture {
         audio: bool,
         midi: bool,
         pooled: bool,
+        indexed: bool,
     ) -> Self {
         let history_frames = if pooled { 32 * q } else { 8 * q };
         let d = EngineDescription {
@@ -169,19 +170,51 @@ impl Fixture {
                             views: 24,
                             pages: 1024,
                         }),
-                        midi: (midi && source == 0).then_some(resource::shared_midi::Config {
-                            history_frames: (8 * q) as u64,
-                            chunks: 8,
-                            views: 24,
-                            pages: 8192,
-                            max_events: 64,
-                            max_bytes: 2048,
-                            max_packet: 1024,
-                            transactions: 2,
-                            edit_steps: 8,
-                        }),
+                        midi: (midi && (source == 0 || indexed)).then_some(
+                            resource::shared_midi::Config {
+                                history_frames: if indexed {
+                                    history_frames as u64
+                                } else {
+                                    (8 * q) as u64
+                                },
+                                chunks: 8,
+                                views: 24,
+                                pages: 8192,
+                                max_events: 64,
+                                max_bytes: 2048,
+                                max_packet: 1024,
+                                transactions: 2,
+                                edit_steps: 8,
+                            },
+                        ),
                     })
                     .collect(),
+                midi_pool: indexed.then_some(resource::indexed_midi::Config {
+                    packets: resource::indexed_midi::PacketLimits {
+                        pages: 1024,
+                        bodies: 2048,
+                        records: 4096,
+                        max_packet: 1024,
+                        bases: 4,
+                    },
+                    indexes: resource::indexed_midi::IndexLimits {
+                        leases: 96,
+                        versions: 64,
+                        category_pages: 512,
+                        packet_nodes: 32768,
+                        scalar_nodes: 32768,
+                        hold_nodes: 8192,
+                        sostenuto_nodes: 8192,
+                    },
+                    sources: 2,
+                    history_frames: history_frames as u64,
+                    history_events: 128,
+                    views: 48,
+                    writers: 4,
+                    imports: 2,
+                    events_per_tick: 64,
+                    bytes_per_tick: 2048,
+                }),
                 candidates: 2,
                 edit_steps_per_callback: 8,
             },
@@ -2065,6 +2098,86 @@ fn timing_edits_fence_an_already_prepared_shared_candidate() {
         (after.windows, after.timing_revision),
         (edited.windows, edited.timing_revision)
     );
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}
+
+#[shoop_test]
+fn pooled_indexed_midi_histories_drive_mixed_grabs_ordinary_playback_and_reclaim_all_sources() {
+    let q = 32;
+    let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    let strip = protocol::StripId(protocol::SlotId::new(1, 1));
+    h.request(protocol::Request::CreateStrip {
+        strip,
+        shape: protocol::StripShape {
+            audio_inputs: 2,
+            audio_outputs: 2,
+            midi_input: true,
+            midi_output: true,
+        },
+    });
+    let (take, sibling, first) = h.grabs();
+    assert!(take.indexed_midi_store.is_some());
+    assert_eq!(take.indexed_midi_store, sibling.indexed_midi_store);
+    assert_eq!(take.midi_store, None);
+    let snapshot = h.snapshot(take.midi.unwrap());
+    let actual = h.read(snapshot);
+    let mut expected = Vec::new();
+    for frame in first..first + take.frames {
+        for packet in packets(frame, q) {
+            let mut record = vec![0; 12 + packet.len()];
+            resource::encode_midi_record(frame - first, &packet, &mut record).unwrap();
+            expected.extend_from_slice(&record);
+        }
+    }
+    assert_eq!(actual, expected);
+    let old = h.snapshot(take.audio.unwrap());
+    let old_audio = h.read(old);
+    let Reply::History(independent) = h.op(Operation::HistoryStatus { source: 1 }) else {
+        panic!("second history")
+    };
+    let at = h.aligned_future(256);
+    let sequence = h.send(
+        at,
+        Operation::HistoryGrab {
+            source: independent.id,
+            start: Frame(at - 64),
+            end: Frame(at),
+        },
+    );
+    let Reply::Grabbed(silent) = h.result(sequence) else {
+        panic!("silent history")
+    };
+    assert_eq!(silent.indexed_midi_store, take.indexed_midi_store);
+    let empty = h.snapshot(silent.midi.unwrap());
+    assert_eq!(empty.description.bytes, 0);
+    h.adopt(0, take);
+    h.op(Operation::Transition {
+        target: target(0),
+        timing: Timing::At,
+        transition: Transition::Play {
+            position: 0,
+            retrigger: false,
+        },
+    });
+    h.run_to(h.aligned_future(256));
+    assert_eq!(h.read(snapshot), expected);
+    assert_eq!(h.read(old), old_audio);
+    let Reply::History(final_history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("final history")
+    };
+    assert_eq!(final_history.failure, None);
+    let Reply::SharedCapacity(capacity) = h.op(Operation::SharedCapacity) else {
+        panic!("capacity")
+    };
+    assert_eq!(capacity.reserved_payload_bytes, (2048 + 1024) * 256);
+    assert!(capacity.midi_state_bytes > 0);
+    assert!(capacity.store_metadata_bytes < 32 * 1024 * 1024);
+    for snapshot in [snapshot, old, empty] {
+        h.resource(ResourceRequest::ReleaseSnapshot {
+            snapshot: snapshot.id,
+        });
+    }
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, 12288);
 }

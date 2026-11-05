@@ -403,6 +403,7 @@ impl Pinned {
             resource
         };
         SharedTake {
+            indexed_midi_store: None,
             frames: self.frames,
             audio: Some(upload(resource::Format::Audio { channels: 2 }, &self.audio)),
             midi: Some(upload(resource::Format::Midi, &self.midi)),
