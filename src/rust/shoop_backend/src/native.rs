@@ -1900,6 +1900,9 @@ impl NativeRuntime {
             })
             .collect();
         Ok(BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: self.resolved.sample_rate,
             tracks,
             buses,
@@ -1910,6 +1913,7 @@ impl NativeRuntime {
     }
 
     fn restore_session(&mut self, data: &BackendSessionData) -> Result<BackendSessionReplacement> {
+        data.require_legacy_timing()?;
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
         }

@@ -36,7 +36,7 @@ mod composite;
 pub use composite::{
     BackendCompositeLimits, BackendCompositeOperationState, BackendCompositeOutcome,
     BackendCompositePending, BackendCompositeReceipt, BackendCompositeSpan,
-    BackendPreparedCompositePlan,
+    BackendPreparedCompositePlan, BackendSessionComposite,
 };
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
@@ -1030,6 +1030,12 @@ pub struct BackendSessionData {
     pub sample_rate: u32,
     pub tracks: Vec<BackendSessionTrack>,
     #[serde(default)]
+    pub composites: Vec<BackendSessionComposite>,
+    #[serde(default)]
+    pub loop_sync: BTreeMap<u64, u64>,
+    #[serde(default)]
+    pub repeat_sync: Vec<u64>,
+    #[serde(default)]
     pub buses: Vec<BackendSessionBus>,
     #[serde(default)]
     pub mixer_routes: Vec<BackendSessionMixerRoute>,
@@ -1037,6 +1043,19 @@ pub struct BackendSessionData {
     pub global_ports: Vec<BackendSessionPort>,
     #[serde(default)]
     pub use_legacy_browser_default_routes: bool,
+}
+
+impl BackendSessionData {
+    #[cfg(feature = "legacy")]
+    fn require_legacy_timing(&self) -> Result<()> {
+        if !self.composites.is_empty() || !self.loop_sync.is_empty() || !self.repeat_sync.is_empty()
+        {
+            return Err(anyhow!(
+                "prepared composite and repeat timing requires the RT session service"
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Whether any loop in the session carries content, as opposed to a structure-only session.

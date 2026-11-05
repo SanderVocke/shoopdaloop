@@ -790,6 +790,9 @@ fn new_session_document(sample_rate: u32, profile: &ContractProfile) -> BackendS
         })
         .collect();
     BackendSessionData {
+        composites: Default::default(),
+        loop_sync: Default::default(),
+        repeat_sync: Default::default(),
         sample_rate,
         tracks: vec![sync, track],
         buses: vec![BackendSessionBus {

@@ -3425,6 +3425,9 @@ impl EngineBackend {
             })
             .collect();
         Ok(BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: self.sample_rate,
             tracks,
             buses,
@@ -3438,6 +3441,7 @@ impl EngineBackend {
         &self,
         data: &BackendSessionData,
     ) -> Result<(Self, BackendSessionReplacement)> {
+        data.require_legacy_timing()?;
         if data.sample_rate != self.sample_rate {
             return Err(anyhow!(
                 "prepared session sample rate {} does not match backend {}",
@@ -9695,6 +9699,9 @@ impl Backend for FakeBackend {
             })
             .collect();
         Ok(BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: self.status.sample_rate,
             tracks,
             buses,
@@ -9725,6 +9732,7 @@ impl Backend for FakeBackend {
         if let Some(message) = self.fail_next_session_replace.take() {
             return Err(anyhow!(message));
         }
+        session.require_legacy_timing()?;
         if session_has_loop_content(session) {
             self.require_capability(BackendCapability::SessionContentLoad)?;
         }

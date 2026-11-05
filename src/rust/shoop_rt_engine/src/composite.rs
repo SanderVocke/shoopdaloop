@@ -194,7 +194,14 @@ impl ControlEndpoint {
                     return Err(Refusal::Busy);
                 }
                 self.validate_composite(d)?;
-                if self.composite.received != d.segments as usize {
+                if self.composite.received != d.segments as usize
+                    || self.composite.spans[..self.composite.received]
+                        .iter()
+                        .map(|span| span.end)
+                        .max()
+                        .unwrap_or(0)
+                        != d.iterations
+                {
                     return Err(Refusal::InvalidValue);
                 }
                 for span in &self.composite.spans[..self.composite.received] {

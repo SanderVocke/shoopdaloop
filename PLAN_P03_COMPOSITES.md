@@ -430,17 +430,17 @@ confirmed monitoring, ownership cleanup and failure recovery.
 
 ### Stage 7 — coherent capture, document migration and atomic load
 
-- [ ] Extend the app persistence image, codec and session conversion with composites,
+- [x] Extend the app persistence image, codec and session conversion with composites,
   timing basis/effective timing and repeat intent. Implement legacy migration and
   sample-rate/alignment handling; retain stable event identity and nested references.
-- [ ] Capture one coherent active service/RT view. Define pending-edit save behavior
+- [x] Capture one coherent active service/RT view. Define pending-edit save behavior
   explicitly: persist the confirmed active plan, report that newer edits are pending,
   and never mix an authored candidate with active timing. Keep existing recording
   capture refusal; ordinary playing export/save must not stop playback.
-- [ ] Extend private service/adapter/engine replacement candidates, fresh source/live
+- [x] Extend private service/adapter/engine replacement candidates, fresh source/live
   mappings, validation, rollback and retirement. Load all composites stopped; reject
   an unsupported document as a whole rather than discarding events or dependent modes.
-- [ ] Remove composite file refusal only for fully supported document requirements.
+- [x] Remove composite file refusal only for fully supported document requirements.
   Extend New Session and repeated load teardown without requiring extra live capacity
   beyond the documented replacement budget.
 
@@ -695,3 +695,36 @@ and retain the normal/full test groups required before behavioral commits/pushes
   the maintained worklet and codec artifacts passed both actual-artifact contracts,
   including profiling. No submitted reviews or inline threads were present on PR
   **941** when rechecked. Persistence implementation and validation are in progress.
+
+- Persistence milestone: app protocol **23**, engine protocol **11**, file document
+  **14**. Captures retain confirmed active documents, original timing bases and
+  frozen geometry, explicit sync links and repeat intent. Non-recording edits may
+  remain pending, with a capture notice preserved through actual file completion.
+  A version change during media reads restarts the complete metadata cut. Active,
+  scheduled and nested future recording refuse capture, including selected-child
+  export; saved monitoring is manual intent, separate from automatic demand.
+- Private replacement maps every identity before installing composite headers and
+  spans. Timing-only standalone slots and track-owned slots load stopped, with
+  fresh versions/IDs and stable event IDs. Prepared automatic policy activates
+  with the new strips, before their first recording quantum. Primitive topology
+  seed lengths survive later program edits. Invalid/cancelled at-limit candidates
+  retain old playback and policy. UI-loss load and repeated load/New Session paths
+  remain service-owned.
+- File conversion rounds each frozen endpoint independently, retains the original
+  authored clock and refuses collapsed events/spans. Legacy migration uses saved
+  lengths and clock data; compatible quantum metadata normalizes without a timing
+  prompt, while actual timing changes require existing conversion consent. Ordinary
+  edits and copied events retain frozen geometry; natural refresh updates only
+  affected natural-duration instances. Replacing/dry-wet requirements still refuse
+  whole documents under their unavailable dependent capabilities.
+- Verification: warning-denying full-feature workspace build; complete native suite
+  **2,835 passed / 7 skipped**. Node and Chrome both passed app **58**, client **11**,
+  app protocol **17**, legacy backend **87**, editor **234**, adapter **52**, engine
+  **93**, worklet host **17**, engine protocol **6**, session **54** and codec **20**;
+  the final metadata-compatibility follow-up reran codec **21** and session **54**
+  in both runtimes. Focused format checks **75 passed**. Four-target dependency
+  boundaries, Wasm test isolation, test policy, parity coverage and tracing inventory
+  (**439 modules**) passed. The maintained worklet/codec artifact build and both
+  actual-artifact contracts passed with engine protocol **11**. Actual browser/
+  AudioWorklet editor acceptance and public capability remain
+  Stage 8 gates; this does not close full P03 or its dependent-mode gate.

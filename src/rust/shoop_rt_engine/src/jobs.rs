@@ -842,19 +842,13 @@ impl ControlEndpoint {
         }
         if job.topology_needed {
             let next = &self.next;
-            let initial = &self.replacement.initial;
-            let replacing = job.replacing();
             let records = self.work.encoder.encode(
                 |slot| {
                     next.loops[slot].map(|entry| TopologyLoop {
                         id: loop_id(entry.id),
                         sync: loop_id(entry.sync.unwrap_or(entry.id)),
                         program: entry.program,
-                        length: if replacing {
-                            initial[slot].map_or(0, |initial| initial.frames)
-                        } else {
-                            0
-                        },
+                        length: entry.seed_frames,
                     })
                 },
                 &next.spans,

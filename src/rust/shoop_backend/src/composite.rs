@@ -5,6 +5,7 @@ use crate::{
     BackendLoopMode,
 };
 use alloc::{string::String, vec::Vec};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BackendCompositeLimits {
@@ -14,7 +15,7 @@ pub struct BackendCompositeLimits {
     pub quantum: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendCompositeSpan {
     pub target: BackendCompositeTarget,
     pub start: u64,
@@ -24,7 +25,7 @@ pub struct BackendCompositeSpan {
     pub mode: BackendLoopMode,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendPreparedCompositePlan {
     pub kind: BackendCompositeKind,
     pub sync_source: Option<BackendLoopId>,
@@ -32,6 +33,14 @@ pub struct BackendPreparedCompositePlan {
     pub iterations: u64,
     pub entries: u32,
     pub spans: Vec<BackendCompositeSpan>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendSessionComposite {
+    pub source_id: u64,
+    #[serde(default)]
+    pub version: u64,
+    pub plan: BackendPreparedCompositePlan,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

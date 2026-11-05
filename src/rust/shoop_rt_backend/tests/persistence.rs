@@ -33,6 +33,201 @@ fn fixture() -> (Stack, BackendTrackCreation, BackendSessionData) {
 }
 
 #[shoop_test]
+fn session_replacement_restores_nested_timing_slots_and_repeat_intent_with_fresh_ids() {
+    let (mut backend, old, mut session) = fixture();
+    let child = old.loops[0].raw();
+    let source = 9000;
+    let parent = 9001;
+    let outer = 9002;
+    let mut sync = session.tracks[0].loops[0].clone();
+    sync.source_id = source;
+    sync.length = 8;
+    sync.audio[0].samples = vec![0.25; 8].into();
+    session.tracks[0].loops.push(sync);
+    session.tracks[0].loops.push(BackendLoopContent {
+        source_id: parent,
+        length: 0,
+        gain: 1.,
+        balance: 0.,
+        audio: vec![],
+        midi: vec![],
+    });
+    let plan = |target, sync_source| BackendPreparedCompositePlan {
+        kind: BackendCompositeKind::Regular,
+        sync_source,
+        unit_frames: 4,
+        iterations: 3,
+        entries: 1,
+        spans: vec![BackendCompositeSpan {
+            target,
+            start: 0,
+            end: 3,
+            occurrence_start: 0,
+            ordinal: 0,
+            mode: BackendLoopMode::Playing,
+        }],
+    };
+    session.composites = vec![
+        BackendSessionComposite {
+            source_id: parent,
+            version: 0,
+            plan: plan(
+                BackendCompositeTarget::Loop(BackendLoopId::from_raw(child)),
+                Some(BackendLoopId::from_raw(source)),
+            ),
+        },
+        BackendSessionComposite {
+            source_id: outer,
+            version: 0,
+            plan: plan(
+                BackendCompositeTarget::Composite(BackendCompositeId::from_raw(parent)),
+                None,
+            ),
+        },
+    ];
+    session.loop_sync.insert(child, source);
+    session.repeat_sync = vec![child, parent];
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let snapshot = backend.poll().unwrap();
+    for original in [child, source, parent, outer] {
+        assert_ne!(mapping.loops[&original].raw(), original);
+        let mode = if [parent, outer].contains(&original) {
+            snapshot.composites[&BackendCompositeId::from_raw(mapping.loops[&original].raw())].mode
+        } else {
+            snapshot.loops[&mapping.loops[&original]].mode
+        };
+        assert_eq!(mode, BackendLoopMode::Stopped);
+    }
+    let restored = backend.capture_session().unwrap();
+    assert_eq!(restored.composites.len(), 2);
+    assert_eq!(restored.tracks[0].loops.len(), 3);
+    let parent_id = mapping.loops[&parent];
+    let outer_id = mapping.loops[&outer];
+    let saved_parent = restored
+        .composites
+        .iter()
+        .find(|c| c.source_id == parent_id.raw())
+        .unwrap();
+    assert_eq!(saved_parent.plan.unit_frames, 4);
+    assert_eq!(saved_parent.plan.iterations, 3);
+    assert_eq!(saved_parent.plan.sync_source, Some(mapping.loops[&source]));
+    let saved_outer = restored
+        .composites
+        .iter()
+        .find(|c| c.source_id == outer_id.raw())
+        .unwrap();
+    assert_eq!(
+        saved_outer.plan.spans[0].target,
+        BackendCompositeTarget::Composite(BackendCompositeId::from_raw(parent_id.raw()))
+    );
+    assert!(restored.repeat_sync.contains(&parent_id.raw()));
+    assert!(restored.repeat_sync.contains(&mapping.loops[&child].raw()));
+    assert_eq!(
+        restored.loop_sync[&mapping.loops[&child].raw()],
+        mapping.loops[&source].raw()
+    );
+    backend
+        .transition_composite_loop(
+            BackendCompositeId::from_raw(outer_id.raw()),
+            BackendLoopMode::Playing,
+            None,
+            None,
+        )
+        .unwrap();
+    backend.wait_idle();
+    assert_eq!(
+        backend.poll().unwrap().composites[&BackendCompositeId::from_raw(parent_id.raw())].mode,
+        BackendLoopMode::Playing
+    );
+}
+
+#[shoop_test]
+fn invalid_and_cancelled_composite_replacements_leave_the_playing_plan_and_policy_intact() {
+    let mut d = description();
+    d.composite_entries = 1;
+    d.composite_segments = 1;
+    let mut backend = stack(&d);
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "old_music".into(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    let parent = backend.create_prepared_composite().unwrap();
+    backend.wait_idle();
+    backend
+        .configure_prepared_composite_loop(
+            parent,
+            &BackendPreparedCompositePlan {
+                kind: BackendCompositeKind::Regular,
+                sync_source: None,
+                unit_frames: 1,
+                iterations: 1000,
+                entries: 1,
+                spans: vec![BackendCompositeSpan {
+                    target: BackendCompositeTarget::Loop(track.loops[0]),
+                    start: 0,
+                    end: 1000,
+                    occurrence_start: 0,
+                    ordinal: 0,
+                    mode: BackendLoopMode::Playing,
+                }],
+            },
+        )
+        .unwrap();
+    backend
+        .set_track_automatic_monitoring(track.track_id, true)
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_composite_loop(parent, BackendLoopMode::Playing, None, None)
+        .unwrap();
+    backend.wait_idle();
+    let before = backend.capture_session().unwrap();
+    let version = backend.poll().unwrap().composites[&parent].active_plan_version;
+    let mut invalid = before.clone();
+    invalid.composites[0].plan.spans[0].target = BackendCompositeTarget::Composite(parent);
+    assert!(backend.replace_session_async(&invalid).is_err());
+    assert_eq!(
+        backend.poll().unwrap().composites[&parent].active_plan_version,
+        version
+    );
+    assert!(matches!(
+        backend.replace_session_async(&before).unwrap(),
+        BackendAsyncResult::Pending(_)
+    ));
+    backend.cancel_session_replacement().unwrap();
+    for _ in 0..4 {
+        backend.pump();
+        backend.clock_mut().render(1);
+    }
+    let live = backend.poll().unwrap();
+    assert_eq!(live.composites[&parent].mode, BackendLoopMode::Playing);
+    assert!(live.tracks[&track.track_id].automatic_monitoring_enabled);
+    assert!(loaded(&mut backend, &before)
+        .unwrap_err()
+        .to_string()
+        .contains("cancelled"));
+    let live = backend.poll().unwrap();
+    assert_eq!(live.composites[&parent].mode, BackendLoopMode::Playing);
+    assert_eq!(live.composites[&parent].active_plan_version, version);
+    assert!(live.tracks[&track.track_id].automatic_monitoring_enabled);
+    let mapping = loaded(&mut backend, &before).unwrap();
+    let new = BackendCompositeId::from_raw(mapping.loops[&parent.raw()].raw());
+    assert_ne!(new, parent);
+    assert_eq!(
+        backend.poll().unwrap().composites[&new].mode,
+        BackendLoopMode::Stopped
+    );
+    assert!(
+        backend.poll().unwrap().tracks[&mapping.tracks[&track.track_id.raw()].track_id]
+            .automatic_monitoring_enabled
+    );
+}
+
+#[shoop_test]
 fn prepared_engine_quantum_is_reported_independently_of_host_buffer_size() {
     for quantum in [1, 16, 32, 64, 128] {
         let mut description = description();

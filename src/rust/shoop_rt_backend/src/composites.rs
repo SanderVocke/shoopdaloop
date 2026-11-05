@@ -78,7 +78,7 @@ fn target_id(target: BackendCompositeTarget) -> BackendLoopId {
         BackendCompositeTarget::Composite(id) => primitive(id),
     }
 }
-fn wire_mode(mode: BackendLoopMode) -> Result<LoopMode> {
+pub(crate) fn wire_mode(mode: BackendLoopMode) -> Result<LoopMode> {
     Ok(match mode {
         BackendLoopMode::Stopped => LoopMode::Stopped,
         BackendLoopMode::Playing => LoopMode::Playing,
@@ -183,6 +183,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             || plan.entries > limits.composite_entries
             || plan.spans.len() > limits.composite_segments as usize
             || (plan.iterations == 0) != plan.spans.is_empty()
+            || plan.spans.iter().map(|span| span.end).max().unwrap_or(0) != plan.iterations
             || plan.spans.is_empty()
                 && (plan.entries != 0 || plan.kind != BackendCompositeKind::Regular)
         {

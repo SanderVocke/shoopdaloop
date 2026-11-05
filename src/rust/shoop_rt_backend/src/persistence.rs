@@ -350,6 +350,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             if let Some(image) = replacement.candidate.take() {
                 self.mirror = image;
+                self.composites.applied_frames.clear();
                 self.prepared_content = replacement
                     .content
                     .iter()

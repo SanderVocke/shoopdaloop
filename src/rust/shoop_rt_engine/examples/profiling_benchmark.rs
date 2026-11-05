@@ -156,6 +156,7 @@ fn main() {
                 midi_output: true,
             },
             controls: StripPreset {
+                automatic_monitoring: false,
                 input_gain: 1.,
                 input_balance: 0.,
                 monitoring: true,

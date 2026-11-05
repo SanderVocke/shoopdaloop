@@ -58,6 +58,9 @@ pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
 }
 pub(super) fn content() -> image::Loop {
     image::Loop {
+        sync_source: None,
+        repeat_sync: false,
+        composite: None,
         id: LoopId::from_raw(1),
         name: "User take/?".into(),
         sync: false,
@@ -66,6 +69,283 @@ pub(super) fn content() -> image::Loop {
         balance: 0.,
         audio: Vec::new(),
         midi: Vec::new(),
+    }
+}
+
+fn composite_session_image() -> image::Image {
+    use shoop_app_protocol::composite as c;
+    let mut child = content();
+    child.frames = 0;
+    let mut session = session(child, 0, false);
+    for channel in &mut session.buses[0].channels {
+        channel.port.state.connection_policy = ConnectionPolicy::UserManaged;
+    }
+    session.global_ports.push(image::Port {
+        state: ApplicationPortState {
+            publication: None,
+            id: PortId::from_raw(3),
+            owner: ApplicationPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".into(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Input,
+            role: PortRole::MidiInput,
+            connection_policy: ConnectionPolicy::UserManaged,
+        },
+        external_connections: vec![],
+    });
+    session.global.sync = false;
+    let target = LoopId::from_raw(1);
+    let mut parent = content();
+    parent.id = LoopId::from_raw(2);
+    parent.frames = 480 * 1010;
+    parent.sync_source = Some(LoopId::from_raw(4));
+    parent.repeat_sync = true;
+    parent.composite = Some(c::Content {
+        document: c::Document {
+            kind: CompositeKind::Regular,
+            basis: c::TimingBasis {
+                sample_rate: 48000,
+                unit_frames: 480,
+            },
+            instances: [(17, 0, 3), (19, 1003, 7)]
+                .into_iter()
+                .map(|(instance_id, start_cycle, n_cycles)| c::Instance {
+                    instance_id,
+                    loop_id: target,
+                    start_cycle,
+                    n_cycles: Some(n_cycles),
+                    mode: None,
+                })
+                .collect(),
+        },
+        prepared: c::Prepared {
+            sample_rate: 48000,
+            quantum: 32,
+            unit_frames: 480,
+            iterations: 1010,
+            instances: vec![
+                c::EffectiveInstance {
+                    instance_id: 17,
+                    start_frame: 0,
+                    end_frame: 1440,
+                },
+                c::EffectiveInstance {
+                    instance_id: 19,
+                    start_frame: 481440,
+                    end_frame: 484800,
+                },
+            ],
+            spans: vec![
+                c::Span {
+                    target,
+                    start: 0,
+                    end: 3,
+                    occurrence_start: 0,
+                    ordinal: 0,
+                    mode: LoopMode::Playing,
+                },
+                c::Span {
+                    target,
+                    start: 1003,
+                    end: 1010,
+                    occurrence_start: 1003,
+                    ordinal: 1,
+                    mode: LoopMode::Playing,
+                },
+            ],
+        },
+    });
+    let mut outer = parent.clone();
+    outer.id = LoopId::from_raw(3);
+    outer.sync_source = None;
+    outer.repeat_sync = false;
+    let c = outer.composite.as_mut().unwrap();
+    c.document.instances = vec![c::Instance {
+        instance_id: 23,
+        loop_id: parent.id,
+        start_cycle: 0,
+        n_cycles: Some(1010),
+        mode: None,
+    }];
+    c.prepared.instances = vec![c::EffectiveInstance {
+        instance_id: 23,
+        start_frame: 0,
+        end_frame: 484800,
+    }];
+    c.prepared.spans = vec![c::Span {
+        target: parent.id,
+        start: 0,
+        end: 1010,
+        occurrence_start: 0,
+        ordinal: 0,
+        mode: LoopMode::Playing,
+    }];
+    let mut source = content();
+    source.id = LoopId::from_raw(4);
+    source.frames = 96;
+    session.tracks[0].loops.extend([parent, outer, source]);
+    image::Image {
+        manifest: image::Manifest::Session(session),
+        payloads: vec![],
+    }
+}
+
+#[shoop_test]
+fn nested_composite_files_preserve_original_basis_frozen_spans_and_repeat_after_source_resize() {
+    let original = composite_session_image();
+    let bundle = document::to_bundle(&original).unwrap();
+    let bytes = encode_session(&bundle, "composite-parity").unwrap();
+    let decoded = decode_session(&bytes).unwrap();
+    assert_eq!(decoded, bundle);
+    let restored = document::from_bundle(decoded).unwrap();
+    let image::Manifest::Session(expected) = &original.manifest else {
+        panic!()
+    };
+    let image::Manifest::Session(actual) = &restored.manifest else {
+        panic!()
+    };
+    assert_eq!(actual.tracks, expected.tracks);
+    assert_eq!(restored.payloads, original.payloads);
+    let saved = document::to_bundle(&restored).unwrap();
+    assert_eq!(saved, bundle);
+}
+
+#[shoop_test]
+fn composite_format_conversion_rounds_each_frozen_endpoint_and_keeps_the_authored_clock() {
+    let original = composite_session_image();
+    let bundle = document::to_bundle(&original).unwrap();
+    let target = ConversionTarget {
+        sample_rate: 44100,
+        quantum_frames: 32,
+    };
+    let plan = SessionFormatPlan::new(&bundle, target, MAX_SESSION_MEDIA_BYTES).unwrap();
+    assert!(plan.timing.requires_confirmation);
+    let converted = plan.convert(&bundle, &mut || false).unwrap();
+    let image = document::from_bundle(converted.clone()).unwrap();
+    let image::Manifest::Session(session) = &image.manifest else {
+        panic!()
+    };
+    let c = session.tracks[0].loops[1].composite.as_ref().unwrap();
+    assert_eq!(
+        c.document.basis,
+        shoop_app_protocol::composite::TimingBasis {
+            sample_rate: 48000,
+            unit_frames: 480
+        }
+    );
+    assert_eq!(
+        (
+            c.prepared.instances[0].start_frame,
+            c.prepared.instances[0].end_frame
+        ),
+        (0, 1312)
+    );
+    assert_eq!(
+        (
+            c.prepared.instances[1].start_frame,
+            c.prepared.instances[1].end_frame
+        ),
+        (442336, 445408)
+    );
+    assert_eq!(session.tracks[0].loops[1].frames, 445408);
+    let second = SessionFormatPlan::new(&converted, target, MAX_SESSION_MEDIA_BYTES).unwrap();
+    assert!(!second.timing.requires_confirmation);
+    assert_eq!(
+        second.convert(&converted, &mut || false).unwrap(),
+        converted
+    );
+}
+
+#[shoop_test]
+fn legacy_composite_migration_uses_saved_lengths_and_unsupported_modes_refuse_whole_documents() {
+    let mut bundle = document::to_bundle(&composite_session_image()).unwrap();
+    for loop_ in &mut bundle.document.track_groups[1].tracks[0].loops {
+        loop_.execution = None;
+        if let Some(composite) = &mut loop_.composite {
+            composite.timing = None;
+        }
+    }
+    let once = document::from_bundle(bundle.clone()).unwrap();
+    let twice = document::from_bundle(bundle.clone()).unwrap();
+    assert_eq!(once, twice);
+    let image::Manifest::Session(session) = &once.manifest else {
+        panic!()
+    };
+    assert_eq!(
+        session.tracks[0].loops[1]
+            .composite
+            .as_ref()
+            .unwrap()
+            .document
+            .basis
+            .unit_frames,
+        480
+    );
+    bundle.document.track_groups[1].tracks[0].loops[1]
+        .composite
+        .as_mut()
+        .unwrap()
+        .kind = CompositeKindDocument::Script;
+    for event in &mut bundle.document.track_groups[1].tracks[0].loops[1]
+        .composite
+        .as_mut()
+        .unwrap()
+        .instances
+    {
+        event.mode = Some("replacing".into());
+    }
+    let error = document::from_bundle(bundle).unwrap_err().to_string();
+    assert!(error.contains("replacing composite events"), "{error}");
+}
+
+#[shoop_test]
+fn compatible_legacy_composite_metadata_adopts_the_engine_quantum_without_a_retiming_prompt() {
+    let original = composite_session_image();
+    let mut bundle = document::to_bundle(&original).unwrap();
+    for loop_ in &mut bundle.document.track_groups[1].tracks[0].loops {
+        if let Some(composite) = &mut loop_.composite {
+            composite.timing = None;
+        }
+    }
+    let target = ConversionTarget {
+        sample_rate: 48000,
+        quantum_frames: 32,
+    };
+    let Value::Inspected {
+        decoded,
+        conversion_required,
+    } = (Work::Inspect {
+        decoded: Decoded::Session(bundle),
+        target,
+        mapping: vec![],
+        update_length: false,
+    })
+    .run()
+    .unwrap()
+    else {
+        panic!()
+    };
+    assert!(!conversion_required);
+    let Value::Image(image) = (Work::Prepare {
+        decoded,
+        mapping: vec![],
+        update_length: false,
+    })
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    let image::Manifest::Session(restored) = &image.manifest else {
+        panic!()
+    };
+    let image::Manifest::Session(original) = &original.manifest else {
+        panic!()
+    };
+    assert_eq!(restored.tracks, original.tracks);
+    for content in &restored.tracks[0].loops {
+        if let Some(composite) = &content.composite {
+            assert_eq!(composite.prepared.quantum, 32);
+        }
     }
 }
 

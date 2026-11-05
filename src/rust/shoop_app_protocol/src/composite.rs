@@ -36,6 +36,7 @@ impl Document {
             && self.instances.len() <= MAX_EVENTS
             && self.instances.iter().all(|event| {
                 event.instance_id != 0
+                    && event.instance_id != u64::MAX
                     && ids.insert(event.instance_id)
                     && event.loop_id.is_valid()
                     && event.n_cycles != Some(0)
@@ -228,6 +229,7 @@ fn valid_content(document: &Document, p: &Prepared) -> bool {
         || p.spans.len() > MAX_EVENTS * 2
         || p.instances.len() != document.instances.len()
         || (p.iterations == 0) != p.spans.is_empty()
+        || p.spans.iter().map(|span| span.end).max().unwrap_or(0) != p.iterations
     {
         return false;
     }

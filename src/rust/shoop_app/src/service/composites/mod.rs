@@ -18,6 +18,16 @@ pub(super) struct Owner {
 }
 
 impl Owner {
+    pub(super) fn restored(active: Versioned, revisions: BTreeMap<LoopId, u64>) -> Self {
+        Self {
+            active: Some(active),
+            revisions,
+            ..Self::default()
+        }
+    }
+    pub(super) fn has_retained(&self) -> bool {
+        self.retained.is_some()
+    }
     fn authored(&self) -> Option<&Versioned> {
         self.latest
             .and_then(|version| self.candidates.get(&version))
@@ -26,6 +36,29 @@ impl Owner {
 }
 
 impl Service {
+    fn composite_geometry(&self, target: LoopId) -> (BTreeMap<u64, (u64, u64)>, Option<u64>) {
+        let prepared = self.composites.get(&target).and_then(|owner| {
+            owner
+                .latest
+                .and_then(|version| owner.candidates.get(&version))
+                .map(|plan| &plan.prepared)
+                .or_else(|| owner.retained.as_ref().map(|content| &content.prepared))
+                .or_else(|| owner.active.as_ref().map(|plan| &plan.prepared))
+        });
+        prepared.map_or_else(
+            || (BTreeMap::new(), None),
+            |prepared| {
+                (
+                    prepared
+                        .instances
+                        .iter()
+                        .map(|event| (event.instance_id, (event.start_frame, event.end_frame)))
+                        .collect(),
+                    Some(prepared.unit_frames),
+                )
+            },
+        )
+    }
     fn composite_format(&self) -> ConversionTarget {
         ConversionTarget {
             sample_rate: self.observed.status.sample_rate,
@@ -132,6 +165,7 @@ impl Service {
                 }
         );
         let mut document = self.composite_document(target, allow_convert)?;
+        let (mut geometry, mut unit) = self.composite_geometry(target);
         match edit {
             Edit::Convert { .. } => {
                 if self.composites.contains_key(&target) {
@@ -149,12 +183,14 @@ impl Service {
                 for event in &mut document.instances {
                     event.mode = None;
                 }
-                let prepared = prepare::compile(
+                let prepared = prepare::compile_with_geometry(
                     target,
                     &document,
                     self.composite_format(),
                     self.backend.composite_limits().unwrap(),
                     |id| Ok(self.loops[&id].view.length_frames),
+                    &geometry,
+                    unit,
                 )?;
                 let start_frame = if parallel {
                     prepared
@@ -246,11 +282,28 @@ impl Service {
                         .retain(|event| !selected.contains(&event.instance_id));
                 }
                 for mut event in moved {
+                    let previous_id = event.instance_id;
+                    let previous_cycle = event.start_cycle;
                     event.start_cycle = start_cycle
                         .checked_add(event.start_cycle - origin)
                         .ok_or_else(|| anyhow!("composite position overflow"))?;
                     if duplicate {
                         event.instance_id = self.next_instance()?;
+                    }
+                    if let Some(&(start, end)) = geometry.get(&previous_id) {
+                        let start_frame = if event.start_cycle == previous_cycle {
+                            start
+                        } else {
+                            prepare::frame_at(
+                                document.basis,
+                                event.start_cycle,
+                                self.composite_format(),
+                            )?
+                        };
+                        let end_frame = start_frame
+                            .checked_add(end - start)
+                            .ok_or_else(|| anyhow!("composite duration overflow"))?;
+                        geometry.insert(event.instance_id, (start_frame, end_frame));
                     }
                     document.instances.push(event);
                 }
@@ -258,12 +311,15 @@ impl Service {
             Edit::Duration {
                 event, n_cycles, ..
             } => {
-                document
+                let instance = document
                     .instances
                     .iter_mut()
                     .find(|instance| instance.instance_id == event)
-                    .ok_or_else(|| CommandError::invalid("stale composite event"))?
-                    .n_cycles = n_cycles;
+                    .ok_or_else(|| CommandError::invalid("stale composite event"))?;
+                if instance.n_cycles != n_cycles {
+                    geometry.remove(&event);
+                }
+                instance.n_cycles = n_cycles;
             }
             Edit::Kind { kind, .. } => {
                 document.kind = kind;
@@ -284,17 +340,32 @@ impl Service {
                     .ok_or_else(|| CommandError::invalid("stale composite event"))?
                     .mode = Some(mode);
             }
-            Edit::Timing { basis, .. } => document.basis = basis,
+            Edit::Timing { basis, .. } => {
+                document.basis = basis;
+                geometry.clear();
+                unit = None;
+            }
             Edit::Cancel { .. } => unreachable!(),
         }
-        self.submit_composite_document(target, document)?;
-        Ok(Effect::None)
+        self.submit_composite_geometry(target, document, &geometry, unit)?;
+        Ok(Effect::CompositeEdit(target))
     }
 
     fn submit_composite_document(
         &mut self,
         target: LoopId,
         document: Document,
+    ) -> core::result::Result<(), CommandError> {
+        let (geometry, unit) = self.composite_geometry(target);
+        self.submit_composite_geometry(target, document, &geometry, unit)
+    }
+
+    fn submit_composite_geometry(
+        &mut self,
+        target: LoopId,
+        document: Document,
+        geometry: &BTreeMap<u64, (u64, u64)>,
+        unit: Option<u64>,
     ) -> core::result::Result<(), CommandError> {
         for event in &document.instances {
             self.loop_entry(event.loop_id)?;
@@ -314,7 +385,7 @@ impl Service {
             }
         }
         self.validate_composite_dependencies(target, &document)?;
-        let prepared = prepare::compile(
+        let prepared = prepare::compile_with_geometry(
             target,
             &document,
             self.composite_format(),
@@ -322,6 +393,8 @@ impl Service {
                 .composite_limits()
                 .ok_or_else(|| anyhow!("prepared composites unavailable"))?,
             |id| Ok(self.loops[&id].view.length_frames),
+            geometry,
+            unit,
         )
         .map_err(|error| CommandError::invalid(error.to_string()))?;
         self.submit_prepared_composite(target, document, prepared)
@@ -633,13 +706,32 @@ impl Service {
             })
             .collect::<Vec<_>>();
         for (target, document) in refresh {
-            let prepared = self.backend.composite_limits().and_then(|limits| {
-                prepare::compile(target, &document, self.composite_format(), limits, |id| {
-                    Ok(self.loops[&id].view.length_frames)
-                })
-                .ok()
-            });
-            if prepared.as_ref()
+            let (mut geometry, unit) = self.composite_geometry(target);
+            for event in &document.instances {
+                if event.n_cycles.is_none()
+                    && self.composites[&target].revisions.get(&event.loop_id)
+                        != Some(&self.loops[&event.loop_id].view.content_revision)
+                {
+                    geometry.remove(&event.instance_id);
+                }
+            }
+            let prepared = self
+                .backend
+                .composite_limits()
+                .ok_or_else(|| CommandError::unsupported(BackendCapability::CompositeLoops))
+                .and_then(|limits| {
+                    prepare::compile_with_geometry(
+                        target,
+                        &document,
+                        self.composite_format(),
+                        limits,
+                        |id| Ok(self.loops[&id].view.length_frames),
+                        &geometry,
+                        unit,
+                    )
+                    .map_err(|error| CommandError::invalid(error.to_string()))
+                });
+            if prepared.as_ref().ok()
                 == self.composites[&target]
                     .active
                     .as_ref()
@@ -658,7 +750,9 @@ impl Service {
                 self.composites.get_mut(&target).unwrap().revisions = revisions;
                 continue;
             }
-            if let Err(error) = self.submit_composite_document(target, document) {
+            if let Err(error) = prepared
+                .and_then(|prepared| self.submit_prepared_composite(target, document, prepared))
+            {
                 if let Some(owner) = self.composites.get_mut(&target) {
                     owner.error = Some(error.message);
                     if let Some(active) = &owner.active {

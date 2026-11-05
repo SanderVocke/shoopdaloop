@@ -2,6 +2,8 @@
 //! checked completely before anything changes, so one that needs anything else is rejected
 //! whole.
 
+mod composites;
+
 use alloc::borrow::ToOwned;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
@@ -63,7 +65,11 @@ fn check_bus(bus: &BackendSessionBus, max_channels: usize) -> Result<()> {
     Ok(())
 }
 
-fn check_track(track: &BackendSessionTrack, max_channels: u32) -> Result<()> {
+fn check_track(
+    track: &BackendSessionTrack,
+    max_channels: u32,
+    composites: &BTreeSet<u64>,
+) -> Result<()> {
     let BackendTrackTopology::Direct {
         audio_channels,
         midi,
@@ -103,6 +109,12 @@ fn check_track(track: &BackendSessionTrack, max_channels: u32) -> Result<()> {
     }
     let direct = |mode: BackendChannelMode| mode == BackendChannelMode::Direct;
     for content in &track.loops {
+        if composites.contains(&content.source_id) {
+            if content.length != 0 || !content.audio.is_empty() || !content.midi.is_empty() {
+                return Err(anyhow!("a composite cannot contain primitive media"));
+            }
+            continue;
+        }
         if content.audio.len() != audio_channels as usize
             || content.midi.len() != usize::from(midi)
             || !content.audio.iter().all(|channel| direct(channel.mode))
@@ -140,7 +152,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn start_replacement_with_sync(
         &mut self,
         session: &BackendSessionData,
-        sync: &BTreeMap<u64, u64>,
+        sync_sources: &BTreeMap<u64, u64>,
     ) -> Result<BackendSessionReplacement> {
         use crate::{
             mirror::db_amplitude,
@@ -151,7 +163,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         use alloc::{collections::VecDeque, sync::Arc};
         use shoop_rt_protocol::{Capabilities, ReplacementEdit, Request, StripPreset};
         self.ready()?;
-        if !self.requests.is_empty() || self.replacement.is_some() {
+        if !self.requests.is_empty()
+            || !self.composites.jobs.is_empty()
+            || !self.composites.controls.is_empty()
+            || self.replacement.is_some()
+        {
             return Err(anyhow!(
                 "settle previous engine operations before replacing the session"
             ));
@@ -163,6 +179,24 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return Err(unavailable(BackendCapability::SessionContentLoad));
         }
         self.check_session(session)?;
+        let mut sync = session.loop_sync.clone();
+        for (&target, &source) in sync_sources {
+            if sync.insert(target, source).is_some_and(|old| old != source) {
+                return Err(anyhow!("conflicting session synchronization sources"));
+            }
+        }
+        for composite in &session.composites {
+            if let Some(source) = composite.plan.sync_source {
+                if sync
+                    .insert(composite.source_id, source.raw())
+                    .is_some_and(|old| old != source.raw())
+                {
+                    return Err(anyhow!("conflicting composite synchronization source"));
+                }
+            } else if sync.contains_key(&composite.source_id) {
+                return Err(anyhow!("conflicting composite synchronization source"));
+            }
+        }
         if session
             .tracks
             .iter()
@@ -186,8 +220,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .tracks
             .iter()
             .flat_map(|track| track.loops.iter().map(|content| content.source_id))
+            .chain(
+                session
+                    .composites
+                    .iter()
+                    .map(|composite| composite.source_id),
+            )
             .collect::<BTreeSet<_>>();
-        for (&target, &source) in sync {
+        for (&target, &source) in &sync {
             if !ids.contains(&target) || !ids.contains(&source) {
                 return Err(anyhow!("session sync references an unknown loop"));
             }
@@ -269,6 +309,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut prepared_bytes = 0u64;
         for content in session.tracks.iter().flat_map(|track| &track.loops) {
             let loop_id = mapping.loops[&content.source_id];
+            if session
+                .composites
+                .iter()
+                .any(|c| c.source_id == content.source_id)
+            {
+                continue;
+            }
             let canonical = Arc::new(content.clone());
             let mut pair = [None; 2];
             if content.length > 0 {
@@ -325,6 +372,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         input_gain: db_amplitude(controls.input_gain_db),
                         input_balance: controls.input_balance,
                         monitoring: controls.input_monitoring,
+                        automatic_monitoring: track.automatic_enabled,
                         output_gain: db_amplitude(controls.output_gain_db),
                         output_balance: controls.output_balance,
                         output_mute: controls.output_muted,
@@ -346,7 +394,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             entry.sync = sync.iter().find_map(|(target, source)| {
                 (mapping.loops[target] == loop_id).then_some(mapping.loops[source])
             });
-            let pair = sources[&loop_id];
+            let pair = sources.get(&loop_id).copied().unwrap_or([None; 2]);
+            if entry.track.is_none() {
+                continue;
+            }
             work.push_back(Work::Request(Request::ReplacementEdit {
                 id,
                 edit: ReplacementEdit::Loop {
@@ -360,6 +411,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     midi: pair[1],
                     gain: entry.gain,
                     balance: entry.balance,
+                },
+            }));
+        }
+        for edit in self.replacement_composites(session, &mapping, &mut candidate)? {
+            work.push_back(Work::Request(Request::ReplacementEdit { id, edit }));
+        }
+        for source in &session.repeat_sync {
+            let loop_id = mapping.loops[source];
+            let entry = candidate.loops.get_mut(&loop_id).unwrap();
+            entry.repeat_sync = true;
+            work.push_back(Work::Request(Request::ReplacementEdit {
+                id,
+                edit: ReplacementEdit::RepeatSync {
+                    loop_id: entry.slot,
+                    enabled: true,
                 },
             }));
         }
@@ -441,8 +507,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         let limits = self.limits();
+        let composites = session
+            .composites
+            .iter()
+            .map(|c| c.source_id)
+            .collect::<BTreeSet<_>>();
+        if composites.len() != session.composites.len() {
+            return Err(anyhow!("duplicate composite identity"));
+        }
         for track in &session.tracks {
-            check_track(track, u32::from(limits.strip_audio_channels))?;
+            check_track(track, u32::from(limits.strip_audio_channels), &composites)?;
         }
         let loops = session
             .tracks
@@ -471,7 +545,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.mirror.strip_slots.capacity()
             ));
         }
-        if loops > self.mirror.loop_slots.capacity() {
+        let all_loops = loop_ids
+            .union(&composites)
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if session.repeat_sync.iter().any(|id| !all_loops.contains(id))
+            || session
+                .repeat_sync
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != session.repeat_sync.len()
+        {
+            return Err(anyhow!("invalid repeat policy loop identity"));
+        }
+        if all_loops.len() > self.mirror.loop_slots.capacity() {
             return Err(anyhow!(
                 "the session has {loops} loops; the engine has {} prepared loop slots",
                 self.mirror.loop_slots.capacity()
@@ -597,6 +686,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 track.loops.len(),
             )?;
             let state = &track.state;
+            self.mirror
+                .tracks
+                .get_mut(&created.track_id)
+                .unwrap()
+                .automatic_enabled = state.automatic_monitoring_enabled;
             for control in [
                 BackendTrackControl::OutputGainDb(state.output_gain_db),
                 BackendTrackControl::OutputBalance(state.output_balance),
@@ -648,6 +742,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             let source = replacement.ports[&route.source_port_id];
             let destination = replacement.bus_channels[&route.destination_channel_id];
             self.queue_route(source, destination, true)?;
+        }
+        for composite in &session.composites {
+            if !replacement.loops.contains_key(&composite.source_id) {
+                let id = self.create_prepared_composite()?;
+                replacement.loops.insert(
+                    composite.source_id,
+                    shoop_backend::BackendLoopId::from_raw(id.raw()),
+                );
+            }
         }
         Ok(replacement)
     }

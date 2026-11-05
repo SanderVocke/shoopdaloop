@@ -5532,6 +5532,9 @@ mod tests {
             .unwrap();
         deliver(&control, 3, 1, Event::Ack);
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),
@@ -5634,6 +5637,9 @@ mod tests {
             .unwrap();
         deliver(&control, 1, 1, Event::Ack);
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),
@@ -5730,6 +5736,9 @@ mod tests {
             external_connections: Vec::new(),
         };
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: vec![shoop_backend::BackendSessionTrack {
                 source_id: 1,
@@ -5843,6 +5852,9 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn fixed_bus_mappings_do_not_advance_the_next_track_port_identity() {
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: vec![shoop_backend::BackendSessionBus {
@@ -6270,6 +6282,9 @@ mod tests {
         deliver(&control, 1, 1, Event::Ack);
         sent.borrow_mut().clear();
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),

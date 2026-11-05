@@ -76,6 +76,7 @@ struct Port {
 #[derive(Clone, Debug)]
 enum Effect {
     None,
+    CompositeEdit(LoopId),
     BusCreated(BusId),
     BusRemoved(BusId),
     BusControl(BusId),

@@ -63,6 +63,385 @@ fn edit(target: LoopId, add: Vec<LoopId>, parallel: bool) -> Command {
 }
 
 #[shoop_test]
+fn nested_composite_capture_and_load_preserve_frozen_geometry_media_and_event_ids() {
+    for encoded in [false, true] {
+        let (mut f, mut client, _, loops) = setup_composites(encoded);
+        for (target, sources) in [(loops[2], loops[..2].to_vec()), (loops[3], vec![loops[2]])] {
+            assert!(matches!(
+                command(
+                    &mut f.service,
+                    &mut client,
+                    ConnectionId(1),
+                    edit(target, sources, false)
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Composite(arrangement::Edit::Timing {
+                    target: loops[2],
+                    basis: arrangement::TimingBasis {
+                        sample_rate: 1000,
+                        unit_frames: 64
+                    },
+                })
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                transition(vec![loops[3]], LoopMode::Playing)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut before = (*capture_image(&mut f.service, &mut client, 1, encoded)).clone();
+        let persistence_image::Manifest::Session(session) = &mut before.manifest else {
+            panic!()
+        };
+        session.tracks[1].loops[0].frames += 256;
+        let before = Arc::new(before);
+        release_image(&mut f.service, &mut client, 1, 1, encoded);
+        let key = stage_image(&mut f.service, &mut client, 2, before.clone(), encoded);
+        let operation = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::CommitPersistence(key),
+        );
+        if encoded {
+            f.service.detach(ConnectionId(1));
+            client.disconnect();
+            for _ in 0..20 {
+                f.service.tick(STEP);
+            }
+            client = attach(&mut f.service, 7001, ConnectionId(1), encoded);
+        }
+        let outcome = observe_host_result(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            encoded,
+        );
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+        let snapshot = client.snapshot().unwrap();
+        assert_eq!(snapshot.composites.len(), 2);
+        assert!(snapshot
+            .composites
+            .iter()
+            .all(|view| view.mode == LoopMode::Stopped && view.pending.is_none()));
+        for _ in 0..20 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        let after = capture_image(&mut f.service, &mut client, 3, encoded);
+        let persistence_image::Manifest::Session(saved_before) = &before.manifest else {
+            panic!()
+        };
+        let persistence_image::Manifest::Session(saved_after) = &after.manifest else {
+            panic!()
+        };
+        let ids = saved_before
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .zip(saved_after.tracks.iter().flat_map(|track| &track.loops))
+            .map(|(old, new)| (old.id, new.id))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert!(ids.iter().all(|(old, new)| old != new));
+        for (old, new) in saved_before
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .zip(saved_after.tracks.iter().flat_map(|track| &track.loops))
+        {
+            let mut expected = old.composite.clone();
+            if let Some(composite) = &mut expected {
+                for event in &mut composite.document.instances {
+                    event.loop_id = ids[&event.loop_id];
+                }
+                for span in &mut composite.prepared.spans {
+                    span.target = ids[&span.target];
+                }
+            }
+            assert_eq!(expected, new.composite);
+            assert_eq!(old.frames, new.frames);
+            assert_eq!(old.repeat_sync, new.repeat_sync);
+            assert_eq!(old.sync_source.map(|source| ids[&source]), new.sync_source);
+        }
+        assert_eq!(before.payloads, after.payloads);
+        release_image(&mut f.service, &mut client, 3, 2, encoded);
+        let target = ids[&loops[2]];
+        let expected = saved_after
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|content| content.id == target)
+            .unwrap()
+            .composite
+            .as_ref()
+            .unwrap()
+            .clone();
+        let outcome = command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Composite(arrangement::Edit::Kind {
+                target,
+                kind: CompositeKind::Script,
+            }),
+        );
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+        let active = f
+            .service
+            .snapshot()
+            .composites
+            .iter()
+            .find(|view| view.loop_id == target)
+            .unwrap()
+            .active
+            .clone()
+            .unwrap();
+        assert_eq!(
+            active.prepared, expected.prepared,
+            "ordinary mode editing rebased loaded geometry from current media"
+        );
+        let event = active.document.instances[0].instance_id;
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Composite(arrangement::Edit::Relocate {
+                    target,
+                    events: vec![event],
+                    start_cycle: 1000,
+                    duplicate: true
+                })
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let copied = f
+            .service
+            .snapshot()
+            .composites
+            .iter()
+            .find(|view| view.loop_id == target)
+            .unwrap()
+            .active
+            .clone()
+            .unwrap();
+        let original = copied.prepared.instances[0];
+        let duplicate = copied.prepared.instances.last().unwrap();
+        assert_eq!(
+            duplicate.end_frame - duplicate.start_frame,
+            original.end_frame - original.start_frame
+        );
+        assert!(
+            duplicate.instance_id
+                > expected
+                    .document
+                    .instances
+                    .iter()
+                    .map(|event| event.instance_id)
+                    .max()
+                    .unwrap()
+        );
+    }
+}
+
+#[shoop_test]
+fn capture_saves_active_composite_without_waiting_for_a_nonrecording_edit_to_restart() {
+    let (mut f, mut client, _, loops) = setup_composites(false);
+    let target = loops[2];
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        edit(target, loops[..2].to_vec(), false),
+    );
+    let event = f.service.snapshot().composites[0]
+        .active
+        .as_ref()
+        .unwrap()
+        .document
+        .instances[0]
+        .instance_id;
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Composite(arrangement::Edit::Duration {
+            target,
+            event,
+            n_cycles: Some(100_000),
+        }),
+    );
+    let warm = capture_image(&mut f.service, &mut client, 1, false);
+    release_image(&mut f.service, &mut client, 1, 1, false);
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        transition(vec![target], LoopMode::Playing),
+    );
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Composite(arrangement::Edit::Kind {
+            target,
+            kind: CompositeKind::Script,
+        }),
+    );
+    for _ in 0..20 {
+        f.service.tick(STEP);
+    }
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert!(client.snapshot().unwrap().composites[0].pending.is_some());
+    let active = client.snapshot().unwrap().composites[0]
+        .active
+        .clone()
+        .unwrap();
+    let key = persistence::Key {
+        transfer: TransferId(2),
+        epoch: 1,
+    };
+    let target_cut = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    let message = client.capture_image(key, target_cut).unwrap();
+    f.service.handle(ConnectionId(1), message).unwrap();
+    let mut notice = false;
+    let saved = (0..100)
+        .find_map(|_| {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), false);
+            while let Some(reply) = client.take_persistence_reply() {
+                if let persistence::Reply::CaptureNotice { message, .. } = reply {
+                    notice |= message.contains("newer composite edits");
+                }
+            }
+            client.take_captured_image().map(|(_, image)| image)
+        })
+        .expect("active-plan capture waited for the pending edit");
+    let persistence_image::Manifest::Session(session) = &saved.manifest else {
+        panic!()
+    };
+    let content = session
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .find(|content| content.id == target)
+        .unwrap()
+        .composite
+        .as_ref()
+        .unwrap();
+    assert_eq!(content.document, active.document);
+    assert_eq!(content.prepared, active.prepared);
+    assert_eq!(warm.payloads, saved.payloads);
+    assert!(client.snapshot().unwrap().composites[0].pending.is_some());
+    assert!(client
+        .snapshot()
+        .unwrap()
+        .results
+        .iter()
+        .all(|result| result.id != operation));
+    assert!(notice);
+}
+
+#[shoop_test]
+fn capture_refuses_future_composite_recording_including_selected_child_export() {
+    let (mut f, mut client, _, loops) = setup_composites(false);
+    let target = loops[2];
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        edit(target, vec![loops[0]], false),
+    );
+    let event = f.service.snapshot().composites[0]
+        .active
+        .as_ref()
+        .unwrap()
+        .document
+        .instances[0]
+        .instance_id;
+    for value in [
+        arrangement::Edit::Kind {
+            target,
+            kind: CompositeKind::Script,
+        },
+        arrangement::Edit::Mode {
+            target,
+            event,
+            mode: LoopMode::Recording,
+        },
+        arrangement::Edit::Relocate {
+            target,
+            events: vec![event],
+            start_cycle: 1000,
+            duplicate: false,
+        },
+    ] {
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Composite(value),
+        );
+    }
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        transition(vec![target], LoopMode::Playing),
+    );
+    f.advance.set(false);
+    assert_eq!(
+        f.service.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Stopped
+    );
+    for (transfer, target) in [
+        (
+            1,
+            persistence::Target::Session {
+                revision: client.snapshot().unwrap().revision,
+            },
+        ),
+        (
+            2,
+            persistence::Target::Loop {
+                loop_id: loops[0],
+                content_revision: client.snapshot().unwrap().tracks[1].loops[0].content_revision,
+            },
+        ),
+    ] {
+        let key = persistence::Key {
+            transfer: TransferId(transfer),
+            epoch: 1,
+        };
+        let message = client.capture_image(key, target).unwrap();
+        f.service.handle(ConnectionId(1), message).unwrap();
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+        assert!(matches!(
+            client.take_persistence_reply(),
+            Some(persistence::Reply::Refused {
+                reason: Refusal::Busy,
+                ..
+            })
+        ));
+    }
+}
+
+#[shoop_test]
 fn composite_documents_geometry_and_pending_versions_publish_only_after_render_confirmation() {
     for encoded in [false, true] {
         let (mut f, mut client, _, loops) = setup_composites(encoded);

@@ -847,6 +847,7 @@ impl Wire for crate::ReplacementEdit {
                 w.f32(controls.input_gain)?;
                 w.f32(controls.input_balance)?;
                 w.bool(controls.monitoring)?;
+                w.bool(controls.automatic_monitoring)?;
                 w.f32(controls.output_gain)?;
                 w.f32(controls.output_balance)?;
                 w.bool(controls.output_mute)
@@ -910,6 +911,7 @@ impl Wire for crate::ReplacementEdit {
                     input_gain: r.f32()?,
                     input_balance: r.f32()?,
                     monitoring: r.bool()?,
+                    automatic_monitoring: r.bool()?,
                     output_gain: r.f32()?,
                     output_balance: r.f32()?,
                     output_mute: r.bool()?,

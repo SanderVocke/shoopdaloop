@@ -48,42 +48,87 @@ pub(super) fn cycles_for_frames(basis: TimingBasis, frames: u64, sample_rate: u3
     Ok(u64::try_from(numerator.div_ceil(denominator).max(1))?)
 }
 
-pub(super) fn compile(
+#[cfg(test)]
+fn compile(
     target: LoopId,
     document: &Document,
     format: ConversionTarget,
     limits: BackendCompositeLimits,
     length: impl Fn(LoopId) -> Result<u64>,
 ) -> Result<Prepared> {
+    compile_with_geometry(
+        target,
+        document,
+        format,
+        limits,
+        length,
+        &BTreeMap::new(),
+        None,
+    )
+}
+
+pub(super) fn compile_with_geometry(
+    target: LoopId,
+    document: &Document,
+    format: ConversionTarget,
+    limits: BackendCompositeLimits,
+    length: impl Fn(LoopId) -> Result<u64>,
+    frozen: &BTreeMap<u64, (u64, u64)>,
+    preferred_unit: Option<u64>,
+) -> Result<Prepared> {
     if !document.valid() || !format.is_valid() || document.instances.len() > limits.entries as usize
     {
         return Err(anyhow!("invalid or oversized composite document"));
     }
-    let unit = unit_frames(document.basis, format)?;
+    let mut unit = preferred_unit
+        .map(Ok)
+        .unwrap_or_else(|| unit_frames(document.basis, format))?;
+    if unit == 0 || unit % u64::from(format.quantum_frames) != 0 {
+        return Err(anyhow!("invalid frozen composite unit"));
+    }
     let mut instances = Vec::with_capacity(document.instances.len());
-    let mut entries = Vec::with_capacity(document.instances.len());
     for event in &document.instances {
         if event.loop_id == target {
             return Err(anyhow!("a composite cannot contain itself"));
         }
-        let duration = event.n_cycles.map(u64::from).map(Ok).unwrap_or_else(|| {
-            cycles_for_frames(document.basis, length(event.loop_id)?, format.sample_rate)
-        })?;
-        let end_cycle = event
-            .start_cycle
-            .checked_add(duration)
-            .ok_or_else(|| anyhow!("composite duration overflow"))?;
-        let start_frame = frame_at(document.basis, event.start_cycle, format)?;
-        let end_frame = frame_at(document.basis, end_cycle, format)?.max(
-            start_frame
-                .checked_add(unit)
-                .ok_or_else(|| anyhow!("composite duration overflow"))?,
-        );
+        let (start_frame, end_frame) = if let Some(geometry) = frozen.get(&event.instance_id) {
+            *geometry
+        } else {
+            let duration = event.n_cycles.map(u64::from).map(Ok).unwrap_or_else(|| {
+                cycles_for_frames(document.basis, length(event.loop_id)?, format.sample_rate)
+            })?;
+            let end_cycle = event
+                .start_cycle
+                .checked_add(duration)
+                .ok_or_else(|| anyhow!("composite duration overflow"))?;
+            let start_frame = frame_at(document.basis, event.start_cycle, format)?;
+            let end_frame = frame_at(document.basis, end_cycle, format)?.max(
+                start_frame
+                    .checked_add(u64::from(format.quantum_frames))
+                    .ok_or_else(|| anyhow!("composite duration overflow"))?,
+            );
+            (start_frame, end_frame)
+        };
+        if start_frame >= end_frame
+            || start_frame % u64::from(format.quantum_frames) != 0
+            || end_frame % u64::from(format.quantum_frames) != 0
+        {
+            return Err(anyhow!("invalid frozen composite geometry"));
+        }
         instances.push(EffectiveInstance {
             instance_id: event.instance_id,
             start_frame,
             end_frame,
         });
+    }
+    if instances
+        .iter()
+        .any(|event| event.start_frame % unit != 0 || event.end_frame % unit != 0)
+    {
+        unit = u64::from(format.quantum_frames);
+    }
+    let mut entries = Vec::with_capacity(document.instances.len());
+    for (event, effective) in document.instances.iter().zip(&instances) {
         let mode = event
             .mode
             .map(|mode| match mode {
@@ -97,8 +142,8 @@ pub(super) fn compile(
             .transpose()?;
         entries.push(shoop_loop_plan::Entry {
             target: event.loop_id,
-            delay: start_frame / unit,
-            duration: Some((end_frame - start_frame) / unit),
+            delay: effective.start_frame / unit,
+            duration: Some((effective.end_frame - effective.start_frame) / unit),
             repetitions: 1,
             mode,
         });

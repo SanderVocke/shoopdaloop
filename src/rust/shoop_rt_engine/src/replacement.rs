@@ -174,6 +174,21 @@ impl ControlEndpoint {
         let request = match edit {
             ReplacementEdit::Composite(d) => {
                 let slot = d.loop_id.0.index as usize;
+                if self.next.find_loop(d.loop_id).is_none() {
+                    match self.stage(
+                        Request::CreateComposite {
+                            loop_id: d.loop_id,
+                            strip: None,
+                        },
+                        true,
+                    ) {
+                        Staged::Change(change) => self.next.apply(change),
+                        Staged::Refused(reason) => return Err(reason),
+                        _ => return Err(Refusal::Busy),
+                    }
+                    self.next.loops[slot].as_mut().unwrap().program = None;
+                    self.replacement.initial[slot] = Some(Initial::default());
+                }
                 let entry = self.next.find_loop(d.loop_id).ok_or(Refusal::InvalidId)?;
                 if entry.program.is_some()
                     || d.previous.is_some()
@@ -192,7 +207,9 @@ impl ControlEndpoint {
                 {
                     return Err(Refusal::Capacity);
                 }
-                self.next.loops[slot].as_mut().unwrap().program = Some(d);
+                let entry = self.next.loops[slot].as_mut().unwrap();
+                entry.program = Some(d);
+                entry.sync = d.sync;
                 return Ok(());
             }
             ReplacementEdit::CompositeSpan {
@@ -280,7 +297,7 @@ impl ControlEndpoint {
                     input_gain: controls.input_gain,
                     input_balance: controls.input_balance,
                     monitoring: controls.monitoring,
-                    automatic_monitoring: false,
+                    automatic_monitoring: controls.automatic_monitoring,
                     output_gain: controls.output_gain,
                     output_balance: controls.output_balance,
                     output_mute: controls.output_mute,
@@ -313,6 +330,7 @@ impl ControlEndpoint {
                 let slot = loop_id.0.index as usize;
                 let entry = self.next.loops[slot].as_mut().expect("created loop");
                 entry.sync = sync;
+                entry.seed_frames = frames;
                 entry.gain = gain;
                 entry.balance = balance;
                 self.replacement.initial[slot] = Some(Initial {
@@ -392,6 +410,12 @@ impl ControlEndpoint {
                     || initial.audio.is_some()
                     || initial.midi.is_some()
                     || model.program_spans(entry.id).count() != d.segments as usize
+                    || model
+                        .program_spans(entry.id)
+                        .map(|span| span.end)
+                        .max()
+                        .unwrap_or(0)
+                        != d.iterations
                 {
                     return Err(Refusal::InvalidValue);
                 }

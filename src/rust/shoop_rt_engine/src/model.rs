@@ -147,6 +147,7 @@ pub(crate) struct Loop {
     pub strip: Option<StripId>,
     pub sync: Option<LoopSlotId>,
     pub program: Option<CompositeDescription>,
+    pub seed_frames: u64,
     pub repeat_sync: bool,
     pub gain: f32,
     pub balance: f32,
@@ -396,6 +397,7 @@ impl Model {
                     strip: Some(strip),
                     sync: None,
                     program: None,
+                    seed_frames: 0,
                     repeat_sync: false,
                     gain: 1.,
                     balance: 0.,
@@ -413,6 +415,7 @@ impl Model {
                     strip,
                     sync: None,
                     program: Some(program),
+                    seed_frames: 0,
                     repeat_sync: false,
                     gain: 1.,
                     balance: 0.,
@@ -424,6 +427,7 @@ impl Model {
                     .expect("validated composite");
                 entry.id = loop_id;
                 entry.program = None;
+                entry.seed_frames = 0;
                 self.loop_generations[loop_id.0.index as usize] = loop_id.0.generation;
                 self.remove_spans(previous);
                 for entry in self.loops.iter_mut().flatten() {

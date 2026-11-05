@@ -450,6 +450,7 @@ fn preparing_and_cancelling_a_private_replacement_preserves_live_recording_monit
             strip: strip(0, 2),
             shape: shape(1, 1, true),
             controls: StripPreset {
+                automatic_monitoring: false,
                 input_gain: 1.,
                 input_balance: 0.,
                 monitoring: false,
@@ -489,4 +490,102 @@ fn preparing_and_cancelling_a_private_replacement_preserves_live_recording_monit
             }
         ))
     ));
+}
+
+#[shoop_test]
+fn replacement_installs_automatic_policy_before_the_first_composite_recording_quantum() {
+    for q in [1, 16, 32, 64, 128] {
+        let mut h = setup(q);
+        h.done(Request::StripControl {
+            strip: strip(0, 1),
+            control: StripControl::AutomaticMonitoring(false),
+        });
+        let track = strip(0, 2);
+        let child = loop_id(1, 2);
+        let parent = loop_id(3, 2);
+        h.done(Request::ReplacementBegin { id: 1 });
+        for edit in [
+            ReplacementEdit::Strip {
+                strip: track,
+                shape: shape(1, 1, false),
+                controls: StripPreset {
+                    input_gain: 1.,
+                    input_balance: 0.,
+                    monitoring: false,
+                    automatic_monitoring: true,
+                    output_gain: 1.,
+                    output_balance: 0.,
+                    output_mute: false,
+                },
+            },
+            ReplacementEdit::Loop {
+                loop_id: child,
+                strip: track,
+                sync: None,
+                frames: 0,
+                audio: None,
+                midi: None,
+                gain: 1.,
+                balance: 0.,
+            },
+            ReplacementEdit::Connect {
+                port: port(track, PortKind::AudioIn, 0),
+                host: audio_in(0),
+            },
+            ReplacementEdit::Connect {
+                port: port(track, PortKind::AudioOut, 0),
+                host: audio_out(0),
+            },
+            ReplacementEdit::Composite(CompositeDescription {
+                id: 0,
+                loop_id: parent,
+                sync: None,
+                previous: None,
+                expected_version: 0,
+                version: 1,
+                kind: CompositeKind::Explicit,
+                unit_frames: (4 * q) as u64,
+                iterations: 1,
+                entries: 1,
+                segments: 1,
+                sample_rate: 1000,
+                quantum: q as u32,
+            }),
+            ReplacementEdit::CompositeSpan {
+                loop_id: parent,
+                index: 0,
+                span: CompositeSpan {
+                    target: child,
+                    start: 0,
+                    end: 1,
+                    occurrence_start: 0,
+                    ordinal: 0,
+                    mode: LoopMode::Recording,
+                },
+            },
+        ] {
+            h.done(Request::ReplacementEdit { id: 1, edit });
+        }
+        h.done(Request::ReplacementPrepare { id: 1 });
+        h.done(Request::ReplacementCommit { id: 1 });
+        let origin = aligned(&mut h, q) as usize;
+        h.send(Request::LoopTransition {
+            loop_id: parent,
+            mode: LoopMode::Playing,
+            delay: None,
+        });
+        h.run(6 * q, 7);
+        let delay = if q == 1 { 0 } else { q };
+        assert_eq!(
+            &h.outputs[0][origin + delay..origin + delay + 4 * q],
+            &vec![0.25; 4 * q],
+            "q={q}"
+        );
+        assert!(h.outputs[0][origin + delay + 4 * q..]
+            .iter()
+            .all(|sample| *sample == 0.));
+        let (length, audio, _) = h.read(child, BulkSelector::Audio { channel: 0 });
+        assert_eq!(length, (4 * q) as u64);
+        assert_eq!(audio, vec![0.25; 4 * q]);
+    }
 }

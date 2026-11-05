@@ -9,6 +9,7 @@ pub struct StripPreset {
     pub input_gain: f32,
     pub input_balance: f32,
     pub monitoring: bool,
+    pub automatic_monitoring: bool,
     pub output_gain: f32,
     pub output_balance: f32,
     pub output_mute: bool,

@@ -471,6 +471,7 @@ fn private_replacement_prepares_composites_inaudibly_and_loads_them_stopped_with
             strip: track,
             shape: shape(1, 1, false),
             controls: StripPreset {
+                automatic_monitoring: false,
                 input_gain: 1.,
                 input_balance: 0.,
                 monitoring: false,

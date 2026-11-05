@@ -49,6 +49,81 @@ struct Fixture {
 }
 
 #[shoop_test]
+async fn pending_composite_capture_notice_survives_encoding_and_platform_file_completion() {
+    let fixture = Fixture::new();
+    let state = fixture.runtime.client().snapshot().unwrap().clone();
+    let authority = fixture.runtime.client().authority().unwrap();
+    let mut client = Client::new();
+    client.attach().unwrap();
+    client
+        .receive(ServiceMessage::Attached { authority })
+        .unwrap();
+    client
+        .receive(ServiceMessage::Snapshot {
+            authority,
+            state: state.clone(),
+        })
+        .unwrap();
+    client.ready_sent().unwrap();
+    let mut provider = Provider::new();
+    provider
+        .start(&state, IoTaskKind::SaveSession, None)
+        .unwrap();
+    provider.phase = Phase::CaptureSent;
+    let key = provider.task.as_ref().unwrap().key;
+    let notice = "Newer composite edits were pending; the confirmed arrangement was captured.";
+    client
+        .receive(ServiceMessage::Persistence {
+            authority,
+            reply: transfer::Reply::CaptureNotice {
+                key,
+                message: notice.into(),
+            },
+        })
+        .unwrap();
+    let (mut delivery, _port) = local::channel();
+    provider.pump(&mut client, &mut delivery).unwrap();
+    let Value::Image(image) = (Work::Prepare {
+        decoded: Decoded::Session(shoop_session::SessionBundle::new(
+            shoop_session::SessionDocument::empty(state.status.sample_rate),
+        )),
+        mapping: vec![],
+        update_length: false,
+    })
+    .run()
+    .unwrap() else {
+        panic!()
+    };
+    provider.captured(image).unwrap();
+    let mut output = None;
+    for _ in 0..10_000 {
+        provider.pump(&mut client, &mut delivery).unwrap();
+        if let Some(ready) = provider.output.take() {
+            output = Some(ready);
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(Duration::from_millis(1));
+        idle().await;
+    }
+    let output = output.expect("file encoding did not finish");
+    shoop_session::decode_session(&output.bytes).unwrap();
+    provider
+        .apply(
+            AppIntent::CompleteIoOutput {
+                task_id: output.task_id,
+                outcome: FileOutputOutcome::Saved,
+            },
+            &state,
+            false,
+        )
+        .unwrap();
+    let task = provider.task().unwrap();
+    assert_eq!(task.status, IoTaskStatus::Completed);
+    assert!(task.message.contains(notice), "{}", task.message);
+}
+
+#[shoop_test]
 fn committed_file_tasks_wait_for_the_confirmed_projection_and_keep_known_loss_outcomes() {
     let fixture = Fixture::new();
     let state = fixture.runtime.client().snapshot().unwrap().clone();

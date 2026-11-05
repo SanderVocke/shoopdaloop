@@ -82,7 +82,7 @@ logical loop slots; composites consume no playback/capture nodes or host ports.
 These budgets do not reduce existing primitive slots or recording media capacity.
 Engine preparation exposes them as configurable, finite negotiated limits.
 
-The production engine carries these through protocol v8, native setup v7 and
+The production engine carries these through protocol v11, native setup v7 and
 worklet configuration v4. The relation capacity is at least the prepared logical
 loop count, so adding composite budgets never removes existing primitive capacity.
 For N loop slots, E entries and S segments, the prepared LTP image holds at most
@@ -187,3 +187,39 @@ activation selects the new generation without overwriting a policy already
 confirmed for it. No render allocation, journal replay or application timer drives
 this policy. The backend retains manual intent for capture and publishes automatic
 monitoring from rendered state. Composite file support remains gated separately.
+
+## Frozen file timing and replacement
+
+The service persistence image carries unversioned authored documents and their
+confirmed effective geometry, explicit sync assignments and repeat policy. File
+document version 14 stores both the original sample-clock basis and the prepared
+sample rate, quantum, unit, instance endpoints and normalized spans. Runtime plan
+versions are fresh identities after loading; authored event IDs remain stable.
+Ordinary edits preserve unchanged instance geometry, including copied durations.
+An explicit timing update recompiles it. A natural-content refresh updates only
+the affected natural-duration instances in a new accepted version.
+
+Legacy timing is resolved from saved data. A complete set of forced durations can
+recover an integral basis from the saved total length; otherwise migration uses
+the saved central loop length, or the legacy one-frame sample-clock grid when no
+length exists. Destination sync state never supplies a missing basis. Conversion
+rounds each effective endpoint independently to the destination quantum, retains
+the original authored basis and requires the existing format-conversion consent
+when timing changes. A collapsed nonempty event/span refuses the whole document.
+
+Capture waits for structural/media changes, but can save a confirmed active plan
+while a newer non-recording edit awaits restart. A capture notice reports the
+pending edit. If an existing edit activates during asynchronous media reads,
+capture takes a new complete metadata cut. Active, scheduled or nested future
+recording demand refuses capture; selected-child export also checks its parents.
+Manual input monitoring is saved separately from automatic demand.
+
+Private replacement creates every loop identity before binding composite spans,
+checks the complete action/sync DAG and aggregate capacities, and installs all
+loops stopped at one activation. Its strip preset includes automatic-monitoring
+policy, so the first recording quantum after load needs no policy-repair poll.
+Primitive topology seed lengths remain stable through subsequent program edits;
+current media lengths continue to come from render-owned content state. Invalid
+or cancelled candidates retain the old playing plans and monitoring policy.
+Replacing/dry-wet event modes still refuse complete files until their production
+capabilities exist. Public capability publication remains a separate gate.

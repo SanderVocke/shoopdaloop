@@ -139,6 +139,7 @@ fn client_samples() -> Vec<ClientMessage> {
                     midi_output: true,
                 },
                 controls: StripPreset {
+                    automatic_monitoring: false,
                     input_gain: 0.5,
                     input_balance: -0.25,
                     monitoring: false,
