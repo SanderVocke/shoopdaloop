@@ -647,3 +647,11 @@ three service archive fixtures pass. Actual JACK replacement on all four carrier
 MIDI export reads one initial channel without materializing all sixteen states.
 Tracing/test inventories and boundary checks pass. Remaining processed timing
 interactions stay part of the unfinished admission work.
+
+Capture candidates now retain their own windows until publication. A wet rerecord
+keeps the original dry audio/MIDI metadata and resets the wet capture alignment;
+live offset edits update candidate metadata too. Generation-fenced render snapshots
+provide exact committed raw lengths/windows to the endpoint, adapter and reconnect
+path. Media reads wait for those records. The new real-FX imported-take fixture
+compares dry media, MIDI, offsets, preplay and raw lengths after rerecord/reconnect;
+the unequal-role loop fixture and existing P12 timing/JACK regressions pass.

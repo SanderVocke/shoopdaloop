@@ -185,6 +185,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
+        if entry.timing.content_revision != entry.rt_content_revision {
+            return Ok(None);
+        }
         let track = &self.mirror.tracks[&entry.track];
         let wet = track.audio_channels as usize;
         let dry = (!matches!(track.topology, BackendTrackTopology::Direct { .. }))
@@ -685,6 +688,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .mirror
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
+        if entry.timing.content_revision != entry.rt_content_revision {
+            return Ok(None);
+        }
         let midi = self.mirror.tracks[&entry.track].midi;
         if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);

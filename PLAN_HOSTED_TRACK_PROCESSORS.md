@@ -587,6 +587,15 @@ keeps the original audio/MIDI role and gain when replacing mapped media. Focused
 real-host checks pass for External, FX and synth family edits with forced runtime
 reexports; codec role-retention, protocol and existing family regressions pass.
 
+P12 take-window milestone: capture candidates stage their window metadata separately
+from the committed take. Wet rerecord retains dry audio/MIDI windows and raw extents;
+live offset edits also update the candidate. The endpoint refreshes committed timing
+from a generation-fenced render snapshot instead of guessing raw lengths from loop
+length. Reads wait for that confirmation, including after reconnect. Targeted tests
+cover unequal roles, imported raw media with different lengths, P12 edits during
+recording, and actual JACK replacement on all carriers. Newly merged Zynq examples
+and timing/family test fixtures now use the extended channel fields and bounds.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or

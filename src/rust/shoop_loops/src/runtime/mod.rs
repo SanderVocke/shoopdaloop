@@ -485,6 +485,7 @@ pub struct View {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    windows: Windows,
     revision: Revision,
     media: media::MediaId,
     bank: usize,

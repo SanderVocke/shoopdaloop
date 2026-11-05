@@ -430,10 +430,11 @@ impl ControlEndpoint {
                             });
                         }
                         if cursor.part == 1 {
+                            let timing = self.current_timing(*entry)?;
                             cursor.part = 2;
                             return Some(StateRecord::LoopTiming {
                                 loop_id: entry.id,
-                                timing: self.current_timing(*entry),
+                                timing,
                             });
                         }
                         let record = self.recorded_record(entry.id).ok()?;

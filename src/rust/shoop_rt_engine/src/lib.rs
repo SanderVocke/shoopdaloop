@@ -662,6 +662,7 @@ pub fn prepare_with_shared_and_processors(
     };
     let endpoint = ControlEndpoint {
         projected_processors: vec![None; strips].into_boxed_slice(),
+        projected_timing: vec![None; loops].into_boxed_slice(),
         projected_recorded: vec![None; loops].into_boxed_slice(),
         processor_catalog,
         processor_cells,

@@ -312,9 +312,6 @@ impl Ledger {
             false,
         )
     }
-    fn validate(&self, io: &mut ResourceIo<'_>, input: &Input) -> Result<(), Error> {
-        self.validate_input(io, input, None)
-    }
     fn validate_input(
         &self,
         io: &mut ResourceIo<'_>,
@@ -448,6 +445,24 @@ impl Ledger {
         id: MediaId,
         input: Input,
     ) -> Result<(), Rejected> {
+        self.publish_input(io, id, input, None)
+    }
+    pub fn publish_windowed(
+        &mut self,
+        io: &mut ResourceIo<'_>,
+        id: MediaId,
+        input: Input,
+        windows: crate::windows::Windows,
+    ) -> Result<(), Rejected> {
+        self.publish_input(io, id, input, Some(windows))
+    }
+    fn publish_input(
+        &mut self,
+        io: &mut ResourceIo<'_>,
+        id: MediaId,
+        input: Input,
+        windows: Option<crate::windows::Windows>,
+    ) -> Result<(), Rejected> {
         let result = (|| {
             let media = self.media(id)?;
             if media.ready || !media.resident {
@@ -460,10 +475,10 @@ impl Ledger {
             {
                 return Err(Error::InvalidShape);
             }
-            self.validate(io, &input)?;
+            self.validate_input(io, &input, windows)?;
             self.media[id.slot as usize].value = Some(Media {
                 view: View {
-                    windows: None,
+                    windows,
                     description: input.description,
                     audio: input.audio,
                     auxiliary: input.auxiliary,

@@ -258,6 +258,76 @@ impl Harness {
     }
 }
 #[shoop_test]
+fn wet_rerecord_preserves_unequal_dry_audio_and_midi_playback_windows() {
+    let mut h = Harness::with_shape(1, 3, 16, 1024);
+    for (channel, input) in h.inputs.iter_mut().enumerate() {
+        input.fill(channel as f32 + 0.25);
+    }
+    h.transition(Transition::Record {
+        monitor_previous: false,
+    });
+    for _ in 0..4 {
+        h.step();
+    }
+    h.transition(Transition::Stop);
+    let original = h.export();
+    let mut changes = windows::Edit {
+        count: 2,
+        ..Default::default()
+    };
+    changes.channels[0] = windows::ChannelUpdate {
+        channel: 0,
+        midi: false,
+        start_offset: Some(-3),
+        preplay: Some(7),
+    };
+    changes.channels[1] = windows::ChannelUpdate {
+        channel: 0,
+        midi: true,
+        start_offset: Some(2),
+        preplay: Some(5),
+    };
+    let sequence = h.send(Operation::EditWindows {
+        target: id(),
+        expected_revision: 0,
+        expected_content: original.view.description.revision,
+        edit: changes,
+    });
+    h.step();
+    let cut = loop {
+        let execution = h.control.try_execution().expect("window edit reply");
+        if execution.sequence == sequence {
+            let Some(Reply::Timing(cut)) = execution.operation_result else {
+                panic!("window edit failed: {:?}", execution.operation_result)
+            };
+            break cut;
+        }
+    };
+    h.transition(Transition::Rerecord);
+    for _ in 0..6 {
+        h.step();
+    }
+    h.transition(Transition::Stop);
+    let edited = h.export();
+    assert_eq!(
+        edited.view.auxiliary.unwrap().snapshot.resource,
+        original.view.auxiliary.unwrap().snapshot.resource
+    );
+    assert_eq!(
+        edited.view.midi.unwrap().snapshot.resource,
+        original.view.midi.unwrap().snapshot.resource
+    );
+    let windows = edited.view.windows.expect("rerecorded windows");
+    assert_eq!(&windows.audio[..3], &cut.windows.audio[..3]);
+    assert_eq!(windows.midi, cut.windows.midi);
+    assert_eq!(windows.audio[3].capture_alignment, 0);
+    assert_eq!(
+        edited.view.description.frames,
+        original.view.description.frames
+    );
+}
+
+#[shoop_test]
 fn independent_maximum_dry_and_wet_sources_survive_wrapping_wet_rerecord() {
     for channels in [1, 2, 8] {
         for q in [1, 16, 32, 64, 128] {

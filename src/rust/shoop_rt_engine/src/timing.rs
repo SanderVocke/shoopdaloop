@@ -35,46 +35,106 @@ fn state(cut: Cut) -> TimingState {
 }
 impl ControlEndpoint {
     pub(crate) fn timing_pending(&self) -> bool {
-        self.pending
-            .iter()
-            .flatten()
-            .any(|pending| matches!(pending.purpose, Purpose::Timing { .. }))
+        self.pending.iter().flatten().any(|pending| {
+            matches!(
+                pending.purpose,
+                Purpose::Timing { .. } | Purpose::TimingSnapshot(_)
+            )
+        })
     }
-    pub(crate) fn current_timing(&self, entry: crate::model::Loop) -> TimingState {
-        let mut timing = entry.timing;
+    pub(crate) fn current_timing(&self, entry: crate::model::Loop) -> Option<TimingState> {
         let cells = &self.cells.loops[entry.id.0.index as usize];
-        if cells.generation.load(Ordering::Acquire) != entry.id.0.generation {
-            return timing;
+        if cells.generation.load(Ordering::Acquire) == entry.id.0.generation
+            && cells.content_revision.load(Ordering::Acquire) != entry.timing.content_revision
+        {
+            return None;
         }
-        let revision = cells.content_revision.load(Ordering::Acquire);
-        if revision != timing.content_revision || timing == TimingState::default() {
-            let frames = cells.length.load(Ordering::Acquire);
-            let shape = self
-                .model
-                .strip(entry.strip)
-                .expect("live loop strip")
-                .shape;
-            timing.content_revision = revision;
-            for window in timing
-                .windows
-                .audio
-                .iter_mut()
-                .chain(core::iter::once(&mut timing.windows.midi))
+        Some(entry.timing)
+    }
+    pub(crate) fn advance_timing(&mut self) {
+        if !self.connected || !self.room(1) {
+            return;
+        }
+        for entry in self.model.loops.iter().flatten().copied() {
+            if self.current_timing(entry).is_some()
+                || self
+                    .pending
+                    .iter()
+                    .flatten()
+                    .any(|pending| pending.purpose == Purpose::TimingSnapshot(entry.id))
             {
-                window.raw_frames = None;
+                continue;
             }
-            if frames == 0 && cells.mode.load(Ordering::Acquire) == 0 {
-                timing.windows = PlaybackWindows::default();
-            }
-            timing.length = frames;
-            timing.raw_audio_frames = if shape.audio_outputs > 0 { frames } else { 0 };
-            timing.raw_midi_frames = if shape.midi_input || shape.midi_output {
-                frames
-            } else {
-                0
-            };
+            let _ = self.submit_loop(
+                self.at(),
+                Operation::State {
+                    target: loop_id(entry.id),
+                },
+                Purpose::TimingSnapshot(entry.id),
+            );
+            return;
         }
-        timing
+    }
+    pub(crate) fn timing_snapshot_result(&mut self, target: LoopSlotId, result: RuntimeResult) {
+        match result {
+            RuntimeResult::Completion(_, command, retired) => {
+                self.reclaim(command);
+                self.retire(retired);
+            }
+            RuntimeResult::Execution(execution) => {
+                let Some(Reply::State(cut)) = execution.operation_result else {
+                    return;
+                };
+                if cut.state.id != loop_id(target) {
+                    return;
+                }
+                let timing = state(cut);
+                for model in [&mut self.model, &mut self.next] {
+                    if let Some(entry) = model
+                        .loops
+                        .get_mut(target.0.index as usize)
+                        .and_then(Option::as_mut)
+                        .filter(|entry| {
+                            entry.id == target
+                                && entry.timing.revision <= timing.revision
+                                && entry.timing.content_revision <= timing.content_revision
+                        })
+                    {
+                        entry.timing = timing;
+                    }
+                }
+                self.dirty[target.0.index as usize] = true;
+            }
+        }
+    }
+    pub(crate) fn project_timing(&mut self, out: &mut shoop_rt_transport::carrier::Outbox) {
+        if !self.connected || self.resync.is_some() {
+            return;
+        }
+        for slot in 0..self.model.loops.len() {
+            let Some(entry) = self.model.loops[slot] else {
+                self.projected_timing[slot] = None;
+                continue;
+            };
+            let Some(timing) = self.current_timing(entry) else {
+                continue;
+            };
+            if self.projected_timing[slot] == Some((entry.id, timing)) {
+                continue;
+            }
+            if out
+                .push(shoop_rt_protocol::EngineMessage::State(
+                    shoop_rt_protocol::StateRecord::LoopTiming {
+                        loop_id: entry.id,
+                        timing,
+                    },
+                ))
+                .is_err()
+            {
+                return;
+            }
+            self.projected_timing[slot] = Some((entry.id, timing));
+        }
     }
     pub(crate) fn timing_request(
         &mut self,

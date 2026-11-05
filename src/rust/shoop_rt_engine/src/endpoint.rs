@@ -72,6 +72,7 @@ pub(crate) struct Planned {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    TimingSnapshot(LoopSlotId),
     Timing {
         slot: usize,
         correlation: Option<u64>,
@@ -159,6 +160,7 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
@@ -519,6 +521,7 @@ impl ControlEndpoint {
         self.resync = None;
         self.projected_processors.fill(None);
         self.projected_recorded.fill(None);
+        self.projected_timing.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
         for pending in self.pending.iter_mut().flatten() {
@@ -587,6 +590,7 @@ impl ControlEndpoint {
         let finished = pending.completed && (pending.executed || !pending.expects);
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
+            Purpose::TimingSnapshot(target) => self.timing_snapshot_result(target, result),
             Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
             Purpose::StripControl {
@@ -1351,7 +1355,7 @@ impl ControlEndpoint {
             recording_armed: self.planned[slot]
                 .iter()
                 .flatten()
-                .any(|planned| planned.mode == LoopMode::Recording),
+                .any(|planned| planned.mode.records()),
             timing_revision: if current { timing_revision } else { 0 },
             content_revision: if current {
                 cells.content_revision.load(Ordering::SeqCst)
@@ -1468,12 +1472,14 @@ impl Endpoint for ControlEndpoint {
         self.advance_bulk();
         self.advance_preview();
         self.advance_content();
+        self.advance_timing();
         self.flush(out);
         if self.connected {
             self.forced_monitoring(Some(out));
         }
         self.project_processors(out);
         self.project_recorded(out);
+        self.project_timing(out);
         self.telemetry(out);
         self.forward_profiling(out);
     }

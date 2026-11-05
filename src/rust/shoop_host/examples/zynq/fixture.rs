@@ -793,6 +793,7 @@ fn capacity(client: &mut Client, connection: &mut Connection) {
                 channel: 0,
                 content: MidiChannel {
                     channel: Channel {
+                        mode: ChannelMode::Direct,
                         object: Some(1),
                         frames: 70_000,
                         gain: 1.,

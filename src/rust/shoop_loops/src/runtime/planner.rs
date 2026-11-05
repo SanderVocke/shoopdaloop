@@ -164,6 +164,15 @@ impl LoopPlanner {
             .or(self.wet_edits)
             .ok_or(Error::InvalidState)?;
         let audio = view.audio.ok_or(Error::InvalidShape)?;
+        if audio.snapshot.description.frames < decision.state.content_length {
+            return Err(Error::InvalidShape);
+        }
+        let mut windows = row.windows;
+        for window in
+            &mut windows.audio[row.audio_widths[1]..row.audio_widths[1] + row.audio_widths[0]]
+        {
+            window.capture_alignment = 0;
+        }
         let credit = io.reserve_snapshot()?;
         let resource = match io.fork_audio(store, audio.snapshot.id) {
             Ok(resource) => resource,
@@ -173,6 +182,7 @@ impl LoopPlanner {
             }
         };
         let mut take = Take {
+            windows,
             revision: decision.state.capture_revision,
             media: id,
             bank,
@@ -252,7 +262,17 @@ impl LoopPlanner {
         } else {
             None
         };
+        let mut windows = row.windows;
+        for window in windows
+            .audio
+            .iter_mut()
+            .chain(core::iter::once(&mut windows.midi))
+        {
+            window.raw_frames = None;
+            window.capture_alignment = 0;
+        }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            windows,
             revision: decision.state.capture_revision,
             media: id,
             bank,
@@ -471,7 +491,7 @@ impl LoopPlanner {
             .capture_frames;
         let input = self.input_from_frozen(slot, take, frames, io)?;
         self.ledger
-            .publish(io, take.media, input)
+            .publish_windowed(io, take.media, input, take.windows)
             .map_err(|e| e.error)?;
         if let Some((resource, _)) = take.edit {
             io.remove(resource)?;
@@ -506,6 +526,8 @@ impl LoopPlanner {
                     if decision.state.content_revision == take.revision {
                         self.ledger
                             .set_playback(io, row.binding.target, Some(media))?;
+                        self.rows[slot].as_mut().expect("row").windows =
+                            self.ledger.view(media)?.windows.unwrap_or_default();
                     }
                 }
             }
@@ -542,14 +564,6 @@ impl LoopPlanner {
                     io.capture().activate(token, frame)?;
                 }
                 let row = self.rows[slot].as_mut().expect("row");
-                for window in row
-                    .windows
-                    .audio
-                    .iter_mut()
-                    .chain(core::iter::once(&mut row.windows.midi))
-                {
-                    window.raw_frames = None;
-                }
                 row.active = Some(take);
                 row.prepared = None;
                 row.next_bank = 1 - take.bank;
@@ -1431,6 +1445,26 @@ impl LoopPlanner {
                         )?;
                     }
                     let revision = row.timing_revision.checked_add(1).ok_or(Error::Exhausted)?;
+                    let active_windows = row
+                        .active
+                        .map(|take| {
+                            take.windows.edited(
+                                edit,
+                                row.audio_widths.iter().sum(),
+                                row.binding.midi,
+                            )
+                        })
+                        .transpose()?;
+                    let prepared_windows = row
+                        .prepared
+                        .map(|take| {
+                            take.windows.edited(
+                                edit,
+                                row.audio_widths.iter().sum(),
+                                row.binding.midi,
+                            )
+                        })
+                        .transpose()?;
                     if let Some(length) = edit.length {
                         self.resolver.edit_length(target, length)?;
                     }
@@ -1438,6 +1472,12 @@ impl LoopPlanner {
                         .as_mut()
                         .expect("validated row");
                     row.windows = windows;
+                    if let (Some(take), Some(windows)) = (&mut row.active, active_windows) {
+                        take.windows = windows;
+                    }
+                    if let (Some(take), Some(windows)) = (&mut row.prepared, prepared_windows) {
+                        take.windows = windows;
+                    }
                     row.timing_revision = revision;
                     self.resolver.publish_timing_revision(target, revision);
                     if let Some(length) = edit.length {

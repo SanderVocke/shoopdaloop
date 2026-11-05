@@ -119,6 +119,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         for (index, id) in ids.iter().copied().enumerate() {
             if !self.canonical_content.contains_key(&id) {
                 let entry = &self.mirror.loops[&id];
+                if entry.timing.content_revision != entry.rt_content_revision {
+                    return Ok(self.capture_pending(index, ids.len()));
+                }
                 let (slot, version, length) = (entry.slot, entry.content, entry.view.length as u32);
                 let track = &self.mirror.tracks[&entry.track];
                 let wet = track.audio_channels as usize;

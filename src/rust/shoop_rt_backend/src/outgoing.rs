@@ -1207,6 +1207,107 @@ mod track_role_tests {
     }
 
     #[shoop_test]
+    fn rerecord_projects_retained_raw_dry_and_midi_windows_after_import_and_reconnect() {
+        use shoop_backend::{
+            BackendAudioChannelUpdate, BackendLoopContentUpdate, BackendLoopMode,
+            BackendMidiChannelUpdate, BackendMidiEvent,
+        };
+        let mut stack = stack();
+        stack.capabilities = stack
+            .capabilities
+            .union(shoop_rt_protocol::Capabilities::DRY_WET);
+        let created = stack
+            .create_track_topology(
+                "windows",
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: shoop_app_api::TrackProcessorTypeId::BUILTIN_FX.into(),
+                    dry_audio_channels: 3,
+                    wet_audio_channels: 3,
+                    dry_midi: true,
+                },
+                1,
+            )
+            .unwrap();
+        stack.wait_idle();
+        let id = created.loops[0];
+        stack
+            .replace_loop_content(
+                id,
+                &BackendLoopContentUpdate {
+                    length: Some(64),
+                    audio: [96, 80, 96, 128, 96, 112]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(channel, frames)| BackendAudioChannelUpdate {
+                            channel,
+                            samples: alloc::vec![channel as f32 + 0.25; frames].into(),
+                            start_offset: Some(if channel == 0 { -3 } else { 0 }),
+                            capture_alignment_frames: Some(0),
+                            preplay: Some(7),
+                        })
+                        .collect(),
+                    midi: alloc::vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 96,
+                        start_state: alloc::vec![alloc::vec![0xb0, 7, 91]],
+                        events: alloc::vec![
+                            BackendMidiEvent {
+                                frame: 4,
+                                data: alloc::vec![0x90, 60, 90].into()
+                            },
+                            BackendMidiEvent {
+                                frame: 12,
+                                data: alloc::vec![0x80, 60, 0].into()
+                            }
+                        ]
+                        .into(),
+                        start_offset: Some(2),
+                        capture_alignment_frames: Some(0),
+                        preplay: Some(5),
+                    }],
+                },
+            )
+            .unwrap();
+        stack.wait_idle();
+        stack.canonical_content.remove(&id);
+        stack.prepared_content.remove(&id);
+        stack.canonical_imports.remove(&id);
+        stack.reads.forget(id);
+        let before = stack.capture_session().unwrap().tracks[0].loops[0].clone();
+        stack
+            .transition_loop(id, BackendLoopMode::RecordingDryIntoWet, None)
+            .unwrap();
+        stack.wait_idle();
+        for _ in 0..8 {
+            stack.clock.wait();
+        }
+        stack
+            .transition_loop(id, BackendLoopMode::Stopped, None)
+            .unwrap();
+        stack.wait_idle();
+        refresh(&mut stack);
+        stack.canonical_content.remove(&id);
+        stack.prepared_content.remove(&id);
+        stack.canonical_imports.remove(&id);
+        stack.reads.forget(id);
+        let after = stack.capture_session().unwrap().tracks[0].loops[0].clone();
+        assert_eq!(after.length, before.length);
+        assert_eq!(&after.audio[..3], &before.audio[..3]);
+        assert_eq!(after.midi, before.midi);
+        for (a, b) in after.audio[3..].iter().zip(&before.audio[3..]) {
+            assert_eq!(a.samples.len(), b.samples.len());
+            assert_eq!(a.start_offset, b.start_offset);
+            assert_eq!(a.capture_alignment_frames, 0);
+            assert_eq!(a.preplay, b.preplay);
+        }
+        assert!(after.recorded_processor_state.is_some());
+        let state = stack.poll().unwrap().loops[&id].clone();
+        assert_eq!(state.channel_timings.len(), 7);
+        assert_eq!(state.channel_timings[0].start_offset, -3);
+        assert_eq!(state.channel_timings[6].frames, 96);
+    }
+
+    #[shoop_test]
     fn media_updates_keep_independent_dry_wet_banks_and_midi_in_the_rendered_take() {
         use shoop_backend::{
             BackendAudioChannelUpdate, BackendChannelMode, BackendLoopContentUpdate,

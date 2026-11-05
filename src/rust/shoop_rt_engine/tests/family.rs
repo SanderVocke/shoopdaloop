@@ -49,6 +49,8 @@ fn prepare(
     let outcome = h.apply(Request::ContentFamilyEdit {
         id: family,
         edit: ContentFamilyEdit {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: target,
             sync_source: source,
             expected_revision: revision,
