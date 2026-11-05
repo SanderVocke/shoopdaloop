@@ -370,7 +370,7 @@ impl Ledger {
                         return Err(Error::InvalidShape);
                     }
                     if format == Format::Midi {
-                        io.render().midi_seek(source.index, 0)?;
+                        io.render().validate_midi(source.index)?;
                     }
                 }
                 None => {}

@@ -15,6 +15,13 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   **`feat/backend-replacement`**. Reconcile the implementation with that target
   (inspected at `32179102`), including its runtime profiling and host-manager changes.
   Keep the original `2e19210b` implementation base as provenance.
+  Reconciliation was merged in `3fcddfc1`. The first CI run exposed an outdated
+  profiling benchmark initializer and browser artifact contract, plus small-stack
+  failures in native startup and JACK session replacement. The follow-up uses
+  prepared heap storage for the runtime, avoids large MIDI initialization copies,
+  and validates indexed MIDI without reconstructing unused state. Focused local
+  evidence: 1 MiB startup/cleanup, nine MIDI-index tests, and actual JACK replacement
+  over all four native carriers pass. CI owns the repeated platform/artifact checks.
 - Follow `AGENTS.md`, `.agents/index.md`, `.agents/rules/{mandates,style}.md` and
   `.agents/info/{build,test}.md` during execution. No merge is authorized here.
 

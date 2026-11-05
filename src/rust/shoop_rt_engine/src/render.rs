@@ -31,7 +31,7 @@ pub struct Report {
 }
 
 pub struct Render {
-    runtime: GraphRuntime<EngineNode, LoopPlanner, EngineOp>,
+    runtime: Box<GraphRuntime<EngineNode, LoopPlanner, EngineOp>>,
     cells: Arc<Cells>,
     recovery: Box<[MidiBuffer]>,
     resets: Box<[ResetState]>,
@@ -51,7 +51,7 @@ impl Render {
     ) -> Result<Self, Error> {
         let outputs = shape[3];
         Ok(Self {
-            runtime,
+            runtime: Box::new(runtime),
             cells,
             recovery: (0..outputs)
                 .map(|_| MidiBuffer::new(2 * ResetState::EVENTS, 2 * ResetState::BYTES))
@@ -211,7 +211,7 @@ impl Render {
 
     /// Only after the host has stopped callbacks.
     pub fn into_stopped(self) -> Stopped {
-        let (planner, resources) = self.runtime.into_planner_and_resources();
+        let (planner, resources) = (*self.runtime).into_planner_and_resources();
         Stopped {
             planner,
             resources,

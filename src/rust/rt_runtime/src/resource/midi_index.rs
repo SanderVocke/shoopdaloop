@@ -98,8 +98,10 @@ impl MidiPool {
         if bytes > i32::MAX as usize {
             return Err(Error::Capacity);
         }
-        let mut versions = vec![MidiVersion::default(); config.versions];
-        let mut checkpoints = vec![Checkpoint::default(); count];
+        let mut versions = Vec::with_capacity(config.versions);
+        versions.resize_with(config.versions, MidiVersion::default);
+        let mut checkpoints = Vec::with_capacity(count);
+        checkpoints.resize_with(count, Checkpoint::default);
         for row in &mut versions {
             *core::hint::black_box(row) = MidiVersion::default();
         }
@@ -220,13 +222,13 @@ impl MidiPool {
             self.work.add(0, 1, 0, class);
         }
     }
-    pub fn before(
-        &mut self,
+    pub(super) fn position(
+        &self,
         owner: MidiOwner,
         source: UploadId,
         frame: u64,
         prefix: usize,
-    ) -> Result<(MidiState, usize, usize), Error> {
+    ) -> Result<(usize, usize), Error> {
         let row = self.row(owner, source)?;
         let config = self.config.ok_or(Error::InvalidState)?;
         let base = owner.0 * config.checkpoints_per_version;
@@ -240,9 +242,22 @@ impl MidiPool {
                 high = middle;
             }
         }
-        let checkpoint = self.checkpoints[base + low.checked_sub(1).ok_or(Error::InvalidState)?];
+        Ok((
+            base + low.checked_sub(1).ok_or(Error::InvalidState)?,
+            config.replay_events,
+        ))
+    }
+    pub fn before(
+        &mut self,
+        owner: MidiOwner,
+        source: UploadId,
+        frame: u64,
+        prefix: usize,
+    ) -> Result<(MidiState, usize, usize), Error> {
+        let (slot, replay_events) = self.position(owner, source, frame, prefix)?;
+        let checkpoint = &self.checkpoints[slot];
         self.work.add(0, 1, 0, WorkClass::Render);
-        Ok((checkpoint.state, checkpoint.end, config.replay_events))
+        Ok((checkpoint.state, checkpoint.end, replay_events))
     }
     pub fn replay(&mut self, state: &mut MidiState, short: [u8; 3]) {
         apply_short(state, short);

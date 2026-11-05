@@ -180,6 +180,29 @@ impl ResourceStore {
     }
 }
 impl RenderIo<'_> {
+    /// Validate indexed playback at frame zero without materializing channel state.
+    pub fn validate_midi(&mut self, index: ReadIndex) -> Result<(), Error> {
+        let lease = self.store.midi_lease(index)?;
+        if let Some(midi) = lease.shared_midi {
+            self.store
+                .with_midi(midi.store, |_, store| store.cursor(midi.index).map(|_| ()))?;
+        } else {
+            let version = get(
+                &self.store.versions,
+                lease.version.slot,
+                lease.version.generation,
+            )?;
+            self.store.midi_indexes.position(
+                version.midi.ok_or(Error::InvalidState)?,
+                lease.version,
+                0,
+                lease.snapshot.description.bytes,
+            )?;
+        }
+        let mut cursor = self.midi_cursor(index)?;
+        self.midi_next(&mut cursor)?;
+        Ok(())
+    }
     pub fn midi_cursor(&self, index: ReadIndex) -> Result<MidiCursor, Error> {
         self.store.midi_cursor_impl(index)
     }
