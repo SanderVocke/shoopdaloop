@@ -781,3 +781,11 @@ and retain the normal/full test groups required before behavioral commits/pushes
   `AwaitingRestart` before detaching. This proves deferred ownership explicitly;
   merely extending a future end could legitimately publish early. Its warning-
   denying build and complete socket/file workflow passed.
+- The next macOS debug run at `97f5c210` hit a generic state-wait timeout after
+  the first file round trip. Added stage-specific bounded diagnostics and a
+  management-status barrier before reconnecting, because socket closure and
+  service lease release are distinct. The latest-head platform result remains
+  tracked on PR #941; earlier failing/cancelled runs are not claimed green.
+  Warning-denying build and shared-memory canary passed; ten complete socket
+  runs passed with CI tracing enabled, including five pinned to one CPU. This
+  repetition did not reproduce or establish macOS acceptance.

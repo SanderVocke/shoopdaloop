@@ -4,6 +4,72 @@ use crate::application::{ApplicationHandle, ApplicationRuntime, ApplicationStart
 use shoop_app_protocol::{composite, OperationId};
 use shoop_egui::*;
 
+fn wait_for_controller_release(entry: &HostEntry) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let reply = connection::management(
+            entry,
+            shoop_app_protocol::ManagementRequest::Status {
+                version: shoop_app_protocol::VERSION,
+            },
+            Duration::from_secs(2),
+        )?;
+        match reply {
+            shoop_app_protocol::ManagementReply::Status {
+                ready: true,
+                busy: false,
+                closed: false,
+                ..
+            } => return Ok(()),
+            shoop_app_protocol::ManagementReply::Status { closed: false, .. } => {}
+            reply => return Err(anyhow!("composite recovery management status: {reply:?}")),
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "previous composite controller did not detach"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+fn reattach(entry: &HostEntry) -> Result<(Client, Connection)> {
+    wait_for_controller_release(entry)?;
+    attach(entry)
+}
+
+fn wait_for_state(
+    client: &mut Client,
+    connection: &mut Connection,
+    stage: &str,
+    ready: impl Fn(&Client) -> bool,
+) -> Result<()> {
+    wait(client, connection, ready).map_err(|error| {
+        let snapshot = client.snapshot().unwrap();
+        let loops = snapshot
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .map(|l| (l.id, l.mode, l.length_frames))
+            .collect::<Vec<_>>();
+        let composites = snapshot
+            .composites
+            .iter()
+            .map(|v| {
+                (
+                    v.loop_id,
+                    v.mode,
+                    v.waiting_repeat,
+                    v.passes,
+                    v.active.as_ref().map(|p| p.version),
+                    v.pending.as_ref().map(|p| p.version),
+                    v.pending_stage,
+                )
+            })
+            .collect::<Vec<_>>();
+        anyhow!("composite {stage}: {error:#}; loops={loops:?}, composites={composites:?}")
+    })
+}
+
 fn transition(id: LoopId, mode: LoopMode, delay: Option<u32>) -> Command {
     Command::Control(ControlOperation::Transition {
         loops: vec![id],
@@ -30,7 +96,7 @@ fn submit(
 }
 
 fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versioned> {
-    let (mut client, mut connection) = attach(entry)?;
+    let (mut client, mut connection) = reattach(entry)?;
     let source = client.snapshot().unwrap().tracks[0].loops[0].id;
     let original = client
         .snapshot()
@@ -53,7 +119,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         &mut connection,
         transition(source, LoopMode::Stopped, None),
     )?;
-    wait(&mut client, &mut connection, |c| {
+    wait_for_state(&mut client, &mut connection, "source recorded", |c| {
         c.snapshot().unwrap().tracks[0].loops[0].length_frames > 0
     })?;
     let source_length = client.snapshot().unwrap().tracks[0].loops[0].length_frames;
@@ -72,7 +138,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         &mut connection,
         transition(parent, LoopMode::Playing, None),
     )?;
-    wait(&mut client, &mut connection, |c| {
+    wait_for_state(&mut client, &mut connection, "initial repeat wait", |c| {
         c.snapshot()
             .unwrap()
             .composites
@@ -89,7 +155,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         .passes;
     drop(connection);
     std::thread::sleep(Duration::from_millis(850));
-    (client, connection) = attach(entry)?;
+    (client, connection) = reattach(entry)?;
     let view = client
         .snapshot()
         .unwrap()
@@ -103,7 +169,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
             && view.active.as_ref() == Some(&original),
         "recovery changed the playing arrangement: mode={:?}, passes={}/{passes}, waiting={}, active_matches={}", view.mode, view.passes, view.waiting_repeat, view.active.as_ref() == Some(&original)
     );
-    wait(&mut client, &mut connection, |c| {
+    wait_for_state(&mut client, &mut connection, "recovered repeat wait", |c| {
         c.snapshot()
             .unwrap()
             .composites
@@ -115,7 +181,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         &mut connection,
         transition(source, LoopMode::Stopped, None),
     )?;
-    wait(&mut client, &mut connection, |c| {
+    wait_for_state(&mut client, &mut connection, "source-stop release", |c| {
         c.snapshot()
             .unwrap()
             .composites
@@ -127,7 +193,7 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         &mut connection,
         transition(source, LoopMode::Recording, None),
     )?;
-    wait(&mut client, &mut connection, |c| {
+    wait_for_state(&mut client, &mut connection, "source length growth", |c| {
         c.snapshot().unwrap().tracks[0].loops[0].length_frames > source_length + 128
     })?;
     command(
@@ -166,16 +232,21 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         &mut connection,
         transition(parent, LoopMode::Playing, Some(0)),
     )?;
-    wait(&mut client, &mut connection, |c| {
-        c.snapshot().unwrap().composites.iter().any(|v| {
-            v.loop_id == parent
-                && v.mode == LoopMode::Stopped
-                && v.next_mode == Some(LoopMode::Playing)
-        })
-    })?;
+    wait_for_state(
+        &mut client,
+        &mut connection,
+        "delayed launch admission",
+        |c| {
+            c.snapshot().unwrap().composites.iter().any(|v| {
+                v.loop_id == parent
+                    && v.mode == LoopMode::Stopped
+                    && v.next_mode == Some(LoopMode::Playing)
+            })
+        },
+    )?;
     drop(connection);
     std::thread::sleep(Duration::from_millis(50));
-    (client, connection) = attach(entry)?;
+    (client, connection) = reattach(entry)?;
     ensure!(
         client
             .snapshot()
@@ -192,13 +263,18 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         &mut connection,
         transition(source, LoopMode::Playing, None),
     )?;
-    wait(&mut client, &mut connection, |c| {
-        c.snapshot()
-            .unwrap()
-            .composites
-            .iter()
-            .any(|v| v.loop_id == parent && v.mode == LoopMode::Playing)
-    })?;
+    wait_for_state(
+        &mut client,
+        &mut connection,
+        "delayed launch delivery",
+        |c| {
+            c.snapshot()
+                .unwrap()
+                .composites
+                .iter()
+                .any(|v| v.loop_id == parent && v.mode == LoopMode::Playing)
+        },
+    )?;
     ensure!(
         client
             .snapshot()
@@ -218,11 +294,17 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
             start_cycle: 0,
         }),
     )?;
-    wait(&mut client, &mut connection, |c| {
-        c.snapshot().unwrap().composites.iter().any(|v| {
-            v.loop_id == parent && v.pending_stage == Some(composite::PendingStage::AwaitingRestart)
-        })
-    })?;
+    wait_for_state(
+        &mut client,
+        &mut connection,
+        "deferred edit admission",
+        |c| {
+            c.snapshot().unwrap().composites.iter().any(|v| {
+                v.loop_id == parent
+                    && v.pending_stage == Some(composite::PendingStage::AwaitingRestart)
+            })
+        },
+    )?;
     let pending = client
         .snapshot()
         .unwrap()
@@ -235,17 +317,22 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
         .unwrap();
     drop(connection);
     std::thread::sleep(Duration::from_millis(50));
-    (client, connection) = attach(entry)?;
+    (client, connection) = reattach(entry)?;
     command(
         &mut client,
         &mut connection,
         transition(parent, LoopMode::Stopped, None),
     )?;
-    wait(&mut client, &mut connection, |c| {
-        c.snapshot().unwrap().composites.iter().any(|v| {
-            v.loop_id == parent && v.active.as_ref() == Some(&pending) && v.pending.is_none()
-        })
-    })?;
+    wait_for_state(
+        &mut client,
+        &mut connection,
+        "deferred edit activation",
+        |c| {
+            c.snapshot().unwrap().composites.iter().any(|v| {
+                v.loop_id == parent && v.active.as_ref() == Some(&pending) && v.pending.is_none()
+            })
+        },
+    )?;
     ensure!(
         client
             .snapshot()
@@ -421,6 +508,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         drop(handle);
         drop(app);
         std::thread::sleep(Duration::from_millis(1500));
+        wait_for_controller_release(&entry)?;
         app = ApplicationRuntime::attach(entry.clone(), options.clone())?;
         handle = app.handle();
     } else {
@@ -553,6 +641,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         drop(app);
         std::thread::sleep(Duration::from_millis(50));
         let installed = socket_controls(&entry, loaded.tracks[1].loops[3].id)?;
+        wait_for_controller_release(&entry)?;
         app = ApplicationRuntime::attach(entry.clone(), options)?;
         handle = app.handle();
         file_wait(&handle, |s| s.tracks.len() == 2)?;

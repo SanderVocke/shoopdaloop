@@ -127,11 +127,23 @@ The prior full matrix is not represented as green at `dc313d59`.
 Follow-up local verification passed the warning-denying full-feature build and
 native **2,839 passed / 7 skipped**, app **60** / codec **21** in Node and Chrome,
 and the expanded actual socket workflow. Production runtime code is unchanged
-by this canary/dependency-audit follow-up; its fresh platform matrix is pending.
+by these canary/dependency-audit follow-ups. Latest-head platform status is tracked
+on [PR #941](https://github.com/SanderVocke/shoopdaloop/pull/941); earlier failing
+or cancelled runs are not substituted for that head's results.
 The staged-edit probe changes the current target set and waits for
 `AwaitingRestart` before disconnecting, so safe early adoption cannot satisfy that
 recovery case accidentally. Its complete socket/file workflow and warning-denying
 build passed after this final probe refinement.
+The next macOS debug run (`97f5c210`) reached a generic state-wait timeout after
+the first file round trip. Recovery waits now identify their stage and report
+bounded mode/length/version summaries. Reattachment also waits for management
+status to report the old controller released: closing its socket alone does not
+guarantee that the service has processed detach.
+The warning-denying workspace build passed with these probe changes. Ten complete
+socket workflows passed with `SHOOP_CI_TRACING_ENGINE_DETAIL=1`, including five
+pinned to one CPU (`taskset -c 0`); the shared-memory first-attachment workflow
+passed too. This Linux repetition did not reproduce the macOS timeout and is not
+claimed as its platform acceptance.
 
 ## Reproduction and limits
 
