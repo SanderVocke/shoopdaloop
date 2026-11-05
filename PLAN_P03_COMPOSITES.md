@@ -906,3 +906,8 @@ explicit response to a failure or identified risk, not a default milestone ritua
   the duplicate advance and moved the primitive timing publication guard to its
   actual record position. The warning-denying engine build and five focused
   composite, primitive-timing, routing and confirmed-state recovery checks passed.
+- The following firmware CI passed production/UI/recovery and USB MIDI gates,
+  but its soak rejected a retained-heap decrease from 397,741,072 to 397,733,680
+  bytes (the sampled maximum stayed unchanged). Corrected the non-growth assertion
+  to permit released memory while rejecting increases; peak bounds and complete
+  owner teardown remain checked. Firmware execution stays delegated to CI.
