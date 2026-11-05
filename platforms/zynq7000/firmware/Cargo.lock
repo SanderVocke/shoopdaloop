@@ -120,6 +120,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_buffered"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+]
+
+[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
@@ -204,6 +211,7 @@ dependencies = [
  "serde",
  "shoop_latency",
  "shoop_port_graph",
+ "shoop_processor_protocol",
  "shoop_script_resources",
 ]
 
@@ -284,6 +292,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_processor_protocol"
+version = "0.3.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "shoop_rt_backend"
 version = "0.3.0"
 dependencies = [
@@ -291,6 +306,7 @@ dependencies = [
  "libm",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_processor_protocol",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "tracing",
@@ -300,8 +316,10 @@ dependencies = [
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
+ "rt_buffered",
  "rt_runtime",
  "shoop_loops",
+ "shoop_processor_protocol",
  "shoop_rt_protocol",
  "shoop_rt_transport",
 ]
@@ -311,6 +329,7 @@ name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
  "rt_profiling",
+ "shoop_processor_protocol",
  "shoop_transport",
 ]
 
@@ -345,9 +364,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.119"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -265,8 +265,8 @@ fn bulk_reads_return_recorded_audio_channels_and_midi() {
         message: MidiMessage::new(&[0xb0, 64, 127]).unwrap(),
     });
     harness.run((start + 400 - harness.frame()) as usize, 16);
+    let stop = harness.frame();
     harness.done(transition(looped, LoopMode::Stopped));
-    let stop = harness.frame() - 1;
     let frames = stop - start;
     let (total, left, _) = harness.read(looped, BulkSelector::Audio { channel: 0 });
     assert_eq!(total, frames);
