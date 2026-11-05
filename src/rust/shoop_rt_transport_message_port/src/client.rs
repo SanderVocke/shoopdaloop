@@ -121,23 +121,29 @@ mod tests {
 
     #[shoop_test]
     fn profiling_credit_returns_only_after_a_record_is_consumed() {
-        let mut client = RecordClient::new(RecordBatches::new());
-        let record = engine_record(EngineMessage::ProfilingStatus(Default::default()));
-        client.port_mut().receive(&record);
-        assert_eq!(client.port_mut().take_profiling_credits(), 0);
-        assert!(matches!(
-            client.receive(),
-            Some(EngineMessage::ProfilingStatus(_))
-        ));
-        assert_eq!(client.port_mut().take_profiling_credits(), 1);
-        assert_eq!(client.port_mut().take_profiling_credits(), 0);
-        client.port_mut().receive(&record);
-        client
-            .port_mut()
-            .receive(&engine_record(EngineMessage::Rejected { version: 99 }));
-        assert!(client.receive().is_some());
-        assert!(client.receive().is_some());
-        assert_eq!(client.port_mut().take_profiling_credits(), 1);
+        for message in [
+            EngineMessage::ProfilingStatus(Default::default()),
+            EngineMessage::ProfilingGraph {
+                generation: 1,
+                epoch: 2,
+                record: shoop_rt_protocol::profiling::GraphRecord::End,
+            },
+        ] {
+            let mut client = RecordClient::new(RecordBatches::new());
+            let record = engine_record(message);
+            client.port_mut().receive(&record);
+            assert_eq!(client.port_mut().take_profiling_credits(), 0);
+            assert_eq!(client.receive(), Some(message));
+            assert_eq!(client.port_mut().take_profiling_credits(), 1);
+            assert_eq!(client.port_mut().take_profiling_credits(), 0);
+            client.port_mut().receive(&record);
+            client
+                .port_mut()
+                .receive(&engine_record(EngineMessage::Rejected { version: 99 }));
+            assert!(client.receive().is_some());
+            assert!(client.receive().is_some());
+            assert_eq!(client.port_mut().take_profiling_credits(), 1);
+        }
     }
 
     #[shoop_test]

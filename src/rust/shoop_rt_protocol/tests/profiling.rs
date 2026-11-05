@@ -11,6 +11,7 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
         capture: 3,
         sequence: 99,
         callback: 11,
+        graphs: 3,
         callback_frame: 128,
         frame: 160,
         frames: 32,
@@ -46,6 +47,49 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
             generation: 7,
             key: 2,
             name: Name::new("Loop 3 MIDI playback").unwrap(),
+        },
+        EngineMessage::ProfilingGraph {
+            generation: 7,
+            epoch: 9,
+            record: GraphRecord::Begin {
+                nodes: 2,
+                edges: 1,
+                sample_rate: 48000,
+                quantum: 32,
+            },
+        },
+        EngineMessage::ProfilingGraph {
+            generation: 7,
+            epoch: 9,
+            record: GraphRecord::Node {
+                index: 0,
+                node: GraphNode {
+                    key: 1,
+                    group: 2,
+                    slot: 3,
+                    owner_generation: 1,
+                },
+            },
+        },
+        EngineMessage::ProfilingGraph {
+            generation: 7,
+            epoch: 9,
+            record: GraphRecord::Edge {
+                index: 0,
+                edge: GraphEdge {
+                    source: Port::default(),
+                    destination: Port {
+                        node: Some(1),
+                        kind: 1,
+                        channel: 2,
+                    },
+                },
+            },
+        },
+        EngineMessage::ProfilingGraph {
+            generation: 7,
+            epoch: 9,
+            record: GraphRecord::End,
         },
     ];
     let mut bytes = [0; MAX_RECORD_BYTES];

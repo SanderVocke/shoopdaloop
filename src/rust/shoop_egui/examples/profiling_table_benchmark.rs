@@ -49,6 +49,7 @@ fn main() {
                     );
                 },
             );
+            let _ = window.take_request();
             output.textures_delta.clear();
             drop(output);
             let elapsed = started.elapsed().as_nanos() as u64;
