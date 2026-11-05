@@ -630,6 +630,13 @@ builds, both-DSP Node tests, startup/resource and release callback measurements,
 and selected portable ownership Miri tests. Platform/browser execution and final
 review are still pending; verification checkboxes remain open until those gates pass.
 
+Final bounds reconciliation: the public timing wire and service now accept one
+atomic update for all sixteen audio channels plus dry MIDI. An 8+8 External
+service-wire test verifies the exact limit and duplicate-channel refusal without
+partial mutation. Eight codec checks and the four startup/resource tests pass.
+CI's first optional-feature run exposed a measurement assertion format error and
+an invalid action ref for the pinned Miri toolchain; both are corrected.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise a focused packaged production smoke path locally when packaging or

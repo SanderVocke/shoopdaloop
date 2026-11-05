@@ -146,6 +146,9 @@ impl Fixture {
         self.confirmed(Command::CommitPersistence(key));
     }
     fn new(kind: ProcessorKind) -> Self {
+        Self::with_width(kind, 4)
+    }
+    fn with_width(kind: ProcessorKind, width: u8) -> Self {
         let description = EngineDescription {
             external_dry_wet: true,
             sample_rate: 8000,
@@ -153,9 +156,9 @@ impl Fixture {
             max_frames: 128,
             ramp_frames: 0,
             telemetry_interval_frames: 0,
-            strip_channels: 4,
+            strip_channels: width,
             master_channels: 2,
-            host: HostPorts::numbered(4, 4, 1),
+            host: HostPorts::numbered(width as usize, width as usize, 1),
             segments: vec![Segment {
                 strips: 4,
                 loops: 32,
@@ -1015,4 +1018,58 @@ fn structure_only_round_trip(
         .iter()
         .all(|looped| looped.frames == 0 && looped.recorded_processor_state.is_none()));
     loaded
+}
+
+#[shoop_test]
+fn maximum_dry_wet_channel_timing_batch_is_atomic_over_the_public_wire() {
+    let mut f = Fixture::with_width(ProcessorKind::External, 8);
+    let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+        name: "8+8 timings".into(),
+        topology: TrackSpecTopology::DryWet {
+            dry_audio_channels: 8,
+            wet_audio_channels: 8,
+            dry_midi: true,
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+            default_playback_mode: DefaultPlaybackMode::Regular,
+        },
+        latency: Default::default(),
+        initial_output_bus_names: vec![],
+        creation_request_id: None,
+    })) else {
+        panic!()
+    };
+    let previous = f.track(track).loops[0].clone();
+    assert_eq!(
+        previous.channel_timings.len(),
+        MAX_LOOP_CHANNEL_TIMING_UPDATES
+    );
+    let updates: Vec<_> = previous
+        .channel_timings
+        .iter()
+        .enumerate()
+        .map(|(index, channel)| ChannelTimelineUpdate {
+            channel_id: channel.id,
+            start_offset: Some(index as i64 - 8),
+            preplay_samples: Some(index as u64),
+        })
+        .collect();
+    f.confirmed(Command::SetLoopChannelTimings {
+        loop_id: loops[0],
+        updates: updates.clone(),
+    });
+    for (channel, update) in f.track(track).loops[0].channel_timings.iter().zip(&updates) {
+        assert_eq!(channel.start_offset, update.start_offset.unwrap());
+        assert_eq!(channel.preplay_samples, update.preplay_samples.unwrap());
+    }
+    let before = f.track(track).loops[0].channel_timings.clone();
+    let mut invalid = updates;
+    invalid[16].channel_id = invalid[0].channel_id;
+    assert!(matches!(
+        f.run(Command::SetLoopChannelTimings {
+            loop_id: loops[0],
+            updates: invalid
+        }),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(f.track(track).loops[0].channel_timings, before);
 }

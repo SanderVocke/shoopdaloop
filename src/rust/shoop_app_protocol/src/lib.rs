@@ -137,7 +137,9 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
-            Self::SetLoopChannelTimings { updates, .. } => updates.len() <= 9,
+            Self::SetLoopChannelTimings { updates, .. } => {
+                updates.len() <= MAX_LOOP_CHANNEL_TIMING_UPDATES
+            }
             Self::InspectProfiling(r) => {
                 r.capture != 0
                     && r.generation != 0

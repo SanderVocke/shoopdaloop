@@ -351,8 +351,7 @@ mod tests {
                 memory.peak as u64 <= prepared.reserved_bytes,
                 "channels={channels} peak={} reserved={}",
                 memory.peak,
-                prepared.reserved_bytes,
-                started.elapsed().as_millis()
+                prepared.reserved_bytes
             );
             #[cfg(not(target_arch = "wasm32"))]
             std::println!(

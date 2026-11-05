@@ -2530,6 +2530,8 @@ pub enum PianoAction {
     ReleaseAll,
 }
 
+pub const MAX_LOOP_CHANNEL_TIMING_UPDATES: usize = 17;
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChannelTimelineUpdate {
