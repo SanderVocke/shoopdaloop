@@ -275,6 +275,11 @@ The workspace suite includes the isolated `shoop_app_reference` and independent 
 engine fixtures for parity evidence. `shoop_engine/app_backend` in that test command
 is a reference-test feature, never a production frontend dependency.
 
+The replacement and retained engine libraries' Chromium tests run in dedicated
+Workers. CPU-heavy DSP tests can then run without blocking WebDriver progress
+collection on the main thread. Per-test capture and the existing runner deadlines
+still apply.
+
 A packaged, windowless canary exercises the actual companion, keyless attach,
 recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 

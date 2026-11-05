@@ -26,6 +26,19 @@ jobs are unfinished. These results remain visible on
 those checks is deferred from this closed plan. See the
 [closure evidence](docs/native_session_recovery/track-processors.md#user-directed-closure-and-remaining-ci).
 
+Post-closure CI follow-up: the user subsequently requested fixing CI. The target
+advanced to `2cec7c8e` by merging master's dependency updates and dedicated-worker
+engine tests. Reconcile that target while preserving the closed implementation
+scope. Automatic lockfile merging left the added DSP/host-processor packages
+referencing `thiserror 2.0.20` after its package entry moved to `2.0.21`; regenerate
+those two references without further dependency updates. The optional shared
+`measure_memory` helper has a narrow dead-code allowance for standalone inclusion,
+matching the existing shared-helper convention; allocation guards are unchanged.
+Locked metadata, warning-denying native product builds, both independent native
+replay suites, worker-configured engine Wasm test compilation, formatting and
+policy checks pass locally. Full CI results are attached to
+[the PR checks](https://github.com/SanderVocke/shoopdaloop/pull/946/checks).
+
 - Start from `feat/fixed-quantum-runtime`, inspected at `2e19210b`.
 - Reference: fetched `master` at `92079fb6`, plus executable behavior retained in
   `shoop_app_reference`, `shoop_engine`, and `reference/legacy_browser`.

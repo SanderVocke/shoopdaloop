@@ -31,7 +31,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
-shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_dedicated_worker);
 
 #[cfg(test)]
 mod buffered_tests;

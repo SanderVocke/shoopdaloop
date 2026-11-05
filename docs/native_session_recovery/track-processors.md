@@ -7,7 +7,7 @@ in [the plan](../../PLAN_HOSTED_TRACK_PROCESSORS.md). This document records the
 contract and delivered implementation. Public native production routes are verified
 locally; the final delivered-revision platform/browser CI gates remain pending.
 PR [#946](https://github.com/SanderVocke/shoopdaloop/pull/946) targets
-`feat/backend-replacement`, reconciled through `40db766d`; the original base above
+`feat/backend-replacement`, reconciled through `2cec7c8e`; the original base above
 is retained as provenance. Current wire versions are engine v21, application v29
 and worklet configuration v6.
 
@@ -104,6 +104,24 @@ FX remain separately refused. P06 closes under the qualified user-directed closu
 below; P07 remains open for Carla.
 
 ## Validation evidence
+
+### Post-closure CI repair
+
+The user requested fixing CI after closing the plan. The target advanced from
+`40db766d` to `2cec7c8e`, bringing master's dependency updates and dedicated-worker
+configuration for the replacement and retained engine browser tests. The automatic
+merge retained two stale `thiserror 2.0.20` references in the added DSP packages,
+causing Cargo's `--locked` refusal across the matrix. Cargo resolution repairs
+exactly those two references to the target's `2.0.21`, retaining the other pins.
+
+Standalone runtime-host compilation also reproduced the unused `measure_memory`
+error. The optional shared helper now has the same narrow dead-code allowance as
+the existing optional shared test support. Heap guards, failure canaries and exact
+sample/MIDI comparisons remain enabled. Warning-denying debug native replay passes
+for both independent runtime and loop hosts, as do locked workspace metadata,
+native app/host/worklet builds and worker-configured engine Wasm test compilation.
+Formatting, test-attribute policy and parity coverage pass. The plan stays closed;
+current integration results are on [PR #946's checks](https://github.com/SanderVocke/shoopdaloop/pull/946/checks).
 
 ### User-directed closure and remaining CI
 

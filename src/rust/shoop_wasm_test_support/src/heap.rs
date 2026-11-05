@@ -128,6 +128,7 @@ pub fn measure<R>(run: impl FnOnce() -> R) -> (R, Counts) {
     (result, STATE.with(|state| state.get().counts))
 }
 
+#[allow(dead_code)] // Shared support is compiled independently by each integration test.
 pub fn measure_memory<R>(run: impl FnOnce() -> R) -> (R, Memory) {
     let (result, _) = measure(run);
     (result, STATE.with(|state| state.get().memory))
