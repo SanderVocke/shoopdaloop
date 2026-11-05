@@ -5,13 +5,15 @@ pub const CONTENT_CHUNK_BYTES: usize = 1024;
 pub const CONTENT_WRITE_WINDOW: usize = 64;
 pub const LEGACY_CONTENT_WRITE_WINDOW: usize = 8;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ContentFamilyEdit {
     pub loop_id: crate::LoopSlotId,
     pub sync_source: crate::LoopSlotId,
     pub expected_revision: u64,
     pub expected_frames: u64,
     pub frames: u64,
+    pub dry_audio: Option<u64>,
+    pub recorded_state: Option<crate::RecordedProcessorState>,
     pub audio: Option<u64>,
     pub midi: Option<u64>,
     pub replace: bool,

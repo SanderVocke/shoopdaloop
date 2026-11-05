@@ -214,15 +214,17 @@ impl Job {
         id: LoopSlotId,
         frames: u64,
         audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        auxiliary: Option<shoop_loops::runtime::NodePairSourceId>,
         midi: Option<shoop_loops::runtime::NodePairSourceId>,
+        recorded: Option<shoop_rt_protocol::RecordedProcessorState>,
     ) -> Self {
         Self::new(Kind::Content {
             id,
             frames,
             audio,
-            auxiliary: None,
+            auxiliary,
             midi,
-            recorded: None,
+            recorded,
             family: Some(slot),
         })
     }
@@ -546,10 +548,11 @@ impl ControlEndpoint {
                     family: Some(slot), ..
                 } = job.kind
                 {
-                    self.family.entries[slot]
+                    let entry = self.family.entries[slot]
                         .as_mut()
-                        .expect("staged family entry")
-                        .media = job.content_media.take();
+                        .expect("staged family entry");
+                    entry.media = job.content_media.take();
+                    entry.revision = job.content_revision;
                     self.answer_job(
                         job,
                         Outcome::ContentPrepared {
@@ -782,6 +785,39 @@ impl ControlEndpoint {
         }
         if job.phase != Phase::FamilyFinish {
             job.fail(Refusal::Internal);
+        }
+        if commit && job.failure.is_none() && !job.metadata_published {
+            while job.sent < self.family.entries.len() {
+                let slot = job.sent;
+                let Some(entry) = self.family.entries[slot].filter(|entry| entry.edit.replace)
+                else {
+                    job.sent += 1;
+                    continue;
+                };
+                if !self.room(1) {
+                    return false;
+                }
+                self.submit_job(
+                    job,
+                    Command::Schedule {
+                        at: Frame(0),
+                        action: rt_runtime::schedule::Action::Processor {
+                            node: self.pool.fader(slot),
+                            operation: EngineOp::RecordedState {
+                                generation: entry.edit.loop_id.0.generation,
+                                revision: entry.revision.expect("adopted family revision").0,
+                                state: entry.edit.recorded_state,
+                            },
+                        },
+                        payload: Box::new([]),
+                    },
+                    Step::ContentMetadata,
+                    true,
+                );
+                job.sent += 1;
+                return true;
+            }
+            job.metadata_published = true;
         }
         for slot in 0..self.family.entries.len() {
             if self.family.entries[slot].is_some_and(|entry| entry.media.is_some()) {

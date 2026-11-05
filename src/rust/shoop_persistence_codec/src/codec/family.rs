@@ -401,12 +401,14 @@ pub(super) fn convert(
         for (index, channel) in content.audio.iter_mut().enumerate() {
             if member.loop_id == *root && importing_audio {
                 let gain = channel.gain;
+                let mode = channel.mode;
                 let replacement = imported_audio
                     .iter()
                     .find(|update| update.channel as usize == index)
                     .ok_or_else(|| anyhow!("missing mapped audio channel"))?;
                 *channel = replacement.content.clone();
                 channel.gain = gain;
+                channel.mode = mode;
                 audio(
                     channel,
                     &imported,
@@ -430,12 +432,16 @@ pub(super) fn convert(
         }
         for (index, channel) in content.midi.iter_mut().enumerate() {
             if member.loop_id == *root && !importing_audio {
+                let gain = channel.channel.gain;
+                let mode = channel.channel.mode;
                 *channel = imported_midi
                     .iter()
                     .find(|update| update.channel as usize == index)
                     .ok_or_else(|| anyhow!("missing imported MIDI channel"))?
                     .content
                     .clone();
+                channel.channel.gain = gain;
+                channel.channel.mode = mode;
                 midi(
                     channel,
                     &imported,

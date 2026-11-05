@@ -654,6 +654,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
                 expected_revision: cut.state.content_revision.0,
                 expected_frames: take.frames,
                 frames: take.frames,
+                dry_audio: None,
+                recorded_state: None,
                 audio: Some(source),
                 midi: Some(source + 1),
                 replace: true,

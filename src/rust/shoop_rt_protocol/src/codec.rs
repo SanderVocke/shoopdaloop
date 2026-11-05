@@ -535,6 +535,8 @@ impl Wire for Request {
                 w.u64(edit.expected_revision)?;
                 w.u64(edit.expected_frames)?;
                 w.u64(edit.frames)?;
+                edit.dry_audio.put(w)?;
+                edit.recorded_state.put(w)?;
                 edit.audio.put(w)?;
                 edit.midi.put(w)?;
                 w.bool(edit.replace)?;
@@ -748,6 +750,8 @@ impl Wire for Request {
                     expected_revision: r.u64()?,
                     expected_frames: r.u64()?,
                     frames: r.u64()?,
+                    dry_audio: Option::get(r)?,
+                    recorded_state: Option::get(r)?,
                     audio: Option::get(r)?,
                     midi: Option::get(r)?,
                     replace: r.bool()?,

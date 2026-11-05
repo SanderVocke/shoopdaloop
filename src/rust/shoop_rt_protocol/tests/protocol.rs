@@ -223,6 +223,12 @@ fn client_samples() -> Vec<ClientMessage> {
                 expected_revision: 7,
                 expected_frames: 96,
                 frames: 128,
+                dry_audio: Some(3),
+                recorded_state: Some(RecordedProcessorState {
+                    source_frame: 17,
+                    kind: ProcessorKind::OxiSynth,
+                    values: [0.; 64],
+                }),
                 audio: Some(1),
                 midi: Some(2),
                 replace: true,

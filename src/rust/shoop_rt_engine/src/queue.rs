@@ -280,7 +280,10 @@ impl ControlEndpoint {
                 if let Some(blocked) = self.blocked_loops.get_mut(edit.loop_id.0.index as usize) {
                     *blocked = true;
                 }
-                for id in [edit.audio, edit.midi].into_iter().flatten() {
+                for id in [edit.audio, edit.dry_audio, edit.midi]
+                    .into_iter()
+                    .flatten()
+                {
                     self.uploads.block(id);
                 }
             }

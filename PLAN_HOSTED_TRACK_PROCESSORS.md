@@ -15,6 +15,9 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   **`feat/backend-replacement`**. Reconcile the implementation with that target
   (inspected at `32179102`), including its runtime profiling and host-manager changes.
   Keep the original `2e19210b` implementation base as provenance.
+  The target subsequently advanced to `e1f28c87` (P12 loop timing and the preliminary
+  FreeRTOS host). Reconcile those changes too, preserving the target's timing,
+  portable-host and CI contracts alongside processed channel roles.
   Reconciliation was merged in `3fcddfc1`. The first CI run exposed an outdated
   profiling benchmark initializer and browser artifact contract, plus small-stack
   failures in native startup and JACK session replacement. The follow-up uses
@@ -566,6 +569,14 @@ export keeps role labels and original numbering in the requested order; import
 mapping supports all sixteen logical channels. The production file workflow and
 waveform labels use the same role order. Synchronized family imports, automatic
 alignment projection and final public admission remain open.
+
+Family-import milestone: engine protocol v19 stages independent dry/wet banks and
+recorded settings for synchronized imports. It validates topology/roles and
+recording fences before staging, publishes settings against the committed media
+revision, and retains normal cancellation/retirement ownership. Codec conversion
+keeps the original audio/MIDI role and gain when replacing mapped media. Focused
+real-host checks pass for External, FX and synth family edits with forced runtime
+reexports; codec role-retention, protocol and existing family regressions pass.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 

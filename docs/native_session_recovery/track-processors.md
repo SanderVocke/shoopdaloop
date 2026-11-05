@@ -627,3 +627,11 @@ indexed MIDI validation avoids materializing unused full channel state. The
 1 MiB startup/cleanup regression, nine MIDI-index tests and actual JACK replacement
 across in-process/socket/shared-memory/TCP pass locally. The next CI run supplies
 the repeated Windows/macOS/browser artifact evidence.
+
+Engine protocol v19 extends synchronized family imports with independent dry/wet
+uploads and recorded settings. Metadata is validated before staging and published
+against the selected media revision before completion. Codec family conversion
+retains channel roles and gains. The real host fixture checks changed and restored
+family media for External, FX and synth, bypassing canonical caches for runtime
+readback; recorded settings and MIDI survive. Codec/protocol and existing family
+regressions pass locally.

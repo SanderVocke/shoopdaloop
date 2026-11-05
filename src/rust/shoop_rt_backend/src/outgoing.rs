@@ -1403,6 +1403,47 @@ mod track_role_tests {
                     [0xe0..=0xef, 0, 64] | [0xb0..=0xbf, 64 | 66 | 69, 0]
                 )));
             let before = content.clone();
+            for changed in [true, false] {
+                let state = stack.poll().unwrap().loops[&id].clone();
+                let mut next = before.clone();
+                if changed {
+                    next.audio[0].samples = alloc::vec![-3.75; 64].into();
+                }
+                let family = shoop_backend::BackendLoopFamilyUpdate {
+                    root: id,
+                    sample_rate: 8000,
+                    quantum_frames: 16,
+                    members: alloc::vec![shoop_backend::BackendLoopFamilyMember {
+                        loop_id: id,
+                        sync_source: state.sync_source,
+                        expected_revision: state.content_revision,
+                        expected_frames: before.length,
+                        fence_content: true,
+                        restart: true,
+                        content: Some(next.clone()),
+                    }],
+                };
+                let mut finished = false;
+                for _ in 0..10_000 {
+                    match stack.replace_loop_family_async(&family).unwrap() {
+                        shoop_backend::BackendAsyncResult::Ready(()) => {
+                            finished = true;
+                            break;
+                        }
+                        shoop_backend::BackendAsyncResult::Pending(_) => {
+                            stack.clock.wait();
+                        }
+                    }
+                }
+                assert!(finished, "processed family replacement stalled");
+                stack.wait_idle();
+                stack.canonical_content.remove(&id);
+                stack.prepared_content.remove(&id);
+                stack.canonical_imports.remove(&id);
+                stack.reads.forget(id);
+                let after = stack.capture_session().unwrap();
+                assert_eq!(after.tracks[0].loops[0], next);
+            }
             assert!(stack
                 .replace_loop_content(
                     id,
