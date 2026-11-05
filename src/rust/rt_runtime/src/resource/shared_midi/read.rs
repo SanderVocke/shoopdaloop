@@ -306,6 +306,59 @@ impl MidiStore {
         )?;
         Ok(r.len)
     }
+    pub fn parameter_history_untracked(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        index: ReadIndex,
+        frame: u64,
+    ) -> Result<bool, Error> {
+        self.check(io.store)?;
+        let view = self.view(index.0)?;
+        if frame > view.frames {
+            return Err(Error::InvalidFrame);
+        }
+        let history = |state: &MidiState| {
+            (0..16).fold(0u16, |mask, channel| {
+                mask | (u16::from(
+                    state
+                        .channel(channel)
+                        .expect("MIDI channel")
+                        .parameter_history_untracked(),
+                ) << channel)
+            })
+        };
+        if frame == 0 || view.first == view.last {
+            return Ok(history(&self.initial[index.0.slot as usize]) != 0);
+        }
+        let point = self.locate(view, view.origin + frame)?;
+        let (serial, count) = if point.event == 0 && point == view.last {
+            (point.serial - 1, None)
+        } else {
+            (point.serial, Some(point.event))
+        };
+        let slot = self.find(view.root, serial)?;
+        let chunk = self.chunks[slot].expect("checkpoint chunk");
+        let mut mask = history(&self.chunk_states[slot]);
+        for record in &chunk.records[..count.unwrap_or(chunk.count)] {
+            let mut short = [0; 3];
+            let count = record.len.min(3);
+            self.block_read(
+                io.store,
+                record.block,
+                record.offset,
+                &mut short[..count],
+                WorkClass::Render,
+            )?;
+            if short[0] == 0xff {
+                mask = 0;
+            } else if matches!(short, [0xb0..=0xbf, 6 | 38 | 96 | 97, _]) {
+                mask |= 1 << (short[0] & 15);
+            }
+            self.work.add(1, 0, 0, 0);
+            io.store.charge_work(WorkClass::Render, count, 1)?;
+        }
+        Ok(mask != 0)
+    }
     pub fn seek(
         &mut self,
         io: &mut RenderIo<'_>,

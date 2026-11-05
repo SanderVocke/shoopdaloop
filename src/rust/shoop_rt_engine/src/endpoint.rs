@@ -72,6 +72,10 @@ pub(crate) struct Planned {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    Timing {
+        slot: usize,
+        correlation: Option<u64>,
+    },
     /// Answer `correlation` with the execution's outcome.
     Reply(Option<u64>),
     StripControl {
@@ -388,6 +392,7 @@ impl ControlEndpoint {
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
             .union(Capabilities::WIDE_CONTENT_UPLOAD)
+            .union(Capabilities::LOOP_TIMING)
     }
 
     fn free_pending(&self) -> usize {
@@ -520,6 +525,7 @@ impl ControlEndpoint {
             match &mut pending.purpose {
                 Purpose::Reply(correlation)
                 | Purpose::StripControl { correlation, .. }
+                | Purpose::Timing { correlation, .. }
                 | Purpose::Transition { correlation, .. } => *correlation = None,
                 Purpose::Content { correlation, .. } => *correlation = None,
                 _ => {}
@@ -581,6 +587,7 @@ impl ControlEndpoint {
         let finished = pending.completed && (pending.executed || !pending.expects);
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
+            Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
             Purpose::StripControl {
                 correlation,
@@ -828,6 +835,18 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::LoopTiming {
+                loop_id,
+                expected_revision,
+                expected_content,
+                edit,
+            } => self.timing_request(
+                correlation,
+                loop_id,
+                expected_revision,
+                expected_content,
+                edit,
+            ),
             Request::Profiling(enabled) => match &self.profiling {
                 Some(reader) => {
                     reader.control().set_enabled(enabled);
@@ -868,12 +887,13 @@ impl ControlEndpoint {
                 }
                 self.replacement_request(correlation, request)
             }
-            Request::ContentBegin(_)
+            Request::ContentWindow { .. }
+            | Request::ContentBegin(_)
             | Request::ContentWrite { .. }
             | Request::ContentInitial { .. }
             | Request::ContentFinish { .. }
             | Request::ContentRelease { .. } => {
-                if matches!(request, Request::ContentRelease { id } if self.preview.as_ref().is_some_and(|p| p.content == id))
+                if matches!(request, Request::ContentRelease { id } | Request::ContentWindow { id, .. } if self.preview.as_ref().is_some_and(|p| p.content == id))
                 {
                     Err(Refusal::Busy)
                 } else {
@@ -914,10 +934,16 @@ impl ControlEndpoint {
                                 return Err(());
                             }
                             self.touched_loops[id.0.index as usize] = crate::queue::HARD;
-                            return self.begin_job(
-                                correlation,
-                                Job::content(id, frames, audio, dry, midi, recorded_state),
-                            );
+                            let mut job =
+                                Job::content(id, frames, audio, dry, midi, recorded_state);
+                            match self.uploads.source_timing(audio, midi, frames) {
+                                Ok(timing) => job.content_timing = Some(timing),
+                                Err(refusal) => {
+                                    self.answer(correlation, Outcome::Refused(refusal));
+                                    return Ok(());
+                                }
+                            }
+                            return self.begin_job(correlation, job);
                         }
                     }
                 }
@@ -1289,9 +1315,8 @@ impl ControlEndpoint {
             if !(periodic || self.dirty[slot]) {
                 continue;
             }
-            self.dirty[slot] = false;
             if let Some(record) = self.loop_telemetry(slot) {
-                let _ = out.push(EngineMessage::Telemetry(record));
+                self.dirty[slot] = out.push(EngineMessage::Telemetry(record)).is_err();
             }
         }
     }
@@ -1299,7 +1324,11 @@ impl ControlEndpoint {
     fn loop_telemetry(&self, slot: usize) -> Option<Telemetry> {
         let entry = self.model.loops[slot]?;
         let cells = &self.cells.loops[slot];
-        let current = cells.generation.load(Ordering::Relaxed) == entry.id.0.generation;
+        let publication = cells.publication.load(Ordering::SeqCst);
+        if publication % 2 != 0 {
+            return None;
+        }
+        let current = cells.generation.load(Ordering::SeqCst) == entry.id.0.generation;
         let next = self.planned[slot]
             .iter()
             .flatten()
@@ -1313,28 +1342,38 @@ impl ControlEndpoint {
                 strip.shape.audio_outputs as usize
             }
         });
-        Some(Telemetry::Loop {
+        let timing_revision = cells.timing_revision.load(Ordering::SeqCst);
+        let record = Telemetry::Loop {
             loop_id: entry.id,
             mode: protocol_mode(mode),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            recording_armed: self.planned[slot]
+                .iter()
+                .flatten()
+                .any(|planned| planned.mode == LoopMode::Recording),
+            timing_revision: if current { timing_revision } else { 0 },
             content_revision: if current {
-                cells.content_revision.load(Ordering::Relaxed)
+                cells.content_revision.load(Ordering::SeqCst)
             } else {
                 0
             },
             length: if current {
-                cells.length.load(Ordering::Relaxed)
+                cells.length.load(Ordering::SeqCst)
             } else {
                 0
             },
             position: if current {
-                cells.position.load(Ordering::Relaxed)
+                cells.position.load(Ordering::SeqCst)
             } else {
                 0
             },
             peaks: cells.peaks.take(channels),
-        })
+        };
+        if cells.publication.load(Ordering::SeqCst) != publication {
+            return None;
+        }
+        Some(record)
     }
 }
 

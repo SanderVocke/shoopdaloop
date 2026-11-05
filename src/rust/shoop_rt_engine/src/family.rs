@@ -9,6 +9,7 @@ use shoop_rt_protocol::{ContentFamilyEdit, LoopSlotId, Outcome, Refusal, Request
 
 #[derive(Clone, Copy)]
 pub(crate) struct Entry {
+    pub timing: shoop_rt_protocol::TimingState,
     pub edit: ContentFamilyEdit,
     pub media: Option<shoop_loops::media::MediaId>,
     pub revision: Option<rt_runtime::Revision>,
@@ -66,7 +67,7 @@ impl ControlEndpoint {
             quantum,
         } = request
         {
-            if self.family.id.is_some() || self.replacement.id.is_some() {
+            if self.family.id.is_some() || self.replacement.id.is_some() || self.timing_pending() {
                 return Err(Refusal::Busy);
             }
             if id == 0 || id <= self.family.last_id || self.model.find_loop(root).is_none() {
@@ -138,6 +139,7 @@ impl ControlEndpoint {
                     .map(|id| self.uploads.source(id, false, edit.frames))
                     .transpose()?;
                 self.family.entries[slot] = Some(Entry {
+                    timing: self.uploads.timing(edit.audio, edit.midi, edit.frames)?,
                     edit,
                     media: None,
                     revision: None,

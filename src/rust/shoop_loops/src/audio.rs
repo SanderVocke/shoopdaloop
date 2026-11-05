@@ -47,6 +47,7 @@ pub struct AudioRenderer {
     balance_channels: usize,
     max_frames: usize,
     bytes: Box<[u8]>,
+    window_bytes: Box<[u8]>,
     last: Box<[f32]>,
     anchor: Box<[f32]>,
     ramp_weights: Box<[f32]>,
@@ -138,7 +139,7 @@ impl AudioRenderer {
     ) -> Result<Self, Error> {
         let count = samples(channels, max_frames)?;
         count
-            .checked_mul(4)
+            .checked_mul(8)
             .and_then(|n| {
                 channels
                     .checked_mul(8)
@@ -160,6 +161,7 @@ impl AudioRenderer {
             balance_channels: channels,
             max_frames,
             bytes: buffer(count * 4),
+            window_bytes: buffer(count * 4),
             last: buffer(channels),
             anchor: buffer(channels),
             ramp_weights: buffer(max_frames),
@@ -194,7 +196,7 @@ impl AudioRenderer {
         playback: Playback,
         outputs: &mut [&mut [f32]],
     ) -> Result<(), Error> {
-        self.render_output(io, playback, Outputs::Slices(outputs))
+        self.render_output(io, playback, Outputs::Slices(outputs), None)
     }
 
     /// Render directly into runtime ports without retaining channel borrows.
@@ -209,6 +211,7 @@ impl AudioRenderer {
             io,
             playback,
             Outputs::Ports(outputs, 0, outputs.output_count()),
+            None,
         )
     }
 
@@ -225,7 +228,53 @@ impl AudioRenderer {
         {
             return Err(Error::InvalidShape);
         }
-        self.render_output(io, playback, Outputs::Ports(outputs, first, self.channels))
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, first, self.channels),
+            None,
+        )
+    }
+
+    pub fn render_windowed_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        position: i64,
+        windows: &[crate::windows::ChannelWindow],
+        lead: bool,
+        outputs: &mut AudioPorts<'_>,
+    ) -> Result<(), Error> {
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, 0, self.channels),
+            Some((position, windows, lead)),
+        )
+    }
+
+    pub fn render_windowed_port_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        position: i64,
+        windows: &[crate::windows::ChannelWindow],
+        lead: bool,
+        outputs: &mut AudioPorts<'_>,
+        first: usize,
+    ) -> Result<(), Error> {
+        if first
+            .checked_add(self.channels)
+            .is_none_or(|end| end > outputs.output_count())
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, first, self.channels),
+            Some((position, windows, lead)),
+        )
     }
 
     fn render_output(
@@ -233,8 +282,15 @@ impl AudioRenderer {
         io: &mut RenderIo<'_>,
         playback: Playback,
         outputs: Outputs<'_, '_>,
+        windows: Option<(i64, &[crate::windows::ChannelWindow], bool)>,
     ) -> Result<(), Error> {
-        self.render_source(io, playback, playback.source.map(Source::Stored), outputs)
+        self.render_source(
+            io,
+            playback,
+            playback.source.map(Source::Stored),
+            outputs,
+            windows,
+        )
     }
 
     pub fn render_shared(
@@ -255,6 +311,7 @@ impl AudioRenderer {
             },
             playback.source.map(|index| Source::Shared(media, index)),
             Outputs::Slices(outputs),
+            None,
         )
     }
 
@@ -276,6 +333,7 @@ impl AudioRenderer {
             },
             playback.source.map(|index| Source::Shared(media, index)),
             Outputs::Ports(outputs, 0, outputs.output_count()),
+            None,
         )
     }
 
@@ -285,6 +343,7 @@ impl AudioRenderer {
         playback: Playback,
         source: Option<Source<'_>>,
         mut outputs: Outputs<'_, '_>,
+        windows: Option<(i64, &[crate::windows::ChannelWindow], bool)>,
     ) -> Result<(), Error> {
         let channels = outputs.count();
         let frames = shape(
@@ -329,37 +388,50 @@ impl AudioRenderer {
         {
             return Err(Error::InvalidShape);
         }
-        let end = playback
-            .position
-            .checked_add(frames as u64)
-            .ok_or(Error::InvalidFrame)?;
-        if end > description.frames {
-            return Err(Error::InvalidFrame);
-        }
-        let offset = usize::try_from(playback.position)
-            .ok()
-            .and_then(|p| p.checked_mul(self.channels * 4))
-            .ok_or(Error::InvalidOffset)?;
-        let bytes = frames * self.channels * 4;
-        match source {
-            Source::Stored(index) => {
-                let mut cursor = io.cursor_at(index, offset)?;
-                let mut copied = 0;
-                while copied < bytes {
-                    let count = io.read(&mut cursor, &mut self.bytes[copied..bytes])?;
-                    if count == 0 {
-                        return Err(Error::Incomplete);
-                    }
-                    copied += count;
+        if let Some((position, windows, lead)) = windows {
+            if windows.len() != channels || channels > crate::windows::MAX_AUDIO_CHANNELS {
+                return Err(Error::InvalidShape);
+            }
+            self.bytes[..frames * channels * 4].fill(0);
+            for (channel, window) in windows.iter().enumerate() {
+                let span =
+                    crate::windows::span(position, *window, lead, frames, description.frames);
+                if span.frames == 0 {
+                    continue;
+                }
+                read_audio_source(
+                    io,
+                    source,
+                    span.position,
+                    channels,
+                    &mut self.window_bytes[..span.frames * channels * 4],
+                )?;
+                for local in 0..span.frames {
+                    let offset = (local * channels + channel) * 4;
+                    let sample = f32::from_le_bytes(
+                        self.window_bytes[offset..offset + 4]
+                            .try_into()
+                            .expect("audio sample"),
+                    ) * f32::from_bits(window.gain_bits);
+                    let byte = ((span.offset + local) * channels + channel) * 4;
+                    self.bytes[byte..byte + 4].copy_from_slice(&sample.to_le_bytes());
                 }
             }
-            Source::Shared(media, index) => {
-                if media.read_bytes(io, index, playback.position, &mut self.bytes[..bytes])?
-                    != frames
-                {
-                    return Err(Error::Incomplete);
-                }
+        } else {
+            let end = playback
+                .position
+                .checked_add(frames as u64)
+                .ok_or(Error::InvalidFrame)?;
+            if end > description.frames {
+                return Err(Error::InvalidFrame);
             }
+            read_audio_source(
+                io,
+                source,
+                playback.position,
+                channels,
+                &mut self.bytes[..frames * channels * 4],
+            )?;
         }
         if playback.discontinuity {
             self.anchor.copy_from_slice(&self.last);
@@ -575,4 +647,36 @@ fn balance_factors(channels: usize, balance: f32) -> [f32; 2] {
         2 => [1.0 - balance, 1.0],
         _ => [1.0, 1.0],
     }
+}
+
+fn read_audio_source(
+    io: &mut RenderIo<'_>,
+    source: Source<'_>,
+    position: u64,
+    channels: usize,
+    output: &mut [u8],
+) -> Result<(), Error> {
+    match source {
+        Source::Stored(index) => {
+            let offset = usize::try_from(position)
+                .ok()
+                .and_then(|p| p.checked_mul(channels * 4))
+                .ok_or(Error::InvalidOffset)?;
+            let mut cursor = io.cursor_at(index, offset)?;
+            let mut copied = 0;
+            while copied < output.len() {
+                let count = io.read(&mut cursor, &mut output[copied..])?;
+                if count == 0 {
+                    return Err(Error::Incomplete);
+                }
+                copied += count;
+            }
+        }
+        Source::Shared(media, index) => {
+            if media.read_bytes(io, index, position, output)? != output.len() / (channels * 4) {
+                return Err(Error::Incomplete);
+            }
+        }
+    }
+    Ok(())
 }

@@ -161,7 +161,17 @@ impl LoopPlanner {
                 }
             }
             row.assigned = edit.initial.is_some();
+            row.windows = Windows::default();
+            row.timing_revision = 0;
+            row.length_override = None;
             if let Some(initial) = edit.initial {
+                row.windows = self
+                    .ledger
+                    .playback(initial.target)?
+                    .map(|id| self.ledger.view(id))
+                    .transpose()?
+                    .and_then(|view| view.windows)
+                    .unwrap_or_default();
                 row.binding.target = initial.target;
                 row.dry_wet = initial.dry_wet;
                 row.history_source = initial.history_source;

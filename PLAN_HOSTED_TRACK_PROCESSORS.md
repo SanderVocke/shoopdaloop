@@ -18,13 +18,22 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
   The target subsequently advanced to `e1f28c87` (P12 loop timing and the preliminary
   FreeRTOS host). Reconcile those changes too, preserving the target's timing,
   portable-host and CI contracts alongside processed channel roles.
-  Reconciliation was merged in `3fcddfc1`. The first CI run exposed an outdated
+  The combined wire is engine v20/application v27. P12 timing requests and records
+  have distinct tags/capability bits; bounded playback windows cover both channel
+  banks in canonical dry-first order. Keep P12 timing editing available for Direct
+  tracks and extend its validated channel indices to processed tracks.
+  Initial reconciliation was merged in `3fcddfc1`. The first CI run exposed an outdated
   profiling benchmark initializer and browser artifact contract, plus small-stack
   failures in native startup and JACK session replacement. The follow-up uses
   prepared heap storage for the runtime, avoids large MIDI initialization copies,
   and validates indexed MIDI without reconstructing unused state. Focused local
   evidence: 1 MiB startup/cleanup, nine MIDI-index tests, and actual JACK replacement
   over all four native carriers pass. CI owns the repeated platform/artifact checks.
+  The `e1f28c87` reconciliation also passes actual JACK replacement on all carriers,
+  1 MiB startup/cleanup, initial MIDI-channel export, protocol/P12 timing checks,
+  processed media and service archive fixtures, plus service default-mode ordering.
+  Full channel-state copies were removed from per-channel MIDI export to keep that
+  path within JACK's callback stack. Tracing/test inventories and boundary checks pass.
 - Follow `AGENTS.md`, `.agents/index.md`, `.agents/rules/{mandates,style}.md` and
   `.agents/info/{build,test}.md` during execution. No merge is authorized here.
 

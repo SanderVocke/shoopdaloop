@@ -15,6 +15,8 @@ use support::assert_no_heap;
 #[path = "support/runtime_scenarios.rs"]
 mod scenarios;
 use scenarios::make_imports;
+#[path = "support/timing_scenarios.rs"]
+mod timing_scenarios;
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -29,6 +31,7 @@ struct Log {
     events: Vec<Event>,
     last_frame: Option<Frame>,
     dropped: u64,
+    loops: usize,
 }
 impl Log {
     fn new() -> Self {
@@ -45,6 +48,7 @@ impl Log {
             events,
             last_frame: None,
             dropped: 0,
+            loops: 1,
         }
     }
 }
@@ -53,7 +57,7 @@ impl BoundaryObserver for Log {
         assert!(self.last_frame.is_none_or(|old| old < frame));
         self.last_frame = Some(frame);
         self.dropped = dropped;
-        assert_eq!(decisions.len(), 1);
+        assert_eq!(decisions.len(), self.loops);
         assert_eq!(decisions[0].state.id, id());
         assert!(self.events.len() + events.len() <= self.events.capacity());
         for event in events {
@@ -108,7 +112,7 @@ impl Processor<LoopPlanner> for Fx {
 fn config() -> PreparedConfig {
     Config {
         max_frames: 32,
-        max_nodes: 4,
+        max_nodes: 6,
         max_ports: 24,
         max_edges: 16,
         audio_inputs: 2,
@@ -146,6 +150,7 @@ struct Options {
     smoothing: Smoothing,
     input_events: usize,
     one_sample: bool,
+    source: bool,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -160,6 +165,7 @@ impl Default for Options {
             smoothing: Smoothing::None,
             input_events: 512,
             one_sample: false,
+            source: false,
         }
     }
 }
@@ -202,6 +208,31 @@ fn setup_with(
         },
     )
     .unwrap();
+    let source = LoopId::from_parts(1, 1).unwrap();
+    let mut loops = vec![LoopSpec {
+        id: id(),
+        kind: LoopKind::Primitive,
+        length: if options.one_sample {
+            1
+        } else if options.imports {
+            4
+        } else {
+            0
+        },
+        sync_source: if options.source {
+            Some(source)
+        } else {
+            options.self_sync.then_some(id())
+        },
+    }];
+    if options.source {
+        loops.push(LoopSpec {
+            id: source,
+            kind: LoopKind::Primitive,
+            length: 8,
+            sync_source: None,
+        });
+    }
     let topology = compile(
         Limits {
             loop_slots: 2,
@@ -210,18 +241,7 @@ fn setup_with(
             ..Limits::default()
         },
         &TopologyDescription {
-            loops: vec![LoopSpec {
-                id: id(),
-                kind: LoopKind::Primitive,
-                length: if options.one_sample {
-                    1
-                } else if options.imports {
-                    4
-                } else {
-                    0
-                },
-                sync_source: options.self_sync.then_some(id()),
-            }],
+            loops,
             ..TopologyDescription::default()
         },
     )
@@ -240,6 +260,17 @@ fn setup_with(
         midi_bytes: 2048,
         packet_bytes: 2048,
     };
+    let mut bindings = vec![binding];
+    if options.source {
+        bindings.push(Binding {
+            target: source,
+            playback: node(3),
+            capture: node(4),
+            channels: 0,
+            midi: false,
+            ..binding
+        });
+    }
     let mut graph = GraphDescription {
         nodes: vec![node(0), node(1), node(2)],
         connections: Vec::new(),
@@ -280,6 +311,9 @@ fn setup_with(
             destination: Endpoint::host(PortType::Midi, 0),
         },
     ]);
+    if options.source {
+        graph.nodes.extend([node(3), node(4)]);
+    }
     if reversed {
         graph.nodes.reverse();
         graph.connections.reverse();
@@ -308,11 +342,14 @@ fn setup_with(
             media_slots: options.media,
             export_slots: options.exports,
         },
-        vec![binding],
+        bindings,
         imports,
         vec![(node(2), Fx)],
         graph,
-        Box::new(Log::new()),
+        Box::new(Log {
+            loops: if options.source { 2 } else { 1 },
+            ..Log::new()
+        }),
     )
     .unwrap();
     (control, engine, imported_resources)

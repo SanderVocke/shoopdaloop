@@ -454,9 +454,9 @@ impl ControlEndpoint {
             RuntimeResult::Execution(execution) => match execution_outcome(&execution) {
                 Outcome::Refused(refusal) => Err(refusal),
                 Outcome::Done => Ok(execution.operation_result),
-                Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
-                    Err(Refusal::Internal)
-                }
+                Outcome::TimingApplied(_)
+                | Outcome::ContentApplied { .. }
+                | Outcome::ContentPrepared { .. } => Err(Refusal::Internal),
             },
         };
         self.bulk.waiting = Waiting::None;
@@ -504,7 +504,7 @@ impl ControlEndpoint {
                 }
                 let total = match source {
                     Some(source) if midi => source.snapshot.description.bytes as u64,
-                    Some(_) => media.view.description.frames,
+                    Some(source) => source.snapshot.description.frames,
                     None => 0,
                 };
                 self.bulk.session = Some(Session {

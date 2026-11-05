@@ -110,6 +110,24 @@ fn client_samples() -> Vec<ClientMessage> {
             mode: LoopMode::RecordingDryIntoWet,
             delay: Some(2),
         },
+        Request::Profiling(false),
+        Request::Profiling(true),
+        Request::ContentWindow {
+            id: u64::MAX,
+            frames: u64::MAX,
+            windows: PlaybackWindows::default(),
+        },
+        Request::LoopTiming {
+            loop_id: loop_id(0),
+            expected_revision: u64::MAX,
+            expected_content: u64::MAX,
+            edit: TimingEdit {
+                length: Some(u64::MAX),
+                start_offset: Some(i32::MIN),
+                preplay: Some(u32::MAX),
+                ..TimingEdit::default()
+            },
+        },
         Request::CreateBus {
             bus: BusId(SlotId::new(7, 42)),
             channels: 8,
@@ -415,6 +433,22 @@ fn client_samples() -> Vec<ClientMessage> {
 }
 
 fn engine_samples() -> Vec<EngineMessage> {
+    let mut timing = TimingState {
+        revision: u64::MAX,
+        content_revision: 9,
+        length: 128,
+        raw_audio_frames: 256,
+        raw_midi_frames: 288,
+        ..TimingState::default()
+    };
+    timing.windows.audio[0] = ChannelWindow {
+        gain_bits: 0.5f32.to_bits(),
+        start_offset: i32::MIN,
+        capture_alignment: i32::MAX,
+        preplay: u32::MAX,
+        raw_frames: Some(255),
+    };
+
     let name = "x".repeat(MAX_NAME_BYTES);
     let peaks = Peaks::new(&[0.5; MAX_STRIP_CHANNELS]).unwrap();
     let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
@@ -480,6 +514,14 @@ fn engine_samples() -> Vec<EngineMessage> {
             program: 42,
             name: Name::new("Preset").unwrap(),
         })),
+        EngineMessage::Result {
+            correlation: 3,
+            outcome: Outcome::TimingApplied(timing),
+        },
+        EngineMessage::State(StateRecord::LoopTiming {
+            loop_id: loop_id(0),
+            timing,
+        }),
         EngineMessage::Welcome {
             version: 1,
             capabilities: Capabilities::BULK_MIDI,
@@ -513,6 +555,8 @@ fn engine_samples() -> Vec<EngineMessage> {
             next_mode: Some(LoopMode::Stopped),
             next_delay: Some(1),
             content_revision: 9,
+            recording_armed: true,
+            timing_revision: 0,
             length: 48,
             position: 7,
             peaks,
@@ -600,6 +644,8 @@ fn engine_samples() -> Vec<EngineMessage> {
 
 #[shoop_test]
 fn every_message_round_trips_through_bounded_records() {
+    assert!(!Capabilities::PROFILING.contains(Capabilities::LOOP_TIMING));
+    assert!(!Capabilities::LOOP_TIMING.contains(Capabilities::PROFILING));
     let mut buf = [0; MAX_RECORD_BYTES];
     for message in client_samples() {
         let len = encode_client(&message, &mut buf).unwrap();
@@ -711,4 +757,49 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
         assert_eq!(decode_engine(&bytes[..len]), Err(CodecError::Invalid));
         limits = valid;
     }
+}
+
+#[shoop_test]
+fn timing_batches_reject_oversized_and_noncanonical_wire_records() {
+    let mut buffer = [0; MAX_RECORD_BYTES];
+    let request = |edit| ClientMessage::Request {
+        correlation: 1,
+        request: Request::LoopTiming {
+            loop_id: loop_id(0),
+            expected_revision: 0,
+            expected_content: 0,
+            edit,
+        },
+    };
+    assert_eq!(
+        encode_client(
+            &request(TimingEdit {
+                count: (MAX_TIMING_UPDATES + 1) as u8,
+                ..TimingEdit::default()
+            }),
+            &mut buffer
+        ),
+        Err(CodecError::Invalid)
+    );
+    let len = encode_client(&request(TimingEdit::default()), &mut buffer).unwrap();
+    buffer[len - 1] = (MAX_TIMING_UPDATES + 1) as u8;
+    assert_eq!(decode_client(&buffer[..len]), Err(CodecError::Invalid));
+    let mut edit = TimingEdit {
+        count: 1,
+        start_offset: Some(0),
+        ..TimingEdit::default()
+    };
+    assert_eq!(
+        encode_client(&request(edit), &mut buffer),
+        Err(CodecError::Invalid)
+    );
+    edit.start_offset = None;
+    edit.channels[0] = ChannelTimingUpdate {
+        channel: 7,
+        midi: false,
+        start_offset: Some(i32::MAX),
+        preplay: Some(u32::MAX),
+    };
+    let len = encode_client(&request(edit), &mut buffer).unwrap();
+    assert_eq!(decode_client(&buffer[..len]).unwrap(), request(edit));
 }

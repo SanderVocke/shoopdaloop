@@ -383,6 +383,7 @@ impl RemoteWorkletBackend {
                         HostMidiDirection::Output => BackendPortDirection::Output,
                     },
                     preferred_playback: false,
+                    available: true,
                 },
             );
         }
@@ -1025,6 +1026,7 @@ impl RemoteWorkletBackend {
                         name: port.name,
                         data_type: from_wire_data_type(port.data_type),
                         direction: from_wire_direction(port.direction),
+                        available: true,
                     },
                 )
             })
@@ -1294,6 +1296,9 @@ impl RemoteWorkletBackend {
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
                         recorded_processor_state: None,
+                        recording_armed: false,
+                        timing_revision: 0,
+                        channel_timings: Vec::new(),
                         sync_source: None,
                         content_revision: 0,
                         mode: from_wire_loop_mode(loop_.mode),

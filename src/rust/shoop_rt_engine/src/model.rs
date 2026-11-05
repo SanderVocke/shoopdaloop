@@ -144,6 +144,7 @@ pub(crate) struct Strip {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Loop {
+    pub timing: shoop_rt_protocol::TimingState,
     pub id: LoopSlotId,
     pub strip: StripId,
     pub sync: Option<LoopSlotId>,
@@ -397,6 +398,7 @@ impl Model {
                 let slot = loop_id.0.index as usize;
                 self.loop_generations[slot] = loop_id.0.generation;
                 self.loops[slot] = Some(Loop {
+                    timing: Default::default(),
                     id: loop_id,
                     strip,
                     sync: None,

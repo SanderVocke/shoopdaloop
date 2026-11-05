@@ -222,7 +222,7 @@ impl MidiPool {
             self.work.add(0, 1, 0, class);
         }
     }
-    pub(super) fn position(
+    fn checkpoint_before(
         &self,
         owner: MidiOwner,
         source: UploadId,
@@ -247,6 +247,15 @@ impl MidiPool {
             config.replay_events,
         ))
     }
+    pub fn initial_state(
+        &self,
+        owner: MidiOwner,
+        source: UploadId,
+        prefix: usize,
+    ) -> Result<&MidiState, Error> {
+        let (slot, _) = self.checkpoint_before(owner, source, 0, prefix)?;
+        Ok(&self.checkpoints[slot].state)
+    }
     pub fn before(
         &mut self,
         owner: MidiOwner,
@@ -254,10 +263,38 @@ impl MidiPool {
         frame: u64,
         prefix: usize,
     ) -> Result<(MidiState, usize, usize), Error> {
-        let (slot, replay_events) = self.position(owner, source, frame, prefix)?;
+        let (slot, span) = self.checkpoint_before(owner, source, frame, prefix)?;
         let checkpoint = &self.checkpoints[slot];
         self.work.add(0, 1, 0, WorkClass::Render);
-        Ok((checkpoint.state, checkpoint.end, replay_events))
+        Ok((checkpoint.state, checkpoint.end, span))
+    }
+    pub fn history_before(
+        &mut self,
+        owner: MidiOwner,
+        source: UploadId,
+        frame: u64,
+        prefix: usize,
+    ) -> Result<(u16, usize, usize), Error> {
+        let (slot, span) = self.checkpoint_before(owner, source, frame, prefix)?;
+        let checkpoint = &self.checkpoints[slot];
+        let history = (0..16).fold(0u16, |mask, channel| {
+            mask | (u16::from(
+                checkpoint
+                    .state
+                    .channel(channel)
+                    .expect("MIDI channel")
+                    .parameter_history_untracked(),
+            ) << channel)
+        });
+        Ok((history, checkpoint.end, span))
+    }
+    pub fn replay_history(&mut self, history: &mut u16, short: [u8; 3]) {
+        if short[0] == 0xff {
+            *history = 0;
+        } else if matches!(short, [0xb0..=0xbf, 6 | 38 | 96 | 97, _]) {
+            *history |= 1 << (short[0] & 15);
+        }
+        self.work.add(0, 0, 1, WorkClass::Render);
     }
     pub fn replay(&mut self, state: &mut MidiState, short: [u8; 3]) {
         apply_short(state, short);

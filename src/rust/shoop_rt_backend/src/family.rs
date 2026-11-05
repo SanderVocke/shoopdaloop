@@ -30,6 +30,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.pump();
         self.ready()?;
+        if self.requests.timing_pending() {
+            bail!("a timing edit is pending");
+        }
         if update.sample_rate != self.driver.map_or(0, |driver| driver.sample_rate)
             || update.quantum_frames != u32::from(self.limits().quantum)
             || update.members.is_empty()
@@ -61,7 +64,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 bail!("family content or dependency changed during preparation");
             }
             if let Some(image) = &member.content {
-                if entry.view.mode.records() || entry.view.next_mode.is_some_and(LoopMode::records)
+                if entry.view.recording_armed
+                    || entry.view.mode.records()
+                    || entry.view.next_mode.is_some_and(LoopMode::records)
                 {
                     bail!("stop affected recording before replacing family content");
                 }
@@ -152,10 +157,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .and_then(|image| image.recorded_processor_state.as_deref()),
             )?;
             let mut pair = [None; 3];
-            if let Some(image) = content
-                .get(&member.loop_id)
-                .filter(|image| image.length > 0)
-            {
+            if let Some(image) = content.get(&member.loop_id).filter(|image| {
+                image.length > 0
+                    || image.audio.iter().any(|c| !c.samples.is_empty())
+                    || image.midi.iter().any(|c| c.length > 0)
+            }) {
                 for index in 0..if roles { 3 } else { 2 } {
                     let token = self.family_token()?;
                     let width = usize::from(self.limits().strip_audio_channels);
@@ -179,6 +185,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         upload,
                         begun: false,
                     });
+                    work.push_back(Work::Request(Request::ContentWindow {
+                        id: token,
+                        frames: u64::from(image.length),
+                        windows: crate::prepared::windows(&image),
+                    }));
                 }
             }
             let entry = &self.mirror.loops[&member.loop_id];

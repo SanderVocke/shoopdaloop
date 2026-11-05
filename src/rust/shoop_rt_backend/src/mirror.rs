@@ -170,6 +170,7 @@ impl Track {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoopView {
+    pub recording_armed: bool,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_delay: Option<u32>,
@@ -180,6 +181,7 @@ pub(crate) struct LoopView {
 impl Default for LoopView {
     fn default() -> Self {
         Self {
+            recording_armed: false,
             mode: LoopMode::Stopped,
             next_mode: None,
             next_delay: None,
@@ -191,6 +193,7 @@ impl Default for LoopView {
 
 pub(crate) struct Loop {
     pub recorded: Option<(u64, shoop_rt_protocol::RecordedProcessorState)>,
+    pub timing: shoop_rt_protocol::TimingState,
     pub slot: LoopSlotId,
     pub track: BackendTrackId,
     pub confirmed: bool,
@@ -335,6 +338,7 @@ pub(crate) struct Mirror {
     next_bus: u64,
     next_channel: u64,
     pub host_ports: Vec<HostPort>,
+    pub host_aliases: BTreeMap<shoop_rt_protocol::HostPortId, crate::HostPortAlias>,
     pub strip_slots: Slots,
     pub loop_slots: Slots,
     pub connection_revision: u64,
@@ -358,6 +362,7 @@ impl Mirror {
         image.strip_slots.used.fill(false);
         image.loop_slots.used.fill(false);
         image.host_ports = self.host_ports.clone();
+        image.host_aliases = self.host_aliases.clone();
         image.next_track = self.next_track;
         image.next_loop = self.next_loop;
         image.next_port = self.next_port;
@@ -455,6 +460,7 @@ impl Mirror {
             next_bus: 2,
             next_channel: 3,
             host_ports: Vec::new(),
+            host_aliases: BTreeMap::new(),
             strip_slots: Slots::default(),
             loop_slots: Slots::default(),
             connection_revision: 1,
@@ -541,7 +547,19 @@ impl Mirror {
     pub fn host_by_name(&self, name: &str) -> Option<&HostPort> {
         self.host_ports
             .iter()
-            .find(|port| port.name.as_str() == name)
+            .find(|port| self.host_key(port) == name)
+    }
+
+    pub fn host_key<'a>(&'a self, port: &'a HostPort) -> &'a str {
+        self.host_aliases
+            .get(&port.id)
+            .map_or(port.name.as_str(), |alias| alias.id.as_str())
+    }
+
+    pub fn host_available(&self, port: &HostPort) -> bool {
+        self.host_aliases
+            .get(&port.id)
+            .is_none_or(|alias| alias.available)
     }
 
     pub fn host_by_id(&self, id: shoop_rt_protocol::HostPortId) -> Option<&HostPort> {
@@ -619,10 +637,49 @@ impl Mirror {
         }
     }
 
-    pub fn loop_state(entry: &mut Loop, channels: u32, dry_channels: u32) -> BackendLoopState {
+    pub fn loop_state(
+        entry: &mut Loop,
+        channels: u32,
+        dry_channels: u32,
+        midi: bool,
+        roles: bool,
+    ) -> BackendLoopState {
         let view = entry.view;
+        let timing = entry.timing;
+        let channel_timings = (0..(channels + if roles { dry_channels } else { 0 }) as usize)
+            .map(|channel| {
+                let window = timing.windows.audio[channel];
+                shoop_backend::BackendChannelTimingState {
+                    channel,
+                    is_midi: false,
+                    frames: window.raw_frames.unwrap_or(timing.raw_audio_frames),
+                    start_offset: window.start_offset,
+                    capture_alignment_frames: window.capture_alignment,
+                    preplay: window.preplay,
+                }
+            })
+            .chain(midi.then(|| {
+                let window = timing.windows.midi;
+                shoop_backend::BackendChannelTimingState {
+                    channel: 0,
+                    is_midi: true,
+                    frames: window.raw_frames.unwrap_or(timing.raw_midi_frames),
+                    start_offset: window.start_offset,
+                    capture_alignment_frames: window.capture_alignment,
+                    preplay: window.preplay,
+                }
+            }))
+            .collect();
         BackendLoopState {
             recorded_processor_state: entry.recorded_state(),
+            recording_armed: view.recording_armed,
+            timing_revision: timing.revision,
+            channel_timings,
+            capture_alignment_frames: if channels > 0 {
+                timing.windows.audio[0].capture_alignment
+            } else {
+                timing.windows.midi.capture_alignment
+            },
             content_revision: entry.content,
             sync_source: entry.sync,
             mode: app_mode(view.mode),
@@ -792,18 +849,26 @@ impl Mirror {
                     .as_str()
                     .starts_with(shoop_rt_protocol::HOST_IO_PREFIX)
             })
-            .map(|port| {
-                let id = port.name.as_str().to_owned();
-                (
+            .filter_map(|port| {
+                let id = self.host_key(port).to_owned();
+                if id.is_empty() {
+                    return None;
+                }
+                let name = self
+                    .host_aliases
+                    .get(&port.id)
+                    .map_or_else(|| id.clone(), |alias| alias.name.clone());
+                Some((
                     id.clone(),
                     BackendHostPortDescriptor {
                         id: id.clone(),
-                        name: id,
+                        name,
                         data_type: host_data_type(port.kind),
                         direction: host_direction(port.direction),
                         preferred_playback: port.preferred,
+                        available: self.host_available(port),
                     },
-                )
+                ))
             })
             .collect()
     }

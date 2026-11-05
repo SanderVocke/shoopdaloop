@@ -5,8 +5,10 @@
 //! decisions. Prepared timing/source/node pair banks and graph slots have distinct
 //! ownership, cut and recycle contracts. Publication is not general rollback.
 use crate::{
-    audio, media, midi, Decision, LoopId, LoopKind, Mode, PreparedTopology, RequestId, Resolver,
-    State, Timing, Transition,
+    audio, media, midi,
+    windows::{Edit, Windows},
+    Decision, LoopId, LoopKind, Mode, PreparedTopology, RequestId, Resolver, State, Timing,
+    Transition,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use rt_runtime::{
@@ -111,6 +113,17 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    NodePairSourceWindows {
+        id: NodePairSourceId,
+        frames: u64,
+        windows: Windows,
+    },
+    EditWindows {
+        target: LoopId,
+        expected_revision: u64,
+        expected_content: Revision,
+        edit: Edit,
+    },
     SharedWork,
     SharedCapacity,
     HistoryStatus {
@@ -325,6 +338,10 @@ pub enum Operation {
 /// Media identities here are borrowed; use a successful export for independent ownership.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cut {
+    pub raw_audio_frames: u64,
+    pub raw_midi_frames: u64,
+    pub windows: Windows,
+    pub timing_revision: u64,
     pub frame: Frame,
     pub graph_epoch: Epoch,
     pub topology_epoch: Epoch,
@@ -339,6 +356,7 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    Timing(Cut),
     History(HistoryStatus),
     Grabbed(SharedTake),
     Candidate {
@@ -446,6 +464,9 @@ pub enum Reply {
 #[derive(Clone, Copy)]
 pub struct View {
     pub audio_widths: [usize; 2],
+    pub windows: Windows,
+    pub raw_position: i64,
+    pub lead: bool,
     pub decision: Decision,
     pub audio: Option<ReadIndex>,
     pub auxiliary: Option<ReadIndex>,
@@ -475,6 +496,9 @@ struct Take {
 }
 #[derive(Clone, Copy)]
 struct Row {
+    windows: Windows,
+    timing_revision: u64,
+    length_override: Option<(Revision, u64)>,
     binding: Binding,
     assigned: bool,
     dry_wet: bool,
@@ -721,6 +745,9 @@ impl LoopPlanner {
                 ledger.bind(binding.target)?;
             }
             let mut row = Row {
+                windows: Windows::default(),
+                timing_revision: 0,
+                length_override: None,
                 binding,
                 assigned,
                 dry_wet: binding.dry_wet,
@@ -893,6 +920,9 @@ impl LoopPlanner {
         let dummy = LoopId::from_parts(0, 1)?;
         let initial = View {
             audio_widths: [0; 2],
+            windows: Windows::default(),
+            raw_position: 0,
+            lead: false,
             decision: Decision {
                 state: State::new(dummy, 0),
                 playback_discontinuity: false,
@@ -984,6 +1014,7 @@ impl LoopPlanner {
             activity.playing_dry |= mode == Mode::PlayingDryThroughWet;
             activity.rerecording |= mode == Mode::RecordingDryIntoWet;
             let view = &self.views[row.binding.target.slot() as usize];
+            activity.playing_dry |= view.lead && view.auxiliary.is_some();
             activity.pre_recording |= view.pre_recording;
             activity.pre_rerecording |= view.pre_rerecording;
         }

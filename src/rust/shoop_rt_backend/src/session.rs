@@ -189,7 +189,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         use crate::{
             mirror::db_amplitude,
             persistence::{Job, Work},
-            prepared::{Upload, MAX_MEDIA_BYTES},
+            prepared::Upload,
             requests::Purpose,
         };
         use alloc::{collections::VecDeque, sync::Arc};
@@ -214,12 +214,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .flat_map(|content| &content.midi)
             .map(|channel| channel.events.len())
             .sum::<usize>()
-            > crate::prepared::MAX_MIDI_EVENTS
+            > self.resource_limits.midi_events
         {
-            return Err(anyhow!("session exceeds the one-million-event MIDI budget"));
+            return Err(anyhow!("session exceeds the host MIDI event budget"));
         }
         if self.mirror.loops.values().any(|entry| {
-            entry.view.mode.records()
+            entry.view.recording_armed
+                || entry.view.mode.records()
                 || entry
                     .view
                     .next_mode
@@ -323,7 +324,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             let canonical = Arc::new(content.clone());
             let roles = !matches!(track.topology, BackendTrackTopology::Direct { .. });
             let mut pair = [None; 3];
-            if content.length > 0 {
+            if content.length > 0
+                || content.audio.iter().any(|c| !c.samples.is_empty())
+                || content.midi.iter().any(|c| c.length > 0)
+            {
                 for medium in 0..if roles { 3 } else { 2 } {
                     let token = self.next_persistence;
                     self.next_persistence = token
@@ -347,9 +351,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     prepared_bytes = prepared_bytes
                         .checked_add(upload.description.bytes)
                         .ok_or_else(|| anyhow!("prepared media size overflow"))?;
-                    if prepared_bytes > MAX_MEDIA_BYTES {
+                    if prepared_bytes > self.resource_limits.media_bytes {
                         return Err(anyhow!(
-                            "session engine image exceeds the 256 MiB prepared media budget"
+                            "session engine image exceeds the host prepared media budget"
                         ));
                     }
                     pair[medium] = Some(token);
@@ -358,6 +362,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         upload,
                         begun: false,
                     });
+                    work.push_back(Work::Request(Request::ContentWindow {
+                        id: token,
+                        frames: u64::from(content.length),
+                        windows: crate::prepared::windows(&content),
+                    }));
                 }
             }
             candidate
@@ -366,6 +375,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .expect("candidate loop")
                 .view
                 .length = u64::from(content.length);
+            candidate
+                .loops
+                .get_mut(&loop_id)
+                .expect("candidate loop")
+                .timing = crate::prepared::timing(content, 0, 0);
             sources.insert(loop_id, pair);
             contents.insert(loop_id, canonical);
         }
@@ -492,7 +506,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 true,
                 contents.values().cloned(),
                 usize::from(self.limits().strip_audio_channels),
-                MAX_MEDIA_BYTES,
+                self.resource_limits.media_bytes,
             )?,
             content: contents,
             connection_failures: failures,

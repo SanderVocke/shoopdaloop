@@ -8,12 +8,33 @@ pub(crate) struct Prepared {
     image: Arc<BackendLoopContent>,
     bytes: u64,
     events_bytes: u64,
-    rendered_midi_bytes: u64,
     rendered_bytes: u64,
 }
 impl Prepared {
     pub fn matches(&self, image: &Arc<BackendLoopContent>) -> bool {
         Arc::ptr_eq(&self.image, image)
+    }
+    pub fn rebind_windows(&self, image: Arc<BackendLoopContent>) -> Option<Self> {
+        if self.image.audio.len() != image.audio.len()
+            || self.image.midi.len() != image.midi.len()
+            || !self
+                .image
+                .audio
+                .iter()
+                .zip(&image.audio)
+                .all(|(a, b)| Arc::ptr_eq(&a.samples, &b.samples))
+            || !self.image.midi.iter().zip(&image.midi).all(|(a, b)| {
+                a.length == b.length
+                    && a.start_state == b.start_state
+                    && Arc::ptr_eq(&a.events, &b.events)
+            })
+        {
+            return None;
+        }
+        Some(Self {
+            image,
+            ..self.clone()
+        })
     }
     pub fn image(&self) -> &Arc<BackendLoopContent> {
         &self.image
@@ -23,9 +44,6 @@ impl Prepared {
     }
     pub fn events_bytes(&self) -> u64 {
         self.events_bytes
-    }
-    pub fn rendered_midi_bytes(&self) -> u64 {
-        self.rendered_midi_bytes
     }
     pub fn rendered_bytes(&self) -> u64 {
         self.rendered_bytes
@@ -38,11 +56,9 @@ pub(crate) struct Validation {
     initial: usize,
     event: usize,
     previous: u32,
-    prefix: usize,
     history: bool,
     bytes: u64,
     events_bytes: u64,
-    rendered_midi_bytes: u64,
     rendered_audio_bytes: u64,
     done: bool,
 }
@@ -81,8 +97,8 @@ impl Validation {
         }
         let mut bytes = 0u64;
         for audio in &image.audio {
-            if !audio.gain.is_finite() || audio.preplay != 0 {
-                bail!("audio requires unsupported channel mode, gain or preplay");
+            if !audio.gain.is_finite() {
+                bail!("audio requires a finite channel gain");
             }
             bytes = bytes
                 .checked_add(audio.samples.len() as u64 * 4)
@@ -95,13 +111,17 @@ impl Validation {
                 } else {
                     BackendChannelMode::Direct
                 }
-                || m.preplay != 0
                 || m.start_state.len() > 16_384
                 || m.events.len() > MAX_MIDI_EVENTS
         }) {
-            bail!("MIDI requires unsupported channel mode, preplay or event count");
+            bail!("MIDI requires unsupported channel mode or event count");
         }
-        let rendered_audio_bytes = u64::from(image.length)
+        let rendered_audio_bytes = image
+            .audio
+            .iter()
+            .map(|channel| channel.samples.len() as u64)
+            .max()
+            .unwrap_or(0)
             .checked_mul(channels as u64 * 4 * if roles { 2 } else { 1 })
             .ok_or_else(|| anyhow!("prepared audio size overflow"))?;
         if bytes > MAX_MEDIA_BYTES {
@@ -114,11 +134,9 @@ impl Validation {
             initial: 0,
             event: 0,
             previous: 0,
-            prefix: 0,
             history: false,
             bytes,
             events_bytes: 0,
-            rendered_midi_bytes: 0,
             rendered_audio_bytes,
             done: false,
         })
@@ -176,14 +194,8 @@ impl Validation {
                     bail!("invalid MIDI event order, position or packet");
                 }
                 if i64::from(event.frame) < origin {
-                    self.prefix += 1;
-                    if self.prefix + midi.start_state.len() > 16_384 {
-                        bail!("MIDI initial/preroll state exceeds its bounded packet count");
-                    }
                     initial_message(&event.data)?;
                     self.history = history(self.history, &event.data);
-                } else if i64::from(event.frame) < origin + i64::from(self.image.length) {
-                    self.rendered_midi_bytes += event.data.len() as u64 + 12;
                 }
                 let bytes = event.data.len() + 12;
                 self.bytes += bytes as u64;
@@ -200,7 +212,7 @@ impl Validation {
             }
         }
         if self.bytes > MAX_MEDIA_BYTES
-            || self.rendered_audio_bytes + self.rendered_midi_bytes > MAX_MEDIA_BYTES
+            || self.rendered_audio_bytes + self.events_bytes > MAX_MEDIA_BYTES
         {
             bail!("content exceeds the 256 MiB canonical or prepared media budget");
         }
@@ -215,8 +227,7 @@ impl Validation {
             image: self.image,
             bytes: self.bytes,
             events_bytes: self.events_bytes,
-            rendered_midi_bytes: self.rendered_midi_bytes,
-            rendered_bytes: self.rendered_audio_bytes + self.rendered_midi_bytes,
+            rendered_bytes: self.rendered_audio_bytes + self.events_bytes,
         })
     }
 }

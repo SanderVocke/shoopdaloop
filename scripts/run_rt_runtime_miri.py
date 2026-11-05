@@ -26,7 +26,8 @@ CASES = [
     ("midi_state", [], 7),
     ("midi", [], 6),
     ("midi_restore_state", [], 2),
-    ("midi_index", [], 8),
+    ("midi_index", [], 10),
+    ("lib", ["resource::shared_midi::tests::compact_parameter_history_matches_shifted_checkpoints_and_reset_boundaries", "--", "--exact"], 1),
     ("typed_schedule", [], 7),
     ("typed_execution", [], 13),
     ("planner_admission", [], 3),
@@ -63,9 +64,9 @@ ENGINE_CASES = (
     ("shoop_app_protocol", "codec", ["hostile_container_lengths_and_midi_message_lengths_are_refused", "--", "--exact"], 1),
     ("shoop_app_client", "projection", ["local_delivery_is_bounded_and_ready_ack_precedes_commands", "--", "--exact"], 1),
     ("shoop_app_client", "projection", ["interrupted_out_of_order_and_oversized_transfers_never_publish_partial_state", "--", "--exact"], 1),
-    ("shoop_rt_protocol", "protocol", [], 2),
+    ("shoop_rt_protocol", "protocol", [], 3),
     ("shoop_rt_transport", "carriers", [], 4),
-    ("shoop_rt_protocol", "host", [], 2),
+    ("shoop_rt_protocol", "host", [], 3),
     ("shoop_rt_transport", "failure", [], 2),
     ("shoop_transport", "lib", [], 5),
     ("shoop_rt_engine", "lib", [], 2),
@@ -312,9 +313,16 @@ def _run_case(command, env, stdout, log):
 def selected_cases(package=None):
     cases = [("rt_runtime", target, arguments, minimum, 0) for target, arguments, minimum in CASES]
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
+    for name in (
+        "timing_scenarios::cancelled_superseded_and_invalidated_pickups_release_notes_without_starting",
+        "timing_scenarios::manual_timing_keeps_absolute_position_raw_media_and_independent_channel_windows",
+        "timing_scenarios::preplay_is_audible_while_stopped_and_pickup_notes_continue_across_start",
+        "timing_scenarios::channel_batch_refusal_and_armed_recording_length_refusal_do_not_partially_apply",
+    ):
+        cases.append(("shoop_loops", "runtime", [name, "--", "--exact"], 1, 0))
     cases.append(("shoop_loops", "audio", [], 8, 0))
     cases.append(("shoop_loops", "audio_ports", [], 2, 0))
-    cases.append(("shoop_loops", "lib", [], 7, 0))
+    cases.append(("shoop_loops", "lib", [], 9, 0))
     cases.append(("shoop_loops", "graph_guards", [], 6, 0))
     cases.append(("shoop_loops", "program_boundaries", [], 3, 0))
     cases.append(("shoop_loops", "program_changes", [], 10, 0))

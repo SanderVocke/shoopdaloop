@@ -91,6 +91,7 @@ pub(crate) enum ReadKind {
     Initial(u8),
 }
 pub(crate) struct Reads {
+    pub resource_limits: shoop_app_api::HostResourceLimits,
     next_id: u32,
     /// Audio channels of every engine loop.
     loop_channels: usize,
@@ -103,6 +104,7 @@ pub(crate) struct Reads {
 impl Default for Reads {
     fn default() -> Self {
         Self {
+            resource_limits: shoop_app_api::HostResourceLimits::default(),
             next_id: 0,
             loop_channels: 1,
             audio: BTreeMap::new(),
@@ -416,7 +418,7 @@ impl Reads {
             return;
         };
         let loop_channels = self.loop_channels;
-        const MAX_READ_BYTES: u64 = 256 * 1024 * 1024;
+        let max_read_bytes = self.resource_limits.media_bytes;
         if let ReadKind::Initial(channel) = kind {
             let Some(read) = self.initial.get_mut(&(loop_id, channel)) else {
                 return;
@@ -480,7 +482,7 @@ impl Reads {
                     if chunk.offset != expected
                         || read.total.is_some_and(|total| total != chunk.total)
                         || len > bytes.len()
-                        || chunk.total > read.limit.min(MAX_READ_BYTES)
+                        || chunk.total > read.limit.min(max_read_bytes)
                         || chunk
                             .offset
                             .checked_add(len as u64)
@@ -491,7 +493,7 @@ impl Reads {
                         return;
                     }
                     if read.midi_data.is_none() {
-                        match assembly::Midi::new(chunk.total) {
+                        match assembly::Midi::new(chunk.total, self.resource_limits.midi_events) {
                             Ok(assembly) => read.midi_data = Some(assembly),
                             Err(message) => {
                                 read.outcome = Outcome::Failed(message);
@@ -547,6 +549,14 @@ impl Reads {
                     return;
                 }
                 if read.audio_data.is_none() {
+                    if chunk
+                        .total
+                        .checked_mul(loop_channels as u64 * 4)
+                        .is_none_or(|size| size > max_read_bytes)
+                    {
+                        read.outcome = Outcome::Failed("audio exceeds host media capacity".into());
+                        return;
+                    }
                     let assembly = if let Some(dry) = read.dry {
                         assembly::Audio::selected(
                             chunk.total,

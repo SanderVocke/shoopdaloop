@@ -82,13 +82,15 @@ impl Service {
                 ));
             }
             if member.content.is_some()
-                && (matches!(
-                    state.mode,
-                    BackendLoopMode::Recording | BackendLoopMode::RecordingDryIntoWet
-                ) || matches!(
-                    state.next_mode,
-                    Some(BackendLoopMode::Recording | BackendLoopMode::RecordingDryIntoWet)
-                ))
+                && (state.recording_armed
+                    || matches!(
+                        state.mode,
+                        BackendLoopMode::Recording | BackendLoopMode::RecordingDryIntoWet
+                    )
+                    || matches!(
+                        state.next_mode,
+                        Some(BackendLoopMode::Recording | BackendLoopMode::RecordingDryIntoWet)
+                    ))
             {
                 return Err(anyhow!("stop affected recording before importing"));
             }

@@ -100,6 +100,7 @@ pub(crate) fn smoothing(frames: u32) -> Smoothing {
 }
 
 pub(crate) struct Job {
+    pub(crate) content_timing: Option<shoop_rt_protocol::TimingState>,
     pub correlation: Option<u64>,
     kind: Kind,
     phase: Phase,
@@ -150,6 +151,7 @@ impl Job {
             processors_prepared: false,
             committed: false,
             cancelled: false,
+            content_timing: None,
             content_media: None,
             content_revision: None,
             metadata_published: false,
@@ -553,6 +555,8 @@ impl ControlEndpoint {
                         .expect("staged family entry");
                     entry.media = job.content_media.take();
                     entry.revision = job.content_revision;
+                    entry.timing.content_revision =
+                        job.content_revision.expect("adopted revision").0;
                     self.answer_job(
                         job,
                         Outcome::ContentPrepared {
@@ -614,6 +618,11 @@ impl ControlEndpoint {
                 }
                 if let Some(media) = job.content_media.take() {
                     self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
+                }
+                if let (Kind::Content { id, .. }, Some(mut timing)) = (job.kind, job.content_timing)
+                {
+                    timing.content_revision = job.content_revision.expect("adopted revision").0;
+                    self.publish_content_timing(id, timing);
                 }
                 self.answer_job(
                     job,
@@ -832,6 +841,15 @@ impl ControlEndpoint {
                     .unwrap();
                 self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
                 return true;
+            }
+        }
+        if job.failure.is_none() && job.kind == (Kind::Family { commit: true }) {
+            for slot in 0..self.family.entries.len() {
+                if let Some(entry) = self.family.entries[slot] {
+                    if entry.edit.replace {
+                        self.publish_content_timing(entry.edit.loop_id, entry.timing);
+                    }
+                }
             }
         }
         self.answer_job(job, job.failure.map_or(Outcome::Done, Outcome::Refused));
@@ -1666,9 +1684,12 @@ impl ControlEndpoint {
                     (Step::Prelude | Step::Cleanup | Step::Retire | Step::ClearStop, _) => None,
                     (_, Outcome::Refused(refusal)) => Some(refusal),
                     (_, Outcome::Done) => None,
-                    (_, Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. }) => {
-                        Some(Refusal::Internal)
-                    }
+                    (
+                        _,
+                        Outcome::TimingApplied(_)
+                        | Outcome::ContentApplied { .. }
+                        | Outcome::ContentPrepared { .. },
+                    ) => Some(Refusal::Internal),
                 };
                 (refusal, execution.operation_result, true, None)
             }

@@ -25,6 +25,7 @@ pub(crate) enum Purpose {
     Clear(BackendLoopId),
     LoopGain(BackendLoopId, f32),
     LoopBalance(BackendLoopId, f32),
+    Timing(BackendLoopId),
     Connect {
         port: BackendPortId,
         host: String,
@@ -68,6 +69,13 @@ impl Requests {
             purpose,
         });
         self.next_sequence
+    }
+
+    pub fn timing_pending(&self) -> bool {
+        self.outgoing
+            .iter()
+            .chain(self.in_flight.values())
+            .any(|pending| matches!(pending.purpose, Purpose::Timing(_)))
     }
 
     pub fn is_empty(&self) -> bool {

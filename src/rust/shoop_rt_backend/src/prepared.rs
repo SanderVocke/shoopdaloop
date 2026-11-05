@@ -1,4 +1,4 @@
-//! Canonical content and the bounded, normalized byte stream presented to the engine.
+//! Canonical raw content and bounded uploads, with independent playback windows.
 mod validation;
 use alloc::sync::Arc;
 pub(crate) use validation::{Prepared, Validation};
@@ -21,7 +21,6 @@ pub(crate) struct Upload {
     event_end: usize,
     event_byte: usize,
     initial: usize,
-    initial_end: usize,
     certified: bool,
 }
 
@@ -44,11 +43,24 @@ impl Upload {
         content: Arc<BackendLoopContent>,
         channels: usize,
     ) -> Result<Self> {
-        let (event, event_end, initial_end) = (0, 0, 0);
+        let (event, event_end) = (0, 0);
+        let frames = if midi {
+            content
+                .midi
+                .first()
+                .map_or(0, |channel| u64::from(channel.length))
+        } else {
+            content
+                .audio
+                .iter()
+                .map(|channel| channel.samples.len() as u64)
+                .max()
+                .unwrap_or(0)
+        };
         let bytes = if midi {
             0
         } else {
-            u64::from(content.length)
+            frames
                 .checked_mul(channels as u64 * 4)
                 .ok_or_else(|| anyhow!("audio size overflow"))?
         };
@@ -59,7 +71,7 @@ impl Upload {
             description: ContentDescription {
                 id,
                 midi,
-                frames: u64::from(content.length),
+                frames,
                 bytes,
             },
             channels,
@@ -71,7 +83,6 @@ impl Upload {
             event_end,
             event_byte: 0,
             initial: 0,
-            initial_end,
             certified: false,
         })
     }
@@ -104,18 +115,13 @@ impl Upload {
             bail!("content proof belongs to another image");
         }
         if self.description.midi {
-            self.description.bytes = prepared.rendered_midi_bytes();
-            if let Some(channel) = self.content.midi.first() {
-                let origin =
-                    i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
-                self.event = channel
-                    .events
-                    .partition_point(|event| i64::from(event.frame) < origin);
-                self.initial_end = self.event;
-                self.event_end = channel.events.partition_point(|event| {
-                    i64::from(event.frame) < origin + i64::from(self.content.length)
-                });
-            }
+            self.description.bytes = prepared.events_bytes();
+            self.event = 0;
+            self.event_end = self
+                .content
+                .midi
+                .first()
+                .map_or(0, |channel| channel.events.len());
         }
         self.certified = true;
         Ok(())
@@ -127,15 +133,10 @@ impl Upload {
         let Some(channel) = self.content.midi.first() else {
             return Ok(None);
         };
-        let packet = if self.initial < channel.start_state.len() {
-            Some(channel.start_state[self.initial].as_slice())
-        } else {
-            channel
-                .events
-                .get(self.initial - channel.start_state.len())
-                .filter(|_| self.initial - channel.start_state.len() < self.initial_end)
-                .map(|event| event.data.as_ref())
-        };
+        let packet = channel
+            .start_state
+            .get(self.initial)
+            .map(|packet| packet.as_slice());
         match packet {
             Some(packet) => {
                 self.initial += 1;
@@ -153,11 +154,9 @@ impl Upload {
         let mut bytes = [0; shoop_rt_protocol::content::CONTENT_CHUNK_BYTES];
         if self.description.midi {
             let channel = self.content.midi.first().expect("nonempty MIDI upload");
-            let origin =
-                i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
             for byte in &mut bytes[..count] {
                 let event = &channel.events[self.event];
-                let frame = (i64::from(event.frame) - origin) as u64;
+                let frame = u64::from(event.frame);
                 *byte = match self.event_byte {
                     0..=7 => frame.to_le_bytes()[self.event_byte],
                     8..=11 => (event.data.len() as u32).to_le_bytes()[self.event_byte - 8],
@@ -178,15 +177,7 @@ impl Upload {
                 let sample = (lane < self.audio_len)
                     .then(|| &self.content.audio[self.audio_start + lane])
                     .map_or(0., |channel| {
-                        let raw = frame as i64
-                            + i64::from(channel.start_offset)
-                            + i64::from(channel.capture_alignment_frames);
-                        usize::try_from(raw)
-                            .ok()
-                            .and_then(|raw| channel.samples.get(raw))
-                            .copied()
-                            .unwrap_or(0.)
-                            * channel.gain
+                        channel.samples.get(frame).copied().unwrap_or(0.)
                     });
                 word.copy_from_slice(&sample.to_le_bytes());
             }
@@ -196,5 +187,61 @@ impl Upload {
             offset,
             ContentChunk::new(&bytes[..count]).expect("prepared chunk bound"),
         ))
+    }
+}
+
+pub(crate) fn windows(content: &BackendLoopContent) -> shoop_rt_protocol::PlaybackWindows {
+    let mut result = shoop_rt_protocol::PlaybackWindows::default();
+    for (index, window) in result.audio.iter_mut().enumerate() {
+        *window = content.audio.get(index).map_or(
+            shoop_rt_protocol::ChannelWindow {
+                raw_frames: Some(0),
+                ..Default::default()
+            },
+            |channel| shoop_rt_protocol::ChannelWindow {
+                gain_bits: channel.gain.to_bits(),
+                start_offset: channel.start_offset,
+                capture_alignment: channel.capture_alignment_frames,
+                preplay: channel.preplay,
+                raw_frames: Some(channel.samples.len() as u64),
+            },
+        );
+    }
+    result.midi = content.midi.first().map_or(
+        shoop_rt_protocol::ChannelWindow {
+            raw_frames: Some(0),
+            ..Default::default()
+        },
+        |channel| shoop_rt_protocol::ChannelWindow {
+            start_offset: channel.start_offset,
+            capture_alignment: channel.capture_alignment_frames,
+            preplay: channel.preplay,
+            raw_frames: Some(u64::from(channel.length)),
+            ..Default::default()
+        },
+    );
+    result
+}
+
+pub(crate) fn timing(
+    content: &BackendLoopContent,
+    content_revision: u64,
+    revision: u64,
+) -> shoop_rt_protocol::TimingState {
+    shoop_rt_protocol::TimingState {
+        revision,
+        content_revision,
+        length: u64::from(content.length),
+        raw_audio_frames: content
+            .audio
+            .iter()
+            .map(|channel| channel.samples.len() as u64)
+            .max()
+            .unwrap_or(0),
+        raw_midi_frames: content
+            .midi
+            .first()
+            .map_or(0, |channel| u64::from(channel.length)),
+        windows: windows(content),
     }
 }

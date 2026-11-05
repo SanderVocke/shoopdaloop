@@ -635,3 +635,15 @@ retains channel roles and gains. The real host fixture checks changed and restor
 family media for External, FX and synth, bypassing canonical caches for runtime
 readback; recorded settings and MIDI survive. Codec/protocol and existing family
 regressions pass locally.
+
+The target advanced again to `e1f28c87`, adding P12 timing parity and the preliminary
+FreeRTOS host. Reconciliation retains those contracts and uses engine protocol v20
+and application protocol v27. Timing records and capability bits remain distinct
+from processor records. Bounded playback windows now hold both dry/wet roles in
+canonical order, while the per-side host ceiling stays eight. The combined native
+product builds; focused protocol, P12 timing, processed media/replacement and all
+three service archive fixtures pass. Actual JACK replacement on all four carriers,
+1 MiB startup/cleanup and the service default-mode regression pass too. Per-channel
+MIDI export reads one initial channel without materializing all sixteen states.
+Tracing/test inventories and boundary checks pass. Remaining processed timing
+interactions stay part of the unfinished admission work.

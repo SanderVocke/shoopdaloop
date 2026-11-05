@@ -10,6 +10,7 @@ extern crate std;
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+pub mod authenticated;
 pub mod buffer;
 pub mod framing;
 pub mod handshake;

@@ -1525,6 +1525,7 @@ mod tests {
     }
     fn target() -> Target {
         let mut target: Target = RemoteProfile {
+            credential: None,
             version: shoop_app_protocol::VERSION,
             name: "Studio".into(),
             endpoint: "127.0.0.1:15400".into(),

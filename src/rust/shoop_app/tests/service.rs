@@ -47,12 +47,30 @@ struct Fixture {
     refuse_next_bus: Rc<Cell<bool>>,
 }
 fn fixture() -> Fixture {
-    fixture_with_outputs(2)
+    fixture_with_inventory(None)
+}
+fn fixture_with_inventory(
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
+    fixture_with_options(2, inventory)
 }
 fn fixture_with_outputs(outputs: usize) -> Fixture {
-    fixture_with_dry_wet(outputs, false)
+    fixture_with_options(outputs, None)
 }
 fn fixture_with_dry_wet(outputs: usize, dry_wet: bool) -> Fixture {
+    fixture_configured(outputs, dry_wet, None)
+}
+fn fixture_with_options(
+    outputs: usize,
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
+    fixture_configured(outputs, false, inventory)
+}
+fn fixture_configured(
+    outputs: usize,
+    dry_wet: bool,
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
     let description = EngineDescription {
         external_dry_wet: dry_wet,
         quantum: 1,
@@ -97,7 +115,10 @@ fn fixture_with_dry_wet(outputs: usize, dry_wet: bool) -> Fixture {
         reply: None,
         dry_wet,
     });
-    let backend = RtBackend::connect(client, clock).unwrap();
+    let mut backend = RtBackend::connect(client, clock).unwrap();
+    if let Some(inventory) = inventory {
+        backend = backend.with_host_port_inventory(inventory);
+    }
     let initial_waits = waits.get();
     let mut service = Service::new(
         Box::new(backend),
@@ -790,6 +811,138 @@ fn created(outcome: Outcome) -> (TrackId, Vec<LoopId>) {
         panic!("{outcome:?}")
     };
     (track, loops)
+}
+
+#[shoop_test]
+fn live_host_availability_reaches_encoded_clients_and_pins_disconnected_routes() {
+    struct Inventory(
+        std::sync::Arc<std::sync::Mutex<Option<Vec<shoop_rt_backend::HostPortAlias>>>>,
+    );
+    impl shoop_rt_backend::HostPortInventory for Inventory {
+        fn poll(&mut self) -> Option<Vec<shoop_rt_backend::HostPortAlias>> {
+            self.0.lock().unwrap().take()
+        }
+    }
+    let alias = |available| {
+        vec![shoop_rt_backend::HostPortAlias {
+            slot: "midi_in_1".into(),
+            id: "usb0/1:synth/in/0".into(),
+            name: "Synth input 1".into(),
+            available,
+        }]
+    };
+    let inventory = std::sync::Arc::new(std::sync::Mutex::new(Some(alias(true))));
+    let mut f = fixture_with_inventory(Some(Box::new(Inventory(inventory.clone()))));
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    let id = HostPortId::new("usb0/1:synth/in/0");
+    assert!(client
+        .snapshot()
+        .unwrap()
+        .connections
+        .host_ports
+        .iter()
+        .any(|p| p.id == id && p.available));
+    assert!(!f.service.release_host_port_identity(id.as_str()));
+    *inventory.lock().unwrap() = Some(alias(false));
+    assert!(
+        !f.service.release_host_port_identity(id.as_str()),
+        "unpublished device loss released an online identity"
+    );
+    for _ in 0..3 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, true);
+    }
+    assert!(f.service.release_host_port_identity(id.as_str()));
+    *inventory.lock().unwrap() = Some(alias(true));
+    for _ in 0..3 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, true);
+    }
+    let (track, _) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("MIDI", true),
+    ));
+    let port = f
+        .service
+        .snapshot()
+        .connections
+        .application_ports
+        .iter()
+        .find(|p| {
+            matches!(p.owner, ApplicationPortOwner::Track {track_id, ..} if track_id == track)
+                && p.data_type == PortDataType::Midi
+                && p.direction == PortDirection::Input
+        })
+        .unwrap()
+        .id;
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::SetPortConnected {
+            port,
+            host_port: id.clone(),
+            connected: true,
+        },
+    );
+    assert!(
+        f.service.host_port_in_use(id.as_str()),
+        "pending route lost its identity pin"
+    );
+    assert!(matches!(
+        complete(&mut f.service, &mut client, connection, operation, true),
+        Outcome::Confirmed { .. }
+    ));
+    let revision = client.snapshot().unwrap().revision;
+    *inventory.lock().unwrap() = Some(alias(false));
+    for _ in 0..3 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, true);
+    }
+    assert!(client.snapshot().unwrap().revision > revision);
+    assert!(client
+        .snapshot()
+        .unwrap()
+        .connections
+        .host_ports
+        .iter()
+        .any(|p| p.id == id && !p.available));
+    assert!(
+        f.service.host_port_in_use(id.as_str()),
+        "offline route lost its identity pin"
+    );
+    let (offline_track, _) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Offline MIDI", true),
+    ));
+    for _ in 0..3 {
+        f.service.tick(STEP);
+    }
+    let snapshot = f.service.snapshot();
+    assert!(snapshot.connections.application_ports.iter().filter(|p|
+        matches!(p.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == offline_track) &&
+        p.data_type == PortDataType::Midi).all(|p| !snapshot.connections.confirmed_links.iter()
+            .any(|link| link.application_port_id == p.id)));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::SetPortConnected {
+                port,
+                host_port: id.clone(),
+                connected: false,
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(!f.service.host_port_in_use(id.as_str()));
+    assert!(f.service.release_host_port_identity(id.as_str()));
 }
 
 #[shoop_test]
@@ -1712,6 +1865,36 @@ c.register_loop_event_cb(function(event) print('loop-event') end)
     assert_eq!(state.tracks[1].loops[0].gain, 0.25);
     assert!(state.tracks[1].loops[0].selected);
     assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Recording);
+    let details = state
+        .details
+        .as_ref()
+        .expect("recording metadata remains visible");
+    assert_eq!(details.channels.len(), 1);
+    let loop_id = state.tracks[1].loops[0].id;
+    runtime
+        .dispatch(AppIntent::SetLoopChannelTimings {
+            loop_id,
+            updates: vec![ChannelTimelineUpdate {
+                channel_id: details.channels[0].id,
+                start_offset: Some(-7),
+                preplay_samples: Some(5),
+            }],
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime.snapshot();
+    let details = state.details.as_ref().unwrap();
+    assert_eq!(
+        (
+            details.channels[0].start_offset,
+            details.channels[0].preplay_samples
+        ),
+        (-7, 5)
+    );
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Recording
+    );
     runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 2);
     assert!(runtime
@@ -1794,7 +1977,9 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
             state.capabilities.supports(capability),
             matches!(
                 capability,
-                BackendCapability::MidiInjection | BackendCapability::BusManagement
+                BackendCapability::MidiInjection
+                    | BackendCapability::BusManagement
+                    | BackendCapability::LoopTimingEdits
             )
         );
     }
@@ -1885,6 +2070,169 @@ fn explicit_ownerless_shutdown_cannot_evict_a_live_ui_and_fences_previous_owners
         }
     }
     assert!(f.service.shutdown_ready());
+}
+
+#[shoop_test]
+fn deployment_is_boot_bound_exclusive_idempotent_and_preserves_shutdown_kind() {
+    use shoop_deployment_protocol as d;
+    let mut f = fixture();
+    assert_eq!(
+        f.service.deployment(d::Request::Status),
+        d::Reply::Refused(d::Refusal::Unsupported)
+    );
+    f.service
+        .set_deployment_info(d::Info {
+            profile: "shoop-zynq7000-1g-v1".into(),
+            build: "a".into(),
+            hash: [1; 32],
+            slot: Some(0),
+            confirmed: true,
+            trial: false,
+            boot_nonce: 123,
+            last_operation: None,
+            session_version: VERSION,
+            busy: false,
+            ready: false,
+        })
+        .unwrap();
+    let operation = d::Operation {
+        client: 800,
+        sequence: 1,
+    };
+    let enter = d::Request::Enter {
+        boot_nonce: 123,
+        operation,
+    };
+    assert_eq!(
+        f.service.deployment(d::Request::Enter {
+            boot_nonce: 122,
+            operation
+        }),
+        d::Reply::Refused(d::Refusal::StaleBoot)
+    );
+    let mut ui = attach(&mut f.service, 799, ConnectionId(1), false);
+    assert_eq!(
+        f.service.deployment(enter),
+        d::Reply::Refused(d::Refusal::Busy)
+    );
+    f.service
+        .handle(ConnectionId(1), ui.detach().unwrap())
+        .unwrap();
+    assert_eq!(f.service.deployment(enter), d::Reply::Accepted(operation));
+    assert_eq!(f.service.deployment(enter), d::Reply::Accepted(operation));
+    assert_eq!(f.service.updater_request(), Some(operation));
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready() {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
+    f.service.begin_host_cleanup().unwrap();
+    f.service
+        .complete_shutdown(Err("injected cleanup failure".into()));
+    assert_eq!(f.service.updater_request(), None);
+    assert_eq!(
+        f.service.deployment(enter),
+        d::Reply::Finished {
+            operation,
+            result: Err(d::Refusal::CleanupFailed)
+        }
+    );
+    let ordinary = OperationId {
+        client: ClientId(801),
+        sequence: 1,
+    };
+    assert!(matches!(
+        f.service.management(ManagementRequest::ClaimShutdown {
+            version: VERSION,
+            operation: ordinary
+        }),
+        ManagementReply::Accepted { .. }
+    ));
+    assert_eq!(
+        f.service.updater_request(),
+        None,
+        "failed deployment must not convert ordinary shutdown into reset"
+    );
+    assert_eq!(
+        f.service.deployment(d::Request::Enter {
+            boot_nonce: 123,
+            operation: d::Operation {
+                client: 801,
+                sequence: 1
+            }
+        }),
+        d::Reply::Refused(d::Refusal::Conflict)
+    );
+}
+
+#[shoop_test]
+fn deployment_status_and_success_remain_reconcilable_after_cleanup() {
+    use shoop_deployment_protocol as d;
+    let mut f = fixture();
+    let identity = d::Info {
+        profile: "shoop-zynq7000-1g-v1".into(),
+        build: "firmware-a".into(),
+        hash: [1; 32],
+        slot: Some(0),
+        confirmed: true,
+        trial: false,
+        boot_nonce: 123,
+        last_operation: None,
+        session_version: VERSION,
+        busy: false,
+        ready: true,
+    };
+    f.service.set_deployment_info(identity.clone()).unwrap();
+    assert_eq!(
+        f.service.deployment(d::Request::Status),
+        d::Reply::Info(identity.clone())
+    );
+    let operation = d::Operation {
+        client: 900,
+        sequence: 1,
+    };
+    let enter = d::Request::Enter {
+        boot_nonce: 123,
+        operation,
+    };
+    let result = d::Request::Result {
+        boot_nonce: 123,
+        operation,
+    };
+    assert_eq!(
+        f.service.deployment(result),
+        d::Reply::Refused(d::Refusal::Conflict)
+    );
+    assert_eq!(f.service.deployment(enter), d::Reply::Accepted(operation));
+    assert_eq!(f.service.deployment(result), d::Reply::Accepted(operation));
+    let d::Reply::Info(pending) = f.service.deployment(d::Request::Status) else {
+        panic!()
+    };
+    assert!(pending.busy);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready() {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
+    f.service.begin_host_cleanup().unwrap();
+    f.service.complete_shutdown(Ok(()));
+    assert_eq!(f.service.updater_request(), None);
+    let finished = d::Reply::Finished {
+        operation,
+        result: Ok(()),
+    };
+    assert_eq!(f.service.deployment(result), finished);
+    assert_eq!(f.service.deployment(enter), finished);
+    let d::Reply::Info(closed) = f.service.deployment(d::Request::Status) else {
+        panic!()
+    };
+    assert!(!closed.ready && !closed.busy);
+    assert_eq!(closed.boot_nonce, identity.boot_nonce);
+    assert_eq!(closed.hash, identity.hash);
 }
 
 #[shoop_test]
@@ -3631,4 +3979,206 @@ fn session_replacement_retains_publications_until_unpublish_admission_and_comple
             assert_eq!(f.waits.get(), f.initial_waits);
         }
     }
+}
+
+#[shoop_test]
+fn timing_commands_are_atomic_while_recording_and_reconcile_once_after_ui_loss() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 12000, connection, encoded);
+        let (track, loops) = created(command(
+            &mut f.service,
+            &mut client,
+            connection,
+            new_track("Timing", true),
+        ));
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::Global(GlobalControlAction::SetSync(false)),
+        );
+        let target = loops[0];
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .capabilities
+            .supports(BackendCapability::LoopTimingEdits));
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                connection,
+                Command::Loop {
+                    track,
+                    loop_id: target,
+                    action: LoopAction::RecordClicked
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let before = f.service.snapshot().tracks[1].loops[0].clone();
+        assert_eq!(before.mode, LoopMode::Recording);
+        assert_eq!(before.channel_timings.len(), 2);
+        let changes = before
+            .channel_timings
+            .iter()
+            .enumerate()
+            .map(|(index, channel)| ChannelTimelineUpdate {
+                channel_id: channel.id,
+                start_offset: Some(index as i64 - 2),
+                preplay_samples: Some(index as u64 + 1),
+            })
+            .collect::<Vec<_>>();
+        let mut message = client
+            .command(
+                Command::SetLoopChannelTimings {
+                    loop_id: target,
+                    updates: changes.clone(),
+                },
+                None,
+            )
+            .unwrap();
+        if encoded {
+            let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+            let size = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+            let WireMessage::Client(decoded) = codec::decode(&bytes[..size]).unwrap() else {
+                panic!()
+            };
+            message = decoded;
+        }
+        let duplicate = message.clone();
+        f.service.handle(connection, message).unwrap();
+        f.service.handle(connection, duplicate.clone()).unwrap();
+        f.service.detach(connection);
+        for _ in 0..8 {
+            f.service.tick(STEP);
+        }
+        let mut client = attach(&mut f.service, 12001, ConnectionId(2), encoded);
+        let current = client.snapshot().unwrap().tracks[1].loops[0].clone();
+        assert_eq!(current.mode, LoopMode::Recording);
+        assert!(current.length_frames > before.length_frames);
+        assert_eq!(current.timing_revision, before.timing_revision + 1);
+        for (channel, change) in current.channel_timings.iter().zip(&changes) {
+            assert_eq!(Some(channel.start_offset), change.start_offset);
+            assert_eq!(Some(channel.preplay_samples), change.preplay_samples);
+            assert_eq!(channel.capture_alignment_frames, 0);
+        }
+        assert!(f.service.handle(ConnectionId(2), duplicate).is_err());
+        for _ in 0..4 {
+            f.service.tick(STEP);
+        }
+        assert_eq!(
+            f.service.snapshot().tracks[1].loops[0].timing_revision,
+            current.timing_revision
+        );
+        let refused = command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::SetLoopTimeline {
+                loop_id: target,
+                start_offset: Some(50),
+                preplay_samples: Some(50),
+                loop_length: Some(16),
+            },
+        );
+        assert!(matches!(refused, Outcome::Refused { .. }));
+        let unchanged = f.service.snapshot().tracks[1].loops[0].clone();
+        assert_eq!(unchanged.channel_timings, current.channel_timings);
+        assert_eq!(unchanged.timing_revision, current.timing_revision);
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(2),
+                Command::SetLoopChannelTimings {
+                    loop_id: target,
+                    updates: vec![changes[0].clone(), changes[0].clone()]
+                }
+            ),
+            Outcome::Refused { .. }
+        ));
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::Loop {
+                track,
+                loop_id: target,
+                action: LoopAction::StopClicked,
+            },
+        );
+        let revised = command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::SetLoopTimeline {
+                loop_id: target,
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(16),
+            },
+        );
+        assert!(matches!(revised, Outcome::Confirmed { .. }));
+        assert_eq!(f.service.snapshot().tracks[1].loops[0].length_frames, 16);
+        assert_eq!(
+            f.waits.get(),
+            f.initial_waits,
+            "service timing commands must not wait for render"
+        );
+    }
+}
+
+#[shoop_test]
+fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Lengths".into(),
+            audio_channels: 0,
+            midi: true,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    runtime.dispatch(AppIntent::AddScriptSource {
+        name: "lengths.lua".into(), kind: ScriptKind::User, enabled: true,
+        source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); print('started-once'); c.register_loop_event_cb(function() print('length=' .. c.loop_get_length({0,0})[1]) end)"),
+    }).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let id = runtime.snapshot().tracks[1].loops[0].id;
+    runtime
+        .dispatch(AppIntent::SetLoopTimeline {
+            loop_id: id,
+            start_offset: None,
+            preplay_samples: Some(3),
+            loop_length: Some(64),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    let state = runtime.snapshot();
+    assert_eq!(state.tracks[1].loops[0].length_frames, 64);
+    let script = &state.scripting.scripts[0];
+    assert!(script.latest_error.is_none(), "{:?}", script.latest_error);
+    assert_eq!(
+        script
+            .logs
+            .iter()
+            .filter(|line| line.message.contains("started-once"))
+            .count(),
+        1
+    );
+    assert!(
+        script
+            .logs
+            .iter()
+            .any(|line| line.message.contains("length=64")),
+        "{:?}",
+        script.logs
+    );
 }

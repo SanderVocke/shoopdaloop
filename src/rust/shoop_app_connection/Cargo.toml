@@ -6,6 +6,7 @@ description = "Portable cooperative application session connections"
 [lints]
 workspace = true
 [dependencies]
+shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }
 shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }
 shoop_transport = { path = "../shoop_transport" }

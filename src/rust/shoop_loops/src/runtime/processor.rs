@@ -145,23 +145,44 @@ impl Processor<LoopPlanner> for PlaybackNode {
         if let Some(audio) = &mut self.audio {
             audio.set_balance_channels(view.audio_widths[0])?;
             audio.set_smoothing(view.smoothing);
-            audio.render_port_range(
-                &mut block.resources.render(),
-                audio::Playback {
-                    source: view.audio,
-                    position: view.decision.state.position,
-                    gain: view.gain,
-                    balance: view.balance,
-                    discontinuity: view.decision.playback_discontinuity,
-                },
-                &mut block.audio,
-                0,
-            )?;
+            let playback = audio::Playback {
+                source: view.audio,
+                position: view.decision.state.position,
+                gain: view.gain,
+                balance: view.balance,
+                discontinuity: view.decision.playback_discontinuity,
+            };
+            if self.binding.channels > crate::windows::MAX_AUDIO_CHANNELS {
+                audio.render_port_range(
+                    &mut block.resources.render(),
+                    playback,
+                    &mut block.audio,
+                    0,
+                )?;
+            } else {
+                audio.render_windowed_port_range(
+                    &mut block.resources.render(),
+                    playback,
+                    view.raw_position,
+                    &view.windows.audio[if view.dry_wet {
+                        view.audio_widths[1]
+                    } else {
+                        0
+                    }..if view.dry_wet {
+                        view.audio_widths[1]
+                    } else {
+                        0
+                    } + self.binding.channels],
+                    view.lead,
+                    &mut block.audio,
+                    0,
+                )?;
+            }
         }
         if let Some(audio) = &mut self.auxiliary {
             audio.set_balance_channels(view.audio_widths[1])?;
             audio.set_smoothing(view.smoothing);
-            audio.render_port_range(
+            audio.render_windowed_port_range(
                 &mut block.resources.render(),
                 audio::Playback {
                     source: view.auxiliary,
@@ -170,18 +191,24 @@ impl Processor<LoopPlanner> for PlaybackNode {
                     balance: view.balance,
                     discontinuity: view.decision.playback_discontinuity,
                 },
+                view.raw_position,
+                &view.windows.audio[..self.binding.auxiliary_channels],
+                view.lead,
                 &mut block.audio,
                 self.binding.channels,
             )?;
         }
         let error = if let Some(midi) = &mut self.midi {
-            midi.render(
+            midi.render_windowed(
                 &mut block.resources.render(),
                 midi::Playback {
                     source: view.midi,
                     position: view.decision.state.position,
                     discontinuity: view.decision.playback_discontinuity,
                 },
+                view.raw_position,
+                view.windows.midi,
+                view.lead,
                 block.quantum.frames(),
                 block.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
             )?

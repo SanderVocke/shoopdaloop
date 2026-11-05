@@ -318,6 +318,7 @@ impl WorkletHost {
                         data_type: from_wire_data_type(endpoint.data_type),
                         direction: from_wire_direction(endpoint.direction),
                         preferred_playback: false,
+                        available: true,
                     })
                     .collect();
                 self.backend

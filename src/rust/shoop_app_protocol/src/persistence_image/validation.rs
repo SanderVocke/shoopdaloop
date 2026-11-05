@@ -42,7 +42,7 @@ impl Progress {
                 || channel.frames > u32::MAX as u64
                 || i32::try_from(channel.start_offset).is_err()
                 || i32::try_from(channel.capture_alignment).is_err()
-                || channel.preplay != 0
+                || u32::try_from(channel.preplay).is_err()
                 || (midi && channel.mode == ChannelMode::Wet)
                 || channel
                     .recording_started_at

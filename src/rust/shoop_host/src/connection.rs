@@ -61,12 +61,15 @@ pub(crate) fn admission_header(endpoint: Endpoint) -> [u8; 3] {
     let version = shoop_app_protocol::VERSION.to_le_bytes();
     [version[0], version[1], endpoint as u8]
 }
-fn open(
+pub(crate) fn open(
     entry: &HostTarget,
     address: &str,
     deadline: Instant,
     endpoint: Endpoint,
 ) -> Result<shoop_transport_socket::Port> {
+    if entry.credential.is_some() {
+        return open_authenticated(entry, address, deadline);
+    }
     let addresses = crate::remote::resolve(address, deadline)?;
     let mut last = None;
     for (index, address) in addresses.iter().enumerate() {
@@ -116,6 +119,34 @@ fn open(
         .map(anyhow::Error::from)
         .unwrap_or_else(|| anyhow!("no usable endpoint")))
 }
+fn open_authenticated(
+    entry: &HostTarget,
+    address: &str,
+    deadline: Instant,
+) -> Result<shoop_transport_socket::Port> {
+    let token = entry.deployment_token()?;
+    let addresses = crate::remote::resolve(address, deadline)?;
+    let mut last = None;
+    for (index, address) in addresses.iter().enumerate() {
+        let budget = remaining(deadline)? / (addresses.len() - index) as u32;
+        let result = shoop_transport_socket::setup::connect_authenticated(
+            *address,
+            &token,
+            shoop_transport_socket::Config {
+                reliable: 8,
+                telemetry: 1,
+                bulk: 8,
+            },
+            budget,
+        )
+        .map_err(anyhow::Error::from);
+        match result {
+            Ok(port) => return Ok(port),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow!("no usable embedded endpoint")))
+}
 fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];
     loop {
@@ -140,6 +171,10 @@ fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
 fn prepare(entry: &impl ConnectionTarget, deadline: Instant) -> Result<HostTarget> {
     let entry = entry.target();
     entry.profile().validate()?;
+    if entry.credential.is_some() {
+        entry.validate()?;
+        return Ok(entry);
+    }
     let target = if entry.instance == 0 {
         let mut target = describe(&entry.management, remaining(deadline)?)?;
         target.endpoint = entry.endpoint;

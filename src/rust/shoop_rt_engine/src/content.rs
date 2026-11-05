@@ -17,6 +17,7 @@ pub(crate) const RUNTIME_UPLOAD_BUFFERS: usize = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Step {
+    Window,
     Create,
     Begin,
     Write,
@@ -42,6 +43,7 @@ enum Phase {
 }
 #[derive(Clone, Copy)]
 struct Content {
+    windows: Option<(u64, shoop_rt_protocol::PlaybackWindows)>,
     description: ContentDescription,
     resource: Option<ResourceId>,
     upload: Option<resource::UploadId>,
@@ -94,13 +96,101 @@ impl Uploads {
         if let Some(failure) = entry.failure {
             return Err(failure);
         }
-        if entry.phase != Phase::Ready || entry.abandoned {
+        if entry.phase != Phase::Ready || entry.abandoned || entry.pending != 0 {
             return Err(Refusal::Busy);
         }
-        if entry.description.midi != midi || entry.description.frames != frames {
+        if entry.description.midi != midi
+            || entry
+                .windows
+                .map_or(entry.description.frames, |(frames, _)| frames)
+                != frames
+        {
             return Err(Refusal::InvalidValue);
         }
         entry.source.ok_or(Refusal::InvalidId)
+    }
+    pub(crate) fn source_raw(
+        &self,
+        id: u64,
+        midi: bool,
+        frames: u64,
+    ) -> Result<NodePairSourceId, Refusal> {
+        if self.slots[self.index(id)?]
+            .as_ref()
+            .ok_or(Refusal::InvalidId)?
+            .description
+            .frames
+            != frames
+        {
+            return Err(Refusal::InvalidValue);
+        }
+        self.source(
+            id,
+            midi,
+            self.slots[self.index(id)?]
+                .unwrap()
+                .windows
+                .map_or(frames, |(frames, _)| frames),
+        )
+    }
+    pub(crate) fn timing(
+        &self,
+        audio: Option<u64>,
+        midi: Option<u64>,
+        frames: u64,
+    ) -> Result<shoop_rt_protocol::TimingState, Refusal> {
+        let mut state = shoop_rt_protocol::TimingState {
+            length: frames,
+            ..Default::default()
+        };
+        let mut windows = None;
+        let mut unset = false;
+        for (id, midi) in [(audio, false), (midi, true)] {
+            let Some(id) = id else {
+                continue;
+            };
+            let entry = self.slots[self.index(id)?].ok_or(Refusal::InvalidId)?;
+            match entry.windows {
+                Some((length, window)) if length == frames => {
+                    if windows.is_some_and(|previous| previous != window) {
+                        return Err(Refusal::InvalidValue);
+                    }
+                    windows = Some(window);
+                }
+                Some(_) => return Err(Refusal::InvalidValue),
+                None => unset = true,
+            }
+            if midi {
+                state.raw_midi_frames = entry.description.frames;
+            } else {
+                state.raw_audio_frames = entry.description.frames;
+            }
+        }
+        if windows.is_some() && unset {
+            return Err(Refusal::InvalidValue);
+        }
+        state.windows = windows.unwrap_or_default();
+        Ok(state)
+    }
+    pub(crate) fn source_timing(
+        &self,
+        audio: Option<NodePairSourceId>,
+        midi: Option<NodePairSourceId>,
+        frames: u64,
+    ) -> Result<shoop_rt_protocol::TimingState, Refusal> {
+        let token = |source: Option<NodePairSourceId>| -> Result<Option<u64>, Refusal> {
+            source
+                .map(|source| {
+                    self.slots
+                        .iter()
+                        .flatten()
+                        .find(|entry| entry.source == Some(source))
+                        .map(|entry| entry.description.id)
+                        .ok_or(Refusal::InvalidId)
+                })
+                .transpose()
+        };
+        self.timing(token(audio)?, token(midi)?, frames)
     }
     pub(crate) fn consumed(&mut self, source: NodePairSourceId) {
         if let Some(entry) = self
@@ -163,6 +253,52 @@ impl ControlEndpoint {
         request: Request,
     ) -> Result<Option<Outcome>, Refusal> {
         match request {
+            Request::ContentWindow {
+                id,
+                frames,
+                windows,
+            } => {
+                if frames > u32::MAX as u64 || frames % u64::from(self.limits.quantum) != 0 {
+                    return Err(Refusal::InvalidValue);
+                }
+                let slot = self.uploads.index(id)?;
+                let entry = self.uploads.slots[slot]
+                    .as_ref()
+                    .ok_or(Refusal::InvalidId)?;
+                if let Some(failure) = entry.failure {
+                    return Err(failure);
+                }
+                if entry.pending != 0 || entry.phase != Phase::Ready || entry.abandoned {
+                    return Err(Refusal::Busy);
+                }
+                if let Some(previous) = entry.windows {
+                    return if previous == (frames, windows) {
+                        Ok(Some(Outcome::Done))
+                    } else {
+                        Err(Refusal::InvalidValue)
+                    };
+                }
+                let source = entry.source.ok_or(Refusal::InvalidId)?;
+                self.submit_loop(
+                    self.at(),
+                    Operation::NodePairSourceWindows {
+                        id: source,
+                        frames,
+                        windows: crate::timing::loop_windows(windows),
+                    },
+                    Purpose::Content {
+                        slot,
+                        step: Step::Window,
+                        correlation: Some(correlation),
+                    },
+                )?;
+                let entry = self.uploads.slots[slot]
+                    .as_mut()
+                    .expect("validated content");
+                entry.windows = Some((frames, windows));
+                entry.pending += 1;
+                Ok(None)
+            }
             Request::ContentBegin(description) => {
                 let shape = description.midi
                     || description
@@ -176,7 +312,6 @@ impl ControlEndpoint {
                 if !shape
                     || description.bytes > MAX_CONTENT_BYTES
                     || description.frames > u32::MAX as u64
-                    || description.frames % u64::from(self.limits.quantum) != 0
                     || (description.midi && description.frames == 0 && description.bytes != 0)
                 {
                     return Err(Refusal::InvalidValue);
@@ -199,6 +334,7 @@ impl ControlEndpoint {
                     .ok_or(Refusal::Capacity)?;
                 self.uploads.last_id = description.id;
                 self.uploads.slots[slot] = Some(Content {
+                    windows: None,
                     description,
                     resource: None,
                     upload: None,
@@ -499,9 +635,9 @@ impl ControlEndpoint {
             RuntimeResult::Completion(outcome, ..) => completion_refusal(*outcome),
             RuntimeResult::Execution(execution) => match execution_outcome(execution) {
                 Outcome::Done => None,
-                Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
-                    Some(Refusal::Internal)
-                }
+                Outcome::TimingApplied(_)
+                | Outcome::ContentApplied { .. }
+                | Outcome::ContentPrepared { .. } => Some(Refusal::Internal),
                 Outcome::Refused(reason) => Some(reason),
             },
         };

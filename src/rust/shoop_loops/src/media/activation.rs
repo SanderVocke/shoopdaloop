@@ -4,6 +4,7 @@ use super::*;
 /// caller's responsibility; successful publication transfers them to the ledger.
 #[derive(Debug)]
 pub struct OwnerChange {
+    windows: Option<crate::windows::Windows>,
     previous: Option<LoopId>,
     input: Option<Input>,
     published: Option<MediaId>,
@@ -12,14 +13,26 @@ pub struct OwnerChange {
 impl OwnerChange {
     pub fn replace(previous: Option<LoopId>, input: Input) -> Self {
         Self {
+            windows: None,
             previous,
             input: Some(input),
             published: None,
             applied: false,
         }
     }
+    pub fn replace_windowed(
+        previous: Option<LoopId>,
+        input: Input,
+        windows: crate::windows::Windows,
+    ) -> Self {
+        Self {
+            windows: Some(windows),
+            ..Self::replace(previous, input)
+        }
+    }
     pub fn remove(previous: LoopId) -> Self {
         Self {
+            windows: None,
             previous: Some(previous),
             input: None,
             published: None,
@@ -95,7 +108,7 @@ impl Ledger {
                 if input.description.owner.generation() <= row.watermark {
                     return Err(Error::InvalidId);
                 }
-                self.validate(io, input)?;
+                self.validate_input(io, input, change.windows)?;
                 for earlier in changes[..index].iter().filter_map(|c| c.input.as_ref()) {
                     for source in [earlier.audio, earlier.auxiliary, earlier.midi]
                         .into_iter()
@@ -137,6 +150,7 @@ impl OwnerActivation<'_, '_> {
                     .ledger
                     .allocate(
                         View {
+                            windows: change.windows,
                             description: input.description,
                             audio: input.audio,
                             auxiliary: input.auxiliary,

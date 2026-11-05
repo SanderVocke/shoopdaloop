@@ -361,3 +361,21 @@ actual context. `pending` leaves the resume unresolved to model autoplay gating.
 Both require a visible failure without a false Playing state and a successful
 retry. `DENY_FIRST=1` additionally checks browser microphone denial and retry.
 These flags select acceptance probes; they do not alter production playback.
+
+### Loop timing
+
+The details editor supports single/all-channel start and pre-play tools plus a
+shared loop end. All-channel starts preserve relative channel offsets. Timing
+metadata remains available while recording; length changes refuse during active
+or scheduled recording. Other timing edits preserve capture progress.
+
+Shortening a loop retains raw audio and MIDI for later re-extension and exact
+exports. Save/load preserves independent offsets, capture alignment and pre-play.
+Display coordinates include capture alignment. Audio outside retained storage is
+silent. Scheduled stopped playback can emit retained pickup material before its
+start, with MIDI pickup notes continuing across that boundary.
+
+Periods must align to the host quantum (default 32; browser 128). The editor previews
+a valid effective end. Nonaligned API length requests refuse explicitly; offsets,
+pre-play and raw MIDI timestamps keep frame precision. See the
+[P12 evidence](../../../docs/native_session_recovery/evidence/loop-timing.md).

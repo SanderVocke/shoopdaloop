@@ -50,6 +50,8 @@ pub struct RemoteProfile {
     pub name: String,
     pub endpoint: String,
     pub management: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<PathBuf>,
     #[serde(default)]
     pub network: NetworkOptions,
     #[serde(default)]
@@ -62,7 +64,19 @@ pub struct RemoteProfile {
 impl RemoteProfile {
     pub fn validate(&self) -> Result<()> {
         ensure!(self.version == VERSION, "incompatible session protocol");
+        self.validate_deployment()
+    }
+    /// Deployment admission survives changes to the session schema.
+    pub fn validate_deployment(&self) -> Result<()> {
         ensure!(self.name.len() <= 128, "invalid profile name");
+        if let Some(credential) = &self.credential {
+            ensure!(
+                !credential.as_os_str().is_empty()
+                    && !self.local
+                    && self.transport == AppTransport::Socket,
+                "embedded credentials require a remote socket profile"
+            );
+        }
         endpoint(&self.endpoint)?;
         endpoint(&self.management)?;
         self.network.validate()?;
@@ -83,15 +97,32 @@ impl RemoteProfile {
         Ok(())
     }
     pub fn read(path: &Path) -> Result<Self> {
+        Self::read_profile(path, true)
+    }
+    pub fn read_deployment(path: &Path) -> Result<Self> {
+        Self::read_profile(path, false)
+    }
+    fn read_profile(path: &Path, session: bool) -> Result<Self> {
         let mut bytes = Vec::new();
         std::fs::File::open(path)?
             .take(65537)
             .read_to_end(&mut bytes)?;
         ensure!(bytes.len() <= 65536, "remote profile exceeds 64 KiB");
         let mut profile: Self = serde_json::from_slice(&bytes)?;
-        profile.validate()?;
+        if session {
+            profile.validate()?;
+        } else {
+            profile.validate_deployment()?;
+        }
         if let Some(log) = profile.log_file.as_mut().filter(|log| log.is_relative()) {
             *log = path.parent().unwrap_or(Path::new(".")).join(&*log);
+        }
+        if let Some(credential) = profile
+            .credential
+            .as_mut()
+            .filter(|path| path.is_relative())
+        {
+            *credential = path.parent().unwrap_or(Path::new(".")).join(&*credential);
         }
         Ok(profile)
     }
@@ -127,6 +158,8 @@ pub struct Target {
     pub name: String,
     pub endpoint: String,
     pub management: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<PathBuf>,
     pub transport: AppTransport,
     pub shared_memory: Option<Vec<u8>>,
     pub warnings: Vec<String>,
@@ -146,6 +179,7 @@ impl From<RemoteProfile> for Target {
             name: e.name,
             endpoint: e.endpoint,
             management: e.management,
+            credential: e.credential,
             transport: e.transport,
             shared_memory: None,
             warnings: Vec::new(),
@@ -168,6 +202,20 @@ impl ConnectionTarget for Target {
     }
 }
 impl Target {
+    pub fn token(&self) -> Result<[u8; 32]> {
+        ensure!(self.version == VERSION, "incompatible session protocol");
+        self.deployment_token()
+    }
+    pub(crate) fn deployment_token(&self) -> Result<[u8; 32]> {
+        self.profile().validate_deployment()?;
+        let path = self
+            .credential
+            .as_deref()
+            .context("embedded credential is required")?;
+        crate::private::read(path, 32)?
+            .try_into()
+            .map_err(|_| anyhow!("invalid credential length"))
+    }
     pub fn use_local_addresses(&mut self) {
         if let Some(endpoint) = &self.local_endpoint {
             self.endpoint = endpoint.clone();
@@ -198,6 +246,7 @@ impl Target {
             name: self.name.clone(),
             endpoint: self.endpoint.clone(),
             management: self.management.clone(),
+            credential: self.credential.clone(),
             network: self.network.unwrap_or_default(),
             local: self.network.is_none(),
             transport: self.transport,
@@ -208,6 +257,11 @@ impl Target {
                 .flatten(),
         }
     }
+}
+pub fn create_credential(path: &Path) -> Result<()> {
+    let mut token = [0; 32];
+    getrandom::fill(&mut token).map_err(|_| anyhow!("credential entropy unavailable"))?;
+    crate::private::create(path, &token)
 }
 pub fn remaining(deadline: Instant) -> Result<Duration> {
     let remaining = deadline.saturating_duration_since(Instant::now());

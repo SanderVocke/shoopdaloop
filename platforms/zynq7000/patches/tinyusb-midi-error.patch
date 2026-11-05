@@ -1,0 +1,35 @@
+--- a/src/class/midi/midi_host.c
++++ b/src/class/midi/midi_host.c
+@@ -140,10 +140,15 @@
+   }
+ }
+ 
++TU_ATTR_WEAK void tuh_midi_error_cb(uint8_t idx, uint8_t ep, xfer_result_t result) { (void)idx; (void)ep; (void)result; }
++
+ bool midih_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
+-  (void) result;
+   const uint8_t idx = get_idx_by_ep_addr(dev_addr, ep_addr);
+   TU_VERIFY(idx < CFG_TUH_MIDI);
++  if (result != XFER_RESULT_SUCCESS) {
++    tuh_midi_error_cb(idx, ep_addr, result);
++    return false;
++  }
+   midih_interface_t *p_midi = &_midi_host[idx];
+   tu_edpt_stream_t  *ep_str_rx = &p_midi->ep_stream.rx;
+   tu_edpt_stream_t  *ep_str_tx = &p_midi->ep_stream.tx;
+@@ -223,6 +228,7 @@
+     TU_VERIFY(TUSB_CLASS_AUDIO == desc_itf->bInterfaceClass, 0);
+   }
+   TU_VERIFY(AUDIO_SUBCLASS_MIDI_STREAMING == desc_itf->bInterfaceSubClass, 0);
++  TU_VERIFY(desc_itf->bAlternateSetting == 0 && desc_itf->bInterfaceProtocol == 0, 0);
+ 
+   TU_LOG_DRV("MIDI opening Interface %u (addr = %u)\r\n", desc_itf->bInterfaceNumber, dev_addr);
+   p_midi->bInterfaceNumber = desc_itf->bInterfaceNumber;
+@@ -245,6 +251,7 @@
+         switch (tu_desc_subtype(p_desc)) {
+           case MIDI_CS_INTERFACE_HEADER:
+             TU_LOG_DRV("  Interface Header descriptor\r\n");
++            TU_VERIFY(p_desc[0] >= 7 && p_desc[3] == 0 && p_desc[4] == 1, 0);
+             desc_cb.desc_header = p_desc;
+             break;
+ 

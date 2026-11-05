@@ -442,9 +442,6 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                 }
                 for channel in &content.channels {
                     mode_from_document(channel.mode)?;
-                    if channel.preplay_frames != 0 {
-                        unsupported.insert("channel preplay (P12)");
-                    }
                 }
             }
         }

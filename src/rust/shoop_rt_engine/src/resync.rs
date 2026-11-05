@@ -429,15 +429,22 @@ impl ControlEndpoint {
                                 balance: entry.balance,
                             });
                         }
+                        if cursor.part == 1 {
+                            cursor.part = 2;
+                            return Some(StateRecord::LoopTiming {
+                                loop_id: entry.id,
+                                timing: self.current_timing(*entry),
+                            });
+                        }
                         let record = self.recorded_record(entry.id).ok()?;
                         cursor.index += 1;
                         cursor.part = 0;
                         if record.is_some() {
                             return record;
                         }
-                    } else {
-                        cursor.index += 1;
+                        continue;
                     }
+                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
@@ -507,7 +514,35 @@ impl ControlEndpoint {
             return;
         };
         while out.available(Lane::Reliable) > 0 {
-            match self.next_state(&mut cursor) {
+            let before = cursor;
+            let publication = if cursor.stage == 3 && cursor.part == 1 {
+                let cells = &self.cells.loops[cursor.index];
+                let serial = cells.publication.load(core::sync::atomic::Ordering::SeqCst);
+                if serial % 2 != 0
+                    || self.model.loops[cursor.index].is_some_and(|entry| {
+                        cells
+                            .timing_revision
+                            .load(core::sync::atomic::Ordering::SeqCst)
+                            != entry.timing.revision
+                    })
+                {
+                    break;
+                }
+                Some((cursor.index, serial))
+            } else {
+                None
+            };
+            let record = self.next_state(&mut cursor);
+            if publication.is_some_and(|(slot, serial)| {
+                self.cells.loops[slot]
+                    .publication
+                    .load(core::sync::atomic::Ordering::SeqCst)
+                    != serial
+            }) {
+                cursor = before;
+                break;
+            }
+            match record {
                 Some(record) => {
                     let _ = out.push(EngineMessage::State(record));
                 }

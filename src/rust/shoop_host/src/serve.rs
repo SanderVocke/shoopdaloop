@@ -333,6 +333,7 @@ pub fn run_with_ready(
     let local_endpoint = concrete(data.address()?).to_string();
     let local_management = concrete(management.address()?).to_string();
     let target = Target {
+        credential: None,
         can_attach: true,
         local_endpoint: Some(local_endpoint.clone()),
         local_management: Some(local_management.clone()),
@@ -360,6 +361,7 @@ pub fn run_with_ready(
     };
     if let Some(path) = &options.export_profile {
         let profile = RemoteProfile {
+            credential: None,
             version: VERSION,
             name: target.name.clone(),
             endpoint: target.endpoint.clone(),

@@ -39,6 +39,30 @@ pub struct MidiPosition {
 }
 
 impl ResourceStore {
+    fn midi_initial_channel_impl(
+        &mut self,
+        index: ReadIndex,
+        channel: u8,
+    ) -> Result<(crate::midi_state::ChannelState, bool), Error> {
+        let lease = self.midi_lease(index)?;
+        let select = |state: &MidiState| {
+            Ok((
+                *state.channel(channel).ok_or(Error::InvalidId)?,
+                state.system_reset_seen(),
+            ))
+        };
+        if let Some(midi) = lease.shared_midi {
+            return self.with_midi(midi.store, |_, store| {
+                select(store.initial_state(midi.index)?)
+            });
+        }
+        let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
+        select(self.midi_indexes.initial_state(
+            version.midi.ok_or(Error::InvalidState)?,
+            lease.version,
+            lease.snapshot.description.bytes,
+        )?)
+    }
     fn midi_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
         let lease = self.index_lease(index)?;
         if lease.snapshot.description.format != Format::Midi {
@@ -125,6 +149,38 @@ impl ResourceStore {
         self.read_exact_indexed(event.index, event.offset, &mut output[..event.bytes])?;
         Ok(event.bytes)
     }
+    fn midi_history_impl(&mut self, index: ReadIndex, frame: u64) -> Result<bool, Error> {
+        let lease = self.midi_lease(index)?;
+        if frame > lease.snapshot.description.frames {
+            return Err(Error::InvalidFrame);
+        }
+        if let Some(midi) = lease.shared_midi {
+            return self.with_midi(midi.store, |store, midi_store| {
+                midi_store.parameter_history_untracked(&mut store.render_io(), midi.index, frame)
+            });
+        }
+        let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
+        let (mut history, offset, span) = self.midi_indexes.history_before(
+            version.midi.ok_or(Error::InvalidState)?,
+            lease.version,
+            frame,
+            lease.snapshot.description.bytes,
+        )?;
+        let mut cursor = MidiCursor { index, offset };
+        for _ in 0..span {
+            let Some(event) = self.midi_next_impl(&mut cursor)? else {
+                return Ok(history != 0);
+            };
+            if event.frame >= frame {
+                return Ok(history != 0);
+            }
+            let mut short = [0; 3];
+            let count = event.bytes.min(3);
+            self.read_exact_indexed(index, event.offset, &mut short[..count])?;
+            self.midi_indexes.replay_history(&mut history, short);
+        }
+        Err(Error::InvalidState)
+    }
     pub(super) fn midi_seek_impl(
         &mut self,
         index: ReadIndex,
@@ -180,28 +236,13 @@ impl ResourceStore {
     }
 }
 impl RenderIo<'_> {
-    /// Validate indexed playback at frame zero without materializing channel state.
-    pub fn validate_midi(&mut self, index: ReadIndex) -> Result<(), Error> {
-        let lease = self.store.midi_lease(index)?;
-        if let Some(midi) = lease.shared_midi {
-            self.store
-                .with_midi(midi.store, |_, store| store.cursor(midi.index).map(|_| ()))?;
-        } else {
-            let version = get(
-                &self.store.versions,
-                lease.version.slot,
-                lease.version.generation,
-            )?;
-            self.store.midi_indexes.position(
-                version.midi.ok_or(Error::InvalidState)?,
-                lease.version,
-                0,
-                lease.snapshot.description.bytes,
-            )?;
-        }
-        let mut cursor = self.midi_cursor(index)?;
-        self.midi_next(&mut cursor)?;
-        Ok(())
+    /// Export one initial channel without copying all sixteen channel states.
+    pub fn midi_initial_channel(
+        &mut self,
+        index: ReadIndex,
+        channel: u8,
+    ) -> Result<(crate::midi_state::ChannelState, bool), Error> {
+        self.store.midi_initial_channel_impl(index, channel)
     }
     pub fn midi_cursor(&self, index: ReadIndex) -> Result<MidiCursor, Error> {
         self.store.midi_cursor_impl(index)
@@ -216,6 +257,14 @@ impl RenderIo<'_> {
     }
     pub fn midi_read(&mut self, event: MidiEvent, output: &mut [u8]) -> Result<usize, Error> {
         self.store.midi_read_impl(event, output)
+    }
+    /// Query the bounded indexed prefix without copying its full channel state.
+    pub fn midi_parameter_history_untracked(
+        &mut self,
+        index: ReadIndex,
+        frame: u64,
+    ) -> Result<bool, Error> {
+        self.store.midi_history_impl(index, frame)
     }
     pub fn midi_seek(&mut self, index: ReadIndex, frame: u64) -> Result<MidiPosition, Error> {
         self.store.midi_seek_impl(index, frame)
