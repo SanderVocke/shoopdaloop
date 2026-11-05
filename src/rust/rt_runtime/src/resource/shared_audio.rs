@@ -119,6 +119,14 @@ impl Mapping {
     }
 }
 
+/// A private root awaiting explicit commit or cancellation.
+#[must_use]
+pub(in crate::resource) struct Write {
+    take: TakeId,
+    expected: Revision,
+    view: View,
+}
+
 #[derive(Clone, Copy)]
 struct View {
     root: Option<usize>,
@@ -980,6 +988,92 @@ impl AudioStore {
         self.histories[id.slot].root = root;
         self.histories[id.slot].next = next;
         Ok(())
+    }
+
+    pub(in crate::resource) fn stage_write(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        take: TakeId,
+        position: Option<u64>,
+        samples: &[f32],
+    ) -> Result<Write, Error> {
+        self.check(io.store)?;
+        let mut view = self.view(take.0)?;
+        if !view.writable {
+            return Err(Error::InvalidState);
+        }
+        if samples.len() % self.channels != 0 || samples.len() / self.channels > self.max_frames {
+            return Err(Error::InvalidShape);
+        }
+        let expected = view.revision;
+        let (position, frames, wrapping) = match position {
+            Some(position) => {
+                if view.growing.is_some() {
+                    return Err(Error::Busy);
+                }
+                if position >= view.frames as u64 {
+                    return Err(Error::InvalidOffset);
+                }
+                (position as usize, view.frames, true)
+            }
+            None => {
+                let maximum = view.growing.ok_or(Error::InvalidState)?;
+                let frames = view
+                    .frames
+                    .checked_add(samples.len() / self.channels)
+                    .ok_or(Error::Capacity)?;
+                if frames > maximum {
+                    return Err(Error::Capacity);
+                }
+                (view.frames, frames, false)
+            }
+        };
+        if !samples.is_empty() {
+            view.revision = view.revision.checked_next()?;
+        }
+        view.root = self.stage(
+            io.store,
+            view.root,
+            view.mapping,
+            frames,
+            position,
+            samples,
+            wrapping,
+            view.base,
+        )?;
+        view.frames = frames;
+        Ok(Write {
+            take,
+            expected,
+            view,
+        })
+    }
+    pub(in crate::resource) fn cancel_write(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        write: Write,
+    ) -> Result<(), Error> {
+        self.check(io.store)?;
+        self.release_immediate(io.store, write.view.root);
+        Ok(())
+    }
+    pub(in crate::resource) fn commit_write(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        write: Write,
+    ) -> Result<Info, Error> {
+        self.check(io.store)?;
+        let current = self.view(write.take.0);
+        if !current
+            .as_ref()
+            .is_ok_and(|view| view.revision == write.expected && view.growing == write.view.growing)
+        {
+            self.cancel_write(io, write)?;
+            return Err(Error::StaleRevision);
+        }
+        self.release_immediate(io.store, current.unwrap().root);
+        self.views[write.take.0.slot as usize].value = Some(write.view);
+        self.info(self.take_index(write.take)?)
     }
 
     /// One atomic edit, including all channels and any loop/page boundary crossings.

@@ -10,6 +10,7 @@ pub enum Mode {
     Stopped,
     Playing,
     Recording,
+    Replacing,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -730,3 +730,139 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, 12288);
 }
+
+#[shoop_test]
+fn long_loaded_writer_prepares_before_entry_and_publishes_after_one_tick_without_suffix_repair() {
+    let q = 32;
+    let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    let (stores, _, _) = h.grabs();
+    let frames = 80 * q as u64;
+    let mut initial = MidiState::default();
+    initial.apply_packet(&[0xb0, 1, 13], 1024).unwrap();
+    let mut pinned = Pinned {
+        audio: (0..frames as usize * 2)
+            .flat_map(|i| (i as f32 / 10.).to_le_bytes())
+            .collect(),
+        midi: Vec::new(),
+        initial,
+        packets: Vec::new(),
+        frames,
+    };
+    for tick in 0..80 {
+        let mut record = [0; 15];
+        resource::encode_midi_record(tick * q as u64, &[0xb0, 2, tick as u8], &mut record).unwrap();
+        pinned.midi.extend_from_slice(&record);
+    }
+    let loaded = pinned.loaded(&mut h, stores);
+    h.adopt(0, loaded);
+    let old = h.export(0);
+    let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("source")
+    };
+    let at = h.aligned_future(128);
+    let preparing = h.send(
+        at,
+        Operation::WriterBegin {
+            target: target(0),
+            source: history.id,
+            take: loaded,
+            kind: resource::indexed_midi::WriteKind::Fixed,
+        },
+    );
+    let premature = h.send(
+        at,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::ReplaceInput { position: None },
+        },
+    );
+    let Reply::Writer {
+        id,
+        status: CandidateStatus::Building,
+    } = h.result(preparing)
+    else {
+        panic!("bounded preparation")
+    };
+    assert!(matches!(
+        h.result(premature),
+        Reply::Transition(shoop_loops::Completion {
+            outcome: shoop_loops::Outcome::Failed { .. },
+            ..
+        })
+    ));
+    loop {
+        match h.op(Operation::WriterStatus { id }) {
+            Reply::Writer {
+                status: CandidateStatus::Building,
+                ..
+            } => {}
+            Reply::Writer {
+                status: CandidateStatus::Ready,
+                ..
+            } => break,
+            reply => panic!("preparation: {reply:?}"),
+        }
+    }
+    let start = h.aligned_future(128);
+    let entry = h.send(
+        start,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::ReplaceInput {
+                position: Some(q as u64),
+            },
+        },
+    );
+    let exit = h.send(
+        start + q as u64,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    assert!(matches!(
+        h.result(entry),
+        Reply::Transition(shoop_loops::Completion {
+            outcome: shoop_loops::Outcome::Applied { .. },
+            ..
+        })
+    ));
+    assert!(matches!(
+        h.result(exit),
+        Reply::Transition(shoop_loops::Completion {
+            outcome: shoop_loops::Outcome::Applied { .. },
+            ..
+        })
+    ));
+    let current = h.export(0);
+    assert_eq!(current.view.description.frames, frames);
+    let actual_audio = h.read(current.view.audio.unwrap().snapshot);
+    let mut expected_audio = pinned.audio.clone();
+    let mut expected_midi = midi_events(&pinned.midi);
+    expected_midi.retain(|(at, _)| *at < q as u64 || *at >= 2 * q as u64);
+    for offset in 0..q {
+        let at = (q + offset) * 8;
+        let sample = (start + offset as u64 + 1) as f32;
+        expected_audio[at..at + 4].copy_from_slice(&sample.to_le_bytes());
+        expected_audio[at + 4..at + 8].copy_from_slice(&(-2. * sample).to_le_bytes());
+        for packet in packets(start + offset as u64, q) {
+            expected_midi.push((q as u64 + offset as u64, packet));
+        }
+    }
+    expected_midi.sort_by_key(|(at, _)| *at);
+    assert_eq!(actual_audio, expected_audio);
+    assert_eq!(
+        midi_events(&h.read(current.view.midi.unwrap().snapshot)),
+        expected_midi
+    );
+    assert_eq!(h.read(old.view.audio.unwrap().snapshot), pinned.audio);
+    assert_eq!(h.read(old.view.midi.unwrap().snapshot), pinned.midi);
+    for resource in [loaded.audio, loaded.midi].into_iter().flatten() {
+        h.resource(ResourceRequest::Remove { resource });
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}

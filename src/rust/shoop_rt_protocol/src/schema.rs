@@ -90,6 +90,7 @@ pub enum LoopMode {
     Stopped,
     Playing,
     Recording,
+    Replacing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

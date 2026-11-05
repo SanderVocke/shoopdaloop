@@ -47,6 +47,14 @@ impl State {
         }
     }
 
+    pub fn writes(self) -> bool {
+        matches!(self.mode, Mode::Recording | Mode::Replacing)
+    }
+
+    pub fn advances(self) -> bool {
+        self.plays() || (self.mode == Mode::Replacing && self.content_length != 0)
+    }
+
     pub fn plays(self) -> bool {
         self.composite.is_none()
             && self.content_length != 0

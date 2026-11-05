@@ -116,3 +116,120 @@ fn program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work(
     assert!(resolver.scratch.intents[3].is_none());
     assert_eq!(resolver.state(id(1)).unwrap().mode, Mode::Playing);
 }
+
+#[shoop_test]
+fn replacing_preserves_playing_phase_wraps_sync_and_commits_one_content_revision_at_exit() {
+    let id = |slot| LoopId::from_parts(slot, 1).unwrap();
+    let description = TopologyDescription {
+        loops: (0..2)
+            .map(|slot| LoopSpec {
+                id: id(slot),
+                kind: LoopKind::Primitive,
+                length: 64,
+                sync_source: (slot == 1).then(|| id(0)),
+            })
+            .collect(),
+        ..TopologyDescription::default()
+    };
+    let mut resolver = Resolver::prepare(
+        compile(Limits::default(), &description).unwrap(),
+        rt_runtime::Quantum::new(32).unwrap(),
+    )
+    .unwrap();
+    assert_no_heap(|| {
+        resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(1),
+                at: Frame(0),
+                timing: Timing::At,
+                transition: Transition::Play {
+                    position: 32,
+                    retrigger: false,
+                },
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        resolver.finish().unwrap();
+        let entry = resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(2),
+                at: Frame(32),
+                timing: Timing::At,
+                transition: Transition::ReplaceInput { position: None },
+            })
+            .unwrap();
+        let follower = resolver
+            .submit(Request {
+                target: id(1),
+                sequence: Sequence(3),
+                at: Frame(32),
+                timing: Timing::AfterTicks {
+                    source: id(0),
+                    skip: 0,
+                },
+                transition: Transition::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        let state = resolver.state(id(0)).unwrap();
+        assert_eq!(
+            (state.mode, state.position, state.cycles),
+            (Mode::Replacing, 0, 1)
+        );
+        assert!(!state.plays());
+        assert!(state.advances());
+        assert!(state.writes());
+        resolver.finish().unwrap();
+        assert_eq!(
+            resolver.take_completion(entry).unwrap().unwrap().outcome,
+            Outcome::Applied { frame: Frame(32) }
+        );
+        assert_eq!(
+            resolver.take_completion(follower).unwrap().unwrap().outcome,
+            Outcome::Applied { frame: Frame(32) }
+        );
+        let revision = state.capture_revision;
+        resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(4),
+                at: Frame(64),
+                timing: Timing::At,
+                transition: Transition::ReplaceInput { position: None },
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        assert_eq!(resolver.state(id(0)).unwrap().capture_revision, revision);
+        resolver.finish().unwrap();
+        resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(5),
+                at: Frame(96),
+                timing: Timing::At,
+                transition: Transition::Stop,
+            })
+            .unwrap();
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        let state = resolver.state(id(0)).unwrap();
+        assert_eq!(
+            (
+                state.mode,
+                state.position,
+                state.content_length,
+                state.content_revision
+            ),
+            (Mode::Stopped, 0, 64, revision)
+        );
+        assert!(!state.capture_incomplete);
+    });
+}

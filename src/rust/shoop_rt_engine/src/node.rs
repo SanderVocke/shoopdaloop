@@ -960,7 +960,7 @@ impl EngineNode {
         graph_epoch: rt_runtime::Epoch,
     ) -> Result<(), Error> {
         if let EngineOp::InputSource { epoch, changed } = operation {
-            if graph_epoch.checked_next()? != epoch {
+            if graph_epoch != epoch && graph_epoch.checked_next()? != epoch {
                 return Err(Error::StaleEpoch);
             }
             let Self::StripInput(node) = self else {

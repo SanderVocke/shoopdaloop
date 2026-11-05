@@ -739,3 +739,70 @@ fn declared_padding_is_silent_shared_editable_and_cannot_cover_a_source_gap() {
         assert_eq!(store.usage(), baseline);
     });
 }
+
+#[shoop_test]
+fn staged_mixed_tick_audio_is_invisible_until_commit_and_cancellation_recovers_workspace() {
+    let mut store = resources();
+    let baseline = store.usage();
+    let pool = audio(&mut store, 2, 4);
+    assert_no_heap(|| {
+        store
+            .render_io()
+            .append_audio_history(pool, Frame(0), &[1.; 8])
+            .unwrap();
+        let take = store.grab_audio(pool, Frame(0)..Frame(4)).unwrap();
+        let old = store.snapshot(take, Frame(4)).unwrap();
+        store.copy_remaining = 0;
+        store.steps_remaining = 0;
+        let staged = store
+            .render_io()
+            .stage_audio_write(take, Revision(1), Some(3), &[9.; 4])
+            .unwrap();
+        assert_eq!(store.info(take).unwrap().revision, Revision(1));
+        store.render_io().cancel_audio_write(staged).unwrap();
+        assert_eq!(store.copy_remaining(), 0);
+        assert_eq!(store.steps_remaining(), 0);
+        let unchanged = store.snapshot(take, Frame(4)).unwrap();
+        let original: [u8; 32] = core::array::from_fn(|i| 1f32.to_le_bytes()[i % 4]);
+        assert_eq!(
+            read::<32>(&mut store, unchanged).as_slice(),
+            original.as_slice()
+        );
+        store.release_snapshot(unchanged.id).unwrap();
+        let staged = store
+            .render_io()
+            .stage_audio_write(take, Revision(1), Some(3), &[7.; 4])
+            .unwrap();
+        assert_eq!(
+            store.render_io().commit_audio_write(staged),
+            Ok(Revision(2))
+        );
+        let changed = store.snapshot(take, Frame(4)).unwrap();
+        let mut expected = [1f32; 8];
+        expected[..2].fill(7.);
+        expected[6..].fill(7.);
+        let encoded: [u8; 32] = core::array::from_fn(|i| expected[i / 4].to_le_bytes()[i % 4]);
+        assert_eq!(read::<32>(&mut store, changed), encoded);
+        assert_eq!(read::<32>(&mut store, old).as_slice(), original.as_slice());
+        let staged = store
+            .render_io()
+            .stage_audio_write(take, Revision(2), Some(0), &[5.; 2])
+            .unwrap();
+        store
+            .render_io()
+            .replace_audio(take, Revision(2), 1, &[3.; 2])
+            .unwrap();
+        assert_eq!(
+            store.render_io().commit_audio_write(staged),
+            Err(Error::StaleRevision)
+        );
+        for snapshot in [old, changed] {
+            store.release_snapshot(snapshot.id).unwrap();
+        }
+        store.remove(take).unwrap();
+        drain(&mut store);
+        store.cleanup_audio_store(pool).unwrap();
+        drain(&mut store);
+        assert_eq!(store.usage(), baseline);
+    });
+}

@@ -2188,6 +2188,8 @@ fn pooled_indexed_midi_histories_drive_mixed_grabs_ordinary_playback_and_reclaim
 fn indexed_grab_windows_pad_requested_duration_without_copying_hidden_future_media() {
     let q = 32;
     let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    h.drain_protocol();
+    h.run_to(h.aligned_future(32 * q as u64));
     let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {
         panic!("history")
     };
@@ -2282,6 +2284,328 @@ fn indexed_grab_windows_pad_requested_duration_without_copying_hidden_future_med
             snapshot: snapshot.id,
         });
     }
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}
+
+#[shoop_test]
+fn continuous_mixed_writer_publishes_scheduled_cuts_and_keeps_retained_exports_exact() {
+    use resource::indexed_midi::WriteKind;
+    for growing in [false, true] {
+        let q = 32;
+        let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+        let (take, _, first) = h.grabs();
+        h.adopt(0, take);
+        let old = h.export(0);
+        let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+            panic!("source")
+        };
+        let kind = if growing {
+            WriteKind::Growing {
+                maximum_frames: 32 * q as u64,
+            }
+        } else {
+            WriteKind::Fixed
+        };
+        let Reply::Writer { id, .. } = h.op(Operation::WriterBegin {
+            target: target(0),
+            source: history.id,
+            take,
+            kind,
+        }) else {
+            panic!("writer admission")
+        };
+        for _ in 0..20 {
+            match h.op(Operation::WriterStatus { id }) {
+                Reply::Writer {
+                    status: CandidateStatus::Ready,
+                    ..
+                } => break,
+                Reply::Writer {
+                    status: CandidateStatus::Building,
+                    ..
+                } => {}
+                reply => panic!("writer preparation: {reply:?}"),
+            }
+        }
+        let start = h.aligned_future(128);
+        let ticks = if growing { 20 } else { 13 };
+        let end = start + ticks * q as u64;
+        let entry = h.send(
+            start,
+            Operation::Transition {
+                target: target(0),
+                timing: Timing::At,
+                transition: if growing {
+                    Transition::RecordPrefix {
+                        frames: take.frames,
+                    }
+                } else {
+                    Transition::ReplaceInput {
+                        position: Some(q as u64),
+                    }
+                },
+            },
+        );
+        let exit = h.send(
+            end,
+            Operation::Transition {
+                target: target(0),
+                timing: Timing::At,
+                transition: Transition::Stop,
+            },
+        );
+        let entered = h.result(entry);
+        assert!(
+            matches!(entered, Reply::Transition(shoop_loops::Completion { outcome: shoop_loops::Outcome::Applied { frame }, .. }) if frame == Frame(start)),
+            "{entered:?}"
+        );
+        h.result(exit);
+        let current = h.export(0);
+        let expected_frames = if growing {
+            take.frames + end - start
+        } else {
+            take.frames
+        };
+        assert_eq!(current.view.description.frames, expected_frames);
+        assert_ne!(
+            current.view.description.revision,
+            old.view.description.revision
+        );
+        let old_audio = h.read(old.view.audio.unwrap().snapshot);
+        let old_midi = h.read(old.view.midi.unwrap().snapshot);
+        let actual_audio = h.read(current.view.audio.unwrap().snapshot);
+        let actual_midi = h.read(current.view.midi.unwrap().snapshot);
+        let mut expected_audio = old_audio.clone();
+        let mut expected_packets = midi_events(&old_midi);
+        let mut position = if growing { take.frames } else { q as u64 };
+        if growing {
+            expected_audio.resize(expected_frames as usize * 8, 0);
+        }
+        for frame in (start..end).step_by(q) {
+            expected_packets.retain(|(at, _)| *at < position || *at >= position + q as u64);
+            for offset in 0..q as u64 {
+                let sample = (frame + offset + 1) as f32;
+                let at = (position + offset) as usize * 8;
+                expected_audio[at..at + 4].copy_from_slice(&sample.to_le_bytes());
+                expected_audio[at + 4..at + 8].copy_from_slice(&(-2. * sample).to_le_bytes());
+                for packet in packets(frame + offset, q) {
+                    expected_packets.push((position + offset, packet));
+                }
+            }
+            position = if growing {
+                position + q as u64
+            } else {
+                (position + q as u64) % take.frames
+            };
+        }
+        expected_packets.sort_by_key(|(at, _)| *at);
+        assert_eq!(actual_audio, expected_audio);
+        assert_eq!(midi_events(&actual_midi), expected_packets);
+        assert_eq!(midi_events(&old_midi), expected_midi(first, take.frames, q));
+        let Reply::State(state) = h.op(Operation::State { target: target(0) }) else {
+            panic!("state")
+        };
+        assert_eq!(state.state.mode, shoop_loops::Mode::Stopped);
+        assert!(!state.state.capture_incomplete);
+        let mut stopped = h.engine.render.into_stopped();
+        recover_all(&mut stopped, 12288);
+    }
+}
+
+#[shoop_test]
+fn prefix_recording_to_replacing_keeps_the_boundary_tick_and_active_exports() {
+    let q = 32;
+    let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    let (take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("source")
+    };
+    assert!(matches!(
+        h.op(Operation::WriterBegin {
+            target: target(0),
+            source: history.id,
+            take,
+            kind: resource::indexed_midi::WriteKind::Growing {
+                maximum_frames: 1024
+            }
+        }),
+        Reply::Writer {
+            status: CandidateStatus::Ready,
+            ..
+        }
+    ));
+    let start = h.aligned_future(128);
+    let replace = start + 3 * q as u64;
+    let end = replace + q as u64;
+    let entry = h.send(
+        start,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::RecordPrefix {
+                frames: take.frames,
+            },
+        },
+    );
+    let active = h.send(
+        start + q as u64,
+        Operation::Export {
+            target: target(0),
+            selection: Selection::Recording,
+        },
+    );
+    let pivot = h.send(
+        replace,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::ReplaceInput { position: None },
+        },
+    );
+    let exit = h.send(
+        end,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Play {
+                position: 0,
+                retrigger: false,
+            },
+        },
+    );
+    h.result(entry);
+    let Reply::Export {
+        media: checkpoint, ..
+    } = h.result(active)
+    else {
+        panic!("active export")
+    };
+    let reply = h.result(pivot);
+    assert!(
+        matches!(reply, Reply::Transition(shoop_loops::Completion { outcome: shoop_loops::Outcome::Applied { frame }, .. }) if frame == Frame(replace)),
+        "{reply:?}"
+    );
+    h.result(exit);
+    let current = h.export(0);
+    assert_eq!(current.view.description.frames, take.frames + 3 * q as u64);
+    assert_eq!(checkpoint.view.description.frames, take.frames + q as u64);
+    let data = h.read(current.view.audio.unwrap().snapshot);
+    for offset in 0..q {
+        let at = offset * 8;
+        assert_eq!(
+            f32::from_le_bytes(data[at..at + 4].try_into().unwrap()),
+            (replace + offset as u64 + 1) as f32
+        );
+    }
+    let checkpoint_audio = h.read(checkpoint.view.audio.unwrap().snapshot);
+    let at = take.frames as usize * 8;
+    assert_eq!(
+        f32::from_le_bytes(checkpoint_audio[at..at + 4].try_into().unwrap()),
+        (start + 1) as f32
+    );
+    let checkpoint_midi = h.read(checkpoint.view.midi.unwrap().snapshot);
+    assert_eq!(
+        midi_events(&checkpoint_midi)
+            .into_iter()
+            .filter(|(at, _)| *at >= take.frames)
+            .collect::<Vec<_>>(),
+        expected_midi(start, q as u64, q)
+            .into_iter()
+            .map(|(at, packet)| (take.frames + at, packet))
+            .collect::<Vec<_>>()
+    );
+    let Reply::State(state) = h.op(Operation::State { target: target(0) }) else {
+        panic!("state")
+    };
+    assert_eq!(state.state.mode, shoop_loops::Mode::Playing);
+    assert!(!state.state.capture_incomplete);
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}
+
+#[shoop_test]
+fn source_reset_stops_a_live_prefix_at_its_last_complete_paired_cut() {
+    let q = 32;
+    let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    let (take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("source")
+    };
+    assert!(matches!(
+        h.op(Operation::WriterBegin {
+            target: target(0),
+            source: history.id,
+            take,
+            kind: resource::indexed_midi::WriteKind::Growing {
+                maximum_frames: 4096
+            }
+        }),
+        Reply::Writer {
+            status: CandidateStatus::Ready,
+            ..
+        }
+    ));
+    let start = h.aligned_future(128);
+    let entry = h.send(
+        start,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::RecordPrefix {
+                frames: take.frames,
+            },
+        },
+    );
+    h.result(entry);
+    h.run_to(start + 3 * q as u64 + 3);
+    h.request(protocol::Request::Connect {
+        port: protocol::EnginePort::Strip(protocol::StripPort {
+            strip: protocol::StripId(protocol::SlotId::new(0, 1)),
+            kind: protocol::PortKind::MidiIn,
+            index: 0,
+        }),
+        host: protocol::HostPortId(4),
+        connected: false,
+    });
+    let Reply::State(state) = h.op(Operation::State { target: target(0) }) else {
+        panic!("state")
+    };
+    assert_eq!(state.state.mode, shoop_loops::Mode::Stopped);
+    assert!(state.state.capture_incomplete);
+    assert!(state.capture_failure.is_some());
+    let Reply::Export {
+        media: complete, ..
+    } = h.op(Operation::Export {
+        target: target(0),
+        selection: Selection::Latest,
+    })
+    else {
+        panic!("last complete capture")
+    };
+    assert_eq!(complete.view.description.frames, state.state.capture_frames);
+    let frames = complete.view.description.frames - take.frames;
+    let data = h.read(complete.view.audio.unwrap().snapshot);
+    for offset in 0..frames {
+        let at = (take.frames + offset) as usize * 8;
+        assert_eq!(
+            f32::from_le_bytes(data[at..at + 4].try_into().unwrap()),
+            (start + offset + 1) as f32
+        );
+    }
+    let packets = h.read(complete.view.midi.unwrap().snapshot);
+    assert_eq!(
+        midi_events(&packets)
+            .into_iter()
+            .filter(|(at, _)| *at >= take.frames)
+            .collect::<Vec<_>>(),
+        expected_midi(start, frames, q)
+            .into_iter()
+            .map(|(at, packet)| (take.frames + at, packet))
+            .collect::<Vec<_>>()
+    );
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, 12288);
 }

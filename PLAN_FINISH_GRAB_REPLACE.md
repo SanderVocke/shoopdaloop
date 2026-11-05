@@ -10,15 +10,16 @@ Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; draft
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
 `feat/backend-replacement`, with merged parent `0ef7581b` and refreshed target
 `a068ce72` reconciled on 2026-11-05. The latest
-implementation connects pooled indexed MIDI capture to the coordinator, bounds
-history bytes and adds paired padded lookback windows through ordinary resources.
+implementation connects continuous paired writers to resolver transitions, including
+growing prefix Recording, fixed Replacing and reserved complete-cut publication.
+Production preparation and application action routing remain outstanding.
 
 | Stage | Current status |
 | --- | --- |
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
 | F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
 | F2 | Partial: pooled audio/indexed MIDI histories run through the coordinator and ordinary resources; normal host preparation and reserved global capacity remain. |
-| F3 | Partial: fixed/growing MIDI resources and growing COW audio tails pass targeted tests; domain modes and atomic engine publication remain. |
+| F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; ordinary-recording entry, channel-window mapping and global admission remain. |
 | F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
 Grab and Replacing are still disabled in the normal application. P04/P05 remain
@@ -354,6 +355,37 @@ builds, formatting, tracing and test-attribute checks pass. This closes a retain
 window leak risk before production sizing; global admission and normal app routing
 remain open. CI is deferred under Phase A.
 
+The coordinator now owns continuous paired writers, prepared before resolver entry
+and finalized through reserved resource/snapshot/media owners. A staged audio root
+commits only after the MIDI tick succeeds, so a failed paired tick keeps the prior
+complete cut. Fixed Replacing advances/wraps without loop playback; prefix Recording
+grows beyond live history. Stop/Playing publish together, active exports retain
+complete immutable views, and growing Recording can become Replacing at the exact
+boundary without another suffix admission scan. Density already verified by the
+same MIDI pool travels with immutable media; loaded imports still undergo bounded
+pre-entry checking. Source reset fences future input but cannot prevent publication
+of the last complete private MIDI cut. Failed growing ticks cannot inflate the
+reported complete capture length.
+
+Local guarded scenarios prove many wraps, prefix growth, active/old exports,
+Recording-to-Replacing, scheduled exits, a long loaded base with more events than
+one preparation allowance, refusal before readiness, and exit after one tick.
+Source-reset coverage exposed a graph-operation ordering bug: source notifications
+now accept the just-activated epoch as well as its prepared predecessor. The
+padding scenario explicitly warms its history after configuration now that resets
+are actually delivered; exact padding/sample/packet assertions are retained.
+Protocol version 12 can represent Replacing in confirmed telemetry; application
+capabilities and backend entry remain disabled. The scalar single-frame oracle
+now includes both new transitions in seeded partition comparisons.
+
+All 64 resource tests, 18 loop-library unit tests, affected scalar/capture/interloop
+and control integration groups, protocol codec tests and the affected shared-media
+scenarios pass locally with warnings denied. The opt-in release measurement remains
+unrun; it is not acceptance evidence for these changes. Affected builds, formatting,
+tracing inventory and test-attribute checks pass. This advances F3 without closing
+it: ordinary Recording-to-Replacing, non-default channel windows, globally reserved
+live quotas and normal application routes remain. CI stays deferred in Phase A.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -375,7 +407,7 @@ the later tree/category/coordinator increments.
 
 | Layer | Existing support and remaining gap |
 | --- | --- |
-| `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver has Stopped/Playing/Recording only. A private MIDI candidate must become Ready before another patch; suffix preparation is callback-budgeted. This is not a continuous replacement writer. |
+| `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver and explicit coordinator route now support Replacing and prefix Recording with continuous paired writers. Ordinary recording entry, channel windows and global live admission still need integration. One-shot CandidateMidi remains separate. |
 | Production preparation | `shoop_rt_engine::prepare` passes empty `SharedSettings`. Native and worklet hosts use that path. The foundation's short histories and large MIDI metadata reservations are test configurations, not production defaults. |
 | Engine protocol / adapter | No negotiated Grab or Replacing capability/operation exists. `shoop_rt_backend::grab_loops` refuses Grab; its mode conversion refuses Replacing. |
 | Service / clients | Grab, AdoptRingbuffers, GrabClicked, default-recording Grab and Replacing remain refused. UI and Lua consequently cannot reach the primitives. Several media/read/cache guards recognize Recording only. |

@@ -112,6 +112,16 @@ a continuous recording implementation. The continuous writer must separately own
 every admitted tick and bound index debt, input retention and exit resources.
 Neither moving publication deadlines nor queue growth establishes that bound.
 
+The explicit coordinator writer route now joins a retained prefix to growing
+Recording or overwrites a fixed take in Replacing. Entry requires completed
+admission. Every successful mixed tick stages audio, applies MIDI and commits the
+paired cut; exit consumes reserved immutable owners. Active exports pin complete
+cuts, and source reset terminates capture at the last successful cut with an
+incomplete outcome. Protocol version 12 represents the new confirmed mode.
+The normal application still lacks production preparation and action admission;
+non-default channel-window mapping and ordinary Recording-to-Replacing remain
+open. These library/integration tests do not close P04/P05.
+
 ## Production sizing gate
 
 The reference nominal retention is 30 seconds. At 48 kHz, sixteen stereo sources

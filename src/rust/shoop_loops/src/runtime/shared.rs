@@ -2,6 +2,10 @@ use super::*;
 use core::sync::atomic::{AtomicU32, Ordering};
 use rt_runtime::buffer::{AudioPorts, MidiBuffer};
 
+mod writer;
+use writer::LiveSlot;
+pub use writer::LiveWriterId;
+
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 
 #[derive(Clone, Copy, Debug)]
@@ -63,6 +67,8 @@ pub enum CandidateStatus {
 pub struct SharedWork {
     pub history_ticks: usize,
     pub history_failures: usize,
+    pub writer_ticks: usize,
+    pub writer_failures: usize,
     pub edit_steps: usize,
     pub jobs_scanned: usize,
     pub background_bytes_remaining: usize,
@@ -79,6 +85,7 @@ pub struct SharedCapacity {
     pub arena_payload_bytes: usize,
     pub sources: usize,
     pub candidates: usize,
+    pub writers: usize,
 }
 struct History {
     committed_graph: Option<Epoch>,
@@ -135,6 +142,8 @@ pub(super) struct Shared {
     lookup: Box<[Option<usize>]>,
     max_frames: usize,
     jobs: Box<[Job]>,
+    live: Box<[LiveSlot]>,
+    live_turn: usize,
     owned: Box<[Option<rt_runtime::ResourceId>]>,
     building: usize,
     turn: usize,
@@ -336,6 +345,13 @@ impl Shared {
                     value: None,
                 })
                 .collect(),
+            live_turn: 0,
+            live: (0..settings.candidates)
+                .map(|_| LiveSlot {
+                    generation: 1,
+                    value: None,
+                })
+                .collect(),
             building: 0,
             owned: vec![None; c.resource_slots].into_boxed_slice(),
             turn: 0,
@@ -357,6 +373,7 @@ impl Shared {
                 .ok_or(Error::Capacity)?,
             sources: result.histories.len(),
             candidates: result.jobs.len(),
+            writers: result.live.len(),
             ..SharedCapacity::default()
         };
         let add = |total: &mut usize, count: usize, bytes: usize| -> Result<(), Error> {
@@ -369,6 +386,7 @@ impl Shared {
             (result.histories.capacity(), size_of::<History>()),
             (result.lookup.len(), size_of::<Option<usize>>()),
             (result.jobs.len(), size_of::<Job>()),
+            (result.live.len(), size_of::<LiveSlot>()),
             (
                 result.owned.len(),
                 size_of::<Option<rt_runtime::ResourceId>>(),
@@ -448,6 +466,12 @@ impl Shared {
         }
         for j in result.jobs.iter_mut() {
             core::hint::black_box(j);
+        }
+        for slot in &mut result.live {
+            *core::hint::black_box(slot) = LiveSlot {
+                generation: 1,
+                value: None,
+            };
         }
         Ok(result)
     }
@@ -627,6 +651,7 @@ impl Shared {
                 self.work.history_failures = self.work.history_failures.saturating_add(1);
             }
         }
+        self.write_live(source, frame, q, io)?;
         Ok(())
     }
     pub fn finish(&mut self, end: Frame, graph: Epoch) {
@@ -1007,6 +1032,7 @@ impl Shared {
             self.callback = Some(callback);
             self.remaining = self.allowance;
             self.work = SharedWork::default();
+            self.progress_live(callback, io);
         }
         while self.remaining > 0 && self.building > 0 {
             let mut selected = None;
@@ -1111,6 +1137,7 @@ impl Shared {
         }
     }
     pub fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+        self.cancel_all_live(&mut resources.io())?;
         for slot in 0..self.jobs.len() {
             if self.jobs[slot].value.is_some() {
                 self.cancel(
@@ -1244,12 +1271,80 @@ impl LoopPlanner {
                     frame: status.end,
                 })
             }
+            Operation::WriterBegin {
+                target,
+                source,
+                take,
+                kind,
+            } => {
+                let row = self.row(target)?;
+                let state = self.resolver.state(target)?;
+                if row.active.is_some() || row.prepared.is_some() || state.writes() {
+                    return Err(Error::Busy.into());
+                }
+                if (row.binding.channels > 0) != take.audio.is_some()
+                    || row.binding.midi != take.midi.is_some()
+                {
+                    return Err(Error::InvalidShape.into());
+                }
+                if row.windows != Windows::default() || row.length_override.is_some() {
+                    return Err(Error::Busy.into());
+                }
+                if kind == indexed_midi::WriteKind::Fixed && take.frames != state.content_length {
+                    return Err(Error::InvalidShape.into());
+                }
+                let fence = Fence {
+                    timing_revision: row.timing_revision,
+                    target,
+                    revision: state.content_revision,
+                    length: state.content_length,
+                    graph,
+                    topology: self.resolver.epoch(),
+                };
+                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                let id = shared.begin_live(fence, source, take, kind, frame, io)?;
+                let job = shared.live_job(id)?;
+                Ok(Reply::Writer {
+                    id,
+                    status: if job.ready {
+                        CandidateStatus::Ready
+                    } else {
+                        CandidateStatus::Building
+                    },
+                })
+            }
+            Operation::WriterStatus { id } => {
+                let job = self
+                    .shared
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .live_job(id)?;
+                Ok(Reply::Writer {
+                    id,
+                    status: job.failure.map_or(
+                        if job.ready {
+                            CandidateStatus::Ready
+                        } else {
+                            CandidateStatus::Building
+                        },
+                        CandidateStatus::Failed,
+                    ),
+                })
+            }
+            Operation::WriterCancel { id } => {
+                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                if shared.live_job(id)?.active {
+                    return Err(Error::Busy.into());
+                }
+                shared.cancel_live(id, io)?;
+                Ok(Reply::Done)
+            }
             Operation::CandidateBegin { target, take } => {
                 let row = self.row(target)?;
                 let state = self.resolver.state(target)?;
                 if row.active.is_some()
                     || row.prepared.is_some()
-                    || state.mode == Mode::Recording
+                    || state.writes()
                     || (row.binding.channels > 0) != take.audio.is_some()
                     || row.binding.midi != take.midi.is_some()
                 {
@@ -1372,7 +1467,7 @@ impl LoopPlanner {
         if row.active.is_some()
             || row.prepared.is_some()
             || row.interval.is_some()
-            || state.mode == Mode::Recording
+            || state.writes()
         {
             return Err(Error::Busy.into());
         }

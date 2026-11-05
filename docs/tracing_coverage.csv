@@ -460,3 +460,4 @@ src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callba
 src/rust/shoop_host_freertos/build.rs,build_support,excluded,Compile-time embedded target and generated board configuration; no application execution boundary.
 src/rust/rt_runtime/src/resource/reservation.rs,generic_realtime_library,excluded,Prepared snapshot and future backing credits with bounded publication and cancellation; no host tracing dependency.
 src/rust/rt_runtime/src/resource/reservation/tests.rs,test_support,excluded,Heap-guarded paired publication under saturated metadata and cancellation fences; no production boundary.
+src/rust/shoop_loops/src/runtime/shared/writer.rs,portable_loop_library,excluded,Prepared live writer admission and complete-cut publication expose typed outcomes and bounded counters without callback tracing.

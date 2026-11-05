@@ -275,6 +275,7 @@ fn loop_transition(mode: LoopMode) -> Transition {
         LoopMode::Recording => Transition::Record {
             monitor_previous: false,
         },
+        LoopMode::Replacing => Transition::ReplaceInput { position: None },
     }
 }
 pub(crate) fn protocol_mode(mode: Mode) -> LoopMode {
@@ -282,6 +283,7 @@ pub(crate) fn protocol_mode(mode: Mode) -> LoopMode {
         Mode::Stopped => LoopMode::Stopped,
         Mode::Playing => LoopMode::Playing,
         Mode::Recording => LoopMode::Recording,
+        Mode::Replacing => LoopMode::Replacing,
     }
 }
 pub(crate) fn loop_id(id: LoopSlotId) -> LoopId {
@@ -1173,7 +1175,7 @@ impl ControlEndpoint {
             recording_armed: self.planned[slot]
                 .iter()
                 .flatten()
-                .any(|planned| planned.mode == LoopMode::Recording),
+                .any(|planned| matches!(planned.mode, LoopMode::Recording | LoopMode::Replacing)),
             timing_revision: if current { timing_revision } else { 0 },
             content_revision: if current {
                 cells.content_revision.load(Ordering::SeqCst)

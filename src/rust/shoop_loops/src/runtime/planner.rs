@@ -119,6 +119,12 @@ impl LoopPlanner {
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(), Error> {
         if let Some(take) = self.rows[slot].and_then(|r| r.prepared) {
+            if let Some(id) = take.writer {
+                self.shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .cancel_live(id, io)?;
+            }
             if let Some(token) = take.token {
                 io.capture().cancel_take(token)?;
             }
@@ -134,6 +140,13 @@ impl LoopPlanner {
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
+        if let Some(take) = self.prepare_live_take(slot, decision, io)? {
+            self.rows[slot].as_mut().unwrap().prepared = Some(take);
+            return Ok(());
+        }
+        if decision.state.mode == Mode::Replacing || decision.state.capture_frames != 0 {
+            return Err(Error::Capacity);
+        }
         let id = self.ledger.reserve(media::Description {
             owner: row.binding.target,
             revision: decision.state.capture_revision,
@@ -161,6 +174,7 @@ impl LoopPlanner {
             None
         };
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            writer: None,
             revision: decision.state.capture_revision,
             media: id,
             bank,
@@ -175,9 +189,6 @@ impl LoopPlanner {
         error: Error,
         starting: bool,
     ) -> Result<(), Error> {
-        if !matches!(error, Error::Capacity | Error::Exhausted) {
-            return Err(error);
-        }
         let target = decision.state.id;
         let observation = if starting {
             decision.origin.map_or(
@@ -229,7 +240,7 @@ impl LoopPlanner {
                 continue;
             };
             let decision = self.views[slot].decision;
-            let recording = decision.state.mode == Mode::Recording;
+            let recording = decision.state.writes();
             let starting = recording
                 && row
                     .active
@@ -253,6 +264,18 @@ impl LoopPlanner {
             }
             let take =
                 if starting { row.prepared } else { row.active }.ok_or(Error::InvalidState)?;
+            if let Some(id) = take.writer {
+                if let Some(error) = self
+                    .shared
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .live_job(id)?
+                    .failure
+                {
+                    self.latch(slot, decision, error, starting)?;
+                    return Ok(false);
+                }
+            }
             if let Some(token) = take.token {
                 let result = if starting {
                     io.capture().reserve_prepared(token, frame)
@@ -316,6 +339,26 @@ impl LoopPlanner {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let take = row.active.ok_or(Error::InvalidState)?;
         let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } if *target==row.binding.target));
+        if let Some(id) = take.writer {
+            let (frames, [audio, midi]) = self
+                .shared
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .finish_live(id, frame, io)?;
+            let expected = self
+                .resolver
+                .state(row.binding.target)
+                .map_err(runtime_error)?
+                .capture_frames;
+            if frames != expected {
+                return Err(Error::InvalidState);
+            }
+            self.rows[slot].as_mut().unwrap().frozen = if row.binding.channels > 0 {
+                [audio, midi]
+            } else {
+                [midi, None]
+            };
+        }
         if let Some(token) = take.token {
             let mut output = [None; 2];
             let members = usize::from(row.binding.channels > 0) + usize::from(row.binding.midi);
@@ -350,9 +393,7 @@ impl LoopPlanner {
             };
             let mut decision = self.views[slot].decision;
             if let Some(take) = row.active {
-                if decision.state.mode != Mode::Recording
-                    || decision.state.capture_revision != take.revision
-                {
+                if !decision.state.writes() || decision.state.capture_revision != take.revision {
                     let media = self.freeze(slot, frame, io)?;
                     if decision.state.content_revision == take.revision {
                         self.ledger
@@ -389,6 +430,19 @@ impl LoopPlanner {
                 }
             }
             if let Some(take) = self.rows[slot].and_then(|r| r.prepared) {
+                if let Some(id) = take.writer {
+                    let job = self
+                        .shared
+                        .as_ref()
+                        .ok_or(Error::InvalidState)?
+                        .live_job(id)?;
+                    let position = if matches!(job.kind, indexed_midi::WriteKind::Fixed) {
+                        decision.state.position
+                    } else {
+                        decision.state.capture_frames
+                    };
+                    self.shared.as_mut().unwrap().start_live(id, position, io)?;
+                }
                 if let Some(token) = take.token {
                     io.capture().activate(token, frame)?;
                 }
@@ -399,7 +453,9 @@ impl LoopPlanner {
                     .iter_mut()
                     .chain(core::iter::once(&mut row.windows.midi))
                 {
-                    window.raw_frames = None;
+                    if decision.state.mode == Mode::Recording {
+                        window.raw_frames = None;
+                    }
                 }
                 row.active = Some(take);
                 row.prepared = None;
@@ -407,6 +463,17 @@ impl LoopPlanner {
                 row.failure = None;
             }
             let row = self.rows[slot].expect("row");
+            if let Some(writer) = row
+                .active
+                .and_then(|take| take.writer)
+                .filter(|_| decision.state.mode == Mode::Replacing)
+            {
+                self.shared.as_mut().ok_or(Error::InvalidState)?.seek_live(
+                    writer,
+                    decision.state.position,
+                    io,
+                )?;
+            }
             let media = self
                 .ledger
                 .playback(row.binding.target)?
@@ -482,10 +549,23 @@ impl LoopPlanner {
         })?;
         let mut sources = [None; 2];
         let result = (|| {
-            for (member, resource) in row.resources[take.bank].iter().enumerate() {
-                if let Some(resource) = resource {
-                    let snapshot = io.snapshot(*resource, frame)?;
-                    sources[member] = Some(snapshot);
+            if let Some(writer) = take.writer {
+                let [audio, midi] = self
+                    .shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .snapshot_live(writer, frame, io)?;
+                sources = if row.binding.channels > 0 {
+                    [audio, midi]
+                } else {
+                    [midi, None]
+                };
+            } else {
+                for (member, resource) in row.resources[take.bank].iter().enumerate() {
+                    if let Some(resource) = resource {
+                        let snapshot = io.snapshot(*resource, frame)?;
+                        sources[member] = Some(snapshot);
+                    }
                 }
             }
             let audio = sources[0]
@@ -770,6 +850,9 @@ impl LoopPlanner {
                 Operation::HistoryStatus { .. }
                     | Operation::HistoryGrab { .. }
                     | Operation::HistoryWindow { .. }
+                    | Operation::WriterBegin { .. }
+                    | Operation::WriterStatus { .. }
+                    | Operation::WriterCancel { .. }
                     | Operation::CandidateBegin { .. }
                     | Operation::CandidateAudio { .. }
                     | Operation::CandidateMidi { .. }
@@ -1280,7 +1363,7 @@ impl LoopPlanner {
                     }
                     let row = self.row(target)?;
                     let state = self.resolver.state(target)?;
-                    if state.mode == crate::Mode::Recording {
+                    if state.writes() {
                         return Err(Error::Busy.into());
                     }
                     let revision = state
@@ -1401,6 +1484,9 @@ impl LoopPlanner {
                 | Operation::HistoryStatus { .. }
                 | Operation::HistoryGrab { .. }
                 | Operation::HistoryWindow { .. }
+                | Operation::WriterBegin { .. }
+                | Operation::WriterStatus { .. }
+                | Operation::WriterCancel { .. }
                 | Operation::CandidateBegin { .. }
                 | Operation::CandidateAudio { .. }
                 | Operation::CandidateMidi { .. }
@@ -1548,6 +1634,20 @@ impl LoopPlanner {
             row.reset_input = false;
         }
         self.resolver.finish().map_err(runtime_error)?;
+        for row in self.rows.iter().flatten() {
+            if let Some(take) = row.active.filter(|take| take.writer.is_some()) {
+                let job = self
+                    .shared
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .live_job(take.writer.unwrap())?;
+                if matches!(job.kind, indexed_midi::WriteKind::Growing { .. }) {
+                    self.resolver
+                        .confirm_capture_frames(row.binding.target, take.revision, job.frames)
+                        .map_err(runtime_error)?;
+                }
+            }
+        }
         for index in 0..self.pending.len() {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
                 if let PendingKind::Transition { request, pin, .. } = pending.kind {

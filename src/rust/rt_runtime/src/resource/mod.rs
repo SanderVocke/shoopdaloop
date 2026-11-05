@@ -39,7 +39,7 @@ pub mod shared_audio;
 pub mod shared_midi;
 #[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
 mod shared_pages;
-pub use audio_backing::{AudioHistoryId, AudioStoreId};
+pub use audio_backing::{AudioHistoryId, AudioStoreId, AudioWrite};
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
 use render::WorkClass;
 pub use render::{RenderIo, RenderWork};

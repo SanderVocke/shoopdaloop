@@ -70,6 +70,7 @@ pub(super) struct Media {
     pub frames: u64,
     pub initial: MidiState,
     pub revision: Revision,
+    density_checked: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Kind {
@@ -213,6 +214,7 @@ impl Core {
             frames,
             initial: *initial,
             revision: Revision(0),
+            density_checked: true,
         })
     }
     pub fn retain(&mut self, media: &Media) -> Result<Media, Error> {
@@ -222,6 +224,7 @@ impl Core {
             frames: media.frames,
             initial: media.initial,
             revision: media.revision,
+            density_checked: media.density_checked,
         })
     }
     pub fn retarget_empty(&mut self, empty: &mut Media, source: &Media) -> Result<(), Error> {
@@ -238,6 +241,7 @@ impl Core {
         empty.frames = source.frames;
         empty.initial = source.initial;
         empty.revision = source.revision;
+        empty.density_checked = source.density_checked;
         Ok(())
     }
     pub fn release(&mut self, media: Media) -> Result<(), Error> {
@@ -317,6 +321,7 @@ impl Core {
         if self.packets.available_records() == 0 {
             return Err(Error::Capacity);
         }
+        media.density_checked = false;
         self.indexes.reset_work();
         let result = (|| {
             let body = self.packets.append(io, bytes)?;
@@ -369,6 +374,7 @@ impl Core {
         if self.packets.available_records() == 0 {
             return Err(Error::Capacity);
         }
+        media.density_checked = false;
         self.indexes.reset_work();
         let result = (|| {
             let body = self.packets.reference_packet(io, base, offset, bytes)?;
@@ -410,6 +416,7 @@ impl Core {
             Kind::Fixed => media.origin.0 + media.frames,
             Kind::Growing { .. } => u64::MAX,
         }));
+        let ready = media.density_checked;
         Ok(Admission {
             media,
             kind,
@@ -418,7 +425,7 @@ impl Core {
             quantum: None,
             density: 0,
             bytes: 0,
-            ready: false,
+            ready,
         })
     }
     pub fn progress_writer(
@@ -427,6 +434,9 @@ impl Core {
         admission: &mut Admission,
         budget: usize,
     ) -> Result<bool, Error> {
+        if admission.ready {
+            return Ok(true);
+        }
         self.indexes.reset_work();
         let result = (|| {
             for _ in 0..budget {
@@ -474,7 +484,7 @@ impl Core {
     }
     pub fn finish_admission(
         &self,
-        admission: Admission,
+        mut admission: Admission,
         position: u64,
     ) -> Result<Writer, (Error, Admission)> {
         if !admission.ready {
@@ -488,11 +498,22 @@ impl Core {
         {
             return Err((Error::InvalidEvent, admission));
         }
+        admission.media.density_checked = true;
         Ok(Writer {
             media: admission.media,
             kind: admission.kind,
             position,
         })
+    }
+    pub fn seek_writer(&self, writer: &mut Writer, position: u64) -> Result<(), Error> {
+        if writer.kind != Kind::Fixed
+            || position >= writer.media.frames
+            || position % self.q as u64 != 0
+        {
+            return Err(Error::InvalidFrame);
+        }
+        writer.position = position;
+        Ok(())
     }
     pub fn writer_totals(
         &mut self,

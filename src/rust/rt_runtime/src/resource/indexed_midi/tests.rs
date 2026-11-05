@@ -331,14 +331,13 @@ fn source_reset_and_competing_upload_fence_private_writers_and_recover_owners() 
         );
         assert_eq!(
             resources.finish_indexed_midi_writer(writer),
-            Err(Error::InvalidId)
+            Ok(Revision(2))
         );
-        resources.cancel_indexed_midi_writer(writer).unwrap();
         let writer = admit(&mut resources, take, WriteKind::Fixed, 0);
         let upload = resources
             .begin_upload(
                 take,
-                Revision(1),
+                Revision(2),
                 Description {
                     format: Format::Midi,
                     frames: 64,

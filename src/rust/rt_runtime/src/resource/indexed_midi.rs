@@ -787,6 +787,29 @@ impl ResourceStore {
             }
         })
     }
+    pub fn seek_indexed_midi_writer(&mut self, id: WriterId, position: u64) -> Result<(), Error> {
+        self.with_indexed_midi(id.store, |_, pool| {
+            let job = pool.writers.get_mut(id.key)?;
+            pool.core
+                .seek_writer(job.writer.as_mut().ok_or(Error::Busy)?, position)
+        })
+    }
+    /// Retain the last complete private cut without consuming the writer.
+    pub fn snapshot_indexed_midi_writer(&mut self, id: WriterId) -> Result<ResourceId, Error> {
+        self.indexed_midi_credit()?;
+        let media = self.with_indexed_midi(id.store, |_, pool| {
+            pool.views.available()?;
+            let job = pool.writers.get(id.key)?;
+            let media = pool
+                .core
+                .snapshot(job.writer.as_ref().ok_or(Error::Busy)?)?;
+            Ok(pool.views.insert(media))
+        })?;
+        self.indexed_midi_resource(Take {
+            store: id.store,
+            media,
+        })
+    }
     pub fn cancel_indexed_midi_writer(&mut self, id: WriterId) -> Result<(), Error> {
         self.with_indexed_midi(id.store, |_, pool| {
             let job = pool.writers.remove(id.key)?;
@@ -815,9 +838,6 @@ impl ResourceStore {
                 return Err(Error::StaleRevision);
             }
             let revision = owner.revision.checked_next()?;
-            if let Some(source) = job.source {
-                pool.sources.get(source.key)?;
-            }
             let writer = job.writer.as_ref().ok_or(Error::Busy)?;
             let totals = pool
                 .core
@@ -1048,6 +1068,68 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn seek_indexed_midi_writer(&mut self, id: WriterId, position: u64) -> Result<(), Error> {
+        self.store.seek_indexed_midi_writer(id, position)
+    }
+    pub fn snapshot_indexed_midi_writer(&mut self, id: WriterId) -> Result<ResourceId, Error> {
+        self.store.snapshot_indexed_midi_writer(id)
+    }
+
+    pub fn fork_indexed_midi(
+        &mut self,
+        id: StoreId,
+        snapshot: SnapshotId,
+    ) -> Result<ResourceId, Error> {
+        self.store.fork_indexed_midi(id, snapshot)
+    }
+    pub fn prepare_indexed_midi_import(
+        &mut self,
+        id: StoreId,
+        snapshot: SnapshotId,
+        initial: &MidiState,
+    ) -> Result<ImportId, Error> {
+        self.store
+            .prepare_indexed_midi_import(id, snapshot, initial)
+    }
+    pub fn progress_indexed_midi_import(
+        &mut self,
+        id: ImportId,
+        events: usize,
+    ) -> Result<Status, Error> {
+        self.store.progress_indexed_midi_import(id, events)
+    }
+    pub fn cancel_indexed_midi_import(&mut self, id: ImportId) -> Result<(), Error> {
+        self.store.cancel_indexed_midi_import(id)
+    }
+    pub fn finish_indexed_midi_import(&mut self, id: ImportId) -> Result<ResourceId, Error> {
+        self.store.finish_indexed_midi_import(id)
+    }
+    pub fn prepare_indexed_midi_writer(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        kind: WriteKind,
+    ) -> Result<WriterId, Error> {
+        self.store
+            .prepare_indexed_midi_writer(resource, expected, kind)
+    }
+    pub fn progress_indexed_midi_writer(
+        &mut self,
+        id: WriterId,
+        events: usize,
+    ) -> Result<Status, Error> {
+        self.store.progress_indexed_midi_writer(id, events)
+    }
+    pub fn start_indexed_midi_writer(&mut self, id: WriterId, position: u64) -> Result<(), Error> {
+        self.store.start_indexed_midi_writer(id, position)
+    }
+    pub fn cancel_indexed_midi_writer(&mut self, id: WriterId) -> Result<(), Error> {
+        self.store.cancel_indexed_midi_writer(id)
+    }
+    pub fn finish_indexed_midi_writer(&mut self, id: WriterId) -> Result<Revision, Error> {
+        self.store.finish_indexed_midi_writer(id)
+    }
+
     pub fn indexed_midi_coverage(
         &self,
         source: SourceId,

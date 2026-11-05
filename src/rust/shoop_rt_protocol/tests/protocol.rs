@@ -234,6 +234,11 @@ fn client_samples() -> Vec<ClientMessage> {
             mode: LoopMode::Recording,
             delay: Some(2),
         },
+        Request::LoopTransition {
+            loop_id: loop_id(4),
+            mode: LoopMode::Replacing,
+            delay: Some(2),
+        },
         Request::LoopClear {
             loop_id: loop_id(4),
         },

@@ -28,6 +28,14 @@ pub enum Transition {
     Record {
         monitor_previous: bool,
     },
+    /// Overwrite the fixed period from the current phase unless a position is supplied.
+    ReplaceInput {
+        position: Option<u64>,
+    },
+    /// Continue an already admitted immutable prefix with live input.
+    RecordPrefix {
+        frames: u64,
+    },
     Stop,
     Seek {
         position: u64,

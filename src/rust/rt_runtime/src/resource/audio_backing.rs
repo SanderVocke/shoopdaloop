@@ -28,6 +28,17 @@ pub(super) struct Export {
     pub index: shared_audio::ReadIndex,
 }
 
+/// Staged COW samples stay private until commit. Cancel on any paired-media failure.
+#[must_use]
+pub struct AudioWrite {
+    resource: ResourceId,
+    expected: Revision,
+    active: UploadId,
+    revision: Revision,
+    store: AudioStoreId,
+    write: shared_audio::Write,
+}
+
 impl ResourceStore {
     pub fn audio_store_capacity(
         &mut self,
@@ -461,6 +472,77 @@ impl RenderIo<'_> {
         Ok(revision)
     }
 
+    pub fn stage_audio_write(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        position: Option<u64>,
+        samples: &[f32],
+    ) -> Result<AudioWrite, Error> {
+        let owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        let revision = if samples.is_empty() {
+            owner.revision
+        } else {
+            owner.revision.checked_next()?
+        };
+        let write = self.store.with_audio(take.store, |store, audio| {
+            audio.stage_write(&mut store.render_io(), take.take, position, samples)
+        })?;
+        Ok(AudioWrite {
+            resource,
+            expected,
+            active,
+            revision,
+            store: take.store,
+            write,
+        })
+    }
+    pub fn cancel_audio_write(&mut self, write: AudioWrite) -> Result<(), Error> {
+        self.store.with_audio(write.store, |store, audio| {
+            audio.cancel_write(&mut store.render_io(), write.write)
+        })
+    }
+    pub fn commit_audio_write(&mut self, write: AudioWrite) -> Result<Revision, Error> {
+        let checked = self
+            .store
+            .check_writer(write.resource, None)
+            .and_then(|owner| {
+                if owner.revision != write.expected || owner.active != Some(write.active) {
+                    Err(Error::StaleRevision)
+                } else {
+                    Ok(owner)
+                }
+            });
+        let mut owner = match checked {
+            Ok(owner) => owner,
+            Err(error) => {
+                self.cancel_audio_write(write)?;
+                return Err(error);
+            }
+        };
+        let mut version = get(
+            &self.store.versions,
+            write.active.slot,
+            write.active.generation,
+        )?;
+        let info = self.store.with_audio(write.store, |store, audio| {
+            audio.commit_write(&mut store.render_io(), write.write)
+        })?;
+        owner.revision = write.revision;
+        version.revision = owner.revision;
+        version.description.frames = info.frames;
+        version.description.bytes = info.frames as usize * info.channels as usize * 4;
+        self.store.resources[write.resource.slot() as usize].value = Some(owner);
+        self.store.versions[write.active.slot as usize].value = Some(version);
+        Ok(owner.revision)
+    }
+
     /// Required COW edit of a resource; immutable generic snapshots stay pinned.
     pub fn replace_audio(
         &mut self,
@@ -493,6 +575,23 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn prepare_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        maximum_frames: u64,
+    ) -> Result<(), Error> {
+        self.store
+            .prepare_audio_growth(resource, expected, maximum_frames)
+    }
+    pub fn finish_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+    ) -> Result<(), Error> {
+        self.store.finish_audio_growth(resource, expected)
+    }
+
     pub fn grab_audio_window(
         &mut self,
         source: AudioHistoryId,

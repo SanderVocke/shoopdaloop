@@ -320,10 +320,13 @@ impl Resolver {
         {
             let q = self.quantum;
             let aligned = match request.transition {
-                Transition::Play { position, .. } | Transition::Seek { position, .. } => {
-                    position % q.frames() as u64 == 0
-                }
+                Transition::Play { position, .. }
+                | Transition::Seek { position, .. }
+                | Transition::ReplaceInput {
+                    position: Some(position),
+                } => position % q.frames() as u64 == 0,
                 Transition::Replace { length, .. } => length % q.frames() as u64 == 0,
+                Transition::RecordPrefix { frames } => frames % q.frames() as u64 == 0,
                 _ => true,
             };
             if !aligned {
@@ -501,7 +504,7 @@ impl Resolver {
             }
             match *observation {
                 Observation::CaptureExhausted { target } => {
-                    if self.state(target)?.mode != Mode::Recording {
+                    if !self.state(target)?.writes() {
                         return Err(Error::InvalidState);
                     }
                 }
@@ -592,7 +595,7 @@ impl Resolver {
             if state.content_length % q != 0
                 || state.position % q != 0
                 || state.capture_frames % q != 0
-                || (state.plays()
+                || (state.advances()
                     && state
                         .position
                         .checked_add(q)
@@ -658,7 +661,7 @@ impl Resolver {
         }
         let frames = end.0 - self.frame.0;
         for state in self.states.iter_mut().flatten() {
-            if state.plays() {
+            if state.advances() {
                 state.position += frames;
             }
             if state.mode == Mode::Recording {
@@ -668,6 +671,32 @@ impl Resolver {
         self.frame = end;
         self.preview = None;
         self.committed = false;
+        Ok(())
+    }
+
+    pub(crate) fn confirm_capture_frames(
+        &mut self,
+        target: LoopId,
+        revision: Revision,
+        frames: u64,
+    ) -> Result<(), Error> {
+        if self.committed || frames % self.quantum.frames() as u64 != 0 {
+            return Err(Error::InvalidState);
+        }
+        let slot = target.slot() as usize;
+        let state = self
+            .states
+            .get_mut(slot)
+            .and_then(Option::as_mut)
+            .filter(|state| state.id == target)
+            .ok_or(Error::InvalidId)?;
+        if state.mode != Mode::Recording
+            || state.capture_revision != revision
+            || frames > state.capture_frames
+        {
+            return Err(Error::InvalidState);
+        }
+        state.capture_frames = frames;
         Ok(())
     }
 
@@ -879,7 +908,12 @@ impl Boundary<'_> {
                             target: unavailable,
                             reason,
                         } if unavailable.slot() as usize == target
-                            && matches!(intent.transition, Transition::Record { .. }) =>
+                            && matches!(
+                                intent.transition,
+                                Transition::Record { .. }
+                                    | Transition::RecordPrefix { .. }
+                                    | Transition::ReplaceInput { .. }
+                            ) =>
                         {
                             Some(reason)
                         }
@@ -965,6 +999,9 @@ impl Boundary<'_> {
                     .as_mut()
                     .expect("validated observation");
                 state.capture_incomplete = true;
+                if state.mode == Mode::Replacing {
+                    state.content_revision = state.capture_revision;
+                }
                 state.mode = if state.monitor_previous && state.content_length != 0 {
                     Mode::Playing
                 } else {
@@ -999,7 +1036,7 @@ impl Boundary<'_> {
                     self.apply(slot, intent);
                 }
                 let state = self.scratch.states[slot].as_mut().expect("prepared state");
-                if state.plays() && state.position == state.content_length {
+                if state.advances() && state.position == state.content_length {
                     state.cycles = state.cycles.checked_add(1).ok_or(Error::Exhausted)?;
                     state.position = 0;
                     self.scratch.playback_discontinuities[slot] = true;
@@ -1189,6 +1226,9 @@ impl Boundary<'_> {
                 Some(segment) if segment.mode == Mode::Recording => Transition::Record {
                     monitor_previous: false,
                 },
+                Some(segment) if segment.mode == Mode::Replacing => {
+                    Transition::ReplaceInput { position: None }
+                }
                 Some(segment) => {
                     let offset = if matches!(action, ProgramAction::Snapshot { .. }) {
                         (cursor.iteration - segment.occurrence_start)
@@ -1378,6 +1418,7 @@ fn mode_transition(mode: Mode) -> Transition {
         Mode::Recording => Transition::Record {
             monitor_previous: false,
         },
+        Mode::Replacing => Transition::ReplaceInput { position: None },
     }
 }
 
@@ -1401,8 +1442,10 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
         | Transition::PlayIteration { .. }
         | Transition::SeekIteration { .. } => Err(Error::InvalidState),
         Transition::Stop => {
-            if state.mode == Mode::Recording {
-                state.content_length = state.capture_frames;
+            if state.writes() {
+                if state.mode == Mode::Recording {
+                    state.content_length = state.capture_frames;
+                }
                 state.content_revision = state.capture_revision;
             }
             state.mode = Mode::Stopped;
@@ -1410,7 +1453,57 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             state.monitor_previous = false;
             Ok(false)
         }
+        Transition::ReplaceInput { position } => {
+            if state.mode == Mode::Recording {
+                state.content_length = state.capture_frames;
+                state.content_revision = state.capture_revision;
+            }
+            if state.content_length == 0 {
+                return Err(Error::EmptyContent);
+            }
+            let preserve =
+                position.is_none() && matches!(state.mode, Mode::Playing | Mode::Replacing);
+            let position = position.unwrap_or_else(|| {
+                if matches!(state.mode, Mode::Playing | Mode::Replacing) {
+                    state.position
+                } else {
+                    0
+                }
+            });
+            if position >= state.content_length && !(preserve && position == state.content_length) {
+                return Err(Error::InvalidFrame);
+            }
+            if state.mode != Mode::Replacing {
+                state.capture_revision = state
+                    .revision_watermark
+                    .checked_next()
+                    .map_err(|_| Error::Exhausted)?;
+                state.revision_watermark = state.capture_revision;
+            }
+            if !matches!(state.mode, Mode::Playing | Mode::Replacing) {
+                state.cycles = 0;
+            }
+            state.mode = Mode::Replacing;
+            state.position = position;
+            state.capture_frames = state.content_length;
+            state.capture_incomplete = false;
+            state.monitor_previous = false;
+            Ok(false)
+        }
+        Transition::RecordPrefix { frames } => {
+            transition(
+                state,
+                Transition::Record {
+                    monitor_previous: false,
+                },
+            )?;
+            state.capture_frames = frames;
+            Ok(true)
+        }
         Transition::Record { monitor_previous } => {
+            if state.mode == Mode::Replacing {
+                state.content_revision = state.capture_revision;
+            }
             state.capture_revision = state
                 .revision_watermark
                 .checked_next()
@@ -1429,8 +1522,10 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             if state.mode == Mode::Playing && !retrigger {
                 return Ok(false);
             }
-            if state.mode == Mode::Recording {
-                state.content_length = state.capture_frames;
+            if state.writes() {
+                if state.mode == Mode::Recording {
+                    state.content_length = state.capture_frames;
+                }
                 state.content_revision = state.capture_revision;
             }
             if state.content_length == 0 {
@@ -1449,7 +1544,7 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             position,
             retrigger,
         } => {
-            if state.mode != Mode::Playing {
+            if !matches!(state.mode, Mode::Playing | Mode::Replacing) {
                 return Err(Error::InvalidState);
             }
             if position >= state.content_length {
@@ -1466,7 +1561,7 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
             revision,
             preserve_position,
         } => {
-            if state.mode == Mode::Recording {
+            if state.writes() {
                 return Err(Error::InvalidState);
             }
             if preserve_position && state.position >= length && state.position != 0 {

@@ -26,8 +26,8 @@ mod family;
 mod shared;
 pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
 pub use shared::{
-    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, SharedCapacity,
-    SharedSettings, SharedTake, SharedWork,
+    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, LiveWriterId,
+    SharedCapacity, SharedSettings, SharedTake, SharedWork,
 };
 mod node_pairs;
 mod planner;
@@ -139,6 +139,18 @@ pub enum Operation {
         window: crate::grab::WindowSpec,
         sync_frames: u64,
         sync_position: u64,
+    },
+    WriterBegin {
+        target: LoopId,
+        source: HistoryId,
+        take: SharedTake,
+        kind: indexed_midi::WriteKind,
+    },
+    WriterStatus {
+        id: LiveWriterId,
+    },
+    WriterCancel {
+        id: LiveWriterId,
     },
     CandidateBegin {
         target: LoopId,
@@ -358,6 +370,11 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    Writer {
+        id: LiveWriterId,
+        status: CandidateStatus,
+    },
+
     Timing(Cut),
     History(HistoryStatus),
     Grabbed(SharedTake),
@@ -486,6 +503,7 @@ pub struct View {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    writer: Option<LiveWriterId>,
     revision: Revision,
     media: media::MediaId,
     bank: usize,

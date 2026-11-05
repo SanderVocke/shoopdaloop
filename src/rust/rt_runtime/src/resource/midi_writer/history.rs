@@ -273,6 +273,7 @@ impl Core {
             frames,
             initial,
             revision: Revision(0),
+            density_checked: range.start.0 % self.q as u64 == 0,
         })
     }
     pub fn reset_source(

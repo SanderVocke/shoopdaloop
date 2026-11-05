@@ -66,12 +66,14 @@ pub(crate) fn mode_code(mode: Mode) -> u32 {
         Mode::Stopped => 0,
         Mode::Playing => 1,
         Mode::Recording => 2,
+        Mode::Replacing => 3,
     }
 }
 pub(crate) fn mode_from_code(code: u32) -> Mode {
     match code {
         1 => Mode::Playing,
         2 => Mode::Recording,
+        3 => Mode::Replacing,
         _ => Mode::Stopped,
     }
 }
