@@ -131,6 +131,9 @@ pub(crate) struct Strip {
     pub id: StripId,
     pub shape: StripShape,
     pub processor: Option<ProcessorOwner>,
+    pub sends: Banks,
+    pub returns: Banks,
+    pub midi_send: HostMask,
     pub controls: Controls,
     pub inputs: Banks,
     pub outputs: Banks,
@@ -271,6 +274,8 @@ impl Model {
         for strip in self.strips.iter_mut().flatten() {
             strip.inputs.swapped = false;
             strip.outputs.swapped = false;
+            strip.sends.swapped = false;
+            strip.returns.swapped = false;
         }
         for bus in self.buses.iter_mut().flatten() {
             bus.outputs.swapped = false;
@@ -359,6 +364,9 @@ impl Model {
                     id: strip,
                     shape,
                     processor,
+                    sends: Banks::default(),
+                    returns: Banks::default(),
+                    midi_send: HostMask::EMPTY,
                     controls: Controls::default(),
                     inputs: Banks::default(),
                     outputs: Banks::default(),
@@ -406,6 +414,9 @@ impl Model {
                 let set = |mask: &mut HostMask| mask.set(host, connected);
                 let index = port.index as usize;
                 match port.kind {
+                    PortKind::AudioSend => set(&mut strip.sends.swap()[index]),
+                    PortKind::AudioReturn => set(&mut strip.returns.swap()[index]),
+                    PortKind::MidiSend => set(&mut strip.midi_send),
                     PortKind::AudioIn => set(&mut strip.inputs.swap()[index]),
                     PortKind::AudioOut => set(&mut strip.outputs.swap()[index]),
                     PortKind::MidiIn => set(&mut strip.midi_inputs),

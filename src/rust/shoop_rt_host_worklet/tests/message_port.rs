@@ -28,6 +28,7 @@ const START: u64 = 48_000;
 
 fn description() -> EngineDescription {
     EngineDescription {
+        external_dry_wet: false,
         processors: shoop_rt_protocol::ProcessorSettings::disabled(),
         quantum: 1,
         sample_rate: 1000,

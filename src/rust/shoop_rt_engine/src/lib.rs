@@ -186,7 +186,9 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         + counts.iter().sum::<usize>()
         + pool.processors() * (3 * channels + 3);
     let edges = strips
-        * (2 * channels * (audio_in + audio_out + buses * master_channels) + midi_in + midi_out)
+        * (channels * (4 * (audio_in + audio_out) + 2 * buses * master_channels)
+            + midi_in
+            + 2 * midi_out)
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
@@ -487,7 +489,7 @@ pub fn prepare_with_shared_and_processors(
             observer: Some(Box::new(Observer(cells.clone()))),
         },
     )?;
-    if pool.processors() > 0
+    if (pool.processors() > 0 || description.external_dry_wet)
         && shared_settings
             .histories
             .iter()
@@ -644,6 +646,7 @@ pub fn prepare_with_shared_and_processors(
         },
         cells: cells.clone(),
         settings: Settings {
+            external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,
             smoothing: description.smoothing_frames,

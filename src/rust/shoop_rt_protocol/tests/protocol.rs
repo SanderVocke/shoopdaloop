@@ -40,6 +40,33 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(0),
+                kind: PortKind::AudioSend,
+                index: 7,
+            }),
+            host: HostPortId(2),
+            connected: true,
+        },
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(0),
+                kind: PortKind::AudioReturn,
+                index: 7,
+            }),
+            host: HostPortId(0),
+            connected: true,
+        },
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(0),
+                kind: PortKind::MidiSend,
+                index: 0,
+            }),
+            host: HostPortId(5),
+            connected: true,
+        },
         Request::CreateProcessedStrip {
             strip: strip(0),
             shape: StripShape {

@@ -259,6 +259,8 @@ impl ControlEndpoint {
             inputs: 0,
             outputs: 0,
             bank: 0,
+            send_bank: 0,
+            return_bank: 0,
             gain: 1.,
             balance: 0.,
             monitoring: false,
@@ -281,6 +283,8 @@ impl ControlEndpoint {
                     generation: strip.id.0.generation,
                     inputs: strip.shape.audio_inputs,
                     bank: strip.inputs.active as u8,
+                    send_bank: strip.sends.active as u8,
+                    return_bank: strip.returns.active as u8,
                     gain: controls.input_gain,
                     balance: controls.input_balance,
                     monitoring: controls.monitoring,
@@ -848,6 +852,9 @@ impl ControlEndpoint {
                             s.outputs,
                             s.midi_inputs,
                             s.midi_outputs,
+                            s.sends,
+                            s.returns,
+                            s.midi_send,
                         )
                     })
                 };
@@ -1122,7 +1129,7 @@ impl ControlEndpoint {
             .count();
         let bound = faded
             + stopping * (PLANNED + 1)
-            + 4 * self.next.strips.len()
+            + 6 * self.next.strips.len()
             + self.next.loops.len()
             + 2 * self.next.buses.len()
             + 2;
@@ -1175,6 +1182,19 @@ impl ControlEndpoint {
             let Some(strip) = self.next.strips[slot] else {
                 continue;
             };
+            for (changed, operation) in [
+                (strip.sends.swapped, EngineOp::CrossfadeSend),
+                (strip.returns.swapped, EngineOp::CrossfadeReturn),
+            ] {
+                if changed {
+                    self.submit_job_op(
+                        job,
+                        Frame(activation),
+                        self.pool.strip_input(slot),
+                        operation,
+                    );
+                }
+            }
             if strip.inputs.swapped {
                 self.submit_job_op(
                     job,

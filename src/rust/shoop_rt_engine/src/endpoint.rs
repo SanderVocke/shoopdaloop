@@ -43,6 +43,7 @@ use shoop_rt_transport::carrier::{Endpoint, Outbox};
 pub(crate) const PLANNED: usize = 8;
 
 pub(crate) struct Settings {
+    pub external_dry_wet: bool,
     pub ramp: u32,
     pub lead: u32,
     pub smoothing: u32,
@@ -758,10 +759,10 @@ impl ControlEndpoint {
     pub(crate) fn host_index(&self, host: HostPortId, kind: PortKind) -> Option<usize> {
         let port = self.host_ports.get(host.0 as usize)?;
         let expected = match kind {
-            PortKind::AudioIn => (HostPortKind::Audio, Direction::Input),
-            PortKind::AudioOut => (HostPortKind::Audio, Direction::Output),
+            PortKind::AudioIn | PortKind::AudioReturn => (HostPortKind::Audio, Direction::Input),
+            PortKind::AudioOut | PortKind::AudioSend => (HostPortKind::Audio, Direction::Output),
             PortKind::MidiIn => (HostPortKind::Midi, Direction::Input),
-            PortKind::MidiOut => (HostPortKind::Midi, Direction::Output),
+            PortKind::MidiOut | PortKind::MidiSend => (HostPortKind::Midi, Direction::Output),
         };
         if (port.kind, port.direction) != expected {
             return None;

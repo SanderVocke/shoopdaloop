@@ -76,6 +76,7 @@ pub(crate) fn worklet_config(
     };
     let defaults = EngineDescription::default();
     let engine = EngineDescription {
+        external_dry_wet: true,
         processors: Default::default(),
         buses: pools.buses as u8,
         bus_channels: pools.bus_channels as u8,

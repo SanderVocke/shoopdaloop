@@ -345,6 +345,17 @@ synth comparison with nonaligned note pairs. This milestone does not close Stage
 External port publication, complete transition/failure coverage, take metadata and
 public integration remain outstanding. Host capability bits remain gated.
 
+External core milestone: RT protocol v11 adds AudioSend/AudioReturn/MidiSend and
+independent connection banks/fades. External tracks capture wet return, dry input
+and dry MIDI, play wet without sends, route dry playback to sends, and rerecord wet
+without changing dry media. Generic External preparation is independent of both
+DSP build/startup policies; minimal library engines can leave it disabled. Worklet
+configuration v5 carries the preparation flag. Native product/browser startup
+requests it. Native tests cover unequal widths and 8+8, MIDI/sustain cleanup and
+cleanup saturation without repeated recovery. Wasm engine/worklet suites pass.
+Service/backend port mapping and actual JACK publication still require integration
+and validation; this checkpoint does not close the stage or enable capabilities.
+
 ### 6. Restore service operations, editors and track control MIDI
 
 - [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace

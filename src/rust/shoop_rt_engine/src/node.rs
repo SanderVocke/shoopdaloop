@@ -28,6 +28,8 @@ pub struct NodeConfiguration {
     pub inputs: u8,
     pub outputs: u8,
     pub bank: u8,
+    pub send_bank: u8,
+    pub return_bank: u8,
     pub gain: f32,
     pub balance: f32,
     pub monitoring: bool,
@@ -83,6 +85,8 @@ pub enum EngineOp {
     Presence(bool),
     /// Move to the other connection bank over the prepared ramp.
     Crossfade,
+    CrossfadeSend,
+    CrossfadeReturn,
     Inject(MidiMessage),
     /// Stream `bytes` of an exported medium from `cursor` into the bulk ring.
     ReadStart {
@@ -211,6 +215,10 @@ pub struct StripInput {
     ramp: u32,
     inputs: usize,
     bank: Ramp,
+    send_bank: Ramp,
+    return_bank: Ramp,
+    send_weights: Box<[f32]>,
+    return_weights: Box<[f32]>,
     monitor: Ramp,
     unity: Ramp,
     gains: Gains,
@@ -220,6 +228,8 @@ pub struct StripInput {
     injected: [Option<MidiMessage>; INJECTED],
     /// Notes sounding through the monitoring feed, released when monitoring stops.
     monitored: Box<MidiState>,
+    live_midi: Box<MidiState>,
+    live_midi_active: bool,
     release: bool,
 }
 
@@ -311,10 +321,14 @@ impl StripInput {
             .store(0, core::sync::atomic::Ordering::Relaxed);
         self.inputs = (inputs as usize).min(self.channels);
         self.bank = Ramp::at(0.);
+        self.send_bank = Ramp::at(0.);
+        self.return_bank = Ramp::at(0.);
         self.monitor = Ramp::at(0.);
         self.gains.reset();
         self.injected = [None; INJECTED];
         *self.monitored = MidiState::default();
+        *self.live_midi = MidiState::default();
+        self.live_midi_active = false;
         self.release = false;
         let cells = &self.cells.strips[self.slot];
         cells.input.clear();
@@ -337,6 +351,10 @@ impl StripInput {
             ramp: settings.ramp,
             inputs: 0,
             bank: Ramp::at(0.),
+            send_bank: Ramp::at(0.),
+            return_bank: Ramp::at(0.),
+            send_weights: vec![0.; frames].into_boxed_slice(),
+            return_weights: vec![0.; frames].into_boxed_slice(),
             monitor: Ramp::at(0.),
             unity: Ramp::at(1.),
             gains: Gains::new(frames),
@@ -345,6 +363,8 @@ impl StripInput {
             scratch: vec![0.; frames].into_boxed_slice(),
             injected: [None; INJECTED],
             monitored: Box::default(),
+            live_midi: Box::default(),
+            live_midi_active: false,
             release: false,
         }
     }
@@ -521,6 +541,8 @@ impl EngineNode {
                     core::sync::atomic::Ordering::Relaxed,
                 );
                 node.bank = Ramp::at(f32::from(configuration.bank));
+                node.send_bank = Ramp::at(f32::from(configuration.send_bank));
+                node.return_bank = Ramp::at(f32::from(configuration.return_bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
                 node.monitor = Ramp::at(f32::from(u8::from(configuration.monitoring)));
@@ -634,6 +656,16 @@ impl StripInput {
         &mut self,
         block: &mut ProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
+        let result = self.render_sources(block);
+        if result == Err(Error::Full) {
+            *self.monitored = MidiState::default();
+            *self.live_midi = MidiState::default();
+            self.live_midi_active = false;
+            self.release = false;
+        }
+        result
+    }
+    fn render_sources(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.inputs == 2;
@@ -654,6 +686,8 @@ impl StripInput {
         let mut demand = live_record || dry_play;
         for i in 0..frames {
             self.weights[i] = self.bank.next();
+            self.send_weights[i] = self.send_bank.next();
+            self.return_weights[i] = self.return_bank.next();
             self.monitoring[i] = self.monitor.next();
             demand |= self.monitoring[i] > 0.;
             let gate = if dry_play { 1. } else { self.monitoring[i] };
@@ -704,11 +738,11 @@ impl StripInput {
                 block
                     .audio
                     .output(2 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i] = send * (1. - self.weights[i]);
+                    .ok_or(Error::InvalidShape)?[i] = send * (1. - self.send_weights[i]);
                 block
                     .audio
                     .output(3 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i] = send * self.weights[i];
+                    .ok_or(Error::InvalidShape)?[i] = send * self.send_weights[i];
                 let first = block
                     .audio
                     .input(3 * channels + channel)
@@ -721,7 +755,7 @@ impl StripInput {
                     .audio
                     .output(4 * channels + channel)
                     .ok_or(Error::InvalidShape)?[i] =
-                    first * (1. - self.weights[i]) + second * self.weights[i];
+                    first * (1. - self.return_weights[i]) + second * self.return_weights[i];
             }
         }
         let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
@@ -761,13 +795,33 @@ impl StripInput {
             }
         }
         if processed {
-            if !forced_off && (live_record || monitoring) {
+            let live = !forced_off && (live_record || monitoring);
+            if self.live_midi_active && !live {
+                for channel in 0..16u8 {
+                    let state = self.live_midi.channel(channel).ok_or(Error::InvalidState)?;
+                    for (key, _) in state.projected_notes() {
+                        send.insert(0, frames, &[0x80 | channel, key, 0])?;
+                    }
+                    if state.controller(64).is_some_and(|value| value > 0) {
+                        send.insert(0, frames, &[0xb0 | channel, 64, 0])?;
+                    }
+                }
+                *self.live_midi = MidiState::default();
+            }
+            self.live_midi_active = live;
+            if live {
                 copy_midi(capture, send, frames)?;
+                for index in 0..capture.len() {
+                    let (_, packet) = capture.get(index).ok_or(Error::InvalidState)?;
+                    self.live_midi.apply_packet(packet, packet.len())?;
+                }
             }
             copy_midi(&block.midi_inputs[1], send, frames)?;
             copy_midi(&block.midi_inputs[2], global, frames)?;
         }
         if input.is_recovery() || block.midi_inputs[1].is_recovery() {
+            *self.live_midi = MidiState::default();
+            self.live_midi_active = false;
             return Err(Error::Full);
         }
         if active {
@@ -797,6 +851,10 @@ impl StripInput {
                 self.release |= !on && self.monitor.target() > 0.;
                 self.monitor.set(f32::from(u8::from(on)), self.ramp)
             }
+            EngineOp::CrossfadeSend => self.send_bank.set(1. - self.send_bank.target(), self.ramp),
+            EngineOp::CrossfadeReturn => self
+                .return_bank
+                .set(1. - self.return_bank.target(), self.ramp),
             EngineOp::Crossfade => {
                 self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 let target = 1. - self.bank.target();
@@ -918,7 +976,9 @@ impl StripOutput {
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
             }
-            EngineOp::Monitor(_)
+            EngineOp::CrossfadeSend
+            | EngineOp::CrossfadeReturn
+            | EngineOp::Monitor(_)
             | EngineOp::InputSource { .. }
             | EngineOp::Configure(_)
             | EngineOp::DiscardConfiguration { .. }
@@ -1162,6 +1222,8 @@ impl EngineNode {
             }
             if configuration.token == 0
                 || configuration.bank > 1
+                || configuration.send_bank > 1
+                || configuration.return_bank > 1
                 || !configuration.gain.is_finite()
                 || configuration.gain < 0.
                 || !(-1.0..=1.0).contains(&configuration.balance)
@@ -1325,6 +1387,8 @@ mod tests {
             inputs: 1,
             outputs: 1,
             bank: 1,
+            send_bank: 0,
+            return_bank: 0,
             gain: 0.5,
             balance: 0.,
             monitoring: true,

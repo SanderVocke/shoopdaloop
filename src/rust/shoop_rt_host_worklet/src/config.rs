@@ -15,7 +15,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 4;
+pub const CONFIG_VERSION: u32 = 5;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -105,6 +105,7 @@ impl WorkletConfig {
             engine.processors.fx_instances as usize,
             engine.processors.synth_instances as usize,
             engine.processors.memory_mb as usize,
+            usize::from(engine.external_dry_wet),
             engine.strip_channels.into(),
             engine.master_channels.into(),
             engine.buses.into(),
@@ -181,6 +182,11 @@ impl WorkletConfig {
             memory_mb: r.u32()?,
         };
         processors.validate().map_err(|_| ConfigError::Range)?;
+        let external_dry_wet = match r.u32()? {
+            0 => false,
+            1 => true,
+            _ => return Err(ConfigError::Range),
+        };
         let strip_channels = r.narrow()?;
         let master_channels = r.narrow()?;
         let buses = r.narrow()?;
@@ -228,6 +234,7 @@ impl WorkletConfig {
         Ok(Self {
             engine: EngineDescription {
                 processors,
+                external_dry_wet,
                 sample_rate,
                 max_frames,
                 quantum,
@@ -304,6 +311,7 @@ mod tests {
 
     fn config() -> WorkletConfig {
         let mut engine = EngineDescription {
+            external_dry_wet: true,
             segments: vec![
                 Segment {
                     strips: 2,
@@ -350,6 +358,9 @@ mod tests {
         let mut channels = record.clone();
         channels[16..20].copy_from_slice(&300u32.to_le_bytes());
         assert_eq!(WorkletConfig::decode(&channels), Err(ConfigError::Range));
+        let mut external = record.clone();
+        external[36..40].copy_from_slice(&2u32.to_le_bytes());
+        assert_eq!(WorkletConfig::decode(&external), Err(ConfigError::Range));
         let name = record.len() - "Keystep ✓".len() - 4;
         let mut invalid = record;
         invalid[name] = 0xff;

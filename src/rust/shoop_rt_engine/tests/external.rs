@@ -1,0 +1,385 @@
+//! External dry/wet roles over ordinary host ports, without any concrete DSP.
+use shoop_rt_engine::{testing::OfflineHost, EngineDescription, HostPorts, Segment};
+use shoop_rt_protocol::*;
+use shoop_wasm_test_support::{
+    heap::{assert_no_heap, TrackingAllocator},
+    shoop_test,
+};
+#[global_allocator]
+static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+fn strip() -> StripId {
+    StripId(SlotId::new(0, 1))
+}
+fn looped() -> LoopSlotId {
+    LoopSlotId(SlotId::new(0, 1))
+}
+fn description() -> EngineDescription {
+    EngineDescription {
+        external_dry_wet: true,
+        quantum: 16,
+        max_frames: 128,
+        ramp_frames: 0,
+        strip_channels: 8,
+        host: HostPorts::numbered(16, 16, 1),
+        segments: vec![Segment {
+            strips: 2,
+            loops: 2,
+        }],
+        resource_pages: 1024,
+        page_bytes: 512,
+        ..EngineDescription::default()
+    }
+}
+fn tick(h: &mut OfflineHost, frames: usize) {
+    assert_no_heap(|| h.process(frames)).unwrap();
+}
+fn request(h: &mut OfflineHost, request: Request) -> Outcome {
+    let id = assert_no_heap(|| h.request(request)).unwrap();
+    for _ in 0..4000 {
+        while let Some(message) = assert_no_heap(|| h.receive()) {
+            if let EngineMessage::Result {
+                correlation,
+                outcome,
+            } = message
+            {
+                if correlation == id {
+                    return outcome;
+                }
+            }
+        }
+        tick(h, 16);
+    }
+    panic!("request timed out: {request:?}")
+}
+fn done(h: &mut OfflineHost, r: Request) {
+    assert_eq!(request(h, r), Outcome::Done, "{r:?}");
+}
+fn connect(h: &mut OfflineHost, kind: PortKind, index: u8, host: u32) {
+    done(
+        h,
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(),
+                kind,
+                index,
+            }),
+            host: HostPortId(host),
+            connected: true,
+        },
+    );
+}
+fn create(h: &mut OfflineHost, dry: u8, wet: u8, midi: bool) {
+    h.connect().unwrap();
+    while h.receive().is_some() {}
+    done(
+        h,
+        Request::CreateProcessedStrip {
+            strip: strip(),
+            shape: StripShape {
+                audio_inputs: dry,
+                audio_outputs: wet,
+                midi_input: midi,
+                midi_output: false,
+            },
+            kind: ProcessorKind::External,
+        },
+    );
+    for c in 0..dry {
+        connect(h, PortKind::AudioIn, c, c as u32);
+        connect(h, PortKind::AudioSend, c, 24 + c as u32);
+    }
+    for c in 0..wet {
+        connect(h, PortKind::AudioReturn, c, 8 + c as u32);
+        connect(h, PortKind::AudioOut, c, 16 + c as u32);
+    }
+    if midi {
+        connect(h, PortKind::MidiIn, 0, 32);
+        connect(h, PortKind::MidiSend, 0, 33);
+    }
+    done(
+        h,
+        Request::CreateLoop {
+            strip: strip(),
+            loop_id: looped(),
+        },
+    );
+}
+fn mode(h: &mut OfflineHost, mode: LoopMode) {
+    done(
+        h,
+        Request::LoopTransition {
+            loop_id: looped(),
+            mode,
+            delay: None,
+        },
+    );
+}
+#[shoop_test]
+fn unequal_external_roles_capture_play_dry_and_rerecord_without_a_dsp_bank() {
+    for (dry, wet) in [(1, 8), (8, 1), (8, 8), (2, 5), (5, 2)] {
+        let mut h = OfflineHost::new(&description()).unwrap();
+        create(&mut h, dry, wet, true);
+        assert!(h.endpoint().processor_catalog().kinds.is_empty());
+        for c in 0..dry as usize {
+            h.input_mut(c).fill(c as f32 + 0.25);
+        }
+        for c in 0..wet as usize {
+            h.input_mut(8 + c).fill(-(c as f32) - 0.5);
+        }
+        mode(&mut h, LoopMode::Recording);
+        tick(&mut h, 64);
+        for c in 0..dry as usize {
+            assert_eq!(&h.output(8 + c)[16..64], &[c as f32 + 0.25; 48]);
+        }
+        for c in 0..wet as usize {
+            assert_eq!(&h.output(c)[16..64], &[0.; 48]);
+        }
+        mode(&mut h, LoopMode::Playing);
+        for c in 0..wet as usize {
+            h.input_mut(8 + c).fill(3. + c as f32);
+        }
+        tick(&mut h, 128);
+        for c in 0..wet as usize {
+            assert_eq!(
+                &h.output(c)[16..128],
+                &[-(c as f32) - 0.5; 112],
+                "wet dry={dry} wet={wet} c={c}"
+            );
+        }
+        for c in 0..dry as usize {
+            assert_eq!(&h.output(8 + c)[16..128], &[0.; 112]);
+        }
+        mode(&mut h, LoopMode::PlayingDryThroughWet);
+        tick(&mut h, 128);
+        for c in 0..dry as usize {
+            assert_eq!(&h.output(8 + c)[16..128], &[c as f32 + 0.25; 112]);
+        }
+        for c in 0..wet as usize {
+            assert_eq!(&h.output(c)[16..128], &[3. + c as f32; 112]);
+        }
+        for c in 0..dry as usize {
+            h.input_mut(c).fill(99.);
+        }
+        mode(&mut h, LoopMode::RecordingDryIntoWet);
+        tick(&mut h, 128);
+        for c in 0..dry as usize {
+            assert_eq!(&h.output(8 + c)[16..128], &[c as f32 + 0.25; 112]);
+        }
+        mode(&mut h, LoopMode::Playing);
+        for c in 0..wet as usize {
+            h.input_mut(8 + c).fill(5.);
+        }
+        tick(&mut h, 128);
+        for c in 0..wet as usize {
+            assert_eq!(&h.output(c)[16..128], &[3. + c as f32; 112]);
+        }
+        mode(&mut h, LoopMode::PlayingDryThroughWet);
+        tick(&mut h, 128);
+        for c in 0..dry as usize {
+            assert_eq!(&h.output(8 + c)[16..128], &[c as f32 + 0.25; 112]);
+        }
+    }
+}
+#[shoop_test]
+fn external_live_midi_releases_notes_and_sustain_when_the_live_route_stops() {
+    let mut h = OfflineHost::new(&description()).unwrap();
+    create(&mut h, 1, 1, true);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.midi_input_mut(0).push(3, 128, &[0x90, 60, 100]).unwrap();
+    h.midi_input_mut(0).push(4, 128, &[0xb0, 64, 127]).unwrap();
+    tick(&mut h, 128);
+    assert_eq!(h.midi_output(0).get(0), Some((19, &[0x90, 60, 100][..])));
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(false),
+        },
+    );
+    tick(&mut h, 64);
+    let packets: Vec<_> = (0..h.midi_output(0).len())
+        .map(|i| h.midi_output(0).get(i).unwrap().1.to_vec())
+        .collect();
+    assert!(packets.contains(&vec![0x80, 60, 0]));
+    assert!(packets.contains(&vec![0xb0, 64, 0]));
+}
+#[shoop_test]
+fn a_minimal_host_refuses_external_admission_before_mutating_its_pool() {
+    let mut d = description();
+    d.external_dry_wet = false;
+    let mut h = OfflineHost::new(&d).unwrap();
+    h.connect().unwrap();
+    while h.receive().is_some() {}
+    assert_eq!(
+        request(
+            &mut h,
+            Request::CreateProcessedStrip {
+                strip: strip(),
+                shape: StripShape {
+                    audio_inputs: 1,
+                    audio_outputs: 1,
+                    midi_input: false,
+                    midi_output: false
+                },
+                kind: ProcessorKind::External
+            }
+        ),
+        Outcome::Refused(Refusal::Unsupported)
+    );
+    done(
+        &mut h,
+        Request::CreateStrip {
+            strip: strip(),
+            shape: StripShape {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_input: false,
+                midi_output: false,
+            },
+        },
+    );
+    assert_eq!(
+        request(
+            &mut h,
+            Request::Connect {
+                port: EnginePort::Strip(StripPort {
+                    strip: strip(),
+                    kind: PortKind::AudioSend,
+                    index: 0
+                }),
+                host: HostPortId(24),
+                connected: true
+            }
+        ),
+        Outcome::Refused(Refusal::InvalidValue)
+    );
+}
+
+#[shoop_test]
+fn send_and_return_connection_fades_are_independent() {
+    let mut d = description();
+    d.quantum = 1;
+    d.ramp_frames = 4;
+    let mut h = OfflineHost::new(&d).unwrap();
+    create(&mut h, 1, 1, false);
+    h.input_mut(0).fill(0.25);
+    h.input_mut(8).fill(1.);
+    h.input_mut(9).fill(3.);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    tick(&mut h, 16);
+    let port = EnginePort::Strip(StripPort {
+        strip: strip(),
+        kind: PortKind::AudioReturn,
+        index: 0,
+    });
+    let mut ids = [
+        Some(
+            h.request(Request::Connect {
+                port,
+                host: HostPortId(8),
+                connected: false,
+            })
+            .unwrap(),
+        ),
+        Some(
+            h.request(Request::Connect {
+                port,
+                host: HostPortId(9),
+                connected: true,
+            })
+            .unwrap(),
+        ),
+    ];
+    let mut transient = Vec::new();
+    let mut finished = None;
+    for frame in 0..4000 {
+        tick(&mut h, 1);
+        assert_eq!(h.output(8)[0], 0.25);
+        let wet = h.output(0)[0];
+        if wet != 1. && wet != 3. {
+            transient.push(wet);
+        }
+        while let Some(message) = h.receive() {
+            if let EngineMessage::Result {
+                correlation,
+                outcome,
+            } = message
+            {
+                for id in &mut ids {
+                    if *id == Some(correlation) {
+                        assert_eq!(outcome, Outcome::Done);
+                        *id = None;
+                    }
+                }
+            }
+        }
+        if ids.iter().all(Option::is_none) {
+            finished.get_or_insert(frame);
+        }
+        if finished.is_some_and(|done| frame > done + 8) {
+            break;
+        }
+    }
+    assert!(finished.is_some());
+    assert_eq!(transient, [1.5, 2., 2.5]);
+    assert_eq!(h.output(0)[0], 3.);
+}
+
+#[shoop_test]
+fn overflowing_live_note_cleanup_recovers_once_and_does_not_repeat_forever() {
+    let mut d = description();
+    d.midi_events = 32;
+    d.midi_bytes = 256;
+    let mut h = OfflineHost::new(&d).unwrap();
+    create(&mut h, 1, 1, true);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    for batch in 0..3 {
+        for key in 0..32 {
+            h.midi_input_mut(0)
+                .push(0, 16, &[0x90, batch * 32 + key, 100])
+                .unwrap();
+        }
+        tick(&mut h, 16);
+    }
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(false),
+        },
+    );
+    tick(&mut h, 64);
+    tick(&mut h, 64);
+    assert!(h.midi_output(0).is_empty());
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.midi_input_mut(0).push(3, 128, &[0x90, 61, 100]).unwrap();
+    tick(&mut h, 128);
+    assert_eq!(h.midi_output(0).len(), 1);
+    assert_eq!(h.midi_output(0).get(0), Some((19, &[0x90, 61, 100][..])));
+}

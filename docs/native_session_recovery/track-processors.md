@@ -322,3 +322,28 @@ Wasm Node passes 48 DSP tests, 188 loop tests and 14 host-factory/production-gra
 tests. Native real-bank graph tests pass all eleven scenarios. These remain
 library/production-graph evidence; public UI, External publication, full media and
 persistence/recovery, packaged browser and cross-platform CI gates are still open.
+
+
+### External core routing milestone
+
+Protocol v11 adds explicit audio send, audio return and MIDI send port kinds,
+retaining existing tags. Send and return connection banks fade independently of
+dry input. External capture selects raw return plus original dry audio/MIDI;
+regular wet playback bypasses sends, dry playback routes to sends, and wet
+rerecord preserves dry media. External node delay is zero; the host bridge still
+adds its own Q once. Physical peer/driver latency is not a new automatic
+measurement feature here.
+
+`EngineDescription.external_dry_wet` prepares the generic topology and COW edit
+storage without FX/synth instances. Minimal library descriptions default it off;
+native product and browser startup set it on. Worklet configuration v5 carries a
+strict boolean. The configured media arena supplies the edit reservation; no
+extra decoded synth or rack resources are constructed. Note and sustain release
+covers live-route deactivation and recovers from cleanup overflow once.
+
+Native fixtures cover 1+8, 8+1, 8+8, 2+5 and 5+2, wet/dry/rerecord results, at-limit
+role separation, independent return crossfade, minimal admission refusal and MIDI
+cleanup saturation. All render/request paths are heap-guarded. Full core/protocol/
+worklet native tests and all-target checks pass, as does a warning-denying workspace
+build. Wasm Node passes 74 core and 18 worklet tests. Native JACK publication and
+service/UI mapping are still pending; these fixtures are not platform acceptance.

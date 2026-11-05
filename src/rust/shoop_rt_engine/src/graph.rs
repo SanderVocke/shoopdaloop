@@ -122,6 +122,25 @@ impl Builder {
                     )?;
                 }
             }
+            if strip
+                .processor
+                .is_some_and(|owner| owner.kind == shoop_rt_protocol::ProcessorKind::External)
+            {
+                for bank in 0..2 {
+                    for channel in 0..strip.shape.audio_outputs as usize {
+                        for host in bits(strip.returns.masks[bank][channel]) {
+                            push(
+                                &mut self.edges,
+                                &mut count,
+                                link(
+                                    Endpoint::host(PortType::Audio, host as u32),
+                                    audio(node, (3 + bank) * channels + channel),
+                                ),
+                            )?;
+                        }
+                    }
+                }
+            }
             if strip.processor.is_some() {
                 for (loop_slot, entry) in model.loops.iter().enumerate() {
                     if entry.is_some_and(|entry| entry.strip == strip.id) {
@@ -348,6 +367,35 @@ impl Builder {
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };
             let node = pool.strip_output(slot);
+            if strip
+                .processor
+                .is_some_and(|owner| owner.kind == shoop_rt_protocol::ProcessorKind::External)
+            {
+                for bank in 0..2 {
+                    for channel in 0..strip.shape.audio_inputs as usize {
+                        for host in bits(strip.sends.masks[bank][channel]) {
+                            push(
+                                &mut self.edges,
+                                &mut count,
+                                link(
+                                    audio(pool.strip_input(slot), (2 + bank) * channels + channel),
+                                    Endpoint::host(PortType::Audio, host as u32),
+                                ),
+                            )?;
+                        }
+                    }
+                }
+                for host in bits(strip.midi_send) {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(
+                            midi(pool.strip_input(slot), 2),
+                            Endpoint::host(PortType::Midi, host as u32),
+                        ),
+                    )?;
+                }
+            }
             for bank in 0..2 {
                 for channel in 0..strip.shape.audio_outputs as usize {
                     for host in bits(strip.outputs.masks[bank][channel]) {

@@ -48,6 +48,8 @@ impl HostPorts {
 pub struct EngineDescription {
     pub sample_rate: u32,
     pub processors: shoop_rt_protocol::ProcessorSettings,
+    /// Prepare External dry/wet routing and its bounded wet edit storage.
+    pub external_dry_wet: bool,
     /// Largest callback the host will render.
     pub max_frames: usize,
     /// Fixed graph tick. Changing it requires preparing a new engine.
@@ -90,6 +92,7 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
+            external_dry_wet: false,
             sample_rate: 48_000,
             processors: shoop_rt_protocol::ProcessorSettings::disabled(),
             max_frames: 512,

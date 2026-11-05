@@ -125,6 +125,9 @@ pub enum PortKind {
     AudioOut,
     MidiIn,
     MidiOut,
+    AudioSend,
+    AudioReturn,
+    MidiSend,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

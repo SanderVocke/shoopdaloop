@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        external_dry_wet: false,
         processors: shoop_rt_protocol::ProcessorSettings::disabled(),
         sample_rate: 1000,
         max_frames: 16,

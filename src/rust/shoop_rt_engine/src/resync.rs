@@ -20,21 +20,24 @@ pub(crate) struct Resync {
 /// The stage after `Begin` that reports generation floors.
 const GENERATIONS: u8 = 7;
 
-const PORT_KINDS: [PortKind; 4] = [
+const PORT_KINDS: [PortKind; 7] = [
     PortKind::AudioIn,
     PortKind::AudioOut,
     PortKind::MidiIn,
     PortKind::MidiOut,
+    PortKind::AudioSend,
+    PortKind::AudioReturn,
+    PortKind::MidiSend,
 ];
 
 impl ControlEndpoint {
     fn host_port_id(&self, kind: PortKind, index: usize) -> HostPortId {
         let [audio_in, audio_out, midi_in, _] = self.settings.host;
         let first = match kind {
-            PortKind::AudioIn => 0,
-            PortKind::AudioOut => audio_in,
+            PortKind::AudioIn | PortKind::AudioReturn => 0,
+            PortKind::AudioOut | PortKind::AudioSend => audio_in,
             PortKind::MidiIn => audio_in + audio_out,
-            PortKind::MidiOut => audio_in + audio_out + midi_in,
+            PortKind::MidiOut | PortKind::MidiSend => audio_in + audio_out + midi_in,
         };
         HostPortId((first + index) as u32)
     }
@@ -44,7 +47,30 @@ impl ControlEndpoint {
         let strip = self.model.strips[cursor.index]?;
         while cursor.part < PORT_KINDS.len() {
             let kind = PORT_KINDS[cursor.part];
+            let external = strip
+                .processor
+                .is_some_and(|owner| owner.kind == shoop_rt_protocol::ProcessorKind::External);
             let (channels, masks): (usize, &[crate::model::HostMask]) = match kind {
+                PortKind::AudioSend => (
+                    if external {
+                        strip.shape.audio_inputs as usize
+                    } else {
+                        0
+                    },
+                    strip.sends.current(),
+                ),
+                PortKind::AudioReturn => (
+                    if external {
+                        strip.shape.audio_outputs as usize
+                    } else {
+                        0
+                    },
+                    strip.returns.current(),
+                ),
+                PortKind::MidiSend => (
+                    usize::from(external && strip.shape.midi_input),
+                    core::slice::from_ref(&strip.midi_send),
+                ),
                 PortKind::AudioIn => (strip.shape.audio_inputs as usize, strip.inputs.current()),
                 PortKind::AudioOut => (strip.shape.audio_outputs as usize, strip.outputs.current()),
                 PortKind::MidiIn => (
