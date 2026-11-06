@@ -102,6 +102,55 @@ pub fn native_config(
     (config, warnings)
 }
 
+pub fn effective_driver_config(
+    requested: &AudioDriverConfig,
+    driver: &DriverConfig,
+    sample_rate: u32,
+    buffer_size: u32,
+) -> AudioDriverConfig {
+    #[cfg(not(feature = "cpal"))]
+    let _ = requested;
+    match driver {
+        DriverConfig::Dummy(_) => AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate,
+            buffer_size,
+        }),
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(config) => {
+            AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
+                client_name: config.client_name.clone(),
+            })
+        }
+        #[cfg(feature = "cpal")]
+        DriverConfig::Cpal(config) => {
+            let mut effective = match requested {
+                AudioDriverConfig::Cpal(config) => config.clone(),
+                _ => CpalAudioDriverConfig::default(),
+            };
+            let name = |device: &DeviceSelection| match device {
+                DeviceSelection::Default => "default".into(),
+                DeviceSelection::None => "none".into(),
+                DeviceSelection::Named(name) => name.clone(),
+            };
+            effective.host = config.host.clone().unwrap_or_else(|| "default".into());
+            effective.client_name = config.client_name.clone();
+            effective.output_device = name(&config.output_device);
+            effective.input_device = name(&config.input_device);
+            effective.sample_rate = config.sample_rate.unwrap_or(0);
+            effective.buffer_size = config.buffer_frames.unwrap_or(0);
+            effective.output_channels = config
+                .output_channels
+                .map_or_else(|| "all".into(), |n| n.to_string());
+            effective.input_channels = config
+                .input_channels
+                .map_or_else(|| "all".into(), |n| n.to_string());
+            effective.midi_inputs = config.midi_inputs.clone();
+            effective.midi_outputs = config.midi_outputs.clone();
+            AudioDriverConfig::Cpal(effective)
+        }
+    }
+}
+
 pub fn engine_description(pools: &NewEnginePools, max_frames: u32) -> EngineDescription {
     let defaults = EngineDescription::default();
     let loop_memory = pools.loop_memory_mb as usize * (1 << 20);

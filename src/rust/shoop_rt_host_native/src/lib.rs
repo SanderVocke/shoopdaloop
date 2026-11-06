@@ -20,6 +20,8 @@
 // Without device drivers, the MIDI bridges and parts of the callback are unused.
 #![cfg_attr(not(feature = "cpal"), allow(dead_code))]
 
+#[cfg(any(feature = "cpal", test))]
+mod callback_gate;
 #[cfg(feature = "cpal")]
 mod cpal_driver;
 mod cycle;

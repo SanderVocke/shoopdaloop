@@ -126,7 +126,9 @@ fn start_with(
                     ..engine_description(pools, dummy.buffer_size)
                 },
             };
-            shoop_rt_host_native::start(&fallback).map_err(start_failure)?
+            let started = shoop_rt_host_native::start(&fallback).map_err(start_failure)?;
+            config = fallback;
+            started
         }
         Err(error) => return Err(start_failure(error)),
     };
@@ -139,7 +141,12 @@ fn start_with(
     );
     let status = started.host.status().driver;
     let profile = shoop_egui::ResolvedAudioDriverConfig {
-        configured: driver.clone(),
+        configured: shoop_host::engine::effective_driver_config(
+            driver,
+            &config.driver,
+            status.sample_rate,
+            status.buffer_frames,
+        ),
         sample_rate: status.sample_rate,
         buffer_size: status.buffer_frames,
         instance_name: started.host.instance_name().to_owned(),
@@ -422,6 +429,10 @@ pub(crate) mod tests {
         assert_eq!(
             snapshot.status.driver_state,
             shoop_backend::BackendDriverState::Dummy
+        );
+        assert_eq!(
+            snapshot.audio_drivers.active.as_ref().unwrap().configured,
+            AudioDriverConfig::Dummy(DummyAudioDriverConfig::default())
         );
         drop(backend);
         let problems = started.host.stop();

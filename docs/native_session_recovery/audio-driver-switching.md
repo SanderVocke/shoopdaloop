@@ -122,3 +122,36 @@ on the implementation PR, and retain unrelated parity capability gates.
 | A6 ownership | Confirmed detach/reattach test verifies retained result and a single driver start; protocol authority/generation tests fence old submissions. |
 | A7 preferences | Save-failure retry test counts driver starts; process tests verify the owning host's sidecar; embedded settings tests preserve unrelated keys. |
 | A8 delivery | Native workspace, feature-isolation, dependency, Wasm and platform CI gates accompany isolated direct-JACK/CPAL-JACK qualification. |
+
+## Native device qualification
+
+The ignored `native_driver_switching_device_acceptance_on_both_carriers` test
+records a survivor take, switches configurations, and reads the media back after
+every transition. Its default matrix needs an isolated JACK server at 48 kHz with
+256-frame callbacks and covers Dummy, direct JACK, automatic/fixed CPAL JACK, and
+return transitions on socket and shared memory. Do not enable the missing-backend
+skip flag for this test.
+
+```sh
+JACK_DEFAULT_SERVER=p14-qualification cargo nextest run -p shoop_host --profile ci \
+  -E 'test(native_driver_switching_device_acceptance)' --run-ignored all
+```
+
+Set `SHOOP_P14_DRIVER_CONFIGS` to a JSON array of native `AudioDriverConfig` values
+to qualify other available hosts/devices and buffer policies using the same test.
+The file uses the host driver's existing JSON representation. Qualification logs
+must identify the selected devices and distinguish virtual devices from physical
+output/MIDI hardware.
+
+CPAL shutdown first allows at least two seconds (or four configured callback
+periods, when longer) for the disconnected engine's MIDI reset. It then closes the callback admission gate, pauses streams and waits for
+in-flight callbacks before destroying backend streams. This prevents backend thread
+cancellation from unwinding an active Rust render turn. The gate is atomic and
+allocation-free on callbacks; waiting happens on the lifecycle worker. A stalled
+callback retains its owner, and the existing cleanup timeout remains an uncertain
+result instead of permitting forced destruction.
+
+Startup fallback keeps the requested preference intact and reports the effective
+runtime profile separately. Rollback uses that effective configuration, including
+Dummy after a failed device startup. Target startup refuses degraded device/MIDI
+configurations; it never converts warnings or a fallback into switch success.

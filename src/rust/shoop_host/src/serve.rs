@@ -262,13 +262,16 @@ pub fn run_with_ready(
                 "Could not start the configured audio driver: {error}; using dummy"
             ));
             let dummy = shoop_app_api::DummyAudioDriverConfig::default();
-            shoop_rt_host_native::start(&NativeConfig {
+            let fallback = NativeConfig {
                 driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
                 engine: shoop_rt_engine::EngineDescription {
                     processors: config.settings.processors,
                     ..engine::engine_description(&config.pools, dummy.buffer_size)
                 },
-            })?
+            };
+            let started = shoop_rt_host_native::start(&fallback)?;
+            native = fallback;
+            started
         }
         Err(error) => return Err(error.into()),
     };
@@ -278,7 +281,12 @@ pub fn run_with_ready(
     }
     let status = started.host.status().driver;
     let profile = shoop_app_api::ResolvedAudioDriverConfig {
-        configured: config.driver.clone(),
+        configured: engine::effective_driver_config(
+            &config.driver,
+            &native.driver,
+            status.sample_rate,
+            status.buffer_frames,
+        ),
         sample_rate: status.sample_rate,
         buffer_size: status.buffer_frames,
         instance_name: started.host.instance_name().to_owned(),

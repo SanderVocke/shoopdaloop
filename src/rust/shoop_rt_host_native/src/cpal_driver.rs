@@ -156,6 +156,11 @@ pub fn preflight_cpal_on<H: HostTrait>(
     let default = output.default_output_config().map_err(device_error)?;
     let rate = config.sample_rate.unwrap_or(default.sample_rate());
     let channels = config.output_channels.unwrap_or(default.channels());
+    if channels == 0 || usize::from(channels) > MAX_HOST_PORTS {
+        return Err(StartError::InvalidConfig(
+            "output channel capacity exceeded",
+        ));
+    }
     if !output
         .supported_output_configs()
         .map_err(device_error)?
@@ -171,6 +176,9 @@ pub fn preflight_cpal_on<H: HostTrait>(
     if let Some(input) = select_device(host, false, &config.input_device)? {
         let default = input.default_input_config().map_err(device_error)?;
         let channels = config.input_channels.unwrap_or(default.channels());
+        if channels == 0 || usize::from(channels) > MAX_HOST_PORTS {
+            return Err(StartError::InvalidConfig("input channel capacity exceeded"));
+        }
         if !input
             .supported_input_configs()
             .map_err(device_error)?
@@ -348,6 +356,7 @@ fn device_error(error: impl std::fmt::Display) -> StartError {
 
 /// The input stream's side of the duplex bridge.
 struct Capture {
+    callbacks: Arc<crate::callback_gate::CallbackGate>,
     producer: Producer<f32>,
     channels: usize,
     started: Arc<AtomicBool>,
@@ -356,6 +365,9 @@ struct Capture {
 
 impl Capture {
     fn push(&mut self, data: &[f32]) {
+        let Some(_turn) = self.callbacks.enter() else {
+            return;
+        };
         self.started.store(true, Ordering::Relaxed);
         let frames = data.len() / self.channels;
         let room = self.producer.slots() / self.channels;
@@ -399,6 +411,7 @@ impl Playback {
 /// Owns the render cycle inside the output callback and hands it back when CPAL
 /// drops the callback.
 struct Output {
+    callbacks: Arc<crate::callback_gate::CallbackGate>,
     cycle: Option<Cycle>,
     playback: Option<Playback>,
     channels: usize,
@@ -409,6 +422,10 @@ struct Output {
 
 impl Output {
     fn process(&mut self, data: &mut [f32]) {
+        let Some(_turn) = self.callbacks.enter() else {
+            data.fill(0.);
+            return;
+        };
         let started = Instant::now();
         let Some(cycle) = self.cycle.as_mut() else {
             data.fill(0.);
@@ -466,16 +483,33 @@ impl Drop for Output {
 
 /// The streams of a running CPAL driver.
 pub(crate) struct Streams {
-    output: Box<dyn Any + Send>,
-    input: Option<Box<dyn Any + Send>>,
+    output: Option<Box<dyn StreamTrait + Send>>,
+    input: Option<Box<dyn StreamTrait + Send>>,
+    callbacks: Arc<crate::callback_gate::CallbackGate>,
     back: Receiver<Cycle>,
 }
 
 impl Streams {
-    pub fn stop(self) -> Option<Cycle> {
-        drop(self.output);
-        drop(self.input);
+    fn quiesce(&self) {
+        self.callbacks.close();
+        if let Some(output) = &self.output {
+            let _ = output.pause();
+        }
+        if let Some(input) = &self.input {
+            let _ = input.pause();
+        }
+        self.callbacks.wait();
+    }
+    pub fn stop(mut self) -> Option<Cycle> {
+        self.quiesce();
+        self.output.take();
+        self.input.take();
         self.back.recv_timeout(RETURN_TIMEOUT).ok()
+    }
+}
+impl Drop for Streams {
+    fn drop(&mut self) {
+        self.quiesce();
     }
 }
 
@@ -637,6 +671,7 @@ where
         sample_rate,
         buffer_size: buffer,
     };
+    let callbacks = Arc::new(crate::callback_gate::CallbackGate::default());
     let started = Arc::new(AtomicBool::new(false));
     let mut playback = None;
     let input_stream = match input {
@@ -648,6 +683,7 @@ where
                 chunk.fill_from_iter(std::iter::repeat(0.));
             }
             let mut capture = Capture {
+                callbacks: callbacks.clone(),
                 producer,
                 channels: width,
                 started: started.clone(),
@@ -673,6 +709,7 @@ where
     };
     let (back, returned) = sync_channel(1);
     let mut side = Output {
+        callbacks: callbacks.clone(),
         cycle: Some(cycle),
         playback,
         channels: usize::from(output_channels),
@@ -689,10 +726,21 @@ where
             None,
         )
         .map_err(device_error)?;
-    if let Some(stream) = &input_stream {
+    let streams = Streams {
+        output: Some(Box::new(output_stream)),
+        input: input_stream.map(|stream| Box::new(stream) as Box<dyn StreamTrait + Send>),
+        callbacks,
+        back: returned,
+    };
+    if let Some(stream) = &streams.input {
         stream.play().map_err(device_error)?;
     }
-    output_stream.play().map_err(device_error)?;
+    streams
+        .output
+        .as_ref()
+        .unwrap()
+        .play()
+        .map_err(device_error)?;
     shared.set_state(DriverRunState::Running);
     let period_frames = requested.unwrap_or(max_frames as u32);
     Ok(assemble(
@@ -700,13 +748,9 @@ where
         outbox,
         Running {
             instance_name: "CPAL".to_owned(),
-            reset_wait: reset_wait(period_frames, sample_rate),
+            reset_wait: reset_wait(period_frames, sample_rate).max(Duration::from_secs(2)),
             shared,
-            driver: Driver::Cpal(Streams {
-                output: Box::new(output_stream),
-                input: input_stream.map(|stream| Box::new(stream) as Box<dyn Any + Send>),
-                back: returned,
-            }),
+            driver: Driver::Cpal(streams),
             pump,
             connections,
             layout,

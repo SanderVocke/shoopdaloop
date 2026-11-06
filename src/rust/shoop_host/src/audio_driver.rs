@@ -182,7 +182,8 @@ pub fn controller(
                                 exact_devices,
                             } => (|| {
                                 stop(&mut host)?;
-                                let native = strict_config(&profile.configured, &settings)?;
+                                let native =
+                                    strict_config(&profile.configured, &settings, exact_devices)?;
                                 #[cfg(feature = "cpal")]
                                 if exact_devices {
                                     if let (
@@ -211,6 +212,11 @@ pub fn controller(
                                 #[cfg(not(feature = "cpal"))]
                                 let _ = exact_devices;
                                 let started = shoop_rt_host_native::start(&native)?;
+                                ensure!(
+                                    !exact_devices || started.host.warnings().is_empty(),
+                                    "the target audio configuration could not be honored: {}",
+                                    started.host.warnings().join("; ")
+                                );
                                 let status = started.host.status().driver;
                                 let profile = ResolvedAudioDriverConfig {
                                     configured: profile.configured,
@@ -377,9 +383,13 @@ fn discover(config: &AudioDriverConfig) -> Result<std::sync::Arc<[AudioDriverDes
     Ok(std::sync::Arc::from(catalog))
 }
 
-fn strict_config(config: &AudioDriverConfig, settings: &HostSettings) -> Result<NativeConfig> {
+fn strict_config(
+    config: &AudioDriverConfig,
+    settings: &HostSettings,
+    enforce_request_bounds: bool,
+) -> Result<NativeConfig> {
     ensure!(
-        config.bounded() && available(config.kind()),
+        (!enforce_request_bounds || config.bounded()) && available(config.kind()),
         "requested native driver is unavailable or invalid"
     );
     let inventory = crate::engine::inventory(config);
@@ -397,7 +407,7 @@ fn preflight(
     config: &AudioDriverConfig,
     settings: &HostSettings,
 ) -> Result<ResolvedAudioDriverConfig> {
-    let mut native = strict_config(config, settings)?;
+    let mut native = strict_config(config, settings, true)?;
     #[allow(unused_mut)]
     let mut configured = config.clone();
     #[cfg(feature = "cpal")]

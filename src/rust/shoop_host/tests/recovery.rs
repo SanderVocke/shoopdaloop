@@ -21,9 +21,26 @@ struct Host {
     root: tempfile::TempDir,
     path: PathBuf,
     entry: HostEntry,
+    stderr_path: PathBuf,
 }
 impl Drop for Host {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("host process state on failure: {:?}", self.child.try_wait());
+            let stderr = std::fs::read_to_string(&self.stderr_path).unwrap_or_default();
+            eprintln!(
+                "host stderr: {}",
+                stderr
+                    .lines()
+                    .rev()
+                    .take(20)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = self.child.kill();
         }
@@ -79,6 +96,7 @@ fn host_with_driver(
         root.path().join("host.log")
     };
 
+    let stderr_path = log_path.with_extension("stderr.log");
     let mut child = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
         .env("RUST_LOG", "info")
         .args(["--config"])
@@ -89,7 +107,7 @@ fn host_with_driver(
         .arg(&log_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(std::fs::File::create(&stderr_path).unwrap()))
         .spawn()
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(if real_device { 30 } else { 10 });
@@ -108,6 +126,7 @@ fn host_with_driver(
         root,
         path,
         entry,
+        stderr_path,
     }
 }
 fn attach(entry: &HostEntry, _id: u128) -> (Client, Connection) {
@@ -1476,7 +1495,7 @@ fn audio_driver_switch_preserves_identities_and_persists_on_both_carriers() {
 #[shoop_test]
 #[cfg(all(feature = "jack", feature = "cpal"))]
 #[ignore = "requires an isolated JACK server with CPAL's JACK host available"]
-fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
+fn native_driver_switching_device_acceptance_on_both_carriers() {
     assert!(std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_none());
     for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
         let mut host = host(transport);
@@ -1484,8 +1503,70 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
         driver_snapshot(&mut client, &mut connection, |s| {
             s.audio_drivers.catalog.len() == 3
         });
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::Global(GlobalControlAction::SetSync(false)),
+        );
+        let Outcome::TrackCreated { track, loops, .. } = command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::AddTrack(TrackSpec {
+                name: "Driver survivor".into(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 1,
+                    midi: true,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            }),
+        ) else {
+            panic!("could not create survivor track")
+        };
+        let loop_id = loops[0];
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::Loop {
+                track,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            },
+        );
+        driver_snapshot(&mut client, &mut connection, |s| {
+            s.tracks[1].loops[0].mode == LoopMode::Recording
+        });
+        thread::sleep(Duration::from_millis(75));
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::Loop {
+                track,
+                loop_id,
+                action: LoopAction::StopClicked,
+            },
+        );
+        driver_snapshot(&mut client, &mut connection, |s| {
+            s.tracks[1].loops[0].mode == LoopMode::Stopped && s.tracks[1].loops[0].length_frames > 0
+        });
+        let read = |client: &mut Client, connection: &mut Connection| {
+            connection
+                .send(client.read_media(loop_id).unwrap())
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while client.media().is_none() {
+                connection.poll(client).unwrap();
+                assert!(Instant::now() < deadline, "switched loop media timed out");
+                thread::sleep(Duration::from_millis(2));
+            }
+            client.media().unwrap().as_ref().unwrap().clone()
+        };
+        let mut previous_media = read(&mut client, &mut connection);
+        assert!(previous_media.audio[0].samples.iter().any(|s| *s == 0.25));
+        let mut previous_rate = 48_000;
         let original = client.snapshot().unwrap().clone();
-        for target in [
+        let defaults = vec![
             AudioDriverConfig::Jack(JackAudioDriverConfig {
                 client_name: "P14-direct".into(),
             }),
@@ -1513,7 +1594,21 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
                 sample_rate: 48_000,
                 buffer_size: 128,
             }),
-        ] {
+        ];
+        let targets = std::env::var_os("SHOOP_P14_DRIVER_CONFIGS")
+            .map(|path| {
+                let bytes = std::fs::read(path).unwrap();
+                assert!(bytes.len() <= 65_536);
+                let targets: Vec<AudioDriverConfig> = serde_json::from_slice(&bytes).unwrap();
+                assert!(
+                    !targets.is_empty()
+                        && targets.len() <= 16
+                        && targets.iter().all(AudioDriverConfig::bounded)
+                );
+                targets
+            })
+            .unwrap_or(defaults);
+        for target in targets {
             let outcome = command_with_timeout(
                 &mut client,
                 &mut connection,
@@ -1558,7 +1653,7 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
                 state.audio_drivers.active.as_ref().unwrap().configured,
                 negotiated
             );
-            assert_eq!(state.status.sample_rate, 48_000);
+            let rate = state.status.sample_rate;
             assert_eq!(
                 state.tracks.iter().map(|t| t.id).collect::<Vec<_>>(),
                 original.tracks.iter().map(|t| t.id).collect::<Vec<_>>()
@@ -1572,8 +1667,106 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
                 .iter()
                 .flat_map(|t| &t.loops)
                 .all(|l| l.mode == LoopMode::Stopped));
+            let media = read(&mut client, &mut connection);
+            if rate == previous_rate {
+                assert_eq!(media.audio[0].samples, previous_media.audio[0].samples);
+                assert_eq!(media.midi[0].events, previous_media.midi[0].events);
+            }
+            assert!(media.audio[0]
+                .samples
+                .iter()
+                .any(|s| (*s - 0.25).abs() < 1e-5));
+            previous_media = media;
+            previous_rate = rate;
         }
         drop(connection);
         shutdown(&mut host, &mut client);
     }
+}
+
+#[shoop_test]
+#[cfg(feature = "cpal")]
+fn startup_fallback_retains_the_effective_dummy_profile_for_later_switches() {
+    let unavailable = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
+        output_device: "none".into(),
+        midi_inputs: vec![],
+        midi_outputs: vec![],
+        ..Default::default()
+    });
+    let mut host = host_with_driver(AppTransport::Socket, 16, Some(unavailable.clone()));
+    let (mut client, mut connection) = attach(&host.entry, 954);
+    driver_snapshot(&mut client, &mut connection, |s| {
+        s.audio_drivers.catalog.len() == 3
+    });
+    let effective = AudioDriverConfig::default();
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap()
+            .configured,
+        effective
+    );
+    assert!(matches!(
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::AudioDriver(audio_driver::Command::Request(unavailable))
+        ),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap()
+            .configured,
+        effective
+    );
+    assert!(!host.root.path().join("config.audio-driver.json").exists());
+    assert!(matches!(
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::AudioDriver(audio_driver::Command::Request(
+                AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128
+                })
+            ))
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let state = client.snapshot().unwrap();
+    assert_eq!(
+        state
+            .audio_drivers
+            .switch
+            .source
+            .as_ref()
+            .unwrap()
+            .configured,
+        effective
+    );
+    let request_id = state.audio_drivers.switch.request_id;
+    assert!(matches!(
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::AudioDriver(audio_driver::Command::Confirm {
+                request_id,
+                accept: true
+            })
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(client.snapshot().unwrap().status.sample_rate, 32_000);
+    drop(connection);
+    shutdown(&mut host, &mut client);
 }
