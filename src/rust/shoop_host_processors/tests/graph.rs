@@ -83,56 +83,58 @@ fn bus_fx_processes_summed_audio_bypasses_and_keeps_routes_on_removal() {
                 .unwrap();
         h.connect().unwrap();
         while h.receive().is_some() {}
-        done(
-            &mut h,
-            Request::CreateStrip {
-                strip: strip(),
-                shape: StripShape {
-                    audio_inputs: width,
-                    audio_outputs: width,
-                    midi_input: false,
-                    midi_output: false,
-                },
-            },
-        );
-        for channel in 0..width {
+        for source in [strip(), StripId(SlotId::new(1, 1))] {
             done(
                 &mut h,
-                Request::Connect {
-                    port: EnginePort::Strip(StripPort {
-                        strip: strip(),
-                        kind: PortKind::AudioIn,
-                        index: channel,
-                    }),
-                    host: HostPortId(channel as u32),
-                    connected: true,
+                Request::CreateStrip {
+                    strip: source,
+                    shape: StripShape {
+                        audio_inputs: width,
+                        audio_outputs: width,
+                        midi_input: false,
+                        midi_output: false,
+                    },
                 },
             );
+            for channel in 0..width {
+                done(
+                    &mut h,
+                    Request::Connect {
+                        port: EnginePort::Strip(StripPort {
+                            strip: source,
+                            kind: PortKind::AudioIn,
+                            index: channel,
+                        }),
+                        host: HostPortId(channel as u32),
+                        connected: true,
+                    },
+                );
+                done(
+                    &mut h,
+                    Request::Route {
+                        port: StripPort {
+                            strip: source,
+                            kind: PortKind::AudioOut,
+                            index: channel,
+                        },
+                        bus: BusPort {
+                            bus: BusId::MASTER,
+                            index: channel,
+                        },
+                        connected: true,
+                    },
+                );
+                h.input_mut(channel as usize)
+                    .fill(0.125 * (channel + 1) as f32);
+            }
             done(
                 &mut h,
-                Request::Route {
-                    port: StripPort {
-                        strip: strip(),
-                        kind: PortKind::AudioOut,
-                        index: channel,
-                    },
-                    bus: BusPort {
-                        bus: BusId::MASTER,
-                        index: channel,
-                    },
-                    connected: true,
+                Request::StripControl {
+                    strip: source,
+                    control: StripControl::Monitoring(true),
                 },
             );
-            h.input_mut(channel as usize)
-                .fill(0.25 * (channel + 1) as f32);
         }
-        done(
-            &mut h,
-            Request::StripControl {
-                strip: strip(),
-                control: StripControl::Monitoring(true),
-            },
-        );
         tick(&mut h, 128);
         assert_eq!(&h.output(0)[64..128], &[0.25; 64]);
         done(

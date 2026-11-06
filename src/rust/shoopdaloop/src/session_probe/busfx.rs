@@ -195,7 +195,13 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             .all(|v| (*v + 30.0412).abs() < 0.1)
     })?;
     handle.dispatch(AppIntent::AddEphemeralScript { name: "Bus FX fader".into(), source: "shoop_announce_api_version(1, 6); local c = require('shoop_control'); c.bus_set_gain(0, 0.5)".into(), source_path: None })?;
-    file_wait(&handle, |s| (s.buses[0].gain_db + 6.0206).abs() < 0.1)?;
+    file_wait(&handle, |s| {
+        (s.buses[0].gain_db + 6.0206).abs() < 0.1
+            && s.buses[0]
+                .output_peaks_db
+                .iter()
+                .all(|v| (*v + 36.0618).abs() < 0.1)
+    })?;
     handle.dispatch(bus(BusAction::BuiltInFx(BuiltInFxControl::AssignMidiCc(
         BuiltInFxMidiCcAssignment {
             parameter: BuiltInFxParameter::DriveOutput,

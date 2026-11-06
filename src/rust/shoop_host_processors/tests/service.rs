@@ -268,6 +268,21 @@ fn master_preview_flows_through_bus_fx_and_retains_ordinary_bus_controls() {
         .all(|value| (*value - 0.25 * 10_f32.powf(-18. / 20.)).abs() < 1e-6));
     f.confirmed(Command::Bus {
         bus,
+        action: BusAction::GainChanged(-6.0206),
+    });
+    f.confirmed(Command::Bus {
+        bus,
+        action: BusAction::BalanceChanged(-1.),
+    });
+    f.ticks(3);
+    assert!(f.render.borrow().output(0)[64..128]
+        .iter()
+        .all(|value| (*value - 0.125 * 10_f32.powf(-18. / 20.)).abs() < 1e-6));
+    assert!(f.render.borrow().output(1)[64..128]
+        .iter()
+        .all(|value| *value == 0.));
+    f.confirmed(Command::Bus {
+        bus,
         action: BusAction::MuteChanged(true),
     });
     f.ticks(3);
