@@ -176,7 +176,11 @@ impl SettingsManager {
     }
 
     pub fn report_action_error(&mut self, message: impl Into<String>) {
+        let saving = self.persistence == SettingsPersistenceState::Saving;
         self.record_failure(message.into());
+        if saving {
+            self.persistence = SettingsPersistenceState::Saving;
+        }
     }
 
     pub fn active(&self) -> Arc<SettingsSnapshot> {
@@ -304,10 +308,15 @@ impl SettingsManager {
 
     fn record_failure(&mut self, message: String) {
         self.persistence = SettingsPersistenceState::Failed;
-        self.diagnostics.push(SettingsDiagnostic {
+        let diagnostic = SettingsDiagnostic {
             key: None,
             message: format!("Could not save settings: {message}"),
-        });
+        };
+        if self.diagnostics.last().is_none_or(|previous| {
+            previous.key != diagnostic.key || previous.message != diagnostic.message
+        }) {
+            self.diagnostics.push(diagnostic);
+        }
     }
 }
 

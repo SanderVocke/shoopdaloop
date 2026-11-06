@@ -357,6 +357,8 @@ mod native {
     pub struct ConnectionStatus {
         pub state: shoop_app_client::State,
         pub error: Option<String>,
+        queued_audio_intents: usize,
+        audio_commands_pending: bool,
     }
     #[derive(Clone)]
     pub struct ApplicationHandle {
@@ -367,7 +369,11 @@ mod native {
     }
     impl ApplicationHandle {
         pub fn dispatch(&self, intent: AppIntent) -> Result<(), DispatchError> {
-            if self.status().state != shoop_app_client::State::Ready
+            let mut status = self
+                .status
+                .write()
+                .unwrap_or_else(|error| error.into_inner());
+            if status.state != shoop_app_client::State::Ready
                 && !matches!(
                     intent,
                     AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
@@ -375,12 +381,21 @@ mod native {
             {
                 return Err(DispatchError::Disconnected);
             }
+            let audio = shoop_app_client::runtime::writes_audio_preferences(&intent);
             self.sender
                 .try_send(Message::Intent(intent))
                 .map_err(|error| match error {
                     mpsc::TrySendError::Full(_) => DispatchError::Full,
                     mpsc::TrySendError::Disconnected(_) => DispatchError::Disconnected,
-                })
+                })?;
+            if audio {
+                status.queued_audio_intents += 1;
+            }
+            Ok(())
+        }
+        pub fn has_pending_audio_driver_commands(&self) -> bool {
+            let status = self.status();
+            status.queued_audio_intents != 0 || status.audio_commands_pending
         }
         pub fn snapshot(&self) -> Arc<AppSnapshot> {
             self.snapshot
@@ -495,6 +510,8 @@ mod native {
             let status = Arc::new(RwLock::new(ConnectionStatus {
                 state: shoop_app_client::State::Attaching,
                 error: None,
+                queued_audio_intents: 0,
+                audio_commands_pending: false,
             }));
             let handle = ApplicationHandle {
                 sender,
@@ -513,6 +530,8 @@ mod native {
                                 ConnectionStatus {
                                     state: shoop_app_client::State::Lost,
                                     error: Some(error.to_string()),
+                                    queued_audio_intents: 0,
+                                    audio_commands_pending: false,
                                 };
                             let _ = ready_tx.send(Err(error.to_string()));
                             return;
@@ -524,6 +543,7 @@ mod native {
                     let started = last;
                     let mut pending_intent = None;
                     loop {
+                        let mut processed_audio_intents = 0;
                         for _ in 0..shoop_app_protocol::MAX_MESSAGES_PER_TURN {
                             let message = match pending_intent.take() {
                                 Some(intent) => Ok(Message::Intent(intent)),
@@ -531,6 +551,9 @@ mod native {
                             };
                             match message {
                                 Ok(Message::Intent(intent)) => {
+                                    let audio = shoop_app_client::runtime::writes_audio_preferences(
+                                        &intent,
+                                    );
                                     match runtime.dispatch(intent.clone()) {
                                         Ok(()) => {}
                                         Err(DispatchError::Full) => {
@@ -541,6 +564,7 @@ mod native {
                                             runtime.client_mut().notify(error.to_string())
                                         }
                                     }
+                                    processed_audio_intents += usize::from(audio);
                                 }
                                 Ok(Message::PrepareShutdown(sender)) => {
                                     let result =
@@ -577,10 +601,14 @@ mod native {
                         }
                         *snapshot.write().unwrap_or_else(|error| error.into_inner()) =
                             runtime.snapshot();
-                        status
-                            .write()
-                            .unwrap_or_else(|error| error.into_inner())
-                            .state = runtime.client().state();
+                        {
+                            let mut state =
+                                status.write().unwrap_or_else(|error| error.into_inner());
+                            state.state = runtime.client().state();
+                            state.queued_audio_intents -= processed_audio_intents;
+                            state.audio_commands_pending =
+                                runtime.client().has_pending_audio_driver_commands();
+                        }
                         if let Some(reason) = runtime.client().client().refusal() {
                             status
                                 .write()

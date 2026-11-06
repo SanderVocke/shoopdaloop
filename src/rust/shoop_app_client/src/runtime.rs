@@ -93,6 +93,15 @@ pub enum Startup {
     Connected(Vec<StartupScript>),
 }
 
+pub fn writes_audio_preferences(intent: &AppIntent) -> bool {
+    matches!(
+        intent,
+        AppIntent::RequestAudioDriverSwitch { .. }
+            | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+            | AppIntent::RetryAudioDriverPersistence { .. }
+    )
+}
+
 pub struct Runtime {
     client: Client,
     delivery: Box<dyn Delivery>,
@@ -107,6 +116,7 @@ pub struct Runtime {
     io_task: Option<IoTaskState>,
     intents: VecDeque<(u64, AppIntent)>,
     commands: VecDeque<(u64, Command, Option<(u64, bool)>)>,
+    audio_driver_operations: BTreeSet<OperationId>,
     creations: BTreeMap<OperationId, (u64, bool)>,
     seen_results: BTreeSet<OperationId>,
     track_results: VecDeque<TrackCreationResult>,
@@ -148,6 +158,7 @@ impl Runtime {
             io_task: None,
             intents: VecDeque::new(),
             commands: VecDeque::new(),
+            audio_driver_operations: BTreeSet::new(),
             creations: BTreeMap::new(),
             seen_results: BTreeSet::new(),
             track_results: VecDeque::new(),
@@ -186,6 +197,16 @@ impl Runtime {
     }
     pub fn has_pending_commands(&self) -> bool {
         !self.intents.is_empty() || !self.commands.is_empty()
+    }
+    pub fn has_pending_audio_driver_commands(&self) -> bool {
+        self.intents
+            .iter()
+            .any(|(_, intent)| writes_audio_preferences(intent))
+            || self
+                .commands
+                .iter()
+                .any(|(_, command, _)| matches!(command, Command::AudioDriver(_)))
+            || !self.audio_driver_operations.is_empty()
     }
     pub fn take_file_output(&mut self) -> Option<ApplicationFileOutput> {
         self.outputs
@@ -278,6 +299,10 @@ impl Runtime {
             if let Err(error) = self.delivery.poll(&mut self.client) {
                 self.lost(error);
             }
+        }
+        if self.client.state() == State::Ready {
+            self.audio_driver_operations
+                .retain(|operation| self.client.operation_in_flight(*operation));
         }
         if let Some(message) = self.client.ready_message() {
             match self.delivery.send(message) {
@@ -384,6 +409,7 @@ impl Runtime {
                 break;
             };
             let resetting = matches!(command, Command::NewSession);
+            let audio_driver = matches!(command, Command::AudioDriver(_));
             let mut message = match self.client.command(command, None) {
                 Ok(message) => message,
                 Err(Error::Full) => break,
@@ -405,6 +431,9 @@ impl Runtime {
             match self.delivery.send(message) {
                 Ok(()) => {
                     self.commands.pop_front();
+                    if audio_driver {
+                        self.audio_driver_operations.insert(operation);
+                    }
                     if resetting {
                         self.reset_operation = Some(operation);
                         self.reset_queued = false;

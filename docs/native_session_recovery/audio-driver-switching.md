@@ -92,6 +92,12 @@ Runtime switching and saving its startup preference have distinct results. A fai
 save keeps the new driver active and enables retry without another transition.
 The service retains this state so retry does not require the originating UI draft.
 
+Embedded settings writes serialize with driver requests, confirmation and preference
+retry from mailbox admission through completion. Ordinary saves, explicit recovery
+and deferred profiling saves cannot overlap a driver-preference write. The client
+reloads successfully saved driver preferences before accepting another settings
+draft; a stale draft refuses instead of overwriting that profile.
+
 Embedded applications write the native settings store. Independent hosts write
 their own driver-preference file: explicit `--driver-preferences`, otherwise a
 sidecar to `--config`, otherwise `native-host-audio.json` in the host's application
