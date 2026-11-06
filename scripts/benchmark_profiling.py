@@ -11,7 +11,7 @@ import subprocess
 parser = argparse.ArgumentParser(__doc__)
 parser.add_argument('--baseline', type=pathlib.Path, required=True)
 parser.add_argument('--current', type=pathlib.Path, default=pathlib.Path('target/release/examples/profiling_benchmark'))
-parser.add_argument('--output', type=pathlib.Path, default=pathlib.Path('docs/runtime_profiling'))
+parser.add_argument('--output', type=pathlib.Path, default=pathlib.Path('artifacts/runtime-profiling'))
 parser.add_argument('--callbacks', type=int, default=128)
 parser.add_argument('--repetitions', type=int, default=3)
 args = parser.parse_args()

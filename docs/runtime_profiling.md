@@ -223,7 +223,7 @@ formats are outside this feature.
 ## Reproducing validation
 
 Release timing data, raw callback measurements, clock and UI costs, methodology
-and platform limits are in the [measurement report](runtime_profiling/README.md).
+and measurement recipes are in the [benchmark guide](runtime_profiling/README.md).
 
 The native production benchmark is
 `cargo run --release -p shoop_rt_engine --example profiling_benchmark -- <strips> <quantum> <callbacks> <off|on|stalled> <steady|midi|recording|edits|partitions>`.

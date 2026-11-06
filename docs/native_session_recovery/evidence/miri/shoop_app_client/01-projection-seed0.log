@@ -1,8 +1,0 @@
-    Finished `test` profile [unoptimized] target(s) in 0.14s
-     Running tests/projection.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/projection-6867f8944ef1ec46)
-
-running 1 test
-test interrupted_out_of_order_and_oversized_transfers_never_publish_partial_state ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.31s
-

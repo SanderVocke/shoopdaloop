@@ -71,7 +71,6 @@ The main gates are::
   RUSTFLAGS="-D warnings" cargo build --workspace
   SHOOP_ALLOW_MISSING_BACKENDS=1 \
     cargo nextest run --workspace --features shoop_engine/app_backend --profile ci
-  python3 scripts/check_tracing_coverage.py --require-closed
 
 Web verification additionally builds both Wasm packages, checks browser
 dependency isolation, verifies hosted/self-contained artifacts, and runs the

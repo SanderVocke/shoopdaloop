@@ -175,9 +175,8 @@ crate builds for `wasm32-unknown-unknown`. Node uses
 | A10 | Malformed/truncated/oversize/version codec tests, bounded admission/chunk/result/subscriber resources, active-recording snapshot. |
 | A11 | Full retained native/Node/browser gates, three-platform debug/release packages, final selected Miri and CI/review at the final SHA. |
 
-Baseline performance and prior Miri/CI evidence are in `VALIDATION.md` under engine
-IPC, with archived reports in `docs/engine_ipc/evidence/`. They cover the original
-engine transport, not the new app service. New evidence must record head, command,
+Historical engine-transport measurements and Miri/CI records remain in Git
+history. They do not validate the current application service. New evidence must record head, command,
 workload/capacities, timing, hardware and limitations. Compare local typed/encoded
 control, snapshot bursts and active-recording reattachment. Miri runs only after
 ordinary final integration gates stabilize. No baseline full matrix was run.

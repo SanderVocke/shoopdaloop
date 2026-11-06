@@ -1,15 +1,10 @@
 # Background stage-level Miri jobs
 
-This is the implementation runner's operational reference, not documentation
-acceptance or an instruction to commit the current checkout.
-[VALIDATION.md](../../VALIDATION.md#miri-evidence) is the single current result/debt
-index. Launch only at an applicable authorized implementation gate; prose
-maintenance alone needs no job. A paused goal remains paused.
-
-Use one consolidated background run per applicable numbered-stage milestone, not
-one per smaller edit/commit. Continue authorized development while it runs. The
-final required selection and source-matched result verification remain mandatory;
-see the [plan](../../PLAN.md#miri-execution-contract).
+Use this runner when ownership or concurrency changes need interpreted checks.
+Documentation-only changes do not require Miri. The
+[testing guide](../../VALIDATION.md#miri-and-measurements) describes check selection;
+[remaining acceptance work](../../PLAN.md#portable-loop-validation-handoff) stays open.
+Write run results to local artifacts or the PR, not a committed result ledger.
 
 ## Launch, inspect, collect
 
@@ -50,7 +45,7 @@ counts or shard positions from a historical example:
 python3 scripts/run_rt_runtime_miri.py --list
 ```
 
-The current recorded inventory/results live in [VALIDATION.md](../../VALIDATION.md#miri-evidence).
+Discover current selections from the runner; keep results with the PR or CI artifacts.
 Retain every required exact filter, minimum count, seed, workload, guard and relative
 order. New coverage is additive, not a replacement for old cases. A list/discovery
 command is not interpreter execution or passing evidence.
@@ -65,10 +60,10 @@ watchdog increases or acceptance exemptions are introduced.
 CI does not run Miri; it lacks the capacity. Runs are manual. The runner can split
 the inventory into disjoint round-robin batches, for example to spread one run over
 several workers or machines. Each batch keeps complete commands, exact filters,
-counts, seeds and the900s per-command watchdog. Batch sizes depend on the frozen
+counts, seeds and the 900 s per-command watchdog. Batch sizes depend on the frozen
 inventory; use `--list` to inspect them. Neither command counts nor historical local
 wall times guarantee a margin on other hardware.
-An individual command exceeding900s still fails and needs investigation.
+An individual command exceeding 900 s still fails and needs investigation.
 
 ```sh
 python3 scripts/run_rt_runtime_miri.py --shard 1/16 --list
@@ -192,48 +187,11 @@ Monotonic per-case durations are included in runner records, and whole-job wall
 time in supervisor state. Neither is Miri's simulated Rust test-harness clock.
 Record contention/cache conditions; timings are not deadline guarantees.
 
-## Helper tests and historical setup evidence
+## Runner checks
 
 ```sh
-nix develop --command python3 -m unittest \
-  scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs \
-  scripts.tests.test_rt_runtime_miri_batches
+python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches
 ```
 
-At the original tooling milestone, thirty-two tests covered the selected inventory, exact standalone manifest dispatch,
-seed/report metadata, zero-test refusal, tracked-private-state exclusion without
-losing standalone source/lockfiles, manifest-scope tampering, complete disjoint partition/collection and CLI paths,
-durable file output, isolated external reports/progress, existing timeout/exit-race cleanup, immutable committed snapshots
-while development changes, collection, missing results, count/log/source tampering,
-missing supervisor identity, cancellation with descendant cleanup, recovery of a
-known runner after supervisor SIGKILL, single-job admission, and the actual runner's
-SIGTERM cleanup of a synthetic case and its descendant process group. Supervisor tests use explicitly synthetic runners and a Nix shim;
-they do **not** execute Miri or stand in for Rust/Miri evidence.
-
-The first cancellation fixture incorrectly waited reentrantly inside its signal
-handler, causing a cleanup timeout; it now raises out of the wait before reaping.
-The retained failure is `target/loop-layer-miri-background/python-first.log`.
-The initial fourteen-test pass is in `checks.log`. No additional routine Miri run was
-started for this tooling step. Its first real interpreter use belongs to the next
-applicable consolidated stage run. Source/log hashes and the unchanged178-case
-inventory are recorded in [evidence/miri-background.json](evidence/miri-background.json).
-A subsequent real-repository smoke exported commit `aa41a9b3` (604 files), queried
-its178-execution inventory and ran locked Cargo metadata in the snapshot's actual
-Nix environment. It exited zero with all source hashes unchanged; this verifies
-snapshot/environment setup, not Miri execution.
-
-The first actual consolidated interpreter job was subsequently launched for Stage6
-from committed readiness snapshot `faec78df`, after the nested lifecycle gates and
-coverage audit. It uses81 commands/228 executions and the unchanged900-second
-per-command watchdog. Job identity/progress are recorded in
-the [historical ledger](../history/pre-consolidation-fffc1faa/docs/loop_layer/MIRI_JOBS.md#collected-stage-6-pass). Launch and partial progress are not a passing result;
-terminal collection and input/inventory/hash verification were required. Those checks
-have now passed for the complete81-command/228-execution run. See the job ledger and
-`evidence/miri-stage6{,-collected,-provenance}.json`; the raw report/log bundle is
-`evidence/miri-stage6-logs.tar.gz`. This closes Stage6's interpreter gate, not later
-host/final acceptance. The user-required pause before Stage7 applied to that
-implementation checkpoint. Later complete results and remaining failures belong
-in [VALIDATION.md](../../VALIDATION.md#miri-evidence), not a second progress ledger
-here. These historical tooling details authorize no implementation or interpreter
-run. The [original operational reference](https://github.com/SanderVocke/shoopdaloop/blob/fffc1faaf44f22aec32a66848cc5eb97c2ee7f9a/docs/loop_layer/MIRI_BACKGROUND.md)
-retains the earlier inventory-specific recipes.
+These tests exercise runner selection, isolation, collection, timeout and process
+cleanup. Synthetic runner tests do not execute Miri or establish Rust safety.

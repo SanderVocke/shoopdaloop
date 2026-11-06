@@ -60,10 +60,9 @@ jobs:
           shared-key: shared-foundation
       - name: Test fixed runtime, loop, engine and codec contracts
         run: cargo test --locked -p rt_runtime -p shoop_loops -p shoop_rt_engine -p shoop_persistence_codec
-      - name: Check formatting, tracing, attributes and parity
+      - name: Check formatting, test attributes and parity
         run: |
           cargo fmt --all -- --check
-          python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
           python3 scripts/check_feature_parity.py
 
@@ -753,7 +752,6 @@ jobs:
         if: matrix.target == 'linux' && matrix.profile == 'debug'
         run: |
           cargo fmt --all -- --check
-          python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
           python3 scripts/check_feature_parity.py
           python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner

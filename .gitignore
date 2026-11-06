@@ -29,3 +29,7 @@ rust-analyzer-target
 traces/
 .vscode
 /work/
+
+# Local agent state and generated validation artifacts
+/.pi/
+/docs/**/evidence/

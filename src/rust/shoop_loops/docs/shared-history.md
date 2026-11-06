@@ -142,12 +142,12 @@ Admitted maximum-density and refused MIDI ticks check truthful recovery. Pool
 extrema are sampled after callback maintenance; prepared reservations bound
 intra-callback storage separately.
 Means, tails and maxima describe that CI workload, not a physical-device guarantee.
-[Recorded measurements and functional evidence](../../../../docs/native_session_recovery/evidence/shared-fixed-media.md)
+[Recorded measurements and functional evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/shared-fixed-media.md)
 include every observed timing miss and output overflow. Very short callbacks are
 not established as deadline-safe, and prepared MIDI state can dominate memory.
 Application admission, selection/sync policy, UI/Lua and continuous fixed/growing
 writers are implemented through the normal production path; the
-[acceptance evidence](../../../../docs/native_session_recovery/evidence/grab-replace.md)
+[acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md)
 records final validation and capacity limits.
 
 A fixed Replacing writer keeps its admission while repeat-sync waits at the end

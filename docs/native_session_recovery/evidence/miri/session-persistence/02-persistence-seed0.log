@@ -1,7 +1,0 @@
-    Finished `test` profile [unoptimized] target(s) in 0.12s
-     Running tests/persistence.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/persistence-3b6fe897a2d2eb3f)
-
-running 1 test
-test stale_authority_epoch_transfer_and_overflow_never_consume_data ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.30s

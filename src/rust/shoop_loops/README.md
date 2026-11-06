@@ -172,13 +172,13 @@ check typed payload/receipt ownership and retained capture/index content across
 partitions, refusals, stale/reused identities and exhausted maintenance credits.
 Actual mutations are heap-guarded; allocating references and destruction stay
 off-render. These are regression models, not fresh worklet, deadline or interpreter
-certification. The [validation record](../../../VALIDATION.md#loop-evidence)
+certification. The [validation record](../../../VALIDATION.md#results-and-remaining-limits)
 identifies actual native/Wasm results and outstanding source-scoped interpreter
 coverage.
 
 The implementation contract and remaining work are tracked in
-[PLAN.md](../../../PLAN.md#portable-loop-execution) and
+[PLAN.md](../../../PLAN.md#portable-loop-validation-handoff) and
 [ARCHITECTURE.md](../../../ARCHITECTURE.md#loop-semantics).
-[Earlier plans and evidence narratives](../../../docs/history/README.md) are
+[Earlier plans and evidence narratives](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/history/README.md) are
 historical. No full legacy backend compatibility, unlimited recording, or
 hard-real-time deadline guarantee is promised.

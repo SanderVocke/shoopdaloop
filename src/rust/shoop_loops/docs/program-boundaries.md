@@ -61,10 +61,10 @@ Three guarded integration cases plus one private scratch-state case verify:
 - no old child or trigger intents at the probe cut, including recording actions,
   and no publication of provisional request outcomes.
 
-See [program-probe-stage6.json](../../../../docs/loop_layer/evidence/program-probe-stage6.json)
+See [program-probe-stage6.json](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/loop_layer/evidence/program-probe-stage6.json)
 for the original native/release, Node/Chromium and workspace evidence. That
 milestone deferred interpreter execution; consolidated Stage 6 evidence is recorded
-separately in repository [Miri evidence](../../../../VALIDATION.md#miri-evidence), not
+separately in repository [Miri evidence](../../../../VALIDATION.md#results-and-remaining-limits), not
 rerun for these prose corrections.
 
 The standalone [owning program transaction](program-changes.md) and the planner's

@@ -67,14 +67,13 @@ The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssem
 
 ## Development planning and architecture
 
-- [PLAN.md](PLAN.md): workstreams, approved scope, acceptance criteria and remaining work.
-- [ARCHITECTURE.md](ARCHITECTURE.md): implemented stack, governing contracts and clearly labelled proposals.
-- [VALIDATION.md](VALIDATION.md): actual source-scoped results, retained failures and verification debt.
-- [Historical documents](docs/history/README.md): retired plans/designs, readable snapshots and the exact-original archive.
+- [Remaining work](PLAN.md): unfinished requirements and qualification work.
+- [Architecture](ARCHITECTURE.md): implemented stack and governing contracts.
+- [Testing](VALIDATION.md): commands, prerequisites and current limitations.
+- [Application feature backlog](docs/native_session_recovery/feature-parity.md).
 
-These distinguish the current production session-service composition from ongoing
-library work and temporary feature gaps. Public library guides and application
-operating instructions remain separate.
+Historical plans and run records remain available in Git history and the original PRs.
+Public library guides and application operating instructions describe current usage.
 
 ## License and credits
 

@@ -1,8 +1,8 @@
 # Core persistence contract
 
-Implementation contract for [the persistence plan](../../PLAN_SESSION_PERSISTENCE_MEDIA_IO.md).
+Implementation contract for [the persistence plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_SESSION_PERSISTENCE_MEDIA_IO.md).
 The core slice is implemented and validated;
-[acceptance evidence](evidence/session-persistence.md) records its scope.
+[acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md) records its scope.
 P01/P02/P11 remain open for their deferred dependencies.
 
 ## Shared audio reconciliation
@@ -26,7 +26,7 @@ archive and protocol formats do not encode sharing, page addresses or edit roots
 Tests cover grabbed and imported sources through adoption, playback, full
 configuration replacement, retained exports and bounded teardown, plus session,
 exact-audio and WAV round trips for original and edited revisions. Application Grab and Replacing use these same formats and immutable owners;
-[completed application evidence](evidence/grab-replace.md) covers P04/P05 exact
+[completed application evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md) covers P04/P05 exact
 save/load/re-edit across native/browser hosts and configured firmware.
 Active or scheduled Replacing obeys the recording conflict policy. Default Grab
 persists, while histories, accepted input jobs and private writers do not. Reload
@@ -42,7 +42,7 @@ uses fresh identities and stopped loops; old exports retain their original data.
 | Selection, target and global policies | Preserve document values supported by the core | Service-owned; reject unsupported recording/default-playback policies |
 | Ordinary buses, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |
-| Core composites | Preserve authored identities, original timing basis, frozen geometry, nested references, explicit sync and repeat intent; load stopped with fresh runtime identities | See the [composite contract](composites.md) and [acceptance evidence](evidence/composites.md); captures exclude pending candidates and refuse active/scheduled/future recording |
+| Core composites | Preserve authored identities, original timing basis, frozen geometry, nested references, explicit sync and repeat intent; load stopped with fresh runtime identities | See the [composite contract](composites.md) and [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md); captures exclude pending candidates and refuse active/scheduled/future recording |
 | FX/synth/dry-wet and dependent composite events | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08 remain open; no flattening or dropped state |
 | Session-owned scripts/resources | Refuse documents requiring unavailable ownership/resource handling | P16 remains open; VM stays client-side and is never serialized/restarted |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
@@ -194,9 +194,9 @@ before another graph can publish. The engine wire job and adapter replacement ar
 implemented, along with service capture, retained reads, fenced admission and
 host-owned completion. Client file conversion and platform workflows use the public service route;
 packaged native and browser deployment validation is recorded in the
-[acceptance evidence](evidence/session-persistence.md). No rejected preparation may
+[acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md). No rejected preparation may
 leave old playback faded/stopped or mappings
 partially replaced.
 
-Validation evidence is recorded in the [acceptance evidence](evidence/session-persistence.md). Protocol tests
+Validation evidence is recorded in the [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md). Protocol tests
 alone do not establish engine atomicity, capture coherence or restored UI support.

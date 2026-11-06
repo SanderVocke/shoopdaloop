@@ -2,7 +2,7 @@
 
 # ShoopDaLoop architecture and decisions
 
-[Workstreams and acceptance](PLAN.md) · [Verification and evidence](VALIDATION.md) · [Historical rationale](docs/history/README.md)
+[Workstreams and acceptance](PLAN.md) · [Verification and evidence](VALIDATION.md) · [Historical rationale](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/history/README.md)
 
 <a id="purpose-and-scope"></a>
 <a id="stack-and-communication-structure"></a>
@@ -11,7 +11,7 @@
 
 ## Current application composition
 
-The [session recovery plan](PLAN_NATIVE_SESSION_RECOVERY.md) introduces the production
+The [session recovery plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_NATIVE_SESSION_RECOVERY.md) introduces the production
 application architecture. UI and Lua use `shoop_app_client`; `shoop_app` owns session
 state/admitted work; `shoop_rt_backend` is its engine adapter. `shoop_host` owns those
 components and a native RT host independently of external UIs. Typed local delivery
@@ -31,14 +31,14 @@ This is the maintained architecture/design entry point for all workstreams in
 [PLAN.md](PLAN.md). It separates implemented mechanisms, accepted constraints and
 proposals. Production session migration is implemented; feature parity and final
 independent loop acceptance retain their own criteria. The pre-consolidation proposals, contracts, critique and experiments
-are preserved in the [historical snapshot](docs/history/README.md); obsolete
+are preserved in the [historical snapshot](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/history/README.md); obsolete
 snapshot-status paragraphs there do not describe the current tree.
 
 | Layer | Implemented responsibility | Boundary |
 | --- | --- | --- |
 | `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
 | `shoop_loop_plan` | Control-side sparse program compilation over generic target keys | No runtime, application, carrier or host dependency; shared by loop preparation and adapters |
-| `rt_buffered` | Prepared stereo/MIDI buffering with node-local batch size, extra slack, scheduled release, and an inline development backend | Portable runtime dependency only; no graph latency compensation, worker threads, transports, or application configuration. See [processor contract](src/rust/rt_buffered/README.md) and [implementation plan](PLAN_BUFFERED.md). |
+| `rt_buffered` | Prepared stereo/MIDI buffering with node-local batch size, extra slack, scheduled release, and an inline development backend | Portable runtime dependency only; no graph latency compensation, worker threads, transports, or application configuration. See [processor contract](src/rust/rt_buffered/README.md) and [implementation plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_BUFFERED.md). |
 | `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
 | `shoop_loops_test_support` | Dev-only assembly of the loop parts with independent typed DSP operations, for tests and test hosts | Not used by production crates; not part of the loop library's API |
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
@@ -83,7 +83,7 @@ The accepted [P03 composite contract](docs/native_session_recovery/composites.md
 uses prepared frame timelines for composite progression. Source synchronization
 aligns scheduled commands and repeats; it cannot stall or retime the middle of an
 arrangement. Implementation and production enablement follow
-[the P03 plan](PLAN_P03_COMPOSITES.md).
+[the P03 plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_P03_COMPOSITES.md).
 
 Every processor uses `ProcessBlock` and borrows the render-owned domain directly.
 The planner has one `begin_tick`/`finish_tick` lifecycle. `NoPlanner` supplies an
@@ -522,7 +522,7 @@ is `shoop_rt_engine` and its application/session service described above.
 
 ## Composable loop boundary
 
-The [composable loop boundary](PLAN.md#composable-loop-boundary) work resolved the
+The [composable loop boundary](PLAN.md#other-unresolved-checks-and-design-work) work resolved the
 earlier composability question in favour of application-owned runtimes. The loop library offers parts,
 not an `Engine`: `LoopPlanner::prepare` borrows the application's resource store and
 returns the planner, its playback/capture nodes and a control-side client. The
@@ -659,9 +659,9 @@ are separate work requiring approval. No such new deployment is claimed here.
 
 The RT backend is the sole production application `Backend`, natively and in the
 browser's AudioWorklet. Its initial opt-in implementation is recorded in
-[PLAN_RT_BACKEND.md](PLAN_RT_BACKEND.md), and the earlier engine-only subprocess
-fixture in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md). The current
-[session recovery plan](PLAN_NATIVE_SESSION_RECOVERY.md) adds authoritative app
+[PLAN_RT_BACKEND.md](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_RT_BACKEND.md), and the earlier engine-only subprocess
+fixture in [PLAN_ENGINE_IPC.md](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_ENGINE_IPC.md). The current
+[session recovery plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_NATIVE_SESSION_RECOVERY.md) adds authoritative app
 state, independent native host/UI roles and app-level recovery. The
 [parity ledger](docs/native_session_recovery/feature-parity.md) tracks all temporary
 feature gaps and surviving restoration evidence.
@@ -906,22 +906,6 @@ application derives delays from `position / sync_length`, a request within one
 callback of a wrap can be scheduled one cycle later than on legacy. Reporting the
 state at the end frame would need the resolver to decide that boundary early; this is
 left for later work.
-
-## Planning and execution tools
-
-The reviewed direction is one authoritative Markdown plan, native execution state
-and an independent completion auditor. The plan owns outcomes, constraints,
-ordered checkboxes and verification/delivery obligations. The executor tracks
-human-selected focus, lifecycle, activity and evidence references; a parsed view
-is derived, not a second editable objective/task hierarchy.
-
-Checked, skipped, current activity, waiting and verified acceptance are different.
-Audit against approved criteria, current source/configuration, project rules,
-actual evidence and required CI/review; executor claims are untrusted. Report
-satisfied/unsatisfied/unverifiable criteria and reopen invalidated evidence rather
-than weakening goals. User-owned focus/pause/resume and exceptional approvals stay
-explicit. A new extension is only a reviewed proposal, not implemented by this
-migration; `.pi/` storage and native lifecycle remain untouched.
 
 The native entry points are `shoopdaloop`, `shoop_host`, and
 `shoop_host_manager`. The manager has an independent native crate and shares

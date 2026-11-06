@@ -1,11 +1,11 @@
 # Composite execution and ownership
 
 Status: the direct-track core is COMPLETE under [P03](feature-parity.md) and
-[the implementation plan](../../PLAN_P03_COMPOSITES.md). The public composite
+[the implementation plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_P03_COMPOSITES.md). The public composite
 capability covers regular programs and explicit Play/Stop/Record events. Replacing
 and dry/wet interactions remain OPEN in the separate
 [P17 item](feature-parity.md#p17-composite-mode-integration), depending on P05/P06/P07.
-See [acceptance evidence](evidence/composites.md#final-acceptance-and-closure) for
+See [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md#final-acceptance-and-closure) for
 the approved scope and final implementation checks.
 
 ## Frames and synchronization

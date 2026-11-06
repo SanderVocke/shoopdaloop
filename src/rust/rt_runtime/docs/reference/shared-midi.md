@@ -153,7 +153,7 @@ rate/Q conversion keep separate contracts. See the
 [fixed shared-history contract](../../../shoop_loops/docs/shared-history.md) for
 source generations, watermark faults, callback budgets, cleanup and measurement
 scope. The application delivery adds negotiated Grab/Replacing and normal service/UI/Lua
-routes; see [application evidence](../../../../../docs/native_session_recovery/evidence/grab-replace.md).
+routes; see [application evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md).
 The production semantic index protects live source, staged tick and edit workspace
 credits before retained-owner admission. Hidden clipped roots and retirement debt
 remain charged until actual reclamation. Required maintenance does not consume

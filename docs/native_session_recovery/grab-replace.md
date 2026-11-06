@@ -1,9 +1,9 @@
 # Application Grab and Replacing integration
 
-Implementation contract for [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
+Implementation contract for [the application plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_FINISH_GRAB_REPLACE.md).
 Grab and Replacing run through negotiated production capabilities and the normal
 service, adapter, companion, firmware and AudioWorklet. P04/P05 are COMPLETE under the
-[application acceptance evidence](evidence/grab-replace.md), including exact-media
+[application acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md), including exact-media
 checks, measured capacity limits and final validation pins.
 
 ## Layer inventory
@@ -135,7 +135,7 @@ identity raw mapping; public Grab settlement must establish that new layout.
 Firmware builds use the same histories and input transactions. An explicit
 [engine policy](../../platforms/zynq7000/README.md) selects source/loop pools, history
 duration and shared reservations. Both enabled and disabled policies are exercised
-on both board memory profiles; [firmware evidence](evidence/grab-replace-firmware.json)
+on both board memory profiles; [firmware evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace-firmware.json)
 records their actual memory, stack, media and teardown results.
 
 ## Production capacity and ownership
@@ -178,13 +178,29 @@ and terminate active writers at the last complete cut. Slot removal retires each
 pool once; all credits recover at shutdown.
 
 Whole-host allocator measurements and complete callback distributions are in the
-[evidence](evidence/grab-replace.md). They include existing ordinary MIDI, processor,
+[evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md). They include existing ordinary MIDI, processor,
 graph and host-buffer costs beyond the history table. High-density deadline misses
 are reported explicitly; finite storage/work admission is not hardware deadline
 certification. Eight-channel processor shapes may need an explicitly larger
 processor budget; the unchanged default refuses shapes that exceed it. Oversized
 64-source/eight-channel histories refuse before allocation at the portable arena
 limit.
+
+## Capacity measurements
+
+Run from the configured development environment; write output to local artifacts:
+
+```sh
+cargo run --release -p shoop_rt_engine --example input_capacity_benchmark -- 2 128 8 256
+cargo run --release -p shoop_rt_engine --example input_capacity_benchmark -- 8 128 8 256
+cargo run --release -p shoop_rt_engine --example input_capacity_benchmark -- 2 128 256 32
+cargo run --release -p shoop_host_processors --features builtin-fx,oxisynth --example prepared_memory -- 2 512 256
+cargo run --release -p shoop_host_processors --features builtin-fx,oxisynth --example prepared_memory -- 8 128 512
+```
+
+The high-density case can exceed callback deadlines despite finite work and
+allocation safety. Include all callback samples, deadline misses and the complete
+prepared host/processor costs when comparing configurations.
 
 ## Persistence and recovery
 

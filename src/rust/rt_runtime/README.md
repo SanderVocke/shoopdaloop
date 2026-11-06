@@ -47,7 +47,7 @@ The [nineteen-chapter book](docs/README.md) is the primary guide. Its tasks use 
 | Coordinate processors and changes | [Planning](docs/part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md), [typed operations](docs/part-4-coordinate-processors-and-changes/14-application-specific-operations.md), [staged graphs](docs/part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md), [capture groups](docs/part-4-coordinate-processors-and-changes/16-recording-resources-together.md) |
 | Operate the runtime | [Sizing](docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md), [prepared ingress](docs/part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md), [shutdown](docs/part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md) |
 
-The [reference](docs/reference/README.md) consolidates configuration/errors, execution, media/MIDI, lower-level APIs and host boundaries. Generate API details with `cargo doc -p rt_runtime --no-deps --open`. Previous guides remain historical background under `docs-previous/`, not the primary reading path.
+The [reference](docs/reference/README.md) consolidates configuration/errors, execution, media/MIDI, lower-level APIs and host boundaries. Generate API details with `cargo doc -p rt_runtime --no-deps --open`. Previous guides are available in Git history.
 
 ## Try it
 

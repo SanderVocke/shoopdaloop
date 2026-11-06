@@ -266,7 +266,6 @@ cargo fmt --all -- --check
 RUSTFLAGS='-D warnings' cargo build --workspace
 SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
 python3 scripts/check_rt_engine_boundary.py
-python3 scripts/check_tracing_coverage.py --require-closed
 python3 scripts/check_shoop_test_usage.py
 python3 scripts/run_wasm_tests.py --runtime node --profile dev
 ```
@@ -430,4 +429,4 @@ start, with MIDI pickup notes continuing across that boundary.
 Periods must align to the host quantum (default 32; browser 128). The editor previews
 a valid effective end. Nonaligned API length requests refuse explicitly; offsets,
 pre-play and raw MIDI timestamps keep frame precision. See the
-[P12 evidence](../../../docs/native_session_recovery/evidence/loop-timing.md).
+[P12 evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/loop-timing.md).

@@ -150,11 +150,11 @@ The original nine guarded native/release/Node/Chromium cases cover:
 - all128 one-sample intervals with every request slot occupied and the displaced
   owner/result left unread.
 
-See [program-change-stage6.json](../../../../docs/loop_layer/evidence/program-change-stage6.json)
+See [program-change-stage6.json](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/loop_layer/evidence/program-change-stage6.json)
 and its provenance report for125 loop tests per native/Wasm profile,2104 workspace
 passes/four existing skips,19 scoped gates and production borrowing proofs.
 That original report deferred Miri and registered nine cases; the later
-consolidated [Stage 6 interpreter evidence](../../../../VALIDATION.md#miri-evidence)
+consolidated [Stage 6 interpreter evidence](../../../../VALIDATION.md#results-and-remaining-limits)
 has its own immutable implementation/source scope. No new interpreter run follows
 from documentation edits. The initial empty-program fixture wrongly
 expected a caller-supplied length of42; compilation derives the empty program's
@@ -166,6 +166,6 @@ before preview, during speculation, during an applied or still-pending committed
 interval, and after finish. It checks unchanged state/time, permanent execution
 refusal and correct candidate/displaced owner return. An additional E0502 proof
 rejects quiescence across a retained decision borrow. These and the five new planner-integration
-cases are covered by [facade-program-stage6.json](../../../../docs/loop_layer/evidence/facade-program-stage6.json);
+cases are covered by [facade-program-stage6.json](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/loop_layer/evidence/facade-program-stage6.json);
 that milestone claimed no new Miri invocation. Consolidated evidence is recorded
 separately; the public example runs above are native debug/release evidence only.
