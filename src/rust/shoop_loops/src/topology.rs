@@ -250,7 +250,11 @@ pub fn compile(
         }
         for entry in program.sections.iter().flat_map(|section| &section.entries) {
             let target = index(&nodes, entry.target)?;
-            if nodes[target].kind == LoopKind::Composite && entry.mode.is_some_and(Mode::records) {
+            if nodes[target].kind == LoopKind::Composite
+                && entry
+                    .mode
+                    .is_some_and(|mode| !matches!(mode, Mode::Playing | Mode::Stopped))
+            {
                 return Err(Error::InvalidProgram);
             }
         }
@@ -309,7 +313,9 @@ pub fn compile(
     for trigger in &triggers {
         let source = index(&nodes, trigger.source)?;
         let target = index(&nodes, trigger.target)?;
-        if nodes[target].kind == LoopKind::Composite && trigger.mode.records() {
+        if nodes[target].kind == LoopKind::Composite
+            && !matches!(trigger.mode, Mode::Playing | Mode::Stopped)
+        {
             return Err(Error::InvalidProgram);
         }
         relations.insert((source, target, true));

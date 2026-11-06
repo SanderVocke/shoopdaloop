@@ -17,6 +17,7 @@ fn parse_mode(mode: &str) -> Result<LoopMode> {
         "stopped" => LoopMode::Stopped,
         "playing" => LoopMode::Playing,
         "recording" => LoopMode::Recording,
+        "replacing" => LoopMode::Replacing,
         "playing_dry_through_wet" => LoopMode::PlayingDryThroughWet,
         "recording_dry_into_wet" => LoopMode::RecordingDryIntoWet,
         _ => bail!("unsupported composite event mode: {mode}"),

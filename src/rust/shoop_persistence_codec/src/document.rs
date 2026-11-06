@@ -458,9 +458,6 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                 if let Some(composite) = &content.composite {
                     for event in &composite.instances {
                         match event.mode.as_deref() {
-                            Some("replacing") => {
-                                unsupported.insert("replacing composite events (P05)");
-                            }
                             Some("playing_dry_through_wet" | "recording_dry_into_wet")
                                 if !dry_targets.contains(&event.loop_id) =>
                             {

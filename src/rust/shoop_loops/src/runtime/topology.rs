@@ -25,6 +25,14 @@ pub(super) struct Topologies {
     operation_bytes: usize,
 }
 impl Topologies {
+    pub(super) fn mark_replacing_targets(&self, rows: &[Option<Row>], targets: &mut [bool]) {
+        for slot in &self.slots {
+            if let Some(candidate) = &slot.ready {
+                super::program_inputs::mark_replacing_targets(candidate, rows, targets);
+            }
+        }
+    }
+
     pub(super) fn prepare(
         topology: PreparedTopology,
         settings: TopologySettings,

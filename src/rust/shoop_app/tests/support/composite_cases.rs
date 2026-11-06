@@ -68,6 +68,7 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
         for mode in [
             LoopMode::PlayingDryThroughWet,
             LoopMode::RecordingDryIntoWet,
+            LoopMode::Replacing,
         ] {
             let mut f = fixture_with_dry_wet(2, true);
             let mut client = attach(&mut f.service, 7001, ConnectionId(1), encoded);
@@ -168,12 +169,85 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
             f.render.borrow_mut().run(32, |_, _| 0.5).unwrap();
             f.service.tick(Duration::ZERO);
             drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            if encoded {
+                f.service.detach(ConnectionId(1));
+                client.disconnect();
+                f.render.borrow_mut().run(32, |_, _| 0.5).unwrap();
+                client = attach(&mut f.service, 7001, ConnectionId(1), true);
+            }
+            if mode != LoopMode::PlayingDryThroughWet {
+                let key = persistence::Key {
+                    transfer: TransferId(1),
+                    epoch: client.snapshot().unwrap().persistence_epoch,
+                };
+                let target = persistence::Target::Session {
+                    revision: client.snapshot().unwrap().revision,
+                };
+                persistence_message(
+                    &mut f.service,
+                    &mut client,
+                    persistence::Request::Capture { key, target },
+                    encoded,
+                );
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+                assert!(matches!(
+                    client.take_persistence_reply(),
+                    Some(persistence::Reply::Refused {
+                        reason: Refusal::Busy,
+                        ..
+                    })
+                ));
+            }
             let snapshot = client.snapshot().unwrap();
             assert_eq!(snapshot.tracks[1].loops[0].mode, mode);
             assert!(snapshot
                 .composites
                 .iter()
                 .all(|view| view.mode == LoopMode::Playing));
+            let edited = submit(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Composite(arrangement::Edit::Mode {
+                    target: loops[1],
+                    event,
+                    mode: LoopMode::Playing,
+                }),
+            );
+            for _ in 0..20 {
+                f.service.tick(STEP);
+            }
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            assert!(client
+                .snapshot()
+                .unwrap()
+                .composites
+                .iter()
+                .any(|view| view.loop_id == loops[1]
+                    && view.pending_stage == Some(arrangement::PendingStage::AwaitingRestart)));
+            if encoded {
+                f.service.detach(ConnectionId(1));
+                client.disconnect();
+                f.render.borrow_mut().run(32, |_, _| 0.5).unwrap();
+                f.service.tick(Duration::ZERO);
+                client = attach(&mut f.service, 7001, ConnectionId(1), true);
+            }
+            for transport in [LoopMode::Stopped, LoopMode::Playing] {
+                assert!(matches!(
+                    run(&mut f, &mut client, transition(vec![loops[2]], transport)),
+                    Outcome::Confirmed { .. }
+                ));
+            }
+            assert!(matches!(
+                observe_host_result(
+                    &mut f.service,
+                    &mut client,
+                    ConnectionId(1),
+                    edited,
+                    encoded
+                ),
+                Outcome::Confirmed { .. }
+            ));
             assert!(matches!(
                 run(
                     &mut f,
@@ -182,14 +256,30 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
                 ),
                 Outcome::Confirmed { .. }
             ));
-            let before = capture_image(&mut f.service, &mut client, 1, encoded);
-            release_image(&mut f.service, &mut client, 1, 1, encoded);
-            let key = stage_image(&mut f.service, &mut client, 2, before.clone(), encoded);
+            assert_eq!(
+                client.snapshot().unwrap().tracks[1].loops[0].mode,
+                LoopMode::Stopped
+            );
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::Composite(arrangement::Edit::Mode {
+                        target: loops[1],
+                        event,
+                        mode
+                    })
+                ),
+                Outcome::Confirmed { .. }
+            ));
+            let before = capture_image(&mut f.service, &mut client, 2, encoded);
+            release_image(&mut f.service, &mut client, 2, 1, encoded);
+            let key = stage_image(&mut f.service, &mut client, 3, before.clone(), encoded);
             assert!(matches!(
                 run(&mut f, &mut client, Command::CommitPersistence(key)),
                 Outcome::Confirmed { .. }
             ));
-            let after = capture_image(&mut f.service, &mut client, 3, encoded);
+            let after = capture_image(&mut f.service, &mut client, 4, encoded);
             assert_eq!(before.payloads, after.payloads);
             let persistence_image::Manifest::Session(old) = &before.manifest else {
                 panic!()
@@ -226,8 +316,174 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
                 .composites
                 .iter()
                 .all(|view| view.mode == LoopMode::Stopped));
+            let epoch = client.snapshot().unwrap().persistence_epoch;
+            release_image(&mut f.service, &mut client, 4, epoch, encoded);
+            let loaded_inner = client.snapshot().unwrap().tracks[1].loops[1].id;
+            let cleared = run(
+                &mut f,
+                &mut client,
+                Command::Control(ControlOperation::ClearLoops {
+                    loops: vec![loaded_inner],
+                }),
+            );
+            assert!(matches!(
+                cleared,
+                Outcome::Confirmed { .. } | Outcome::AncestorsStopped { .. }
+            ));
+            assert!(client.snapshot().unwrap().tracks[1].loops[1].empty);
+            assert!(matches!(
+                run(&mut f, &mut client, Command::NewSession),
+                Outcome::Confirmed { .. }
+            ));
+            assert!(client.snapshot().unwrap().composites.is_empty());
         }
     }
+}
+
+#[shoop_test]
+fn mixed_processed_gestures_filter_composites_while_exact_lists_refuse_atomically() {
+    let mut f = fixture_with_dry_wet(2, true);
+    let mut client = attach(&mut f.service, 7001, ConnectionId(1), false);
+    let run = |f: &mut Fixture, client: &mut Client, value| {
+        command(&mut f.service, client, ConnectionId(1), value)
+    };
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let (track, loops) = created(run(
+        &mut f,
+        &mut client,
+        Command::AddTrack(TrackSpec {
+            name: "Mixed processed".into(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: Vec::new(),
+            creation_request_id: None,
+        }),
+    ));
+    for mode in [LoopMode::Recording, LoopMode::Stopped] {
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                transition(vec![loops[0], loops[2]], mode)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        f.service.tick(STEP);
+    }
+    assert!(matches!(
+        run(&mut f, &mut client, edit(loops[1], vec![loops[0]], false)),
+        Outcome::Confirmed { .. }
+    ));
+    for default in [
+        DefaultPlaybackMode::Regular,
+        DefaultPlaybackMode::DryThroughWet,
+    ] {
+        run(
+            &mut f,
+            &mut client,
+            Command::Track {
+                track,
+                action: TrackAction::DefaultPlaybackModeChanged(default),
+            },
+        );
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Control(ControlOperation::TriggerDefaultPlayback {
+                    loops: vec![loops[1], loops[2]]
+                })
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let state = client.snapshot().unwrap();
+        assert_eq!(state.tracks[1].loops[1].mode, LoopMode::Playing);
+        assert_eq!(
+            state.tracks[1].loops[2].mode,
+            if default == DefaultPlaybackMode::Regular {
+                LoopMode::Playing
+            } else {
+                LoopMode::PlayingDryThroughWet
+            }
+        );
+        run(
+            &mut f,
+            &mut client,
+            transition(vec![loops[1], loops[2]], LoopMode::Stopped),
+        );
+    }
+    run(
+        &mut f,
+        &mut client,
+        Command::Control(ControlOperation::SetLoopSelection {
+            loops: vec![loops[1], loops[2]],
+            selected: true,
+            clear_others: true,
+        }),
+    );
+    for (action, mode) in [
+        (LoopAction::RecordClicked, LoopMode::Recording),
+        (LoopAction::ReplaceClicked, LoopMode::Replacing),
+        (LoopAction::PlayDryClicked, LoopMode::PlayingDryThroughWet),
+    ] {
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                transition(vec![loops[1], loops[2]], mode)
+            ),
+            Outcome::Refused { .. }
+        ));
+        let state = client.snapshot().unwrap();
+        assert_eq!(state.tracks[1].loops[1].mode, LoopMode::Stopped);
+        assert_eq!(state.tracks[1].loops[2].mode, LoopMode::Stopped);
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[2],
+                    action
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let state = client.snapshot().unwrap();
+        assert_eq!(state.tracks[1].loops[1].mode, LoopMode::Stopped);
+        assert_eq!(state.tracks[1].loops[2].mode, mode);
+        run(
+            &mut f,
+            &mut client,
+            transition(vec![loops[2]], LoopMode::Stopped),
+        );
+    }
+    assert!(matches!(
+        run(
+            &mut f,
+            &mut client,
+            Command::Loop {
+                track,
+                loop_id: loops[2],
+                action: LoopAction::RerecordClicked
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(
+        client.snapshot().unwrap().tracks[1].loops[1].mode,
+        LoopMode::Stopped
+    );
 }
 
 #[shoop_test]
@@ -748,7 +1004,7 @@ fn editor_group_copy_delete_duration_and_modes_keep_stable_event_identity_and_re
         arrangement::Edit::Mode {
             target,
             event: original[0],
-            mode: LoopMode::Replacing,
+            mode: LoopMode::RecordingDryIntoWet,
         },
     ] {
         assert!(matches!(
@@ -779,8 +1035,7 @@ fn editor_group_copy_delete_duration_and_modes_keep_stable_event_identity_and_re
 }
 
 #[shoop_test]
-fn unavailable_dependent_modes_refuse_edits_and_mixed_transport_while_the_active_plan_keeps_playing(
-) {
+fn unsupported_event_topologies_and_outer_modes_refuse_while_the_active_plan_keeps_playing() {
     for encoded in [false, true] {
         let (mut f, mut client, _, loops) = setup_composites(encoded);
         let target = loops[2];
@@ -838,14 +1093,15 @@ fn unavailable_dependent_modes_refuse_edits_and_mixed_transport_while_the_active
             LoopMode::PlayingDryThroughWet,
             LoopMode::RecordingDryIntoWet,
         ] {
-            for value in [
-                Command::Composite(arrangement::Edit::Mode {
+            let mut values = vec![transition(vec![loops[1], target], mode)];
+            if mode != LoopMode::Replacing {
+                values.push(Command::Composite(arrangement::Edit::Mode {
                     target,
                     event,
                     mode,
-                }),
-                transition(vec![loops[1], target], mode),
-            ] {
+                }));
+            }
+            for value in values {
                 let message = client.command(value, None).unwrap();
                 let message = if encoded {
                     let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
@@ -1655,7 +1911,12 @@ fn production_client_projects_frozen_composite_geometry_without_media_spinner_an
     let composite = details.composite.as_ref().unwrap();
     assert_eq!(
         composite.available_event_modes,
-        [LoopMode::Playing, LoopMode::Recording, LoopMode::Stopped]
+        [
+            LoopMode::Playing,
+            LoopMode::Recording,
+            LoopMode::Stopped,
+            LoopMode::Replacing
+        ]
     );
     assert_eq!(composite.events.len(), 1);
     assert_eq!(composite.events[0].loop_id, loops[0]);

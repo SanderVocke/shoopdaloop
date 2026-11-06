@@ -776,6 +776,7 @@ impl Candidate {
                                             LoopMode::Playing => BackendLoopMode::Playing,
                                             LoopMode::Stopped => BackendLoopMode::Stopped,
                                             LoopMode::Recording => BackendLoopMode::Recording,
+                                            LoopMode::Replacing => BackendLoopMode::Replacing,
                                             LoopMode::PlayingDryThroughWet => {
                                                 BackendLoopMode::PlayingDryThroughWet
                                             }

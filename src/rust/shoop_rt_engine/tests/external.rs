@@ -509,7 +509,7 @@ fn unequal_external_roles_capture_play_dry_and_rerecord_without_a_dsp_bank() {
 }
 
 #[shoop_test]
-fn composite_dry_playback_and_wet_rerecord_preserve_unequal_roles_without_polling() {
+fn composite_dry_playback_rerecord_and_replacing_preserve_unequal_roles_without_polling() {
     for (dry, wet) in [(1, 8), (8, 1), (2, 5)] {
         let mut h = OfflineHost::new(&description()).unwrap();
         create(&mut h, dry, wet, true);
@@ -533,6 +533,7 @@ fn composite_dry_playback_and_wet_rerecord_preserve_unequal_roles_without_pollin
         for (index, event_mode) in [
             LoopMode::PlayingDryThroughWet,
             LoopMode::RecordingDryIntoWet,
+            LoopMode::Replacing,
             LoopMode::Playing,
             LoopMode::PlayingDryThroughWet,
         ]
@@ -579,10 +580,14 @@ fn composite_dry_playback_and_wet_rerecord_preserve_unequal_roles_without_pollin
                     },
                 }),
             );
-            assert!(matches!(
-                request(&mut h, Request::Composite(CompositeCommand::Commit { id })),
-                Outcome::CompositeApplied { version, .. } if version == id
-            ));
+            let outcome = request(&mut h, Request::Composite(CompositeCommand::Commit { id }));
+            assert!(
+                matches!(
+                    outcome,
+                    Outcome::CompositeApplied { version, .. } if version == id
+                ),
+                "{event_mode:?} dry={dry} wet={wet}: {outcome:?}"
+            );
             done(
                 &mut h,
                 Request::LoopTransition {
@@ -595,6 +600,8 @@ fn composite_dry_playback_and_wet_rerecord_preserve_unequal_roles_without_pollin
             for c in 0..dry as usize {
                 let expected = if event_mode == LoopMode::Playing {
                     0.
+                } else if event_mode == LoopMode::Replacing || id > 3 {
+                    99.
                 } else {
                     c as f32 + 0.25
                 };
@@ -602,7 +609,9 @@ fn composite_dry_playback_and_wet_rerecord_preserve_unequal_roles_without_pollin
             }
             for c in 0..wet as usize {
                 let expected = if event_mode == LoopMode::Playing {
-                    2. + c as f32
+                    3. + c as f32
+                } else if event_mode == LoopMode::Replacing {
+                    0.
                 } else {
                     id as f32 + c as f32
                 };

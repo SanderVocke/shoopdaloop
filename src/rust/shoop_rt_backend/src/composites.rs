@@ -83,6 +83,7 @@ pub(crate) fn wire_mode(mode: BackendLoopMode) -> Result<LoopMode> {
         BackendLoopMode::Stopped => LoopMode::Stopped,
         BackendLoopMode::Playing => LoopMode::Playing,
         BackendLoopMode::Recording => LoopMode::Recording,
+        BackendLoopMode::Replacing => LoopMode::Replacing,
         BackendLoopMode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
         BackendLoopMode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
         _ => bail!("composite event mode is unavailable on this engine"),
@@ -464,9 +465,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                                     .mode
                                     .ok_or_else(|| anyhow!("script event requires a mode"))?,
                             )? {
-                                LoopMode::Replacing => {
-                                    bail!("composite replacing events are not supported")
-                                }
+                                LoopMode::Replacing => shoop_loop_plan::Mode::Replacing,
                                 LoopMode::Stopped => shoop_loop_plan::Mode::Stopped,
                                 LoopMode::Playing => shoop_loop_plan::Mode::Playing,
                                 LoopMode::Recording => shoop_loop_plan::Mode::Recording,
@@ -1149,7 +1148,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .filter(|entry| entry.program.is_some() || self.pending_conversion(id))
             .ok_or_else(|| anyhow!("unknown composite"))?;
         let mode = wire_mode(mode)?;
-        if mode == LoopMode::Recording {
+        if !matches!(mode, LoopMode::Playing | LoopMode::Stopped) {
             bail!("a composite's outer mode is Play or Stop");
         }
         if let Some(iteration) = align {

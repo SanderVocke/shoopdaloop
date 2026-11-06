@@ -708,6 +708,67 @@ fn large_private_validation_yields_and_checks_samples_outside_the_render_window(
 }
 
 #[shoop_test]
+fn loaded_replacing_program_is_ready_for_its_first_midi_capture_before_commit_completes() {
+    let mut configured = description();
+    configured.page_bytes = 4096;
+    configured.midi_events = 256;
+    configured.midi_bytes = 2048;
+    let mut backend = stack(&configured);
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "replace-after-load".into(),
+            audio_channels: 0,
+            midi: true,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    let content = &mut session.tracks[0].loops[0];
+    content.length = 16_000;
+    content.midi[0].length = content.length;
+    content.midi[0].events = (0..1000)
+        .map(|i| BackendMidiEvent {
+            frame: i * 16,
+            data: vec![if i % 2 == 0 { 0x90 } else { 0x80 }, 60, 64].into(),
+        })
+        .collect::<Vec<_>>()
+        .into();
+    let source = content.source_id;
+    session.composites.push(BackendSessionComposite {
+        source_id: 9001,
+        version: 0,
+        plan: BackendPreparedCompositePlan {
+            kind: BackendCompositeKind::Script,
+            sync_source: None,
+            unit_frames: 16_000,
+            iterations: 1,
+            entries: 1,
+            spans: vec![BackendCompositeSpan {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(source)),
+                start: 0,
+                end: 1,
+                occurrence_start: 0,
+                ordinal: 0,
+                mode: BackendLoopMode::Replacing,
+            }],
+        },
+    });
+    let mapping = loaded(&mut backend, &session).unwrap();
+    assert_ne!(mapping.loops[&source], track.loops[0]);
+    let parent = BackendCompositeId::from_raw(mapping.loops[&9001].raw());
+    backend
+        .transition_composite_loop(parent, BackendLoopMode::Playing, None, None)
+        .unwrap();
+    backend.wait_idle();
+    let snapshot = backend.poll().unwrap();
+    assert_eq!(
+        snapshot.loops[&mapping.loops[&source]].mode,
+        BackendLoopMode::Replacing
+    );
+}
+
+#[shoop_test]
 fn sparse_midi_upload_larger_than_one_callback_validation_budget_roundtrips() {
     let mut configured = description();
     configured.page_bytes = 4096;

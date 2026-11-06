@@ -335,6 +335,13 @@ impl Processor<LoopPlanner> for CaptureNode {
             )?;
             midi.publish_state(&mut block.domain.inputs[slot]);
         }
+        block.domain.write_processed_capture(
+            slot,
+            block.frame,
+            block.quantum.frames(),
+            &block.audio,
+            &mut block.resources,
+        )?;
         Ok(())
     }
     fn ports(&self) -> PortCounts {

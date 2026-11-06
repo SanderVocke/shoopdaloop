@@ -653,7 +653,7 @@ impl LoopPlanner {
                     && !matches!(
                         edit.action,
                         InputAction::Mode {
-                            mode: Mode::Stopped | Mode::Playing,
+                            mode: Mode::Stopped | Mode::Playing | Mode::Replacing,
                             ..
                         }
                     )

@@ -687,10 +687,18 @@ impl Service {
                     LoopAction::ReplaceClicked => BackendLoopMode::Replacing,
                     _ => BackendLoopMode::Stopped,
                 };
+                let primitive_only =
+                    !matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Stopped);
+                if primitive_only && self.composites.contains_key(&id) {
+                    return Err(CommandError::invalid(
+                        "a composite's outer mode is Play or Stop",
+                    ));
+                }
                 let targets = if entry.view.selected {
                     self.ordered_loops()
                         .into_iter()
                         .filter(|id| self.loops[id].view.selected)
+                        .filter(|id| !primitive_only || !self.composites.contains_key(id))
                         .collect()
                 } else {
                     vec![id]
@@ -814,6 +822,9 @@ impl Service {
 
     fn default_playback(&self, id: LoopId) -> Result<BackendLoopMode, CommandError> {
         let entry = self.loop_entry(id)?;
+        if self.composites.contains_key(&id) {
+            return Ok(BackendLoopMode::Playing);
+        }
         let track = self.track(entry.track)?;
         Ok(
             match track
@@ -932,6 +943,11 @@ impl Service {
     }
 
     fn rerecord_targets(&mut self, initiating: LoopId) -> Result<(), CommandError> {
+        if self.composites.contains_key(&initiating) {
+            return Err(CommandError::invalid(
+                "rerecord requires a dry/wet primitive",
+            ));
+        }
         if !self
             .backend
             .capabilities()
@@ -973,6 +989,7 @@ impl Service {
             .ordered_loops()
             .into_iter()
             .filter(|id| *id == initiating || (selected && self.loops[id].view.selected))
+            .filter(|id| !self.composites.contains_key(id))
             .map(|id| {
                 let entry = &self.loops[&id];
                 if entry.view.empty

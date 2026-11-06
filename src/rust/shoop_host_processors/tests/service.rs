@@ -325,6 +325,7 @@ fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
         for mode in [
             LoopMode::PlayingDryThroughWet,
             LoopMode::RecordingDryIntoWet,
+            LoopMode::Replacing,
         ] {
             let mut f = Fixture::new(kind);
             f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));

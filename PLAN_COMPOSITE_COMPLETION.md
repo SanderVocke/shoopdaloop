@@ -2,12 +2,12 @@
 
 Status: in progress on `feat/composite-completion`.
 
-The dry/wet vertical slice is implemented through engine, adapter, service,
-client details and session files. Composite Replacing remains gated pending the
-writer work in Stage 2. P17 and final acceptance remain OPEN.
+All three event modes are implemented through engine, adapter, service, client
+and session files. Prepared paired writers and private-load readiness are covered
+by native regressions. Final platform acceptance and delivery remain in progress.
 
 Base: `feat/backend-replacement`, inspected at
-`862101eb9cd65e79208ab8e7746633a5ac64b3a0` on 2026-11-06.
+`0b6812259ffc00b9a524bb6095cfc2c6b2112847` on 2026-11-06.
 Follow `.agents/prompts/write_plan.md` and the branch's current agent instructions
 when executing this plan. Recheck the base before implementation.
 
@@ -26,7 +26,7 @@ capture, files and accepted-work recovery. P07's remaining Carla work is not a
 prerequisite. Carla, bus FX, general latency/take-alignment controls, duplication,
 script-resource ownership and expanded recovery guarantees remain separate items.
 
-## Current implementation and gaps
+## Initial implementation and gaps
 
 | Area | Existing foundation / required change |
 | --- | --- |
@@ -142,55 +142,55 @@ with no media bindings; Clear recreates its primitive role bindings.
 
 ### Stage 2 — Prepared authored Replacing and role-aware writers
 
-- [ ] Integrate writer preparation/reservations with composite admission and
+- [x] Integrate writer preparation/reservations with composite admission and
   render-owned activation. Cover future starts, Record→Replace, contiguous spans,
   gaps, repeats, seeks, direct overrides and edited plans without per-event UI work.
-- [ ] Extend the existing writer/media machinery for required dry/wet shapes,
+- [x] Extend the existing writer/media machinery for required dry/wet shapes,
   preserving paired capture, per-role timing and coherent immutable cuts. Document
   reservation lifetime, capacity accounting and invalidation by topology/media edits.
-- [ ] Verify: use exact stereo/MIDI overwrite and erasure/state oracles, dry/wet
+- [x] Verify: use exact stereo/MIDI overwrite and erasure/state oracles, dry/wet
   role assertions, simultaneous writers, finite-capacity failures, cancellation,
   resync and teardown. Exercise callback guards and return to a stable resource
   baseline; compare complete output across supported callback partitions.
 
 ### Stage 3 — Compile and admit dependent modes/topologies
 
-- [ ] Complete service compiler, adapter prepared/legacy conversion and protocol
+- [x] Complete service compiler, adapter prepared/legacy conversion and protocol
   mappings. Replace blanket Direct-only refusals with the supported matrix.
-- [ ] Update live composite and private-replacement engine validation together,
+- [x] Update live composite and private-replacement engine validation together,
   including processed-track containers and eligible child bindings. Preserve
   primitive/composite identity conversion and action/sync cycle checks.
-- [ ] Audit resolver snapshots, seek/retrigger, same-mode continuation and
+- [x] Audit resolver snapshots, seek/retrigger, same-mode continuation and
   dry-through-wet/rerecord transitions; correct only demonstrated interaction gaps.
-- [ ] Verify: run compiler/codec and guarded engine/adapter tests for each matrix
+- [x] Verify: run compiler/codec and guarded engine/adapter tests for each matrix
   entry, nested regular/explicit programs, same-boundary arbitration, partial
   callbacks, source loss/resize and atomic malformed/stale/over-budget refusal.
 
 ### Stage 4 — Monitoring, processor capture and UI/Lua
 
-- [ ] Extend actual and upcoming composite demand for Replacing and wet rerecord,
+- [x] Extend actual and upcoming composite demand for Replacing and wet rerecord,
   including nested starts and direct-child overrides. Preserve manual policy,
   aggregate track demand and pending-edit activation rules.
-- [ ] Verify processor activation, dry send/wet return, ordinary wet playback,
+- [x] Verify processor activation, dry send/wet return, ordinary wet playback,
   wet-only rerecord and recorded-settings capture at actual render boundaries.
-- [ ] Advertise executable event modes in production details and route existing
+- [x] Advertise executable event modes in production details and route existing
   editor/Lua controls through service admission. Preserve explicit/default-action
   distinctions and the Stage 1 mixed-selection contract.
-- [ ] Verify: exercise public typed and encoded UI/Lua routes, dynamic defaults,
+- [x] Verify: exercise public typed and encoded UI/Lua routes, dynamic defaults,
   mode edits, child independence, multiple loops on one track and recording with
   no service/client polling. Check disabled capabilities still refuse cleanly.
 
 ### Stage 5 — Persistence, recovery and lifecycle integration
 
-- [ ] Enable dependent-mode parsing and capability-aware file diagnostics; update
+- [x] Enable dependent-mode parsing and capability-aware file diagnostics; update
   private session replacement and role/state mapping without weakening atomic load.
-- [ ] Preserve capture refusal for actual/armed/nested future recording and exact
+- [x] Preserve capture refusal for actual/armed/nested future recording and exact
   confirmed cuts while non-recording edits await restart. Retain frozen geometry
   through source changes and consented sample-rate/quantum conversion.
-- [ ] Extend accepted-work recovery and structural lifecycle coverage to these
+- [x] Extend accepted-work recovery and structural lifecycle coverage to these
   modes: waiting edits, activation/cancel races, Clear/removal, New Session,
   shutdown, disconnect and fresh-generation reuse.
-- [ ] Verify: exact save/load/save media, role order, event IDs, settings and timing;
+- [x] Verify: exact save/load/save media, role order, event IDs, settings and timing;
   fresh stopped identities; unsupported whole-document refusal; socket UI-loss
   recovery without mutation replay or automatic Lua restart.
 

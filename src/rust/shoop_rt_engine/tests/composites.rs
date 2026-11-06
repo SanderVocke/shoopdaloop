@@ -101,6 +101,87 @@ fn stage(h: &mut Harness, d: CompositeDescription, spans: &[CompositeSpan]) {
 }
 
 #[shoop_test]
+fn authored_replacing_prepares_its_writer_and_overwrites_without_control_polling() {
+    for partition in [1, 3, 16] {
+        let mut h = setup_engine(description(), 10);
+        let mut d = plan(1, 1);
+        d.kind = CompositeKind::Explicit;
+        let mut events = spans();
+        events[0].mode = LoopMode::Replacing;
+        stage(&mut h, d, &events);
+        h.done(Request::Composite(CompositeCommand::Commit { id: 1 }));
+        let outer = loop_id(4, 1);
+        h.done(Request::CreateComposite {
+            loop_id: outer,
+            strip: None,
+        });
+        let mut regular = plan(2, 1);
+        regular.loop_id = outer;
+        regular.previous = None;
+        regular.sync = None;
+        regular.unit_frames = 8;
+        regular.iterations = 1;
+        regular.entries = 1;
+        regular.segments = 1;
+        stage(
+            &mut h,
+            regular,
+            &[CompositeSpan {
+                target: d.loop_id,
+                start: 0,
+                end: 1,
+                occurrence_start: 0,
+                ordinal: 0,
+                mode: LoopMode::Playing,
+            }],
+        );
+        h.done(Request::Composite(CompositeCommand::Commit { id: 2 }));
+        h.input = Box::new(|_, _| 0.75);
+        h.send(transition(outer, LoopMode::Playing));
+        h.run(64 * 8, partition);
+        h.done(transition(outer, LoopMode::Stopped));
+        let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 });
+        assert_eq!(frames, 4);
+        assert_eq!(audio, vec![0.75; 4]);
+    }
+}
+
+#[shoop_test]
+fn replacing_reservation_pressure_refuses_the_candidate_and_reclaims_its_partial_writers() {
+    let mut engine = description();
+    engine.history.writers = 1;
+    let mut h = setup_engine(engine, 10);
+    h.done(transition(loop_id(1, 1), LoopMode::Playing));
+    let mut d = plan(1, 1);
+    d.kind = CompositeKind::Explicit;
+    let mut events = spans();
+    events[0].mode = LoopMode::Replacing;
+    events[1].mode = LoopMode::Replacing;
+    stage(&mut h, d, &events);
+    let start = h.outputs[0].len();
+    assert_eq!(
+        h.apply(Request::Composite(CompositeCommand::Commit { id: 1 })),
+        Outcome::Refused(Refusal::Capacity)
+    );
+    h.run(16, 3);
+    assert!(h.outputs[0][start..].iter().all(|sample| *sample == 1.));
+    let (_, audio, _) = h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 });
+    assert_eq!(audio, vec![1.; 4]);
+    d.id = 2;
+    d.entries = 1;
+    d.segments = 1;
+    d.iterations = 2;
+    stage(&mut h, d, &events[..1]);
+    h.done(Request::Composite(CompositeCommand::Commit { id: 2 }));
+    h.input = Box::new(|_, _| 0.75);
+    h.send(transition(d.loop_id, LoopMode::Playing));
+    h.run(8, 1);
+    let (length, audio, _) = h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 });
+    assert_eq!(length, 4);
+    assert_eq!(audio, vec![0.75; 4]);
+}
+
+#[shoop_test]
 fn converted_composites_render_their_frame_plan_after_source_loss_and_resync_fresh_ids() {
     let mut h = setup();
     stage(&mut h, plan(1, 1), &spans());

@@ -880,6 +880,12 @@ impl Runtime {
                     available_event_modes: {
                         let mut modes =
                             vec![LoopMode::Playing, LoopMode::Recording, LoopMode::Stopped];
+                        if state
+                            .capabilities
+                            .supports(BackendCapability::ReplacingMode)
+                        {
+                            modes.push(LoopMode::Replacing);
+                        }
                         if state.capabilities.supports(BackendCapability::DryWetModes) {
                             modes.extend([
                                 LoopMode::PlayingDryThroughWet,

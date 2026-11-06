@@ -135,6 +135,7 @@ pub(super) fn compile_with_geometry(
                 LoopMode::Stopped => Ok(shoop_loop_plan::Mode::Stopped),
                 LoopMode::Playing => Ok(shoop_loop_plan::Mode::Playing),
                 LoopMode::Recording => Ok(shoop_loop_plan::Mode::Recording),
+                LoopMode::Replacing => Ok(shoop_loop_plan::Mode::Replacing),
                 LoopMode::PlayingDryThroughWet => Ok(shoop_loop_plan::Mode::PlayingDryThroughWet),
                 LoopMode::RecordingDryIntoWet => Ok(shoop_loop_plan::Mode::RecordingDryIntoWet),
                 _ => Err(anyhow!(
@@ -278,7 +279,7 @@ mod tests {
         doc = document();
         doc.kind = CompositeKind::Script;
         for event in &mut doc.instances {
-            event.mode = Some(LoopMode::Replacing);
+            event.mode = Some(LoopMode::Unknown);
         }
         assert!(compile(LoopId::from_raw(1), &doc, format, limits(), |_| Ok(0)).is_err());
     }
