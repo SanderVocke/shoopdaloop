@@ -4772,8 +4772,23 @@ mod tests {
             }
             assert!(
                 Instant::now() < deadline,
-                "{what} timed out; notifications: {:?}",
-                snapshot.notifications
+                "{what} timed out; notifications: {:?}; media detail: {:?}",
+                snapshot.notifications,
+                snapshot.details.as_ref().map(|details| (
+                    details.loop_id,
+                    details.generation,
+                    details.loading,
+                    details.midi_loading,
+                    details
+                        .midi_channels
+                        .iter()
+                        .map(|channel| (
+                            channel.content_revision,
+                            channel.data_length,
+                            channel.events.len(),
+                        ))
+                        .collect::<Vec<_>>(),
+                ))
             );
             thread::sleep(Duration::from_millis(5));
         }
@@ -5319,10 +5334,24 @@ mod tests {
             .dispatch(AppIntent::Piano(PianoAction::Press(note)))
             .unwrap();
         thread::sleep(Duration::from_millis(30));
+        let heard = |snapshot: &AppSnapshot, bytes: &[u8]| {
+            snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == keys.id)
+                .and_then(|track| track.controls.latest_input_midi_message)
+                .is_some_and(|message| message.data() == bytes)
+        };
+        wait_for_snapshot(runtime, "the engine's MIDI note-on", |snapshot| {
+            heard(snapshot, &[0x90, 60, 100])
+        });
         runtime
             .dispatch(AppIntent::Piano(PianoAction::Release(note)))
             .unwrap();
         thread::sleep(Duration::from_millis(30));
+        wait_for_snapshot(runtime, "the engine's MIDI note-off", |snapshot| {
+            heard(snapshot, &[0x80, 60, 0])
+        });
         loop_action(runtime, &keys, LoopAction::PlayClicked);
         wait_for_snapshot(runtime, "immediate MIDI playback", |snapshot| {
             let state = first_loop(snapshot, keys.id);
