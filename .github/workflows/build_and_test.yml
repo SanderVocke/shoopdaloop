@@ -251,6 +251,8 @@ jobs:
           cargo nextest run --locked --workspace \
             --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
           python3 scripts/run_native_jack_tests.py --output target/native-jack-coverage
+          timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport socket
+          timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport shared_memory
           # SIGKILL recovery tests can leave truncated child profiles; retain the valid profiles.
           cargo llvm-cov report --failure-mode all --lcov --output-path lcov.info
 
