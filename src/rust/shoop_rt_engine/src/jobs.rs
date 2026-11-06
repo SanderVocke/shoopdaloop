@@ -913,7 +913,17 @@ impl ControlEndpoint {
                             != strip.processor
                 })
                 .count();
-            if !self.room(count * 4) {
+            let bus_count = self
+                .next
+                .buses
+                .iter()
+                .flatten()
+                .filter(|bus| {
+                    bus.processor.is_some()
+                        && self.model.bus(bus.id).and_then(|old| old.processor) != bus.processor
+                })
+                .count();
+            if !self.room((count + bus_count) * 4) {
                 return false;
             }
             job.processors_prepared = true;
@@ -978,7 +988,58 @@ impl ControlEndpoint {
                     );
                 }
             }
-            if count > 0 {
+            for index in 0..self.next.buses.len() {
+                let Some(bus) = self.next.buses[index] else {
+                    continue;
+                };
+                if self.model.bus(bus.id).and_then(|old| old.processor) == bus.processor {
+                    continue;
+                }
+                let Some(slot) = bus.processor.and_then(|owner| owner.slot) else {
+                    continue;
+                };
+                let node = self.pool.processor(slot.index as usize);
+                for operation in [
+                    Some(EngineOp::ProcessorClaim {
+                        generation: slot.generation,
+                    }),
+                    Some(EngineOp::ProcessorParameter {
+                        generation: slot.generation,
+                        parameter: shoop_rt_protocol::processors::WIDTH,
+                        value: bus.channels as f32,
+                    }),
+                    if job.replacing() {
+                        self.replacement.bus_processor_states[index].map(|control| {
+                            EngineOp::ProcessorControl {
+                                generation: slot.generation,
+                                control,
+                            }
+                        })
+                    } else {
+                        None
+                    },
+                    Some(EngineOp::ProcessorBindBus {
+                        generation: slot.generation,
+                        bus: bus.id,
+                        epoch,
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    self.submit_job(
+                        job,
+                        Command::Schedule {
+                            at: Frame(0),
+                            action: rt_runtime::schedule::Action::Processor { node, operation },
+                            payload: Box::new([]),
+                        },
+                        Step::ProcessorPrepare,
+                        true,
+                    );
+                }
+            }
+            if count + bus_count > 0 {
                 return true;
             }
         }
@@ -1526,6 +1587,16 @@ impl ControlEndpoint {
                 self.submit_job_op(
                     job,
                     Frame(base),
+                    self.pool.bus_input(slot),
+                    EngineOp::Reset {
+                        inputs: 0,
+                        outputs: bus.channels,
+                        generation: 0,
+                    },
+                );
+                self.submit_job_op(
+                    job,
+                    Frame(base),
                     self.pool.bus(slot),
                     EngineOp::Reset {
                         inputs: 0,
@@ -1664,6 +1735,24 @@ impl ControlEndpoint {
                 );
             }
         }
+        for index in 0..self.next.buses.len() {
+            let Some(bus) = self.next.buses[index] else {
+                continue;
+            };
+            if self.model.bus(bus.id).and_then(|old| old.processor) == bus.processor {
+                continue;
+            }
+            if let Some(owner) = bus.processor.and_then(|owner| owner.slot) {
+                self.submit_job_op(
+                    job,
+                    at,
+                    self.pool.processor(owner.index as usize),
+                    EngineOp::ProcessorRetire {
+                        generation: owner.generation,
+                    },
+                );
+            }
+        }
         for slot in 0..self.model.loops.len() {
             let Some(entry) = self.model.loops[slot] else {
                 continue;
@@ -1768,7 +1857,7 @@ impl ControlEndpoint {
             return true;
         }
         if job.processors_prepared && !job.activated {
-            if !self.room(self.next.strips.len()) {
+            if !self.room(self.next.strips.len() + self.next.buses.len()) {
                 return false;
             }
             for index in 0..self.next.strips.len() {
@@ -1785,6 +1874,35 @@ impl ControlEndpoint {
                             state.generation == owner.generation
                                 && state.phase != crate::ProcessorPhase::Free
                                 && state.phase != crate::ProcessorPhase::Retiring
+                        })
+                    {
+                        self.submit_job_op(
+                            job,
+                            Frame(0),
+                            self.pool.processor(owner.index as usize),
+                            EngineOp::ProcessorRetire {
+                                generation: owner.generation,
+                            },
+                        );
+                    }
+                }
+            }
+            for index in 0..self.next.buses.len() {
+                let Some(bus) = self.next.buses[index] else {
+                    continue;
+                };
+                if self.model.bus(bus.id).and_then(|old| old.processor) == bus.processor {
+                    continue;
+                }
+                if let Some(owner) = bus.processor.and_then(|owner| owner.slot) {
+                    if self.processor_cells[owner.index as usize]
+                        .read()
+                        .is_some_and(|state| {
+                            state.generation == owner.generation
+                                && !matches!(
+                                    state.phase,
+                                    crate::ProcessorPhase::Free | crate::ProcessorPhase::Retiring
+                                )
                         })
                     {
                         self.submit_job_op(

@@ -242,6 +242,7 @@ impl RemoteWorkletBackend {
         snapshot.mixer.buses.insert(
             MASTER_BUS_ID,
             BackendBusState {
+                latest_input_midi_message: None,
                 id: MASTER_BUS_ID,
                 name: "Master".to_owned(),
                 output_peaks_db: vec![-200.0; channels.len()],
@@ -885,6 +886,7 @@ impl RemoteWorkletBackend {
             self.snapshot.mixer.buses.insert(
                 bus_id,
                 BackendBusState {
+                    latest_input_midi_message: None,
                     id: bus_id,
                     name: source_bus.name.clone(),
                     output_peaks_db: vec![-200.0; channels.len()],
@@ -1072,6 +1074,7 @@ impl RemoteWorkletBackend {
                 (
                     id,
                     BackendBusState {
+                        latest_input_midi_message: None,
                         id,
                         name: bus.name,
                         channels,

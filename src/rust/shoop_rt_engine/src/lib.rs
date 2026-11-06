@@ -187,7 +187,7 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
     let processor_slots = 2
         * (usize::from(description.processors.fx_instances)
             + usize::from(description.processors.synth_instances));
-    let nodes = 1 + 2 * strips + 3 * loops + description.buses as usize + processor_slots;
+    let nodes = 1 + 2 * strips + 3 * loops + 2 * description.buses as usize + processor_slots;
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
     let buses = description.buses as usize;
@@ -205,7 +205,9 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
         + loops * (8 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
-        + processor_slots * (3 * channels + 3);
+        + processor_slots * (3 * channels + 3)
+        + description.buses as usize
+            * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let edges = strips
         * (channels * (4 * (audio_in + audio_out) + 2 * buses * master_channels)
             + 2 * midi_in
@@ -213,7 +215,9 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
-        + processor_slots * (3 * channels + 3);
+        + processor_slots * (3 * channels + 3)
+        + description.buses as usize
+            * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND.max(loops) * RECORD_BYTES;
     Config {
@@ -258,6 +262,10 @@ fn signal_nodes(
     let buses = description.buses as usize;
     let mut nodes = Vec::with_capacity(2 * strips + loops + buses + 1);
     for slot in 0..buses {
+        nodes.push((
+            pool.bus_input(slot),
+            EngineNode::BusInput(BusMixer::new(slot, settings)),
+        ));
         nodes.push((
             pool.bus(slot),
             EngineNode::Bus(BusMixer::new(slot, settings)),
@@ -706,6 +714,7 @@ fn prepare_complete(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        projected_bus_processors: vec![None; description.buses as usize].into_boxed_slice(),
         projected_processors: vec![None; strips].into_boxed_slice(),
         projected_timing: vec![None; loops].into_boxed_slice(),
         projected_recorded: vec![None; loops].into_boxed_slice(),
@@ -727,6 +736,7 @@ fn prepare_complete(
         shape: Shape {
             channels,
             master_channels,
+            processor_channels: channels,
         },
         cells: cells.clone(),
         settings: Settings {

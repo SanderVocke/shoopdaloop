@@ -17,6 +17,10 @@ pub struct StripPreset {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReplacementEdit {
+    BusProcessor {
+        bus: crate::BusId,
+        state: crate::processors::Control,
+    },
     Composite(crate::CompositeDescription),
     CompositeSpan {
         loop_id: LoopSlotId,

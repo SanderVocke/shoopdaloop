@@ -61,12 +61,7 @@ fn check_bus(bus: &BackendSessionBus, max_channels: usize) -> Result<()> {
     if bus.name.trim().is_empty() || bus.channels.is_empty() || bus.channels.len() > max_channels {
         return Err(unavailable(BackendCapability::BusManagement));
     }
-    if bus.processor_type.is_some()
-        || bus.processor_state.is_some()
-        || !bus.builtin_fx_midi_cc_assignments.is_empty()
-    {
-        return Err(unavailable(BackendCapability::BusFx));
-    }
+    crate::processor_controls::bus_session_state(bus)?;
     let owner = BackendPortOwner::Bus(shoop_backend::BackendBusId::from_raw(bus.source_id));
     let shaped = bus.channels.iter().all(|channel| {
         let port = &channel.output_port.descriptor;
@@ -566,6 +561,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 work.push_back(Work::Request(Request::ReplacementEdit { id, edit }));
             }
         }
+        for bus in &session.buses {
+            if let Some(state) = crate::processor_controls::bus_session_state(bus)? {
+                let live = mapping.buses[&bus.source_id];
+                let slot = candidate.buses[&live].slot;
+                work.push_back(Work::Request(Request::ReplacementEdit {
+                    id,
+                    edit: ReplacementEdit::BusProcessor { bus: slot, state },
+                }));
+            }
+        }
         work.push_back(Work::Request(Request::ReplacementPrepare { id }));
         work.push_back(Work::Request(Request::ReplacementCommit { id }));
         self.replacement = Some(crate::Replacement {
@@ -641,7 +646,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .filter(|track| {
                     crate::processor_controls::topology_kind(&track.topology) == Some(kind)
                 })
-                .count();
+                .count()
+                + if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                    session
+                        .buses
+                        .iter()
+                        .filter(|bus| bus.processor_type.is_some())
+                        .count()
+                } else {
+                    0
+                };
             let available = self.processors.map_or(0, |limits| match kind {
                 shoop_rt_protocol::ProcessorKind::BuiltInFx => limits.effective.fx_instances,
                 _ => limits.effective.synth_instances,

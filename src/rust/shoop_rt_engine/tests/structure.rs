@@ -648,12 +648,12 @@ fn only_occupied_slots_are_rendered() {
         strip: track,
     });
     harness.run(1, 1);
-    // Master, the bulk reader, the strip's two stages and the loop's playback,
+    // Master input/output, the bulk reader, the strip stages and loop playback,
     // capture and fader.
-    assert_eq!(harness.host.render.diagnostics().nodes_processed, 7);
+    assert_eq!(harness.host.render.diagnostics().nodes_processed, 8);
     harness.done(Request::RemoveStrip { strip: track });
     harness.run(1, 1);
-    assert_eq!(harness.host.render.diagnostics().nodes_processed, 2);
+    assert_eq!(harness.host.render.diagnostics().nodes_processed, 3);
 }
 
 #[shoop_test]

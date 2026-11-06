@@ -114,24 +114,22 @@ snapshot and every later operation is refused.
   output links. The default pool holds eight buses with up to eight channels each.
   `bus_limits()` reports the actual pool; bus/channel/port application IDs are
   never reused. Mixer routes connect one track audio output to one bus channel;
-  bus outputs connect explicitly to host outputs. Bus FX remains unavailable.
+  bus outputs connect explicitly to host outputs. Built-in bus FX shares the prepared track FX pool and width, with confirmed controls and state.
 - **The global FX control port** exists as in the legacy backends; its connections are
-  accepted and confirmed without reaching the engine.
+  accepted and confirmed by the engine, with direct control fanout to track and bus processors.
 - **Smoothing** in milliseconds becomes `SetSmoothing` frames at the engine's sample
   rate; values above the limit the engine announces are refused by the call.
 - **Session replacement** validates direct tracks and ordinary buses against
   prepared capacity, stages a complete private candidate, and atomically publishes
   it with fresh mappings. Empty bus collections are valid. Capture includes every
   confirmed bus and explicit connection intent; media-bearing replacement retains
-  the core persistence contract. Invalid, oversized or FX-bearing candidates leave
+  the core persistence contract. Invalid, oversized or unsupported processor candidates leave
   the running session intact.
 
 ## Refused
 
-Production capabilities include core capture/load/content import, MIDI injection
-and bus management when their engine support is ready. Composite loops, grab,
-replacing and dry/wet modes, processors and track/bus FX, latency compensation,
-take alignment, timing edits and live driver switching remain unavailable.
+Capabilities follow engine negotiation, including Built-in bus FX. Carla, general
+latency compensation, take alignment and live driver switching remain unavailable.
 Track-less loop creation remains refused. No operation falls back to another engine.
 
 ## Tests

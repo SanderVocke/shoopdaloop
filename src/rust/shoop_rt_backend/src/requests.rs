@@ -42,6 +42,7 @@ pub(crate) enum Purpose {
         connected: bool,
     },
     BusControl(BackendBusId, BackendBusControl),
+    BusFxControl(BackendBusId, shoop_backend::BackendBusFxControl),
     InjectMidi(BackendTrackId),
     Smoothing(u32),
     Profiling,

@@ -31,13 +31,13 @@ OxiSynth uses two dry/two wet audio channels and dry MIDI. Both run synchronousl
 in the host render graph with one quantum of processor buffering; host buffering
 is reported separately. Regular playback uses the recorded wet take. Dry playback
 feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
-and preserves dry media. Embedded editors, MIDI Learn, track-only global control
+and preserves dry media. Embedded editors, MIDI Learn, track/bus global control
 MIDI, recorded-state restoration and role-aware files use the production service.
-External supports independent side widths; Carla and bus FX remain unavailable.
+External supports independent side widths. Built-in bus FX supports the negotiated FX width and shares track FX slots; Carla remains unavailable. See the [bus FX contract](../../../docs/native_session_recovery/bus-fx.md).
 
 The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
-UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The native
-archive smoke runs it over socket/shared memory and independent startup policies.
+UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The `--probe-bus-fx --engine-transport socket` canary covers bus audio, bypass, Lua, files and reattachment. The native
+archive smoke runs both canaries over socket/shared memory and independent startup policies.
 Browser acceptance includes the corresponding AudioWorklet workflow. See the
 [processor contract and evidence](../../../docs/native_session_recovery/track-processors.md)
 for resource, timing and platform limits.

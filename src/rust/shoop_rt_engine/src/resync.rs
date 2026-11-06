@@ -109,9 +109,57 @@ impl ControlEndpoint {
         })
     }
 
+    fn bus_processor_record(&self, bus: shoop_rt_protocol::BusId) -> Option<StateRecord> {
+        let slot = self.model.bus(bus)?.processor?.slot?;
+        let state = self.processor_cells.get(slot.index as usize)?.read()?;
+        if state.generation != slot.generation {
+            return None;
+        }
+        Some(StateRecord::BusProcessorState {
+            bus,
+            slot,
+            snapshot: shoop_rt_protocol::processors::Snapshot {
+                source_frame: state.frame.0,
+                phase: state.phase,
+                global_midi: state.global_midi,
+                values: state.values,
+            },
+        })
+    }
     pub(crate) fn project_processors(&mut self, out: &mut Outbox) {
         if !self.connected || self.resync.is_some() {
             return;
+        }
+        for index in 0..self.model.buses.len() {
+            let Some(bus) = self.model.buses[index] else {
+                self.projected_bus_processors[index] = None;
+                continue;
+            };
+            let slot = bus.processor.and_then(|owner| owner.slot);
+            let record = self.bus_processor_record(bus.id);
+            let snapshot = match record {
+                Some(StateRecord::BusProcessorState { mut snapshot, .. }) => {
+                    snapshot.source_frame = 0;
+                    Some(snapshot)
+                }
+                _ => None,
+            };
+            if slot.is_some() && snapshot.is_none() {
+                continue;
+            }
+            let key = (bus.id, slot, snapshot);
+            if self.projected_bus_processors[index] == Some(key) {
+                continue;
+            }
+            if out
+                .push(EngineMessage::State(
+                    record.unwrap_or(StateRecord::BusProcessor { bus: bus.id, slot }),
+                ))
+                .is_err()
+            {
+                return;
+            }
+            self.projected_bus_processors[index] = Some(key);
         }
         for index in 0..self.model.strips.len() {
             let Some(strip) = self.model.strips[index] else {
@@ -280,7 +328,7 @@ impl ControlEndpoint {
                         shoop_rt_protocol::ProcessorLimits {
                             effective: self.processor_catalog.effective,
                             reserved_bytes: self.processor_catalog.reserved_bytes,
-                            channels: self.settings.channels as u8,
+                            channels: self.shape.processor_channels as u8,
                             builtin_latency_frames: self.limits.quantum,
                         },
                     ));
@@ -549,6 +597,21 @@ impl ControlEndpoint {
                             bus: bus.id,
                             control: *control,
                         });
+                    }
+                    if cursor.part == 4 {
+                        cursor.part += 1;
+                        return Some(StateRecord::BusProcessor {
+                            bus: bus.id,
+                            slot: bus.processor.and_then(|owner| owner.slot),
+                        });
+                    }
+                    if cursor.part == 5 {
+                        if bus.processor.is_some() {
+                            let record = self.bus_processor_record(bus.id)?;
+                            cursor.part += 1;
+                            return Some(record);
+                        }
+                        cursor.part += 1;
                     }
                     while cursor.channel < bus.channels as usize {
                         let mask = bus.outputs.current()[cursor.channel];

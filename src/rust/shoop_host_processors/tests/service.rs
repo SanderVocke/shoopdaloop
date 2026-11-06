@@ -16,6 +16,275 @@ static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 const STEP: Duration = Duration::from_millis(16);
 
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn bus_fx_public_controls_global_midi_recovery_and_file_round_trip() {
+    use persistence_image::Manifest;
+    let mut f = Fixture::new(ProcessorKind::BuiltInFx);
+    assert!(f
+        .client
+        .snapshot()
+        .unwrap()
+        .capabilities
+        .supports(BackendCapability::BusFx));
+    let bus = f.client.snapshot().unwrap().buses[0].id;
+    let command = |action| Command::Bus { bus, action };
+    f.confirmed(command(BusAction::FxProcessorChanged(Some(
+        TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+    ))));
+    f.ticks(3);
+    assert!(
+        f.client.snapshot().unwrap().buses[0]
+            .fx
+            .as_ref()
+            .unwrap()
+            .active
+    );
+    f.confirmed(command(BusAction::FxVisibilityChanged(true)));
+    f.confirmed(command(BusAction::BuiltInFx(
+        BuiltInFxControl::AssignMidiCc(BuiltInFxMidiCcAssignment {
+            parameter: BuiltInFxParameter::DriveOutput,
+            channel: 2,
+            controller: 17,
+        }),
+    )));
+    let snapshot = f.client.snapshot().unwrap();
+    let port = snapshot
+        .connections
+        .application_ports
+        .iter()
+        .find(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+        .unwrap()
+        .id;
+    let host = snapshot
+        .connections
+        .host_ports
+        .iter()
+        .find(|port| port.id.as_str() == "midi_in_1")
+        .unwrap()
+        .id
+        .clone();
+    f.confirmed(Command::SetPortConnected {
+        port,
+        host_port: host,
+        connected: true,
+    });
+    f.render
+        .borrow_mut()
+        .midi_input_mut(0)
+        .push(3, 128, &[0xb2, 17, 0])
+        .unwrap();
+    f.ticks(3);
+    let bus_state = &f.client.snapshot().unwrap().buses[0];
+    assert_eq!(
+        bus_state.latest_input_midi_message.unwrap().midi_cc(),
+        Some((2, 17, 0))
+    );
+    let Some(TrackProcessorEditorState::BuiltInFx(editor)) =
+        bus_state.fx.as_ref().unwrap().editor.as_ref()
+    else {
+        panic!()
+    };
+    assert_eq!(editor.drive_output_db, -18.);
+    let operation = f.submit(command(BusAction::BuiltInFx(
+        BuiltInFxControl::SetParameter(BuiltInFxParameter::DriveOutput, -3.),
+    )));
+    f.service.detach(f.connection);
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    f.client = Client::new();
+    f.connection = ConnectionId(2);
+    f.attach();
+    assert_eq!(
+        f.client
+            .snapshot()
+            .unwrap()
+            .results
+            .iter()
+            .filter(|result| result.id == operation
+                && matches!(result.outcome, Outcome::Confirmed { .. }))
+            .count(),
+        1
+    );
+    let captured = file_image(f.capture(400, None));
+    let Manifest::Session(session) = &captured.manifest else {
+        panic!()
+    };
+    let saved = session.buses[0].fx.as_ref().unwrap();
+    assert_eq!(saved.midi_cc_assignments.len(), 1);
+    f.load(captured.clone(), 401);
+    f.ticks(4);
+    let restored = &f.client.snapshot().unwrap().buses[0];
+    assert_ne!(restored.id, bus);
+    let Some(TrackProcessorEditorState::BuiltInFx(editor)) =
+        restored.fx.as_ref().unwrap().editor.as_ref()
+    else {
+        panic!()
+    };
+    assert_eq!(editor.drive_output_db, -3.);
+    assert_eq!(editor.midi_cc_assignments.len(), 1);
+    assert!(matches!(
+        f.run(command(BusAction::FxActiveChanged(false))),
+        Outcome::Refused { .. }
+    ));
+    assert!(
+        f.client.snapshot().unwrap().buses[0]
+            .fx
+            .as_ref()
+            .unwrap()
+            .active
+    );
+    let resaved = file_image(f.capture(402, None));
+    let Manifest::Session(resaved) = &resaved.manifest else {
+        panic!()
+    };
+    assert_eq!(resaved.buses[0].fx, session.buses[0].fx);
+    let mut malformed = (*captured).clone();
+    let Manifest::Session(session) = &mut malformed.manifest else {
+        panic!()
+    };
+    let mapping = session.buses[0].fx.as_ref().unwrap().midi_cc_assignments[0];
+    session.buses[0]
+        .fx
+        .as_mut()
+        .unwrap()
+        .midi_cc_assignments
+        .push(mapping);
+    let before = f.client.snapshot().unwrap().buses[0].id;
+    f.refuse_load(std::sync::Arc::new(malformed), 403);
+    assert_eq!(f.client.snapshot().unwrap().buses[0].id, before);
+    let mut unavailable = (*captured).clone();
+    let Manifest::Session(session) = &mut unavailable.manifest else {
+        panic!()
+    };
+    session.buses[0].fx.as_mut().unwrap().processor_type = TrackProcessorTypeId::new("carla");
+    assert!(unavailable.validate().is_err());
+    assert!(matches!(
+        f.run(Command::Bus {
+            bus: before,
+            action: BusAction::FxProcessorChanged(Some(TrackProcessorTypeId::new("carla"))),
+        }),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(f.client.snapshot().unwrap().buses[0].id, before);
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn bus_fx_creation_is_atomic_and_shares_the_prepared_instance_limit() {
+    let mut f = Fixture::new(ProcessorKind::BuiltInFx);
+    let spec = || BusSpec {
+        name: "FX bus".into(),
+        channel_count: 1,
+        fx: Some(BusFxSpec {
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+        }),
+        creation_request_id: None,
+    };
+    f.confirmed(Command::AddBus(spec()));
+    f.ticks(3);
+    let before = f.client.snapshot().unwrap().buses.clone();
+    assert_eq!(before.len(), 2);
+    assert!(before[1].fx.is_some());
+    assert!(matches!(
+        f.run(Command::AddBus(spec())),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(f.client.snapshot().unwrap().buses.len(), 2);
+    let master = before[0].id;
+    assert!(matches!(
+        f.run(Command::Bus {
+            bus: master,
+            action: BusAction::FxProcessorChanged(Some(TrackProcessorTypeId::new(
+                TrackProcessorTypeId::BUILTIN_FX
+            )))
+        }),
+        Outcome::Refused { .. }
+    ));
+    assert!(f.client.snapshot().unwrap().buses[0].fx.is_none());
+    f.confirmed(Command::Bus {
+        bus: before[1].id,
+        action: BusAction::Remove,
+    });
+    f.ticks(8);
+    f.confirmed(Command::Bus {
+        bus: master,
+        action: BusAction::FxProcessorChanged(Some(TrackProcessorTypeId::new(
+            TrackProcessorTypeId::BUILTIN_FX,
+        ))),
+    });
+    f.ticks(3);
+    assert!(f.client.snapshot().unwrap().buses[0].fx.is_some());
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn master_preview_flows_through_bus_fx_and_retains_ordinary_bus_controls() {
+    let mut f = Fixture::new(ProcessorKind::BuiltInFx);
+    let bus = f.client.snapshot().unwrap().preview_bus.unwrap();
+    f.confirmed(Command::Bus {
+        bus,
+        action: BusAction::FxProcessorChanged(Some(TrackProcessorTypeId::new(
+            TrackProcessorTypeId::BUILTIN_FX,
+        ))),
+    });
+    for control in [
+        BuiltInFxControl::SetReverbEnabled(false),
+        BuiltInFxControl::SetStageEnabled(BuiltInFxStage::Drive, true),
+        BuiltInFxControl::SetParameter(BuiltInFxParameter::DriveMix, 0.),
+        BuiltInFxControl::SetParameter(BuiltInFxParameter::DriveOutput, -18.),
+    ] {
+        f.confirmed(Command::Bus {
+            bus,
+            action: BusAction::BuiltInFx(control),
+        });
+    }
+    f.confirmed(Command::Preview(PreviewCommand::Begin {
+        request_id: 7,
+        bus,
+        sample_rate: 8000,
+        frames: 8192,
+    }));
+    for offset in (0..8192).step_by(256) {
+        f.confirmed(Command::Preview(PreviewCommand::Chunk {
+            request_id: 7,
+            offset,
+            samples: vec![0.25; 256],
+        }));
+    }
+    f.confirmed(Command::Preview(PreviewCommand::Play { request_id: 7 }));
+    for _ in 0..100 {
+        f.ticks(1);
+        if f.render.borrow().output(0)[64..128]
+            .iter()
+            .all(|value| (*value - 0.25 * 10_f32.powf(-18. / 20.)).abs() < 1e-6)
+        {
+            break;
+        }
+    }
+    assert!(f.render.borrow().output(0)[64..128]
+        .iter()
+        .all(|value| (*value - 0.25 * 10_f32.powf(-18. / 20.)).abs() < 1e-6));
+    f.confirmed(Command::Bus {
+        bus,
+        action: BusAction::MuteChanged(true),
+    });
+    f.ticks(3);
+    assert!(f.render.borrow().output(0)[64..128]
+        .iter()
+        .all(|value| *value == 0.));
+    f.confirmed(Command::Preview(PreviewCommand::Stop));
+    f.confirmed(Command::Bus {
+        bus,
+        action: BusAction::MuteChanged(false),
+    });
+    f.ticks(3);
+    assert!(f.render.borrow().output(0)[64..128]
+        .iter()
+        .all(|value| *value == 0.));
+}
+
 struct Clock(Rc<RefCell<OfflineRender>>);
 impl EngineClock for Clock {
     fn advance(&mut self, elapsed: Duration) {

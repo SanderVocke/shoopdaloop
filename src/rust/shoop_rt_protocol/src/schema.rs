@@ -192,6 +192,18 @@ pub enum Request {
         id: u64,
     },
     InputCapacity,
+    CreateProcessedBus {
+        bus: BusId,
+        channels: u8,
+    },
+    SetBusProcessor {
+        bus: BusId,
+        enabled: bool,
+    },
+    BusProcessorControl {
+        bus: BusId,
+        control: crate::processors::Control,
+    },
     ProcessorControl {
         strip: StripId,
         control: crate::processors::Control,
@@ -462,6 +474,7 @@ impl Capabilities {
     /// Accept sixty-four queued upload records through thirty-two reusable buffers.
     pub const WIDE_CONTENT_UPLOAD: Self = Self(1 << 5);
     pub const DRY_WET: Self = Self(1 << 7);
+    pub const BUS_PROCESSORS: Self = Self(1 << 14);
     pub const TRACK_PROCESSORS: Self = Self(1 << 8);
     pub const GLOBAL_FX_CONTROL: Self = Self(1 << 9);
     pub const EXTERNAL_DRY_WET: Self = Self(1 << 10);
@@ -595,6 +608,15 @@ pub struct RecordedProcessorState {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    BusProcessor {
+        bus: BusId,
+        slot: Option<ProcessorSlot>,
+    },
+    BusProcessorState {
+        bus: BusId,
+        slot: ProcessorSlot,
+        snapshot: crate::processors::Snapshot,
+    },
     RecordedProcessorState {
         loop_id: LoopSlotId,
         content_revision: u64,

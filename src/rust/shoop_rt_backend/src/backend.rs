@@ -385,6 +385,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             )
             .with(BackendCapability::BusManagement, self.is_ready())
             .with(
+                BackendCapability::BusFx,
+                self.capabilities.contains(Capabilities::BUS_PROCESSORS),
+            )
+            .with(
                 BackendCapability::DryWetTracks,
                 self.capabilities.contains(Capabilities::DRY_WET),
             )
@@ -1262,8 +1266,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         self.ready()?;
         let request = request.normalized()?;
-        if request.fx.is_some() {
-            return Err(unavailable(BackendCapability::BusFx));
+        if let Some(fx) = &request.fx {
+            if !self.capabilities.contains(Capabilities::BUS_PROCESSORS)
+                || fx.processor_type != shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
+            {
+                return Err(unavailable(BackendCapability::BusFx));
+            }
+            fx.clone().normalized(request.channel_count as usize)?;
         }
         if request.channel_count > u32::from(self.limits().bus_channels) {
             return Err(anyhow!("bus exceeds prepared channel limit"));
@@ -1275,9 +1284,16 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .ok_or_else(|| anyhow!("prepared bus capacity exhausted"))?;
         let slot = self.mirror.buses[&creation.bus_id].slot;
         self.requests.push(
-            Request::CreateBus {
-                bus: slot,
-                channels: request.channel_count as u8,
+            if request.fx.is_some() {
+                Request::CreateProcessedBus {
+                    bus: slot,
+                    channels: request.channel_count as u8,
+                }
+            } else {
+                Request::CreateBus {
+                    bus: slot,
+                    channels: request.channel_count as u8,
+                }
             },
             Purpose::CreateBus(creation.bus_id),
         );
@@ -1303,12 +1319,47 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.queue_bus_control(id, control)
     }
 
+    fn bus_processor_catalog(&mut self) -> Result<Arc<[shoop_app_api::TrackProcessorDescriptor]>> {
+        if !self.capabilities.contains(Capabilities::BUS_PROCESSORS) {
+            return Ok(Arc::from([]));
+        }
+        let mut entries: Vec<_> = self
+            .processor_descriptors()
+            .iter()
+            .filter(|entry| entry.id.as_str() == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+            .cloned()
+            .collect();
+        for entry in &mut entries {
+            entry.constraints.midi = shoop_app_api::TrackProcessorMidiPolicy::Unsupported;
+        }
+        Ok(entries.into())
+    }
     fn set_bus_fx_control(
         &mut self,
-        _bus_id: BackendBusId,
-        _control: BackendBusFxControl,
+        bus_id: BackendBusId,
+        control: BackendBusFxControl,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::BusFx))
+        self.bus_processor_control(bus_id, control)
+    }
+    fn bus_fx_state_string(
+        &mut self,
+        bus_id: BackendBusId,
+    ) -> Result<Option<alloc::string::String>> {
+        let bus = self
+            .mirror
+            .buses
+            .get(&bus_id)
+            .ok_or_else(|| anyhow!("unknown bus"))?;
+        bus.processor_snapshot
+            .map(|snapshot| {
+                crate::processor_controls::snapshot_state(
+                    shoop_processor_protocol::Kind::BuiltInFx,
+                    snapshot.values,
+                )
+                .map(|state| state.encode())
+                .map_err(anyhow::Error::from)
+            })
+            .transpose()
     }
 
     fn advance(&mut self, elapsed: Duration) {

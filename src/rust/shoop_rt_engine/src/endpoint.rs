@@ -166,6 +166,13 @@ pub struct ControlEndpoint {
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
+    pub(crate) projected_bus_processors: Box<
+        [Option<(
+            BusId,
+            Option<shoop_rt_protocol::ProcessorSlot>,
+            Option<shoop_rt_protocol::processors::Snapshot>,
+        )>],
+    >,
     pub(crate) projected_processors: Box<
         [Option<(
             StripId,
@@ -427,6 +434,9 @@ impl ControlEndpoint {
         if self.settings.external_dry_wet {
             capabilities = capabilities.union(Capabilities::EXTERNAL_DRY_WET);
         }
+        if self.processor_catalog.effective.fx_instances > 0 {
+            capabilities = capabilities.union(Capabilities::BUS_PROCESSORS);
+        }
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
         }
@@ -563,6 +573,7 @@ impl ControlEndpoint {
         self.results.clear();
         self.unanswered = 0;
         self.resync = None;
+        self.projected_bus_processors.fill(None);
         self.projected_processors.fill(None);
         self.projected_recorded.fill(None);
         self.projected_timing.fill(None);
@@ -1036,6 +1047,28 @@ impl ControlEndpoint {
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
             }
+            Request::BusProcessorControl { bus, control } => self
+                .model
+                .bus(bus)
+                .ok_or(Refusal::InvalidId)
+                .and_then(|entry| {
+                    entry
+                        .processor
+                        .and_then(|owner| owner.slot)
+                        .ok_or(Refusal::Unsupported)
+                })
+                .and_then(|slot| {
+                    self.submit_op(
+                        self.at(),
+                        self.pool.processor(slot.index as usize),
+                        EngineOp::ProcessorControl {
+                            generation: slot.generation,
+                            control,
+                        },
+                        Purpose::Reply(Some(correlation)),
+                    )
+                    .map(|()| None)
+                }),
             Request::ProcessorControl { strip, control } => {
                 match self.model.strip(strip).ok_or(Refusal::InvalidId) {
                     Ok(entry) => match entry.processor.and_then(|owner| owner.slot) {
@@ -1137,7 +1170,9 @@ impl ControlEndpoint {
                     .map(|()| None)
                 }
             },
-            Request::CreateBus { .. }
+            Request::CreateProcessedBus { .. }
+            | Request::SetBusProcessor { .. }
+            | Request::CreateBus { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::CreateProcessedStrip { .. }

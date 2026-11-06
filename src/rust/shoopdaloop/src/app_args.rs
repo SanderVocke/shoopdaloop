@@ -94,6 +94,10 @@ pub struct AppArgs {
     #[arg(long, requires = "engine_transport")]
     pub probe_hosted_processors: bool,
     #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise Built-in bus FX, files and client recovery through the companion.
+    #[arg(long, requires = "engine_transport")]
+    pub probe_bus_fx: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     /// Exercise public composite authoring, recording, files and client lifetime.
     #[arg(long, requires = "engine_transport", conflicts_with_all = ["probe_engine_transport", "probe_persistence"])]
     pub probe_composites: bool,

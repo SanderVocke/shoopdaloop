@@ -243,6 +243,9 @@ pub(crate) struct Port {
 }
 
 pub(crate) struct Bus {
+    pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
+    pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
+    pub processor_visible: bool,
     pub slot: BusId,
     pub name: String,
     pub channels: Vec<BackendBusChannelState>,
@@ -448,6 +451,9 @@ impl Mirror {
             buses: [(
                 MASTER_BUS_ID,
                 Bus {
+                    processor_slot: None,
+                    processor_snapshot: None,
+                    processor_visible: false,
                     slot: BusId::MASTER,
                     name: MASTER_BUS_NAME.to_owned(),
                     channels: MASTER_BUS_CHANNEL_IDS
@@ -753,6 +759,13 @@ impl Mirror {
                 (
                     *id,
                     BackendBusState {
+                        latest_input_midi_message: bus
+                            .processor_snapshot
+                            .and_then(|snapshot| snapshot.global_midi.latest_cc)
+                            .map(|data| shoop_backend::BackendLatestMidiMessage {
+                                bytes: [data[0], data[1], data[2], 0],
+                                len: 3,
+                            }),
                         id: *id,
                         name: bus.name.clone(),
                         channels: bus.channels.clone(),
@@ -760,7 +773,7 @@ impl Mirror {
                         balance: bus.balance,
                         muted: bus.muted,
                         output_peaks_db: bus.meter.take_db(bus.channels.len()),
-                        fx: None,
+                        fx: crate::processor_controls::bus_fx_state(bus),
                     },
                 )
             })
@@ -824,6 +837,9 @@ impl Mirror {
         self.buses.insert(
             id,
             Bus {
+                processor_slot: None,
+                processor_snapshot: None,
+                processor_visible: false,
                 slot,
                 name,
                 channels: outputs.clone(),
