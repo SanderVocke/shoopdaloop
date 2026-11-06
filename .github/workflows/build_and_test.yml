@@ -381,9 +381,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # TEMPORARY for PR iteration, revert before merge: Linux debug only.
+        # TEMPORARY for PR iteration, revert before merge: Linux-hosted targets only.
         include:
           - {"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-debug.tar.gz"}
+          - {"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-release.tar.gz"}
+          - {"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"debug","cargo_args":"--no-default-features","trunk_args":"","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-debug.zip"}
+          - {"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"release","cargo_args":"--release --no-default-features","trunk_args":"--release","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-release.zip","html_artifact":"shoopdaloop-web-wasm32-release.html"}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
