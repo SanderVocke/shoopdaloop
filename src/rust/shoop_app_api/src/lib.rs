@@ -2230,8 +2230,25 @@ pub struct AppNotification {
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProfilingSource {
+    pub descriptor: profiling_protocol::Descriptor,
+    pub status: Option<profiling_protocol::Status>,
+    pub age_ms: u64,
+    pub assembly_losses: u64,
+    pub supported: bool,
+}
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DiagnosticsView {
+    pub sources: Vec<ProfilingSource>,
+    pub tasks: freertos_profiling::View,
+}
+pub use freertos_profiling as task_profiling;
+pub use profiling_protocol as diagnostics_protocol;
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
+    pub diagnostics: DiagnosticsView,
     pub profiling: ProfilingView,
     pub bus_limits: BusLimits,
     pub revision: u64,
@@ -2645,6 +2662,7 @@ pub struct ChannelTimelineUpdate {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    ControlProfiling(profiling_protocol::Request),
     SetProfiling(bool),
     InspectProfiling(profiling_data::CaptureRequest),
     SetLoopSmoothingMs(u32),
@@ -3052,7 +3070,9 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::SetProfiling(_) | Self::InspectProfiling(_) => "developer.profiling",
+            Self::SetProfiling(_) | Self::InspectProfiling(_) | Self::ControlProfiling(_) => {
+                "developer.profiling"
+            }
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
             Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",

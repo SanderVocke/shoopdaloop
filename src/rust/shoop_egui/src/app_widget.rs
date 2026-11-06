@@ -1420,6 +1420,10 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn open_host_profiling(&mut self) {
+        self.profiling.open = true;
+        self.profiling.host = true;
+    }
     pub fn open_profiling(&mut self) {
         self.profiling.open = true;
     }
@@ -1964,8 +1968,12 @@ impl AppWidget {
             &state.profiling,
             &state.status,
             controls_enabled && state.connections.backend_available,
+            &state.diagnostics,
         ) {
             settings_actions.push(SettingsAction::SetProfiling(enabled));
+        }
+        if let Some(request) = self.profiling.take_control() {
+            actions.push(AppAction::ControlProfiling(request));
         }
         if let Some(request) = self.profiling.take_request() {
             actions.push(AppAction::InspectProfiling(request));

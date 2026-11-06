@@ -171,9 +171,7 @@ impl Harness {
                 EngineMessage::Telemetry(record) => self.telemetry.push((frame, record)),
                 EngineMessage::State(record) => self.states.push(record),
                 EngineMessage::Bulk(chunk) => self.chunks.push(chunk),
-                EngineMessage::ProfilingStatus(_)
-                | EngineMessage::Profiling(_)
-                | EngineMessage::ProfilingNode { .. } => {}
+                EngineMessage::Profiling(_) => {}
                 other => self.lifecycle.push(other),
             }
         }

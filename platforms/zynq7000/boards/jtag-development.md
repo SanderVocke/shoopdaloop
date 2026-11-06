@@ -1,0 +1,484 @@
+# ZedBoard development over JTAG without Vivado
+
+This is an initial hardware bring-up recipe for iterative verification, not a
+physically qualified setup. CI validates builds and emulated execution only.
+Assumptions: stock ZedBoard Rev C/D, 512 MiB DDR, onboard Digilent USB-JTAG,
+PS UART1 at 115200 8N1, one Cortex-A9 running Shoop, and an isolated Ethernet
+connection. Record your board revision and any deviations before testing.
+No Vivado, Vitis, FPGA bitstream, SD card or Linux on the board is required for
+this direct-load path. FreeRTOS is linked into the ELF like other bare-metal code.
+
+## Choose the workflow first
+
+| | JTAG development | SD/network deployment |
+| --- | --- | --- |
+| Firmware | `host.elf` | `host-deployment.elf` |
+| Build options | `--app host --credential-file ...` | `--app host --deployment` |
+| PS/DDR initialization | Debugger initialization before loading DDR | SPL using pinned board PS initialization |
+| Credential | Compiled into the development ELF | Provisioned device state on SD |
+| Boot identity | Debugger writes fresh nonce at `0x8000` each launch | Loader advances persistent SD counter |
+| SD card | Unnecessary | Required by this project's boot/update design |
+| Updates/recovery | Reload with JTAG | Signed bundles, A/B slots, watchdog rollback |
+| Physical validation | Partial, one board: see [hardware results](#hardware-results) | Pending |
+
+FreeRTOS does not require SD. The deployment build requires its loader handoff,
+configuration and persistent state; it is not a substitute for the direct-load
+ELF. The development ELF contains your credential: keep it private.
+CI's `zynq-board-zedboard` artifact includes board ELFs and manifests, but
+direct-load test ELFs use disposable CI credentials. Build your own image for
+an interactive connection. Preserve each ELF's adjacent JSON manifest.
+
+## Install a workstation environment
+
+Use Debian 13 for the firmware compiler versions used by CI. On other
+distributions, use a Debian 13 build container or install the exact pinned
+toolchains; do not assume the distribution's default Arm GCC passes the build's
+version check. OpenOCD and UART can run on the host while compilation runs in a
+container; mounting the checkout is sufficient, without forwarding USB.
+
+On Debian 13:
+
+```sh
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends \
+  ca-certificates curl git patch python3 xz-utils build-essential pkg-config \
+  protobuf-compiler libasound2-dev libjack-jackd2-dev \
+  gcc-arm-none-eabi=15:14.2.rel1-1 \
+  binutils-arm-none-eabi=2.44-3+23+b1 \
+  libnewlib-arm-none-eabi=4.5.0.20241231-1 \
+  libnewlib-dev=4.5.0.20241231-1 \
+  openocd gdb-multiarch picocom iproute2 netcat-openbsd
+```
+
+Install rustup using its [official installation instructions](https://rust-lang.org/tools/install/),
+then install the repository's pinned Rust toolchain:
+
+```sh
+rustup toolchain install 1.99.1 --profile minimal
+rustup target add --toolchain 1.99.1 armv7a-none-eabihf
+arm-none-eabi-gcc -dumpfullversion
+openocd --version
+gdb-multiarch --version
+```
+
+GCC must report `14.2.1`. Treat [pins.json](../pins.json) and the
+[CI workflow](../../../.github/workflows/zynq_freertos.yml) as the version
+authority if these commands become stale. OpenOCD 0.12.0 is the starting
+assumption, not a version qualified by this repository. GDB is optional if your
+existing loader can load ELF segments and enter its ELF entry point.
+
+QEMU is only needed for emulated tests. U-Boot, signing tools, DTC, Bison and
+Flex are needed for the SD workflow, not normal JTAG application builds.
+The native UI has additional desktop dependencies; see the main build guide.
+
+### Windows without WSL
+
+The direct-load ELF also builds natively on Windows 11 from PowerShell, without
+WSL or a container. The board steps below are mostly written for a Linux host;
+the [hardware results](#hardware-results) used Windows with the `xsdb` sequence
+and the Windows Ethernet commands given below. Install:
+
+- Git for Windows. Its `usr\bin` directory provides the GNU `patch` the build runs.
+- Python 3.
+- rustup with its default MSVC host toolchain, including the Visual C++ build
+  tools its installer asks for. Host build scripts and procedural macros need them.
+- Arm GNU Toolchain 14.2.Rel1 for Windows,
+  `arm-gnu-toolchain-14.2.rel1-mingw-w64-x86_64-arm-none-eabi.zip` from
+  [Arm's download page](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads).
+  Check it against the published `.sha256asc`. The zip has no top-level folder:
+  extract it into a dedicated directory, such as
+  `%LOCALAPPDATA%\Programs\arm-gnu-toolchain-14.2.rel1`.
+
+Install the pinned Rust toolchain and target with the same two `rustup` commands
+as above. Then, in each PowerShell session used for building:
+
+```powershell
+$armGcc = "$env:LOCALAPPDATA\Programs\arm-gnu-toolchain-14.2.rel1"
+$gitRoot = Split-Path (Split-Path (Get-Command git).Source)
+$env:PATH = "$armGcc\bin;$env:PATH;$gitRoot\usr\bin"
+arm-none-eabi-gcc -dumpfullversion
+patch --version
+```
+
+GCC must report `14.2.1`. Git's `usr\bin` is appended rather than prepended so
+its Unix tools do not shadow Windows commands of the same name.
+
+## Connect the board
+
+1. With power off, select JTAG boot using the boot-mode jumper table for your
+   board revision. Use the board manual rather than copying jumper positions
+   from another Zynq board.
+2. Connect the onboard USB-JTAG port, the separate USB-UART port, and power.
+   Connect Ethernet directly to a spare workstation interface for initial tests.
+3. Identify the UART using `ls /dev/serial/by-id/`. Open it before starting:
+   `picocom --baud 115200 --flow n /dev/serial/by-id/YOUR_UART`.
+4. Install the distribution's OpenOCD USB udev rules. Reconnect USB afterwards.
+   Serial access may require membership in `dialout` and a new login.
+   A USB permission failure is distinct from an incorrect JTAG adapter driver.
+
+The OpenOCD 0.12.0 board file uses `interface/ftdi/digilent_jtag_smt2.cfg`
+and `target/zynq_7000.cfg`. It supports the assumed onboard adapter; an
+external probe needs its own interface configuration. Do not load both the
+board file's interface and a second interface file.
+
+From the repository root, in a terminal that stays open:
+
+```sh
+openocd -f board/digilent_zedboard.cfg \
+  -c 'bindto 127.0.0.1' -c 'adapter speed 1000' \
+  -c 'init; targets zynq.cpu1; halt; targets zynq.cpu0; halt'
+```
+
+Newer OpenOCD trees may name this board file
+`board/digilent/zedboard.cfg`; use the file shipped with your installation.
+Expected checkpoint: JTAG scan succeeds, both Cortex-A9 targets appear, and
+CPU0 is selected and halted. Leave CPU1 halted. Stop here on adapter/scan errors.
+
+## Initialize PS and DDR before loading the application
+
+**This step needs board verification before the recipe is complete.**
+OpenOCD's stock ZedBoard board/target files configure debug access; they do not
+supply the board's PLL, MIO or DDR initialization. Loading an ELF into DDR before
+that initialization is not sufficient. A processor reset alone does not perform it.
+
+If your existing bare-metal workflow already performs known-good PS initialization,
+reuse that sequence, provided it leaves CPU0 ready for a fresh bare-metal entry
+and CPU1 stopped. For a completely Vivado-free setup, the open-source starting
+point is the board initialization already pinned by this repository:
+
+- U-Boot commit `5508406582f6f7120dce0c4b3059819a41788db2`.
+- `board/xilinx/zynq/zynq-zed/ps7_init_gpl.c`, SHA-256
+  `f0b9799eedb0ec8a3174ea442a15f0e643da3b4349094fdb396519d9c00c1cb3`.
+- The matching U-Boot PS initialization interpreter and headers.
+
+That source is available without installing AMD tools. To use it over JTAG,
+an OCM-resident initialization helper or an equivalent OpenOCD register sequence
+must be prepared and checked against the board revision. **This repository does
+not yet ship that helper or a qualified OpenOCD PS initialization script.**
+Do not pass the C file to OpenOCD `source`, or assume an AMD debugger's
+`ps7_init.tcl` works unchanged: debugger-specific Tcl commands need adaptation.
+
+The pinned U-Boot file does not configure UART1. The firmware only enables the
+UART and never sets its baud rate, so a helper derived from that file must add
+the 115200 8N1 setup or the boot banner will not appear.
+
+If AMD's `xsdb` debugger (part of Vitis) is acceptable, use
+[zedboard_ps7_init.tcl](zedboard_ps7_init.tcl): with the `APU` target selected,
+`source` it, then run `ps7_init` and `ps7_post_config`. It is translated from the
+MIT-licensed ZedBoard `ps7_init.c` in the pinned embeddedsw revision. Its register
+sequences match the Vitis 2023.2 `zed.xsa` initialization, including UART1 at
+115200 8N1, and differ from the U-Boot file in clocks and DDR timing. On one
+board with 1.0 silicon, it was followed by a successful DDR scratch readback and
+a firmware start that opened both TCP listeners.
+
+For OpenOCD, an equivalent initialization method still has to be settled; until
+then it is an explicit prerequisite of the OpenOCD path. No SD card is needed to
+solve it. With `xsdb`, the sequence below is validated on hardware.
+
+### Validated `xsdb` sequence
+
+`hw_server` listens on all interfaces by default. Start it bound to localhost
+first, from the Vitis installation:
+
+```sh
+hw_server -s TCP:127.0.0.1:3121
+```
+
+Then, in `xsdb`, from the repository root:
+
+```tcl
+connect -url TCP:127.0.0.1:3121
+targets -set -nocase -filter {name =~ "APU*"}
+mrd -address-space AP0 0xF800025C
+rst -system
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #1*"}
+stop
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #0*"}
+stop
+targets -set -nocase -filter {name =~ "APU*"}
+source platforms/zynq7000/boards/zedboard_ps7_init.tcl
+ps7_init
+ps7_post_config
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #0*"}
+mwr 0x00100000 0x12345678
+mrd 0x00100000
+mwr 0x00100000 0
+dow work/zynq/boards/zedboard/build/host.elf
+mwr 0x8000 NONCE_LOW_WORD
+mwr 0x8004 NONCE_HIGH_WORD
+mrd 0x8000 2
+con
+```
+
+The first read is `BOOT_MODE`; its low three bits must be 0 (JTAG). Fill in a
+fresh nonce from the generator in [Load, supply boot identity, and
+start](#load-supply-boot-identity-and-start) for every launch. `dow` sets the
+program counter to the ELF entry, and CPU1 stays halted.
+
+After successful initialization, with CPU0 halted and before loading any image,
+a small scratch check at a DDR address used by the application can catch basic
+access failures. In OpenOCD's telnet console (`telnet localhost 4444`, if installed):
+
+```tcl
+targets zynq.cpu0
+mww 0x00100000 0x12345678
+mdw 0x00100000 1
+mww 0x00100000 0
+```
+
+Expect `0x12345678` on readback. This overwrites scratch memory and must only
+run before loading the ELF; it is not a full DDR test. Do not issue another reset
+after initialization unless you repeat the required initialization.
+
+## Build your direct-load ELF
+
+Run from the repository root:
+
+```sh
+mkdir -p work/zynq
+python3 - <<'PY'
+import os
+from pathlib import Path
+path = Path("work/zynq/zedboard.key")
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "wb") as stream:
+    stream.write(os.urandom(32))
+PY
+python3 platforms/zynq7000/build.py --fetch --board zedboard --app host \
+  --credential-file work/zynq/zedboard.key
+arm-none-eabi-readelf -h -l work/zynq/boards/zedboard/build/host.elf
+```
+
+Generate the credential only once; the exclusive create deliberately refuses
+to overwrite an existing key. Subsequent builds reuse it and can omit `--fetch`
+when the pinned AMD sources are already downloaded. The compiler, BSP, FreeRTOS
+and Rust library are linked into the ELF. No AMD SDK installation is involved.
+Optional input-history policy is selected with `--engine-config`; see the
+[platform README](../README.md).
+
+On Windows, with `PATH` prepared as in [Windows without WSL](#windows-without-wsl),
+the same steps in PowerShell are:
+
+```powershell
+New-Item -ItemType Directory -Force work\zynq | Out-Null
+@'
+import os
+from pathlib import Path
+path = Path("work/zynq/zedboard.key")
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "wb") as stream:
+    stream.write(os.urandom(32))
+'@ | python -
+icacls work\zynq\zedboard.key /inheritance:r /grant:r "${env:USERNAME}:F"
+python platforms/zynq7000/build.py --fetch --board zedboard --app host `
+  --credential-file work/zynq/zedboard.key
+arm-none-eabi-readelf -h -l work/zynq/boards/zedboard/build/host.elf
+```
+
+The `0o600` mode has no effect on Windows: the key inherits its folder's
+permissions, which can let every local user read it. The `icacls` line restricts
+it to your account.
+
+Expect these differences from a Debian build:
+
+- The Arm linker warns that `host.elf` has a LOAD segment with RWX permissions.
+  The Debian linker does not print this for the same linker script, and the
+  warning does not fail the build.
+- Arm's toolchain bundles newlib 4.4.0 and binutils 2.43.1 rather than the
+  Debian pins, so the ELF cannot be compared byte-for-byte with CI builds.
+- Git for Windows checks files out with CRLF line endings by default
+  (`core.autocrlf=true`). The manifest's `patch_sha256` and
+  `source_inputs_sha256` therefore differ from a Linux build of the same
+  commit. The patches still apply.
+
+Expected checkpoint: `host.elf`, `host.map` and `host.json` under
+`work/zynq/boards/zedboard/build/`, using the ZedBoard profile and 512 MiB RAM.
+
+## Load, supply boot identity, and start
+
+After PS/DDR initialization, start a second terminal from the repository root:
+
+```sh
+gdb-multiarch work/zynq/boards/zedboard/build/host.elf
+```
+
+In GDB:
+
+```gdb
+target extended-remote localhost:3333
+monitor targets zynq.cpu0
+monitor halt
+load
+```
+
+Generate two fresh nonce words on the workstation for **every launch**, including
+reloads of the same ELF:
+
+```sh
+python3 - <<'PY'
+import secrets
+nonce = secrets.randbits(64) or 1
+print(f"set {{unsigned int}}0x8000 = 0x{nonce & 0xffffffff:08x}")
+print(f"set {{unsigned int}}0x8004 = 0x{nonce >> 32:08x}")
+PY
+```
+
+Paste the two printed commands into GDB. The low word is at `0x8000`, the high
+word at `0x8004`; the firmware reads them as a little-endian 64-bit value.
+The nonce is public and must be fresh/nonzero; it is not the credential.
+
+Run `info files` in GDB, copy its reported ELF entry point, then:
+
+```gdb
+x/2wx 0x8000
+set $pc = ENTRY_ADDRESS_FROM_INFO_FILES
+continue
+```
+
+Replace the placeholder with the actual numeric entry address. Enter at the ELF
+entry, not directly at `main`: the startup code initializes runtime state.
+Do not use `run` or reset the target between writing the nonce and starting.
+
+Expected UART checkpoint:
+`SHOOP_BOOT FreeRTOS AMD-lwIP board=shoop-zedboard-512m-v1 ram_mib=512`,
+followed by a `SHOOP_BUILD` line. Capture the complete log. A banner alone does
+not prove scheduler, networking or memory stability. A missing/zero nonce prevents
+normal service startup. For each new attempt, return to a known bare-metal state;
+a power cycle plus repeated PS initialization is the initial reproducible baseline.
+Reloading a previously running cached/MMU-enabled image without restoring that
+state has not been qualified.
+
+## Connect over physical Ethernet
+
+The non-deployment branch in `host.c` currently hardcodes:
+
+| Setting | Value |
+| --- | --- |
+| Device IP / mask | `10.0.2.15/24` |
+| Gateway | `10.0.2.2` |
+| MAC | `02:00:00:00:00:01` |
+| TCP data / management | `15400` / `15401` |
+
+These are also the QEMU defaults. There is no DHCP or command-line firmware
+network override in this path. For the initial physical test, use an isolated
+direct cable and a spare workstation interface, substituting its actual name:
+
+```sh
+ip -brief address
+sudo ip link set dev YOUR_ETHERNET_INTERFACE up
+sudo ip address add 10.0.2.2/24 dev YOUR_ETHERNET_INTERFACE
+nc -vz -w 3 10.0.2.15 15400
+nc -vz -w 3 10.0.2.15 15401
+```
+
+Choose an interface without a competing network manager configuration or existing
+route for `10.0.2.0/24`. Remove the temporary address afterwards with
+`sudo ip address del 10.0.2.2/24 dev YOUR_ETHERNET_INTERFACE`.
+No routing/NAT is required for a direct local connection.
+Only run one device with the default MAC/IP on that link.
+
+On Windows, in an administrator PowerShell, add only an address: no gateway and
+no DNS server. On a managed laptop, also disable DNS registration for that
+interface so the address is never published to the corporate DNS:
+
+```powershell
+Set-DnsClient -InterfaceAlias "Ethernet" -RegisterThisConnectionsAddress $false
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 10.0.2.2 -PrefixLength 24
+Test-NetConnection 10.0.2.15 -Port 15400
+```
+
+Without a UART cable, the board's liveness can still be checked over the link:
+its MAC `02:00:00:00:00:01` appears in the neighbor table (`ip neigh`,
+`Get-NetNeighbor`) once the network driver runs, `10.0.2.15` answers ping once
+lwIP runs, and both TCP ports accept connections once the services run.
+
+Connect the native client with a remote profile next to the key, for example
+`work/zynq/zedboard-remote.json`:
+
+```json
+{
+  "version": 31,
+  "name": "ZedBoard",
+  "credential": "zedboard.key",
+  "endpoint": "10.0.2.15:15400",
+  "management": "10.0.2.15:15401"
+}
+```
+
+`version` must equal `VERSION` in `src/rust/shoop_app_protocol/src/lib.rs` for the
+build on both sides, and a relative `credential` is resolved next to the profile.
+Start the app with `shoopdaloop --host-profile work/zynq/zedboard-remote.json`.
+QEMU loopback forwarding ports do not apply here. An open TCP port proves
+reachability, not authentication; complete a client attach and session
+operation next. Audio/MIDI are dummy endpoints, so successful rendering will not
+produce sound at the physical codec.
+
+## Record each hardware checkpoint
+
+Keep results with the board revision, host OS, OpenOCD/probe versions, firmware
+commit and manifest, initialization source/hash, GDB commands and UART log:
+
+1. USB/JTAG scan and halt of both cores.
+2. Cold-boot PS initialization and DDR scratch readback.
+3. ELF load and fresh nonce readback.
+4. Boot banner, scheduler/service startup, and both TCP listeners.
+5. Authenticated native-client attach, a small session transfer, reconnect and
+   clean shutdown.
+6. Power cycle and repeat with a fresh nonce; then investigate allocation peaks,
+   stack margins and DMA/cache behavior.
+
+If a checkpoint fails, preserve its output before changing later steps. Adapter
+errors, uninitialized DDR, UART clock/baud issues, Ethernet PHY initialization,
+subnet routing and credential mismatch have different causes. Physical timing,
+DDR training and cache/DMA correctness are not established by QEMU.
+
+## Hardware results
+
+First bring-up, 2026-11-06, on one board. Host: Windows 11, firmware built
+natively (see above), loaded with Vitis 2023.2 `xsdb` and `hw_server` using the
+validated sequence.
+
+The board reports PS silicon 1.0, probably an engineering sample, not the
+production silicon assumed above: `MCTRL[31:28]` = 0, PL JTAG IDCODE
+`0x03727093`, `PSS_IDCODE` `0x03B27093`. `zedboard_ps7_init.tcl` applies its 1.0
+sequences.
+
+| Checkpoint | Result |
+| --- | --- |
+| 1. JTAG scan, halt both cores | Passed with `xsdb`; OpenOCD not tried |
+| 2. PS initialization, DDR scratch readback | Passed |
+| 3. ELF load, nonce readback | Passed |
+| 4. Banner, services, TCP listeners | Listeners, ping and neighbor entry passed; banner not observed (no UART cable) |
+| 5. Native-client attach and session operations | Attach, sync loop, tracks and loops, and reconnecting a new app instance passed; session transfer and clean shutdown not tried |
+| 6. Power-cycle repeat, allocation peaks, stacks, DMA/cache | Repeated reloads with fresh nonces passed; deeper checks not done |
+
+Findings fixed in the firmware along the way:
+
+- **Cache coherency:** with `USE_AMP` defined, Ethernet TX DMA read stale DDR.
+  Ping replies went out as the unmodified requests and TCP segments carried
+  stale bytes. See the [platform README](../README.md).
+- **Overload:** render outranked the control task. Adding a track to a heavy
+  session starved control until app heartbeats expired and the board retired
+  the session. Render is now capped, so overload produces xruns instead.
+
+For reference, AMD's stock standalone and FreeRTOS lwIP echo servers, built from
+Vitis 2023.2 and loaded the same way, passed ping and TCP echo on this board.
+
+Performance on this board (667 MHz, 32-frame quantum, profiling on), with the
+firmware at the time of writing: one sync loop plus a track of 8 loops used
+about 70% of the render budget. Each loop costs about 2.3% (playback, fader and
+capture) and each strip about 5–7%. See
+[OPTIMIZATION_IDEA.md](../../../OPTIMIZATION_IDEA.md) and
+[MULTICORE_ASSESSMENT.md](../../../MULTICORE_ASSESSMENT.md).
+
+## References for the initial assumptions
+
+- [OpenOCD 0.12.0 ZedBoard configuration](https://github.com/openocd-org/openocd/blob/v0.12.0/tcl/board/digilent_zedboard.cfg)
+  and [Zynq target configuration](https://github.com/openocd-org/openocd/blob/v0.12.0/tcl/target/zynq_7000.cfg):
+  adapter selection, CPU target names and debug configuration.
+- [Digilent ZedBoard hardware user guide](https://files.digilent.com/resources/programmable-logic/zedboard/ZedBoard_HW_UG_v2_2.pdf):
+  board revision, boot straps, onboard JTAG, UART and Ethernet connections.
+- [AMD UG821: Zynq PS configuration](https://docs.amd.com/r/en-US/ug821-zynq-7000-swdev/Zynq-PS-Configuration):
+  why clocks, MIO and DDR initialization precede a DDR-resident application.
+- [Pinned open-source ZedBoard PS initialization](https://github.com/u-boot/u-boot/blob/5508406582f6f7120dce0c4b3059819a41788db2/board/xilinx/zynq/zynq-zed/ps7_init_gpl.c):
+  starting point for an initialization path without Vivado.

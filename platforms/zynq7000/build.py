@@ -100,7 +100,7 @@ def build():
     sources += list((lwip / "src/api").glob("*.c"))
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
-    sources += [PLATFORM / "platform.c", PLATFORM / (args.app + ".c")]
+    sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / (args.app + ".c")]
     if args.usb:
         sources.append(PLATFORM / "boards" / (board.firmware["usb_reset"] + "_usb.c"))
         if args.fetch:
@@ -157,7 +157,7 @@ def build():
         credential.write_text(definition)
         sources.append(credential)
         manifest = PLATFORM / "firmware/Cargo.toml"
-        rust_flags = "-D warnings -C target-cpu=cortex-a9"
+        rust_flags = "-D warnings -C target-cpu=cortex-a9 -C target-feature=+neon"
         cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
         features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
         if features:
@@ -202,8 +202,15 @@ def build():
     objects = [obj for obj, _ in results]
     elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
+    # Rust's compiler_builtins defines weak, generic memory routines. Pull newlib's optimized
+    # strong ones from libc before the Rust library so they win for both C and Rust callers.
+    newlib_memory = ["-Wl,--undefined=" + name for name in (
+        "memcpy", "memmove", "memset", "__aeabi_memcpy", "__aeabi_memcpy4", "__aeabi_memcpy8",
+        "__aeabi_memmove", "__aeabi_memmove4", "__aeabi_memset", "__aeabi_memset4",
+        "__aeabi_memclr", "__aeabi_memclr4")]
     run([cc, *flags[:4], "-nostartfiles", "-Wl,--gc-sections", "-Wl,-z,noexecstack", "-Wl,-Map=" + str(elf.with_suffix(".map")),
-         "-T", BUILD / "link.ld", "-o", elf, *objects, *([rust_library] if rust_library else []),
+         "-T", BUILD / "link.ld", "-o", elf, *objects,
+         *([*newlib_memory, "-lc", rust_library] if rust_library else []),
          "-Wl,--start-group", "-lc", "-lm", "-lgcc", "-lnosys", "-Wl,--end-group"])
     image = elf.read_bytes()
     nm = subprocess.check_output([cc, "-print-prog-name=nm"], text=True).strip()

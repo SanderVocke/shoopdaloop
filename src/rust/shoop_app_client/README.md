@@ -1,8 +1,8 @@
 # Application client projection
 
 Client-side attachment state, a confirmed shared projection, operation results and
-bounded local/encoded synchronization. UI/Lua integration and production entry-point
-migration are still pending; existing application startup does not use this client.
+bounded local/encoded synchronization. Production UI and local Lua integration
+share this confirmed projection.
 
 Local delivery uses the typed channels in the app protocol. Poll `pump_local`
 cooperatively and use `submit_local` for nonblocking ordered admission. A failed
@@ -19,5 +19,11 @@ only as a stale display. The client state gates further commands.
 A local ClientId identifies an actor independently of an attachment generation.
 The service must fence every command and shutdown against its current lease;
 client-side checks provide projection consistency, not service-side authorization.
-Lua VM/timers/controller ports belong on the client side when their migration is
-implemented. Reattachment must not automatically recreate or start scripts.
+Lua VM/timers/controller ports belong on the client side. Reattachment must not automatically recreate or start scripts.
+
+Diagnostic records arrive independently of shared snapshots. `profiling()` exposes
+the decoded audio view and `diagnostics()` exposes known host reports plus source
+status/freshness. Unknown schemas are skipped without interpreting their payloads.
+Assemblies are bounded and attachment/source epochs fence late data. Diagnostic
+arrival does not advance the shared session revision. Disconnect clears diagnostic
+state; optional producer demand ends when the service lease is detached.

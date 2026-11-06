@@ -1407,6 +1407,24 @@ fn audio_driver_switch_preserves_identities_and_persists_on_both_carriers() {
         driver_snapshot(&mut client, &mut connection, |s| {
             s.audio_drivers.catalog.len() == 3
         });
+        let audio_source = shoop_app_api::profiling_data::wire::SOURCE;
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let previous_stream = loop {
+            connection.poll(&mut client).unwrap();
+            if let Some(source) = client
+                .diagnostics()
+                .sources
+                .iter()
+                .find(|source| source.descriptor.stream.source == audio_source)
+            {
+                break source.descriptor.stream;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "audio profiling discovery timed out"
+            );
+            thread::sleep(Duration::from_millis(2));
+        };
         let original = client.snapshot().unwrap().clone();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 32_000,
@@ -1465,6 +1483,36 @@ fn audio_driver_switch_preserves_identities_and_persists_on_both_carriers() {
             .unwrap(),
             Some(target)
         );
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let replacement_stream = loop {
+            connection.poll(&mut client).unwrap();
+            if let Some(source) = client.diagnostics().sources.iter().find(|source| {
+                source.descriptor.stream.source == audio_source
+                    && source.descriptor.stream.epoch > previous_stream.epoch
+            }) {
+                break source.descriptor.stream;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "replacement profiling epoch timed out"
+            );
+            thread::sleep(Duration::from_millis(2));
+        };
+        for (epoch, accepted) in [
+            (previous_stream.epoch, false),
+            (replacement_stream.epoch, true),
+        ] {
+            let outcome = command(
+                &mut client,
+                &mut connection,
+                Command::Diagnostic(diagnostics_protocol::Request {
+                    source: audio_source,
+                    epoch,
+                    action: diagnostics_protocol::Action::Snapshot,
+                }),
+            );
+            assert_eq!(matches!(outcome, Outcome::Confirmed { .. }), accepted);
+        }
         drop(connection);
         shutdown(&mut host, &mut client);
         let restarted_profile = host.root.path().join("restarted.json");

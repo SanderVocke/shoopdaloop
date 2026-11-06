@@ -1,4 +1,6 @@
-use shoop_rt_protocol::{codec::*, profiling::*, *};
+use rt_profiling::wire::Record as AudioRecord;
+use rt_profiling::*;
+use shoop_rt_protocol::{codec::*, *};
 use shoop_wasm_test_support::shoop_test;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
@@ -30,9 +32,10 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
             at: 101 + i as u64,
         };
     }
+    let mut encoder = rt_profiling::wire::Encoder::default();
     let messages = [
-        EngineMessage::Profiling(packet),
-        EngineMessage::ProfilingStatus(Status {
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Packet(packet))),
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Status(Status {
             generation: 7,
             requested: true,
             active: true,
@@ -42,13 +45,13 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
             skipped_captures: 2,
             high_water: 63,
             storage_bytes: 4_000_000,
-        }),
-        EngineMessage::ProfilingNode {
+        }))),
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Node {
             generation: 7,
             key: 2,
             name: Name::new("Loop 3 MIDI playback").unwrap(),
-        },
-        EngineMessage::ProfilingGraph {
+        })),
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Graph {
             generation: 7,
             epoch: 9,
             record: GraphRecord::Begin {
@@ -57,8 +60,8 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
                 sample_rate: 48000,
                 quantum: 32,
             },
-        },
-        EngineMessage::ProfilingGraph {
+        })),
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Graph {
             generation: 7,
             epoch: 9,
             record: GraphRecord::Node {
@@ -70,8 +73,8 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
                     owner_generation: 1,
                 },
             },
-        },
-        EngineMessage::ProfilingGraph {
+        })),
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Graph {
             generation: 7,
             epoch: 9,
             record: GraphRecord::Edge {
@@ -85,12 +88,12 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
                     },
                 },
             },
-        },
-        EngineMessage::ProfilingGraph {
+        })),
+        EngineMessage::Profiling(encoder.encode(AudioRecord::Graph {
             generation: 7,
             epoch: 9,
             record: GraphRecord::End,
-        },
+        })),
     ];
     let mut bytes = [0; MAX_RECORD_BYTES];
     for message in messages {
@@ -106,17 +109,38 @@ fn profiling_records_round_trip_and_reject_malformed_lengths() {
     for enabled in [false, true] {
         let message = ClientMessage::Request {
             correlation: 1,
-            request: Request::Profiling(enabled),
+            request: Request::Diagnostic(rt_profiling::wire::subscribe(enabled)),
         };
         let size = encode_client(&message, &mut bytes).unwrap();
         assert_eq!(decode_client(&bytes[..size]).unwrap(), message);
     }
     packet.len = (CHUNK_SAMPLES + 1) as u8;
-    assert!(encode_engine(&EngineMessage::Profiling(packet), &mut bytes).is_err());
+    assert!(AudioRecord::decode(AudioRecord::Packet(packet).encode(100)).is_none());
     packet.len = 1;
     packet.index = u32::MAX;
-    assert!(encode_engine(&EngineMessage::Profiling(packet), &mut bytes).is_err());
+    assert!(AudioRecord::decode(AudioRecord::Packet(packet).encode(100)).is_none());
     packet.index = 0;
     packet.total = MAX_SAMPLES as u32 + 1;
-    assert!(encode_engine(&EngineMessage::Profiling(packet), &mut bytes).is_err());
+    assert!(AudioRecord::decode(AudioRecord::Packet(packet).encode(100)).is_none());
+}
+
+#[shoop_test]
+fn unknown_diagnostic_schema_is_opaque_to_engine_codec() {
+    let message = EngineMessage::Profiling(profiling_protocol::Record::Data(
+        profiling_protocol::Chunk {
+            stream: profiling_protocol::StreamId {
+                source: u32::MAX,
+                epoch: u64::MAX,
+                report_type: u32::MAX,
+                schema: u16::MAX,
+            },
+            sequence: u64::MAX,
+            offset: 0,
+            total: 1024,
+            payload: profiling_protocol::Bytes::new(&[255; 1024]).unwrap(),
+        },
+    ));
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let len = encode_engine(&message, &mut bytes).unwrap();
+    assert_eq!(decode_engine(&bytes[..len]).unwrap(), message);
 }

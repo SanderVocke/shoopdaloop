@@ -1,4 +1,6 @@
-pub use shoop_egui::{colors, ProfilingView, StatusState};
+pub use shoop_egui::{
+    colors, diagnostics_protocol, task_profiling, DiagnosticsView, ProfilingView, StatusState,
+};
 use std::time::Instant;
 #[path = "../src/profiling.rs"]
 mod profiling;
@@ -46,10 +48,12 @@ fn main() {
                             ..Default::default()
                         },
                         true,
+                        &DiagnosticsView::default(),
                     );
                 },
             );
             let _ = window.take_request();
+            let _ = window.take_control();
             output.textures_delta.clear();
             drop(output);
             let elapsed = started.elapsed().as_nanos() as u64;

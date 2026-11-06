@@ -177,6 +177,8 @@ pub struct ControlEndpoint {
     pub(crate) profile_named: Box<[bool]>,
     pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
     pub(crate) profile_generation: u64,
+    pub(crate) profile_wire: rt_profiling::wire::Encoder,
+    pub(crate) profile_catalog: bool,
     pub(crate) profile_status: Option<rt_runtime::profiling::Status>,
     pub(crate) profile_layout: crate::profiling::Layouts,
     pub(crate) control: EngineControl,
@@ -913,13 +915,26 @@ impl ControlEndpoint {
                 expected_content,
                 edit,
             ),
-            Request::Profiling(enabled) => match &self.profiling {
-                Some(reader) => {
-                    reader.control().set_enabled(enabled);
+            Request::Diagnostic(request) => {
+                use profiling_protocol::Action;
+                if matches!(request.action, Action::Discover) {
+                    self.profile_status = None;
+                    self.profile_catalog = false;
                     Ok(Some(Outcome::Done))
+                } else if request.source != rt_profiling::wire::SOURCE || request.epoch != 1 {
+                    Err(Refusal::InvalidId)
+                } else if let Action::Subscribe { enabled, .. } = request.action {
+                    match &self.profiling {
+                        Some(reader) => {
+                            reader.control().set_enabled(enabled);
+                            Ok(Some(Outcome::Done))
+                        }
+                        None => Err(Refusal::Unsupported),
+                    }
+                } else {
+                    Err(Refusal::Unsupported)
                 }
-                _ => Err(Refusal::Unsupported),
-            },
+            }
             Request::PreviewStart {
                 request_id,
                 bus,
@@ -1533,6 +1548,7 @@ impl Endpoint for ControlEndpoint {
                 self.connected = true;
                 self.telemetry_frame = None;
                 self.profile_status = None;
+                self.profile_catalog = false;
                 self.profile_generation = 0;
                 self.profile_layout.rewind();
                 self.dirty.fill(true);

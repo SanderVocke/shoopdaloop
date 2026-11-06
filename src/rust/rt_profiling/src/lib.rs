@@ -18,6 +18,7 @@ mod recorder;
 #[cfg(not(target_has_atomic = "64"))]
 #[path = "unsupported.rs"]
 mod recorder;
+pub mod wire;
 mod wrapping;
 pub use capture::{
     Boundary, CapturePage, CaptureRequest, NodeTiming, TraceSummary, DETAIL_NODES,
@@ -64,13 +65,13 @@ pub enum Phase {
     HostOutput,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Sample {
     pub key: u64,
     pub at: u64,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Status {
     pub generation: u64,
     pub requested: bool,
@@ -83,7 +84,7 @@ pub struct Status {
     pub storage_bytes: u64,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Packet {
     pub generation: u64,
     pub capture: u64,

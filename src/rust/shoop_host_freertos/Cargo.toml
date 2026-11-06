@@ -12,6 +12,8 @@ fixture = []
 usb-midi = []
 
 [dependencies]
+profiling_protocol = { path = "../profiling_protocol" }
+freertos_profiling = { path = "../freertos_profiling" }
 shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }
 shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_api = { path = "../shoop_app_api" }

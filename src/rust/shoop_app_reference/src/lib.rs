@@ -1962,6 +1962,9 @@ impl ApplicationModel {
             | AppIntent::RequestLoadSessionSource { .. } => {
                 Err("task-scoped file callbacks require the production session client".to_owned())
             }
+            AppIntent::ControlProfiling(_) => {
+                Err("Host profiling is unavailable on the reference backend".to_owned())
+            }
             AppIntent::InspectProfiling(request) => backend
                 .inspect_profiling(request)
                 .map_err(|error| error.to_string()),
@@ -11982,6 +11985,7 @@ impl ApplicationModel {
             .flat_map(|(kind, references)| references.map(move |loop_id| (loop_id, kind)))
             .collect::<BTreeMap<_, _>>();
         AppSnapshot {
+            diagnostics: Default::default(),
             profiling: Default::default(),
             host_graph: Arc::default(),
             bus_limits: Default::default(),

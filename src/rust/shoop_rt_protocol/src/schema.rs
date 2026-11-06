@@ -2,40 +2,9 @@
 //! driver. Every value has a bounded size so it can be encoded without allocation.
 
 use crate::ids::{BusId, HostPortId, LoopSlotId, StripId};
-use crate::{
-    BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_NAME_BYTES, MAX_STRIP_CHANNELS,
-};
+use crate::{BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_STRIP_CHANNELS};
 
-/// A bounded UTF-8 name.
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub struct Name {
-    len: u8,
-    bytes: [u8; MAX_NAME_BYTES],
-}
-
-impl Name {
-    pub fn new(text: &str) -> Option<Self> {
-        let source = text.as_bytes();
-        if source.len() > MAX_NAME_BYTES {
-            return None;
-        }
-        let mut bytes = [0; MAX_NAME_BYTES];
-        bytes[..source.len()].copy_from_slice(source);
-        Some(Self {
-            len: source.len() as u8,
-            bytes,
-        })
-    }
-    pub fn as_str(&self) -> &str {
-        core::str::from_utf8(&self.bytes[..self.len as usize]).unwrap_or("")
-    }
-}
-
-impl core::fmt::Debug for Name {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_str().fmt(f)
-    }
-}
+pub use profiling_protocol::Name;
 
 /// A short inline MIDI message.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -227,7 +196,7 @@ pub enum Request {
         expected_content: u64,
         edit: crate::TimingEdit,
     },
-    Profiling(bool),
+    Diagnostic(profiling_protocol::Request),
     ContentFamilyBegin {
         id: u64,
         root: LoopSlotId,

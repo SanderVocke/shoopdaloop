@@ -64,6 +64,21 @@ struct VisualEdge {
     members: Vec<usize>,
 }
 
+#[derive(Clone, Copy)]
+struct ProcessorFilter {
+    enabled: bool,
+    count: usize,
+}
+
+impl Default for ProcessorFilter {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            count: 5,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct State {
     identity: (u128, u64, u64, u64, u64),
@@ -74,6 +89,8 @@ pub(super) struct State {
     routes: egui_graph::EdgeRoutes,
     collapsed: BTreeSet<(u8, u32)>,
     metric: Metric,
+    processor_filter: ProcessorFilter,
+    retained: Option<BTreeSet<u64>>,
     rows: BTreeMap<u64, Row>,
     roles: BTreeMap<u64, String>,
     groups: BTreeMap<(u8, u32), String>,
@@ -131,6 +148,13 @@ impl State {
         let Some(key) = port.node else {
             return host_id(port, source);
         };
+        if self
+            .retained
+            .as_ref()
+            .is_some_and(|keys| !keys.contains(&key))
+        {
+            return key;
+        }
         if let Some(node) = topology.nodes.iter().find(|n| n.key == key) {
             if self.collapsed.contains(&(node.group, node.slot)) {
                 return group_id(node.group, node.slot);
@@ -138,6 +162,41 @@ impl State {
         }
         key
     }
+    fn ranked_processors(&self, topology: &Topology, report: &Report) -> Vec<(u64, f64)> {
+        if self.callback != 0
+            && (self.tick == 0
+                || self
+                    .page
+                    .as_ref()
+                    .is_none_or(|p| self.actual.len() < p.total as usize))
+        {
+            return Vec::new();
+        }
+        let mut ranked: Vec<_> = topology
+            .nodes
+            .iter()
+            .filter_map(|n| self.value(n.key, report, false).map(|value| (n.key, value)))
+            .filter(|(_, value)| value.is_finite() && *value > 0.)
+            .collect();
+        ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        ranked.truncate(self.processor_filter.count);
+        ranked
+    }
+
+    fn processor_context(topology: &Topology, ranked: &[(u64, f64)]) -> BTreeSet<u64> {
+        let selected: BTreeSet<_> = ranked.iter().map(|(key, _)| *key).collect();
+        let mut retained = selected.clone();
+        for edge in &topology.edges {
+            if edge.source.node.is_some_and(|n| selected.contains(&n))
+                || edge.destination.node.is_some_and(|n| selected.contains(&n))
+            {
+                retained.extend(edge.source.node);
+                retained.extend(edge.destination.node);
+            }
+        }
+        retained
+    }
+
     fn rebuild(&mut self, topology: &Topology, style: &egui::Style) {
         self.nodes.clear();
         self.edges.clear();
@@ -146,6 +205,13 @@ impl State {
         self.pinned = None;
         self.hovered = None;
         for n in &topology.nodes {
+            if self
+                .retained
+                .as_ref()
+                .is_some_and(|keys| !keys.contains(&n.key))
+            {
+                continue;
+            }
             let id = if self.collapsed.contains(&(n.group, n.slot)) {
                 group_id(n.group, n.slot)
             } else {
@@ -156,10 +222,25 @@ impl State {
             node.members.push(n.key);
         }
         let mut edges: BTreeMap<(u64, u64, u8, u32, u8, u32), Vec<usize>> = BTreeMap::new();
+        let mut incoming = BTreeSet::new();
+        let mut outgoing = BTreeSet::new();
         for (i, edge) in topology.edges.iter().enumerate() {
             let a = self.project(topology, edge.source, true);
             let b = self.project(topology, edge.destination, false);
             if a == b {
+                continue;
+            }
+            if edge.source.node.is_some() && edge.destination.node.is_some() {
+                incoming.insert(b);
+                outgoing.insert(a);
+            }
+            if self.retained.as_ref().is_some_and(|keys| {
+                edge.source.node.is_none() && edge.destination.node.is_none()
+                    || [edge.source.node, edge.destination.node]
+                        .into_iter()
+                        .flatten()
+                        .any(|key| !keys.contains(&key))
+            }) {
                 continue;
             }
             let channel = |id: u64, p: Port| {
@@ -183,16 +264,10 @@ impl State {
         }
         let processors: Vec<_> = self.nodes.keys().copied().collect();
         for id in processors {
-            let incoming = edges
-                .keys()
-                .any(|&(a, b, ..)| b == id && self.nodes.contains_key(&a));
-            let outgoing = edges
-                .keys()
-                .any(|&(a, b, ..)| a == id && self.nodes.contains_key(&b));
-            if !incoming {
+            if !incoming.contains(&id) {
                 edges.insert((ENTRY, id, 2, 0, 2, 0), Vec::new());
             }
-            if !outgoing {
+            if !outgoing.contains(&id) {
                 edges.insert((id, EXIT, 2, 0, 2, 0), Vec::new());
             }
         }
@@ -761,6 +836,7 @@ impl State {
             *self = Self {
                 identity,
                 metric: self.metric,
+                processor_filter: self.processor_filter,
                 ..Self::default()
             };
         }
@@ -865,10 +941,85 @@ impl State {
                     ui.small("Checked groups collapse into summary nodes.");
                 });
         });
+        ui.horizontal_wrapped(|ui| {
+            ui.checkbox(&mut self.processor_filter.enabled, "Expensive processors only")
+                .on_hover_text("Rank individual processors by the displayed metric, or actual elapsed duration for a selected tick. Keep their immediate input/output neighbors. Elapsed time includes preemption; this does not prove xrun causality.");
+            if self.processor_filter.enabled {
+                ui.label("Top");
+                ui.add(egui::DragValue::new(&mut self.processor_filter.count).range(1..=20));
+                ui.label("+ immediate neighbors");
+            }
+        });
+        let ranked = if self.processor_filter.enabled {
+            self.ranked_processors(&t, report)
+        } else {
+            Vec::new()
+        };
+        let retained = self
+            .processor_filter
+            .enabled
+            .then(|| Self::processor_context(&t, &ranked));
+        if retained != self.retained {
+            self.retained = retained;
+            rebuild = true;
+        }
         if rebuild {
             self.rebuild(&t, ui.style());
         }
         self.topology = Some(t.clone());
+        if self.processor_filter.enabled {
+            if ranked.is_empty() {
+                ui.weak(if self.callback != 0 && self.pending.is_some() {
+                    "Loading selected-tick timings before ranking…"
+                } else {
+                    "No measured processors with a positive value for this metric."
+                });
+            } else {
+                egui::CollapsingHeader::new("Ranked processors")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("ranked_processors")
+                            .max_height(120.)
+                            .show(ui, |ui| {
+                                for (rank, &(key, value)) in ranked.iter().enumerate() {
+                                    let id = self.project(
+                                        &t,
+                                        Port {
+                                            node: Some(key),
+                                            ..Port::default()
+                                        },
+                                        true,
+                                    );
+                                    let name = self
+                                        .rows
+                                        .get(&key)
+                                        .map_or_else(|| format!("Node {key}"), |r| r.name.clone());
+                                    let label = format!(
+                                        "#{} · {} {} · {name}",
+                                        rank + 1,
+                                        units.format(value, budget),
+                                        if units == Units::Budget {
+                                            "% budget"
+                                        } else {
+                                            "µs"
+                                        }
+                                    );
+                                    if ui
+                                        .selectable_label(
+                                            self.pinned == Some(Focus::Node(id)),
+                                            label,
+                                        )
+                                        .clicked()
+                                    {
+                                        self.pinned = Some(Focus::Node(id));
+                                    }
+                                }
+                            });
+                    });
+            }
+            ui.small("Ranks use individual processor values before grouping. Other visible processors are connection context. Hidden work still consumes the callback budget; elapsed spans include preemption.");
+        }
         let duration_max = self.duration_max(report);
         let ready_max = self
             .edges
@@ -990,9 +1141,16 @@ impl State {
                                         if labels_visible {
                                             ui.spacing_mut().item_spacing.y = 1.;
                                             let name = self.label(node, report);
+                                            let label = ranked
+                                                .iter()
+                                                .position(|(key, _)| node.members.contains(key))
+                                                .map_or_else(
+                                                    || name.clone(),
+                                                    |rank| format!("#{} · {name}", rank + 1),
+                                                );
                                             ui.add(
                                                 egui::Label::new(
-                                                    egui::RichText::new(&name)
+                                                    egui::RichText::new(&label)
                                                         .color(colors::FOREGROUND),
                                                 )
                                                 .truncate(),
@@ -1489,6 +1647,230 @@ mod tests {
         assert_eq!(state.edges.iter().filter(|e| !e.context).count(), 3);
         assert_eq!(state.related(Some(Focus::Node(group_id(1, 0)))).len(), 6);
         assert!(state.edges.iter().any(|e| e.members == [2]));
+    }
+
+    #[shoop_test]
+    fn expensive_ranking_uses_processor_metric_not_readiness_and_ignores_unsampled_nodes() {
+        let mut view = fixture();
+        view.live.rows[0].avg_ns = 300_000.;
+        view.live.rows[1].avg_ns = 5000.;
+        view.live.rows[1].worst_ns = 400_000;
+        view.live.rows[2].stddev_ns = 90_000.;
+        view.live.rows[3].samples = 0;
+        view.live.rows[3].avg_ns = 999_999.;
+        let mut state = State {
+            rows: view.live.rows.iter().map(|r| (r.key, r.clone())).collect(),
+            processor_filter: ProcessorFilter {
+                enabled: true,
+                count: 1,
+            },
+            ..State::default()
+        };
+        let topology = view.topology.as_ref().unwrap();
+        assert_eq!(
+            state.ranked_processors(topology, &view.live),
+            [(1, 300_000.)]
+        );
+        state.metric = Metric::Worst;
+        assert_eq!(
+            state.ranked_processors(topology, &view.live),
+            [(2, 400_000.)]
+        );
+        state.metric = Metric::Stddev;
+        assert_eq!(
+            state.ranked_processors(topology, &view.live),
+            [(3, 90_000.)]
+        );
+        state.processor_filter.count = 20;
+        state.metric = Metric::Average;
+        state.rows.get_mut(&2).unwrap().avg_ns = 300_000.;
+        assert_eq!(
+            state.ranked_processors(topology, &view.live),
+            [(1, 300_000.), (2, 300_000.), (3, 1000.)]
+        );
+        for row in state.rows.values_mut() {
+            row.samples = 0;
+        }
+        assert!(state.ranked_processors(topology, &view.live).is_empty());
+    }
+
+    #[shoop_test]
+    fn expensive_filter_keeps_one_hop_context_before_grouping_without_inventing_roots() {
+        let mut view = fixture();
+        let topology = Arc::make_mut(view.topology.as_mut().unwrap());
+        topology.edges.push(GraphEdge {
+            source: Port {
+                node: Some(4),
+                ..Port::default()
+            },
+            destination: Port {
+                node: Some(1),
+                ..Port::default()
+            },
+        });
+        topology.edges.push(GraphEdge {
+            source: Port {
+                channel: 99,
+                ..Port::default()
+            },
+            destination: Port {
+                channel: 99,
+                ..Port::default()
+            },
+        });
+        view.live.rows[1].avg_ns = 300_000.;
+        let mut state = State {
+            processor_filter: ProcessorFilter {
+                enabled: true,
+                count: 1,
+            },
+            ..State::default()
+        };
+        let context = egui::Context::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        assert_eq!(state.retained, Some(BTreeSet::from([1, 2, 3])));
+        assert!(!state.nodes.contains_key(&4));
+        for source in [false, true] {
+            assert!(!state.nodes.contains_key(&host_id(
+                Port {
+                    channel: 99,
+                    ..Port::default()
+                },
+                source
+            )));
+        }
+        assert!(state.nodes.contains_key(&ENTRY) && state.nodes.contains_key(&EXIT));
+        assert!(!state
+            .edges
+            .iter()
+            .any(|e| e.context && e.source.0 .0 == ENTRY));
+        assert!(state.edges.iter().any(|e| e.members == [0]));
+        assert!(state.edges.iter().any(|e| e.members == [3]));
+        assert!(!state.edges.iter().any(|e| e.members.contains(&4)));
+        state.collapsed.insert((2, 0));
+        state.rebuild(view.topology.as_ref().unwrap(), &egui::Style::default());
+        assert_eq!(state.nodes[&group_id(2, 0)].members, [3]);
+        assert!(state
+            .edges
+            .iter()
+            .any(|e| e.context && e.source.0 .0 == group_id(2, 0) && e.destination.0 .0 == EXIT));
+        assert_eq!(state.nodes[&2].members, [2]);
+        assert!(!state.edges.iter().any(|e| e.members.contains(&4)));
+    }
+
+    #[shoop_test]
+    fn expensive_ranking_waits_for_complete_tick_and_never_falls_back_to_interval_values() {
+        let view = fixture();
+        let topology = view.topology.as_ref().unwrap();
+        let mut state = State {
+            rows: view.live.rows.iter().map(|r| (r.key, r.clone())).collect(),
+            processor_filter: ProcessorFilter {
+                enabled: true,
+                count: 1,
+            },
+            callback: 5,
+            tick: 4,
+            ..State::default()
+        };
+        assert!(state.ranked_processors(topology, &view.live).is_empty());
+        state.page = Some(Arc::new(CapturePage {
+            total: 2,
+            ..CapturePage::default()
+        }));
+        state.actual.insert(
+            1,
+            NodeTiming {
+                key: 1,
+                start_ns: 0,
+                end_ns: 10,
+                ready_ns: 10,
+            },
+        );
+        assert!(state.ranked_processors(topology, &view.live).is_empty());
+        state.actual.insert(
+            4,
+            NodeTiming {
+                key: 4,
+                start_ns: 10,
+                end_ns: 310,
+                ready_ns: 310,
+            },
+        );
+        assert_eq!(state.ranked_processors(topology, &view.live), [(4, 300.)]);
+        state.metric = Metric::Stddev;
+        assert_eq!(state.ranked_processors(topology, &view.live), [(4, 300.)]);
+        state.tick = 0;
+        assert!(state.ranked_processors(topology, &view.live).is_empty());
+    }
+
+    #[shoop_test]
+    fn expensive_filter_toggle_hides_and_restores_nodes_and_preserves_stable_layout() {
+        let context = egui::Context::default();
+        let mut view = fixture();
+        view.live.rows[1].avg_ns = 300_000.;
+        let mut state = State {
+            processor_filter: ProcessorFilter {
+                enabled: false,
+                count: 1,
+            },
+            ..State::default()
+        };
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        let mut output = render(&mut state, &view, &context, vec![]);
+        let point = text_center(&output.shapes, "Expensive processors only");
+        output.textures_delta.clear();
+        let click = |state: &mut State| {
+            render(
+                state,
+                &view,
+                &context,
+                vec![egui::Event::PointerMoved(point)],
+            )
+            .textures_delta
+            .clear();
+            for pressed in [true, false] {
+                render(
+                    state,
+                    &view,
+                    &context,
+                    vec![egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                )
+                .textures_delta
+                .clear();
+            }
+        };
+        click(&mut state);
+        assert!(state.processor_filter.enabled);
+        assert_eq!(state.retained, Some(BTreeSet::from([1, 2, 3])));
+        assert!(!state.nodes.contains_key(&4));
+        let positions = state.view.layout.clone();
+        state.pinned = Some(Focus::Node(2));
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        assert_eq!(positions, state.view.layout);
+        assert_eq!(state.pinned, Some(Focus::Node(2)));
+        click(&mut state);
+        assert!(!state.processor_filter.enabled);
+        assert!(state.retained.is_none() && state.nodes.contains_key(&4));
+        state.processor_filter.enabled = true;
+        view.live.rows[1].avg_ns = 1000.;
+        view.live.rows[3].avg_ns = 400_000.;
+        view.live.interval.end_ns += 1;
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        assert_eq!(state.retained, Some(BTreeSet::from([4])));
+        assert!(state.pinned.is_none());
     }
 
     #[shoop_test]

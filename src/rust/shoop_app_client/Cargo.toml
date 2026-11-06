@@ -16,6 +16,9 @@ runtime = ["dep:anyhow", "dep:shoop_scripting", "dep:tracing"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+freertos_profiling = { path = "../freertos_profiling" }
+profiling_protocol = { path = "../profiling_protocol" }
+
 anyhow = { workspace = true, optional = true, features = ["std"] }
 tracing = { workspace = true, optional = true, features = ["std"] }
 shoop_app_api = { path = "../shoop_app_api" }
