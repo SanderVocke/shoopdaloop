@@ -608,7 +608,7 @@ impl Service {
                 if self.lease.is_some() {
                     return Err(Refusal::Busy);
                 }
-                if !self.is_ready() {
+                if !self.is_ready() && !self.audio_driver_fatal() {
                     return Err(Refusal::NotReady);
                 }
                 self.generation = self.generation.checked_add(1).ok_or(Refusal::Overloaded)?;
@@ -897,6 +897,7 @@ impl Service {
 
     fn request_budget(&self, command: Option<&Command>) -> usize {
         match command {
+            None if self.engine_closed => 0,
             Some(Command::AudioDriver(_)) => 0,
             Some(
                 Command::SetHostGraphConnected(_)
@@ -1223,6 +1224,7 @@ impl Service {
             self.observed.status.driver_state = BackendDriverState::Failed;
         }
         if self.closed {
+            self.driver_job = None;
             self.observed.status.driver_state = BackendDriverState::Stopped;
         }
         let outcome = match result {

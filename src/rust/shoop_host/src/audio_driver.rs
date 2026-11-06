@@ -59,23 +59,42 @@ enum Request {
 pub struct Owner {
     sender: SyncSender<Request>,
     join: Option<JoinHandle<()>>,
+    stopping: Option<Receiver<Result<(), String>>>,
+    stop_result: Option<Result<(), String>>,
 }
 impl Owner {
     pub fn stop(&mut self) -> Result<(), String> {
-        if self.join.is_none() {
-            return Ok(());
+        if let Some(result) = &self.stop_result {
+            return result.clone();
         }
-        let (tx, rx) = mpsc::channel();
-        self.sender
-            .try_send(Request::Stop(tx))
-            .map_err(|_| "audio lifecycle worker is busy or unavailable".to_owned())?;
-        let result = rx
+        if self.stopping.is_none() {
+            let (tx, rx) = mpsc::channel();
+            self.sender
+                .try_send(Request::Stop(tx))
+                .map_err(|_| "audio lifecycle worker is busy or unavailable".to_owned())?;
+            self.stopping = Some(rx);
+        }
+        let result = match self
+            .stopping
+            .as_ref()
+            .unwrap()
             .recv_timeout(Duration::from_secs(5))
-            .map_err(|_| "audio lifecycle cleanup did not finish".to_owned())?;
-        if let Some(join) = self.join.take() {
-            join.join()
-                .map_err(|_| "audio lifecycle worker panicked".to_owned())?;
-        }
+        {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                return Err("audio lifecycle cleanup did not finish".into())
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err("audio lifecycle worker lost its cleanup result".into())
+            }
+        };
+        let result = if self.join.take().is_some_and(|join| join.join().is_err()) {
+            Err("audio lifecycle worker panicked".into())
+        } else {
+            result
+        };
+        self.stopping = None;
+        self.stop_result = Some(result.clone());
         result
     }
 }
@@ -151,7 +170,8 @@ pub fn controller(
                                 limits.media_bytes = limits
                                     .media_bytes
                                     .min(u64::from(settings.pools.loop_memory_mb) * (1 << 20));
-                                conversion::convert(image, target, limits)
+                                validate_target_processors(&image, target, &settings)
+                                    .and_then(|()| conversion::convert(image, target, limits))
                                     .map(DriverReply::Converted)
                             }
                             DriverWork::Persist(config) => {
@@ -223,6 +243,8 @@ pub fn controller(
         Owner {
             sender: sender.clone(),
             join: Some(join),
+            stopping: None,
+            stop_result: None,
         },
         Box::new(Controller {
             sender,
@@ -248,6 +270,39 @@ fn stop(host: &mut Option<NativeHost>) -> Result<()> {
             .stopped
             .map_err(|e| anyhow!("engine cleanup failed: {e}"))?;
     }
+    Ok(())
+}
+
+fn validate_target_processors(
+    image: &shoop_app_protocol::persistence_image::Image,
+    target: ConversionTarget,
+    settings: &HostSettings,
+) -> Result<()> {
+    let effective = settings.processors.resolve_for_channels(
+        shoop_rt_host_native::processor_support(),
+        target.sample_rate,
+        u8::try_from(settings.pools.channels)
+            .map_err(|_| anyhow!("invalid processor channel capacity"))?,
+    )?;
+    let shoop_app_protocol::persistence_image::Manifest::Session(session) = &image.manifest else {
+        return Err(anyhow!("driver preparation requires a session"));
+    };
+    let mut fx = 0;
+    let mut synth = 0;
+    for track in &session.tracks {
+        if let TrackTopology::DryWet { processor_type, .. } = &track.topology {
+            match processor_type.as_str() {
+                TrackProcessorTypeId::BUILTIN_FX => fx += 1,
+                TrackProcessorTypeId::OXISYNTH => synth += 1,
+                _ => {}
+            }
+        }
+    }
+    ensure!(
+        fx <= usize::from(effective.fx_instances)
+            && synth <= usize::from(effective.synth_instances),
+        "the target format cannot preserve the session's hosted processors"
+    );
     Ok(())
 }
 

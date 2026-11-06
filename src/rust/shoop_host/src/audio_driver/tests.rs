@@ -321,6 +321,27 @@ fn failed_rollback_reports_both_errors_and_a_fatal_runtime() {
         .switch
         .message
         .contains("start failure 2"));
+    f.service.detach(f.connection);
+    f.connection = ConnectionId(2);
+    f.client = Client::new();
+    f.attach();
+    assert_eq!(
+        f.client.snapshot().unwrap().audio_drivers.switch.status,
+        AudioDriverSwitchStatus::Fatal
+    );
+    let message = f.client.shutdown().unwrap();
+    let ClientMessage::Shutdown { operation, .. } = message else {
+        unreachable!()
+    };
+    f.service.handle(f.connection, message).unwrap();
+    f.tick();
+    assert!(f.service.shutdown_ready());
+    f.service.complete_shutdown(Ok(()));
+    f.drain();
+    assert!(matches!(
+        f.client.results().get(&operation),
+        Some(Outcome::Confirmed { .. })
+    ));
 }
 
 #[shoop_test]
@@ -623,8 +644,8 @@ impl Fixture {
                 ..Default::default()
             },
             processors: ProcessorSettings {
-                builtin_fx: ProcessorPolicy::On,
-                oxisynth: ProcessorPolicy::On,
+                builtin_fx: ProcessorPolicy::Auto,
+                oxisynth: ProcessorPolicy::Auto,
                 fx_instances: 1,
                 synth_instances: 1,
                 memory_mb: 128,
@@ -991,6 +1012,32 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
         Outcome::Confirmed { .. }
     ));
     let original = f.capture();
+    let epoch = f.service.snapshot().persistence_epoch;
+    assert!(matches!(
+        f.run(Command::AudioDriver(DriverCommand::Request(
+            AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                sample_rate: 100_000,
+                buffer_size: 128
+            })
+        ))),
+        Outcome::Confirmed { .. }
+    ));
+    let request = f.service.snapshot().audio_drivers.switch.request_id;
+    let outcome = f.confirm(request);
+    assert!(matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
+    assert!(f
+        .service
+        .snapshot()
+        .audio_drivers
+        .switch
+        .message
+        .contains("cannot preserve the session's hosted processors"));
+    assert_eq!(
+        f.service.snapshot().persistence_epoch,
+        epoch,
+        "unsupported target processors must be detected before teardown"
+    );
+    assert_eq!(f.service.snapshot().status.sample_rate, 48_000);
     for limits in [
         HostResourceLimits {
             media_bytes: 1,
@@ -1224,4 +1271,26 @@ fn lifecycle_controller_bounds_outstanding_work_and_reports_worker_loss() {
     assert_eq!(completion.ticket, 1);
     assert!(completion.result.err().unwrap().contains("disconnected"));
     assert!(controller.poll().is_none());
+}
+
+#[shoop_test]
+fn native_owner_retains_terminal_cleanup_failure_across_shutdown_retries() {
+    for result in [Ok(()), Err("injected MIDI cleanup failure".to_owned())] {
+        let expected = result.clone();
+        let (sender, requests) = mpsc::sync_channel(2);
+        let join = std::thread::spawn(move || {
+            let Request::Stop(reply) = requests.recv().unwrap() else {
+                panic!("expected stop")
+            };
+            reply.send(result).unwrap();
+        });
+        let mut owner = Owner {
+            sender,
+            join: Some(join),
+            stopping: None,
+            stop_result: None,
+        };
+        assert_eq!(owner.stop(), expected);
+        assert_eq!(owner.stop(), expected);
+    }
 }

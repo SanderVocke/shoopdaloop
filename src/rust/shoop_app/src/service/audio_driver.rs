@@ -68,12 +68,20 @@ impl Service {
                         DriverCommand::Discover(_) | DriverCommand::Request(_)
                     ))
                 )
+            } else if job.phase == Phase::Fatal {
+                command.is_some()
             } else if job.phase == Phase::Saving {
                 matches!(command, Some(Command::AudioDriver(_)))
             } else {
                 true
             }
         })
+    }
+
+    pub(super) fn audio_driver_fatal(&self) -> bool {
+        self.driver_job
+            .as_ref()
+            .is_some_and(|job| job.phase == Phase::Fatal)
     }
 
     pub(super) fn driver_freezes_session(&self) -> bool {
@@ -347,6 +355,8 @@ impl Service {
                     .as_deref()
                     .unwrap_or("audio-driver switch failed")
             );
+            self.backend.close_connection();
+            self.engine_closed = true;
             self.driver_state.active = None;
             self.driver_state.switch.status = AudioDriverSwitchStatus::Fatal;
             self.driver_state.switch.message = message.clone();
@@ -465,7 +475,7 @@ impl Service {
         );
         if job.phase == Phase::Fatal {
             self.driver_job = Some(job);
-            return true;
+            return self.shutdown.is_none();
         }
         let result = self.advance_audio_driver(&mut job, elapsed);
         match result {

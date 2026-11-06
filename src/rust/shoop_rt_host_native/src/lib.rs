@@ -363,6 +363,8 @@ pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
     started
 }
 
+pub use shoop_host_processors::support as processor_support;
+
 pub fn validate_processor_capacity(engine: &EngineDescription) -> Result<u64, StartError> {
     shoop_host_processors::reservation_bytes(engine).map_err(StartError::Processors)
 }

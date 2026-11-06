@@ -66,7 +66,9 @@ diagnostic rather than binding to a similarly named destination.
 Failure before teardown leaves the prior runtime intact. Later failure reconstructs
 the original-format session on its prior driver. The original immutable cut remains
 owned until restoration/publication succeeds. Failed rollback publishes a fatal
-state with both errors and retains bounded recovery data. A target rate change
+state with both errors and retains bounded recovery data. A new socket controller
+can inspect the retained fatal result and request orderly host shutdown; musical
+mutations remain refused. A target rate change
 requires renewed consent, restoring the source first if opening the target was
 necessary to discover it.
 
