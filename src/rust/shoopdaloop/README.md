@@ -130,7 +130,10 @@ JACK connects directly to the JACK server; CPAL's JACK API is a separate CPAL se
 Unusable device settings fall back to Dummy with a visible warning and do not
 overwrite the saved preference.
 
-**Settings → Audio** selects the application's preferred driver for its next launch.
+**Settings → Audio** selects the preferred startup driver and can request a
+confirmed live switch on a native host. The confirmation describes interruption,
+conversion and stopped transport. Cancellation leaves runtime and saved preferences
+unchanged. Saving preferences alone still changes only future startup behavior.
 In Host Manager, **New host → Audio driver → JACK** configures the client-name
 hint. Audio/MIDI ports follow the tracks and buses in the session; connections are
 managed in the application's connection dialog or a JACK patchbay. The JACK server
@@ -159,10 +162,14 @@ Fixed audio/MIDI port lists and startup connection pairs have been removed from
 settings, Host Manager, CLI and JSON profiles. Obsolete JSON fields are rejected.
 Connections are persisted in the session through dynamically published ports.
 
-Driver and capacity changes apply at host startup. Live driver switching is a
-tracked temporary gap, as are FX/synths, grab/dry-wet
-operations, timing/alignment edits and loop duplication.
-The authoritative capability checks refuse unsupported operations.
+Capacity changes apply at host startup. Live native driver switching preserves
+supported session content and public identities; failure restores the prior driver
+or reports an explicit fatal recovery failure. Preference-save errors keep the new
+driver active and offer retry. Attached hosts save their own startup preference,
+independently of the client's local settings. See the
+[switching contract](../../../docs/native_session_recovery/audio-driver-switching.md)
+for supported drivers, resource limits and recovery semantics.
+The authoritative capability checks refuse remaining unsupported operations.
 
 Audio/MIDI click generation and insertion are supported. Audio clicks can be
 previewed through the client's native/Web Audio System output or through Master

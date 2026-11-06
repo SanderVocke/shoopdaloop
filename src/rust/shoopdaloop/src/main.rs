@@ -4769,6 +4769,72 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let runtime = &mut app.runtime;
+        wait_for_snapshot(runtime, "driver discovery", |s| {
+            s.audio_drivers.catalog.len() == 3
+        });
+        runtime.dispatch(AppIntent::AddScriptSource {
+            name: "switch-survivor.lua".into(),
+            source: std::sync::Arc::from("shoop_announce_api_version(1, 0); print('started once'); local d=require('shoop_dialog'); d.simple('Switch survivor', {d.rich_text('VM still running')})"),
+            kind: ScriptKind::User,
+            enabled: true,
+        }).unwrap();
+        let before = wait_for_snapshot(runtime, "Lua survivor dialog", |s| {
+            s.scripting
+                .dialogs
+                .iter()
+                .any(|d| d.name == "Switch survivor")
+        });
+        let script = before
+            .scripting
+            .scripts
+            .iter()
+            .find(|s| s.name == "switch-survivor.lua")
+            .unwrap()
+            .clone();
+        let dialogs = before.scripting.dialogs.clone();
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let prepared = wait_for_snapshot(runtime, "switch confirmation", |s| {
+            s.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: prepared.audio_drivers.switch.request_id,
+                accept: true,
+            })
+            .unwrap();
+        let after = wait_for_snapshot(
+            runtime,
+            "runtime switch and unsaved test preferences",
+            |s| {
+                s.status.sample_rate == 32_000 && s.audio_drivers.switch.persistence_retry_available
+            },
+        );
+        let survivor = after
+            .scripting
+            .scripts
+            .iter()
+            .find(|s| s.id == script.id)
+            .unwrap();
+        assert_eq!(survivor.lifecycle, script.lifecycle);
+        assert_eq!(survivor.logs, script.logs);
+        assert_eq!(after.scripting.dialogs, dialogs);
+        assert_eq!(after.tracks[0].id, before.tracks[0].id);
+        assert_eq!(after.tracks[0].loops[0].id, before.tracks[0].loops[0].id);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn application_core_workflow(mut app: UnifiedApp) {
         use shoop_egui::{
             BackendCapabilities, BackendCapability, BusAction, ConfirmedConnectionState,

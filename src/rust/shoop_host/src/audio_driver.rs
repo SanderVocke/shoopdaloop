@@ -261,16 +261,28 @@ fn discover(config: &AudioDriverConfig) -> Result<std::sync::Arc<[AudioDriverDes
                     .inputs
                     .into_iter()
                     .map(|d| d.name)
+                    .filter(|name| name.len() <= 128 && !name.contains('\0'))
                     .take(128)
                     .collect();
                 catalog[1].output_devices = inventory
                     .outputs
                     .into_iter()
                     .map(|d| d.name)
+                    .filter(|name| name.len() <= 128 && !name.contains('\0'))
                     .take(128)
                     .collect();
-                catalog[1].midi_inputs = inventory.midi_inputs.into_iter().take(128).collect();
-                catalog[1].midi_outputs = inventory.midi_outputs.into_iter().take(128).collect();
+                catalog[1].midi_inputs = inventory
+                    .midi_inputs
+                    .into_iter()
+                    .filter(|name| name.len() <= 128 && !name.contains('\0'))
+                    .take(128)
+                    .collect();
+                catalog[1].midi_outputs = inventory
+                    .midi_outputs
+                    .into_iter()
+                    .filter(|name| name.len() <= 128 && !name.contains('\0'))
+                    .take(128)
+                    .collect();
             }
             Err(error) => catalog[1].unavailable_reason = Some(error.to_string()),
         }

@@ -200,3 +200,12 @@ partially replaced.
 
 Validation evidence is recorded in the [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md). Protocol tests
 alone do not establish engine atomicity, capture coherence or restored UI support.
+
+## Native driver transitions
+
+Confirmed native driver changes reuse immutable capture and prepared restoration,
+with public-ID preservation instead of ordinary load's fresh live IDs. The host
+owns conversion and rollback captures independently of a client's bulk transfers.
+The shared conversion layer supplies the same timing and media rules to session
+files and native driver transitions. Preference persistence has a separate retry
+result; see [audio-driver switching](audio-driver-switching.md).

@@ -94,8 +94,8 @@ Verification: confirmation/cancel UX, progress and error states, save-only behav
 
 ### Stage 6 Validate production behavior and complete delivery
 
-- [ ] Port the retained reference switch scenarios to production-route tests: confirmation/resampling, dynamic buses, cancellation, recording and active-I/O conflicts, target failure, remap rollback, fatal rollback, changed-rate reconfirmation, and save retry.
-- [ ] Run a reusable full-session scenario containing exact audio/MIDI, sync, composites, dry/wet processor state, supported controls, explicit routes, and zero/multiple buses. Switch rates and drivers, save/export, reload, and compare independent expected content and timing.
+- [x] Port the retained reference switch scenarios to production-route tests: confirmation/resampling, dynamic buses, cancellation, recording and active-I/O conflicts, target failure, remap rollback, fatal rollback, changed-rate reconfirmation, and save retry.
+- [x] Run a reusable full-session scenario containing exact audio/MIDI, sync, composites, dry/wet processor state, supported controls, explicit routes, and zero/multiple buses. Switch rates and drivers, save/export, reload, and compare independent expected content and timing.
 - [ ] Qualify Dummy, CPAL, and direct JACK transitions in both directions where available, plus CPAL host/device/buffer changes. Exercise embedded and split hosts, socket/shared-memory delivery, UI crash/reconnect, repeated switching, absent devices, and resource exhaustion.
 - [ ] Run native real-output/MIDI tests with the required device/server present. Record software/mock, virtual-device, and physical-device evidence separately; a skipped backend test does not qualify it. Cover the repository's supported Linux/macOS/Windows configurations through CI and available device qualification.
 - [ ] Run final workspace and relevant application/host/processor suites, packaged native smokes, browser regressions, and firmware compilation/protocol checks. Add selected ownership/concurrency Miri checks if the change introduces ownership or queue paths; preserve existing workloads and report timeouts as incomplete.

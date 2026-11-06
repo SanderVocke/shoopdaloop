@@ -369,6 +369,9 @@ impl Service {
     }
 
     fn driver_publish_result(&mut self, job: &mut Job) -> Result<bool> {
+        if let Some(error) = &self.init_error {
+            return Err(anyhow!(error.clone()));
+        }
         if let Some(error) = self.audio_driver_publication_error() {
             return Err(anyhow!(error));
         }
@@ -565,6 +568,13 @@ impl Service {
                 return Ok(false);
             }
             (Phase::Preflight, DriverReply::Resolved(target)) => {
+                if job.owner != self.lease.as_ref().map(|l| l.authority) {
+                    self.driver_state.switch.status = AudioDriverSwitchStatus::Completed;
+                    self.driver_state.switch.message =
+                        "Unconfirmed audio-driver switch cancelled on owner loss".into();
+                    self.driver_finish(job, None);
+                    return Ok(false);
+                }
                 if target.configured == job.source.configured
                     && target.sample_rate == job.source.sample_rate
                     && target.buffer_size == job.source.buffer_size
@@ -624,12 +634,14 @@ impl Service {
                     job.target.as_ref().unwrap()
                 };
                 job.phase = Phase::Restoration;
-                if profile.sample_rate != expected.sample_rate {
+                if profile.sample_rate != expected.sample_rate
+                    || profile.buffer_size != expected.buffer_size
+                {
                     if !job.rollback {
                         job.reconfirm = Some(profile);
                     }
                     return Err(anyhow!(
-                        "resolved target sample rate changed after opening the device"
+                        "resolved target audio format changed after opening the device"
                     ));
                 }
                 self.driver_state.active = Some(profile);

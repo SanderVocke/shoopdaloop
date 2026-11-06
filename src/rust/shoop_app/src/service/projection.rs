@@ -470,6 +470,7 @@ impl Service {
         self.ports.insert(
             id,
             Port {
+                preserve_name: false,
                 backend: descriptor.id,
                 view: ApplicationPortState {
                     publication: None,
@@ -795,7 +796,7 @@ impl Service {
                 .connections
                 .application_ports
                 .get(&port.backend)
-                .filter(|_| port.view.publication.is_none())
+                .filter(|_| port.view.publication.is_none() && !port.preserve_name)
             {
                 port.view.name = descriptor.name.clone();
             }

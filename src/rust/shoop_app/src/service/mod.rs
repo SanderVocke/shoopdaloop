@@ -74,6 +74,7 @@ struct Intent {
 
 struct Port {
     backend: BackendPortId,
+    preserve_name: bool,
     view: ApplicationPortState,
 }
 

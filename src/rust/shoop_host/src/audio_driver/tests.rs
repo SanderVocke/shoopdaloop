@@ -21,6 +21,7 @@ struct Control {
     hold: bool,
     preflights: usize,
     changed_rate: bool,
+    changed_open: bool,
 }
 struct FakeController(Arc<Mutex<Control>>);
 impl AudioDriverController for FakeController {
@@ -50,7 +51,10 @@ impl AudioDriverController for FakeController {
                     target,
                     limits,
                 } => conversion::convert(image, target, limits).map(DriverReply::Converted),
-                DriverWork::Start(profile) => {
+                DriverWork::Start(mut profile) => {
+                    if control.changed_open && control.starts == 0 {
+                        profile.buffer_size = 128;
+                    }
                     control.starts += 1;
                     if control.failures.contains(&control.starts) {
                         return Err(anyhow!("injected start failure {}", control.starts));
@@ -226,6 +230,31 @@ fn cancel_expiry_and_stale_confirmation_do_not_start_a_driver() {
 }
 
 #[shoop_test]
+fn detached_preflight_cannot_become_a_confirmation_for_a_replacement_owner() {
+    let mut f = Fixture::new();
+    f.control.lock().unwrap().hold = true;
+    f.queue(Command::AudioDriver(DriverCommand::Request(
+        AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 32_000,
+            buffer_size: 128,
+        }),
+    )));
+    f.service.detach(f.connection);
+    f.connection = ConnectionId(2);
+    f.client = Client::new();
+    f.attach();
+    f.control.lock().unwrap().hold = false;
+    for _ in 0..5 {
+        f.tick();
+    }
+    assert_eq!(
+        f.service.snapshot().audio_drivers.switch.status,
+        AudioDriverSwitchStatus::Completed
+    );
+    assert_eq!(f.control.lock().unwrap().starts, 0);
+}
+
+#[shoop_test]
 fn target_and_restoration_failures_restore_the_original_session() {
     for failure in 0..3 {
         let mut f = Fixture::new();
@@ -310,6 +339,10 @@ fn persistence_retry_keeps_the_new_driver_and_never_starts_it_again() {
             .buffer_size,
         64
     );
+    f.service.detach(f.connection);
+    f.connection = ConnectionId(2);
+    f.client = Client::new();
+    f.attach();
     f.control.lock().unwrap().save_failure = false;
     assert!(matches!(
         f.run(Command::AudioDriver(DriverCommand::RetryPersistence {
@@ -348,6 +381,68 @@ fn changed_preflight_rate_requires_new_consent_without_teardown() {
     );
     assert_eq!(state.status.sample_rate, 48_000);
     assert_eq!(f.control.lock().unwrap().starts, 0);
+}
+
+#[shoop_test]
+fn changed_opened_buffer_restores_source_before_renewed_confirmation() {
+    let mut f = Fixture::new();
+    let before = f.service.snapshot();
+    f.control.lock().unwrap().changed_open = true;
+    let id = f.request();
+    assert!(matches!(f.confirm(id), Outcome::Confirmed { .. }));
+    let state = f.service.snapshot();
+    assert_eq!(
+        state.audio_drivers.switch.status,
+        AudioDriverSwitchStatus::AwaitingConfirmation
+    );
+    assert_eq!(state.audio_drivers.active, before.audio_drivers.active);
+    assert_eq!(
+        state
+            .audio_drivers
+            .switch
+            .target
+            .as_ref()
+            .unwrap()
+            .buffer_size,
+        128
+    );
+    assert_eq!(f.control.lock().unwrap().starts, 2);
+}
+
+#[shoop_test]
+fn admitted_switch_refuses_concurrent_mutations_and_duplicate_confirmation() {
+    let mut f = Fixture::new();
+    let id = f.request();
+    f.control.lock().unwrap().hold = true;
+    f.queue(Command::AudioDriver(DriverCommand::Confirm {
+        request_id: id,
+        accept: true,
+    }));
+    for command in [
+        Command::AudioDriver(DriverCommand::Confirm {
+            request_id: id,
+            accept: true,
+        }),
+        Command::NewSession,
+        Command::Global(GlobalControlAction::StopAll),
+    ] {
+        assert!(matches!(
+            f.run(command),
+            Outcome::Refused {
+                reason: Refusal::Busy,
+                ..
+            }
+        ));
+    }
+    f.control.lock().unwrap().hold = false;
+    for _ in 0..50 {
+        f.tick();
+    }
+    assert_eq!(
+        f.service.snapshot().audio_drivers.switch.status,
+        AudioDriverSwitchStatus::Completed
+    );
+    assert_eq!(f.control.lock().unwrap().starts, 1);
 }
 
 #[shoop_test]
@@ -791,6 +886,36 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
         Outcome::Confirmed { .. }
     ));
     let original = f.capture();
+    for limits in [
+        HostResourceLimits {
+            media_bytes: 1,
+            ..Default::default()
+        },
+        HostResourceLimits {
+            objects: 1,
+            ..Default::default()
+        },
+        HostResourceLimits {
+            metadata_bytes: 1,
+            ..Default::default()
+        },
+    ] {
+        assert!(conversion::convert(
+            original.clone(),
+            ConversionTarget {
+                sample_rate: 32_000,
+                quantum_frames: 32
+            },
+            limits
+        )
+        .is_err());
+    }
+    f.switch_to(48_000);
+    assert_eq!(
+        *original,
+        *f.capture(),
+        "same-format switching must preserve exact media and timing"
+    );
     f.switch_to(32_000);
     let converted = f.capture();
     let image::Manifest::Session(before) = &original.manifest else {
@@ -880,4 +1005,115 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
     f.switch_to(44_100);
     f.switch_to(48_000);
     assert_eq!(f.service.snapshot().tracks[1].id, direct);
+    for bus in f.service.snapshot().buses.iter() {
+        assert!(matches!(
+            f.run(Command::Bus {
+                bus: bus.id,
+                action: BusAction::Remove
+            }),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    f.switch_to(32_000);
+    assert!(f.service.snapshot().buses.is_empty());
+    for (name, channel_count) in [("Cue", 1), ("Main", 4)] {
+        assert!(matches!(
+            f.run(Command::AddBus(BusSpec {
+                name: name.into(),
+                channel_count,
+                creation_request_id: None,
+                fx: None
+            })),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    let buses = f.service.snapshot().buses.clone();
+    f.switch_to(44_100);
+    let after = f.service.snapshot();
+    assert_eq!(
+        after
+            .buses
+            .iter()
+            .map(|b| (b.id, &b.name))
+            .collect::<Vec<_>>(),
+        buses.iter().map(|b| (b.id, &b.name)).collect::<Vec<_>>()
+    );
+    use shoop_persistence_codec::codec::{Value, Work};
+    let saved = f.capture();
+    let Value::File { bytes, .. } = Work::Encode {
+        image: saved.clone(),
+        kind: IoTaskKind::SaveSession,
+        wav: false,
+        standard: false,
+        channels: vec![],
+    }
+    .run()
+    .unwrap() else {
+        unreachable!()
+    };
+    let Value::Decoded(decoded) = Work::Decode {
+        kind: IoTaskKind::LoadSession,
+        bytes,
+        rate: 44_100,
+    }
+    .run()
+    .unwrap() else {
+        unreachable!()
+    };
+    let Value::Image(image) = Work::Prepare {
+        decoded,
+        mapping: vec![],
+        update_length: true,
+    }
+    .run()
+    .unwrap() else {
+        unreachable!()
+    };
+    f.import(
+        persistence::Target::Session {
+            revision: f.service.snapshot().revision,
+        },
+        image,
+    );
+    let reloaded = f.capture();
+    assert_eq!(saved.payloads, reloaded.payloads);
+    let image::Manifest::Session(saved) = &saved.manifest else {
+        unreachable!()
+    };
+    let image::Manifest::Session(reloaded) = &reloaded.manifest else {
+        unreachable!()
+    };
+    assert_eq!(saved.sample_rate, reloaded.sample_rate);
+    for (old, new) in saved.tracks.iter().zip(&reloaded.tracks) {
+        assert_eq!(old.name, new.name);
+        assert_eq!(old.topology, new.topology);
+        assert_eq!(old.processor_state, new.processor_state);
+        assert_eq!(
+            old.loops.iter().map(|l| l.frames).collect::<Vec<_>>(),
+            new.loops.iter().map(|l| l.frames).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[shoop_test]
+fn lifecycle_controller_bounds_outstanding_work_and_reports_worker_loss() {
+    let (sender, _requests) = mpsc::sync_channel(2);
+    let (results, receiver) = mpsc::sync_channel(1);
+    let mut controller = Controller {
+        sender,
+        receiver,
+        ticket: None,
+    };
+    controller
+        .submit(1, DriverWork::Discover(AudioDriverConfig::default()))
+        .unwrap();
+    assert!(controller
+        .submit(2, DriverWork::Discover(AudioDriverConfig::default()))
+        .is_err());
+    assert!(controller.poll().is_none());
+    drop(results);
+    let completion = controller.poll().unwrap();
+    assert_eq!(completion.ticket, 1);
+    assert!(completion.result.err().unwrap().contains("disconnected"));
+    assert!(controller.poll().is_none());
 }

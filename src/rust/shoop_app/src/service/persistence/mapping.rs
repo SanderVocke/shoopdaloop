@@ -219,6 +219,7 @@ impl Candidate {
             id,
             Port {
                 backend: BackendPortId::from_raw(source.state.id.raw()),
+                preserve_name: self.preserve_ids,
                 view,
             },
         );

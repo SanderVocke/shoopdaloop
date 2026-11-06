@@ -1,4 +1,6 @@
 //! Exact off-thread timing plans for conversion into a prepared engine format.
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 use crate::Error as SessionError;
 pub use shoop_app_api::ConversionTarget;
 use std::collections::{BTreeMap, BTreeSet};
