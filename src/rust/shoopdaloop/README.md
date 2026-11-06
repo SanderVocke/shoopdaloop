@@ -235,7 +235,8 @@ normally; New Session creates a fresh default even after every bus was removed.
 Track defaults map matching widths one-to-one and mono to every destination
 channel; absent/incompatible names leave a track unconnected. Explicit bus and
 direct system routes coexist. Lua bus indices follow stable logical order rather
-than mixer drag order, including after save/load. Bus FX remains unavailable.
+than mixer drag order, including after save/load. Built-in bus FX uses the
+negotiated FX width and shared track/bus instance budget. Carla is out of scope.
 
 ## Browser
 
