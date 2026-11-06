@@ -5,6 +5,11 @@
 DDR with reduced budgets. Physical ZedBoard qualification is the final, pending
 stage. Both profiles currently use dummy audio.
 
+For physical ZedBoard bring-up, see [JTAG development without Vivado](boards/jtag-development.md).
+It distinguishes direct-load development (no SD) from the signed SD/network
+workflow. The direct-load commands in this README otherwise exercise QEMU;
+they do not initialize a physical board's PS/DDR.
+
 Target: one Cortex-A9, 1 GiB PS DDR, FreeRTOS 10.6.1 and AMD lwIP 2.2.0.
 The firmware runs the portable Shoop session service, backend and RT engine with
 stereo 48 kHz dummy audio, 256-frame quanta and one dummy MIDI input/output.
