@@ -215,6 +215,6 @@ The socket host retains accepted RT operations when the UI or client-local Lua V
 is lost. Reattachment observes the original outcome without replay. Automatic
 prefix completion belongs to the render owner and survives a browser main-thread
 stall. Shared-memory editing/file flows are covered; shared-memory reattachment
-remains the established recovery exclusion. Composite authored Replacing and
-FX/dry-wet input editing remain the separately deferred P17 interaction; unrelated
-running composites and processor tracks continue alongside primitive input edits.
+remains the established recovery exclusion. Authored composite Replacing and
+paired dry/wet replacement use the prepared writers described in
+[the composite contract](composites.md). Grab retains its Direct primitive scope.

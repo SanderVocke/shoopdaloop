@@ -33,11 +33,7 @@ impl Canary {
         let details = snapshot.details.as_ref().and_then(|d| d.composite.as_ref());
         match self.stage {
             0 => {
-                send(AppIntent::ComposeLoopAt {
-                    target_loop_id: track.loops[1].id,
-                    source_loop_id: track.loops[0].id,
-                    start_iteration: 0,
-                })?;
+                send(action(0, LoopAction::ComposeIntoEnd(track.loops[1].id)))?;
                 send(action(
                     1,
                     LoopAction::IconClicked(SelectionModifiers::default()),
@@ -53,6 +49,14 @@ impl Canary {
                     target_loop_id: track.loops[1].id,
                     kind: CompositeKind::Script,
                 })?;
+                self.stage = 7;
+            }
+            7 => {
+                if !details.is_some_and(|d| {
+                    d.kind == CompositeKind::Script && d.execution.pending_version.is_none()
+                }) {
+                    return Ok(false);
+                }
                 send(AppIntent::SetCompositeLoopCycles {
                     target_loop_id: track.loops[1].id,
                     event: CompositeEventId {
@@ -68,11 +72,7 @@ impl Canary {
                 }) {
                     return Ok(false);
                 }
-                send(AppIntent::ComposeLoopAt {
-                    target_loop_id: track.loops[2].id,
-                    source_loop_id: track.loops[1].id,
-                    start_iteration: 0,
-                })?;
+                send(action(1, LoopAction::ComposeIntoEnd(track.loops[2].id)))?;
                 self.stage = 3;
             }
             3 => {

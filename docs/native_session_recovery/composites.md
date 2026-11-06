@@ -112,7 +112,8 @@ single-owner program staging may serialize edit publication; saturation refuses
 new work before acceptance and never stops admitted autonomous playback.
 
 Authored Replacing reserves one prepared writer per referenced primitive target,
-including stopped programs and candidates. Reservations share the negotiated
+including empty children, stopped programs and candidates. Empty children reserve
+writer slots before a future Record can begin. Reservations share the negotiated
 writer/media pools with primitive input edits. Admission waits for bounded MIDI
 index preparation and refuses if the complete candidate cannot be prepared.
 A failed candidate releases its partial reservations and leaves playback intact.

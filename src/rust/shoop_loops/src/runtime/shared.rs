@@ -359,6 +359,7 @@ impl Shared {
             live: (0..settings.candidates)
                 .map(|_| LiveSlot {
                     generation: 1,
+                    reservation: None,
                     value: None,
                 })
                 .collect(),
@@ -483,6 +484,7 @@ impl Shared {
         for slot in &mut result.live {
             *core::hint::black_box(slot) = LiveSlot {
                 generation: 1,
+                reservation: None,
                 value: None,
             };
         }

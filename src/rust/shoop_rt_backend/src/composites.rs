@@ -282,6 +282,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 bail!("invalid composite occurrence");
             }
             let mode = wire_mode(span.mode)?;
+            if mode == LoopMode::Replacing
+                && !self
+                    .capabilities
+                    .contains(shoop_rt_protocol::Capabilities::REPLACING)
+            {
+                bail!("composite Replacing requires prepared input writers");
+            }
             if plan.kind == BackendCompositeKind::Regular && mode != LoopMode::Playing
                 || is_composite && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
             {

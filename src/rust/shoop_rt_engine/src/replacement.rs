@@ -235,6 +235,11 @@ impl ControlEndpoint {
                     return Err(Refusal::InvalidValue);
                 }
                 let child = self.next.find_loop(span.target).ok_or(Refusal::InvalidId)?;
+                if span.mode == shoop_rt_protocol::LoopMode::Replacing
+                    && !self.input.replacing_supported()
+                {
+                    return Err(Refusal::Unsupported);
+                }
                 if matches!(
                     span.mode,
                     shoop_rt_protocol::LoopMode::PlayingDryThroughWet

@@ -49,9 +49,61 @@ impl LiveJob {
 }
 pub(super) struct LiveSlot {
     pub generation: u32,
+    pub reservation: Option<LoopId>,
     pub value: Option<LiveJob>,
 }
 impl Shared {
+    pub(in crate::runtime) fn reserve_autonomous(&mut self, target: LoopId) -> Result<(), Error> {
+        if self
+            .live
+            .iter()
+            .any(|slot| slot.reservation == Some(target))
+        {
+            return Ok(());
+        }
+        let index = self
+            .live
+            .iter()
+            .position(|slot| slot.value.is_some_and(|job| job.fence.target == target))
+            .or_else(|| self.available_live_slot(target))
+            .ok_or(Error::Capacity)?;
+        self.live[index].reservation = Some(target);
+        Ok(())
+    }
+    pub(in crate::runtime) fn release_unused_reservations(
+        &mut self,
+        needed: impl Fn(LoopId) -> bool,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<(), Error> {
+        for index in 0..self.live.len() {
+            let slot = &self.live[index];
+            if slot.reservation.is_some_and(|target| !needed(target)) {
+                if slot.value.is_some_and(|job| job.autonomous && !job.active) {
+                    self.cancel_live(
+                        LiveWriterId {
+                            scope: self.scope,
+                            slot: index as u32,
+                            generation: slot.generation,
+                        },
+                        io,
+                    )?;
+                }
+                self.live[index].reservation = None;
+            }
+        }
+        Ok(())
+    }
+    fn available_live_slot(&self, target: LoopId) -> Option<usize> {
+        let vacant = |slot: &LiveSlot| slot.generation > 0 && slot.value.is_none();
+        self.live
+            .iter()
+            .position(|slot| vacant(slot) && slot.reservation == Some(target))
+            .or_else(|| {
+                self.live
+                    .iter()
+                    .position(|slot| vacant(slot) && slot.reservation.is_none())
+            })
+    }
     pub(in crate::runtime) fn rebind_prepared(
         &mut self,
         id: LiveWriterId,
@@ -254,9 +306,7 @@ impl Shared {
             return Err(Error::InvalidShape);
         }
         let slot = self
-            .live
-            .iter()
-            .position(|slot| slot.generation > 0 && slot.value.is_none())
+            .available_live_slot(fence.target)
             .ok_or(Error::Capacity)?;
         let id = LiveWriterId {
             scope: self.scope,
@@ -419,9 +469,7 @@ impl Shared {
         }
         let store = h.indexed_midi.map(|source| source.store());
         let slot = self
-            .live
-            .iter()
-            .position(|slot| slot.generation > 0 && slot.value.is_none())
+            .available_live_slot(fence.target)
             .ok_or(Error::Capacity)?;
         let id = LiveWriterId {
             scope: self.scope,
@@ -1052,6 +1100,7 @@ impl Shared {
                     io,
                 )?;
             }
+            self.live[index].reservation = None;
         }
         Ok(())
     }

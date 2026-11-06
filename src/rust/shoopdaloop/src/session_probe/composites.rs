@@ -1,6 +1,7 @@
 //! Public editor and Lua acceptance through a packaged, independently running host.
 use super::*;
 use crate::application::{ApplicationHandle, ApplicationRuntime, ApplicationStartOptions};
+use anyhow::Context;
 use shoop_app_protocol::{composite, OperationId};
 use shoop_egui::*;
 
@@ -649,6 +650,84 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             "load changed prepared geometry or event identity"
         );
     }
+    let restored_track = &loaded.tracks[1];
+    let replacing = restored_track.loops[4].id;
+    if !handle.snapshot().tracks[1].loops[4].selected {
+        loop_action(
+            &handle,
+            restored_track.id,
+            replacing,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        )?;
+    }
+    let mut confirmed =
+        details(&handle, |d| d.events.len() == 1).context("select loaded Replacing program")?;
+    let event = confirmed.events[0].instance_id;
+    for (index, intent) in [
+        AppIntent::RelocateCompositeEvents {
+            target_loop_id: replacing,
+            events: vec![CompositeEventId { instance_id: event }],
+            start_iteration: 0,
+            duplicate: false,
+        },
+        AppIntent::SetCompositeLoopCycles {
+            target_loop_id: replacing,
+            event: CompositeEventId { instance_id: event },
+            n_cycles: Some(10_000),
+        },
+        AppIntent::SetCompositeEventMode {
+            target_loop_id: replacing,
+            event: CompositeEventId { instance_id: event },
+            mode: LoopMode::Replacing,
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        handle.dispatch(intent)?;
+        confirmed = details(&handle, |d| {
+            d.execution.active_version > confirmed.execution.active_version
+                && d.execution.pending_version.is_none()
+                && !d.execution.restoring
+                && match index {
+                    0 => d.events[0].start_frame == 0,
+                    1 => d.events[0].forced_n_cycles == Some(10_000),
+                    _ => d.events[0].mode.as_deref() == Some("replacing"),
+                }
+        })
+        .with_context(|| {
+            format!(
+                "confirm loaded Replacing edit {index}: {:?}",
+                handle.snapshot().details
+            )
+        })?;
+    }
+    loop_action(
+        &handle,
+        restored_track.id,
+        replacing,
+        LoopAction::PlayClicked,
+    )?;
+    file_wait(&handle, |s| {
+        s.tracks[1].loops[5].mode == LoopMode::Replacing
+    })
+    .with_context(|| {
+        format!(
+            "start loaded Replacing: {:?}",
+            handle.snapshot().tracks[1].loops
+        )
+    })?;
+    loop_action(
+        &handle,
+        restored_track.id,
+        replacing,
+        LoopAction::StopClicked,
+    )?;
+    let stopped = file_wait(&handle, |s| s.tracks[1].loops[5].mode == LoopMode::Stopped)?;
+    ensure!(
+        stopped.tracks[1].loops[5].length_frames == 4096,
+        "authored Replacing changed loaded loop length"
+    );
     let ticket = if transport == EngineTransportKind::Socket {
         drop(handle);
         drop(app);

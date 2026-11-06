@@ -708,6 +708,102 @@ fn large_private_validation_yields_and_checks_samples_outside_the_render_window(
 }
 
 #[shoop_test]
+fn future_replacing_on_empty_children_reserves_slots_before_load_and_returns_them_on_refusal() {
+    let mut configured = description();
+    configured.history.writers = 1;
+    let mut backend = stack(&configured);
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "future-writers".into(),
+            audio_channels: 1,
+            midi: true,
+            initial_loops: 2,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    let spans = session.tracks[0]
+        .loops
+        .iter()
+        .enumerate()
+        .map(|(ordinal, content)| BackendCompositeSpan {
+            target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(content.source_id)),
+            start: 0,
+            end: 1,
+            occurrence_start: 0,
+            ordinal: ordinal as u32,
+            mode: BackendLoopMode::Replacing,
+        })
+        .collect();
+    session.composites.push(BackendSessionComposite {
+        source_id: 9001,
+        version: 0,
+        plan: BackendPreparedCompositePlan {
+            kind: BackendCompositeKind::Script,
+            sync_source: None,
+            unit_frames: 16,
+            iterations: 1,
+            entries: 2,
+            spans,
+        },
+    });
+    assert!(loaded(&mut backend, &session)
+        .unwrap_err()
+        .to_string()
+        .contains("Capacity"));
+    let snapshot = backend.poll().unwrap();
+    assert!(track.loops.iter().all(|id| snapshot.loops.contains_key(id)));
+    assert_eq!(snapshot.loops.len(), 2);
+    session.composites[0].plan.spans.pop();
+    session.composites[0].plan.entries = 1;
+    assert!(loaded(&mut backend, &session).is_ok());
+}
+
+#[shoop_test]
+fn disabled_replacing_refuses_a_whole_loaded_program_even_when_its_child_is_empty() {
+    let mut configured = description();
+    configured.history.seconds = 0;
+    let mut backend = stack(&configured);
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "disabled-replacing".into(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    let source = session.tracks[0].loops[0].source_id;
+    session.composites.push(BackendSessionComposite {
+        source_id: 9001,
+        version: 0,
+        plan: BackendPreparedCompositePlan {
+            kind: BackendCompositeKind::Script,
+            sync_source: None,
+            unit_frames: 16,
+            iterations: 1,
+            entries: 1,
+            spans: vec![BackendCompositeSpan {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(source)),
+                start: 0,
+                end: 1,
+                occurrence_start: 0,
+                ordinal: 0,
+                mode: BackendLoopMode::Replacing,
+            }],
+        },
+    });
+    assert!(loaded(&mut backend, &session)
+        .unwrap_err()
+        .to_string()
+        .contains("Replacing"));
+    let snapshot = backend.poll().unwrap();
+    assert!(snapshot.loops.contains_key(&track.loops[0]));
+    assert_eq!(snapshot.loops.len(), 1);
+}
+
+#[shoop_test]
 fn loaded_replacing_program_is_ready_for_its_first_midi_capture_before_commit_completes() {
     let mut configured = description();
     configured.page_bytes = 4096;

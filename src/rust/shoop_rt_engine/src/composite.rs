@@ -161,6 +161,9 @@ impl ControlEndpoint {
                     .model
                     .find_loop(span.target)
                     .ok_or(Refusal::InvalidId)?;
+                if span.mode == LoopMode::Replacing && !self.input.replacing_supported() {
+                    return Err(Refusal::Unsupported);
+                }
                 if matches!(
                     span.mode,
                     LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet

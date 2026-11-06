@@ -61,6 +61,10 @@ impl LoopPlanner {
                 ready = false;
                 continue;
             };
+            self.shared
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .reserve_autonomous(target)?;
             if initial.frames == 0 {
                 continue;
             }
@@ -192,6 +196,19 @@ impl LoopPlanner {
         if let Some(shared) = &mut self.shared {
             let rows = &self.rows;
             let pairs = &self.node_pairs;
+            let targets = &self.replacing_targets;
+            shared.release_unused_reservations(
+                |target| {
+                    rows.get(target.slot() as usize).is_some_and(|row| {
+                        row.is_some_and(|row| {
+                            row.assigned
+                                && row.binding.target == target
+                                && targets[target.slot() as usize]
+                        })
+                    }) || pairs.prepared_initial(target).is_some()
+                },
+                io,
+            )?;
             shared.cancel_orphaned_autonomous(
                 |target| {
                     rows.get(target.slot() as usize).is_some_and(|row| {
@@ -200,9 +217,17 @@ impl LoopPlanner {
                 },
                 io,
             )?;
+            for (slot, row) in rows.iter().enumerate() {
+                if let Some(row) = row.filter(|row| row.assigned && targets[slot]) {
+                    shared.reserve_autonomous(row.binding.target)?;
+                }
+            }
         }
         let mut ready = true;
         for slot in 0..self.rows.len() {
+            if !self.replacing_targets[slot] {
+                continue;
+            }
             let Some(row) = self.rows[slot].filter(|row| row.assigned) else {
                 continue;
             };
