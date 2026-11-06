@@ -67,6 +67,74 @@ fn plan(
 }
 
 #[shoop_test]
+fn processed_track_composites_execute_role_modes_and_refuse_invalid_child_modes_atomically() {
+    use shoop_backend::{BackendCompositeId, BackendTrackTopology, TrackRequest};
+    let mut d = description();
+    d.external_dry_wet = true;
+    d.ramp_frames = 0;
+    let mut backend = stack(&d);
+    let track = backend
+        .create_track(TrackRequest {
+            port_name_base: "processed-composite".into(),
+            topology: BackendTrackTopology::DryWetExternal {
+                dry_audio_channels: 2,
+                wet_audio_channels: 1,
+                dry_midi: true,
+            },
+            initial_loops: 2,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let child = track.loops[0];
+    backend
+        .transition_loop(child, Mode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().render(64);
+    backend.transition_loop(child, Mode::Stopped, None).unwrap();
+    backend.wait_idle();
+    let parent = BackendCompositeId::from_raw(track.loops[1].raw());
+    let outer = backend.create_composite_loop().unwrap();
+    backend.wait_idle();
+    for mode in [
+        Mode::PlayingDryThroughWet,
+        Mode::RecordingDryIntoWet,
+        Mode::Playing,
+    ] {
+        let mut candidate = plan(child, None, 2);
+        candidate.kind = BackendCompositeKind::Script;
+        candidate.unit_frames = 1024;
+        candidate.spans[0].mode = mode;
+        let version = backend
+            .configure_prepared_composite_loop(parent, &candidate)
+            .unwrap();
+        backend.wait_idle();
+        backend
+            .transition_composite_loop(parent, Mode::Playing, None, None)
+            .unwrap();
+        backend.wait_idle();
+        step(&mut backend, 8);
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&child].mode, mode);
+        assert_eq!(snapshot.composites[&parent].active_plan_version, version);
+        let cursor = backend.mutation_cursor();
+        candidate.spans[0].target = BackendCompositeTarget::Composite(parent);
+        let nested = backend.configure_prepared_composite_loop(outer, &candidate);
+        if mode == Mode::Playing {
+            assert!(nested.is_ok());
+            backend.wait_idle();
+        } else {
+            assert!(nested.is_err());
+            assert_eq!(backend.mutation_cursor(), cursor);
+        }
+        backend
+            .transition_composite_loop(parent, Mode::Stopped, None, None)
+            .unwrap();
+        backend.wait_idle();
+    }
+}
+
+#[shoop_test]
 fn public_composite_creation_configuration_and_play_wait_for_the_first_accepted_plan() {
     let (mut backend, ids) = setup();
     assert!(backend.supports_composite_loops());

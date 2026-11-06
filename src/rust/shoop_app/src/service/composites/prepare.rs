@@ -135,6 +135,8 @@ pub(super) fn compile_with_geometry(
                 LoopMode::Stopped => Ok(shoop_loop_plan::Mode::Stopped),
                 LoopMode::Playing => Ok(shoop_loop_plan::Mode::Playing),
                 LoopMode::Recording => Ok(shoop_loop_plan::Mode::Recording),
+                LoopMode::PlayingDryThroughWet => Ok(shoop_loop_plan::Mode::PlayingDryThroughWet),
+                LoopMode::RecordingDryIntoWet => Ok(shoop_loop_plan::Mode::RecordingDryIntoWet),
                 _ => Err(anyhow!(
                     "the engine does not support this composite event mode"
                 )),

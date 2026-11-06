@@ -1090,7 +1090,7 @@ impl LoopPlanner {
                 .decision
                 .state
                 .mode;
-            activity.recording |= mode == Mode::Recording;
+            activity.recording |= matches!(mode, Mode::Recording | Mode::Replacing);
             activity.playing_dry |= mode == Mode::PlayingDryThroughWet;
             activity.rerecording |= mode == Mode::RecordingDryIntoWet;
             let view = &self.views[row.binding.target.slot() as usize];
@@ -1110,7 +1110,7 @@ impl LoopPlanner {
             .filter(|row| row.assigned && row.dry_wet && row.history_source == source)
         {
             let slot = row.binding.target.slot() as usize;
-            if self.views[slot].decision.state.mode.records() {
+            if self.views[slot].decision.state.writes() {
                 row.aborted = true;
                 row.failure = Some(reason);
                 self.views[slot].capture = None;

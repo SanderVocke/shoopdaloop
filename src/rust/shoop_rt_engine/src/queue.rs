@@ -620,11 +620,6 @@ impl ControlEndpoint {
                 let slot = loop_id.0.index as usize;
                 if slot >= next.loops.len() {
                     Staged::Refused(Refusal::Capacity)
-                } else if strip
-                    .and_then(|id| next.strip(id))
-                    .is_some_and(|strip| strip.processor.is_some())
-                {
-                    Staged::Refused(Refusal::Unsupported)
                 } else if loop_id.0.generation == 0
                     || loop_id.0.generation <= next.loop_generations[slot]
                     || next.loops[slot].is_some()

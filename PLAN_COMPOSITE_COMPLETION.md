@@ -2,6 +2,10 @@
 
 Status: in progress on `feat/composite-completion`.
 
+The dry/wet vertical slice is implemented through engine, adapter, service,
+client details and session files. Composite Replacing remains gated pending the
+writer work in Stage 2. P17 and final acceptance remain OPEN.
+
 Base: `feat/backend-replacement`, inspected at
 `862101eb9cd65e79208ab8e7746633a5ac64b3a0` on 2026-11-06.
 Follow `.agents/prompts/write_plan.md` and the branch's current agent instructions
@@ -126,13 +130,13 @@ with no media bindings; Clear recreates its primitive role bindings.
 
 - [x] Create `feat/composite-completion` from the current
   `origin/feat/backend-replacement`; record the actual base and baseline failures.
-- [ ] Define the event-mode × primitive/composite-target × topology/host matrix,
+- [x] Define the event-mode × primitive/composite-target × topology/host matrix,
   including container conversion/clear, default actions, valid mixed gestures and
   exact-list refusal. Map each acceptance criterion to focused tests.
-- [ ] Inspect retained reference script-event/default-action/role fixtures,
+- [x] Inspect retained reference script-event/default-action/role fixtures,
   including `mixed_selection_applies_primitive_only_modes_without_faulting_the_composite`
   and `dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit`.
-- [ ] Verify: run the relevant current composite, primitive replacing and dry/wet
+- [x] Verify: run the relevant current composite, primitive replacing and dry/wet
   cases; identify independent baseline failures before changing behavior. Add
   focused regression/oracle cases for the missing interactions.
 

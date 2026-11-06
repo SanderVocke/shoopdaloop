@@ -389,7 +389,7 @@ impl Candidate {
                                         image::ChannelMode::Direct
                                     }
                             }))
-                    || content.composite.is_some() && (track.sync || processed)
+                    || content.composite.is_some() && track.sync
                 {
                     return Err(anyhow!("session loop shape does not match its track"));
                 }
@@ -776,6 +776,12 @@ impl Candidate {
                                             LoopMode::Playing => BackendLoopMode::Playing,
                                             LoopMode::Stopped => BackendLoopMode::Stopped,
                                             LoopMode::Recording => BackendLoopMode::Recording,
+                                            LoopMode::PlayingDryThroughWet => {
+                                                BackendLoopMode::PlayingDryThroughWet
+                                            }
+                                            LoopMode::RecordingDryIntoWet => {
+                                                BackendLoopMode::RecordingDryIntoWet
+                                            }
                                             _ => {
                                                 return Err(anyhow!(
                                                     "unsupported persisted composite event mode"

@@ -877,11 +877,17 @@ impl Runtime {
                     .collect();
                 Some(CompositeDetailsState {
                     kind: document.kind,
-                    available_event_modes: vec![
-                        LoopMode::Playing,
-                        LoopMode::Recording,
-                        LoopMode::Stopped,
-                    ],
+                    available_event_modes: {
+                        let mut modes =
+                            vec![LoopMode::Playing, LoopMode::Recording, LoopMode::Stopped];
+                        if state.capabilities.supports(BackendCapability::DryWetModes) {
+                            modes.extend([
+                                LoopMode::PlayingDryThroughWet,
+                                LoopMode::RecordingDryIntoWet,
+                            ]);
+                        }
+                        modes
+                    },
                     timing: Some(CompositeTimingState {
                         basis_sample_rate: document.basis.sample_rate,
                         basis_frames: document.basis.unit_frames,

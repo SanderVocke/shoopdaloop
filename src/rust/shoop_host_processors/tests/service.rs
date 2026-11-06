@@ -313,6 +313,133 @@ impl Fixture {
 }
 
 #[shoop_test]
+fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
+    use shoop_app_protocol::composite as c;
+    for kind in [
+        ProcessorKind::External,
+        #[cfg(feature = "builtin-fx")]
+        ProcessorKind::BuiltInFx,
+        #[cfg(feature = "oxisynth")]
+        ProcessorKind::OxiSynth,
+    ] {
+        for mode in [
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+        ] {
+            let mut f = Fixture::new(kind);
+            f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
+            let processor = match kind {
+                ProcessorKind::External => TrackProcessorTypeId::EXTERNAL,
+                ProcessorKind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
+                ProcessorKind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
+            };
+            let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+                name: "Composite processor".into(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: TrackProcessorTypeId::new(processor),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            })) else {
+                panic!("track refused")
+            };
+            let transition = |id, mode| {
+                Command::Control(ControlOperation::Transition {
+                    loops: vec![id],
+                    mode,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                })
+            };
+            f.confirmed(transition(loops[0], LoopMode::Recording));
+            f.ticks(4);
+            f.confirmed(transition(loops[0], LoopMode::Stopped));
+            f.confirmed(Command::Composite(c::Edit::Append {
+                target: loops[1],
+                add: vec![loops[0]],
+                parallel: false,
+                convert_if_empty: true,
+            }));
+            let event = f.client.snapshot().unwrap().composites[0]
+                .active
+                .as_ref()
+                .unwrap()
+                .document
+                .instances[0]
+                .instance_id;
+            for edit in [
+                c::Edit::Kind {
+                    target: loops[1],
+                    kind: CompositeKind::Script,
+                },
+                c::Edit::Duration {
+                    target: loops[1],
+                    event,
+                    n_cycles: Some(10_000),
+                },
+                c::Edit::Mode {
+                    target: loops[1],
+                    event,
+                    mode,
+                },
+            ] {
+                f.confirmed(Command::Composite(edit));
+            }
+            f.confirmed(transition(loops[1], LoopMode::Playing));
+            f.ticks(4);
+            assert_eq!(f.track(track).loops[0].mode, mode);
+            f.confirmed(transition(loops[1], LoopMode::Stopped));
+            let saved = file_image(f.capture(510, None));
+            let persistence_image::Manifest::Session(before) = &saved.manifest else {
+                panic!()
+            };
+            let before = before
+                .tracks
+                .iter()
+                .find(|t| t.name == "Composite processor")
+                .unwrap();
+            let expected = before.loops[1].composite.as_ref().unwrap().clone();
+            assert_eq!(expected.document.instances[0].mode, Some(mode));
+            assert_eq!(
+                before.loops[0].audio_labels(),
+                ["Dry 1", "Dry 2", "Wet 1", "Wet 2"]
+            );
+            if kind != ProcessorKind::External {
+                assert!(before.loops[0].recorded_processor_state.is_some());
+            }
+            f.load(saved.clone(), 511);
+            let resaved = file_image(f.capture(512, None));
+            let persistence_image::Manifest::Session(after) = &resaved.manifest else {
+                panic!()
+            };
+            let after = after.tracks.iter().find(|t| t.name == before.name).unwrap();
+            let restored = after.loops[1].composite.as_ref().unwrap();
+            assert_eq!(expected.prepared.instances, restored.prepared.instances);
+            assert_eq!(expected.prepared.unit_frames, restored.prepared.unit_frames);
+            assert_eq!(
+                expected.document.instances[0].instance_id,
+                restored.document.instances[0].instance_id
+            );
+            assert_eq!(restored.document.instances[0].mode, Some(mode));
+            assert_ne!(
+                expected.document.instances[0].loop_id,
+                restored.document.instances[0].loop_id
+            );
+            assert_eq!(
+                before.loops[0].recorded_processor_state,
+                after.loops[0].recorded_processor_state
+            );
+            assert_eq!(saved.payloads, resaved.payloads);
+        }
+    }
+}
+
+#[shoop_test]
 fn external_unequal_roles_survive_the_service_and_session_archive() {
     use persistence_image::{ChannelMode, Manifest, Payload};
     let mut f = Fixture::new(ProcessorKind::External);

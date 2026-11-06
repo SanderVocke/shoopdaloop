@@ -507,6 +507,118 @@ fn unequal_external_roles_capture_play_dry_and_rerecord_without_a_dsp_bank() {
         }
     }
 }
+
+#[shoop_test]
+fn composite_dry_playback_and_wet_rerecord_preserve_unequal_roles_without_polling() {
+    for (dry, wet) in [(1, 8), (8, 1), (2, 5)] {
+        let mut h = OfflineHost::new(&description()).unwrap();
+        create(&mut h, dry, wet, true);
+        for c in 0..dry as usize {
+            h.input_mut(c).fill(c as f32 + 0.25);
+        }
+        for c in 0..wet as usize {
+            h.input_mut(8 + c).fill(-(c as f32) - 0.5);
+        }
+        mode(&mut h, LoopMode::Recording);
+        tick(&mut h, 64);
+        mode(&mut h, LoopMode::Stopped);
+        let parent = LoopSlotId(SlotId::new(1, 1));
+        done(
+            &mut h,
+            Request::CreateComposite {
+                loop_id: parent,
+                strip: Some(strip()),
+            },
+        );
+        for (index, event_mode) in [
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+            LoopMode::Playing,
+            LoopMode::PlayingDryThroughWet,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let id = index as u64 + 1;
+            for c in 0..dry as usize {
+                h.input_mut(c).fill(99.);
+            }
+            for c in 0..wet as usize {
+                h.input_mut(8 + c).fill(id as f32 + c as f32);
+            }
+            done(
+                &mut h,
+                Request::Composite(CompositeCommand::Begin(CompositeDescription {
+                    id,
+                    loop_id: parent,
+                    sync: None,
+                    previous: None,
+                    expected_version: id - 1,
+                    version: id,
+                    kind: CompositeKind::Explicit,
+                    unit_frames: 16,
+                    iterations: 64,
+                    entries: 1,
+                    segments: 1,
+                    sample_rate: 48_000,
+                    quantum: 16,
+                })),
+            );
+            done(
+                &mut h,
+                Request::Composite(CompositeCommand::Span {
+                    id,
+                    index: 0,
+                    span: CompositeSpan {
+                        target: looped(),
+                        start: 0,
+                        end: 64,
+                        occurrence_start: 0,
+                        ordinal: 0,
+                        mode: event_mode,
+                    },
+                }),
+            );
+            assert!(matches!(
+                request(&mut h, Request::Composite(CompositeCommand::Commit { id })),
+                Outcome::CompositeApplied { version, .. } if version == id
+            ));
+            done(
+                &mut h,
+                Request::LoopTransition {
+                    loop_id: parent,
+                    mode: LoopMode::Playing,
+                    delay: None,
+                },
+            );
+            tick(&mut h, 128);
+            for c in 0..dry as usize {
+                let expected = if event_mode == LoopMode::Playing {
+                    0.
+                } else {
+                    c as f32 + 0.25
+                };
+                assert_eq!(&h.output(8 + c)[32..128], &[expected; 96]);
+            }
+            for c in 0..wet as usize {
+                let expected = if event_mode == LoopMode::Playing {
+                    2. + c as f32
+                } else {
+                    id as f32 + c as f32
+                };
+                assert_eq!(&h.output(c)[32..128], &[expected; 96]);
+            }
+            done(
+                &mut h,
+                Request::LoopTransition {
+                    loop_id: parent,
+                    mode: LoopMode::Stopped,
+                    delay: None,
+                },
+            );
+        }
+    }
+}
 #[shoop_test]
 fn external_live_midi_releases_notes_and_sustain_when_the_live_route_stops() {
     let mut h = OfflineHost::new(&description()).unwrap();

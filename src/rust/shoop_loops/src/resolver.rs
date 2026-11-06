@@ -1759,7 +1759,7 @@ impl Boundary<'_> {
                         };
                         if length == 0 {
                             Transition::Stop
-                        } else if !restart && child.mode == Mode::Playing {
+                        } else if !restart && child.mode == segment.mode {
                             Transition::Seek {
                                 position: offset % length,
                                 retrigger: false,

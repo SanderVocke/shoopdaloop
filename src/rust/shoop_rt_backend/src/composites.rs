@@ -83,6 +83,8 @@ pub(crate) fn wire_mode(mode: BackendLoopMode) -> Result<LoopMode> {
         BackendLoopMode::Stopped => LoopMode::Stopped,
         BackendLoopMode::Playing => LoopMode::Playing,
         BackendLoopMode::Recording => LoopMode::Recording,
+        BackendLoopMode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
+        BackendLoopMode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
         _ => bail!("composite event mode is unavailable on this engine"),
     })
 }
@@ -173,24 +175,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_loop(id)
             .ok_or_else(|| anyhow!("unknown composite target"))?;
-        for target in
-            core::iter::once(id).chain(plan.spans.iter().map(|span| target_id(span.target)))
-        {
-            if self
-                .mirror
-                .loops
-                .get(&target)
-                .and_then(|entry| entry.track)
-                .is_some_and(|owner| {
-                    !matches!(
-                        self.mirror.tracks[&owner].topology,
-                        BackendTrackTopology::Direct { .. }
-                    )
-                })
-            {
-                bail!("composites currently require Direct tracks");
-            }
-        }
         if entry.program.is_none()
             && (!entry.confirmed
                 || entry.view.mode != LoopMode::Stopped
@@ -298,9 +282,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             let mode = wire_mode(span.mode)?;
             if plan.kind == BackendCompositeKind::Regular && mode != LoopMode::Playing
-                || is_composite && mode == LoopMode::Recording
+                || is_composite && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
             {
                 bail!("invalid composite child mode");
+            }
+            if matches!(
+                mode,
+                LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+            ) && child.track.is_none_or(|owner| {
+                matches!(
+                    self.mirror.tracks[&owner].topology,
+                    BackendTrackTopology::Direct { .. }
+                )
+            }) {
+                bail!("dry/wet composite events require a dry/wet primitive");
             }
             if let Some((end, old_mode)) = previous.insert(child.slot, (span.end, mode)) {
                 if end > span.start || end == span.start && mode == old_mode {

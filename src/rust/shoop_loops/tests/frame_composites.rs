@@ -95,6 +95,50 @@ fn tick(resolver: &mut Resolver) -> (Vec<State>, Vec<Event>) {
 }
 
 #[shoop_test]
+fn composite_seek_restores_the_authored_playback_role_after_an_independent_child_override() {
+    for q in [1, 16, 32, 64, 128] {
+        for authored in [Mode::Playing, Mode::PlayingDryThroughWet] {
+            let mut input = description(q, 7);
+            for entry in &mut input.programs[0].sections[0].entries {
+                entry.mode = Some(authored);
+            }
+            let mut resolver = Resolver::prepare(
+                compile(Limits::default(), &input).unwrap(),
+                rt_runtime::Quantum::new(q as usize).unwrap(),
+            )
+            .unwrap();
+            request(&mut resolver, 1, 1, 0, play());
+            let override_mode = if authored == Mode::Playing {
+                Transition::PlayDry {
+                    position: 0,
+                    retrigger: false,
+                }
+            } else {
+                play()
+            };
+            request(&mut resolver, 2, 2, q, override_mode);
+            request(
+                &mut resolver,
+                1,
+                3,
+                2 * q,
+                Transition::SeekIteration {
+                    iteration: 0,
+                    retrigger: false,
+                },
+            );
+            tick(&mut resolver);
+            let (overridden, _) = tick(&mut resolver);
+            assert_ne!(overridden[2].mode, authored);
+            let (restored, _) = tick(&mut resolver);
+            assert_eq!(restored[2].mode, authored);
+            assert_eq!(restored[2].position, 0);
+            assert_eq!(restored[1].position, 0);
+        }
+    }
+}
+
+#[shoop_test]
 fn source_stop_resize_and_restart_preserve_every_prepared_frame() {
     for q in [1, 16, 32, 64, 128] {
         let mut resolver = arrangement(q, 7);

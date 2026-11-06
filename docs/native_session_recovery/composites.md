@@ -2,8 +2,9 @@
 
 Status: the direct-track core is COMPLETE under [P03](feature-parity.md) and
 [the implementation plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_P03_COMPOSITES.md). The public composite
-capability covers regular programs and explicit Play/Stop/Record events. Replacing
-and dry/wet interactions remain OPEN in the separate
+capability covers regular programs and explicit Play/Stop/Record events. Authored
+dry playback and wet rerecord also run on negotiated dry/wet tracks. Replacing
+and final dependent-mode interaction acceptance remain OPEN in the separate
 [P17 item](feature-parity.md#p17-composite-mode-integration), depending on P05/P06/P07.
 See [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md#final-acceptance-and-closure) for
 the approved scope and final implementation checks.
@@ -147,7 +148,7 @@ Resync carries the complete active spans, source, ownership and repeat policy.
 | Application elapsed-time fallback, one section per pump and discarded overshoot | Superseded by render-owned frame progression. |
 | Safe future-only live edits and deferred wrap edits | Preserve using the prepared frame timeline and real restart eligibility. |
 | Automatic monitoring, persistence and socket recovery | Restore with authoritative service/host ownership. |
-| Replacing/dry-wet script events | Depend on P05/P06/P07; full P03 closure remains gated on these interactions. |
+| Replacing/dry-wet script events | Dry playback and wet rerecord are integrated; authored Replacing and final interaction acceptance remain P17. P03 is closed for its approved direct-track core. |
 
 Retain old-stack fixtures as historical evidence. New-library and production tests
 must describe the new contract explicitly, including source stop/restart/resize,
@@ -233,5 +234,6 @@ policy, so the first recording quantum after load needs no policy-repair poll.
 Primitive topology seed lengths remain stable through subsequent program edits;
 current media lengths continue to come from render-owned content state. Invalid
 or cancelled candidates retain the old playing plans and monitoring policy.
-Replacing/dry-wet event modes still refuse complete files until their production
-capabilities exist.
+Dry/wet composite files preserve named media roles, processor state and frozen
+geometry. Unsupported target topologies and authored Replacing still refuse the
+whole document. Final P17 platform/recovery interaction acceptance remains open.

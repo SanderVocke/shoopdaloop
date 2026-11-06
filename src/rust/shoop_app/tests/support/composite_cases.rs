@@ -63,6 +63,174 @@ fn edit(target: LoopId, add: Vec<LoopId>, parallel: bool) -> Command {
 }
 
 #[shoop_test]
+fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media() {
+    for encoded in [false, true] {
+        for mode in [
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+        ] {
+            let mut f = fixture_with_dry_wet(2, true);
+            let mut client = attach(&mut f.service, 7001, ConnectionId(1), encoded);
+            let run = |f: &mut Fixture, client: &mut Client, command| {
+                let mut message = client.command(command, None).unwrap();
+                if encoded {
+                    let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+                    let used = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+                    let WireMessage::Client(decoded) = codec::decode(&bytes[..used]).unwrap()
+                    else {
+                        panic!()
+                    };
+                    message = decoded;
+                }
+                let ClientMessage::Submit { operation, .. } = &message else {
+                    panic!()
+                };
+                let operation = *operation;
+                f.service.handle(ConnectionId(1), message).unwrap();
+                complete(&mut f.service, client, ConnectionId(1), operation, encoded)
+            };
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::Global(GlobalControlAction::SetSync(false))
+                ),
+                Outcome::Confirmed { .. }
+            ));
+            let (_, loops) = created(run(
+                &mut f,
+                &mut client,
+                Command::AddTrack(TrackSpec {
+                    name: "Processed arrangement".into(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 2,
+                        wet_audio_channels: 1,
+                        dry_midi: true,
+                        processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                        default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: Vec::new(),
+                    creation_request_id: None,
+                }),
+            ));
+            for action in [LoopMode::Recording, LoopMode::Stopped] {
+                assert!(matches!(
+                    run(&mut f, &mut client, transition(vec![loops[0]], action)),
+                    Outcome::Confirmed { .. }
+                ));
+                f.service.tick(STEP);
+            }
+            assert!(matches!(
+                run(&mut f, &mut client, edit(loops[1], vec![loops[0]], false)),
+                Outcome::Confirmed { .. }
+            ));
+            let event = client.snapshot().unwrap().composites[0]
+                .active
+                .as_ref()
+                .unwrap()
+                .document
+                .instances[0]
+                .instance_id;
+            for value in [
+                arrangement::Edit::Kind {
+                    target: loops[1],
+                    kind: CompositeKind::Script,
+                },
+                arrangement::Edit::Duration {
+                    target: loops[1],
+                    event,
+                    n_cycles: Some(10_000),
+                },
+                arrangement::Edit::Mode {
+                    target: loops[1],
+                    event,
+                    mode,
+                },
+            ] {
+                assert!(matches!(
+                    run(&mut f, &mut client, Command::Composite(value)),
+                    Outcome::Confirmed { .. }
+                ));
+            }
+            assert!(matches!(
+                run(&mut f, &mut client, edit(loops[2], vec![loops[1]], false)),
+                Outcome::Confirmed { .. }
+            ));
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    transition(vec![loops[2]], LoopMode::Playing)
+                ),
+                Outcome::Confirmed { .. }
+            ));
+            f.render.borrow_mut().run(32, |_, _| 0.5).unwrap();
+            f.service.tick(Duration::ZERO);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            let snapshot = client.snapshot().unwrap();
+            assert_eq!(snapshot.tracks[1].loops[0].mode, mode);
+            assert!(snapshot
+                .composites
+                .iter()
+                .all(|view| view.mode == LoopMode::Playing));
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    transition(vec![loops[2]], LoopMode::Stopped)
+                ),
+                Outcome::Confirmed { .. }
+            ));
+            let before = capture_image(&mut f.service, &mut client, 1, encoded);
+            release_image(&mut f.service, &mut client, 1, 1, encoded);
+            let key = stage_image(&mut f.service, &mut client, 2, before.clone(), encoded);
+            assert!(matches!(
+                run(&mut f, &mut client, Command::CommitPersistence(key)),
+                Outcome::Confirmed { .. }
+            ));
+            let after = capture_image(&mut f.service, &mut client, 3, encoded);
+            assert_eq!(before.payloads, after.payloads);
+            let persistence_image::Manifest::Session(old) = &before.manifest else {
+                panic!()
+            };
+            let persistence_image::Manifest::Session(new) = &after.manifest else {
+                panic!()
+            };
+            let old_track = &old.tracks[1];
+            let new_track = &new.tracks[1];
+            assert_eq!(old_track.topology, new_track.topology);
+            assert_eq!(old_track.loops[0].audio, new_track.loops[0].audio);
+            assert_eq!(old_track.loops[0].midi, new_track.loops[0].midi);
+            for index in [1, 2] {
+                let old = old_track.loops[index].composite.as_ref().unwrap();
+                let new = new_track.loops[index].composite.as_ref().unwrap();
+                assert_eq!(old.prepared.unit_frames, new.prepared.unit_frames);
+                assert_eq!(old.prepared.instances, new.prepared.instances);
+                assert_eq!(
+                    old.document.instances[0].mode,
+                    new.document.instances[0].mode
+                );
+                assert_eq!(
+                    old.document.instances[0].instance_id,
+                    new.document.instances[0].instance_id
+                );
+                assert_ne!(
+                    old.document.instances[0].loop_id,
+                    new.document.instances[0].loop_id
+                );
+            }
+            assert!(client
+                .snapshot()
+                .unwrap()
+                .composites
+                .iter()
+                .all(|view| view.mode == LoopMode::Stopped));
+        }
+    }
+}
+
+#[shoop_test]
 fn nested_composite_capture_and_load_preserve_frozen_geometry_media_and_event_ids() {
     for encoded in [false, true] {
         let (mut f, mut client, _, loops) = setup_composites(encoded);

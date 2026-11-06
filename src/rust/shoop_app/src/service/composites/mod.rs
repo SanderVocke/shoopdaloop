@@ -387,7 +387,19 @@ impl Service {
                     return Err(CommandError::unsupported(BackendCapability::ReplacingMode))
                 }
                 Some(LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet) => {
-                    return Err(CommandError::unsupported(BackendCapability::DryWetModes))
+                    let entry = self.loop_entry(event.loop_id)?;
+                    if !self
+                        .backend
+                        .capabilities()
+                        .supports(BackendCapability::DryWetModes)
+                        || self.composites.contains_key(&event.loop_id)
+                        || matches!(
+                            self.tracks[&entry.track].view.topology,
+                            TrackTopology::Direct
+                        )
+                    {
+                        return Err(CommandError::unsupported(BackendCapability::DryWetModes));
+                    }
                 }
                 _ => {}
             }
@@ -446,6 +458,8 @@ impl Service {
                     LoopMode::Stopped => BackendLoopMode::Stopped,
                     LoopMode::Playing => BackendLoopMode::Playing,
                     LoopMode::Recording => BackendLoopMode::Recording,
+                    LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+                    LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
                     _ => unreachable!("compiler validates modes"),
                 },
             })
@@ -510,19 +524,7 @@ impl Service {
         target: LoopId,
         document: &Document,
     ) -> core::result::Result<(), CommandError> {
-        for id in
-            core::iter::once(target).chain(document.instances.iter().map(|event| event.loop_id))
-        {
-            let entry = self.loop_entry(id)?;
-            if !matches!(
-                self.tracks[&entry.track].view.topology,
-                TrackTopology::Direct
-            ) {
-                return Err(CommandError::invalid(
-                    "composites currently require Direct tracks",
-                ));
-            }
-        }
+        self.loop_entry(target)?;
         let mut graph: BTreeMap<LoopId, BTreeSet<LoopId>> = BTreeMap::new();
         for (&parent, owner) in &self.composites {
             if parent == target {

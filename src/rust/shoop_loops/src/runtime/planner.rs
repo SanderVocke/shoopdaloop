@@ -728,7 +728,10 @@ impl LoopPlanner {
                 lead: eta.is_some(),
                 decision,
                 dry_wet: row.dry_wet,
-                pre_recording: matches!(next, Some(Transition::Record { .. })),
+                pre_recording: matches!(
+                    next,
+                    Some(Transition::Record { .. } | Transition::ReplaceInput { .. })
+                ),
                 pre_rerecording: matches!(next, Some(Transition::Rerecord)),
                 replace: row.active.and_then(|take| take.edit),
                 auxiliary: media

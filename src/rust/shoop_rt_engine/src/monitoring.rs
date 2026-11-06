@@ -36,13 +36,16 @@ impl Demand {
         match self.direct[id.slot() as usize].map(|pending| pending.request.transition) {
             Some(Transition::Stop) => Mode::Stopped,
             Some(Transition::Record { .. }) => Mode::Recording,
+            Some(Transition::ReplaceInput { .. }) => Mode::Replacing,
+            Some(Transition::PlayDry { .. }) => Mode::PlayingDryThroughWet,
+            Some(Transition::Rerecord) => Mode::RecordingDryIntoWet,
             Some(Transition::Play { .. } | Transition::PlayIteration { .. }) => Mode::Playing,
             _ => authored,
         }
     }
     fn prepare_target(&mut self, resolver: &Resolver, id: LoopId, authored: Mode) {
         match self.intended(id, authored) {
-            Mode::Recording
+            Mode::Recording | Mode::Replacing
                 if resolver
                     .topology()
                     .node(id)
@@ -99,13 +102,18 @@ impl Demand {
             let Ok(state) = resolver.state(node.id) else {
                 continue;
             };
-            if node.kind == LoopKind::Primitive && state.mode == Mode::Recording {
+            if node.kind == LoopKind::Primitive
+                && matches!(state.mode, Mode::Recording | Mode::Replacing)
+            {
                 self.recording[node.id.slot() as usize] = true;
             }
             if let Some(pending) = self.direct[node.id.slot() as usize] {
                 match pending.request.transition {
                     Transition::Record { .. } => {
                         self.prepare_target(resolver, node.id, Mode::Recording)
+                    }
+                    Transition::ReplaceInput { .. } => {
+                        self.prepare_target(resolver, node.id, Mode::Replacing)
                     }
                     Transition::Play { .. } | Transition::PlayIteration { .. } => {
                         self.prepare_target(resolver, node.id, Mode::Playing)

@@ -239,10 +239,10 @@ impl ControlEndpoint {
                     span.mode,
                     shoop_rt_protocol::LoopMode::PlayingDryThroughWet
                         | shoop_rt_protocol::LoopMode::RecordingDryIntoWet
-                ) || child
+                ) && child
                     .strip
                     .and_then(|id| self.next.strip(id))
-                    .is_some_and(|strip| strip.processor.is_some())
+                    .is_none_or(|strip| strip.processor.is_none())
                 {
                     return Err(Refusal::Unsupported);
                 }
@@ -254,7 +254,11 @@ impl ControlEndpoint {
                     || d.kind == shoop_rt_protocol::CompositeKind::Regular
                         && span.mode != shoop_rt_protocol::LoopMode::Playing
                     || child.program.is_some()
-                        && span.mode == shoop_rt_protocol::LoopMode::Recording
+                        && !matches!(
+                            span.mode,
+                            shoop_rt_protocol::LoopMode::Playing
+                                | shoop_rt_protocol::LoopMode::Stopped
+                        )
                     || self.next.program_spans(loop_id).last().is_some_and(|old| {
                         old.target > span.target
                             || old.target == span.target
@@ -501,12 +505,10 @@ impl ControlEndpoint {
                 return Err(Refusal::InvalidValue);
             }
             if let Some(d) = entry.program {
-                if kind.is_some() {
-                    return Err(Refusal::Unsupported);
-                }
                 if initial.frames != 0
                     || initial.audio.is_some()
                     || initial.midi.is_some()
+                    || initial.dry_audio.is_some()
                     || model.program_spans(entry.id).count() != d.segments as usize
                     || model
                         .program_spans(entry.id)
