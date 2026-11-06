@@ -167,9 +167,16 @@ Dummy after a failed device startup. Target startup refuses degraded device/MIDI
 configurations; it never converts warnings or a fallback into switch success.
 
 CPAL MIDI selectors retain partial-name and index selection for user requests.
-Resolved profiles use `=name` for exact port identities, including names that are
-numeric or equal to `all` or `none`; a name beginning with `=` receives another
-leading `=`. An empty resolved list remains explicitly disabled with `none`.
+Resolved audio and MIDI profiles use `=name` for exact device and port identities,
+including numeric names and `default`, `all` or `none`; a name beginning with `=`
+receives another leading `=`. An empty resolved list remains explicitly disabled
+with `none`.
 Preflight pins the resolved MIDI selections before confirmation, so reopening or
 rollback cannot expand a selected name into other ports with similar names.
 Resolved selections retain their port order when the device inventory is reordered.
+
+The startup profile retains the CPAL host and devices actually opened, so a
+change in system defaults cannot redirect a later rollback. The automatic-buffer
+policy remains automatic. Embedded preferences store MIDI selector arrays as JSON
+text to preserve commas, quotes, backslashes and whitespace in port names;
+comma-separated selectors remain supported for ordinary settings input.

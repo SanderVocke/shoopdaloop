@@ -182,8 +182,15 @@ pub fn controller(
                                 exact_devices,
                             } => (|| {
                                 stop(&mut host)?;
-                                let native =
+                                let mut native =
                                     strict_config(&profile.configured, &settings, exact_devices)?;
+                                native.engine.sample_rate = profile.sample_rate;
+                                #[cfg(feature = "cpal")]
+                                if let shoop_rt_host_native::DriverConfig::Cpal(config) =
+                                    &mut native.driver
+                                {
+                                    config.sample_rate = Some(profile.sample_rate);
+                                }
                                 #[cfg(feature = "cpal")]
                                 if exact_devices {
                                     if let (
@@ -195,14 +202,22 @@ pub fn controller(
                                         ensure!(
                                             actual.output_device
                                                 == DeviceSelection::Named(
-                                                    expected.output_device.clone()
+                                                    expected
+                                                        .output_device
+                                                        .strip_prefix('=')
+                                                        .unwrap_or(&expected.output_device)
+                                                        .to_owned()
                                                 )
                                                 && actual.input_device
                                                     == if expected.input_device == "none" {
                                                         DeviceSelection::None
                                                     } else {
                                                         DeviceSelection::Named(
-                                                            expected.input_device.clone(),
+                                                            expected
+                                                                .input_device
+                                                                .strip_prefix('=')
+                                                                .unwrap_or(&expected.input_device)
+                                                                .to_owned(),
                                                         )
                                                     },
                                             "the confirmed CPAL device identity is unavailable"
@@ -416,13 +431,8 @@ fn preflight(
     {
         *native_cpal = shoop_rt_host_native::resolve_cpal_devices(native_cpal)?;
         cpal.host = native_cpal.host.clone().unwrap();
-        let name = |selection: &shoop_rt_host_native::DeviceSelection| match selection {
-            shoop_rt_host_native::DeviceSelection::Named(name) => name.clone(),
-            shoop_rt_host_native::DeviceSelection::None => "none".into(),
-            shoop_rt_host_native::DeviceSelection::Default => "default".into(),
-        };
-        cpal.output_device = name(&native_cpal.output_device);
-        cpal.input_device = name(&native_cpal.input_device);
+        cpal.output_device = crate::engine::resolved_device_selector(&native_cpal.output_device);
+        cpal.input_device = crate::engine::resolved_device_selector(&native_cpal.input_device);
         cpal.midi_inputs = crate::engine::resolved_midi_selectors(&native_cpal.midi_inputs);
         cpal.midi_outputs = crate::engine::resolved_midi_selectors(&native_cpal.midi_outputs);
         ensure!(

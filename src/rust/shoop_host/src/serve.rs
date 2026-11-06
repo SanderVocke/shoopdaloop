@@ -270,7 +270,6 @@ pub fn run_with_ready(
                 },
             };
             let started = shoop_rt_host_native::start(&fallback)?;
-            native = fallback;
             started
         }
         Err(error) => return Err(error.into()),
@@ -283,7 +282,7 @@ pub fn run_with_ready(
     let profile = shoop_app_api::ResolvedAudioDriverConfig {
         configured: engine::effective_driver_config(
             &config.driver,
-            &native.driver,
+            started.host.driver_config(),
             status.sample_rate,
             status.buffer_frames,
         ),

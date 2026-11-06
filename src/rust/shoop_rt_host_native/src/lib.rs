@@ -210,6 +210,7 @@ impl Driver {
 
 pub(crate) struct Running {
     pub shared: Arc<Shared>,
+    pub configuration: DriverConfig,
     pub driver: Driver,
     pub pump: Option<Pump>,
     pub connections: Vec<Box<dyn Any + Send>>,
@@ -304,6 +305,11 @@ impl NativeHost {
 
     pub fn instance_name(&self) -> &str {
         &self.running().instance_name
+    }
+
+    /// The opened configuration, retaining resolved devices and automatic-buffer policy.
+    pub fn driver_config(&self) -> &DriverConfig {
+        &self.running().configuration
     }
 
     pub fn layout(&self) -> &HostLayout {

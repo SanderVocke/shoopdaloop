@@ -204,6 +204,27 @@ fn heap_guards_are_live() {
 fn device_channels_and_midi_ports_become_host_ports_with_the_default_outputs_preferred() {
     let mut rig = rig();
     assert!(rig.host().warnings().is_empty());
+    let shoop_rt_host_native::DriverConfig::Cpal(opened) = rig.host().driver_config() else {
+        panic!("expected CPAL configuration")
+    };
+    assert_eq!(
+        opened.output_device,
+        DeviceSelection::Named("Speakers".into())
+    );
+    assert_eq!(opened.input_device, DeviceSelection::Named("Mic".into()));
+    assert_eq!(opened.sample_rate, Some(48_000));
+    assert_eq!(opened.midi_inputs, ["Keys"]);
+    assert_eq!(opened.midi_outputs, ["Synth"]);
+    let changed_defaults = MockHost::new(vec![
+        MockDevice::output("Other speakers", 2),
+        MockDevice::input("Other mic", 1),
+        speakers(),
+        mic(),
+    ]);
+    let reopened =
+        shoop_rt_host_native::resolve_cpal_devices_on(&changed_defaults, opened).unwrap();
+    assert_eq!(reopened.output_device, opened.output_device);
+    assert_eq!(reopened.input_device, opened.input_device);
     let layout = rig.host().layout().clone();
     assert_eq!(layout.master_connections, [(0, 0), (1, 1)]);
     rig.connect();

@@ -528,6 +528,9 @@ pub(crate) fn start(
     );
     let mut started = start_cpal(&host, config, engine, midi)?;
     if let Some(running) = started.host.running.as_mut() {
+        if let crate::DriverConfig::Cpal(config) = &mut running.configuration {
+            config.host = Some(host.id().name().to_lowercase());
+        }
         warnings.append(&mut running.warnings);
         running.warnings = warnings;
     }
@@ -591,6 +594,19 @@ where
     }
     let output_name = device_name(&output);
     let input_name = input.as_ref().map(|(device, _)| device_name(device));
+    let opened = CpalConfig {
+        host: None,
+        output_device: DeviceSelection::Named(output_name.clone()),
+        input_device: input_name
+            .clone()
+            .map_or(DeviceSelection::None, DeviceSelection::Named),
+        sample_rate: Some(sample_rate),
+        output_channels: Some(output_channels),
+        input_channels: input.as_ref().map(|(_, channels)| *channels),
+        midi_inputs: midi.inputs.iter().map(|port| port.name.clone()).collect(),
+        midi_outputs: midi.outputs.iter().map(|port| port.name.clone()).collect(),
+        ..config.clone()
+    };
     let ports = HostPorts {
         audio_inputs: input
             .as_ref()
@@ -747,6 +763,7 @@ where
         endpoint,
         outbox,
         Running {
+            configuration: crate::DriverConfig::Cpal(opened),
             instance_name: "CPAL".to_owned(),
             reset_wait: reset_wait(period_frames, sample_rate).max(Duration::from_secs(2)),
             shared,

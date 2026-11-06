@@ -444,6 +444,7 @@ pub(crate) fn start(
         endpoint,
         outbox,
         Running {
+            configuration: crate::DriverConfig::Jack(config.clone()),
             shared,
             driver: Driver::Jack(Client {
                 graph: control,

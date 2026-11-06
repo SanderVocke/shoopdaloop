@@ -127,7 +127,6 @@ fn start_with(
                 },
             };
             let started = shoop_rt_host_native::start(&fallback).map_err(start_failure)?;
-            config = fallback;
             started
         }
         Err(error) => return Err(start_failure(error)),
@@ -143,7 +142,7 @@ fn start_with(
     let profile = shoop_egui::ResolvedAudioDriverConfig {
         configured: shoop_host::engine::effective_driver_config(
             driver,
-            &config.driver,
+            started.host.driver_config(),
             status.sample_rate,
             status.buffer_frames,
         ),

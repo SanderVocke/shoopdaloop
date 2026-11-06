@@ -338,18 +338,10 @@ pub fn driver_preference_writer(path: PathBuf) -> shoop_host::audio_driver::Pref
             .insert("audio.selected_driver".into(), config.kind().id().into());
         for (name, value) in fields {
             let value = if name == "midi_inputs" || name == "midi_outputs" {
-                serde_json::Value::String(
-                    value
-                        .as_array()
-                        .ok_or_else(|| anyhow::anyhow!("invalid MIDI selector list"))?
-                        .iter()
-                        .map(|v| {
-                            v.as_str()
-                                .ok_or_else(|| anyhow::anyhow!("invalid MIDI selector"))
-                        })
-                        .collect::<anyhow::Result<Vec<_>>>()?
-                        .join(", "),
-                )
+                let selectors = value
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("invalid MIDI selector list"))?;
+                serde_json::Value::String(serde_json::to_string(selectors)?)
             } else {
                 value.clone()
             };
@@ -517,6 +509,29 @@ mod tests {
     use std::time::{Duration, Instant};
 
     const VALUE: SettingKey<u32> = SettingKey::new("test.value");
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn driver_preferences_preserve_exact_midi_names_with_punctuation_and_whitespace() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("settings.json");
+        let target = shoop_app_api::AudioDriverConfig::Cpal(shoop_app_api::CpalAudioDriverConfig {
+            midi_inputs: vec!["=Keys, Port A".into(), "=  Keys ".into()],
+            midi_outputs: vec!["=Synth, \"B\" \\ output ".into()],
+            ..Default::default()
+        });
+        driver_preference_writer(path.clone())(&target).unwrap();
+        let mut builder = SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
+        assert_eq!(
+            shoop_egui::audio_driver_config_from_snapshot(
+                &manager.active(),
+                shoop_app_api::AudioDriverKind::Cpal,
+            )
+            .unwrap(),
+            target
+        );
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn host_driver_preference_save_preserves_other_settings_and_reloads_for_startup() {

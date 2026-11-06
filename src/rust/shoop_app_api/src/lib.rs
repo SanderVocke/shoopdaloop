@@ -857,7 +857,9 @@ impl JackAudioDriverConfig {
 pub struct CpalAudioDriverConfig {
     pub client_name: String,
     pub host: String,
+    /// Audio selector; `=name` selects one exact device name.
     pub output_device: String,
+    /// Audio selector; `=name` selects one exact device name.
     pub input_device: String,
     pub sample_rate: u32,
     pub buffer_size: u32,
