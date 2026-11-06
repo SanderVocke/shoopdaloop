@@ -4859,7 +4859,7 @@ mod tests {
         let path = std::path::PathBuf::from(app.settings.view().storage_location);
         *location.lock().unwrap() = Some(path.clone());
         wait_for_snapshot(&app.runtime, "driver discovery", |s| {
-            !s.audio_drivers.catalog.is_empty()
+            s.audio_drivers.catalog.len() == 3
         });
         app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
             config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
