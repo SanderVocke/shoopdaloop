@@ -126,6 +126,8 @@ At major integration milestones and final delivery, broaden to the native suite 
 
 The AudioWorklet fixture uses the production browser runner's 60-second cold-start readiness budget after two CI launches failed before opening a debugging port under its initial 10-second allowance. This setup allowance does not change the 180-second render watchdog, sample oracles or memory-growth checks. Signaled browser exits must fail promptly and clean up without waiting for an already-delivered exit event.
 
+Debug production browser workflows reuse the repository's pinned library-test Chrome; release workflows retain current stable Chrome and Firefox. Current Chrome's audio IPC/render failure was reproduced on the packaged integration base as well as the bus FX bundle. Keep the same application, operation watchdogs and workloads when qualifying the pinned debug browser.
+
 Read `.agents/info/build.md` and the current `VALIDATION.md` before executing commands. Run `cargo fmt --all` and a warning-denying build before Rust commits; run `python3 scripts/check_shoop_test_usage.py` when Rust tests change. Remove the missing-backend allowance for tests requiring actual host facilities.
 
 # Execution contract

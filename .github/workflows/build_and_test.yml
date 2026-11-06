@@ -910,8 +910,8 @@ jobs:
           pactl set-default-sink shoop_ci
           pactl info
 
-      - name: Install Chromium for session workflow checks
-        if: matrix.target == 'web' && env.ACT != 'true'
+      - name: Install Chromium for release session workflow checks
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         uses: browser-actions/setup-chrome@v2
         id: chrome
 
@@ -920,7 +920,7 @@ jobs:
         working-directory: src/rust/shoopdaloop
         shell: bash
         env:
-          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path || steps.chrome.outputs.chrome-path }}
           NEW_ENGINE: '1'
         run: |
           browser_smoke() {

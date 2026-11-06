@@ -89,6 +89,9 @@ rendering retains its separate 180-second watchdog and all sample/memory checks.
 
 CI retains production browser session workflow output in
 `browser-workflow-<profile>-<run>-<attempt>` artifacts, including failed runs.
+Debug production workflows reuse the pinned Chrome installed for library browser
+tests; release workflows use current stable Chrome and Firefox. All profiles keep
+the same operation watchdogs and workloads.
 
 For mixed track/bus release measurements:
 
