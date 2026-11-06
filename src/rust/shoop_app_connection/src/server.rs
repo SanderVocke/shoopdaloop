@@ -20,10 +20,20 @@ pub struct Session<P> {
     transfer: u64,
     replies: VecDeque<ServiceMessage>,
 }
+/// Zero leaves snapshots unpaced.
+fn snapshot_interval(snapshot_hz: u32) -> Result<Duration, CarrierError> {
+    match snapshot_hz {
+        0 => Ok(Duration::ZERO),
+        1..=60 => Ok(Duration::from_nanos(
+            1_000_000_000_u64.div_ceil(u64::from(snapshot_hz)),
+        )),
+        _ => Err(CarrierError::Codec(shoop_transport::CodecError::Invalid)),
+    }
+}
 impl<P: RecordPort> Session<P> {
     pub fn new(id: ConnectionId, port: P) -> Self {
         Self {
-            network: Some(Network::new(0)),
+            network: Some(Network::new(Duration::ZERO)),
             heartbeat: None,
             id,
             port,
@@ -39,6 +49,12 @@ impl<P: RecordPort> Session<P> {
             replies: VecDeque::new(),
         }
     }
+    /// Send at most `snapshot_hz` snapshots per second, each the newest one; zero
+    /// sends every snapshot.
+    pub fn with_snapshot_rate(mut self, snapshot_hz: u32) -> Result<Self, CarrierError> {
+        self.network = Some(Network::new(snapshot_interval(snapshot_hz)?));
+        Ok(self)
+    }
     pub fn with_heartbeat(
         mut self,
         config: crate::HeartbeatConfig,
@@ -53,12 +69,8 @@ impl<P: RecordPort> Session<P> {
         seed: u64,
         snapshot_hz: u32,
     ) -> Result<Self, CarrierError> {
-        if !(1..=60).contains(&snapshot_hz) {
-            return Err(CarrierError::Codec(shoop_transport::CodecError::Invalid));
-        }
-        self = self.with_heartbeat(config, seed)?;
-        self.network = Some(Network::new(snapshot_hz));
-        Ok(self)
+        self = self.with_snapshot_rate(snapshot_hz)?;
+        self.with_heartbeat(config, seed)
     }
     pub fn retire(&mut self) {
         if let Some(network) = self.network.as_mut() {
@@ -92,6 +104,10 @@ impl<P: RecordPort> Session<P> {
         if self.closing {
             return;
         }
+        service.want_snapshots(
+            self.id,
+            self.network.as_ref().is_some_and(Network::snapshot_due),
+        );
         let mut bytes = [0; MAX_RECORD_BYTES];
         let mut commands = 0;
         for _ in 0..MAX_PERSISTENCE_RECORDS_PER_TURN {
@@ -332,19 +348,18 @@ struct Network {
     force: bool,
 }
 impl Network {
-    fn new(hz: u32) -> Self {
+    fn new(interval: Duration) -> Self {
         Self {
-            interval: if hz == 0 {
-                Duration::ZERO
-            } else {
-                Duration::from_nanos(1_000_000_000_u64.div_ceil(u64::from(hz)))
-            },
+            interval,
             since: Duration::ZERO,
             next_snapshot: None,
             urgent: VecDeque::new(),
             bulk: VecDeque::new(),
             force: true,
         }
+    }
+    fn snapshot_due(&self) -> bool {
+        self.force || self.since >= self.interval
     }
     fn clear(&mut self) {
         self.next_snapshot = None;
@@ -452,9 +467,7 @@ impl Network {
                 break;
             }
             if session.pending.is_none() {
-                if session.semantic.is_none()
-                    && self.next_snapshot.is_some()
-                    && (self.force || self.since >= self.interval)
+                if session.semantic.is_none() && self.next_snapshot.is_some() && self.snapshot_due()
                 {
                     match Self::stream(session, self.next_snapshot.take().unwrap()) {
                         Ok(stream) => session.semantic = Some(stream),

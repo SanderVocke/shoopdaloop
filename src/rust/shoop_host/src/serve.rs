@@ -443,7 +443,8 @@ pub fn run_with_ready(
                 ConnectionId(identity()?),
                 port,
                 shared_port,
-                options.lan.then_some(options.network),
+                options.network,
+                options.lan,
             )?);
         }
         for _ in 0..4 {
@@ -549,18 +550,20 @@ impl Data {
         id: ConnectionId,
         port: shoop_transport_socket::Port,
         shared: Option<shoop_transport_shared_memory::Port>,
-        network: Option<crate::remote::NetworkOptions>,
+        network: crate::remote::NetworkOptions,
+        lan: bool,
     ) -> Result<Self> {
         let core = shoop_app_connection::Session::new(id, Port::Socket(port));
-        let core = match network {
-            Some(network) => core
-                .with_network(
-                    network.heartbeat(),
-                    (crate::remote::identity()? as u64).max(1),
-                    network.snapshot_hz,
-                )
-                .map_err(|_| anyhow!("invalid heartbeat settings"))?,
-            None => core,
+        let core = if lan {
+            core.with_network(
+                network.heartbeat(),
+                (crate::remote::identity()? as u64).max(1),
+                network.snapshot_hz,
+            )
+            .map_err(|_| anyhow!("invalid heartbeat settings"))?
+        } else {
+            core.with_snapshot_rate(network.snapshot_hz)
+                .map_err(|_| anyhow!("invalid snapshot rate"))?
         };
         Ok(Self { core, shared })
     }

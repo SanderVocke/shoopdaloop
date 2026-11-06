@@ -179,6 +179,9 @@ pub struct Service {
     engine_closed: bool,
     actors: BTreeMap<ClientId, u64>,
     updates: VecDeque<ServiceMessage>,
+    snapshots_wanted: bool,
+    /// The largest DSP load observed since the previous snapshot.
+    dsp_peak: f32,
     pending: BTreeMap<OperationId, Pending>,
     results: VecDeque<OperationResult>,
     tracks: BTreeMap<TrackId, Track>,
@@ -276,6 +279,8 @@ impl Service {
             engine_closed: false,
             actors: BTreeMap::new(),
             updates: VecDeque::with_capacity(QUEUE_CAPACITY),
+            snapshots_wanted: true,
+            dsp_peak: 0.,
             pending: BTreeMap::new(),
             results: VecDeque::with_capacity(MAX_RETAINED_RESULTS),
             tracks: BTreeMap::new(),
@@ -616,6 +621,7 @@ impl Service {
                     generation: ConnectionGeneration(self.generation),
                 };
                 self.updates.clear();
+                self.snapshots_wanted = true;
                 self.last_authority = Some(authority);
                 self.lease = Some(Lease {
                     connection,
@@ -696,6 +702,7 @@ impl Service {
                 }
             }
             self.updates.clear();
+            self.snapshots_wanted = true;
             self.persistence_detach();
             self.media_loop = None;
             self.media_pending = None;
@@ -712,6 +719,18 @@ impl Service {
             .as_ref()
             .filter(|lease| lease.connection == connection)?;
         self.updates.pop_front()
+    }
+
+    /// Whether the controlling connection would send a snapshot published now. While
+    /// it would not, publishing builds none. Other connections are ignored.
+    pub fn want_snapshots(&mut self, connection: ConnectionId, wanted: bool) {
+        if self
+            .lease
+            .as_ref()
+            .is_some_and(|lease| lease.connection == connection)
+        {
+            self.snapshots_wanted = wanted;
+        }
     }
 
     fn emit(&mut self, message: ServiceMessage) {
@@ -732,8 +751,12 @@ impl Service {
     }
 
     fn publish(&mut self) {
+        if !self.snapshots_wanted {
+            return;
+        }
         if let Some(authority) = self.lease.as_ref().map(|lease| lease.authority) {
             let state = self.snapshot();
+            self.dsp_peak = 0.;
             self.emit(ServiceMessage::Snapshot { authority, state });
         }
     }

@@ -122,8 +122,13 @@ An exported `remote.json` looks like this (replace the address):
 Host options `--heartbeat-interval-ms`, `--heartbeat-timeout-ms` and
 `--snapshot-hz` default to 1000, 5000 and 30. The exported profile carries these
 settings for its client. The interval must be 10–60000 ms, timeout at least twice
-the interval and no more than 300000 ms, and snapshot cadence 1–60 Hz. Editing a
-profile does not reconfigure the running host.
+the interval and no more than 300000 ms, and snapshot cadence 1–60 Hz, or 0
+(`--snapshot-hz unlimited`) to send every snapshot. Editing a profile does not
+reconfigure the running host. The snapshot cadence applies to every data
+connection, including local and loopback ones; heartbeats apply only with `--lan`.
+The service builds a snapshot only when the controlling connection will send it,
+and the snapshot after an attachment or a finished operation follows at once. Its
+DSP load is the largest callback load since the previous snapshot.
 
 Each side sends a probe and requires its matching reply. Expiry retires only that
 connection and releases its controlling lease; rendering, recording and accepted

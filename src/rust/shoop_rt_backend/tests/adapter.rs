@@ -1007,3 +1007,18 @@ fn public_grab_and_replacing_have_one_owned_mutation_and_preserve_old_exports() 
         0
     );
 }
+
+#[shoop_test]
+fn dsp_load_keeps_the_peak_across_telemetry_until_the_next_poll() {
+    let mut backend = stack(&description());
+    backend.poll().unwrap();
+    for load in [0.75, 0.25] {
+        backend.clock_mut().offline.host.set_load(load);
+        backend.clock_mut().render(16);
+        backend.pump();
+    }
+    assert_eq!(backend.poll().unwrap().status.dsp_load_percent, 75.0);
+    backend.clock_mut().offline.host.set_load(0.125);
+    backend.clock_mut().render(16);
+    assert_eq!(backend.poll().unwrap().status.dsp_load_percent, 12.5);
+}

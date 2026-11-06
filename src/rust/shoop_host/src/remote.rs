@@ -35,7 +35,7 @@ impl NetworkOptions {
     }
     pub fn validate(self) -> Result<()> {
         ensure!(
-            self.heartbeat().valid() && (1..=60).contains(&self.snapshot_hz),
+            self.heartbeat().valid() && self.snapshot_hz <= 60,
             "invalid network heartbeat or snapshot settings"
         );
         Ok(())

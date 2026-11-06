@@ -8,7 +8,10 @@ Native hosts and future Cortex-A control tasks share the same implementation.
   root ticks the service once per turn, separately from the connection count.
   After `alive(service)` becomes false, detach its `ConnectionId` and retire its
   carrier. `with_network` adds heartbeat policy and bounded snapshot/media
-  scheduling. Initial data endpoint versioned greeting belongs to composition.
+  scheduling; `with_snapshot_rate` only paces snapshots, sending the newest when
+  due. Rate zero sends every snapshot. Before each service turn, `receive` tells
+  the service whether a snapshot would be due, so it builds none in vain. Initial
+  data endpoint versioned greeting belongs to composition.
 - `Management<P>` emits its versioned greeting, dispatches fenced requests and
   retains a response across backpressure. `pump` returns whether to keep it.
   Device cleanup remains a host responsibility.
