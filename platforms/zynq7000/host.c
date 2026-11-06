@@ -114,10 +114,30 @@ void vApplicationTickHook(void) {
         portYIELD_FROM_ISR(wake);
     }
 }
+#ifndef SHOOP_FIXTURE
+/* Render outranks the control task, whose heartbeats keep app sessions alive.
+   Under overload, cap render's share of each window and drop the excess quanta
+   as xruns instead of starving control. */
+#define RENDER_WINDOW_MS 100
+#define RENDER_MAX_PERCENT 80
+#endif
 static void render(void *owner) {
+#ifndef SHOOP_FIXTURE
+    const uint64_t window = shoop_timer_hz() * RENDER_WINDOW_MS / 1000;
+    uint64_t window_start = shoop_timer_ticks(), busy = 0;
+#endif
     for (;;) {
         uint32_t count = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         if (count > 8) { shoop_render_xruns(owner, count - 8); count = 8; }
+#ifndef SHOOP_FIXTURE
+        uint64_t started = shoop_timer_ticks();
+        if (started - window_start >= window) { window_start = started; busy = 0; }
+        if (busy * 100 >= window * RENDER_MAX_PERCENT) {
+            shoop_render_xruns(owner, count);
+            shoop_deploy_render();
+            continue;
+        }
+#endif
         for (uint32_t i = 0; i < count; ++i) {
 #ifdef SHOOP_FIXTURE
             unsigned frames = shoop_fixture_frames();
@@ -132,6 +152,9 @@ static void render(void *owner) {
                 vTaskSuspend(NULL);
             }
         }
+#ifndef SHOOP_FIXTURE
+        busy += shoop_timer_ticks() - started;
+#endif
     }
 }
 void shoop_start_render(void *owner) {
