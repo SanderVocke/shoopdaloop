@@ -112,9 +112,9 @@ Depends on Stages 1–6 for P08 closure within the user-approved Built-in FX sco
 - [x] Run native typed/socket tests and actual browser AudioWorklet Built-in tests, including non-isolated supported hosting, no render-time memory growth and native/browser sample/control comparison with declared buffering. Exercise enabled and disabled host policies and applicable firmware build/capability checks.
 - [x] Run focused ownership/lifecycle Miri cases and release measurements for mixed track/bus load, MIDI pressure and repeated replacement. Report capacities, callback tails and failures without claiming unmeasured hardware deadlines.
 - [x] Run applicable broader native checks from `VALIDATION.md`: formatting, warning-denying workspace build, full native test suite, feature-parity and dependency-boundary checks, test-usage checker and Python script tests. Use the branch’s current consolidated `check_dependency_boundaries.py`, not retired scripts.
-- [ ] Update the feature backlog, processor/persistence contracts and usage guidance to record the user-approved Built-in FX scope and Carla exclusion. Record reproducible evidence and review disposition in PR/CI artifacts. Mark P08 COMPLETE when A1–A9 hold; preserve remaining P07/P09/P10 and other backlog scopes.
-- [ ] Push milestone commits, create/update the PR against `feat/backend-replacement`, wait for applicable final-head native/browser/platform CI, fix failures, and rerun affected checks. Recheck CI after every fix.
-- [ ] Check for automated review and address feedback repeatedly until approval. Report absent or unavailable review explicitly. Leave the PR unmerged and the worktree clean.
+- [x] Update the feature backlog, processor/persistence contracts and usage guidance to record the user-approved Built-in FX scope and Carla exclusion. Record reproducible evidence and review disposition in PR/CI artifacts. Mark P08 COMPLETE when A1–A9 hold; preserve remaining P07/P09/P10 and other backlog scopes.
+- [x] Push milestone commits, create/update the PR against `feat/backend-replacement`, wait for applicable final-head native/browser/platform CI, fix failures, and rerun affected checks. Recheck CI after every fix.
+- [x] Check for automated review and address feedback repeatedly until approval. Report absent or unavailable review explicitly. Leave the PR unmerged and the worktree clean.
 
 Verification: a criterion-to-test/evidence map on the final PR head, applicable green CI, actual native and browser Built-in execution, documented limits, and review disposition.
 
