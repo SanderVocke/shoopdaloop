@@ -110,6 +110,12 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
         client
             .snapshot()
             .is_some_and(|state| state.revision >= revision)
+    })
+    .map_err(|error| {
+        anyhow!(
+            "confirmed operation revision {revision:?}, snapshot {:?}: {error}",
+            client.snapshot().map(|s| s.revision)
+        )
     })?;
     Ok(result)
 }
@@ -371,6 +377,70 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     );
     let length = client.snapshot().unwrap().tracks[1].loops[0].length_frames;
     let retained = media.audio[0].samples.len();
+    let original_audio = media.audio.clone();
+    let original_midi = media.midi.clone();
+    ensure!(
+        matches!(
+            command(
+                &mut client,
+                &mut connection,
+                Command::Loop {
+                    track,
+                    loop_id: loops[0],
+                    action: LoopAction::DuplicateTo(loops[1])
+                }
+            )?,
+            Outcome::Confirmed { .. }
+        ),
+        "packaged duplication refused"
+    );
+    ensure!(
+        client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Playing
+            && client.snapshot().unwrap().tracks[1].loops[1].mode == LoopMode::Stopped,
+        "duplication changed source playback or started its destination"
+    );
+    connection
+        .send(
+            client
+                .read_media(loops[1])
+                .map_err(|error| anyhow!("{error:?}"))?,
+        )
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.media().is_some()
+    })
+    .map_err(|error| anyhow!("duplication destination read: {error}"))?;
+    let copied = client
+        .media()
+        .unwrap()
+        .as_ref()
+        .map_err(|error| anyhow!("copied media: {error:?}"))?;
+    ensure!(
+        copied.audio.len() == original_audio.len()
+            && copied
+                .audio
+                .iter()
+                .zip(&original_audio)
+                .all(|(a, b)| a.samples == b.samples
+                    && a.start_offset == b.start_offset
+                    && a.capture_alignment_frames == b.capture_alignment_frames
+                    && a.preplay == b.preplay)
+            && copied.midi.len() == original_midi.len()
+            && copied
+                .midi
+                .iter()
+                .zip(&original_midi)
+                .all(|(a, b)| a.events == b.events
+                    && a.length == b.length
+                    && a.start_offset == b.start_offset
+                    && a.capture_alignment_frames == b.capture_alignment_frames
+                    && a.preplay == b.preplay),
+        "packaged duplication changed exact raw media or timing"
+    );
+    println!(
+        "Duplication {}: exact audio/MIDI and stopped independent destination passed",
+        transport.id()
+    );
     command(
         &mut client,
         &mut connection,

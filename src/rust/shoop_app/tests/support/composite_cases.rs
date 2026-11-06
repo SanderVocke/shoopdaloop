@@ -2749,3 +2749,139 @@ fn refused_automatic_policy_is_reconciled_without_losing_manual_monitoring_or_re
     );
     assert_eq!(f.waits.get(), f.initial_waits);
 }
+
+#[shoop_test]
+fn duplication_copies_confirmed_composites_with_independent_events_and_refuses_cycles() {
+    for encoded in [false, true] {
+        let (mut f, mut client, track, loops) = setup_composites(encoded);
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(loops[2], vec![loops[0], loops[1]], false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let clone = |source, target| Command::Loop {
+            track,
+            loop_id: source,
+            action: LoopAction::DuplicateTo(target),
+        };
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                clone(loops[2], loops[3])
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let snapshot = client.snapshot().unwrap();
+        let source = snapshot
+            .composites
+            .iter()
+            .find(|view| view.loop_id == loops[2])
+            .unwrap();
+        let target = snapshot
+            .composites
+            .iter()
+            .find(|view| view.loop_id == loops[3])
+            .unwrap();
+        assert_eq!(
+            source.active.as_ref().unwrap().prepared.spans,
+            target.active.as_ref().unwrap().prepared.spans
+        );
+        assert_ne!(
+            source.active.as_ref().unwrap().document.instances[0].instance_id,
+            target.active.as_ref().unwrap().document.instances[0].instance_id
+        );
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                clone(loops[2], loops[0])
+            ),
+            Outcome::Refused { .. }
+        ));
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                clone(loops[0], loops[3])
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap()
+                .loops[3]
+                .composite_kind,
+            CompositeKind::None
+        );
+    }
+}
+
+#[shoop_test]
+fn replacing_a_playing_composite_stops_its_children_without_stopping_an_independent_source() {
+    let (mut f, mut client, track, loops) = setup_composites(false);
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            edit(loops[2], vec![loops[1]], false)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Loop {
+                track,
+                loop_id: loops[2],
+                action: LoopAction::PlayClicked
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        transition(vec![loops[0]], LoopMode::Playing),
+    );
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Loop {
+                track,
+                loop_id: loops[0],
+                action: LoopAction::DuplicateTo(loops[2])
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let snapshot = client.snapshot().unwrap();
+    let rows = &snapshot
+        .tracks
+        .iter()
+        .find(|t| t.id == track)
+        .unwrap()
+        .loops;
+    assert_eq!(rows[0].mode, LoopMode::Playing);
+    assert_eq!(rows[1].mode, LoopMode::Stopped);
+    assert_eq!(rows[2].mode, LoopMode::Stopped);
+    assert_eq!(rows[2].composite_kind, CompositeKind::None);
+}

@@ -5136,6 +5136,7 @@ mod tests {
                 .with(BackendCapability::SessionCapture, true)
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
+                .with(BackendCapability::LoopDuplication, true)
                 .with(BackendCapability::LoopTimingEdits, true)
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::DryWetModes, true)

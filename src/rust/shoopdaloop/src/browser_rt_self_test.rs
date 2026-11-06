@@ -65,6 +65,9 @@ enum Step {
     TimingSynced,
     TimingPickup,
     TimingPlaying,
+    DuplicationAudio,
+    DuplicationMidi,
+    DuplicationSaved,
     CancelSaving,
     Saving,
     Cleared,
@@ -96,10 +99,13 @@ enum Step {
     HostedDry,
     HostedWet,
     HostedStopped,
+    HostedDuplication,
     HostedComposite,
     HostedSaving,
     HostedLoaded,
     HostedResaving,
+    HostedCopyCleared,
+    HostedClearSaved,
     Passed,
     Failed,
 }
@@ -188,6 +194,7 @@ impl NewEngineSelfTest {
                 | Step::BusZeroSaving
                 | Step::HostedSaving
                 | Step::HostedResaving
+                | Step::HostedClearSaved
         ) {
             return;
         }
@@ -816,6 +823,43 @@ impl NewEngineSelfTest {
                 }
                 send(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
                 send(loop_intent(ids.audio, LoopAction::StopClicked)?)?;
+                Step::DuplicationAudio
+            }
+            Step::DuplicationAudio => {
+                if pending {
+                    return Ok(None);
+                }
+                let track = &snapshot.tracks[1];
+                send(loop_intent(
+                    ids.audio,
+                    LoopAction::DuplicateTo(track.loops.last().unwrap().id),
+                )?)?;
+                Step::DuplicationMidi
+            }
+            Step::DuplicationMidi => {
+                if pending {
+                    return Ok(None);
+                }
+                let track = &snapshot.tracks[1];
+                if track.loops.last().unwrap().length_frames != track.loops[0].length_frames {
+                    return Ok(None);
+                }
+                let track = &snapshot.tracks[2];
+                send(loop_intent(
+                    ids.keys,
+                    LoopAction::DuplicateTo(track.loops.last().unwrap().id),
+                )?)?;
+                Step::DuplicationSaved
+            }
+            Step::DuplicationSaved => {
+                if pending {
+                    return Ok(None);
+                }
+                if snapshot.tracks[2].loops.last().unwrap().length_frames
+                    != snapshot.tracks[2].loops[0].length_frames
+                {
+                    return Ok(None);
+                }
                 send(AppIntent::RequestSaveSession)?;
                 Step::CancelSaving
             }
@@ -833,6 +877,19 @@ impl NewEngineSelfTest {
             Step::Saving => {
                 if self.saved_file.is_none() || !output_completed(snapshot)? {
                     return Ok(None);
+                }
+                let bundle = self
+                    .saved_bundle
+                    .as_ref()
+                    .ok_or("saved duplication image missing")?;
+                for track in bundle
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .filter(|t| !t.is_sync)
+                {
+                    verify_duplicate_media(bundle, &track.loops[0], track.loops.last().unwrap())?;
                 }
                 send(AppIntent::Global(GlobalControlAction::ClearRecordings {
                     include_sync: false,
@@ -1635,6 +1692,30 @@ impl NewEngineSelfTest {
                     return Ok(None);
                 }
                 self.hosted_composites = composite_roles::Canary::default();
+                send(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::DuplicateTo(track.loops[1].id),
+                })?;
+                Step::HostedDuplication
+            }
+            Step::HostedDuplication => {
+                if pending {
+                    return Ok(None);
+                }
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .ok_or("hosted copy track missing")?;
+                if track.loops[1].mode != LoopMode::Stopped
+                    || track.loops[1].length_frames != track.loops[0].length_frames
+                {
+                    return Ok(None);
+                }
+                if track.default_playback_mode != shoop_egui::DefaultPlaybackMode::DryThroughWet {
+                    return Err("hosted duplication changed the track default".into());
+                }
                 self.saved_file = None;
                 self.saved_bundle = None;
                 self.resaved_bundle = None;
@@ -1666,7 +1747,10 @@ impl NewEngineSelfTest {
                 if track.loops[0].mode != LoopMode::Stopped
                     || track.default_playback_mode != shoop_egui::DefaultPlaybackMode::DryThroughWet
                 {
-                    return Err("loaded hosted mode/default changed".into());
+                    return Err(format!(
+                        "loaded hosted {} mode/default changed: {:?}/{:?}, pending={pending}",
+                        self.hosted_index, track.loops[0].mode, track.default_playback_mode
+                    ));
                 }
                 send(AppIntent::RequestSaveSession)?;
                 Step::HostedResaving
@@ -1693,6 +1777,7 @@ impl NewEngineSelfTest {
                     .flat_map(|g| &g.tracks)
                     .find(|t| t.name == name)
                     .ok_or("resaved hosted track missing")?;
+                verify_duplicate_media(before, &old.loops[0], &old.loops[1])?;
                 if old.topology != new.topology {
                     return Err("hosted topology changed on reload".into());
                 }
@@ -1707,6 +1792,59 @@ impl NewEngineSelfTest {
                     if a.mode != b.mode || left != right {
                         return Err("hosted role media changed on reload".into());
                     }
+                }
+                send(AppIntent::AddEphemeralScript {
+                    name: "verify-hosted-copy-independence.lua".into(),
+                    source: format!(
+                        "shoop_announce_api_version(1,0); require('shoop_control').loop_clear({{{{{},1}}}})",
+                        self.hosted_index
+                    )
+                    .into(),
+                    source_path: None,
+                })?;
+                Step::HostedCopyCleared
+            }
+            Step::HostedCopyCleared => {
+                if pending {
+                    return Ok(None);
+                }
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .ok_or("hosted copy track missing after clearing")?;
+                if track.loops[1].length_frames != 0 {
+                    return Ok(None);
+                }
+                self.resaved_bundle = None;
+                send(AppIntent::RequestSaveSession)?;
+                Step::HostedClearSaved
+            }
+            Step::HostedClearSaved => {
+                if !io_completed(snapshot, shoop_egui::IoTaskKind::SaveSession) {
+                    return Ok(None);
+                }
+                let (Some(before), Some(after)) = (&self.saved_bundle, &self.resaved_bundle) else {
+                    return Ok(None);
+                };
+                let name = format!("Hosted {}", self.hosted_index);
+                let old = before
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .find(|t| t.name == name)
+                    .ok_or("saved hosted source missing")?;
+                let new = after
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .find(|t| t.name == name)
+                    .ok_or("cleared hosted source missing")?;
+                verify_loop_media(before, &old.loops[0], after, &new.loops[0])?;
+                if new.loops[1].length_frames != 0 {
+                    return Err("cleared hosted copy retained content".into());
                 }
                 self.hosted_index += 1;
                 Step::HostedStart
@@ -1835,4 +1973,54 @@ fn io_completed(snapshot: &AppSnapshot, kind: shoop_egui::IoTaskKind) -> bool {
         .io_task
         .as_ref()
         .is_some_and(|task| task.kind == kind && task.status == IoTaskStatus::Completed)
+}
+
+fn verify_duplicate_media(
+    bundle: &shoop_session::SessionBundle,
+    source: &shoop_session::LoopDocument,
+    target: &shoop_session::LoopDocument,
+) -> Result<(), String> {
+    verify_loop_media(bundle, source, bundle, target)
+}
+
+fn verify_loop_media(
+    source_bundle: &shoop_session::SessionBundle,
+    source: &shoop_session::LoopDocument,
+    target_bundle: &shoop_session::SessionBundle,
+    target: &shoop_session::LoopDocument,
+) -> Result<(), String> {
+    if source.length_frames != target.length_frames
+        || source.gain != target.gain
+        || source.balance != target.balance
+        || source.channels.len() != target.channels.len()
+    {
+        return Err("clone changed loop metadata".into());
+    }
+    for (index, (a, b)) in source.channels.iter().zip(&target.channels).enumerate() {
+        if a.mode != b.mode
+            || a.data_type != b.data_type
+            || a.data_length_frames != b.data_length_frames
+            || a.start_offset_frames != b.start_offset_frames
+            || a.capture_alignment_frames != b.capture_alignment_frames
+            || a.preplay_frames != b.preplay_frames
+            || a.gain != b.gain
+            || a.media_id
+                .as_ref()
+                .and_then(|id| source_bundle.media.get(id))
+                != b.media_id
+                    .as_ref()
+                    .and_then(|id| target_bundle.media.get(id))
+        {
+            return Err(format!(
+                "clone channel {index} differs: source={a:?}, target={b:?}, media_equal={}",
+                a.media_id
+                    .as_ref()
+                    .and_then(|id| source_bundle.media.get(id))
+                    == b.media_id
+                        .as_ref()
+                        .and_then(|id| target_bundle.media.get(id))
+            ));
+        }
+    }
+    Ok(())
 }

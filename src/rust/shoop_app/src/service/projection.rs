@@ -107,6 +107,7 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::LoopDuplication,
                 BackendCapability::DryWetTracks,
                 BackendCapability::DryWetModes,
                 BackendCapability::TrackFx,
@@ -622,7 +623,14 @@ impl Service {
             .iter()
             .map(|(id, entry)| (entry.backend, *id))
             .collect::<BTreeMap<_, _>>();
+        let duplication_target = self
+            .duplication
+            .as_ref()
+            .and_then(|job| job.frozen_target());
         for entry in self.loops.values_mut() {
+            if duplication_target == Some(entry.view.id) {
+                continue;
+            }
             if let Some(state) = observed
                 .composites
                 .get(&BackendCompositeId::from_raw(entry.backend.raw()))

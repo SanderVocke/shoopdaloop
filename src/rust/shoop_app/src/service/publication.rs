@@ -408,7 +408,10 @@ impl Service {
             }
             if matches!(
                 pending.effect,
-                Effect::Persistence(_) | Effect::HostGraph(_) | Effect::AudioDriver
+                Effect::Duplication
+                    | Effect::Persistence(_)
+                    | Effect::HostGraph(_)
+                    | Effect::AudioDriver
             ) || (self.shutdown_ready && self.shutdown == Some(id))
                 || pending.completed.len() as u64
                     != pending
