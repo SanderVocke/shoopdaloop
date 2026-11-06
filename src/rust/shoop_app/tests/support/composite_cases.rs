@@ -487,6 +487,136 @@ fn mixed_processed_gestures_filter_composites_while_exact_lists_refuse_atomicall
 }
 
 #[shoop_test]
+fn unrelated_composites_do_not_block_family_imports_and_composite_family_members_refuse_intact() {
+    for encoded in [false, true] {
+        let (mut f, mut client, _, loops) = setup_composites(encoded);
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(loops[2], vec![loops[0]], false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let captured = capture_image(&mut f.service, &mut client, 1, encoded);
+        release_image(&mut f.service, &mut client, 1, 1, encoded);
+        let persistence_image::Manifest::Session(session) = &captured.manifest else {
+            panic!()
+        };
+        let mut content = session.tracks[1].loops[0].clone();
+        let mut payloads = Vec::new();
+        for channel in content
+            .audio
+            .iter_mut()
+            .chain(content.midi.iter_mut().map(|midi| &mut midi.channel))
+        {
+            if let Some(object) = &mut channel.object {
+                payloads.push(captured.payloads[*object as usize - 1].clone());
+                *object = payloads.len() as u32;
+            }
+        }
+        content.frames *= 2;
+        let state = client.snapshot().unwrap().clone();
+        let root = state.tracks[1].loops[0].clone();
+        let old = state.composites[0].active.clone().unwrap();
+        let source = state
+            .sync_sources
+            .iter()
+            .find_map(|(id, source)| (*id == root.id).then_some(*source));
+        let mut family = persistence_image::Image {
+            manifest: persistence_image::Manifest::FamilyUpdate {
+                format: state.status.conversion_target().unwrap(),
+                root: root.id,
+                members: vec![persistence_image::FamilyMember {
+                    loop_id: root.id,
+                    sync_source: source,
+                    expected_revision: root.content_revision,
+                    expected_frames: root.length_frames,
+                    fence_content: true,
+                    restart: false,
+                    content: Some(content),
+                }],
+            },
+            payloads,
+        };
+        let target = persistence::Target::Loop {
+            loop_id: root.id,
+            content_revision: root.content_revision,
+        };
+        let key = stage_image_target(
+            &mut f.service,
+            &mut client,
+            2,
+            Arc::new(family.clone()),
+            target,
+            encoded,
+        );
+        let operation = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::CommitPersistence(key),
+        );
+        let outcome = complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            encoded,
+        );
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+        let state = client.snapshot().unwrap().clone();
+        assert_eq!(
+            state.tracks[1].loops[0].length_frames,
+            2 * root.length_frames
+        );
+        assert_eq!(state.composites[0].active.as_ref().unwrap(), &old);
+        let persistence_image::Manifest::FamilyUpdate { members, .. } = &mut family.manifest else {
+            panic!()
+        };
+        let root = state.tracks[1].loops[0].clone();
+        members[0].expected_revision = root.content_revision;
+        members[0].expected_frames = root.length_frames;
+        members.push(persistence_image::FamilyMember {
+            loop_id: loops[2],
+            sync_source: None,
+            expected_revision: 0,
+            expected_frames: old.prepared.unit_frames,
+            fence_content: false,
+            restart: false,
+            content: None,
+        });
+        let key = persistence::Key {
+            transfer: TransferId(3),
+            epoch: state.persistence_epoch,
+        };
+        let target = persistence::Target::Loop {
+            loop_id: root.id,
+            content_revision: root.content_revision,
+        };
+        let message = client.stage_image(key, target, Arc::new(family)).unwrap();
+        f.service.handle(ConnectionId(1), message).unwrap();
+        let refused = (0..40).any(|_| {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            matches!(
+                client.take_persistence_reply(),
+                Some(persistence::Reply::Refused {
+                    reason: Refusal::Invalid,
+                    ..
+                })
+            )
+        });
+        assert!(refused);
+        assert_eq!(
+            client.snapshot().unwrap().tracks[1].loops[0].content_revision,
+            root.content_revision
+        );
+    }
+}
+
+#[shoop_test]
 fn nested_composite_capture_and_load_preserve_frozen_geometry_media_and_event_ids() {
     for encoded in [false, true] {
         let (mut f, mut client, _, loops) = setup_composites(encoded);

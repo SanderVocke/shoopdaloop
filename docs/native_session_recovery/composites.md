@@ -249,6 +249,10 @@ capture takes a new complete metadata cut. Active, scheduled or nested future
 recording demand refuses capture; selected-child export also checks its parents.
 Manual input monitoring is saved separately from automatic demand.
 
+Primitive sync-family imports can coexist with composite programs. Only the
+primitive periods are retimed; accepted composite geometry stays frozen. A
+conversion family containing a composite member still refuses as a whole.
+
 Private replacement creates every loop identity before binding composite spans,
 checks the complete action/sync DAG and aggregate capacities, and installs all
 loops stopped at one activation. Its strip preset includes automatic-monitoring

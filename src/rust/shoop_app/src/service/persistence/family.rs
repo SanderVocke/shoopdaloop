@@ -7,13 +7,19 @@ impl Service {
             .loops
             .get(&id)
             .ok_or_else(|| anyhow!("stale family member"))?;
-        let state = self
+        let source = self
             .observed
             .loops
             .get(&entry.backend)
+            .map(|state| state.sync_source)
+            .or_else(|| {
+                self.observed
+                    .composites
+                    .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+                    .map(|state| state.sync_source)
+            })
             .ok_or_else(|| anyhow!("unconfirmed family member"))?;
-        state
-            .sync_source
+        source
             .map(|source| {
                 self.loops
                     .iter()
@@ -65,7 +71,10 @@ impl Service {
                 .loops
                 .get(&member.loop_id)
                 .ok_or_else(|| anyhow!("stale family member"))?;
-            let state = &self.observed.loops[&entry.backend];
+            let state =
+                self.observed.loops.get(&entry.backend).ok_or_else(|| {
+                    anyhow!("family content requires confirmed primitive members")
+                })?;
             if self
                 .family_source(member.loop_id)?
                 .unwrap_or(member.loop_id)
