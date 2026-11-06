@@ -545,6 +545,246 @@ mod tests {
             _ => {}
         }
     }
+    fn host_data() -> crate::DiagnosticsView {
+        use crate::{diagnostics_protocol as protocol, task_profiling as tasks};
+        let stream = tasks::stream(77);
+        let mut diagnostics = crate::DiagnosticsView {
+            sources: vec![crate::ProfilingSource {
+                descriptor: protocol::Descriptor {
+                    stream,
+                    name: protocol::Name::new("host.freertos.tasks").unwrap(),
+                    available: true,
+                    min_interval_ms: 1000,
+                    max_interval_ms: 60000,
+                    snapshot: true,
+                    inspect: false,
+                },
+                status: Some(protocol::Status {
+                    stream,
+                    requested: false,
+                    active: false,
+                    interval_ms: 2000,
+                    outcome: protocol::Outcome::Applied,
+                    dropped: 4,
+                    coalesced: 3,
+                }),
+                age_ms: 1234,
+                assembly_losses: 2,
+                supported: true,
+            }],
+            ..Default::default()
+        };
+        let mut sample = tasks::Snapshot {
+            generation: 4,
+            clock_domain: 77,
+            captured_us: 1_000_000,
+            collection_us: 321,
+            total_runtime: Some(1000),
+            counter_bits: 64,
+            counter_hz: 1000,
+            complete: true,
+            tasks: vec![
+                tasks::Task {
+                    id: 11,
+                    name: protocol::Name::new("render").unwrap(),
+                    state: 0,
+                    priority: 6,
+                    base_priority: Some(4),
+                    runtime: Some(100),
+                    stack_free_bytes: Some(12288),
+                },
+                tasks::Task {
+                    id: 12,
+                    name: protocol::Name::new("control").unwrap(),
+                    state: 3,
+                    priority: 3,
+                    base_priority: None,
+                    runtime: None,
+                    stack_free_bytes: None,
+                },
+            ],
+        };
+        diagnostics.tasks.receive(sample.clone());
+        sample.captured_us = 2_000_000;
+        sample.total_runtime = Some(2000);
+        sample.tasks[0].runtime = Some(350);
+        diagnostics.tasks.receive(sample);
+        diagnostics
+    }
+    fn host_labels(diagnostics: &crate::DiagnosticsView) -> Vec<String> {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200., 900.),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                assert!(show_host(ui, diagnostics, true).is_none());
+            },
+        );
+        output.textures_delta.clear();
+        let mut labels = Vec::new();
+        for shape in output.shapes {
+            texts(&shape.shape, &mut labels);
+        }
+        labels
+    }
+    #[shoop_test]
+    fn host_table_displays_interval_cpu_optional_values_freshness_and_delivery_loss() {
+        let mut diagnostics = host_data();
+        let labels = host_labels(&diagnostics);
+        for expected in [
+            "render (11)",
+            "control (12)",
+            "Running",
+            "Suspended",
+            "6 / 4",
+            "3 / —",
+            "25.0",
+            "12288",
+            "—",
+        ] {
+            assert!(
+                labels.iter().any(|text| text == expected),
+                "missing {expected}: {labels:?}"
+            );
+        }
+        for expected in [
+            "every 2000 ms",
+            "delivery drops 4",
+            "coalesced 3",
+            "1234 ms ago",
+            "collection 321 µs",
+        ] {
+            assert!(
+                labels.iter().any(|text| text.contains(expected)),
+                "missing {expected}: {labels:?}"
+            );
+        }
+        let mut failed = diagnostics.tasks.sample.as_ref().unwrap().clone();
+        failed.complete = false;
+        failed.captured_us += 1_000_000;
+        diagnostics.tasks.receive(failed);
+        let labels = host_labels(&diagnostics);
+        assert!(labels.iter().any(|text| text.contains("incomplete")));
+        assert!(!labels.iter().any(|text| text == "25.0"));
+        diagnostics.tasks = Default::default();
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text == "No task sample available"));
+        diagnostics.sources[0].supported = false;
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text == "Unsupported host task report schema"));
+        diagnostics.sources[0].descriptor.stream.source = 999;
+        diagnostics.sources[0].descriptor.stream.schema = 99;
+        let labels = host_labels(&diagnostics);
+        assert!(labels
+            .iter()
+            .any(|text| text.contains("unsupported schema 99")));
+        diagnostics.sources.clear();
+        assert!(host_labels(&diagnostics)
+            .iter()
+            .any(|text| text == "This host does not advertise task profiling."));
+    }
+    #[shoop_test]
+    fn host_window_routes_its_own_subscription_without_an_audio_clock_and_retains_disabled_data() {
+        fn position(shape: &egui::Shape) -> Option<egui::Pos2> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.job.text == "Collect task statistics" => {
+                    Some(t.pos + t.galley.rect.center().to_vec2())
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(position),
+                _ => None,
+            }
+        }
+        let context = egui::Context::default();
+        let mut window = Window {
+            open: true,
+            host: true,
+            ..Default::default()
+        };
+        let mut diagnostics = host_data();
+        let audio = ProfilingView::default();
+        let mut click = |diagnostics: &crate::DiagnosticsView, enabled: bool| {
+            let mut target = None;
+            let mut command = None;
+            for button in [None, None, Some(true), Some(false)] {
+                let mut events = Vec::new();
+                if let Some(pos) = target {
+                    events.push(egui::Event::PointerMoved(pos));
+                    if let Some(pressed) = button {
+                        events.push(egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: Default::default(),
+                        });
+                    }
+                }
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        events,
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1200., 900.),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        assert!(
+                            window
+                                .show(
+                                    ui.ctx(),
+                                    &audio,
+                                    &StatusState::default(),
+                                    enabled,
+                                    diagnostics
+                                )
+                                .is_none(),
+                            "host control emitted an audio subscription"
+                        );
+                    },
+                );
+                output.textures_delta.clear();
+                target = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| position(&shape.shape));
+                command = window.take_control().or(command);
+            }
+            assert!(target.is_some());
+            command
+        };
+        use crate::diagnostics_protocol::{Action, Request};
+        assert_eq!(
+            click(&diagnostics, true),
+            Some(Request {
+                source: crate::task_profiling::SOURCE,
+                epoch: 77,
+                action: Action::Subscribe {
+                    enabled: true,
+                    interval_ms: 1000
+                }
+            })
+        );
+        assert!(!audio.requested && !audio.available);
+        diagnostics.sources[0].status.as_mut().unwrap().requested = true;
+        assert_eq!(
+            click(&diagnostics, true).unwrap().action,
+            Action::Subscribe {
+                enabled: false,
+                interval_ms: 1000
+            }
+        );
+        assert!(diagnostics.tasks.sample.is_some());
+        assert!(click(&diagnostics, false).is_none());
+        diagnostics.sources[0].descriptor.available = false;
+        assert!(click(&diagnostics, true).is_none());
+    }
     #[shoop_test]
     fn switch_emits_an_immediate_request_and_respects_connection_state() {
         let context = egui::Context::default();
