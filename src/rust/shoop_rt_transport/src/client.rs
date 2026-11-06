@@ -157,12 +157,8 @@ impl<C: Carrier> ProtocolClient<C> {
                 self.reliable_in_flight = 0;
                 self.bulk_in_flight = 0;
             }
-            EngineMessage::Telemetry(_)
-            | EngineMessage::State(_)
-            | EngineMessage::Profiling(_)
-            | EngineMessage::ProfilingStatus(_)
-            | EngineMessage::ProfilingNode { .. }
-            | EngineMessage::ProfilingGraph { .. } => {}
+            EngineMessage::Telemetry(_) | EngineMessage::State(_) | EngineMessage::Profiling(_) => {
+            }
         }
         Some(message)
     }

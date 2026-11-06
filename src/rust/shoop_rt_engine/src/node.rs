@@ -162,17 +162,54 @@ impl Ramp {
     pub(crate) fn target(&self) -> f32 {
         self.target
     }
-    pub(crate) fn next(&mut self) -> f32 {
-        if self.remaining > 0 {
-            self.remaining -= 1;
+    /// Advance by one quantum. Ramps are rendered as one linear segment per
+    /// quantum, so a ramp that would end within a quantum ends at its last frame.
+    fn advance(&mut self, frames: usize) {
+        if self.remaining > 0 && frames > 0 {
+            let advance = self.remaining.min(frames as u32);
+            self.remaining -= advance;
             self.value = if self.remaining == 0 {
                 self.target
             } else {
-                self.value + self.step
+                self.value + self.step * advance as f32
             };
         }
-        self.value
     }
+    /// Write this ramp's segment for the next quantum, one value per frame.
+    fn fill(&mut self, out: &mut [f32]) {
+        let from = self.value;
+        self.advance(out.len());
+        fill_linear(out, from, self.value);
+    }
+}
+
+/// Values stepping linearly from just after `from` to exactly `to`; constant when
+/// they are equal. Decided once per quantum so the per-frame loop has no branches.
+fn fill_linear(out: &mut [f32], from: f32, to: f32) {
+    if from == to {
+        out.fill(to);
+        return;
+    }
+    let step = (to - from) / out.len() as f32;
+    let mut value = from;
+    for slot in out.iter_mut() {
+        value += step;
+        *slot = value;
+    }
+    if let Some(last) = out.last_mut() {
+        *last = to;
+    }
+}
+
+/// Largest absolute sample value. Non-negative IEEE 754 floats order like their
+/// bit patterns, so integer max avoids per-sample float compares, which stall
+/// the Cortex-A9 VFP pipeline. A NaN sample reads as the largest value.
+pub(crate) fn peak(samples: &[f32]) -> f32 {
+    f32::from_bits(
+        samples
+            .iter()
+            .fold(0, |peak, sample| peak.max(sample.to_bits() & 0x7FFF_FFFF)),
+    )
 }
 
 /// Legacy stereo balance: negative values attenuate the right channel, positive
@@ -203,23 +240,22 @@ impl Gains {
         self.gain = Ramp::at(1.);
         self.balance = Ramp::at(0.);
     }
-    /// Fill the per-sample gains, scaled by a further ramp.
+    /// Fill the per-sample gains, scaled by a further ramp: one linear segment per
+    /// quantum between the levels at its start and end.
     fn fill(&mut self, frames: usize, scale: &mut Ramp) {
-        if self.gain.remaining == 0 && self.balance.remaining == 0 && scale.remaining == 0 {
-            let gain = self.gain.value * scale.value;
-            let [left, right] = balance_factors(self.balance.value);
-            self.plain[..frames].fill(gain);
-            self.left[..frames].fill(gain * left);
-            self.right[..frames].fill(gain * right);
-            return;
-        }
-        for i in 0..frames {
-            let gain = self.gain.next() * scale.next();
-            let [left, right] = balance_factors(self.balance.next());
-            self.plain[i] = gain;
-            self.left[i] = gain * left;
-            self.right[i] = gain * right;
-        }
+        let before = self.levels(scale);
+        self.gain.advance(frames);
+        self.balance.advance(frames);
+        scale.advance(frames);
+        let after = self.levels(scale);
+        fill_linear(&mut self.plain[..frames], before[0], after[0]);
+        fill_linear(&mut self.left[..frames], before[1], after[1]);
+        fill_linear(&mut self.right[..frames], before[2], after[2]);
+    }
+    fn levels(&self, scale: &Ramp) -> [f32; 3] {
+        let gain = self.gain.value * scale.value;
+        let [left, right] = balance_factors(self.balance.value);
+        [gain, gain * left, gain * right]
     }
     fn channel(&self, channel: usize, stereo: bool) -> &[f32] {
         match (stereo, channel) {
@@ -258,6 +294,7 @@ pub struct StripInput {
     weights: Box<[f32]>,
     monitoring: Box<[f32]>,
     scratch: Box<[f32]>,
+    sends: Box<[f32]>,
     injected: [Option<MidiMessage>; INJECTED],
     /// Notes sounding through the monitoring feed, released when monitoring stops.
     monitored: Box<MidiState>,
@@ -285,6 +322,7 @@ pub struct StripOutput {
     weights: Box<[f32]>,
     scales: Box<[f32]>,
     scratch: Box<[f32]>,
+    gate: Box<[f32]>,
 }
 
 /// A loop's playback fader, used to remove a sounding loop without a step, and
@@ -299,6 +337,7 @@ pub struct LoopFader {
     channels: usize,
     ramp: u32,
     presence: Ramp,
+    levels: Box<[f32]>,
 }
 
 /// The Master bus: the sum of routed strips; gain, balance, mute and meters,
@@ -413,6 +452,7 @@ impl StripInput {
             weights: vec![0.; frames].into_boxed_slice(),
             monitoring: vec![0.; frames].into_boxed_slice(),
             scratch: vec![0.; frames].into_boxed_slice(),
+            sends: vec![0.; frames].into_boxed_slice(),
             injected: [None; INJECTED],
             monitored: Box::default(),
             live_midi: Box::default(),
@@ -455,6 +495,7 @@ impl StripOutput {
             weights: vec![0.; frames].into_boxed_slice(),
             scales: vec![0.; frames].into_boxed_slice(),
             scratch: vec![0.; frames].into_boxed_slice(),
+            gate: vec![0.; frames].into_boxed_slice(),
         }
     }
 }
@@ -470,6 +511,7 @@ impl LoopFader {
             channels: settings.channels,
             ramp: settings.ramp,
             presence: Ramp::at(1.),
+            levels: vec![0.; settings.frames].into_boxed_slice(),
         }
     }
 }
@@ -825,15 +867,27 @@ impl StripInput {
         );
         let live_record = activity.recording || activity.pre_recording;
         let dry_play = activity.playing_dry || activity.rerecording || activity.pre_rerecording;
-        let mut demand = live_record || dry_play;
-        for i in 0..frames {
-            self.weights[i] = self.bank.next();
-            self.send_weights[i] = self.send_bank.next();
-            self.return_weights[i] = self.return_bank.next();
-            self.monitoring[i] = self.monitor.next();
-            demand |= self.monitoring[i] > 0.;
-            let gate = if dry_play { 1. } else { self.monitoring[i] };
-            cells.wet_gate[i].store(gate.to_bits(), core::sync::atomic::Ordering::Relaxed);
+        // Per-quantum decisions; the per-frame loops below are straight arithmetic.
+        self.bank.fill(&mut self.weights[..frames]);
+        self.send_bank.fill(&mut self.send_weights[..frames]);
+        self.return_bank.fill(&mut self.return_weights[..frames]);
+        let monitor_from = self.monitor.value;
+        self.monitor.fill(&mut self.monitoring[..frames]);
+        // A linear segment is bounded by its endpoints.
+        let monitored = monitor_from > 0. || self.monitor.value > 0.;
+        let demand = live_record || dry_play || monitored;
+        let live = !forced_off && (live_record || monitored);
+        if dry_play {
+            for cell in &cells.wet_gate[..frames] {
+                cell.store(1f32.to_bits(), core::sync::atomic::Ordering::Relaxed);
+            }
+        } else {
+            for (cell, gate) in cells.wet_gate[..frames]
+                .iter()
+                .zip(&self.monitoring[..frames])
+            {
+                cell.store(gate.to_bits(), core::sync::atomic::Ordering::Relaxed);
+            }
         }
         cells
             .processor_demand
@@ -846,15 +900,12 @@ impl StripInput {
                     .input(channels + channel)
                     .ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
-                let mut peak = 0f32;
                 for i in 0..frames {
                     let weight = self.weights[i];
-                    let value = (first[i] * (1. - weight) + second[i] * weight) * gains[i];
-                    self.scratch[i] = value;
-                    peak = peak.max(value.abs());
+                    self.scratch[i] = (first[i] * (1. - weight) + second[i] * weight) * gains[i];
                 }
                 if channel < self.inputs {
-                    cells.input.raise(channel, peak);
+                    cells.input.raise(channel, peak(&self.scratch[..frames]));
                 }
             }
             block
@@ -862,42 +913,54 @@ impl StripInput {
                 .output(channel)
                 .ok_or(Error::InvalidShape)?
                 .copy_from_slice(&self.scratch[..frames]);
+            let monitor = block
+                .audio
+                .output(channels + channel)
+                .ok_or(Error::InvalidShape)?;
             for i in 0..frames {
-                block
-                    .audio
-                    .output(channels + channel)
-                    .ok_or(Error::InvalidShape)?[i] = self.scratch[i] * self.monitoring[i];
+                monitor[i] = self.scratch[i] * self.monitoring[i];
+            }
+            {
                 let playback = block
                     .audio
                     .input(2 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i];
-                let live = if !forced_off && (live_record || self.monitoring[i] > 0.) {
-                    self.scratch[i]
+                    .ok_or(Error::InvalidShape)?;
+                if live {
+                    for i in 0..frames {
+                        self.sends[i] = self.scratch[i] + playback[i];
+                    }
                 } else {
-                    0.
-                };
-                let send = live + playback;
-                block
-                    .audio
-                    .output(2 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i] = send * (1. - self.send_weights[i]);
-                block
-                    .audio
-                    .output(3 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i] = send * self.send_weights[i];
-                let first = block
-                    .audio
-                    .input(3 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i];
-                let second = block
+                    self.sends[..frames].copy_from_slice(&playback[..frames]);
+                }
+            }
+            let dry = block
+                .audio
+                .output(2 * channels + channel)
+                .ok_or(Error::InvalidShape)?;
+            for i in 0..frames {
+                dry[i] = self.sends[i] * (1. - self.send_weights[i]);
+            }
+            let wet = block
+                .audio
+                .output(3 * channels + channel)
+                .ok_or(Error::InvalidShape)?;
+            for i in 0..frames {
+                wet[i] = self.sends[i] * self.send_weights[i];
+            }
+            // The return mix reads two inputs into one output; stage the second.
+            self.sends[..frames].copy_from_slice(
+                &block
                     .audio
                     .input(4 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i];
-                block
-                    .audio
-                    .output(4 * channels + channel)
-                    .ok_or(Error::InvalidShape)?[i] =
-                    first * (1. - self.return_weights[i]) + second * self.return_weights[i];
+                    .ok_or(Error::InvalidShape)?[..frames],
+            );
+            let (first, returned) = block
+                .audio
+                .pair(3 * channels + channel, 4 * channels + channel)
+                .ok_or(Error::InvalidShape)?;
+            for i in 0..frames {
+                let weight = self.return_weights[i];
+                returned[i] = first[i] * (1. - weight) + self.sends[i] * weight;
             }
         }
         let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
@@ -1055,12 +1118,24 @@ impl StripOutput {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.outputs == 2;
-        for i in 0..frames {
-            self.weights[i] = self.bank.next();
-            self.scales[i] = self.mute.next();
-        }
+        self.bank.fill(&mut self.weights[..frames]);
+        self.mute.fill(&mut self.scales[..frames]);
         self.gains.fill(frames, &mut self.presence);
         let cells = &self.cells.strips[self.slot];
+        // Choose the wet gate source once per quantum.
+        let gate: Option<&[f32]> = match self.processor {
+            None => None,
+            Some(shoop_rt_protocol::ProcessorKind::External) => {
+                for (gate, cell) in self.gate[..frames]
+                    .iter_mut()
+                    .zip(&cells.wet_gate[..frames])
+                {
+                    *gate = f32::from_bits(cell.load(core::sync::atomic::Ordering::Relaxed));
+                }
+                Some(&self.gate[..frames])
+            }
+            Some(_) => Some(&self.wet_gate[..frames]),
+        };
         for channel in 0..channels {
             {
                 let input = block.audio.input(channel).ok_or(Error::InvalidShape)?;
@@ -1069,25 +1144,21 @@ impl StripOutput {
                     .input(channels + channel)
                     .ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
-                let mut peak = 0f32;
-                for i in 0..frames {
-                    let gate = if self.processor.is_some() {
-                        if self.processor == Some(shoop_rt_protocol::ProcessorKind::External) {
-                            f32::from_bits(
-                                cells.wet_gate[i].load(core::sync::atomic::Ordering::Relaxed),
-                            )
-                        } else {
-                            self.wet_gate[i]
+                match gate {
+                    Some(gate) => {
+                        for i in 0..frames {
+                            self.scratch[i] =
+                                (input[i] + wet[i] * gate[i]) * gains[i] * self.scales[i];
                         }
-                    } else {
-                        0.
-                    };
-                    let value = (input[i] + wet[i] * gate) * gains[i] * self.scales[i];
-                    self.scratch[i] = value;
-                    peak = peak.max(value.abs());
+                    }
+                    None => {
+                        for i in 0..frames {
+                            self.scratch[i] = input[i] * gains[i] * self.scales[i];
+                        }
+                    }
                 }
                 if channel < self.outputs {
-                    cells.output.raise(channel, peak);
+                    cells.output.raise(channel, peak(&self.scratch[..frames]));
                 }
             }
             let first = block.audio.output(channel).ok_or(Error::InvalidShape)?;
@@ -1175,46 +1246,47 @@ impl LoopFader {
         let dry =
             crate::cells::mode_from_code(self.cells.loops[self.slot].mode.load(Ordering::Relaxed))
                 .dry_playback();
+        // One presence segment per quantum, shared by every port.
+        let from = self.presence.value;
+        self.presence.fill(&mut self.levels[..frames]);
+        let constant = (from == self.presence.value).then_some(from);
         for port in 0..2 * self.channels {
-            let channel = port % self.channels;
             let auxiliary = port >= self.channels;
-            let mut presence = self.presence;
+            let channel = if auxiliary {
+                port - self.channels
+            } else {
+                port
+            };
             let (input, output) = block.audio.pair(port, port).ok_or(Error::InvalidShape)?;
-            let mut peak = 0f32;
             if delayed && !auxiliary {
+                let base = channel * quantum;
+                let mut index = self.position;
                 for i in 0..frames {
-                    let index = channel * quantum + (self.position + i) % quantum;
-                    let sample = self.delay[index];
-                    self.delay[index] = input[i];
-                    let value = sample * presence.next();
-                    output[i] = value;
-                    peak = peak.max(value.abs());
-                }
-            } else if presence.remaining == 0 {
-                let gain = presence.value;
-                if gain == 1. {
-                    output[..frames].copy_from_slice(&input[..frames]);
-                    for sample in &input[..frames] {
-                        peak = peak.max(sample.abs());
-                    }
-                } else {
-                    for (sample, value) in input[..frames].iter().zip(output[..frames].iter_mut()) {
-                        *value = *sample * gain;
-                        peak = peak.max(value.abs());
+                    let sample = self.delay[base + index];
+                    self.delay[base + index] = input[i];
+                    output[i] = sample * self.levels[i];
+                    index += 1;
+                    if index == quantum {
+                        index = 0;
                     }
                 }
             } else {
-                for i in 0..frames {
-                    let value = input[i] * presence.next();
-                    output[i] = value;
-                    peak = peak.max(value.abs());
+                match constant {
+                    Some(gain) if gain == 1. => output[..frames].copy_from_slice(&input[..frames]),
+                    Some(gain) => {
+                        for i in 0..frames {
+                            output[i] = input[i] * gain;
+                        }
+                    }
+                    None => {
+                        for i in 0..frames {
+                            output[i] = input[i] * self.levels[i];
+                        }
+                    }
                 }
             }
             if auxiliary == dry {
-                peaks.raise(channel, peak);
-            }
-            if port + 1 == 2 * self.channels {
-                self.presence = presence;
+                peaks.raise(channel, peak(&output[..frames]));
             }
         }
         self.position = (self.position + frames) % quantum;
@@ -1321,21 +1393,16 @@ impl BusMixer {
         let channels = self.channels;
         let stereo = self.active_channels == 2;
         self.gains.fill(frames, &mut self.mute);
-        for i in 0..frames {
-            self.weights[i] = self.bank.next();
-            self.presence_weights[i] = self.presence.next();
-        }
+        self.bank.fill(&mut self.weights[..frames]);
+        self.presence.fill(&mut self.presence_weights[..frames]);
         for channel in 0..channels {
             {
                 let input = block.audio.input(channel).ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
-                let mut peak = 0f32;
                 for i in 0..frames {
-                    let value = input[i] * gains[i] * self.presence_weights[i];
-                    self.scratch[i] = value;
-                    peak = peak.max(value.abs());
+                    self.scratch[i] = input[i] * gains[i] * self.presence_weights[i];
                 }
-                self.cells.buses[self.slot].raise(channel, peak);
+                self.cells.buses[self.slot].raise(channel, peak(&self.scratch[..frames]));
             }
             let first = block.audio.output(channel).ok_or(Error::InvalidShape)?;
             for i in 0..frames {
@@ -1524,9 +1591,11 @@ mod tests {
         gains.balance.set(1., 2);
         scale.set(0.5, 2);
         gains.fill(4, &mut scale);
-        assert_eq!(&gains.plain[..4], &[0.5625, 0.25, 0.25, 0.25]);
-        assert_eq!(&gains.left[..4], &[0.28125, 0., 0., 0.]);
-        assert_eq!(&gains.right[..4], &[0.5625, 0.25, 0.25, 0.25]);
+        // Ramps render as one linear segment per quantum: these two-frame ramps
+        // end at the quantum's last frame.
+        assert_eq!(&gains.plain[..4], &[0.8125, 0.625, 0.4375, 0.25]);
+        assert_eq!(&gains.left[..4], &[0.75, 0.5, 0.25, 0.]);
+        assert_eq!(&gains.right[..4], &[0.8125, 0.625, 0.4375, 0.25]);
         gains.fill(4, &mut scale);
         assert_eq!(&gains.plain[..4], &[0.25; 4]);
         assert_eq!(&gains.left[..4], &[0.; 4]);
@@ -1534,6 +1603,14 @@ mod tests {
         assert_eq!(&gains.plain[4..], &[42.; 4]);
         assert_eq!(&gains.left[4..], &[42.; 4]);
         assert_eq!(&gains.right[4..], &[42.; 4]);
+    }
+
+    #[shoop_test]
+    fn peak_is_the_largest_magnitude_across_signs_and_exponents() {
+        assert_eq!(peak(&[]), 0.);
+        assert_eq!(peak(&[0.25, -0.5, 1e-30, -0.]), 0.5);
+        assert_eq!(peak(&[-3., 2.5, 1.5]), 3.);
+        assert!(peak(&[0.1, f32::NAN]).is_nan());
     }
 
     #[shoop_test]

@@ -21,6 +21,7 @@ shoop_transport = { path = "../shoop_transport" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 
 [dev-dependencies]
+rt_profiling = { path = "../rt_profiling" }
 shoop_rt_transport = { path = ".", features = ["contracts"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 

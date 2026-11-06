@@ -14,9 +14,14 @@ owns encoding, sequencing, credits and lifecycle semantics.
 Engine-specific typed/encoded connection behavior remains in `shoop_rt_transport`.
 The old socket/shared-memory crate names re-export these shared implementations
 and retain engine-specific client/server aliases during migration. Implementations
-are not duplicated. App attachment semantics and service composition are still
-pending; extracting these carriers does not enable session recovery.
+are not duplicated. App attachment and service semantics belong to
+`shoop_app_connection`, independently of byte delivery.
 
 The existing engine carrier contracts exercise socket and shared-memory delivery.
 Buffer/framing unit tests now live in this crate; their Miri inventory registration
 moved with them without changing workloads or seeds.
+
+Reliable records take priority over unsent low-priority records. Bulk, telemetry
+and profiling rotate fairly. A partially written record always finishes before
+switching lanes; a queued record with no bytes written can yield to reliable
+traffic without allocating another queue slot.

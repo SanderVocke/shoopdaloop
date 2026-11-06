@@ -47,6 +47,21 @@ and firmware/loader manifests identify the board. Packaging and provisioning
 reject mixed board artifacts. Changing a board's memory or ABI contract requires
 a new deployment profile identifier; deployed loaders keep their original policy.
 
+## Choose JTAG development or SD deployment
+
+For a development loop that loads a bare-metal ELF through JTAG, start with
+[JTAG development without Vivado](jtag-development.md). It covers workstation
+tools, OpenOCD, PS/DDR initialization requirements, the development credential,
+boot nonce, UART, Ethernet and hardware verification checkpoints. The physical
+procedure is an initial recipe; its PS initialization helper is still an explicit
+gap to resolve during bring-up.
+
+JTAG uses `host.elf`, built without `--deployment`, and does not need SD.
+The commands below follow the separate SD/network deployment path using
+`host-deployment.elf`. That variant expects the loader's handoff and provisioned
+SD state. FreeRTOS itself does not impose an SD requirement. Neither workflow
+requires installing Vivado or Vitis; hardware initialization is still required.
+
 ## Build and test before hardware
 
 Use the pinned toolchain and dependencies described in the platform and deployment

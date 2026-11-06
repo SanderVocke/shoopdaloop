@@ -12,6 +12,8 @@ use support::service;
 struct Memory {
     limit: usize,
     failed: bool,
+    block_profiling: bool,
+    blocked_profiling: usize,
     input: VecDeque<Vec<u8>>,
     output: VecDeque<Vec<u8>>,
 }
@@ -32,6 +34,17 @@ impl RecordPort for Memory {
         }
         self.output.push_back(record.to_vec());
         Ok(())
+    }
+    fn post_on_lane(
+        &mut self,
+        record: &[u8],
+        lane: shoop_transport::Lane,
+    ) -> Result<(), CarrierError> {
+        if self.block_profiling && lane == shoop_transport::Lane::Profiling {
+            self.blocked_profiling += 1;
+            return Err(CarrierError::Full);
+        }
+        self.post(record)
     }
     fn take(&mut self, out: &mut [u8]) -> Option<usize> {
         let record = self.input.pop_front()?;
@@ -281,4 +294,56 @@ fn management_settings_are_coherent_segmented_and_bounded_under_backpressure() {
     assert_eq!(report.diagnostics, diagnostics);
     assert_eq!(report.requested.unwrap(), Default::default());
     assert_eq!(report.pending_operations, 0);
+}
+
+#[shoop_test]
+fn blocked_profiling_admission_does_not_block_reliable_command_results_in_either_writer() {
+    for network in [false, true] {
+        let mut service = service();
+        let mut session = Session::new(ConnectionId(1), Memory::default());
+        if network {
+            session = session
+                .with_network(shoop_app_connection::HeartbeatConfig::default(), 7, 5)
+                .unwrap();
+        }
+        let mut client = Client::new();
+        session
+            .port
+            .send(WireMessage::Client(client.attach().unwrap()));
+        for _ in 0..128 {
+            step(&mut session, &mut service, &mut client);
+            if client.state() == State::Ready {
+                break;
+            }
+        }
+        assert_eq!(client.state(), State::Ready);
+        session.port.block_profiling = true;
+        for _ in 0..128 {
+            step(&mut session, &mut service, &mut client);
+            if session.port.blocked_profiling > 0 {
+                break;
+            }
+        }
+        assert!(session.port.blocked_profiling > 0);
+        let message = client
+            .command(Command::SetLoopSmoothingMs(7), None)
+            .unwrap();
+        let ClientMessage::Submit { operation, .. } = message else {
+            panic!()
+        };
+        session.port.send(WireMessage::Client(message));
+        for _ in 0..128 {
+            step(&mut session, &mut service, &mut client);
+            if client.results().contains_key(&operation) {
+                break;
+            }
+        }
+        assert!(
+            matches!(
+                client.results().get(&operation),
+                Some(Outcome::Confirmed { .. })
+            ),
+            "reliable result blocked with network={network}"
+        );
+    }
 }

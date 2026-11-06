@@ -163,10 +163,10 @@ pub struct RtBackend<C, K> {
     retired_host_ports:
         alloc::collections::BTreeMap<shoop_rt_protocol::HostPortId, alloc::string::String>,
     resource_limits: shoop_app_api::HostResourceLimits,
-    profiling: shoop_rt_protocol::profiling::Collector,
+    profiling: rt_profiling::Collector,
     profiling_groups: (
-        Option<alloc::sync::Arc<shoop_rt_protocol::profiling::Topology>>,
-        alloc::sync::Arc<[shoop_rt_protocol::profiling::Group]>,
+        Option<alloc::sync::Arc<rt_profiling::Topology>>,
+        alloc::sync::Arc<[rt_profiling::Group]>,
         bool,
     ),
     client: ProtocolClient<C>,

@@ -17,6 +17,7 @@ browser = ["dep:js-sys", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-fu
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_profiling = { path = "../rt_profiling" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 
@@ -27,6 +28,7 @@ wasm-bindgen = { version = "=0.2.127", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 
 [dev-dependencies]
+rt_profiling = { path = "../rt_profiling" }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["contracts"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 

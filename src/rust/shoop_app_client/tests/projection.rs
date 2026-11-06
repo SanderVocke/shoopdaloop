@@ -14,7 +14,7 @@ const AUTHORITY: Authority = Authority {
     generation: ConnectionGeneration(3),
 };
 
-fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
+fn profiling(revision: u64) -> shoop_app_api::ProfilingView {
     let mut profiling = shoop_app_api::ProfilingView {
         generation: revision,
         active: true,
@@ -40,9 +40,12 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
         nodes: vec![shoop_app_api::profiling_data::GraphNode::default()],
         ..Default::default()
     }));
+    profiling
+}
+
+fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
         composites: Vec::new(),
-        profiling,
         sync_sources: Vec::new(),
         preview: Default::default(),
         preview_bus: None,
@@ -73,8 +76,8 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
 #[shoop_test]
 fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_details() {
     use shoop_app_api::profiling_data::*;
-    let mut state = (*snapshot(3)).clone();
-    let wrapping = &mut state.profiling.live.wrapping;
+    let mut state = profiling(3);
+    let wrapping = &mut state.live.wrapping;
     wrapping.total.add(800);
     wrapping.before.add(100);
     wrapping.after.add(200);
@@ -82,9 +85,9 @@ fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_deta
     wrapping.before_budget.add(100_000_000);
     wrapping.after_budget.add(200_000_000);
     wrapping.between_budget.add(50_000_000);
-    state.profiling.capture = Some(Report {
+    state.capture = Some(Report {
         capture: 9,
-        ..state.profiling.live.clone()
+        ..state.live.clone()
     });
     let callback = TraceSummary {
         sequence: 1,
@@ -99,7 +102,7 @@ fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_deta
         end_ns: 4000,
         ..TraceSummary::default()
     };
-    state.profiling.index = Arc::from([callback, tick]);
+    state.index = Arc::from([callback, tick]);
     let page = CapturePage {
         request: CaptureRequest {
             connection: 0,
@@ -120,32 +123,67 @@ fn profiling_topology_readiness_and_selected_capture_roundtrip_with_bounded_deta
         total: 1,
         ..CapturePage::default()
     };
-    state.profiling.detail = Some(Arc::new(page.clone()));
-    let encoded = codec::encode_snapshot(&state).unwrap();
+    state.detail = Some(Arc::new(page.clone()));
+    let encoded = profiling_protocol::encode_report(&state).unwrap();
     assert!(encoded.len() < MAX_SNAPSHOT_BYTES);
-    let decoded = codec::decode_snapshot(&encoded).unwrap();
-    assert_eq!(decoded.profiling, state.profiling);
-    assert_eq!(decoded.profiling.live.rows[0].ready_worst_ns, 6000);
-    assert_eq!(
-        decoded.profiling.live.wrapping.before_budget.mean,
-        100_000_000.
-    );
-    state.profiling.detail = Some(Arc::new(CapturePage {
+    let mut client = ready();
+    deliver_profile(&mut client, &state, 1);
+    let decoded = client.profiling().clone();
+    assert_eq!(decoded, state);
+    assert_eq!(decoded.live.rows[0].ready_worst_ns, 6000);
+    assert_eq!(decoded.live.wrapping.before_budget.mean, 100_000_000.);
+    state.detail = Some(Arc::new(CapturePage {
         nodes: vec![NodeTiming::default(); DETAIL_NODES + 1],
         ..page.clone()
     }));
-    assert!(codec::encode_snapshot(&state).is_err());
-    state.profiling.detail = Some(Arc::new(CapturePage {
+    assert!(!state.valid());
+    state.detail = Some(Arc::new(CapturePage {
         request: CaptureRequest {
             generation: 2,
             ..page.request
         },
         ..page
     }));
-    assert!(codec::encode_snapshot(&state).is_err());
-    state.profiling.detail = None;
-    state.profiling.index = Arc::from(vec![TraceSummary::default(); MAX_CAPTURE_TRACES + 1]);
-    assert!(codec::encode_snapshot(&state).is_err());
+    assert!(!state.valid());
+    state.detail = None;
+    state.index = Arc::from(vec![TraceSummary::default(); MAX_CAPTURE_TRACES + 1]);
+    assert!(!state.valid());
+}
+
+fn deliver_profile(client: &mut Client, view: &shoop_app_api::ProfilingView, sequence: u64) {
+    use profiling_protocol::*;
+    let stream = shoop_app_api::profiling_data::wire::stream(
+        1,
+        shoop_app_api::profiling_data::wire::VIEW_TYPE,
+    );
+    wire(
+        client,
+        WireMessage::Diagnostic {
+            authority: AUTHORITY,
+            record: Record::Descriptor(Descriptor {
+                stream,
+                name: Name::new("audio.graph.view").unwrap(),
+                available: true,
+                min_interval_ms: 200,
+                max_interval_ms: 200,
+                snapshot: true,
+                inspect: true,
+            }),
+        },
+    )
+    .unwrap();
+    let mut transfer =
+        profiling_protocol::Transfer::new(stream, sequence, encode_report(view).unwrap()).unwrap();
+    while let Some(chunk) = transfer.next_chunk() {
+        wire(
+            client,
+            WireMessage::Diagnostic {
+                authority: AUTHORITY,
+                record: Record::Data(chunk),
+            },
+        )
+        .unwrap();
+    }
 }
 
 fn attaching() -> Client {
@@ -858,4 +896,87 @@ fn commands_carry_the_latest_session_epoch_and_images_keep_typed_ownership() {
         .unwrap();
     client.disconnect();
     assert!(client.take_captured_image().is_none());
+}
+
+#[shoop_test]
+fn reports_are_independent_of_snapshot_revision_and_ignore_unknown_or_stale_payloads() {
+    use profiling_protocol::*;
+    let mut client = ready();
+    let revision = client.snapshot().unwrap().revision;
+    let mut view = profiling(3);
+    deliver_profile(&mut client, &view, 1);
+    assert_eq!(client.profiling(), &view);
+    assert_eq!(client.snapshot().unwrap().revision, revision);
+    view.detail = Some(Arc::new(
+        shoop_app_api::profiling_data::CapturePage::default(),
+    ));
+    assert!(!view.valid());
+    deliver_profile(&mut client, &view, 2);
+    assert!(client.profiling().detail.is_none());
+    let stream = StreamId {
+        source: 77,
+        epoch: 1,
+        report_type: 0xffff,
+        schema: 99,
+    };
+    let descriptor = Descriptor {
+        stream,
+        name: Name::new("future.host").unwrap(),
+        available: true,
+        min_interval_ms: 1000,
+        max_interval_ms: 1000,
+        snapshot: true,
+        inspect: false,
+    };
+    wire(
+        &mut client,
+        WireMessage::Diagnostic {
+            authority: AUTHORITY,
+            record: Record::Descriptor(descriptor),
+        },
+    )
+    .unwrap();
+    let mut transfer =
+        profiling_protocol::Transfer::new(stream, 1, vec![255; CHUNK_BYTES]).unwrap();
+    wire(
+        &mut client,
+        WireMessage::Diagnostic {
+            authority: AUTHORITY,
+            record: Record::Data(transfer.next_chunk().unwrap()),
+        },
+    )
+    .unwrap();
+    assert!(
+        !client
+            .diagnostics()
+            .sources
+            .iter()
+            .find(|s| s.descriptor.stream.source == 77)
+            .unwrap()
+            .supported
+    );
+    let stale = Authority {
+        generation: ConnectionGeneration(2),
+        ..AUTHORITY
+    };
+    let old = client.profiling().clone();
+    wire(
+        &mut client,
+        WireMessage::Diagnostic {
+            authority: stale,
+            record: Record::Descriptor(Descriptor {
+                stream: StreamId {
+                    epoch: 2,
+                    ..descriptor.stream
+                },
+                ..descriptor
+            }),
+        },
+    )
+    .unwrap();
+    assert_eq!(client.profiling(), &old);
+    assert_eq!(client.state(), State::Ready);
+    client.disconnect();
+    assert!(client.diagnostics().sources.is_empty());
+    assert_eq!(client.profiling(), &shoop_app_api::ProfilingView::default());
 }

@@ -877,9 +877,12 @@ impl Wire for Request {
                 loop_id.put(w)?;
                 w.bool(enabled)
             }
-            Self::Profiling(enabled) => {
+            Self::Diagnostic(request) => {
+                if !request.valid() {
+                    return Err(CodecError::Invalid);
+                }
                 w.u8(35)?;
-                w.bool(enabled)
+                put_diagnostic(&request, w)
             }
             Self::ContentFamilyBegin {
                 id,
@@ -1141,7 +1144,13 @@ impl Wire for Request {
                 loop_id: LoopSlotId::get(r)?,
                 enabled: r.bool()?,
             },
-            35 => Self::Profiling(r.bool()?),
+            35 => {
+                let request: profiling_protocol::Request = get_diagnostic(r)?;
+                if !request.valid() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Diagnostic(request)
+            }
             40 => Self::ContentWindow {
                 id: r.u64()?,
                 frames: r.u64()?,
@@ -2397,235 +2406,15 @@ impl Wire for ClientMessage {
     }
 }
 
-impl Wire for rt_profiling::Packet {
-    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
-        if !self.valid() {
-            return Err(CodecError::Invalid);
-        }
-        w.u64(self.generation)?;
-        w.u64(self.capture)?;
-        w.u64(self.sequence)?;
-        w.u64(self.callback)?;
-        w.u64(self.callback_frame)?;
-        w.u64(self.frame)?;
-        w.u64(self.epoch)?;
-        w.u64(self.start_ns)?;
-        w.u64(self.end_ns)?;
-        w.u64(self.budget_ns)?;
-        w.u32(self.graphs)?;
-        w.u32(self.frames)?;
-        w.u32(self.index)?;
-        w.u32(self.total)?;
-        w.u8(self.len)?;
-        w.u32(self.flags)?;
-        w.u32(self.trigger)?;
-        for sample in &self.samples[..usize::from(self.len)] {
-            w.u64(sample.key)?;
-            w.u64(sample.at)?;
-        }
-        Ok(())
-    }
-    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        let mut packet = Self {
-            generation: r.u64()?,
-            capture: r.u64()?,
-            sequence: r.u64()?,
-            callback: r.u64()?,
-            callback_frame: r.u64()?,
-            frame: r.u64()?,
-            epoch: r.u64()?,
-            start_ns: r.u64()?,
-            end_ns: r.u64()?,
-            budget_ns: r.u64()?,
-            graphs: r.u32()?,
-            frames: r.u32()?,
-            index: r.u32()?,
-            total: r.u32()?,
-            len: r.u8()?,
-            flags: r.u32()?,
-            trigger: r.u32()?,
-            ..Self::default()
-        };
-        if !packet.valid() {
-            return Err(CodecError::Invalid);
-        }
-        for sample in &mut packet.samples[..usize::from(packet.len)] {
-            sample.key = r.u64()?;
-            sample.at = r.u64()?;
-        }
-        Ok(packet)
-    }
-}
-impl Wire for rt_profiling::Port {
-    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
-        w.bool(self.node.is_some())?;
-        w.u64(self.node.unwrap_or(0))?;
-        w.u8(self.kind)?;
-        w.u32(self.channel)
-    }
-    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        let node = r.bool()?;
-        let key = r.u64()?;
-        let kind = r.u8()?;
-        let channel = r.u32()?;
-        if kind > 1
-            || channel > u16::MAX as u32
-            || (node && key >= rt_profiling::MAX_SAMPLES as u64)
-        {
-            return Err(CodecError::Invalid);
-        }
-        Ok(Self {
-            node: node.then_some(key),
-            kind,
-            channel,
-        })
-    }
-}
-impl Wire for rt_profiling::GraphRecord {
-    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
-        use rt_profiling::GraphRecord::*;
-        match self {
-            Begin {
-                nodes,
-                edges,
-                sample_rate,
-                quantum,
-            } => {
-                w.u8(0)?;
-                w.u32(*nodes)?;
-                w.u32(*edges)?;
-                w.u32(*sample_rate)?;
-                w.u32(*quantum)
-            }
-            Node { index, node } => {
-                w.u8(1)?;
-                w.u32(*index)?;
-                w.u64(node.key)?;
-                w.u8(node.group)?;
-                w.u32(node.slot)?;
-                w.u32(node.owner_generation)
-            }
-            Edge { index, edge } => {
-                w.u8(2)?;
-                w.u32(*index)?;
-                edge.source.put(w)?;
-                edge.destination.put(w)
-            }
-            End => w.u8(3),
-            Unavailable => w.u8(4),
-        }
-    }
-    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        use rt_profiling::{GraphEdge, GraphNode};
-        Ok(match r.u8()? {
-            0 => {
-                let nodes = r.u32()?;
-                let edges = r.u32()?;
-                if nodes as usize > rt_profiling::MAX_GRAPH_NODES
-                    || edges as usize > rt_profiling::MAX_GRAPH_EDGES
-                {
-                    return Err(CodecError::Invalid);
-                }
-                Self::Begin {
-                    nodes,
-                    edges,
-                    sample_rate: r.u32()?,
-                    quantum: r.u32()?,
-                }
-            }
-            1 => {
-                let index = r.u32()?;
-                let key = r.u64()?;
-                let group = r.u8()?;
-                let slot = r.u32()?;
-                let owner_generation = r.u32()?;
-                if index as usize >= rt_profiling::MAX_GRAPH_NODES
-                    || key >= rt_profiling::MAX_SAMPLES as u64
-                    || group > 3
-                    || (group != 0 && owner_generation == 0)
-                {
-                    return Err(CodecError::Invalid);
-                }
-                Self::Node {
-                    index,
-                    node: GraphNode {
-                        key,
-                        group,
-                        slot,
-                        owner_generation,
-                    },
-                }
-            }
-            2 => Self::Edge {
-                index: r.u32()?,
-                edge: GraphEdge {
-                    source: rt_profiling::Port::get(r)?,
-                    destination: rt_profiling::Port::get(r)?,
-                },
-            },
-            3 => Self::End,
-            4 => Self::Unavailable,
-            _ => return Err(CodecError::Invalid),
-        })
-    }
-}
-impl Wire for rt_profiling::Status {
-    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
-        w.u64(self.generation)?;
-        w.bool(self.requested)?;
-        w.bool(self.active)?;
-        w.bool(self.available)?;
-        w.u64(self.resolution_ns)?;
-        w.u64(self.dropped)?;
-        w.u64(self.skipped_captures)?;
-        w.u64(self.high_water)?;
-        w.u64(self.storage_bytes)
-    }
-    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        Ok(Self {
-            generation: r.u64()?,
-            requested: r.bool()?,
-            active: r.bool()?,
-            available: r.bool()?,
-            resolution_ns: r.u64()?,
-            dropped: r.u64()?,
-            skipped_captures: r.u64()?,
-            high_water: r.u64()?,
-            storage_bytes: r.u64()?,
-        })
-    }
-}
-
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
-            Self::ProfilingGraph {
-                generation,
-                epoch,
-                record,
-            } => {
-                w.u8(11)?;
-                w.u64(*generation)?;
-                w.u64(*epoch)?;
-                record.put(w)
-            }
-            Self::ProfilingStatus(status) => {
+            Self::Profiling(record) => {
+                if !record.valid() {
+                    return Err(CodecError::Invalid);
+                }
                 w.u8(8)?;
-                status.put(w)
-            }
-            Self::Profiling(packet) => {
-                w.u8(9)?;
-                packet.put(w)
-            }
-            Self::ProfilingNode {
-                generation,
-                key,
-                name,
-            } => {
-                w.u8(10)?;
-                w.u64(*generation)?;
-                w.u64(*key)?;
-                name.put(w)
+                put_diagnostic(record, w)
             }
             Self::Welcome {
                 version,
@@ -2675,18 +2464,13 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
-            11 => Self::ProfilingGraph {
-                generation: r.u64()?,
-                epoch: r.u64()?,
-                record: rt_profiling::GraphRecord::get(r)?,
-            },
-            8 => Self::ProfilingStatus(rt_profiling::Status::get(r)?),
-            9 => Self::Profiling(rt_profiling::Packet::get(r)?),
-            10 => Self::ProfilingNode {
-                generation: r.u64()?,
-                key: r.u64()?,
-                name: Name::get(r)?,
-            },
+            8 => {
+                let record: profiling_protocol::Record = get_diagnostic(r)?;
+                if !record.valid() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Profiling(record)
+            }
             0 => Self::Welcome {
                 version: r.u16()?,
                 capabilities: Capabilities(r.u32()?),
@@ -2770,3 +2554,17 @@ mod host;
 pub use host::{decode_host_reply, decode_host_request, encode_host_reply, encode_host_request};
 
 mod composite;
+
+fn put_diagnostic<T: serde::Serialize>(value: &T, w: &mut Writer<'_>) -> Result<(), CodecError> {
+    let mut bytes = [0; profiling_protocol::MAX_RECORD_BYTES];
+    let len = profiling_protocol::encode(value, &mut bytes).map_err(|_| CodecError::Overflow)?;
+    w.u16(len as u16)?;
+    w.bytes(&bytes[..len])
+}
+fn get_diagnostic<T: serde::de::DeserializeOwned>(r: &mut Reader<'_>) -> Result<T, CodecError> {
+    let len = usize::from(r.u16()?);
+    if len > profiling_protocol::MAX_RECORD_BYTES {
+        return Err(CodecError::Invalid);
+    }
+    profiling_protocol::decode(r.bytes(len)?).map_err(|_| CodecError::Invalid)
+}

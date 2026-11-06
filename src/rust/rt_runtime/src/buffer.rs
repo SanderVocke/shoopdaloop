@@ -115,6 +115,9 @@ pub struct AudioPorts<'a> {
     stride: usize,
     start: usize,
     frames: usize,
+    // Cached because port access is hot and some targets (Cortex-A9) lack hardware division.
+    input_count: usize,
+    output_count: usize,
 }
 
 impl<'a> AudioPorts<'a> {
@@ -134,6 +137,8 @@ impl<'a> AudioPorts<'a> {
             return Err(Error::InvalidShape);
         }
         Ok(Self {
+            input_count: inputs.len() / stride,
+            output_count: outputs.len() / stride,
             inputs,
             outputs,
             stride,
@@ -143,10 +148,10 @@ impl<'a> AudioPorts<'a> {
     }
 
     pub fn input_count(&self) -> usize {
-        self.inputs.len() / self.stride
+        self.input_count
     }
     pub fn output_count(&self) -> usize {
-        self.outputs.len() / self.stride
+        self.output_count
     }
     pub fn input(&self, port: usize) -> Option<&[f32]> {
         if port >= self.input_count() {

@@ -26,3 +26,14 @@ See [LAN setup and the RTOS adapter contract](../../../docs/trusted-lan-networki
 Management also streams bounded host settings/status reports. Each new data
 connection uses a fresh nonce from its composition root; no host/session identity
 is stored or compared by clients.
+
+Diagnostic reports use a separate bounded service channel. Both connection modes
+schedule them on the profiling lane independently of session snapshots. Snapshot
+and media fragments use backpressured bulk delivery; reliable outcomes and
+heartbeats can overtake them. Both modes share the writer scheduler; network mode
+additionally throttles snapshots. A diagnostic record waiting for admission does
+not hold up reliable replies. Source scheduling, assembly loss and replaceable
+snapshot coalescing are specified in the
+[diagnostic contract](../../../docs/profiling/protocol.md). The service's current
+single controller lease owns collection demand; unauthenticated or unattached
+connection candidates do not start sampling.

@@ -117,6 +117,7 @@ impl Service {
         if !self.shutdown_ready {
             return Err(Refusal::NotReady);
         }
+        self.diagnostics.detach();
         if !self.engine_closed {
             self.backend.close_connection();
             self.engine_closed = true;

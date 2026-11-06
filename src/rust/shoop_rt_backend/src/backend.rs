@@ -48,7 +48,7 @@ pub(crate) fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn update_profiling_groups(&mut self) {
-        use shoop_rt_protocol::profiling::Group;
+        use rt_profiling::Group;
         let view = self.profiling.view();
         let Some(topology) = view.topology else {
             return;
@@ -1218,8 +1218,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             }
             return Ok(());
         }
-        self.requests
-            .push(Request::Profiling(enabled), Purpose::Profiling);
+        self.requests.push(
+            Request::Diagnostic(rt_profiling::wire::subscribe(enabled)),
+            Purpose::Profiling,
+        );
         Ok(())
     }
 

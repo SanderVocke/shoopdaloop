@@ -4,6 +4,8 @@ Restore P08 Built-in bus FX and global-control MIDI destinations through the rep
 
 Base: `feat/backend-replacement`, reviewed at `0b6812259ffc00b9a524bb6095cfc2c6b2112847`. Follow the branch’s [write_plan.md](https://github.com/SanderVocke/shoopdaloop/blob/0b6812259ffc00b9a524bb6095cfc2c6b2112847/.agents/prompts/write_plan.md), [P08 requirements](https://github.com/SanderVocke/shoopdaloop/blob/0b6812259ffc00b9a524bb6095cfc2c6b2112847/docs/native_session_recovery/feature-parity.md), and [hosted processor contract](https://github.com/SanderVocke/shoopdaloop/blob/0b6812259ffc00b9a524bb6095cfc2c6b2112847/docs/native_session_recovery/track-processors.md).
 
+Integration base updated at the user's request to `b874bbbbd3166ce0476e033ec09fe4e763b8a731`. Combine its profiling and rendering changes with bus FX, retaining preview injection before processing and the optimized output gains/meters. RT protocol 25 and app protocol 33 distinguish the combined wire format from both parent branches; update the production and browser fixtures together. Scope and acceptance criteria remain unchanged.
+
 # Goals and scope
 
 Restore Built-in FX selection at bus creation and on existing buses; processing, bypass, parameter/type/stage changes, state restoration, embedded editing and MIDI mappings; and global-control MIDI fanout to buses. Preserve ordinary bus lifecycle, ordering, routes, meters, host connections and Master preview.

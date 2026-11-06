@@ -694,7 +694,7 @@ shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
 | Runtime | `rt_runtime` | Generic graph, scheduling, resources and the T1 queues |
 | Loop parts | `shoop_loops` | Musical timing, media and capture; the resolver keeps musical authority |
 | Engine | `shoop_rt_engine` | Node enum over the loop nodes and its own processors (gain, balance, mute, monitoring, meters, summing into Master), prepared pools, structural transactions, the control endpoint and the render owner |
-| Protocol | `shoop_rt_protocol` | Logical engine/host messages, capabilities, limits and canonical codec; no dependencies |
+| Protocol | `shoop_rt_protocol` | Logical engine/host messages, capabilities, limits and canonical codec; no engine, application or host dependency |
 | Shared transport | `shoop_transport*` | Bounded record buffers, framing and socket/shared-memory delivery reused below both app and engine lifecycles |
 | Engine transport | `shoop_rt_transport*` | Engine client lifecycle, credits, typed in-process and encoded record adapters, MessagePort bindings and compatibility carrier aliases |
 | Engine hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices, pump audio, MIDI and messages; no app semantics |
@@ -910,3 +910,16 @@ left for later work.
 The native entry points are `shoopdaloop`, `shoop_host`, and
 `shoop_host_manager`. The manager has an independent native crate and shares
 configuration, protocol and companion-launch libraries with the looper.
+
+## Extensible profiling
+
+`profiling_protocol` is the shared `no_std` diagnostic envelope/control contract.
+Both outer protocols carry opaque versioned payloads; carriers never decode report
+schemas. `rt_profiling::wire` owns audio records and `freertos_profiling` owns task
+samples. The RT backend retains the audio collector, and the app service retains
+user label resolution. Host providers enter at `Service`, independently of the
+RT engine and its graph. Application diagnostic delivery is separate from session
+snapshots/revisions, scoped to the active attachment, bounded and fair across
+sources. The client owns typed decoding and the Audio/Host profiling panels.
+See the [protocol contract](docs/profiling/protocol.md) and
+[profiling guide](docs/runtime_profiling.md) for capacities and measurement limits.

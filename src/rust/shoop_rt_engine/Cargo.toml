@@ -17,6 +17,10 @@ testing = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_profiling = { path = "../rt_profiling" }
+
+profiling_protocol = { path = "../profiling_protocol" }
+
 rt_buffered = { path = "../rt_buffered" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 rt_runtime = { path = "../rt_runtime" }

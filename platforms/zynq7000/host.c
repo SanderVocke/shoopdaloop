@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <string.h>
 #include "deployment/runtime.h"
+#include "profiling.h"
 #ifdef SHOOP_USB_MIDI
 #include "usb/host.h"
 #endif
@@ -54,6 +55,8 @@ uint64_t shoop_millis(void) {
     XTime now; XTime_GetTime(&now);
     return now / (XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2000);
 }
+uint64_t shoop_timer_ticks(void) { XTime now; XTime_GetTime(&now); return now; }
+uint64_t shoop_timer_hz(void) { return XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2; }
 void shoop_token(unsigned char *output) {
 #ifdef SHOOP_DEPLOYMENT
     const unsigned char *token = shoop_deploy_config()->credential;
@@ -112,10 +115,35 @@ void vApplicationTickHook(void) {
         portYIELD_FROM_ISR(wake);
     }
 }
+#ifndef SHOOP_FIXTURE
+/* Render outranks the control task, whose heartbeats keep app sessions alive.
+   Under overload, cap render's share of each window and drop the excess quanta
+   as xruns instead of starving control. */
+#define RENDER_WINDOW_MS 100
+#define RENDER_MAX_PERCENT 80
+#endif
 static void render(void *owner) {
+    /* RunFast for this task's FPSCR: flush denormals to zero and use default NaNs,
+       as NEON always does. Decaying ramps and filters otherwise produce denormals. */
+    uint32_t fpscr;
+    __asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
+    __asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr | (1u << 24) | (1u << 25)));
+#ifndef SHOOP_FIXTURE
+    const uint64_t window = shoop_timer_hz() * RENDER_WINDOW_MS / 1000;
+    uint64_t window_start = shoop_timer_ticks(), busy = 0;
+#endif
     for (;;) {
         uint32_t count = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         if (count > 8) { shoop_render_xruns(owner, count - 8); count = 8; }
+#ifndef SHOOP_FIXTURE
+        uint64_t started = shoop_timer_ticks();
+        if (started - window_start >= window) { window_start = started; busy = 0; }
+        if (busy * 100 >= window * RENDER_MAX_PERCENT) {
+            shoop_render_xruns(owner, count);
+            shoop_deploy_render();
+            continue;
+        }
+#endif
         for (uint32_t i = 0; i < count; ++i) {
 #ifdef SHOOP_FIXTURE
             unsigned frames = shoop_fixture_frames();
@@ -130,6 +158,9 @@ static void render(void *owner) {
                 vTaskSuspend(NULL);
             }
         }
+#ifndef SHOOP_FIXTURE
+        busy += shoop_timer_ticks() - started;
+#endif
     }
 }
 void shoop_start_render(void *owner) {
@@ -230,5 +261,35 @@ int main(void) {
     configASSERT(xTaskCreate(network, "control", 65536, NULL, 3, NULL) == pdPASS);
     vTaskStartScheduler();
     vApplicationAssert("scheduler returned", 0);
+    return 1;
+}
+
+int shoop_profile_tasks(struct shoop_profile_snapshot *output) {
+    if (!output) return 0;
+    static TaskStatus_t tasks[SHOOP_PROFILE_TASKS];
+    uint64_t start = shoop_profile_counter();
+    memset(output, 0, sizeof(*output));
+    output->counter_hz = XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2;
+    output->counter_bits = 64;
+    vTaskSuspendAll();
+    output->count = uxTaskGetSystemState(tasks, SHOOP_PROFILE_TASKS, &output->total_runtime);
+    output->complete = output->count > 0;
+    for (unsigned i = 0; i < output->count; ++i) {
+        const TaskStatus_t *task = &tasks[i];
+        struct shoop_profile_task *out = &output->tasks[i];
+        out->id = shoop_profile_task_identity((void *)task->xHandle);
+        if (!out->id) output->complete = 0;
+        out->state = task->eCurrentState;
+        out->priority = task->uxCurrentPriority;
+        out->base_priority = task->uxBasePriority;
+        out->runtime = task->ulRunTimeCounter;
+        out->stack_free_bytes = (uint64_t)task->usStackHighWaterMark * sizeof(StackType_t);
+        for (unsigned j = 0; j < sizeof(out->name) - 1 && task->pcTaskName[j]; ++j)
+            out->name[j] = (uint8_t)task->pcTaskName[j];
+    }
+    xTaskResumeAll();
+    uint64_t end = shoop_profile_counter();
+    output->captured_us = (start / output->counter_hz) * 1000000 + (start % output->counter_hz) * 1000000 / output->counter_hz;
+    output->collection_us = ((end - start) / output->counter_hz) * 1000000 + ((end - start) % output->counter_hz) * 1000000 / output->counter_hz;
     return 1;
 }

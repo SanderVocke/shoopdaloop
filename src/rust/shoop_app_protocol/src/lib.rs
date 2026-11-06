@@ -26,7 +26,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 32;
+pub const VERSION: u16 = 33;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -130,8 +130,7 @@ pub enum Command {
     NewSession,
     CommitPersistence(persistence::Key),
     SetHostGraphConnected(HostGraphRequest),
-    SetProfiling(bool),
-    InspectProfiling(profiling_data::CaptureRequest),
+    Diagnostic(profiling_protocol::Request),
 }
 
 impl Command {
@@ -143,11 +142,7 @@ impl Command {
             Self::SetLoopChannelTimings { updates, .. } => {
                 updates.len() <= MAX_LOOP_CHANNEL_TIMING_UPDATES
             }
-            Self::InspectProfiling(r) => {
-                r.capture != 0
-                    && r.generation != 0
-                    && r.offset as usize <= profiling_data::MAX_SAMPLES
-            }
+            Self::Diagnostic(request) => request.valid(),
             Self::Preview(command) => command.valid(),
             Self::CommitPersistence(key) => key.valid(),
             Self::SetHostGraphConnected(request) => request.valid(),
@@ -255,7 +250,6 @@ pub struct OperationResult {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
     pub composites: Vec<composite::View>,
-    pub profiling: ProfilingView,
     pub preview: ClickTrackState,
     pub preview_bus: Option<BusId>,
     pub bus_limits: BusLimits,
@@ -322,8 +316,7 @@ impl SessionSnapshot {
                         p.spec.data_type == port.data_type && p.spec.direction == port.direction
                     })
             })
-        }) && self.profiling.valid()
-            && self.host_graph.valid()
+        }) && self.host_graph.valid()
             && self.persistence_epoch != 0
             && self.pending.len() <= MAX_PENDING_OPERATIONS
             && self.results.len() <= MAX_RETAINED_RESULTS
@@ -361,6 +354,10 @@ impl Outcome {
 /// Typed delivery uses these values directly; it never invokes the wire codec.
 #[derive(Clone, Debug)]
 pub enum ServiceMessage {
+    Diagnostic {
+        authority: Authority,
+        record: profiling_protocol::Record,
+    },
     CapturedImage {
         authority: Authority,
         key: persistence::Key,
@@ -408,6 +405,7 @@ pub enum ServiceMessage {
 impl ServiceMessage {
     pub fn valid(&self) -> bool {
         match self {
+            Self::Diagnostic { authority, record } => authority.is_valid() && record.valid(),
             Self::CapturedImage { authority, key, .. } => authority.is_valid() && key.valid(),
             Self::Persistence { authority, reply } => authority.is_valid() && reply.valid(),
             Self::Media {
@@ -555,14 +553,33 @@ pub enum WireMessage {
     ManagementRequest(ManagementRequest),
     ManagementReply(ManagementReply),
     CarrierReady,
+    Diagnostic {
+        authority: Authority,
+        record: profiling_protocol::Record,
+    },
 }
 
 impl WireMessage {
+    pub fn lane(&self) -> shoop_transport::Lane {
+        match self {
+            Self::Diagnostic { .. } => shoop_transport::Lane::Profiling,
+            Self::SnapshotBegin { .. }
+            | Self::SnapshotChunk { .. }
+            | Self::SnapshotEnd { .. }
+            | Self::MediaBegin { .. }
+            | Self::MediaChunk { .. }
+            | Self::MediaEnd { .. }
+            | Self::Persistence { .. } => shoop_transport::Lane::Bulk,
+            _ => shoop_transport::Lane::Reliable,
+        }
+    }
+
     pub fn valid(&self) -> bool {
         let operation_valid = |authority: &Authority, operation: &OperationId| {
             authority.is_valid() && operation.client == authority.client && operation.sequence != 0
         };
         match self {
+            Self::Diagnostic { authority, record } => authority.is_valid() && record.valid(),
             Self::Ping(sequence) | Self::Pong(sequence) => *sequence != 0,
             Self::Client(ClientMessage::StageImage { .. } | ClientMessage::CaptureImage { .. }) => {
                 false
