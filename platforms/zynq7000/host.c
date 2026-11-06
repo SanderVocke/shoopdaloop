@@ -54,6 +54,8 @@ uint64_t shoop_millis(void) {
     XTime now; XTime_GetTime(&now);
     return now / (XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2000);
 }
+uint64_t shoop_timer_ticks(void) { XTime now; XTime_GetTime(&now); return now; }
+uint64_t shoop_timer_hz(void) { return XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2; }
 void shoop_token(unsigned char *output) {
 #ifdef SHOOP_DEPLOYMENT
     const unsigned char *token = shoop_deploy_config()->credential;

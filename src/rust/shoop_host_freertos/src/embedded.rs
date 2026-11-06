@@ -24,6 +24,8 @@ extern "C" {
     fn shoop_write(fd: i32, bytes: *const u8, len: usize) -> i32;
     fn shoop_close(fd: i32);
     fn shoop_millis() -> u64;
+    fn shoop_timer_ticks() -> u64;
+    fn shoop_timer_hz() -> u64;
     fn shoop_delay(ms: u32);
     fn shoop_start_render(owner: *mut c_void);
     fn shoop_stop_render() -> i32;
@@ -292,6 +294,25 @@ impl EngineClock for Clock {
     }
 }
 
+// Nanoseconds per Cortex-A9 global timer tick in 32.32 fixed point.
+static NANOS_PER_TICK_Q32: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+fn profiling_now() -> u64 {
+    let ticks = unsafe { shoop_timer_ticks() };
+    let scale = NANOS_PER_TICK_Q32.load(core::sync::atomic::Ordering::Relaxed);
+    ((u128::from(ticks) * u128::from(scale)) >> 32) as u64
+}
+fn profiling_clock() -> rt_runtime::profiling::Clock {
+    let hz = u128::from(unsafe { shoop_timer_hz() });
+    NANOS_PER_TICK_Q32.store(
+        ((1_000_000_000 << 32) / hz) as u64,
+        core::sync::atomic::Ordering::Relaxed,
+    );
+    rt_runtime::profiling::Clock {
+        now: profiling_now,
+        resolution_ns: ((1_000_000_000 + hz / 2) / hz).max(1) as u64,
+    }
+}
+
 struct Dummy {
     render: Render,
     status: HostStatus,
@@ -382,6 +403,7 @@ pub fn fixture_stats() -> [u32; 6] {
 }
 
 pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
+    let started = profiling_now();
     let dummy = &mut *owner.cast::<Dummy>();
     #[cfg(feature = "usb-midi")]
     let block_time = {
@@ -466,6 +488,10 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
             }
         }
     }
+    let period_ns = (frames as u64 * 1_000_000_000 / u64::from(crate::SAMPLE_RATE)).max(1);
+    dummy
+        .status
+        .set_load(profiling_now().saturating_sub(started) as f32 / period_ns as f32);
     if report.phase == Phase::Disconnected {
         dummy.reset = (0..crate::MIDI_PORTS).all(|port| {
             let mut reset = rt_runtime::midi::ResetState::default();
@@ -578,8 +604,9 @@ fn authenticate(
 
 pub fn run() {
     let description = crate::engine_description();
-    let engine =
+    let mut engine =
         prepare(&description, driver(DriverRunState::Running)).expect("engine preparation");
+    engine.render.set_profiling_clock(profiling_clock());
     let outbox = engine.outbox();
     let dummy = Box::new(Dummy {
         render: engine.render,
