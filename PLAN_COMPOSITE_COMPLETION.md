@@ -3,11 +3,15 @@
 Status: in progress on `feat/composite-completion`.
 
 All three event modes are implemented through engine, adapter, service, client
-and session files. Prepared paired writers and private-load readiness are covered
-by native regressions. Final platform acceptance and delivery remain in progress.
+and session files. Native acceptance, packaged socket/shared-memory probes and
+hosted, self-contained and blocked-main-thread AudioWorklet workflows pass.
+Final-head platform CI and delivery remain in progress on
+[PR #952](https://github.com/SanderVocke/shoopdaloop/pull/952).
 
 Base: `feat/backend-replacement`, inspected at
 `0b6812259ffc00b9a524bb6095cfc2c6b2112847` on 2026-11-06.
+Delivery also incorporates target update
+`27c8927f51303519f621270bd9b521a687c134d7` (profiling graph filtering).
 Follow `.agents/prompts/write_plan.md` and the branch's current agent instructions
 when executing this plan. Recheck the base before implementation.
 
@@ -196,7 +200,7 @@ with no media bindings; Clear recreates its primitive role bindings.
 
 ### Stage 6 — End-to-end acceptance and delivery
 
-- [ ] Run packaged production scenarios for all three modes with nested/mixed
+- [x] Run packaged production scenarios for all three modes with nested/mixed
   arrangements, edits, child controls, monitoring, exact capture and file recovery.
   Exercise native typed/socket and actual hosted/self-contained AudioWorklet paths
   where supported; exercise External topology on its native host scope.
