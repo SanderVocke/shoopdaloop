@@ -47,8 +47,11 @@ impl ControlEndpoint {
             return None;
         }
         let cells = &self.cells.loops[entry.id.0.index as usize];
+        // Window edits can advance timing without changing the media revision.
+        // Resync must refresh either mismatch before streaming a confirmed cut.
         if cells.generation.load(Ordering::Acquire) == entry.id.0.generation
-            && cells.content_revision.load(Ordering::Acquire) != entry.timing.content_revision
+            && (cells.content_revision.load(Ordering::Acquire) != entry.timing.content_revision
+                || cells.timing_revision.load(Ordering::Acquire) != entry.timing.revision)
         {
             return None;
         }

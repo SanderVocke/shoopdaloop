@@ -2224,6 +2224,71 @@ fn timing_edits_fence_an_already_prepared_shared_candidate() {
 }
 
 #[shoop_test]
+fn resync_refreshes_render_owned_timing_without_a_content_change() {
+    let (mut h, capacity) = Fixture::new_production(32, 7);
+    let id = protocol::LoopSlotId(protocol::SlotId::new(0, 1));
+    let Reply::State(before) = h.op(Operation::State { target: target(0) }) else {
+        panic!("initial loop state")
+    };
+    let Reply::Timing(edited) = h.op(Operation::EditWindows {
+        target: target(0),
+        expected_revision: before.timing_revision,
+        expected_content: before.state.content_revision,
+        edit: shoop_loops::windows::Edit {
+            length: Some(256),
+            ..Default::default()
+        },
+    }) else {
+        panic!("render-owned timing edit")
+    };
+    assert_eq!(edited.state.content_revision, before.state.content_revision);
+    assert!(edited.timing_revision > before.timing_revision);
+    h.engine
+        .endpoint
+        .deliver(protocol::ClientMessage::Resync, &mut h.outbox);
+    let mut states = Vec::new();
+    let mut ended = false;
+    for _ in 0..64 {
+        h.render(32, false);
+        h.engine.endpoint.poll(&mut h.outbox);
+        while let Some(message) = h.outbox.pop() {
+            if let protocol::EngineMessage::State(record) = message {
+                if matches!(record, protocol::StateRecord::Begin { .. }) {
+                    states.clear();
+                }
+                ended = matches!(record, protocol::StateRecord::End { .. });
+                states.push(record);
+                if ended {
+                    break;
+                }
+            }
+        }
+        if ended {
+            break;
+        }
+    }
+    assert!(
+        ended,
+        "resync did not finish after a timing-only edit: {:?}",
+        states.last(),
+    );
+    let timing = states
+        .iter()
+        .find_map(|record| match record {
+            protocol::StateRecord::LoopTiming { loop_id, timing } if *loop_id == id => {
+                Some(*timing)
+            }
+            _ => None,
+        })
+        .expect("confirmed loop timing");
+    assert_eq!(timing.length, 256);
+    assert_eq!(timing.revision, edited.timing_revision);
+    assert_eq!(timing.content_revision, before.state.content_revision.0);
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
 fn pooled_indexed_midi_histories_drive_mixed_grabs_ordinary_playback_and_reclaim_all_sources() {
     let q = 32;
     let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
