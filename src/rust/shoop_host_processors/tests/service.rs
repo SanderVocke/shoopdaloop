@@ -20,7 +20,29 @@ const STEP: Duration = Duration::from_millis(16);
 #[shoop_test]
 fn bus_fx_public_controls_global_midi_recovery_and_file_round_trip() {
     use persistence_image::Manifest;
-    let mut f = Fixture::new(ProcessorKind::BuiltInFx);
+    let mut f = Fixture::with_fx_slots(ProcessorKind::BuiltInFx, 4, 8000, 16, 2);
+    let Outcome::TrackCreated { track, .. } = f.run(Command::AddTrack(TrackSpec {
+        name: "Track FX".into(),
+        topology: TrackSpecTopology::DryWet {
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: true,
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+            default_playback_mode: Default::default(),
+        },
+        latency: Default::default(),
+        initial_output_bus_names: vec!["Master".into()],
+        creation_request_id: None,
+    })) else {
+        panic!("track FX creation refused")
+    };
+    f.confirmed(Command::Track {
+        track,
+        action: TrackAction::BuiltInFx(BuiltInFxControl::SetParameter(
+            BuiltInFxParameter::DriveOutput,
+            -9.,
+        )),
+    });
     assert!(f
         .client
         .snapshot()
@@ -113,6 +135,12 @@ fn bus_fx_public_controls_global_midi_recovery_and_file_round_trip() {
     };
     let saved = session.buses[0].fx.as_ref().unwrap();
     assert_eq!(saved.midi_cc_assignments.len(), 1);
+    let saved_track = session
+        .tracks
+        .iter()
+        .find(|entry| entry.id == track)
+        .unwrap();
+    assert!(saved_track.processor_state.is_some());
     f.load(captured.clone(), 401);
     f.ticks(4);
     let restored = &f.client.snapshot().unwrap().buses[0];
@@ -140,6 +168,13 @@ fn bus_fx_public_controls_global_midi_recovery_and_file_round_trip() {
         panic!()
     };
     assert_eq!(resaved.buses[0].fx, session.buses[0].fx);
+    let restored_track = resaved
+        .tracks
+        .iter()
+        .find(|entry| entry.name == "Track FX")
+        .unwrap();
+    assert_ne!(restored_track.id, track);
+    assert_eq!(restored_track.processor_state, saved_track.processor_state);
     let mut malformed = (*captured).clone();
     let Manifest::Session(session) = &mut malformed.manifest else {
         panic!()
@@ -469,6 +504,15 @@ impl Fixture {
         Self::with_format(kind, width, rate, 16)
     }
     fn with_format(kind: ProcessorKind, width: u8, rate: u32, quantum: usize) -> Self {
+        Self::with_fx_slots(kind, width, rate, quantum, 1)
+    }
+    fn with_fx_slots(
+        kind: ProcessorKind,
+        width: u8,
+        rate: u32,
+        quantum: usize,
+        fx_instances: u16,
+    ) -> Self {
         let description = EngineDescription {
             external_dry_wet: true,
             sample_rate: rate,
@@ -496,7 +540,7 @@ impl Fixture {
                 } else {
                     ProcessorPolicy::Off
                 },
-                fx_instances: 1,
+                fx_instances,
                 synth_instances: 1,
                 memory_mb: 128,
             },
