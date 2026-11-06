@@ -157,6 +157,19 @@ not yet ship that helper or a qualified OpenOCD PS initialization script.**
 Do not pass the C file to OpenOCD `source`, or assume an AMD debugger's
 `ps7_init.tcl` works unchanged: debugger-specific Tcl commands need adaptation.
 
+The pinned U-Boot file does not configure UART1. The firmware only enables the
+UART and never sets its baud rate, so a helper derived from that file must add
+the 115200 8N1 setup or the boot banner will not appear.
+
+If AMD's `xsdb` debugger (part of Vitis) is acceptable, use
+[zedboard_ps7_init.tcl](zedboard_ps7_init.tcl): with the `APU` target selected,
+`source` it, then run `ps7_init` and `ps7_post_config`. It is translated from the
+MIT-licensed ZedBoard `ps7_init.c` in the pinned embeddedsw revision. Its register
+sequences match the Vitis 2023.2 `zed.xsa` initialization, including UART1 at
+115200 8N1, and differ from the U-Boot file in clocks and DDR timing. On one
+board with 1.0 silicon, it was followed by a successful DDR scratch readback and
+a firmware start that opened both TCP listeners.
+
 The next hardware iteration should settle the initialization method and add its
 exact build/load/run commands here. Until then, this is an explicit prerequisite,
 not a claim that a clean workstation can complete cold boot using this guide alone.
