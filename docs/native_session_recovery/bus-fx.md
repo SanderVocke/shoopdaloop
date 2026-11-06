@@ -87,6 +87,9 @@ protocol and configuration versions in the fixture must match their codecs.
 Browser startup has the production runner's bounded 60-second readiness allowance;
 rendering retains its separate 180-second watchdog and all sample/memory checks.
 
+CI retains production browser session workflow output in
+`browser-workflow-<profile>-<run>-<attempt>` artifacts, including failed runs.
+
 For mixed track/bus release measurements:
 
 ```sh
