@@ -16,7 +16,10 @@ fn profile_setup(host: &mut OfflineHost, mode: &str) -> Profile {
         now,
         resolution_ns: 1,
     });
-    host.request(Request::Profiling(mode != "off")).unwrap();
+    host.request(Request::Diagnostic(rt_profiling::wire::subscribe(
+        mode != "off",
+    )))
+    .unwrap();
     Collector::default()
 }
 fn profile_message(profile: &mut Profile, message: &EngineMessage) -> usize {
@@ -26,34 +29,16 @@ fn profile_message(profile: &mut Profile, message: &EngineMessage) -> usize {
     } else {
         0
     };
-    match *message {
-        EngineMessage::ProfilingStatus(status) => {
-            profile.status(status);
-            size
+    if let EngineMessage::Profiling(record) = *message {
+        if let Some(record) = rt_profiling::wire::Record::decode(record) {
+            record.collect(profile);
         }
-        EngineMessage::Profiling(packet) => {
-            profile.receive(packet);
-            size
-        }
-        EngineMessage::ProfilingNode {
-            generation,
-            key,
-            name,
-        } => {
-            profile.name(generation, key, name.as_str());
-            size
-        }
-        EngineMessage::ProfilingGraph {
-            generation,
-            epoch,
-            record,
-        } => {
-            profile.graph(generation, epoch, record);
-            size
-        }
-        _ => 0,
+        size
+    } else {
+        0
     }
 }
+
 fn profile_result(profile: &mut Profile) -> (u64, bool, u64, u64, u64) {
     let view = profile.view();
     (

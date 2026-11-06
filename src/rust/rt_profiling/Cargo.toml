@@ -8,6 +8,8 @@ description = "Bounded real-time timing capture and off-thread statistics"
 workspace = true
 
 [dependencies]
+profiling_protocol = { path = "../profiling_protocol" }
+
 rtrb.workspace = true
 libm.workspace = true
 serde = { workspace = true, features = ["derive", "rc"] }

@@ -1655,6 +1655,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "freertos_profiling"
+version = "0.3.0"
+dependencies = [
+ "profiling_protocol",
+ "serde",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "fundsp"
 version = "0.23.0"
 dependencies = [
@@ -4183,6 +4193,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
+name = "profiling_protocol"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "prost"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4523,6 +4543,7 @@ name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
  "libm",
+ "profiling_protocol",
  "rtrb",
  "serde",
  "shoop_wasm_test_support",
@@ -4818,6 +4839,7 @@ name = "shoop_app"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "profiling_protocol",
  "shoop_app_api",
  "shoop_app_client",
  "shoop_app_protocol",
@@ -4840,6 +4862,8 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "freertos_profiling",
+ "profiling_protocol",
  "rt_profiling",
  "serde",
  "shoop_latency",
@@ -4855,6 +4879,8 @@ name = "shoop_app_client"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "freertos_profiling",
+ "profiling_protocol",
  "shoop_app_api",
  "shoop_app_protocol",
  "shoop_scripting",
@@ -4884,6 +4910,7 @@ name = "shoop_app_protocol"
 version = "0.3.0"
 dependencies = [
  "bincode",
+ "profiling_protocol",
  "serde",
  "shoop_app_api",
  "shoop_transport",
@@ -5112,6 +5139,8 @@ dependencies = [
 name = "shoop_host_freertos"
 version = "0.3.0"
 dependencies = [
+ "freertos_profiling",
+ "profiling_protocol",
  "rt_runtime",
  "shoop_app",
  "shoop_app_api",
@@ -5279,6 +5308,8 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "libm",
+ "profiling_protocol",
+ "rt_profiling",
  "shoop_app_api",
  "shoop_backend",
  "shoop_host_processors",
@@ -5296,7 +5327,9 @@ dependencies = [
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
+ "profiling_protocol",
  "rt_buffered",
+ "rt_profiling",
  "rt_runtime",
  "shoop_app_api",
  "shoop_app_protocol",
@@ -5370,7 +5403,9 @@ dependencies = [
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
+ "profiling_protocol",
  "rt_profiling",
+ "serde",
  "shoop_processor_protocol",
  "shoop_transport",
  "shoop_wasm_test_support",
@@ -5381,6 +5416,7 @@ dependencies = [
 name = "shoop_rt_transport"
 version = "0.3.0"
 dependencies = [
+ "rt_profiling",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",
@@ -5393,6 +5429,7 @@ name = "shoop_rt_transport_message_port"
 version = "0.3.0"
 dependencies = [
  "js-sys",
+ "rt_profiling",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_wasm_test_support",

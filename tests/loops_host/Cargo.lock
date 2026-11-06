@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "bincode"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "serde",
+ "unty",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -45,6 +55,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "profiling_protocol"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -58,6 +76,7 @@ name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
  "libm",
+ "profiling_protocol",
  "rtrb",
  "serde",
 ]
@@ -81,10 +100,6 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
-
-[[package]]
-name = "shoop_loop_plan"
-version = "0.3.0"
 
 [[package]]
 name = "serde"
@@ -115,6 +130,10 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "shoop_loop_plan"
+version = "0.3.0"
 
 [[package]]
 name = "shoop_loops"
@@ -151,6 +170,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "wasm-bindgen"

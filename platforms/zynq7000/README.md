@@ -239,3 +239,22 @@ QEMU validates firmware behavior, not physical timing, cache coherency, DMA
 correctness on silicon, codec wiring or production boot packaging. The
 `USE_AMP` coherency failure above only appeared on a physical ZedBoard; see the
 [JTAG guide](boards/jtag-development.md) for hardware results.
+
+## In-app task profiling
+
+Open the application's Profiling window and select **Host**, then enable task
+statistics. The service samples a bounded 32-task table at 1 Hz independently of
+audio profiling. State, priorities, scheduler-accounted CPU and stack high-water
+headroom are displayed; unavailable first/reset CPU intervals remain blank.
+Collection time is reported because kernel snapshots/stack scans suspend scheduling.
+64-bit runtime accounting remains enabled in the kernel even when UI sampling is
+off. Bounded task lifecycle hooks assign non-reused boot-scoped identities and do
+not collect a scheduler trace. The host report works without an audio profiling
+clock and is not represented as graph nodes.
+
+`tests/profiling.py` exercises task identity reuse and map exhaustion natively.
+The production QEMU probe checks actual kernel task samples, interval CPU values,
+independent toggles and restart fencing. The `--ui` integration gate paints the
+Host panel with actual firmware reports. Existing memory, stack, rendering,
+shutdown and authentication checks remain active. QEMU is software evidence;
+physical latency/jitter and scheduler overhead require board qualification.

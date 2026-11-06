@@ -795,7 +795,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_profiling --package rt_runtime --package rt_buffered --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
+            --package profiling_protocol --package freertos_profiling --package rt_profiling --package rt_runtime --package rt_buffered --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
             --package shoop_deployment_protocol --package shoop_app_protocol --package shoop_app_client --package shoop_port_graph \
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \

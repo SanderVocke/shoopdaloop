@@ -1,3 +1,5 @@
+#[path = "profiling.rs"]
+mod profiling;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{ffi::c_void, time::Duration};
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
@@ -704,6 +706,9 @@ pub fn run() {
     unsafe {
         shoop_token(token.as_mut_ptr());
     }
+    service
+        .register_profiling_provider(Box::new(profiling::Tasks::new(boot)))
+        .expect("task profiling provider");
     let mut pending_data = Vec::with_capacity(4);
     let mut pending_management = Vec::with_capacity(4);
     let mut clients: Vec<Session<Stream<Socket>>> = Vec::with_capacity(4);

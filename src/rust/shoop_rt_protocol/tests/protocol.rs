@@ -231,8 +231,8 @@ fn client_samples() -> Vec<ClientMessage> {
             loop_id: loop_id(3),
             enabled: true,
         },
-        Request::Profiling(false),
-        Request::Profiling(true),
+        Request::Diagnostic(rt_profiling::wire::subscribe(false)),
+        Request::Diagnostic(rt_profiling::wire::subscribe(true)),
         Request::ContentWindow {
             id: u64::MAX,
             frames: u64::MAX,

@@ -17,6 +17,8 @@ std = ["serde/std", "bincode/std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+profiling_protocol = { path = "../profiling_protocol" }
+
 shoop_app_api = { path = "../shoop_app_api", features = ["serde"] }
 shoop_transport = { path = "../shoop_transport" }
 serde = { workspace = true, features = ["derive", "rc"] }

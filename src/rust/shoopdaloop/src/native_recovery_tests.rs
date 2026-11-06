@@ -316,6 +316,59 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
         app
     };
     let mut app = open();
+    if is_external {
+        let state = wait(&app.runtime, |state| {
+            state
+                .diagnostics
+                .sources
+                .iter()
+                .any(|s| s.descriptor.stream.source == shoop_app_api::task_profiling::SOURCE)
+        });
+        let stream = state
+            .diagnostics
+            .sources
+            .iter()
+            .find(|s| s.descriptor.stream.source == shoop_app_api::task_profiling::SOURCE)
+            .unwrap()
+            .descriptor
+            .stream;
+        app.runtime
+            .dispatch(AppIntent::ControlProfiling(
+                shoop_app_api::diagnostics_protocol::Request {
+                    source: stream.source,
+                    epoch: stream.epoch,
+                    action: shoop_app_api::diagnostics_protocol::Action::Subscribe {
+                        enabled: true,
+                        interval_ms: 1000,
+                    },
+                },
+            ))
+            .unwrap();
+        let state = wait(&app.runtime, |state| {
+            state
+                .diagnostics
+                .tasks
+                .cpu_percent
+                .iter()
+                .any(Option::is_some)
+        });
+        assert!(state
+            .diagnostics
+            .tasks
+            .sample
+            .as_ref()
+            .unwrap()
+            .tasks
+            .iter()
+            .any(|task| task.name.as_str() == "render"));
+        assert!(!state.profiling.requested);
+        app.widget.open_host_profiling();
+        let context = egui::Context::default();
+        shoop_egui::initialize(&context);
+        let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+        output.textures_delta.clear();
+        println!("Native UI painted real FreeRTOS task profiling with audio profiling off");
+    }
     assert!(app.runtime.remote_entry.as_ref().unwrap().network.is_some());
     let context = egui::Context::default();
     shoop_egui::initialize(&context);

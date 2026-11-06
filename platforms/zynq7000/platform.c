@@ -1,4 +1,5 @@
 #include "FreeRTOS.h"
+#include "xtime_l.h"
 #include "task.h"
 #include "xscugic.h"
 #include "xscutimer.h"
@@ -70,3 +71,9 @@ void *_sbrk(ptrdiff_t increment) {
     void *result = c_heap_next; c_heap_next += increment; return result;
 }
 size_t shoop_c_heap_committed(void) { extern char _heap[]; return c_heap_next ? (size_t)(c_heap_next - _heap) : 0; }
+
+uint64_t shoop_profile_counter(void) {
+    XTime value;
+    XTime_GetTime(&value);
+    return value;
+}

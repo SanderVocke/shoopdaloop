@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod fixture;
+mod profiling;
 mod recovery;
 #[cfg(test)]
 mod tests;
@@ -150,6 +151,7 @@ pub fn run() {
         }
     }
     println!("Management settings confirmed");
+    profiling::run(&mut client, &mut connection);
     if std::env::var_os("SHOOP_ZYNQ_INPUT").is_some() {
         fixture::run_input(&profile, &mut client, &mut connection);
     } else if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {

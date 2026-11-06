@@ -94,6 +94,7 @@ pub enum Startup {
 }
 
 pub struct Runtime {
+    pending_audio_profiling: Option<bool>,
     client: Client,
     delivery: Box<dyn Delivery>,
     scripts: ScriptManager,
@@ -135,6 +136,7 @@ impl Runtime {
         let mut scripts = ScriptManager::new_with_midi(midi);
         scripts.use_confirmed_control_reads();
         let mut runtime = Self {
+            pending_audio_profiling: None,
             client,
             delivery,
             scripts,
@@ -248,6 +250,7 @@ impl Runtime {
         Ok(())
     }
     pub fn fail(&mut self, message: String) {
+        self.pending_audio_profiling = None;
         if self.client.state() != State::Lost {
             self.notify(message);
         }
@@ -273,6 +276,7 @@ impl Runtime {
         self.next_notice = self.next_notice.saturating_add(1);
     }
     pub fn tick(&mut self, elapsed: Duration) {
+        self.client.advance_diagnostics(elapsed);
         let _span = tracing::trace_span!("app.client.tick").entered();
         if self.client.state() != State::Lost {
             if let Err(error) = self.delivery.poll(&mut self.client) {
@@ -377,6 +381,19 @@ impl Runtime {
             self.command_epoch = None;
             self.queue_script_operations();
         }
+        if self.pending_audio_profiling.is_some()
+            && self
+                .profiling_request(profiling_data::wire::subscribe(false))
+                .is_some()
+        {
+            let value = self
+                .pending_audio_profiling
+                .take()
+                .expect("pending preference");
+            if let Err(error) = self.apply_intent(AppIntent::SetProfiling(value)) {
+                self.notify(error.to_string());
+            }
+        }
         self.advance_scripting(elapsed);
         self.queue_script_operations();
         for _ in 0..MAX_MESSAGES_PER_TURN {
@@ -441,6 +458,7 @@ impl Runtime {
         }
     }
     fn lost(&mut self, error: Error) {
+        self.pending_audio_profiling = None;
         if !self.loss_reported {
             self.notify(format!(
                 "Session connection lost ({error:?}). Admitted work remains with its host."
@@ -463,6 +481,7 @@ impl Runtime {
         }
     }
     pub fn detach(&mut self) -> Result<(), Error> {
+        self.pending_audio_profiling = None;
         let message = self.client.detach()?;
         self.stop_scripts();
         self.delivery.send(message)
@@ -594,12 +613,26 @@ impl Runtime {
         self.seen_results
             .retain(|id| self.client.results().contains_key(id));
     }
+    fn profiling_request(
+        &self,
+        mut request: profiling_protocol::Request,
+    ) -> Option<profiling_protocol::Request> {
+        let source = self
+            .client
+            .diagnostics()
+            .sources
+            .iter()
+            .find(|s| s.descriptor.stream.source == request.source)?;
+        request.epoch = source.descriptor.stream.epoch;
+        Some(request)
+    }
     fn project(&mut self) {
         let mut view = self
             .client
             .snapshot()
             .map(|state| AppSnapshot {
-                profiling: state.profiling.clone(),
+                profiling: self.client.profiling().clone(),
+                diagnostics: self.client.diagnostics().clone(),
                 bus_limits: state.bus_limits,
                 tracks: state.tracks.clone(),
                 buses: Arc::clone(&state.buses),
@@ -1214,8 +1247,26 @@ impl Runtime {
                 destination: destination_channel_id,
                 connected,
             },
-            AppIntent::SetProfiling(value) => Command::SetProfiling(value),
-            AppIntent::InspectProfiling(request) => Command::InspectProfiling(request),
+            AppIntent::SetProfiling(value) => {
+                if let Some(request) =
+                    self.profiling_request(profiling_data::wire::subscribe(value))
+                {
+                    self.pending_audio_profiling = None;
+                    Command::Diagnostic(request)
+                } else {
+                    self.pending_audio_profiling = Some(value);
+                    Command::Diagnostic(profiling_protocol::Request {
+                        source: 0,
+                        epoch: 0,
+                        action: profiling_protocol::Action::Discover,
+                    })
+                }
+            }
+            AppIntent::ControlProfiling(request) => Command::Diagnostic(request),
+            AppIntent::InspectProfiling(request) => Command::Diagnostic(
+                self.profiling_request(profiling_data::wire::inspect(request))
+                    .ok_or_else(|| anyhow::anyhow!("Audio profiling source is unavailable"))?,
+            ),
             AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
             AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
             AppIntent::ResetXruns => Command::ResetXruns,

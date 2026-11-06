@@ -58,7 +58,7 @@ fn wait(
             "session probe timed out: state={:?}, pending={:?}, profiling={:?}",
             client.state(),
             client.pending(),
-            client.snapshot().map(|s| &s.profiling)
+            Some(client.profiling())
         );
         std::thread::sleep(Duration::from_millis(2));
     }
@@ -189,13 +189,14 @@ fn launch_with_settings(
 pub fn run(transport: EngineTransportKind) -> Result<()> {
     let (root, mut host, entry) = launch(transport, 16)?;
     let (mut client, mut connection) = attach(&entry)?;
-    ensure!(
-        !client.snapshot().unwrap().profiling.requested,
-        "profiling must default off"
-    );
-    command(&mut client, &mut connection, Command::SetProfiling(true))?;
+    ensure!(!client.profiling().requested, "profiling must default off");
+    command(
+        &mut client,
+        &mut connection,
+        Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(true)),
+    )?;
     wait(&mut client, &mut connection, |client| {
-        client.snapshot().unwrap().profiling.active
+        client.profiling().active
     })?;
     command(
         &mut client,
@@ -271,16 +272,14 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     );
     wait(&mut client, &mut connection, |client| {
         client
-            .snapshot()
-            .unwrap()
-            .profiling
+            .profiling()
             .live
             .rows
             .iter()
             .any(|row| row.samples > 0)
     })?;
     wait(&mut client, &mut connection, |client| {
-        let view = &client.snapshot().unwrap().profiling;
+        let view = &client.profiling();
         view.topology.as_ref().is_some_and(|t| {
             t.generation == view.generation && t.epoch == view.live.epoch && t.valid()
         }) && view
@@ -293,18 +292,16 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
                 .any(|g| g.kind == 2 && g.name.starts_with("Packaged session / "))
     })?;
     wait(&mut client, &mut connection, |client| {
-        let wrapping = &client.snapshot().unwrap().profiling.live.wrapping;
+        let wrapping = &client.profiling().live.wrapping;
         wrapping.before.count > 0
             && wrapping.before.count == wrapping.after.count
             && wrapping.before.count == wrapping.between.count
             && wrapping.valid()
     })?;
-    let profile_generation = client.snapshot().unwrap().profiling.generation;
+    let profile_generation = client.profiling().generation;
     ensure!(
         client
-            .snapshot()
-            .unwrap()
-            .profiling
+            .profiling()
             .live
             .rows
             .iter()
@@ -414,20 +411,28 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         "timing truncated raw media"
     );
     ensure!(
-        client.snapshot().unwrap().profiling.generation >= profile_generation,
+        client.profiling().generation >= profile_generation,
         "profiling generation regressed"
     );
-    command(&mut client, &mut connection, Command::SetProfiling(false))?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(false)),
+    )?;
     wait(&mut client, &mut connection, |client| {
-        !client.snapshot().unwrap().profiling.active
+        !client.profiling().active
     })?;
     ensure!(
-        !client.snapshot().unwrap().profiling.live.rows.is_empty(),
+        !client.profiling().live.rows.is_empty(),
         "disabling lost the final report"
     );
-    command(&mut client, &mut connection, Command::SetProfiling(true))?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(true)),
+    )?;
     wait(&mut client, &mut connection, |client| {
-        let profiling = &client.snapshot().unwrap().profiling;
+        let profiling = &client.profiling();
         profiling.active && profiling.generation > profile_generation
     })?;
     println!(
