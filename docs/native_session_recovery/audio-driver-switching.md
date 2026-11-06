@@ -165,3 +165,11 @@ Startup fallback keeps the requested preference intact and reports the effective
 runtime profile separately. Rollback uses that effective configuration, including
 Dummy after a failed device startup. Target startup refuses degraded device/MIDI
 configurations; it never converts warnings or a fallback into switch success.
+
+CPAL MIDI selectors retain partial-name and index selection for user requests.
+Resolved profiles use `=name` for exact port identities, including names that are
+numeric or equal to `all` or `none`; a name beginning with `=` receives another
+leading `=`. An empty resolved list remains explicitly disabled with `none`.
+Preflight pins the resolved MIDI selections before confirmation, so reopening or
+rollback cannot expand a selected name into other ports with similar names.
+Resolved selections retain their port order when the device inventory is reordered.

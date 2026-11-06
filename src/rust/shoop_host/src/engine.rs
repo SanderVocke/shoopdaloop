@@ -132,13 +132,6 @@ pub fn effective_driver_config(
                 DeviceSelection::None => "none".into(),
                 DeviceSelection::Named(name) => name.clone(),
             };
-            let midi_selectors = |ports: &[String]| {
-                if ports.is_empty() {
-                    vec!["none".to_owned()]
-                } else {
-                    ports.to_vec()
-                }
-            };
             effective.host = config.host.clone().unwrap_or_else(|| "default".into());
             effective.client_name = config.client_name.clone();
             effective.output_device = name(&config.output_device);
@@ -151,10 +144,19 @@ pub fn effective_driver_config(
             effective.input_channels = config
                 .input_channels
                 .map_or_else(|| "all".into(), |n| n.to_string());
-            effective.midi_inputs = midi_selectors(&config.midi_inputs);
-            effective.midi_outputs = midi_selectors(&config.midi_outputs);
+            effective.midi_inputs = resolved_midi_selectors(&config.midi_inputs);
+            effective.midi_outputs = resolved_midi_selectors(&config.midi_outputs);
             AudioDriverConfig::Cpal(effective)
         }
+    }
+}
+
+#[cfg(feature = "cpal")]
+pub(crate) fn resolved_midi_selectors(ports: &[String]) -> Vec<String> {
+    if ports.is_empty() {
+        vec!["none".to_owned()]
+    } else {
+        ports.iter().map(|name| format!("={name}")).collect()
     }
 }
 
@@ -190,7 +192,7 @@ pub fn dummy_config(config: &DummyAudioDriverConfig) -> DummyConfig {
 
 /// CPAL settings, with the legacy driver's selectors: `default`, `none`, an index, an exact
 /// name or part of one for devices; `all`, `none`, indices, names or parts of names for MIDI
-/// ports.
+/// ports. Prefix a MIDI name with `=` to match it exactly.
 #[cfg(feature = "cpal")]
 pub fn cpal_config(
     config: &CpalAudioDriverConfig,
@@ -300,7 +302,11 @@ pub fn midi_ports(
         return Vec::new();
     }
     let matches = |selector: &String, index: usize, port: &String| {
-        *selector == index.to_string() || selector == port || port.contains(selector.as_str())
+        if let Some(name) = selector.strip_prefix('=') {
+            name == port
+        } else {
+            *selector == index.to_string() || selector == port || port.contains(selector.as_str())
+        }
     };
     let all = selectors.is_empty() || selectors.iter().any(|selector| selector == "all");
     if !all {
@@ -324,6 +330,13 @@ pub fn midi_ports(
         })
         .map(|(_, port)| port.clone())
         .collect::<Vec<_>>();
+    if !selectors.is_empty() && selectors.iter().all(|selector| selector.starts_with('=')) {
+        selected.sort_by_key(|port| {
+            selectors
+                .iter()
+                .position(|selector| selector.strip_prefix('=') == Some(port.as_str()))
+        });
+    }
     if selected.len() > MAX_HOST_PORTS {
         warnings.push(format!(
             "The new engine backend opens only the first {MAX_HOST_PORTS} of {} MIDI {direction}s",
@@ -371,6 +384,10 @@ mod tests {
     #[shoop_test]
     fn effective_cpal_profile_preserves_midi_selection_when_inventory_changes() {
         for (inputs, outputs, initially_empty) in [
+            ("0", "0", false),
+            ("=0", "=0", false),
+            ("=all", "=none", false),
+            ("==Prefixed", "==Prefixed", false),
             ("none", "none", false),
             ("none", "all", false),
             ("all", "none", false),
@@ -383,8 +400,20 @@ mod tests {
                 ..Default::default()
             });
             let mut inventory = Discovery {
-                midi_inputs: vec!["Keys".into(), "Pads".into()],
-                midi_outputs: vec!["Synth".into(), "Drums".into()],
+                midi_inputs: ["Keys", "Keys Pro", "Pads", "0", "all", "none", "=Prefixed"]
+                    .map(String::from)
+                    .to_vec(),
+                midi_outputs: [
+                    "Synth",
+                    "Synth Pro",
+                    "Drums",
+                    "0",
+                    "all",
+                    "none",
+                    "=Prefixed",
+                ]
+                .map(String::from)
+                .to_vec(),
                 ..Default::default()
             };
             let initial = if initially_empty {
@@ -395,8 +424,10 @@ mod tests {
             let (source, warnings) = native_config(&requested, &Default::default(), &initial);
             assert!(warnings.is_empty(), "{warnings:?}");
             let effective = effective_driver_config(&requested, &source.driver, 48_000, 256);
-            inventory.midi_inputs.push("New input".into());
-            inventory.midi_outputs.push("New output".into());
+            inventory.midi_inputs.push("Keys Mini".into());
+            inventory.midi_outputs.push("Synth Mini".into());
+            inventory.midi_inputs.reverse();
+            inventory.midi_outputs.reverse();
             let (reopened, warnings) = native_config(&effective, &Default::default(), &inventory);
             assert!(warnings.is_empty(), "{warnings:?}");
             let (DriverConfig::Cpal(source), DriverConfig::Cpal(reopened)) =
@@ -406,6 +437,22 @@ mod tests {
             };
             assert_eq!(reopened.midi_inputs, source.midi_inputs, "{effective:?}");
             assert_eq!(reopened.midi_outputs, source.midi_outputs, "{effective:?}");
+            inventory
+                .midi_inputs
+                .retain(|name| !source.midi_inputs.contains(name));
+            inventory
+                .midi_outputs
+                .retain(|name| !source.midi_outputs.contains(name));
+            let (missing, warnings) = native_config(&effective, &Default::default(), &inventory);
+            assert_eq!(
+                warnings.is_empty(),
+                source.midi_inputs.is_empty() && source.midi_outputs.is_empty()
+            );
+            let DriverConfig::Cpal(missing) = missing.driver else {
+                panic!("expected CPAL configuration")
+            };
+            assert!(missing.midi_inputs.is_empty());
+            assert!(missing.midi_outputs.is_empty());
         }
     }
 }

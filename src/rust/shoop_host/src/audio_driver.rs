@@ -423,9 +423,11 @@ fn preflight(
         };
         cpal.output_device = name(&native_cpal.output_device);
         cpal.input_device = name(&native_cpal.input_device);
+        cpal.midi_inputs = crate::engine::resolved_midi_selectors(&native_cpal.midi_inputs);
+        cpal.midi_outputs = crate::engine::resolved_midi_selectors(&native_cpal.midi_outputs);
         ensure!(
             configured.bounded(),
-            "resolved device names exceed the audio profile limits"
+            "resolved device or MIDI names exceed the audio profile limits"
         );
     }
     let (sample_rate, buffer_size, instance_name) = match &native.driver {

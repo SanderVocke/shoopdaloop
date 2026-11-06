@@ -864,7 +864,9 @@ pub struct CpalAudioDriverConfig {
     pub output_channels: String,
     pub input_channels: String,
     pub capture_ring_frames: u32,
+    /// MIDI selectors; `=name` selects one exact port name.
     pub midi_inputs: Vec<String>,
+    /// MIDI selectors; `=name` selects one exact port name.
     pub midi_outputs: Vec<String>,
 }
 
