@@ -341,6 +341,15 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
                 && state.status.processed_frames > before,
             "recording did not survive UI loss"
         );
+        command(
+            &mut client,
+            &mut connection,
+            Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(true)),
+        )?;
+        wait(&mut client, &mut connection, |client| {
+            let profiling = client.profiling();
+            profiling.active && profiling.generation > profile_generation
+        })?;
     }
     command(
         &mut client,
@@ -486,6 +495,11 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         client.profiling().generation >= profile_generation,
         "profiling generation regressed"
     );
+    wait(&mut client, &mut connection, |client| {
+        let profiling = client.profiling();
+        profiling.active && profiling.live.rows.iter().any(|row| row.samples > 0)
+    })?;
+    let profile_generation = client.profiling().generation;
     command(
         &mut client,
         &mut connection,
