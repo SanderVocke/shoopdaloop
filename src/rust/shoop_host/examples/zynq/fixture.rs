@@ -529,6 +529,7 @@ pub fn run_input(
             loops: vec![loops[2]],
         }),
     ));
+    // Command confirmation can precede the render owner's transport telemetry.
     wait_mode(client, connection, track, loops[2], LoopMode::Recording);
     assert_eq!(
         client
