@@ -540,7 +540,7 @@ fn synth_editor_learn_recorded_restore_and_detached_controls_run_through_the_ser
 }
 
 #[shoop_test]
-fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_interactions() {
+fn hosted_tracks_and_composites_share_archives_and_refuse_invalid_edits_atomically() {
     #[cfg(feature = "builtin-fx")]
     let (kind, processor_type) = (ProcessorKind::BuiltInFx, TrackProcessorTypeId::BUILTIN_FX);
     #[cfg(not(feature = "builtin-fx"))]
@@ -670,7 +670,7 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
         },
         composite::Edit::Append {
             target: direct_loops[0],
-            add: vec![hosted_loops[1]],
+            add: vec![direct_loops[0]],
             parallel: false,
             convert_if_empty: false,
         },
@@ -693,8 +693,8 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
             .fx
     );
     let image = f.capture(901, None);
-    let mut unsupported = (*image).clone();
-    let persistence_image::Manifest::Session(session) = &mut unsupported.manifest else {
+    let mut processed_child_image = (*image).clone();
+    let persistence_image::Manifest::Session(session) = &mut processed_child_image.manifest else {
         panic!("session capture")
     };
     let child = session
@@ -719,20 +719,37 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
     for span in &mut arrangement.prepared.spans {
         span.target = child;
     }
-    unsupported.validate().unwrap();
-    f.refuse_load(std::sync::Arc::new(unsupported), 902);
+    processed_child_image.validate().unwrap();
+    f.load(std::sync::Arc::new(processed_child_image), 902);
+    let loaded = f.client.snapshot().unwrap();
+    let hosted_child = loaded
+        .tracks
+        .iter()
+        .find(|track| track.name == "hosted")
+        .unwrap();
     assert_eq!(
-        f.client.snapshot().unwrap().composites[0].active,
-        Some(active.clone())
+        loaded.composites[0]
+            .active
+            .as_ref()
+            .unwrap()
+            .document
+            .instances[0]
+            .loop_id,
+        hosted_child.loops[1].id
     );
     assert_eq!(
-        f.track(hosted).fx,
+        hosted_child
+            .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor)),
         before
             .tracks
             .iter()
             .find(|track| track.id == hosted)
             .unwrap()
             .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor))
     );
     f.load(image, 903);
     f.ticks(4);
@@ -751,13 +768,18 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
         DefaultPlaybackMode::DryThroughWet
     );
     assert_eq!(
-        restored_hosted.fx,
+        restored_hosted
+            .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor)),
         before
             .tracks
             .iter()
             .find(|track| track.id == hosted)
             .unwrap()
             .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor))
     );
     assert!(after
         .tracks
