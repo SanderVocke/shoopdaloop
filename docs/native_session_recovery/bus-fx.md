@@ -43,6 +43,10 @@ reactivation drains them through the bounded control lane. Saturation keeps the
 existing pending-control diagnostics and does not multiply delivery for tracks
 routed to the same bus.
 
+Processor state publication rotates across track and bus owners when the reliable
+queue fills. Continuous bus MIDI observations cannot starve another processor's
+editor state, including with a single-record outbox.
+
 Coherent capture carries bus DSP settings and mappings through the portable image
 and existing session archive. Loads validate all settings, mappings and aggregate
 track/bus capacity before candidate activation, retain global-port intent, and

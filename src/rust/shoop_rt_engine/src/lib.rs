@@ -715,6 +715,7 @@ fn prepare_complete(
     };
     let endpoint = ControlEndpoint {
         projected_bus_processors: vec![None; description.buses as usize].into_boxed_slice(),
+        processor_projection_cursor: 0,
         projected_processors: vec![None; strips].into_boxed_slice(),
         projected_timing: vec![None; loops].into_boxed_slice(),
         projected_recorded: vec![None; loops].into_boxed_slice(),

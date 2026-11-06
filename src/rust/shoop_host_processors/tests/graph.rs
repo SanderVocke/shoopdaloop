@@ -245,6 +245,56 @@ fn bus_fx_state_progresses_with_one_reliable_credit() {
 
 #[cfg(feature = "builtin-fx")]
 #[shoop_test]
+fn continuous_bus_midi_does_not_starve_track_state_with_one_reliable_record() {
+    let mut d = description(1, ProcessorKind::BuiltInFx);
+    d.master_channels = 1;
+    d.master_connections = vec![(0, 0)];
+    d.processors.fx_instances = 2;
+    d.reliable_credits = 1;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    done(
+        &mut h,
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(4),
+            connected: true,
+        },
+    );
+    while h.receive().is_some() {}
+    let (mut render, client) = h.into_parts();
+    let (mut endpoint, _) = client.into_carrier().into_parts();
+    let mut out = shoop_rt_transport::carrier::Outbox::new(1, 0, 0);
+    let (mut bus, mut track) = (0, 0);
+    for value in 0..128 {
+        render
+            .midi_input_mut(0)
+            .push(0, 16, &[0xb0, 17, value])
+            .unwrap();
+        assert_no_heap(|| render.process(16)).unwrap();
+        assert_no_heap(|| shoop_rt_transport::carrier::Endpoint::poll(&mut endpoint, &mut out));
+        match out.pop() {
+            Some(EngineMessage::State(StateRecord::BusProcessorState { .. })) => bus += 1,
+            Some(EngineMessage::State(StateRecord::ProcessorState { .. })) => track += 1,
+            _ => {}
+        }
+    }
+    assert!(
+        bus >= 32 && track >= 32,
+        "processor state starved: bus={bus}, track={track}"
+    );
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
 fn bus_fx_global_lane_is_independent_of_audio_routes_and_keeps_bypassed_controls() {
     let mut d = description(1, ProcessorKind::BuiltInFx);
     d.master_channels = 1;

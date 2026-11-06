@@ -173,6 +173,7 @@ pub struct ControlEndpoint {
             Option<shoop_rt_protocol::processors::Snapshot>,
         )>],
     >,
+    pub(crate) processor_projection_cursor: usize,
     pub(crate) projected_processors: Box<
         [Option<(
             StripId,
@@ -573,6 +574,7 @@ impl ControlEndpoint {
         self.results.clear();
         self.unanswered = 0;
         self.resync = None;
+        self.processor_projection_cursor = 0;
         self.projected_bus_processors.fill(None);
         self.projected_processors.fill(None);
         self.projected_recorded.fill(None);

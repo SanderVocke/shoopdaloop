@@ -5,7 +5,7 @@ use shoop_rt_protocol::{
     BusControl, BusPort, EngineMessage, EnginePort, HostPortId, Lane, PortKind, StateRecord,
     StripPort,
 };
-use shoop_rt_transport::carrier::Outbox;
+use shoop_rt_transport::carrier::{CarrierError, Outbox};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Resync {
@@ -130,77 +130,91 @@ impl ControlEndpoint {
         if !self.connected || self.resync.is_some() {
             return;
         }
-        for index in 0..self.model.buses.len() {
-            let Some(bus) = self.model.buses[index] else {
-                self.projected_bus_processors[index] = None;
-                continue;
+        let buses = self.model.buses.len();
+        let count = buses + self.model.strips.len();
+        for _ in 0..count {
+            let index = self.processor_projection_cursor;
+            let result = if index < buses {
+                self.project_bus_processor(index, out)
+            } else {
+                self.project_track_processor(index - buses, out)
             };
-            let slot = bus.processor.and_then(|owner| owner.slot);
-            let record = self.bus_processor_record(bus.id);
-            let snapshot = match record {
-                Some(StateRecord::BusProcessorState { mut snapshot, .. }) => {
-                    snapshot.source_frame = 0;
-                    Some(snapshot)
-                }
-                _ => None,
-            };
-            if slot.is_some() && snapshot.is_none() {
-                continue;
-            }
-            let key = (bus.id, slot, snapshot);
-            if self.projected_bus_processors[index] == Some(key) {
-                continue;
-            }
-            if out
-                .push(EngineMessage::State(
-                    record.unwrap_or(StateRecord::BusProcessor { bus: bus.id, slot }),
-                ))
-                .is_err()
-            {
+            if result.is_err() {
                 return;
             }
-            self.projected_bus_processors[index] = Some(key);
+            self.processor_projection_cursor = (index + 1) % count;
         }
-        for index in 0..self.model.strips.len() {
-            let Some(strip) = self.model.strips[index] else {
-                self.projected_processors[index] = None;
-                continue;
-            };
-            let Some(StateRecord::ProcessorState {
-                strip,
-                slot,
-                snapshot,
-            }) = self.processor_record(strip.id)
-            else {
-                continue;
-            };
-            if self.projected_processors[index].is_some_and(
-                |(previous_strip, previous_slot, previous)| {
-                    previous_strip == strip
-                        && previous_slot == slot
-                        && previous.phase == snapshot.phase
-                        && previous.global_midi == snapshot.global_midi
-                        && previous
-                            .values
-                            .iter()
-                            .zip(snapshot.values)
-                            .all(|(a, b)| a.to_bits() == b.to_bits())
-                },
-            ) {
-                continue;
+    }
+    fn project_bus_processor(
+        &mut self,
+        index: usize,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        let Some(bus) = self.model.buses[index] else {
+            self.projected_bus_processors[index] = None;
+            return Ok(());
+        };
+        let slot = bus.processor.and_then(|owner| owner.slot);
+        let record = self.bus_processor_record(bus.id);
+        let snapshot = match record {
+            Some(StateRecord::BusProcessorState { mut snapshot, .. }) => {
+                snapshot.source_frame = 0;
+                Some(snapshot)
             }
-            if out
-                .push(EngineMessage::State(StateRecord::ProcessorState {
-                    strip,
-                    slot,
-                    snapshot,
-                }))
-                .is_err()
-            {
-                return;
-            }
-            self.projected_processors[index] = Some((strip, slot, snapshot));
+            _ => None,
+        };
+        if slot.is_some() && snapshot.is_none() {
+            return Ok(());
         }
+        let key = (bus.id, slot, snapshot);
+        if self.projected_bus_processors[index] == Some(key) {
+            return Ok(());
+        }
+        out.push(EngineMessage::State(
+            record.unwrap_or(StateRecord::BusProcessor { bus: bus.id, slot }),
+        ))?;
+        self.projected_bus_processors[index] = Some(key);
+        Ok(())
+    }
+    fn project_track_processor(
+        &mut self,
+        index: usize,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        let Some(strip) = self.model.strips[index] else {
+            self.projected_processors[index] = None;
+            return Ok(());
+        };
+        let Some(StateRecord::ProcessorState {
+            strip,
+            slot,
+            snapshot,
+        }) = self.processor_record(strip.id)
+        else {
+            return Ok(());
+        };
+        if self.projected_processors[index].is_some_and(
+            |(previous_strip, previous_slot, previous)| {
+                previous_strip == strip
+                    && previous_slot == slot
+                    && previous.phase == snapshot.phase
+                    && previous.global_midi == snapshot.global_midi
+                    && previous
+                        .values
+                        .iter()
+                        .zip(snapshot.values)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+            },
+        ) {
+            return Ok(());
+        }
+        out.push(EngineMessage::State(StateRecord::ProcessorState {
+            strip,
+            slot,
+            snapshot,
+        }))?;
+        self.projected_processors[index] = Some((strip, slot, snapshot));
+        Ok(())
     }
     fn host_port_id(&self, kind: PortKind, index: usize) -> HostPortId {
         let [audio_in, audio_out, midi_in, _] = self.settings.host;
