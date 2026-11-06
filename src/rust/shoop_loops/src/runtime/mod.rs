@@ -605,7 +605,11 @@ struct Row {
 enum PendingKind {
     Configuration {
         request: RequestId,
-        reply: Reply,
+        node_pairs: NodePairStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
     },
     InputBatch,
     Program {

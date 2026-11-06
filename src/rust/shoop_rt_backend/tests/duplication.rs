@@ -324,3 +324,80 @@ fn replacing_playing_midi_emits_destination_cleanup_before_retirement() {
         "a playing destination must release its held note before its renderer is retired"
     );
 }
+
+#[shoop_test]
+fn active_parent_refusal_preserves_playback_and_a_later_copy_can_retry() {
+    let mut backend = stack(&description());
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "active-parent".into(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 3,
+        })
+        .unwrap();
+    backend.wait_idle();
+    for (id, value) in [(track.loops[0], 0.25), (track.loops[1], -0.5)] {
+        backend
+            .replace_loop_content(
+                id,
+                &BackendLoopContentUpdate {
+                    length: Some(64),
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![value; 64].into(),
+                        start_offset: Some(0),
+                        capture_alignment_frames: Some(0),
+                        preplay: Some(0),
+                    }],
+                    midi: vec![],
+                },
+            )
+            .unwrap();
+    }
+    let parent = backend
+        .convert_empty_loop_to_composite(track.loops[2])
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .configure_prepared_composite_loop(
+            parent,
+            &BackendPreparedCompositePlan {
+                kind: BackendCompositeKind::Regular,
+                sync_source: None,
+                unit_frames: 64,
+                iterations: 100_000,
+                entries: 1,
+                spans: vec![BackendCompositeSpan {
+                    target: BackendCompositeTarget::Loop(track.loops[1]),
+                    start: 0,
+                    end: 100_000,
+                    occurrence_start: 0,
+                    ordinal: 0,
+                    mode: BackendLoopMode::Playing,
+                }],
+            },
+        )
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_composite_loop(parent, BackendLoopMode::Playing, None, None)
+        .unwrap();
+    backend.wait_idle();
+    let before = backend.capture_session().unwrap();
+    assert!(copy(&mut backend, track.loops[0], Some(track.loops[1]), &[]).is_err());
+    let state = backend.poll().unwrap();
+    assert_eq!(state.loops[&track.loops[1]].mode, BackendLoopMode::Playing);
+    assert_eq!(state.composites[&parent].mode, BackendLoopMode::Playing);
+    assert_eq!(backend.capture_session().unwrap(), before);
+    backend
+        .transition_composite_loop(parent, BackendLoopMode::Stopped, None, None)
+        .unwrap();
+    backend.wait_idle();
+    copy(&mut backend, track.loops[0], Some(track.loops[1]), &[]).unwrap();
+    let after = backend.capture_session().unwrap();
+    assert_eq!(
+        after.tracks[0].loops[0].audio,
+        after.tracks[0].loops[1].audio
+    );
+}

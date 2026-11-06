@@ -26,6 +26,90 @@ impl LoopPlanner {
         self.node_pairs
             .append(id, edit, row.binding, &mut self.ledger, io)
     }
+    // Keep preparation temporaries off the general callback handler stack.
+    #[inline(never)]
+    pub(super) fn edit_configuration(
+        &mut self,
+        stop: Option<LoopId>,
+        node_pairs: NodePairStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+        context: &mut OperationContext<'_, Operation, Reply>,
+    ) -> Result<Disposition<Reply>, Failure> {
+        let stopping = if let Some(target) = stop {
+            let state = self.resolver.state(target)?;
+            if state.mode.records() {
+                return Err(crate::Error::InvalidState.into());
+            }
+            if state.composite.is_none() {
+                let row = self.row(target)?;
+                if row.active.is_some()
+                    || row.prepared.is_some()
+                    || row.interval.is_some()
+                    || row.frozen.iter().any(Option::is_some)
+                {
+                    return Err(Error::InvalidState.into());
+                }
+            }
+            let slot = self.pending_slot(context.recovery)?;
+            let request = self.resolver.submit(crate::Request {
+                target,
+                sequence: context.token.sequence(),
+                at: context.requested_frame,
+                timing: Timing::At,
+                transition: Transition::Stop,
+            })?;
+            Some((slot, request))
+        } else {
+            None
+        };
+        let activation = self.activate_configuration(
+            node_pairs,
+            topology,
+            graph,
+            graph_epoch,
+            topology_epoch,
+            false,
+            true,
+            &mut context.graphs,
+            &mut context.resources,
+        );
+        let (graph_epoch, topology_epoch) = match activation {
+            Ok(epochs) => epochs,
+            Err(error) => {
+                if let Some((_, request)) = stopping {
+                    self.resolver.cancel(request)?;
+                    self.resolver.take_completion(request)?;
+                }
+                return Err(error);
+            }
+        };
+        if let Some((slot, request)) = stopping {
+            self.pending[slot] = Some(Pending {
+                token: context.token,
+                kind: PendingKind::Configuration {
+                    request,
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                },
+                forwarded: false,
+            });
+            Ok(Disposition::Pending)
+        } else {
+            Ok(Disposition::Complete(Reply::ConfigurationActivated {
+                node_pairs,
+                topology,
+                graph,
+                graph_epoch,
+                topology_epoch,
+            }))
+        }
+    }
     pub(super) fn activate_configuration(
         &mut self,
         node_pairs: NodePairStageId,
