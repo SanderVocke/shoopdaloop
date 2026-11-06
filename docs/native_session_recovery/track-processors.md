@@ -94,11 +94,14 @@ FX remain separately refused. P06 is complete within this contract; P07 remains 
 ## Delivery limitations
 
 P06 was closed at the user's direction before all platform CI completed.
-The unused-helper build failure and stale lockfile pins were subsequently repaired;
-that does not establish a fully green current matrix. Check
-[PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946/checks) for final
-platform results. Carla, bus FX and dependent composite modes remain open in the
-[feature backlog](feature-parity.md).
+The unused-helper build failure and stale lockfile pins were subsequently repaired.
+[PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946/checks) retains the
+original qualified delivery evidence;
+[PR #952](https://github.com/SanderVocke/shoopdaloop/pull/952) records current
+processor/composite acceptance and platform CI with the approved web-debug
+exception. Dependent composite modes are complete under
+[P17](feature-parity.md#p17-composite-mode-integration). Carla and bus FX remain
+open in the [feature backlog](feature-parity.md).
 
 Saturated-synth measurements exceeded their block period in one run. Later lower
 measurements do not erase that limitation or establish a hardware deadline guarantee.

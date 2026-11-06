@@ -1,12 +1,13 @@
 # P17 — Complete composite mode integration
 
-Status: in progress on `feat/composite-completion`.
-
-All three event modes are implemented through engine, adapter, service, client
-and session files. Native acceptance, packaged socket/shared-memory probes and
-hosted, self-contained and blocked-main-thread AudioWorklet workflows pass.
-Final-head platform CI and delivery remain in progress on
+Status: COMPLETE on `feat/composite-completion`; delivered in the unmerged
 [PR #952](https://github.com/SanderVocke/shoopdaloop/pull/952).
+
+All six stages are complete. All three event modes execute through engine,
+adapter, service, client and session files. Native, packaged and AudioWorklet
+acceptance plus final-head platform CI, with the approved web-debug exception,
+are recorded in the PR. No automated reviewer submitted feedback or approval;
+the PR remains unmerged.
 
 Base: `feat/backend-replacement`, inspected at
 `0b6812259ffc00b9a524bb6095cfc2c6b2112847` on 2026-11-06.
@@ -80,6 +81,14 @@ scheduler does not replace P03's frame-clock contract.
    native, browser/worklet and firmware/platform checks pass on the final PR head.
    Contracts and P17 status match shipped support. Missing or incomplete checks
    remain explicit; earlier P03/P05/P06 results do not certify this change.
+
+**User-directed CI exception (2026-11-06):** the user explicitly waived the
+web-debug `Exercise browser session service and AudioWorklet` failure in
+[job 127822294324](https://github.com/SanderVocke/shoopdaloop/actions/runs/42196800371/job/127822294324)
+and directed delivery to continue. That browser acceptance step is waived for
+this delivery and its result remains visible. Other web-debug steps and platform
+checks remain required. Node Wasm, library browser suites and web-release
+hosted/self-contained/blocked-main-thread acceptance have passed.
 
 ## Design rules
 
@@ -204,20 +213,20 @@ with no media bindings; Clear recreates its primitive role bindings.
   arrangements, edits, child controls, monitoring, exact capture and file recovery.
   Exercise native typed/socket and actual hosted/self-contained AudioWorklet paths
   where supported; exercise External topology on its native host scope.
-- [ ] Run formatting, warning-denying builds, test-policy/parity/dependency-boundary
+- [x] Run formatting, warning-denying builds, test-policy/parity/dependency-boundary
   checks and applicable broad native suites per `VALIDATION.md`. Run affected
   Node/browser/worklet/artifact and firmware/platform suites through CI; use real
   host facilities for tests that require them. Select ownership-focused Miri checks
   when writer/lifetime changes warrant them, without treating timeouts as passes.
-- [ ] Update `docs/native_session_recovery/composites.md`, affected processor/media
+- [x] Update `docs/native_session_recovery/composites.md`, affected processor/media
   contracts and the P17 ledger. Record revision-specific commands, failures,
   capacity observations and acceptance results in PR/CI artifacts. Correct related
   P01/P02 caveats without claiming their unrelated remaining work complete.
-- [ ] Commit and push milestones; open a PR targeting `feat/backend-replacement`.
+- [x] Commit and push milestones; open a PR targeting `feat/backend-replacement`.
   Check applicable final-head CI through completion, fix failures attributable to
   this work and rerun affected checks. Reconcile target-branch updates before final
   acceptance; do not substitute green checks from an earlier head.
-- [ ] Inspect automated reviews and repeatedly address substantive feedback through
+- [x] Inspect automated reviews and repeatedly address substantive feedback through
   reviewer approval. Report absent/unavailable reviewers explicitly rather than
   inventing approval. Leave the PR unmerged and the worktree clean; mark P17 complete
   only when the acceptance criteria have evidence.

@@ -4,9 +4,11 @@ Status: the direct-track core is COMPLETE under [P03](feature-parity.md) and
 [the implementation plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_P03_COMPOSITES.md). The public composite
 capability covers regular programs and explicit Play/Stop/Record events. Authored
 Replacing runs on Direct and negotiated dry/wet primitive targets. Authored dry
-playback and wet rerecord run on dry/wet primitives. Final interaction/platform
-acceptance remains in progress in the separate
-[P17 item](feature-parity.md#p17-composite-mode-integration), depending on P05/P06/P07.
+playback and wet rerecord run on dry/wet primitives. These interactions are
+complete under
+[P17](feature-parity.md#p17-composite-mode-integration);
+[PR #952](https://github.com/SanderVocke/shoopdaloop/pull/952) records native,
+packaged and AudioWorklet acceptance, with the approved web-debug CI exception.
 See [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md#final-acceptance-and-closure) for
 the approved scope and final implementation checks.
 
@@ -170,7 +172,7 @@ Resync carries the complete active spans, source, ownership and repeat policy.
 | Application elapsed-time fallback, one section per pump and discarded overshoot | Superseded by render-owned frame progression. |
 | Safe future-only live edits and deferred wrap edits | Preserve using the prepared frame timeline and real restart eligibility. |
 | Automatic monitoring, persistence and socket recovery | Restore with authoritative service/host ownership. |
-| Replacing/dry-wet script events | All three modes are integrated through production service, adapter, engine and files. P17 tracks final interaction/platform acceptance. P03 remains closed for its approved direct-track core. |
+| Replacing/dry-wet script events | All three modes are integrated through production service, adapter, engine and files. P17 completes their nested, role-aware and platform interaction acceptance. P03 remains closed for its approved direct-track core. |
 
 Retain old-stack fixtures as historical evidence. New-library and production tests
 must describe the new contract explicitly, including source stop/restart/resize,
@@ -263,5 +265,4 @@ or cancelled candidates retain the old playing plans and monitoring policy.
 Dry/wet composite files preserve named media roles, processor state and frozen
 geometry. Unsupported target modes/topologies refuse the whole document. Private
 replacement also prepares future Replacing writers before publication; a loaded
-program can start on its first Play without a repair poll. Final P17 platform
-acceptance remains in progress.
+program can start on its first Play without a repair poll.
