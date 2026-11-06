@@ -253,7 +253,11 @@ pub struct Transfer {
 }
 impl Transfer {
     pub fn new(stream: StreamId, sequence: u64, bytes: Vec<u8>) -> Result<Self, Error> {
-        if !stream.valid() || sequence == 0 || bytes.is_empty() || bytes.len() > MAX_REPORT_BYTES {
+        if !stream.valid()
+            || sequence == 0
+            || bytes.is_empty()
+            || bytes.capacity() > MAX_REPORT_BYTES
+        {
             return Err(Error::Invalid);
         }
         Ok(Self {
@@ -282,7 +286,7 @@ impl Transfer {
         self.stream
     }
     pub fn bytes(&self) -> usize {
-        self.bytes.len()
+        self.bytes.capacity()
     }
 }
 

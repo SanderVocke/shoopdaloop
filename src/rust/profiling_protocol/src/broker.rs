@@ -127,7 +127,7 @@ impl Broker {
             .iter()
             .map(|s| {
                 s.active.as_ref().map_or(0, Transfer::bytes)
-                    + s.pending.as_ref().map_or(0, Vec::len)
+                    + s.pending.as_ref().map_or(0, Vec::capacity)
             })
             .sum();
         let source = self
@@ -140,7 +140,7 @@ impl Broker {
         }
         if bytes.is_empty()
             || bytes.len() > MAX_REPORT_BYTES
-            || retained - source.pending.as_ref().map_or(0, Vec::len) + bytes.len()
+            || retained - source.pending.as_ref().map_or(0, Vec::capacity) + bytes.capacity()
                 > MAX_REPORT_BYTES
         {
             source.status.dropped = source.status.dropped.saturating_add(1);

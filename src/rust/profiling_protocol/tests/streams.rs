@@ -172,3 +172,47 @@ fn source_capacity_and_removal_cancel_transfer_and_publish_an_unavailable_epoch(
         .iter()
         .any(|r| matches!(r, Record::Data(c) if c.stream.source == 1)));
 }
+
+#[shoop_test]
+fn retained_memory_admission_counts_reserved_capacity_and_recovers_after_drain() {
+    use profiling_protocol::broker::Broker;
+    let mut broker = Broker::default();
+    for source in 1..=2 {
+        broker
+            .register(
+                Descriptor {
+                    stream: StreamId { source, ..stream() },
+                    name: Name::new("test.reserved").unwrap(),
+                    available: true,
+                    min_interval_ms: 1,
+                    max_interval_ms: 1,
+                    snapshot: true,
+                    inspect: false,
+                },
+                None,
+            )
+            .unwrap();
+    }
+    let report = || {
+        let mut bytes = Vec::with_capacity(MAX_REPORT_BYTES / 2 + 1);
+        bytes.push(42);
+        bytes
+    };
+    broker.publish(1, report()).unwrap();
+    assert!((0..6).any(|_| matches!(broker.next_record(), Some(Record::Data(_)))));
+    assert_eq!(broker.publish(2, report()), Err(Error::Capacity));
+    let records: Vec<_> = core::iter::from_fn(|| broker.next_record()).collect();
+    assert!(records.iter().any(|r| matches!(r, Record::Status(s) if s.stream.source == 2 && s.outcome == Outcome::Capacity && s.dropped == 1)));
+    broker.publish(2, report()).unwrap();
+    let records: Vec<_> = core::iter::from_fn(|| broker.next_record()).collect();
+    assert!(records.iter().any(|r| matches!(r, Record::Status(s) if s.stream.source == 2 && s.outcome == Outcome::Applied && s.dropped == 1)));
+    assert!(records.iter().any(
+        |r| matches!(r, Record::Data(c) if c.stream.source == 2 && c.payload.as_slice() == [42])
+    ));
+    let mut oversized = Vec::with_capacity(MAX_REPORT_BYTES + 1);
+    oversized.push(1);
+    assert!(matches!(
+        Transfer::new(stream(), 1, oversized),
+        Err(Error::Invalid)
+    ));
+}

@@ -16,8 +16,10 @@ epoch retires all producer-owned state; epochs increase within an attachment.
 Attachment/authority changes separately clear all client state.
 
 At most eight catalog slots (including retired source tombstones) are registered, each with one active outgoing report and
-one incoming assembly. A report and aggregate retained report bytes are capped
-at 64 MiB; allocation grows only with accepted fragments, never an advertised
+one incoming assembly. A report and aggregate retained buffer capacity are capped
+at 64 MiB, including unused capacity reserved by encoders. One temporary encoding
+buffer may additionally use up to 64 MiB; typed model storage remains bounded by
+its schema. Incoming assembly grows only with accepted fragments, never an advertised
 length. This preserves table-only audio views for up to 65,536 rows per interval,
 as well as the existing graph (4,096 nodes/16,384 edges), 8,192 capture summaries
 and paged detail bounds. Capacity refusal is explicit rather than silently
