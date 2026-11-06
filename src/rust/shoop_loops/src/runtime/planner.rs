@@ -975,6 +975,17 @@ impl LoopPlanner {
                 continue;
             }
             let reply = match pending.kind {
+                PendingKind::Configuration { request, reply } => self
+                    .resolver
+                    .completion(request)
+                    .map_err(runtime_error)?
+                    .map(|completion| {
+                        if matches!(completion.outcome, crate::Outcome::Applied { .. }) {
+                            reply
+                        } else {
+                            Reply::Transition(completion)
+                        }
+                    }),
                 PendingKind::InputBatch => self.input_batch_reply()?,
                 PendingKind::Program {
                     id, request, graph, ..
@@ -1401,6 +1412,14 @@ impl LoopPlanner {
                     graph_epoch,
                     topology_epoch,
                 }
+                | Operation::ConfigurationEdit {
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                    ..
+                }
                 | Operation::ConfigurationReplace {
                     node_pairs,
                     topology,
@@ -1426,23 +1445,73 @@ impl LoopPlanner {
                             return Err(crate::Error::InvalidState.into());
                         }
                     }
-                    let (graph_epoch, topology_epoch) = self.activate_configuration(
+                    let stopping = if let Operation::ConfigurationEdit {
+                        stop: Some(target), ..
+                    } = operation
+                    {
+                        let state = self.resolver.state(target)?;
+                        if state.mode.records() {
+                            return Err(crate::Error::InvalidState.into());
+                        }
+                        if state.composite.is_none() {
+                            let row = self.row(target)?;
+                            if row.active.is_some()
+                                || row.prepared.is_some()
+                                || row.interval.is_some()
+                                || row.frozen.iter().any(Option::is_some)
+                            {
+                                return Err(Error::InvalidState.into());
+                            }
+                        }
+                        let slot = self.pending_slot(context.recovery)?;
+                        let request = self.resolver.submit(crate::Request {
+                            target,
+                            sequence: context.token.sequence(),
+                            at: context.requested_frame,
+                            timing: Timing::At,
+                            transition: Transition::Stop,
+                        })?;
+                        Some((slot, request))
+                    } else {
+                        None
+                    };
+                    let activation = self.activate_configuration(
                         node_pairs,
                         topology,
                         graph,
                         graph_epoch,
                         topology_epoch,
                         matches!(operation, Operation::ConfigurationReplace { .. }),
+                        matches!(operation, Operation::ConfigurationEdit { .. }),
                         &mut context.graphs,
                         &mut context.resources,
-                    )?;
-                    return Ok(Disposition::Complete(Reply::ConfigurationActivated {
+                    );
+                    let (graph_epoch, topology_epoch) = match activation {
+                        Ok(epochs) => epochs,
+                        Err(error) => {
+                            if let Some((_, request)) = stopping {
+                                self.resolver.cancel(request)?;
+                                self.resolver.take_completion(request)?;
+                            }
+                            return Err(error);
+                        }
+                    };
+                    let reply = Reply::ConfigurationActivated {
                         node_pairs,
                         topology,
                         graph,
                         graph_epoch,
                         topology_epoch,
-                    }));
+                    };
+                    if let Some((slot, request)) = stopping {
+                        self.pending[slot] = Some(Pending {
+                            token: context.token,
+                            kind: PendingKind::Configuration { request, reply },
+                            forwarded: false,
+                        });
+                        return Ok(Disposition::Pending);
+                    }
+                    return Ok(Disposition::Complete(reply));
                 }
                 Operation::GraphStatus { id } => {
                     return Ok(Disposition::Complete(Reply::GraphStatus {
@@ -2024,6 +2093,7 @@ impl LoopPlanner {
                 | Operation::ConfigurationActivate { .. }
                 | Operation::ConvertEmpty { .. }
                 | Operation::SelectFamily { .. }
+                | Operation::ConfigurationEdit { .. }
                 | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }
@@ -2191,6 +2261,12 @@ impl LoopPlanner {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
                 if let PendingKind::InputBatch = pending.kind {
                     self.collect_input_batch(&mut context.resources)?;
+                }
+                if let PendingKind::Configuration { request, .. } = pending.kind {
+                    self.resolver
+                        .take_completion(request)
+                        .map_err(runtime_error)?
+                        .ok_or(Error::InvalidState)?;
                 }
                 if let PendingKind::Transition { request, pin, .. } = pending.kind {
                     self.resolver

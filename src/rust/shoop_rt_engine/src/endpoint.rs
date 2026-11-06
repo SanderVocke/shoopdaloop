@@ -987,7 +987,8 @@ impl ControlEndpoint {
                 }
                 self.family_request(correlation, request)
             }
-            Request::ReplacementBegin { .. }
+            Request::PatchBegin { .. }
+            | Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }

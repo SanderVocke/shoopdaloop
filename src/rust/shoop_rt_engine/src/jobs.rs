@@ -310,7 +310,8 @@ impl ControlEndpoint {
             let Some(strip) = self.next.strips[slot] else {
                 continue;
             };
-            if !job.replacing() && self.model.strip(strip.id).is_some() {
+            if (!job.replacing() || self.replacement.patch) && self.model.strip(strip.id).is_some()
+            {
                 continue;
             }
             let controls = strip.controls;
@@ -347,7 +348,9 @@ impl ControlEndpoint {
         }
         for slot in 0..self.next.loops.len() {
             if let Some(entry) = self.next.loops[slot].filter(|entry| entry.program.is_none()) {
-                if !job.replacing() && self.model.find_loop(entry.id).is_some() {
+                if (!job.replacing() || self.replacement.patch)
+                    && self.model.find_loop(entry.id).is_some()
+                {
                     continue;
                 }
                 let processor = self
@@ -373,7 +376,7 @@ impl ControlEndpoint {
             }
         }
         for slot in 0..self.next.buses.len() {
-            if !job.replacing() {
+            if !job.replacing() || self.replacement.patch {
                 break;
             }
             let Some(bus) = self.next.buses[slot] else {
@@ -1429,17 +1432,31 @@ impl ControlEndpoint {
             self.submit_job_loop(
                 job,
                 Frame(0),
-                Operation::ConfigurationReplace {
-                    node_pairs: job.node_pairs.expect("prepared node pairs"),
-                    topology: job.topology.expect("prepared topology"),
-                    graph: job.graph.expect("prepared graph"),
-                    graph_epoch: self.graph_epoch,
-                    topology_epoch: self.topology_epoch,
+                if self.replacement.patch {
+                    Operation::ConfigurationEdit {
+                        stop: self.replacement.retiring.map(loop_id),
+                        node_pairs: job.node_pairs.expect("prepared node pairs"),
+                        topology: job.topology.expect("prepared topology"),
+                        graph: job.graph.expect("prepared graph"),
+                        graph_epoch: self.graph_epoch,
+                        topology_epoch: self.topology_epoch,
+                    }
+                } else {
+                    Operation::ConfigurationReplace {
+                        node_pairs: job.node_pairs.expect("prepared node pairs"),
+                        topology: job.topology.expect("prepared topology"),
+                        graph: job.graph.expect("prepared graph"),
+                        graph_epoch: self.graph_epoch,
+                        topology_epoch: self.topology_epoch,
+                    }
                 },
                 Step::Activation,
             );
             for slot in 0..self.next.loops.len() {
-                if let Some(entry) = self.next.loops[slot].filter(|l| l.repeat_sync) {
+                if let Some(entry) = self.next.loops[slot].filter(|l| {
+                    l.repeat_sync
+                        && (!self.replacement.patch || self.model.find_loop(l.id).is_none())
+                }) {
                     self.submit_job_loop(
                         job,
                         Frame(0),

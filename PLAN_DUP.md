@@ -4,7 +4,7 @@ Restore the duplication portion of P11 on `feat/backend-replacement`: Clone into
 
 P11 remains OPEN for MIDI initial-state, preroll, seek and parameter-history restoration. This work copies existing supported MIDI content exactly; it does not extend those semantics or remove their validation gates. P17 dependent composite modes, Carla, latency editing and broader recovery guarantees retain their existing scopes.
 
-Planning base: `0b6812259ffc00b9a524bb6095cfc2c6b2112847`. Follow `.agents/prompts/write_plan.md`, `.agents/rules/mandates.md` and `VALIDATION.md` on the implementation branch. All stages below are implementation work still to perform.
+Planning base: `0b6812259ffc00b9a524bb6095cfc2c6b2112847`. Follow `.agents/prompts/write_plan.md`, `.agents/rules/mandates.md` and `VALIDATION.md` on the implementation branch. Progress is recorded in the stage checklists below.
 
 ## Goals and immutable acceptance criteria
 
@@ -39,44 +39,44 @@ Goals and acceptance criteria must not be changed without explicit user approval
 
 ### Prepared transaction contract
 
-The service reserves one duplication operation and blocks conflicting mutations while source metadata/media are pinned. The backend prepares a targeted candidate containing the destination replacement and any aligned-row additions; unchanged owners keep their identities and live state. Preparation reserves media, topology, graph and retirement ownership. Activation rechecks affected capture state and publishes only the changed owners. Before activation, failure retires the private candidate; afterwards, the service publishes copied metadata/layout once and retains the operation result for reconnect reconciliation. Pending source composite edits refuse rather than copying an unconfirmed definition.
+The service reserves one duplication operation and blocks conflicting mutations while source metadata/media are pinned. The backend prepares a targeted candidate containing the destination replacement and any aligned-row additions; unchanged owners keep their identities and live state. Preparation reserves media, topology, graph and retirement ownership. Activation rechecks affected capture state and publishes only the changed owners. Occupied destinations reserve a fresh runtime slot; the old owner remains private through the atomic Stop boundary so MIDI cleanup and composite child-stop actions execute before its later retirement. Application slot identity stays stable. Before activation, failure retires the private candidate; afterwards, the service publishes copied metadata/layout once and retains the operation result for reconnect reconciliation. Pending source composite edits refuse rather than copying an unconfirmed definition.
 
 ## Stage 2 Prepare and activate exact primitive copies
 
 Depends on Stage 1.
 
-- [ ] Implement private preparation in `shoop_rt_backend`, preserving raw media, timing, roles, controls and recorded processor state.
-- [ ] Extend `shoop_backend`, `shoop_rt_protocol` and `shoop_rt_engine` only as needed to activate destination content, stopped transport and controls atomically. Preserve old exports until readers release them and retire owners through existing control-side paths.
-- [ ] Preflight slots, media/pages/indexes, receipts and retirement ownership, including retained old exports. Support cancellation and failed-preparation cleanup without changing live content.
-- [ ] Verify exact samples, MIDI bytes/order/initial packets and timing across the primitive acceptance matrix. Exercise edit independence in both directions, playing destinations, retained exports, exhaustion, stale requests and repeated cancellation/teardown with allocation guards active.
+- [x] Implement private preparation in `shoop_rt_backend`, preserving raw media, timing, roles, controls and recorded processor state.
+- [x] Extend `shoop_backend`, `shoop_rt_protocol` and `shoop_rt_engine` only as needed to activate destination content, stopped transport and controls atomically. Preserve old exports until readers release them and retire owners through existing control-side paths.
+- [x] Preflight slots, media/pages/indexes, receipts and retirement ownership, including retained old exports. Support cancellation and failed-preparation cleanup without changing live content.
+- [x] Verify exact samples, MIDI bytes/order/initial packets and timing across the primitive acceptance matrix. Exercise edit independence in both directions, playing destinations, retained exports, exhaustion, stale requests and repeated cancellation/teardown with allocation guards active.
 
 ## Stage 3 Implement service duplication and recovery
 
 Depends on Stage 2.
 
-- [ ] Replace the unconditional refusal in `shoop_app/src/service/commands.rs` with one host-owned asynchronous operation supporting both duplication intents. Integrate operation IDs, reliable admission/results, command conflicts and persistence ownership.
-- [ ] Select or privately reserve the destination and complete aligned-row expansion. Explicit occupied destinations use the same commit path. Publish layout, metadata, media, controls and stopped state coherently.
-- [ ] Fence stale session/destination identities and conflicting changes. Preserve pre-admission cancellation and post-admission host ownership across detach/reconnect. A pinned source cut remains stable if the source changes later.
-- [ ] Verify slot skipping, row creation, explicit overwrite, invalid destinations, source changes, recording conflicts and unrelated activity. Inject preparation/activation failures and assert either unchanged destination/layout or exactly one complete publication.
+- [x] Replace the unconditional refusal in `shoop_app/src/service/commands.rs` with one host-owned asynchronous operation supporting both duplication intents. Integrate operation IDs, reliable admission/results, command conflicts and persistence ownership.
+- [x] Select or privately reserve the destination and complete aligned-row expansion. Explicit occupied destinations use the same commit path. Publish layout, metadata, media, controls and stopped state coherently.
+- [x] Fence stale session/destination identities and conflicting changes. Preserve pre-admission cancellation and post-admission host ownership across detach/reconnect. A pinned source cut remains stable if the source changes later.
+- [x] Verify slot skipping, row creation, explicit overwrite, invalid destinations, source changes, recording conflicts and unrelated activity. Inject preparation/activation failures and assert either unchanged destination/layout or exactly one complete publication.
 
 ## Stage 4 Integrate supported composite duplication
 
 Depends on Stage 3 and the existing completed P03 core.
 
-- [ ] Prepare an independent destination document/program from the confirmed source. Consistently rebind document/event/runtime identities while preserving child references, timing basis, frozen geometry, explicit sync and repeat intent.
-- [ ] Route primitive/composite replacement through the same atomic ownership/publication contract. Safely retire previous destination programs, active-child ownership and pending work without affecting unrelated owners.
-- [ ] Reuse structural, dependency, cycle, unsupported-mode and capacity checks. Refuse invalid replacements and unsettled conflicting composite edits before mutation.
-- [ ] Verify nested regular/explicit composites, edit independence, child-reference preservation, both replacement directions, playing destinations, retained old programs and failure cleanup. Keep P17 modes refused intact.
+- [x] Prepare an independent destination document/program from the confirmed source. Consistently rebind document/event/runtime identities while preserving child references, timing basis, frozen geometry, explicit sync and repeat intent.
+- [x] Route primitive/composite replacement through the same atomic ownership/publication contract. Safely retire previous destination programs, active-child ownership and pending work without affecting unrelated owners.
+- [x] Reuse structural, dependency, cycle, unsupported-mode and capacity checks. Refuse invalid replacements and unsettled conflicting composite edits before mutation.
+- [x] Verify nested regular/explicit composites, edit independence, child-reference preservation, both replacement directions, playing destinations, retained old programs and failure cleanup. Keep P17 modes refused intact.
 
 ## Stage 5 Enable public workflows and capabilities
 
 Depends on Stages 3 and 4.
 
-- [ ] Advertise negotiated `LoopDuplication` only when the complete supported path is available. Duplication must work without a local file provider. Keep import and click-insertion capability decisions independent.
-- [ ] Connect existing Clone and explicit-destination gestures through `shoop_egui`, `shoop_app_client` and application transports. Use confirmed projection and existing progress/error presentation without optimistic content/layout changes.
-- [ ] Replace production refusal expectations, including `public_core_file_capabilities_keep_duplication_refused`, with supported-path and unavailable-host coverage. Preserve refusal tests for unsupported configurations and MIDI forms.
-- [ ] Verify UI gestures, encoded command parity, confirmed destination state and Lua query/control behavior after cloning.
-- [ ] Exercise cancellation, stale callbacks, duplicate operation delivery and accepted-operation reconnect. Assert one copy and one terminal outcome.
+- [x] Advertise negotiated `LoopDuplication` only when the complete supported path is available. Duplication must work without a local file provider. Keep import and click-insertion capability decisions independent.
+- [x] Connect existing Clone and explicit-destination gestures through `shoop_egui`, `shoop_app_client` and application transports. Use confirmed projection and existing progress/error presentation without optimistic content/layout changes.
+- [x] Replace production refusal expectations, including `public_core_file_capabilities_keep_duplication_refused`, with supported-path and unavailable-host coverage. Preserve refusal tests for unsupported configurations and MIDI forms.
+- [x] Verify UI gestures, encoded command parity, confirmed destination state and Lua query/control behavior after cloning.
+- [x] Exercise cancellation, stale callbacks, duplicate operation delivery and accepted-operation reconnect. Assert one copy and one terminal outcome.
 
 ## Stage 6 Validate end to end and deliver
 

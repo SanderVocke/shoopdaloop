@@ -945,6 +945,10 @@ impl Wire for Request {
                 bus.put(w)
             }
             Self::CancelBulk => w.u8(26),
+            Self::PatchBegin { id } => {
+                w.u8(60)?;
+                w.u64(id)
+            }
             Self::ReplacementBegin { id } => {
                 w.u8(19)?;
                 w.u64(id)
@@ -1302,6 +1306,7 @@ impl Wire for Request {
             }
             17 => Self::ContentFinish { id: r.u64()? },
             18 => Self::ContentRelease { id: r.u64()? },
+            60 => Self::PatchBegin { id: r.u64()? },
             19 => Self::ReplacementBegin { id: r.u64()? },
             20 => Self::ReplacementEdit {
                 id: r.u64()?,
@@ -1331,6 +1336,11 @@ impl Wire for Request {
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Retarget { previous, loop_id } => {
+                w.u8(12)?;
+                previous.put(w)?;
+                loop_id.put(w)
+            }
             Self::BusProcessor { bus, state } => {
                 w.u8(11)?;
                 bus.put(w)?;
@@ -1435,6 +1445,10 @@ impl Wire for crate::ReplacementEdit {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            12 => Self::Retarget {
+                previous: LoopSlotId::get(r)?,
+                loop_id: LoopSlotId::get(r)?,
+            },
             11 => Self::BusProcessor {
                 bus: BusId::get(r)?,
                 state: crate::processors::Control::get(r)?,

@@ -574,6 +574,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         work.push_back(Work::Request(Request::ReplacementPrepare { id }));
         work.push_back(Work::Request(Request::ReplacementCommit { id }));
         self.replacement = Some(crate::Replacement {
+            patch: false,
             mapping: mapping.clone(),
             candidate: Some(candidate),
             job: Job::new(

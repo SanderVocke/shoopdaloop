@@ -241,6 +241,9 @@ pub enum Request {
         bus: BusId,
     },
     CancelBulk,
+    PatchBegin {
+        id: u64,
+    },
     ReplacementBegin {
         id: u64,
     },

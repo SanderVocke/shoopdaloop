@@ -1212,6 +1212,12 @@ pub struct BackendSnapshot {
     pub mutation_completions: Vec<BackendMutationCompletion>,
 }
 
+#[derive(Clone, Debug)]
+pub struct BackendLoopDuplication {
+    pub target: BackendLoopId,
+    pub added: Vec<(BackendTrackId, BackendLoopId)>,
+}
+
 pub trait Backend {
     fn release_host_port_identity(&mut self, _id: &str) -> bool {
         false
@@ -1585,6 +1591,15 @@ pub trait Backend {
         self.transition_loop(loop_id, mode, cycles_delay)
     }
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()>;
+    fn duplicate_loop_async(
+        &mut self,
+        _source: BackendLoopId,
+        _target: Option<BackendLoopId>,
+        _additions: &[BackendTrackId],
+        _row_sync: Option<BackendLoopId>,
+    ) -> Result<BackendAsyncResult<BackendLoopDuplication>> {
+        Err(anyhow!("loop duplication is unavailable"))
+    }
     fn replace_loop_content(
         &mut self,
         _loop_id: BackendLoopId,

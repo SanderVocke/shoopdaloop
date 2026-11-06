@@ -207,6 +207,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             midi: pair[1],
         }));
         self.replacement = Some(crate::Replacement {
+            patch: false,
             mapping: Default::default(),
             candidate: None,
             job: Job::new(

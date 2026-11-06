@@ -17,6 +17,10 @@ pub struct StripPreset {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReplacementEdit {
+    Retarget {
+        previous: LoopSlotId,
+        loop_id: LoopSlotId,
+    },
     BusProcessor {
         bus: crate::BusId,
         state: crate::processors::Control,

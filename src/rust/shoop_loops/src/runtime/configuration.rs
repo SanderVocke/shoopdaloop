@@ -34,6 +34,7 @@ impl LoopPlanner {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
         replace_all: bool,
+        edit_playback: bool,
         graphs: &mut rt_runtime::graph::activation::GraphAccess<'_>,
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(Epoch, Epoch), Failure> {
@@ -68,7 +69,9 @@ impl LoopPlanner {
             }
             if let Some(previous) = edit.previous {
                 let mode = self.resolver.state(previous)?.mode;
-                if mode != Mode::Stopped && !(replace_all && mode == Mode::Playing) {
+                if mode != Mode::Stopped
+                    && !((replace_all || edit_playback) && mode.playback_mode())
+                {
                     return Err(crate::Error::InvalidState.into());
                 }
             }
@@ -148,6 +151,7 @@ impl LoopPlanner {
             topology_epoch,
             &mut self.resolver,
             replace_all,
+            edit_playback,
         )?;
         media.commit();
         for edit in &bank.edits {

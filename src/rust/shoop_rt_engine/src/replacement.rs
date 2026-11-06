@@ -29,6 +29,8 @@ pub(crate) struct Initial {
     pub midi: Option<u64>,
 }
 pub(crate) struct Replacement {
+    pub patch: bool,
+    pub retiring: Option<shoop_rt_protocol::LoopSlotId>,
     pub id: Option<u64>,
     pub state: State,
     last_id: u64,
@@ -41,6 +43,8 @@ pub(crate) struct Replacement {
 impl Replacement {
     pub(crate) fn new(strips: usize, loops: usize, buses: usize, program_segments: usize) -> Self {
         Self {
+            patch: false,
+            retiring: None,
             id: None,
             state: State::Empty,
             last_id: 0,
@@ -60,6 +64,7 @@ impl Replacement {
     }
     pub(crate) fn clear(&mut self) {
         self.id = None;
+        self.retiring = None;
         self.state = State::Empty;
         self.initial.fill(None);
         self.bus_processor_states.fill(None);
@@ -74,7 +79,7 @@ impl ControlEndpoint {
         request: Request,
     ) -> Result<Option<Outcome>, Refusal> {
         let id = match request {
-            Request::ReplacementBegin { id } => {
+            Request::PatchBegin { id } | Request::ReplacementBegin { id } => {
                 if id == 0 || id <= self.replacement.last_id {
                     return Err(Refusal::InvalidId);
                 }
@@ -86,16 +91,20 @@ impl ControlEndpoint {
                     return Err(Refusal::Busy);
                 }
                 let stage = &mut self.replacement;
+                stage.patch = matches!(request, Request::PatchBegin { .. });
+                stage.retiring = None;
                 stage.last_id = id;
                 stage.id = Some(id);
                 stage.state = State::Receiving;
                 stage.base_revision = self.model.revision;
                 stage.candidate.copy_from(&self.model);
-                stage.candidate.global_midi = crate::model::HostMask::EMPTY;
-                stage.candidate.strips.fill(None);
-                stage.candidate.loops.fill(None);
-                stage.candidate.spans.fill(None);
-                stage.candidate.buses.fill(None);
+                if !stage.patch {
+                    stage.candidate.global_midi = crate::model::HostMask::EMPTY;
+                    stage.candidate.strips.fill(None);
+                    stage.candidate.loops.fill(None);
+                    stage.candidate.spans.fill(None);
+                    stage.candidate.buses.fill(None);
+                }
                 stage.initial.fill(None);
                 stage.bus_processor_states.fill(None);
                 stage.processor_states.fill(None);
@@ -130,16 +139,21 @@ impl ControlEndpoint {
                 self.validate_replacement()?;
                 core::mem::swap(&mut self.next, &mut self.replacement.candidate);
                 for slot in 0..self.model.strips.len() {
-                    if self.model.strips[slot].is_some() || self.next.strips[slot].is_some() {
+                    if !self.replacement.patch {
                         self.touched_strips[slot] = HARD;
                     }
                 }
                 for slot in 0..self.model.loops.len() {
-                    if self.model.loops[slot].is_some() || self.next.loops[slot].is_some() {
+                    if !self.replacement.patch || self.model.loops[slot] != self.next.loops[slot] {
                         self.touched_loops[slot] = HARD;
                     }
                 }
-                self.touched_buses.fill(HARD);
+                if let Some(previous) = self.replacement.retiring {
+                    self.touched_loops[previous.0.index as usize] = HARD;
+                }
+                if !self.replacement.patch {
+                    self.touched_buses.fill(HARD);
+                }
                 self.replacement.state = State::Preparing;
                 self.job = Some(Job::replacement(correlation));
                 Ok(None)
@@ -184,6 +198,43 @@ impl ControlEndpoint {
 
     fn replacement_edit(&mut self, edit: ReplacementEdit) -> Result<(), Refusal> {
         let request = match edit {
+            ReplacementEdit::Retarget { previous, loop_id } => {
+                if !self.replacement.patch
+                    || previous.0.index == loop_id.0.index
+                    || self.replacement.retiring.is_some()
+                    || self
+                        .next
+                        .loops
+                        .get(loop_id.0.index as usize)
+                        .ok_or(Refusal::InvalidId)?
+                        .is_some()
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                self.next.find_loop(previous).ok_or(Refusal::InvalidId)?;
+                self.replacement.retiring = Some(previous);
+                for span in &mut self.next.spans {
+                    if let Some(span) = span {
+                        if span.span.target == previous {
+                            span.span.target = loop_id;
+                        }
+                    }
+                }
+                self.next.spans.sort_unstable_by_key(|entry| {
+                    entry.map(|owned| (owned.source, owned.span.target, owned.span.start))
+                });
+                for entry in self.next.loops.iter_mut().flatten() {
+                    if entry.sync == Some(previous) {
+                        entry.sync = Some(loop_id);
+                    }
+                    if let Some(program) = &mut entry.program {
+                        if program.sync == Some(previous) {
+                            program.sync = Some(loop_id);
+                        }
+                    }
+                }
+                return Ok(());
+            }
             ReplacementEdit::Composite(d) => {
                 let slot = d.loop_id.0.index as usize;
                 if self.next.find_loop(d.loop_id).is_none() {
@@ -523,6 +574,9 @@ impl ControlEndpoint {
                 {
                     return Err(Refusal::InvalidId);
                 }
+            }
+            if self.replacement.patch && self.model.find_loop(entry.id).is_some() {
+                continue;
             }
             let initial = self.replacement.initial[slot].ok_or(Refusal::InvalidValue)?;
             let kind = entry
