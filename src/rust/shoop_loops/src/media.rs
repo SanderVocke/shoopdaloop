@@ -262,13 +262,16 @@ impl Ledger {
             .ok_or(Error::InvalidId)
     }
     fn media(&self, id: MediaId) -> Result<Media, Error> {
+        self.media_ref(id).copied()
+    }
+    fn media_ref(&self, id: MediaId) -> Result<&Media, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
         self.media
             .get(id.slot as usize)
             .filter(|s| s.generation == id.generation)
-            .and_then(|s| s.value)
+            .and_then(|s| s.value.as_ref())
             .ok_or(Error::InvalidId)
     }
     fn export_ref(&self, id: ExportId) -> Result<ExportRef, Error> {
@@ -492,11 +495,15 @@ impl Ledger {
         result.map_err(|error| Rejected { error, input })
     }
     pub fn view(&self, id: MediaId) -> Result<View, Error> {
-        let media = self.media(id)?;
+        self.view_ref(id).copied()
+    }
+    /// Borrowing form of [`Self::view`] for per-quantum callers; views are large.
+    pub fn view_ref(&self, id: MediaId) -> Result<&View, Error> {
+        let media = self.media_ref(id)?;
         if !media.ready {
             return Err(Error::InvalidState);
         }
-        Ok(media.view)
+        Ok(&media.view)
     }
     fn check_sources(io: &mut ResourceIo<'_>, media: Media) -> Result<(), Error> {
         for source in [media.view.audio, media.view.auxiliary, media.view.midi]

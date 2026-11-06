@@ -2,8 +2,9 @@
 
 Implementation plan based on `feat/backend-replacement` at
 `0b6812259ffc00b9a524bb6095cfc2c6b2112847`, with the current base updated to
-`27c8927f51303519f621270bd9b521a687c134d7` (expensive-processor graph filter).
-The engine measurement baseline is unchanged. Execution is in progress; unchecked
+`7b0309cce0fa18fc6942a20c1746b658488705e9` (ZedBoard bring-up and render
+optimizations, including the earlier expensive-processor graph filter).
+Repeat matched engine measurements against this updated base. Execution is in progress; unchecked
 items are not certified complete.
 
 ## Goals and scope
@@ -292,7 +293,7 @@ Depends on: all previous stages. This is the final acceptance gate.
   the authenticated app connection/native UI with audio profiling independently
   toggled, network traffic and available USB fixtures. Stall/drain consumers and
   restart the same host endpoints; check bounds, truthful loss and fresh identity.
-- [x] Repeat Stage 1 off/on/stalled release measurements with matched workloads.
+- [ ] Repeat Stage 1 off/on/stalled release measurements with matched workloads.
   Include FreeRTOS collection costs and combined-source saturation. Keep raw
   results/configuration under `work/` or CI artifacts; summarize deltas and
   limitations on the PR. Resolve regressions before claiming acceptance.

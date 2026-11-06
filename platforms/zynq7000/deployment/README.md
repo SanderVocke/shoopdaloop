@@ -1,5 +1,11 @@
 # Zynq SD boot and Ethernet deployment
 
+This guide describes the SD-backed boot/update system. For loading a development
+ELF through JTAG without SD or Vivado, see [ZedBoard JTAG development](../boards/jtag-development.md).
+Use `host.elf` for direct loading; `host-deployment.elf` expects this guide's
+loader handoff and provisioned SD state. SD is a deployment design choice, not
+a requirement of FreeRTOS.
+
 The commands below default to the 1 GiB QEMU reference. For another board, pass
 the same `--board` to firmware, bootloader, bundle, card and interactive emulator
 commands. See [board profiles](../boards/README.md) for ZedBoard builds, memory
