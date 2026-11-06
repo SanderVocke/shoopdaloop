@@ -156,7 +156,10 @@ clock leaves measurements unavailable, including these virtual nodes.
 
 ## Clocks and browser support
 
-Native hosts supply nanoseconds from a primed `Instant` epoch. A browser worklet
+Native hosts supply nanoseconds from a primed `Instant` epoch. The Zynq FreeRTOS
+firmware converts the Cortex-A9 global timer (CPU/2, about 3 ns per tick on a
+667 MHz ZedBoard) with a fixed-point scale, and reports each render step's busy
+share as its driver load. A browser worklet
 imports `shoop_profiling.now`, using its realm's `performance.now()` when present.
 The observed positive clock step is shown; zero means resolution is unknown.
 Complete native/worklet driver callbacks supply the deadline budget; split engine

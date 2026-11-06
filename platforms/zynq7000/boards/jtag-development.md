@@ -19,7 +19,7 @@ this direct-load path. FreeRTOS is linked into the ELF like other bare-metal cod
 | Boot identity | Debugger writes fresh nonce at `0x8000` each launch | Loader advances persistent SD counter |
 | SD card | Unnecessary | Required by this project's boot/update design |
 | Updates/recovery | Reload with JTAG | Signed bundles, A/B slots, watchdog rollback |
-| Physical validation | Pending | Pending |
+| Physical validation | Partial, one board: see [hardware results](#hardware-results) | Pending |
 
 FreeRTOS does not require SD. The deployment build requires its loader handoff,
 configuration and persistent state; it is not a substitute for the direct-load
@@ -74,8 +74,9 @@ The native UI has additional desktop dependencies; see the main build guide.
 ### Windows without WSL
 
 The direct-load ELF also builds natively on Windows 11 from PowerShell, without
-WSL or a container. Only the build has been verified this way; the board steps
-below are still written for a Linux host. Install:
+WSL or a container. The board steps below are mostly written for a Linux host;
+the [hardware results](#hardware-results) used Windows with the `xsdb` sequence
+and the Windows Ethernet commands given below. Install:
 
 - Git for Windows. Its `usr\bin` directory provides the GNU `patch` the build runs.
 - Python 3.
@@ -170,10 +171,49 @@ sequences match the Vitis 2023.2 `zed.xsa` initialization, including UART1 at
 board with 1.0 silicon, it was followed by a successful DDR scratch readback and
 a firmware start that opened both TCP listeners.
 
-The next hardware iteration should settle the initialization method and add its
-exact build/load/run commands here. Until then, this is an explicit prerequisite,
-not a claim that a clean workstation can complete cold boot using this guide alone.
-No SD card is needed to solve it.
+For OpenOCD, an equivalent initialization method still has to be settled; until
+then it is an explicit prerequisite of the OpenOCD path. No SD card is needed to
+solve it. With `xsdb`, the sequence below is validated on hardware.
+
+### Validated `xsdb` sequence
+
+`hw_server` listens on all interfaces by default. Start it bound to localhost
+first, from the Vitis installation:
+
+```sh
+hw_server -s TCP:127.0.0.1:3121
+```
+
+Then, in `xsdb`, from the repository root:
+
+```tcl
+connect -url TCP:127.0.0.1:3121
+targets -set -nocase -filter {name =~ "APU*"}
+mrd -address-space AP0 0xF800025C
+rst -system
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #1*"}
+stop
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #0*"}
+stop
+targets -set -nocase -filter {name =~ "APU*"}
+source platforms/zynq7000/boards/zedboard_ps7_init.tcl
+ps7_init
+ps7_post_config
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #0*"}
+mwr 0x00100000 0x12345678
+mrd 0x00100000
+mwr 0x00100000 0
+dow work/zynq/boards/zedboard/build/host.elf
+mwr 0x8000 NONCE_LOW_WORD
+mwr 0x8004 NONCE_HIGH_WORD
+mrd 0x8000 2
+con
+```
+
+The first read is `BOOT_MODE`; its low three bits must be 0 (JTAG). Fill in a
+fresh nonce from the generator in [Load, supply boot identity, and
+start](#load-supply-boot-identity-and-start) for every launch. `dow` sets the
+program counter to the ELF entry, and CPU1 stays halted.
 
 After successful initialization, with CPU0 halted and before loading any image,
 a small scratch check at a DDR address used by the application can catch basic
@@ -337,12 +377,41 @@ route for `10.0.2.0/24`. Remove the temporary address afterwards with
 No routing/NAT is required for a direct local connection.
 Only run one device with the default MAC/IP on that link.
 
-Configure the native client's remote connection with data
-`10.0.2.15:15400`, management `10.0.2.15:15401`, and the workstation copy of
-`work/zynq/zedboard.key`. QEMU loopback forwarding ports do not apply here.
-An open TCP port proves reachability, not authentication; complete a client
-attach and session operation next. Audio/MIDI are dummy endpoints, so successful
-rendering will not produce sound at the physical codec.
+On Windows, in an administrator PowerShell, add only an address: no gateway and
+no DNS server. On a managed laptop, also disable DNS registration for that
+interface so the address is never published to the corporate DNS:
+
+```powershell
+Set-DnsClient -InterfaceAlias "Ethernet" -RegisterThisConnectionsAddress $false
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 10.0.2.2 -PrefixLength 24
+Test-NetConnection 10.0.2.15 -Port 15400
+```
+
+Without a UART cable, the board's liveness can still be checked over the link:
+its MAC `02:00:00:00:00:01` appears in the neighbor table (`ip neigh`,
+`Get-NetNeighbor`) once the network driver runs, `10.0.2.15` answers ping once
+lwIP runs, and both TCP ports accept connections once the services run.
+
+Connect the native client with a remote profile next to the key, for example
+`work/zynq/zedboard-remote.json`:
+
+```json
+{
+  "version": 31,
+  "name": "ZedBoard",
+  "credential": "zedboard.key",
+  "endpoint": "10.0.2.15:15400",
+  "management": "10.0.2.15:15401"
+}
+```
+
+`version` must equal `VERSION` in `src/rust/shoop_app_protocol/src/lib.rs` for the
+build on both sides, and a relative `credential` is resolved next to the profile.
+Start the app with `shoopdaloop --host-profile work/zynq/zedboard-remote.json`.
+QEMU loopback forwarding ports do not apply here. An open TCP port proves
+reachability, not authentication; complete a client attach and session
+operation next. Audio/MIDI are dummy endpoints, so successful rendering will not
+produce sound at the physical codec.
 
 ## Record each hardware checkpoint
 
@@ -362,6 +431,45 @@ If a checkpoint fails, preserve its output before changing later steps. Adapter
 errors, uninitialized DDR, UART clock/baud issues, Ethernet PHY initialization,
 subnet routing and credential mismatch have different causes. Physical timing,
 DDR training and cache/DMA correctness are not established by QEMU.
+
+## Hardware results
+
+First bring-up, 2026-11-06, on one board. Host: Windows 11, firmware built
+natively (see above), loaded with Vitis 2023.2 `xsdb` and `hw_server` using the
+validated sequence.
+
+The board reports PS silicon 1.0, probably an engineering sample, not the
+production silicon assumed above: `MCTRL[31:28]` = 0, PL JTAG IDCODE
+`0x03727093`, `PSS_IDCODE` `0x03B27093`. `zedboard_ps7_init.tcl` applies its 1.0
+sequences.
+
+| Checkpoint | Result |
+| --- | --- |
+| 1. JTAG scan, halt both cores | Passed with `xsdb`; OpenOCD not tried |
+| 2. PS initialization, DDR scratch readback | Passed |
+| 3. ELF load, nonce readback | Passed |
+| 4. Banner, services, TCP listeners | Listeners, ping and neighbor entry passed; banner not observed (no UART cable) |
+| 5. Native-client attach and session operations | Attach, sync loop, tracks and loops, and reconnecting a new app instance passed; session transfer and clean shutdown not tried |
+| 6. Power-cycle repeat, allocation peaks, stacks, DMA/cache | Repeated reloads with fresh nonces passed; deeper checks not done |
+
+Findings fixed in the firmware along the way:
+
+- **Cache coherency:** with `USE_AMP` defined, Ethernet TX DMA read stale DDR.
+  Ping replies went out as the unmodified requests and TCP segments carried
+  stale bytes. See the [platform README](../README.md).
+- **Overload:** render outranked the control task. Adding a track to a heavy
+  session starved control until app heartbeats expired and the board retired
+  the session. Render is now capped, so overload produces xruns instead.
+
+For reference, AMD's stock standalone and FreeRTOS lwIP echo servers, built from
+Vitis 2023.2 and loaded the same way, passed ping and TCP echo on this board.
+
+Performance on this board (667 MHz, 32-frame quantum, profiling on), with the
+firmware at the time of writing: one sync loop plus a track of 8 loops used
+about 70% of the render budget. Each loop costs about 2.3% (playback, fader and
+capture) and each strip about 5–7%. See
+[OPTIMIZATION_IDEA.md](../../../OPTIMIZATION_IDEA.md) and
+[MULTICORE_ASSESSMENT.md](../../../MULTICORE_ASSESSMENT.md).
 
 ## References for the initial assumptions
 
