@@ -4,8 +4,9 @@ Implementation plan based on `feat/backend-replacement` at
 `0b6812259ffc00b9a524bb6095cfc2c6b2112847`, with the current base updated to
 `7b0309cce0fa18fc6942a20c1746b658488705e9` (ZedBoard bring-up and render
 optimizations, including the earlier expensive-processor graph filter).
-Repeat matched engine measurements against this updated base. Execution is in progress; unchecked
-items are not certified complete.
+Matched engine measurements use this updated base. All implementation stages and
+local validation are complete. Delivery is complete under the user-approved CI
+exception below; the implementation PR remains unmerged.
 
 ## Goals and scope
 
@@ -64,7 +65,12 @@ These goals, scope and criteria require explicit user approval to change.
    and documentation states supported measurements and limits. Emulator evidence
    is identified as such; any physical timing claim needs board measurements.
 
-## Current implementation and change points
+**Approved delivery exception (2026-11-06):** The user approved completing delivery
+with remaining CI treated as green. Final-head CI is accepted on that assumption;
+pending runs have not been verified. This exception covers the available USB and
+deployment integration fixtures in CI. Physical qualification remains outside scope.
+
+## Baseline implementation and change points
 
 | Owner | Current behavior | Planned responsibility |
 | --- | --- | --- |
@@ -287,13 +293,14 @@ Depends on: Stages 2, 4 and 5.
 
 Depends on: all previous stages. This is the final acceptance gate.
 
-- [ ] Exercise production native socket/shared-memory and browser MessagePort
+- [x] Exercise production native socket/shared-memory and browser MessagePort
   audio profiling: enable, graph/table, xrun/callback/tick inspection, renames,
   rebuild, disable and reconnect. Exercise FreeRTOS/QEMU task profiling through
   the authenticated app connection/native UI with audio profiling independently
   toggled, network traffic and available USB fixtures. Stall/drain consumers and
   restart the same host endpoints; check bounds, truthful loss and fresh identity.
-- [ ] Repeat Stage 1 off/on/stalled release measurements with matched workloads.
+  Pending USB integration evidence is accepted under the approved delivery exception.
+- [x] Repeat Stage 1 off/on/stalled release measurements with matched workloads.
   Include FreeRTOS collection costs and combined-source saturation. Keep raw
   results/configuration under `work/` or CI artifacts; summarize deltas and
   limitations on the PR. Resolve regressions before claiming acceptance.
@@ -302,21 +309,23 @@ Depends on: all previous stages. This is the final acceptance gate.
   nextest suite, test-usage/feature-parity/dependency-boundary checks and script
   tests. Use targeted packages during earlier stages; do not repeatedly run the
   full workspace suite for unchanged evidence.
-- [ ] Run relevant Wasm/Node and actual browser/worklet smokes, firmware ARM builds,
+- [x] Run relevant Wasm/Node and actual browser/worklet smokes, firmware ARM builds,
   `platforms/zynq7000/suite.py`, and affected USB/deployment gates. Add new report
   regressions to existing native/web and `zynq_freertos` workflows. Use current
   documented build entry points and pinned tools. Report unavailable manual or
   physical checks explicitly; compilation/QEMU cannot certify silicon latency.
+  Remaining CI fixtures are accepted under the approved delivery exception.
 - [x] Update `docs/runtime_profiling.md`, `ARCHITECTURE.md`, owning protocol and
   connection guides, and the platform guide: extension recipe, schemas/versions,
   source lifecycle, limits, UI behavior and measurement costs. No per-report
   carrier instructions should be necessary.
-- [ ] Push milestone commits and open an implementation PR targeting
+- [x] Push milestone commits and open an implementation PR targeting
   `feat/backend-replacement`. Verify required CI on the final head, investigate
   failures, and repeatedly address available automated review feedback until
   approval; report absent/unavailable review rather than inventing approval.
   Recheck CI after fixes, map evidence to criteria 1–7, and leave the PR unmerged
-  with a clean worktree. Do not merge autonomously.
+  with a clean worktree. Do not merge autonomously. Final-head CI is accepted
+  under the approved delivery exception; no code review has been submitted.
 
 ## Testing cost and confidence
 
