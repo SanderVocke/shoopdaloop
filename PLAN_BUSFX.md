@@ -124,6 +124,8 @@ During iteration, run only the changed layer and its nearest integration boundar
 
 At major integration milestones and final delivery, broaden to the native suite and production workflows. Use CI for the cross-platform matrix, with manual actual-browser and selected Miri checks where required by the current test policy. Preserve workloads and watchdogs; timeouts and skipped required hosts remain incomplete evidence. After a fix, rerun affected tests and final-head CI as needed, without repeating unrelated expensive suites in every edit cycle.
 
+The AudioWorklet fixture uses the production browser runner's 60-second cold-start readiness budget after two CI launches failed before opening a debugging port under its initial 10-second allowance. This setup allowance does not change the 180-second render watchdog, sample oracles or memory-growth checks. Signaled browser exits must fail promptly and clean up without waiting for an already-delivered exit event.
+
 Read `.agents/info/build.md` and the current `VALIDATION.md` before executing commands. Run `cargo fmt --all` and a warning-denying build before Rust commits; run `python3 scripts/check_shoop_test_usage.py` when Rust tests change. Remove the missing-backend allowance for tests requiring actual host facilities.
 
 # Execution contract

@@ -84,6 +84,8 @@ The fixture checks actual OfflineAudioContext output against independent dry and
 gain oracles across activation, bypass, reactivation and removal. It instruments
 the production processor script to detect render-time memory growth. The RT
 protocol and configuration versions in the fixture must match their codecs.
+Browser startup has the production runner's bounded 60-second readiness allowance;
+rendering retains its separate 180-second watchdog and all sample/memory checks.
 
 For mixed track/bus release measurements:
 

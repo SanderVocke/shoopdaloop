@@ -35,6 +35,8 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const profile = await mkdtemp(join(tmpdir(), 'busfx-chromium-'));
 const browser = spawn(process.env.CHROME_BIN || 'chromium', [
   '--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+  '--disable-extensions', '--disable-component-extensions-with-background-pages',
+  '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
   '--remote-debugging-port=0', '--autoplay-policy=no-user-gesture-required', `--user-data-dir=${profile}`, 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 let errors = '';
@@ -43,12 +45,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let socket;
 try {
   let port;
-  for (let n = 0; !port && n < 200; n++) {
+  const startupDeadline = Date.now() + 60000;
+  while (!port && Date.now() < startupDeadline) {
     try { port = Number((await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]); } catch {}
-    if (browser.exitCode !== null) throw new Error(`Chromium exited: ${errors}`);
+    if (browser.exitCode !== null || browser.signalCode !== null) throw new Error(`Chromium exited (code=${browser.exitCode}, signal=${browser.signalCode}): ${errors}`);
     if (!port) await delay(50);
   }
-  if (!port) throw new Error(`Chromium did not start: ${errors}`);
+  if (!port) throw new Error(`Chromium did not start within 60 seconds: ${errors}`);
   const target = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`http://127.0.0.1:${server.address().port}/index.html`)}`, { method: 'PUT' })).json();
   socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -79,7 +82,7 @@ try {
 } finally {
   socket?.close();
   browser.kill('SIGTERM');
-  await new Promise(resolve => browser.exitCode !== null ? resolve() : browser.once('exit', resolve));
+  await new Promise(resolve => browser.exitCode !== null || browser.signalCode !== null ? resolve() : browser.once('exit', resolve));
   server.close();
   await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
