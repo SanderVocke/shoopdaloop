@@ -51,8 +51,8 @@ use shoop_rt_transport::client::ProtocolClient;
 
 #[cfg(feature = "cpal")]
 pub use cpal_driver::{
-    audio_devices, cpal_hosts, discover, preflight_cpal, preflight_cpal_on, start_cpal,
-    AudioDevice, CpalConfig, DeviceSelection, Discovery,
+    audio_devices, cpal_hosts, discover, preflight_cpal, preflight_cpal_on, resolve_cpal_devices,
+    resolve_cpal_devices_on, start_cpal, AudioDevice, CpalConfig, DeviceSelection, Discovery,
 };
 pub use dummy::{DummyConfig, DummyControl, DummyMode};
 #[cfg(feature = "jack")]

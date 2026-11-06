@@ -801,6 +801,9 @@ impl Service {
                 port.view.name = descriptor.name.clone();
             }
         }
+        if self.driver_controller.is_some() && observed.audio_drivers.active.is_some() {
+            self.driver_state.active = observed.audio_drivers.active.clone();
+        }
         self.xruns = self.xruns.saturating_add(observed.status.xruns);
         self.observed = observed;
         self.observed.status.xruns = self.xruns;

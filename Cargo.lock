@@ -5081,6 +5081,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_wasm_test_support",
  "thiserror 2.0.21",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

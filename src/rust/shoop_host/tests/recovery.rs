@@ -1497,6 +1497,15 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
                 midi_outputs: Vec::new(),
                 ..Default::default()
             }),
+            AudioDriverConfig::Cpal(CpalAudioDriverConfig {
+                host: "jack".into(),
+                client_name: "P14-cpal-fixed".into(),
+                sample_rate: 48_000,
+                buffer_size: 256,
+                midi_inputs: Vec::new(),
+                midi_outputs: Vec::new(),
+                ..Default::default()
+            }),
             AudioDriverConfig::Jack(JackAudioDriverConfig {
                 client_name: "P14-return".into(),
             }),
@@ -1517,6 +1526,16 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
                 matches!(outcome, Outcome::Confirmed { .. }),
                 "preflight {target:?}: {outcome:?}"
             );
+            let negotiated = client
+                .snapshot()
+                .unwrap()
+                .audio_drivers
+                .switch
+                .target
+                .as_ref()
+                .unwrap()
+                .configured
+                .clone();
             let request_id = client.snapshot().unwrap().audio_drivers.switch.request_id;
             let outcome = command_with_timeout(
                 &mut client,
@@ -1537,7 +1556,7 @@ fn native_driver_switching_qualifies_direct_and_cpal_jack_on_both_carriers() {
             let state = client.snapshot().unwrap();
             assert_eq!(
                 state.audio_drivers.active.as_ref().unwrap().configured,
-                target
+                negotiated
             );
             assert_eq!(state.status.sample_rate, 48_000);
             assert_eq!(

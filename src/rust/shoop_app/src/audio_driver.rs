@@ -14,7 +14,10 @@ pub enum DriverWork {
         target: ConversionTarget,
         limits: HostResourceLimits,
     },
-    Start(ResolvedAudioDriverConfig),
+    Start {
+        profile: ResolvedAudioDriverConfig,
+        exact_devices: bool,
+    },
     Persist(AudioDriverConfig),
 }
 

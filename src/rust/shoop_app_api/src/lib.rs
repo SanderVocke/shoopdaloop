@@ -978,6 +978,7 @@ pub struct AudioDriverDescriptor {
 pub struct ResolvedAudioDriverConfig {
     pub configured: AudioDriverConfig,
     pub sample_rate: u32,
+    /// Zero during preflight means that the device chooses its callback size on open.
     pub buffer_size: u32,
     pub instance_name: String,
 }

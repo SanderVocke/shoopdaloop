@@ -61,7 +61,19 @@ fn preflight_resolves_formats_without_opening_streams_and_refuses_invalid_reques
         shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).unwrap(),
         (48_000, 64)
     );
+    let resolved = shoop_rt_host_native::resolve_cpal_devices_on(&mock, &config).unwrap();
+    assert_eq!(
+        resolved.output_device,
+        DeviceSelection::Named("Speakers".into())
+    );
+    assert_eq!(resolved.input_device, DeviceSelection::Named("Mic".into()));
     assert!(output.stream().is_none() && input.stream().is_none());
+    config.buffer_frames = None;
+    assert_eq!(
+        shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).unwrap(),
+        (48_000, 0)
+    );
+    config.buffer_frames = Some(64);
     config.sample_rate = Some(24_000);
     assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
     config.sample_rate = Some(48_000);

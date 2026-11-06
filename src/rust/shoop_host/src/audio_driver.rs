@@ -157,9 +157,39 @@ pub fn controller(
                             DriverWork::Persist(config) => {
                                 preferences(&config).map(|()| DriverReply::Persisted)
                             }
-                            DriverWork::Start(profile) => (|| {
+                            DriverWork::Start {
+                                profile,
+                                exact_devices,
+                            } => (|| {
                                 stop(&mut host)?;
                                 let native = strict_config(&profile.configured, &settings)?;
+                                #[cfg(feature = "cpal")]
+                                if exact_devices {
+                                    if let (
+                                        AudioDriverConfig::Cpal(expected),
+                                        shoop_rt_host_native::DriverConfig::Cpal(actual),
+                                    ) = (&profile.configured, &native.driver)
+                                    {
+                                        use shoop_rt_host_native::DeviceSelection;
+                                        ensure!(
+                                            actual.output_device
+                                                == DeviceSelection::Named(
+                                                    expected.output_device.clone()
+                                                )
+                                                && actual.input_device
+                                                    == if expected.input_device == "none" {
+                                                        DeviceSelection::None
+                                                    } else {
+                                                        DeviceSelection::Named(
+                                                            expected.input_device.clone(),
+                                                        )
+                                                    },
+                                            "the confirmed CPAL device identity is unavailable"
+                                        );
+                                    }
+                                }
+                                #[cfg(not(feature = "cpal"))]
+                                let _ = exact_devices;
                                 let started = shoop_rt_host_native::start(&native)?;
                                 let status = started.host.status().driver;
                                 let profile = ResolvedAudioDriverConfig {
@@ -313,6 +343,26 @@ fn preflight(
     settings: &HostSettings,
 ) -> Result<ResolvedAudioDriverConfig> {
     let mut native = strict_config(config, settings)?;
+    #[allow(unused_mut)]
+    let mut configured = config.clone();
+    #[cfg(feature = "cpal")]
+    if let (shoop_rt_host_native::DriverConfig::Cpal(native_cpal), AudioDriverConfig::Cpal(cpal)) =
+        (&mut native.driver, &mut configured)
+    {
+        *native_cpal = shoop_rt_host_native::resolve_cpal_devices(native_cpal)?;
+        cpal.host = native_cpal.host.clone().unwrap();
+        let name = |selection: &shoop_rt_host_native::DeviceSelection| match selection {
+            shoop_rt_host_native::DeviceSelection::Named(name) => name.clone(),
+            shoop_rt_host_native::DeviceSelection::None => "none".into(),
+            shoop_rt_host_native::DeviceSelection::Default => "default".into(),
+        };
+        cpal.output_device = name(&native_cpal.output_device);
+        cpal.input_device = name(&native_cpal.input_device);
+        ensure!(
+            configured.bounded(),
+            "resolved device names exceed the audio profile limits"
+        );
+    }
     let (sample_rate, buffer_size, instance_name) = match &native.driver {
         shoop_rt_host_native::DriverConfig::Dummy(config) => (
             config.sample_rate,
@@ -339,7 +389,7 @@ fn preflight(
     native.engine.sample_rate = sample_rate;
     shoop_rt_host_native::validate_processor_capacity(&native.engine)?;
     Ok(ResolvedAudioDriverConfig {
-        configured: config.clone(),
+        configured,
         sample_rate,
         buffer_size,
         instance_name,

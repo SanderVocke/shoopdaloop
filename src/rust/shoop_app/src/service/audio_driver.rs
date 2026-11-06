@@ -275,7 +275,23 @@ impl Service {
     fn driver_confirmation(&mut self, job: &mut Job, target: ResolvedAudioDriverConfig) {
         self.driver_state.switch.status = AudioDriverSwitchStatus::AwaitingConfirmation;
         self.driver_state.switch.target = Some(target.clone());
-        self.driver_state.switch.message = format!("Switch {} ({}) to {} ({})? Audio processing will be interrupted and loops will stop. Sample rate: {} Hz to {} Hz; buffer: {} to {} frames. Audio, MIDI and loop timing will be converted together when required.", job.source.configured.kind().label(), job.source.instance_name, target.configured.kind().label(), target.instance_name, job.source.sample_rate, target.sample_rate, job.source.buffer_size, target.buffer_size);
+        let devices = match &target.configured {
+            AudioDriverConfig::Cpal(config) => format!(
+                " Host: {}; output: {} (channels {}); input: {} (channels {}).",
+                config.host,
+                config.output_device,
+                config.output_channels,
+                config.input_device,
+                config.input_channels
+            ),
+            _ => String::new(),
+        };
+        let buffer = if target.buffer_size == 0 {
+            "device default (negotiated on open)".into()
+        } else {
+            format!("{} frames", target.buffer_size)
+        };
+        self.driver_state.switch.message = format!("Switch {} ({}) to {} ({})? Audio processing will be interrupted and loops will stop. Sample rate: {} Hz to {} Hz; buffer: {} frames to {buffer}.{devices} Audio, MIDI and loop timing will be converted together when required.", job.source.configured.kind().label(), job.source.instance_name, target.configured.kind().label(), target.instance_name, job.source.sample_rate, target.sample_rate, job.source.buffer_size);
         job.target = Some(target);
         job.phase = Phase::Confirmation;
         job.elapsed = Duration::ZERO;
@@ -316,7 +332,10 @@ impl Service {
         job.phase = Phase::Starting;
         self.backend.close_connection();
         self.engine_closed = true;
-        job.ticket = self.driver_work(DriverWork::Start(profile))?;
+        job.ticket = self.driver_work(DriverWork::Start {
+            profile,
+            exact_devices: !job.rollback,
+        })?;
         Ok(())
     }
 
@@ -593,7 +612,8 @@ impl Service {
                 job.phase = Phase::Recheck;
             }
             (Phase::Recheck, DriverReply::Resolved(target)) => {
-                if target.sample_rate != job.target.as_ref().unwrap().sample_rate
+                if target.configured != job.target.as_ref().unwrap().configured
+                    || target.sample_rate != job.target.as_ref().unwrap().sample_rate
                     || target.buffer_size != job.target.as_ref().unwrap().buffer_size
                 {
                     job.original = None;
@@ -635,7 +655,7 @@ impl Service {
                 };
                 job.phase = Phase::Restoration;
                 if profile.sample_rate != expected.sample_rate
-                    || profile.buffer_size != expected.buffer_size
+                    || expected.buffer_size != 0 && profile.buffer_size != expected.buffer_size
                 {
                     if !job.rollback {
                         job.reconfirm = Some(profile);

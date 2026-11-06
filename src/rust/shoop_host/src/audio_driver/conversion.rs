@@ -110,7 +110,11 @@ pub(super) fn convert(
         .flat_map(|t| &t.loops)
         .map(|l| LoopTiming {
             id: l.id.raw(),
-            sync_source: l.sync_source.map(|id| id.raw()),
+            sync_source: if l.composite.is_some() {
+                None
+            } else {
+                l.sync_source.map(|id| id.raw())
+            },
             frames: l.frames,
             sample_rate: original.sample_rate,
         })

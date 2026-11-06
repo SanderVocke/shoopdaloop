@@ -41,6 +41,9 @@ impl AudioDriverController for FakeController {
                 DriverWork::Preflight(config) => {
                     control.preflights += 1;
                     let mut resolved = FakeBackend::default().preflight_audio_driver(&config)?;
+                    if matches!(&config, AudioDriverConfig::Cpal(cpal) if cpal.buffer_size == 0) {
+                        resolved.buffer_size = 0;
+                    }
                     if control.changed_rate && control.preflights > 1 {
                         resolved.sample_rate = 32_000;
                     }
@@ -51,7 +54,10 @@ impl AudioDriverController for FakeController {
                     target,
                     limits,
                 } => conversion::convert(image, target, limits).map(DriverReply::Converted),
-                DriverWork::Start(mut profile) => {
+                DriverWork::Start { mut profile, .. } => {
+                    if profile.buffer_size == 0 {
+                        profile.buffer_size = 256;
+                    }
                     if control.changed_open && control.starts == 0 {
                         profile.buffer_size = 128;
                     }
@@ -381,6 +387,53 @@ fn changed_preflight_rate_requires_new_consent_without_teardown() {
     );
     assert_eq!(state.status.sample_rate, 48_000);
     assert_eq!(f.control.lock().unwrap().starts, 0);
+}
+
+#[shoop_test]
+fn automatic_buffer_consent_accepts_the_opened_size_without_reconfirmation() {
+    let mut f = Fixture::new();
+    assert!(matches!(
+        f.run(Command::AudioDriver(DriverCommand::Request(
+            AudioDriverConfig::Cpal(CpalAudioDriverConfig::default())
+        ))),
+        Outcome::Confirmed { .. }
+    ));
+    let state = f.service.snapshot();
+    assert_eq!(
+        state
+            .audio_drivers
+            .switch
+            .target
+            .as_ref()
+            .unwrap()
+            .buffer_size,
+        0
+    );
+    assert!(state
+        .audio_drivers
+        .switch
+        .message
+        .contains("device default (negotiated on open)"));
+    let id = state.audio_drivers.switch.request_id;
+    assert!(matches!(f.confirm(id), Outcome::Confirmed { .. }));
+    for _ in 0..5 {
+        f.tick();
+    }
+    assert_eq!(
+        f.service.snapshot().audio_drivers.switch.status,
+        AudioDriverSwitchStatus::Completed
+    );
+    assert_eq!(
+        f.service
+            .snapshot()
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap()
+            .buffer_size,
+        256
+    );
+    assert_eq!(f.control.lock().unwrap().starts, 1);
 }
 
 #[shoop_test]
@@ -862,7 +915,11 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
     ] {
         let outcome = f.run(Command::Composite(composite::Edit::Append {
             target,
-            add: vec![add],
+            add: if target == state.tracks[1].loops[2].id {
+                vec![add; 10]
+            } else {
+                vec![add]
+            },
             parallel: false,
             convert_if_empty: true,
         }));
@@ -971,7 +1028,10 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
         assert_eq!(old.document, new.document);
         assert_eq!(new.prepared.sample_rate, 32_000);
         assert_eq!(new.prepared.unit_frames, 32);
-        assert_eq!(after.tracks[1].loops[i].frames, 64);
+        assert_eq!(
+            after.tracks[1].loops[i].frames,
+            if i == 2 { 640 } else { 64 }
+        );
     }
     let content = &after.tracks[1].loops[0];
     assert_eq!(content.id, loop_id);

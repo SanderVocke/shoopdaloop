@@ -114,6 +114,31 @@ fn select_host(name: Option<&str>) -> Result<cpal::Host, StartError> {
     cpal::host_from_id(id).map_err(|error| StartError::Device(error.to_string()))
 }
 
+pub fn resolve_cpal_devices(config: &CpalConfig) -> Result<CpalConfig, StartError> {
+    let host = select_host(config.host.as_deref())?;
+    let mut resolved = resolve_cpal_devices_on(&host, config)?;
+    resolved.host = Some(host.id().name().to_lowercase());
+    Ok(resolved)
+}
+
+pub fn resolve_cpal_devices_on<H: HostTrait>(
+    host: &H,
+    config: &CpalConfig,
+) -> Result<CpalConfig, StartError> {
+    let mut resolved = config.clone();
+    resolved.output_device = select_device(host, true, &config.output_device)?
+        .map(|device| DeviceSelection::Named(device_name(&device)))
+        .ok_or(StartError::NoDevice {
+            direction: "output",
+            name: None,
+        })?;
+    resolved.input_device = select_device(host, false, &config.input_device)?
+        .map_or(DeviceSelection::None, |device| {
+            DeviceSelection::Named(device_name(&device))
+        });
+    Ok(resolved)
+}
+
 pub fn preflight_cpal(config: &CpalConfig, max_frames: usize) -> Result<(u32, u32), StartError> {
     let host = select_host(config.host.as_deref())?;
     preflight_cpal_on(&host, config, max_frames)
@@ -158,7 +183,7 @@ pub fn preflight_cpal_on<H: HostTrait>(
             return Err(StartError::InvalidConfig("input format is unavailable"));
         }
     }
-    Ok((rate, config.buffer_frames.unwrap_or(max_frames as u32)))
+    Ok((rate, config.buffer_frames.unwrap_or(0)))
 }
 
 /// Devices and MIDI ports of a CPAL host, the platform default when unset.

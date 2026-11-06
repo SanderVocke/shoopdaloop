@@ -37,8 +37,13 @@ dependency on archive codecs or `shoop_session`.
 
 Discovery and preflight do not stop current audio. A request produces a bounded
 confirmation describing source and target format, interruption, stopped transport
-and conversion. Confirmation is scoped to its client authority and request ID;
-unconfirmed preparation expires after 60 seconds or on owner loss.
+and conversion. CPAL preflight pins default/index/partial device selections to
+resolved host and exact device names; those identities appear in confirmation and
+become the saved active profile. Confirmation is scoped to its client authority and request ID;
+unconfirmed preparation expires after 60 seconds or on owner loss. Automatic CPAL
+buffer selection is explicit: preflight leaves callback size unresolved, confirmation
+names the device-default policy, and opening publishes the observed size. Engine
+capacity is never presented as a negotiated device buffer.
 
 Confirmed admission checks active, armed, scheduled and composite-driven recording
 and conflicts with persistence or pending structural work. During capture through
