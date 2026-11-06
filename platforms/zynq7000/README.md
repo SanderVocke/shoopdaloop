@@ -5,6 +5,11 @@
 DDR with reduced budgets. Physical ZedBoard qualification is the final, pending
 stage. Both profiles currently use dummy audio.
 
+For physical ZedBoard bring-up, see [JTAG development without Vivado](boards/jtag-development.md).
+It distinguishes direct-load development (no SD) from the signed SD/network
+workflow. The direct-load commands in this README otherwise exercise QEMU;
+they do not initialize a physical board's PS/DDR.
+
 Target: one Cortex-A9, 1 GiB PS DDR, FreeRTOS 10.6.1 and AMD lwIP 2.2.0.
 The firmware runs the portable Shoop session service, backend and RT engine with
 stereo 48 kHz dummy audio, 256-frame quanta and one dummy MIDI input/output.
@@ -126,6 +131,18 @@ distinct D0/D16 patterns across preemption while the timer ISR deliberately
 clobbers those registers. The fixture also verifies allocator alignment up to
 4096 bytes and 64-bit atomic carry across the 32-bit boundary.
 
+`include/bspconfig.h` must leave `USE_AMP` undefined. AMD's startup code tests
+`#if USE_AMP!=1` and enables the L2 cache, but `xil_cache.c` tests `#ifndef
+USE_AMP` and compiles out all L2 maintenance if the macro is defined, even as 0.
+GEM DMA then reads stale DDR on silicon (QEMU has no caches to expose this).
+
+The link pulls newlib's ARMv7-A memory routines (`memcpy`, `memset`, `memmove`
+and their `__aeabi_*` entry points) from libc before the Rust library, so they
+override `compiler_builtins`' weak, generic versions for both C and Rust. The
+Rust firmware is built with `-C target-feature=+neon`; rustc warns that the
+32-bit ARM `neon` feature is unstable but applies it. LLVM vectorizes integer
+work with it, not `f32` arithmetic, because ARMv7 NEON is not IEEE-compliant.
+
 AMD's initialization convention requires `lwip_init()` to initialize both its
 core and socket-mode TCP/IP thread. Calling `tcpip_init()` alone skips the core
 initialization with AMD's default `LWIP_XINIT` setting. Startup also explicitly
@@ -147,6 +164,14 @@ A priority-6 task owns the prepared renderer. The 1 kHz timer accounts fractiona
 and counted as xruns. The priority-3 control task owns the session service and
 backend. Its engine clock yields to FreeRTOS while synchronous preparation waits.
 Rendering is guarded against Rust allocation **and deallocation** after startup.
+
+Render outranks control, so overload would starve the session service and let
+app heartbeats expire. Render is therefore capped at 80% of each 100 ms window,
+measured with the global timer; quanta beyond the cap are dropped and counted as
+xruns. Fixture builds keep every quantum. The render task runs with FPSCR in
+RunFast mode (flush-to-zero, default NaN). Each render step reports its busy
+time as the DSP load, and the global timer (CPU/2, about 3 ns on a 667 MHz
+ZedBoard) is the runtime profiling clock.
 
 A priority-4 broker owns lwIP BSD sockets. Its calls may wait for lwIP's internal
 TCP/IP API semaphore even with nonblocking BSD descriptors. The Rust `ByteIo`
@@ -211,4 +236,6 @@ captures on failure. The build hashes the ELF and applied patches and records
 the source revision; the independent firmware workspace has a locked resolution.
 
 QEMU validates firmware behavior, not physical timing, cache coherency, DMA
-correctness on silicon, codec wiring or production boot packaging.
+correctness on silicon, codec wiring or production boot packaging. The
+`USE_AMP` coherency failure above only appeared on a physical ZedBoard; see the
+[JTAG guide](boards/jtag-development.md) for hardware results.
