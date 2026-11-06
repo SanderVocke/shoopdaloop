@@ -51,8 +51,8 @@ use shoop_rt_transport::client::ProtocolClient;
 
 #[cfg(feature = "cpal")]
 pub use cpal_driver::{
-    audio_devices, cpal_hosts, discover, start_cpal, AudioDevice, CpalConfig, DeviceSelection,
-    Discovery,
+    audio_devices, cpal_hosts, discover, preflight_cpal, preflight_cpal_on, start_cpal,
+    AudioDevice, CpalConfig, DeviceSelection, Discovery,
 };
 pub use dummy::{DummyConfig, DummyControl, DummyMode};
 #[cfg(feature = "jack")]
@@ -361,6 +361,10 @@ pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
         Err(error) => tracing::warn!(%error, "native host failed to start"),
     }
     started
+}
+
+pub fn validate_processor_capacity(engine: &EngineDescription) -> Result<u64, StartError> {
+    shoop_host_processors::reservation_bytes(engine).map_err(StartError::Processors)
 }
 
 /// An engine prepared for an opened driver.

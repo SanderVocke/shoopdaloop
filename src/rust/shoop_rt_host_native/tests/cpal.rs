@@ -47,6 +47,32 @@ fn mic() -> MockDevice {
     MockDevice::input("Mic", 1)
 }
 
+#[shoop_test]
+fn preflight_resolves_formats_without_opening_streams_and_refuses_invalid_requests() {
+    let output = speakers();
+    let input = mic();
+    let mock = MockHost::new(vec![output.clone(), input.clone()]);
+    let mut config = CpalConfig {
+        sample_rate: Some(48_000),
+        buffer_frames: Some(64),
+        ..Default::default()
+    };
+    assert_eq!(
+        shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).unwrap(),
+        (48_000, 64)
+    );
+    assert!(output.stream().is_none() && input.stream().is_none());
+    config.sample_rate = Some(24_000);
+    assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
+    config.sample_rate = Some(48_000);
+    config.buffer_frames = Some(8);
+    assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
+    config.buffer_frames = Some(64);
+    config.output_device = DeviceSelection::Named("absent".into());
+    assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
+    assert!(output.stream().is_none() && input.stream().is_none());
+}
+
 fn open(
     config: &CpalConfig,
     engine: &EngineDescription,

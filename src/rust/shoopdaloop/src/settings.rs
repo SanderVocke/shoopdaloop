@@ -64,6 +64,23 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn reload_driver_preferences(&mut self) -> Result<(), SettingsManagerError> {
+        let text = shoop_settings::load_settings_file(&self.path)
+            .map_err(|e| SettingsManagerError::Storage(e.to_string()))?
+            .ok_or_else(|| {
+                SettingsManagerError::Storage("saved settings file is missing".into())
+            })?;
+        let document =
+            decode_settings(&text).map_err(|e| SettingsManagerError::Storage(e.to_string()))?;
+        let resolution = self
+            .registry
+            .resolve(&document, self.active.revision().saturating_add(1));
+        self.document = document;
+        self.active = Arc::new(resolution.snapshot);
+        self.persistence = SettingsPersistenceState::Saved;
+        Ok(())
+    }
     #[cfg(all(not(target_arch = "wasm32"), not(test)))]
     pub fn load(registry: SettingsRegistry, writer_version: impl Into<String>) -> Self {
         let writer_version = writer_version.into();
@@ -294,6 +311,47 @@ impl SettingsManager {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn driver_preference_writer(path: PathBuf) -> shoop_host::audio_driver::PreferenceWriter {
+    Box::new(move |config| {
+        let mut document = shoop_settings::load_settings_file(&path)?
+            .map(|text| decode_settings(&text))
+            .transpose()?
+            .unwrap_or_else(|| SettingsDocument::empty(env!("CARGO_PKG_VERSION")));
+        let value = serde_json::to_value(config)?;
+        let fields = value
+            .as_object()
+            .and_then(|v| v.values().next())
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| anyhow::anyhow!("native driver profile has no settings fields"))?;
+        document
+            .values
+            .insert("audio.selected_driver".into(), config.kind().id().into());
+        for (name, value) in fields {
+            let value = if name == "midi_inputs" || name == "midi_outputs" {
+                serde_json::Value::String(
+                    value
+                        .as_array()
+                        .ok_or_else(|| anyhow::anyhow!("invalid MIDI selector list"))?
+                        .iter()
+                        .map(|v| {
+                            v.as_str()
+                                .ok_or_else(|| anyhow::anyhow!("invalid MIDI selector"))
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()?
+                        .join(", "),
+                )
+            } else {
+                value.clone()
+            };
+            document
+                .values
+                .insert(format!("audio.{}.{}", config.kind().id(), name), value);
+        }
+        shoop_settings::save_settings_file(&path, &encode_settings(&document)?)
+    })
+}
+
 fn resolve_loaded(
     registry: &SettingsRegistry,
     writer_version: &str,
@@ -447,6 +505,55 @@ mod tests {
     use std::time::{Duration, Instant};
 
     const VALUE: SettingKey<u32> = SettingKey::new("test.value");
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn host_driver_preference_save_preserves_other_settings_and_reloads_for_startup() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("settings.json");
+        let mut document = SettingsDocument::empty("test");
+        document.values.insert(
+            "unrecognized.resource".into(),
+            serde_json::json!({"keep": [1, 2, 3]}),
+        );
+        shoop_settings::save_settings_file(&path, &encode_settings(&document).unwrap()).unwrap();
+        let target =
+            shoop_app_api::AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                sample_rate: 32_000,
+                buffer_size: 128,
+            });
+        driver_preference_writer(path.clone())(&target).unwrap();
+        let saved = decode_settings(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            saved.values["unrecognized.resource"],
+            document.values["unrecognized.resource"]
+        );
+        let mut builder = SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let mut manager = SettingsManager::load_from_path(builder.finish(), "test", path.clone());
+        assert_eq!(
+            shoop_egui::audio_driver_config_from_snapshot(
+                &manager.active(),
+                shoop_app_api::AudioDriverKind::Dummy
+            )
+            .unwrap(),
+            target
+        );
+        let retry_target =
+            shoop_app_api::AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                sample_rate: 44_100,
+                buffer_size: 256,
+            });
+        driver_preference_writer(path)(&retry_target).unwrap();
+        manager.reload_driver_preferences().unwrap();
+        assert_eq!(
+            shoop_egui::audio_driver_config_from_snapshot(
+                &manager.active(),
+                shoop_app_api::AudioDriverKind::Dummy
+            )
+            .unwrap(),
+            retry_target
+        );
+    }
 
     fn registry() -> SettingsRegistry {
         let mut builder = SettingsRegistryBuilder::default();

@@ -167,6 +167,17 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
         )),
     }
 }
+pub fn reservation_bytes(d: &EngineDescription) -> Result<u64, Error> {
+    let effective =
+        d.processors
+            .resolve_for_channels(support(), d.sample_rate, d.strip_channels)?;
+    let q = Quantum::new(d.quantum).map_err(|_| Error::Capacity)?;
+    if !(1..=8).contains(&d.strip_channels) {
+        return Err(Error::Capacity);
+    }
+    reservation(d, effective, q)
+}
+
 pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
     let effective =
         d.processors

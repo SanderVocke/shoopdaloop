@@ -1087,6 +1087,18 @@ impl Runtime {
             }
         }
         let command = match intent {
+            AppIntent::RefreshAudioDriverDiscovery { config } => {
+                Command::AudioDriver(audio_driver::Command::Discover(config))
+            }
+            AppIntent::RequestAudioDriverSwitch { config } => {
+                Command::AudioDriver(audio_driver::Command::Request(config))
+            }
+            AppIntent::ConfirmAudioDriverSwitch { request_id, accept } => {
+                Command::AudioDriver(audio_driver::Command::Confirm { request_id, accept })
+            }
+            AppIntent::RetryAudioDriverPersistence { request_id } => {
+                Command::AudioDriver(audio_driver::Command::RetryPersistence { request_id })
+            }
             AppIntent::AddTrack(spec) => Command::AddTrack(spec.into()),
             AppIntent::AddTrackWithTopology(spec) => {
                 let creation = spec.creation_request_id.map(|id| (id, false));
@@ -1383,10 +1395,7 @@ impl Runtime {
                     | AppIntent::SetTakeProcessorAlignment { .. } => {
                         BackendCapability::TakeAlignment
                     }
-                    AppIntent::RequestAudioDriverSwitch { .. }
-                    | AppIntent::RefreshAudioDriverDiscovery { .. }
-                    | AppIntent::ConfirmAudioDriverSwitch { .. }
-                    | AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
+                    AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
                         BackendCapability::AudioDriverSwitching
                     }
                     _ => anyhow::bail!("{} is unavailable with this engine", other.kind()),

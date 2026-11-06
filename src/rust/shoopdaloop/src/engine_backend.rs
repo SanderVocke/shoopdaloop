@@ -28,8 +28,22 @@ pub(crate) struct NewEngine {
 
 /// Stops the native host when dropped. Drop the backend first: the engine then sees its
 /// client leave and resets MIDI before the driver stops.
-pub(crate) struct EngineHost(Option<NativeHost>);
+pub(crate) struct EngineHost(Option<NativeHost>, Option<shoop_host::audio_driver::Owner>);
 impl EngineHost {
+    pub fn enable_audio_driver_switching(
+        &mut self,
+        settings: shoop_app_api::HostSettings,
+        preferences: shoop_host::audio_driver::PreferenceWriter,
+    ) -> Result<Box<dyn shoop_app::AudioDriverController>> {
+        let host = self
+            .0
+            .take()
+            .ok_or_else(|| anyhow!("native host is already managed"))?;
+        let (owner, controller) =
+            shoop_host::audio_driver::controller(host, settings, preferences)?;
+        self.1 = Some(owner);
+        Ok(controller)
+    }
     pub fn graph_controller(&self) -> Option<Box<dyn shoop_app::HostGraphController>> {
         shoop_host::host_graph::controller(self.0.as_ref()?)
     }
@@ -38,6 +52,9 @@ impl EngineHost {
         self.stop_host()
     }
     fn stop_host(&mut self) -> Vec<String> {
+        if let Some(mut owner) = self.1.take() {
+            return owner.stop().err().into_iter().collect();
+        }
         let Some(host) = self.0.take() else {
             return Vec::new();
         };
@@ -127,7 +144,7 @@ fn start_with(
         buffer_size: status.buffer_frames,
         instance_name: started.host.instance_name().to_owned(),
     };
-    let host = EngineHost(Some(started.host));
+    let host = EngineHost(Some(started.host), None);
     let mut backend = RtBackend::connect(started.client, Sleep::default())
         .map_err(|error| anyhow!("the new engine backend did not connect: {error:#}"))?;
     backend.set_driver_profile(profile);

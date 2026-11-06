@@ -439,6 +439,7 @@ mod native {
             backend: Box<dyn Backend + Send>,
             options: ApplicationStartOptions,
             graph: Option<Box<dyn shoop_app::HostGraphController>>,
+            driver: Option<Box<dyn shoop_app::AudioDriverController>>,
         ) -> Result<Self> {
             Self::start_thread(true, move || {
                 let mut runtime = CooperativeApplicationRuntime::start_with_options_and_midi(
@@ -448,6 +449,9 @@ mod native {
                 )?;
                 if let Some(graph) = graph {
                     runtime.service.set_host_graph_controller(graph)?;
+                }
+                if let Some(driver) = driver {
+                    runtime.service.set_audio_driver_controller(driver)?;
                 }
                 Ok(SessionRuntime::Local(runtime))
             })

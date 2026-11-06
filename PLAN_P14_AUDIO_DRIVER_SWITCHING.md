@@ -39,56 +39,56 @@ Browser device switching, firmware device switching, JACK transport/timebase, au
 
 ## Implementation stages
 
-Execute stages in order. Stages 2 and 3 depend on the interface established in Stage 1; Stage 4 requires both. Each stage ends with its focused checks passing and a milestone commit.
+Execute stages in order. Stages 2 and 3 depend on the interface established in Stage 1; Stage 4 requires both. Each stage ends with its focused checks passing and a milestone commit. The first implementation milestone combines Stages 1–5 because the protocol, injected controller, restoration mapping, shared conversion and composition-root changes require a coherent workspace build; subsequent qualification and delivery changes remain separate milestones.
 
 ### Stage 1 Establish the transaction and delivery branch
 
-- [ ] Refresh `feat/backend-replacement`, inspect current instructions and relevant baseline CI, and create `feat/p14-audio-driver-switching` from that branch. Save the executable plan as `PLAN_P14_AUDIO_DRIVER_SWITCHING.md` in the repository.
-- [ ] Map P14 A1 through A8 to the retained reference tests and production test locations. Record the supported driver/platform/carrier matrix, including absent build features and separate CPAL JACK/direct JACK cases.
-- [ ] Define typed discovery, preflight, confirm/cancel, progress, terminal result, and preference-save/retry contracts in `shoop_app_api` and `shoop_app_protocol`. Bound names/catalogs and version wire changes explicitly.
-- [ ] Add service operation ownership and an injected, polled host-controller interface. Define the freeze/capture/teardown/publication boundaries, concurrent-command refusal table, deadlines, and stale-generation rules.
-- [ ] Specify the host-local startup-profile persistence path and launch precedence for embedded and independent hosts, including unwritable storage and command-line overrides.
-- [ ] Add fake-controller contract tests, commit, push, and open a draft PR targeting `feat/backend-replacement`.
+- [x] Refresh `feat/backend-replacement`, inspect current instructions and relevant baseline CI, and create `feat/p14-audio-driver-switching` from that branch. Save the executable plan as `PLAN_P14_AUDIO_DRIVER_SWITCHING.md` in the repository.
+- [x] Map P14 A1 through A8 to the retained reference tests and production test locations. Record the supported driver/platform/carrier matrix, including absent build features and separate CPAL JACK/direct JACK cases.
+- [x] Define typed discovery, preflight, confirm/cancel, progress, terminal result, and preference-save/retry contracts in `shoop_app_api` and `shoop_app_protocol`. Bound names/catalogs and version wire changes explicitly.
+- [x] Add service operation ownership and an injected, polled host-controller interface. Define the freeze/capture/teardown/publication boundaries, concurrent-command refusal rules, unconfirmed preparation expiry, and stale-generation rules. Device lifecycle calls retain their worker owner until completion; OS calls cannot safely be forcibly cancelled. Slow lifecycle work stays visibly pending and blocks a second transition rather than claiming cleanup or rollback completed.
+- [x] Specify the host-local startup-profile persistence path and launch precedence for embedded and independent hosts, including unwritable storage and command-line overrides.
+- [x] Add fake-controller contract tests, commit, push, and open a draft PR targeting `feat/backend-replacement`.
 
 Verification: protocol round trips and bounds, incompatible versions, no-controller capability refusal, stale/duplicate confirmations, cancellation, concurrent operations, and detach before versus after confirmed admission. Run dependency audits immediately to validate interface placement.
 
 ### Stage 2 Add native preflight and lifecycle control
 
-- [ ] Reuse native discovery/configuration code in `shoop_host/src/engine.rs` and `shoop_rt_host_native`; expose resolved profiles without activating rendering or disturbing the current driver.
-- [ ] Implement strict Dummy, CPAL, and direct JACK start/stop through the host controller. Keep actual device rate, buffers, instance name, feature availability, and port capacities authoritative.
-- [ ] Recheck the opened target against consent. If its rate changed, stop the uncommitted target and restore the source as necessary before presenting renewed confirmation.
-- [ ] Preserve bounded MIDI reset, preview cancellation, stream teardown, graph teardown, and off-callback resource cleanup. Make lifecycle requests and results generation-scoped.
-- [ ] Provide deterministic fault injection through existing mock/device test facilities.
+- [x] Reuse native discovery/configuration code in `shoop_host/src/engine.rs` and `shoop_rt_host_native`; expose resolved profiles without activating rendering or disturbing the current driver.
+- [x] Implement strict Dummy, CPAL, and direct JACK start/stop through the host controller. Keep actual device rate, buffers, instance name, feature availability, and port capacities authoritative.
+- [x] Recheck the opened target against consent. If its rate changed, stop the uncommitted target and restore the source as necessary before presenting renewed confirmation.
+- [x] Preserve bounded MIDI reset, preview cancellation, stream teardown, graph teardown, and off-callback resource cleanup. Make lifecycle requests and results generation-scoped.
+- [x] Provide deterministic fault injection through existing mock/device test facilities.
 
 Verification: valid/invalid profiles, same-driver device and buffer changes, missing devices/backends, server absence, changed resolved rates, cleanup failure, repeated start/stop, and actual Dummy transitions. Use mock CPAL and existing JACK tests during iteration; reserve the complete physical matrix for Stage 6.
 
 ### Stage 3 Prepare coherent capture and target conversion
 
-- [ ] Extend service persistence capture for switch-owned immutable images, independent of client bulk-transfer lifetime. Fence relevant mutations at the capture cut and reject active/armed/scheduled/future recording without altering it.
-- [ ] Factor the existing `ConversionPlan`/`SessionFormatPlan` algorithms and media conversion into the allowed shared preparation interface. Retain document adapters and reuse the same timing rules for file conversion and driver switching.
-- [ ] Prepare the entire target session against negotiated target rate, quantum, capacities, and processor catalog before destructive transition where possible. Retain original media and source mappings for rollback.
-- [ ] Cover role-aware channels, supported processor/take state, composites and sync dependencies, signed offsets, preplay, retained media windows, and exact MIDI state.
-- [ ] Charge aggregate memory and work budgets before allocations; return explicit errors and release candidates on cancellation or preparation failure.
+- [x] Extend service persistence capture for switch-owned immutable images, independent of client bulk-transfer lifetime. Fence relevant mutations at the capture cut and reject active/armed/scheduled/future recording without altering it.
+- [x] Factor the existing `ConversionPlan`/`SessionFormatPlan` algorithms and media conversion into the allowed shared preparation interface. Retain document adapters and reuse the same timing rules for file conversion and driver switching.
+- [x] Prepare the entire target session against negotiated target rate, quantum, capacities, and processor catalog before destructive transition where possible. Retain original media and source mappings for rollback.
+- [x] Cover role-aware channels, supported processor/take state, composites and sync dependencies, signed offsets, preplay, retained media windows, and exact MIDI state.
+- [x] Charge aggregate memory and work budgets before allocations; return explicit errors and release candidates on cancellation or preparation failure.
 
 Verification: same-format byte equality; independent audio/MIDI and timing oracles for 48 kHz, 44.1 kHz, and 32 kHz conversions; sync multiples and quantum rounding; mixed media and composite timing; unsupported-state refusal; overflow and memory exhaustion. Run existing persistence/conversion regressions after the extraction and keep dependency audits passing.
 
 ### Stage 4 Commit restoration and rollback
 
-- [ ] Implement the service-owned transition in both embedded and independent native composition roots. Close the old engine connection with bounded cleanup, start the target, attach the replacement adapter, and restore prepared content.
-- [ ] Add identity-preserving service restoration and complete backend mapping validation. Restore policies, supported processors, graph publication, routing intent, and stopped loop state before publishing a terminal runtime result.
-- [ ] Fence old engine replies, media reads, transfers, and pre-transition musical operations. Advance the appropriate persistence generation/epoch without replacing the application's session authority or losing accepted results.
-- [ ] On target or publication failure, reconstruct the original-format source driver/session from the retained cut. Publish explicit rollback success or fatal rollback failure with both causes.
-- [ ] Ensure UI detach, connection loss, and reattachment do not abort confirmed work, duplicate execution, or trigger fresh-session initialization.
+- [x] Implement the service-owned transition in both embedded and independent native composition roots. Close the old engine connection with bounded cleanup, start the target, attach the replacement adapter, and restore prepared content.
+- [x] Add identity-preserving service restoration and complete backend mapping validation. Restore policies, supported processors, graph publication, routing intent, and stopped loop state before publishing a terminal runtime result.
+- [x] Fence old engine replies, media reads, transfers, and pre-transition musical operations. Advance the appropriate persistence generation/epoch without replacing the application's session authority or losing accepted results.
+- [x] On target or publication failure, reconstruct the original-format source driver/session from the retained cut. Publish explicit rollback success or fatal rollback failure with both causes.
+- [x] Ensure UI detach, connection loss, and reattachment do not abort confirmed work, duplicate execution, or trigger fresh-session initialization.
 
 Verification: fault injection at every phase, including partial uploads, processor failure, bad mapping, failure after target startup, rollback startup/restoration failure, and lost result delivery. Compare public IDs and complete session state before/after; repeat over typed local queues, socket, and shared memory. Check source and converted owners are released after terminal outcomes.
 
 ### Stage 5 Integrate settings and preference retry
 
-- [ ] Route existing discovery/request/confirmation actions through `shoop_app_client` and the production service. Advertise `AudioDriverSwitching` only when the complete host-managed flow is available.
-- [ ] Reuse the settings dialog and progress projection. Remove the independent-host shortcut in `shoopdaloop/src/main.rs` that treats a switch request as a local preference save.
-- [ ] Persist the successful active profile through the owning host's configured startup store. Carry a separate save result and retry identity; stale save completions cannot complete a later switch.
-- [ ] Reconcile runtime success and unsaved-preference state after UI loss. Keep retry available without retaining the originating UI draft as the sole recovery authority.
-- [ ] Preserve local Lua VM lifecycle and update consumers of unchanged public IDs without reinstalling scripts. Keep browser/firmware capability refusal truthful.
+- [x] Route existing discovery/request/confirmation actions through `shoop_app_client` and the production service. Advertise `AudioDriverSwitching` only when the complete host-managed flow is available.
+- [x] Reuse the settings dialog and progress projection. Remove the independent-host shortcut in `shoopdaloop/src/main.rs` that treats a switch request as a local preference save.
+- [x] Persist the successful active profile through the owning host's configured startup store. Carry a separate save result and retry identity; stale save completions cannot complete a later switch.
+- [x] Reconcile runtime success and unsaved-preference state after UI loss. Keep retry available without retaining the originating UI draft as the sole recovery authority.
+- [x] Preserve local Lua VM lifecycle and update consumers of unchanged public IDs without reinstalling scripts. Keep browser/firmware capability refusal truthful.
 
 Verification: confirmation/cancel UX, progress and error states, save-only behavior, save failure then retry without additional start/stop calls, restart into the saved profile, independent-host preference destination, stale save results, and UI detach during persistence.
 

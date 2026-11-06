@@ -175,12 +175,12 @@ impl SessionFormatPlan {
                         && payload_frames(&bundle.media[&source]) == old_length;
                     let phase = i128::from(map.target_origin)
                         .checked_mul(
-                            i128::try_from(map.scale.denominator)
+                            i128::try_from(map.scale.denominator())
                                 .map_err(|_| invalid("phase overflow"))?,
                         )
                         .and_then(|scaled| {
                             i128::from(map.origin)
-                                .checked_mul(i128::try_from(map.scale.numerator).ok()?)
+                                .checked_mul(i128::try_from(map.scale.numerator()).ok()?)
                                 .and_then(|original| scaled.checked_sub(original))
                         })
                         .ok_or_else(|| invalid("phase overflow"))?;
@@ -363,10 +363,10 @@ impl SessionFormatPlan {
 
 fn scale_physical(value: i64, scale: FrameScale) -> Result<i64, SessionError> {
     let magnitude = scale.multiply(FrameScale::new(u128::from(value.unsigned_abs()), 1)?)?;
-    let rounded = magnitude.numerator / magnitude.denominator
+    let rounded = magnitude.numerator() / magnitude.denominator()
         + u128::from(
-            magnitude.numerator % magnitude.denominator
-                >= magnitude.denominator / 2 + magnitude.denominator % 2,
+            magnitude.numerator() % magnitude.denominator()
+                >= magnitude.denominator() / 2 + magnitude.denominator() % 2,
         );
     let rounded = u64::try_from(rounded).map_err(|_| invalid("physical frame field overflow"))?;
     let signed = if value < 0 {

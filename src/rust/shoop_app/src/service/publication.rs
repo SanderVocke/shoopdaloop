@@ -43,6 +43,11 @@ pub(super) fn engine_complete(
     }
 }
 impl Service {
+    pub(super) fn audio_driver_publication_error(&self) -> Option<String> {
+        self.publications
+            .values()
+            .find_map(|entry| entry.error.clone())
+    }
     pub(super) fn reconcile_graph(&mut self, next: &graph::Snapshot) {
         if !self.dynamic_ports() {
             return;
@@ -122,6 +127,21 @@ impl Service {
                 _ => false,
             })
             .all(|(id, _)| self.publication_ready(*id))
+    }
+    pub(super) fn session_publications_ready(&self) -> bool {
+        !self
+            .publications
+            .values()
+            .any(|entry| entry.removing || !entry.ready)
+            && self.ports.keys().all(|id| self.publication_ready(*id))
+            && self.graph_connections.is_empty()
+            && !self.connection_intent.iter().any(|((port, host), intent)| {
+                self.graph_endpoint(*port).is_some()
+                    && self.graph_host(host).is_some()
+                    && intent.error.is_none()
+                    && (intent.pending.is_some()
+                        || self.graph_linked(*port, host) != intent.connected)
+            })
     }
     pub(super) fn effect_publications(&self, effect: &Effect) -> Vec<HostGraphLocalKey> {
         if !self.dynamic_ports() {
@@ -388,7 +408,7 @@ impl Service {
             }
             if matches!(
                 pending.effect,
-                Effect::Persistence(_) | Effect::HostGraph(_)
+                Effect::Persistence(_) | Effect::HostGraph(_) | Effect::AudioDriver
             ) || (self.shutdown_ready && self.shutdown == Some(id))
                 || pending.completed.len() as u64
                     != pending
@@ -408,20 +428,7 @@ impl Service {
                         reason: Refusal::Engine,
                         message: error,
                     });
-                } else if self
-                    .publications
-                    .values()
-                    .any(|entry| entry.removing || !entry.ready)
-                    || self.ports.keys().any(|id| !self.publication_ready(*id))
-                    || !self.graph_connections.is_empty()
-                    || self.connection_intent.iter().any(|((port, host), intent)| {
-                        self.graph_endpoint(*port).is_some()
-                            && self.graph_host(host).is_some()
-                            && intent.error.is_none()
-                            && (intent.pending.is_some()
-                                || self.graph_linked(*port, host) != intent.connected)
-                    })
-                {
+                } else if !self.session_publications_ready() {
                     continue;
                 }
             }

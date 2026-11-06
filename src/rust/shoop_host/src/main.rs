@@ -16,6 +16,8 @@ fn run() -> anyhow::Result<()> {
         audio: shoop_host::audio_args::AudioArgs,
         #[arg(long)]
         config: Option<PathBuf>,
+        #[arg(long)]
+        driver_preferences: Option<PathBuf>,
         #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options"])]
         launch_stdin: bool,
         #[arg(long)]
@@ -63,6 +65,18 @@ fn run() -> anyhow::Result<()> {
         options.name = args.name;
         (None, options)
     };
+    if !args.launch_stdin {
+        options.driver_preferences = args.driver_preferences.clone().or_else(|| {
+            args.config
+                .as_ref()
+                .map(|path| path.with_extension("audio-driver.json"))
+        });
+    }
+    if options.driver_preferences.is_none() {
+        options.driver_preferences =
+            directories::ProjectDirs::from("org", "ShoopDaLoop", "ShoopDaLoop")
+                .map(|dirs| dirs.config_dir().join("native-host-audio.json"));
+    }
     // Only an explicitly requested log file creates persistent diagnostics.
     if let Some(path) = &options.log_file {
         let log = shoop_host::logging::Writer::open(path)?;
@@ -97,6 +111,11 @@ fn run() -> anyhow::Result<()> {
             serde_json::from_slice(&bytes)?
         }
     };
+    if let Some(path) = &options.driver_preferences {
+        if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
+            config.settings.driver = profile;
+        }
+    }
     config.settings.driver = args.audio.apply(config.settings.driver)?;
     config.settings.processors = args.audio.apply_processors(config.settings.processors)?;
     config.validate()?;

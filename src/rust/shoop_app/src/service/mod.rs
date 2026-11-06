@@ -7,6 +7,7 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 
+mod audio_driver;
 mod commands;
 mod composites;
 mod deployment;
@@ -78,6 +79,7 @@ struct Port {
 
 #[derive(Clone, Debug)]
 enum Effect {
+    AudioDriver,
     None,
     CompositeEdit(LoopId),
     BusCreated(BusId),
@@ -152,6 +154,11 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    driver_controller: Option<Box<dyn crate::AudioDriverController>>,
+    driver_state: AudioDriverRuntimeState,
+    driver_job: Option<audio_driver::Job>,
+    driver_request: u64,
+    driver_ticket: u64,
     host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
     host_graph: Arc<HostGraphState>,
     publications: BTreeMap<HostGraphLocalKey, publication::Publication>,
@@ -242,6 +249,11 @@ impl Service {
             .track_processor_catalog()
             .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            driver_state: observed.audio_drivers.clone(),
+            driver_controller: None,
+            driver_job: None,
+            driver_request: 0,
+            driver_ticket: 0,
             track_processors,
             host_graph_controller: None,
             host_graph: Arc::default(),
@@ -472,7 +484,11 @@ impl Service {
             master_auto_connect: self.options.master_auto_connect,
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             pending_operations: self.pending.len() as u32,
-            restart_required_fields: vec!["driver".into(), "pools".into()],
+            restart_required_fields: if self.driver_controller.is_some() {
+                vec!["pools".into()]
+            } else {
+                vec!["driver".into(), "pools".into()]
+            },
         }
     }
 
@@ -673,6 +689,7 @@ impl Service {
             .as_ref()
             .is_some_and(|lease| lease.connection == connection)
         {
+            self.detach_audio_driver();
             self.stop_preview();
             self.lease = None;
             for (note, tracks) in core::mem::take(&mut self.piano_notes) {
@@ -775,6 +792,8 @@ impl Service {
             || self.shutdown.is_some()
         {
             Some((Refusal::NotReady, "the session is not accepting commands"))
+        } else if self.audio_driver_busy(command.as_ref()) {
+            Some((Refusal::Busy, "an audio-driver transition is active"))
         } else if epoch.is_some_and(|epoch| epoch != self.persistence_epoch) {
             Some((Refusal::Identity, "the session was replaced"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
@@ -840,6 +859,11 @@ impl Service {
             None => self.prepare_shutdown(),
         };
         let after = self.backend.mutation_cursor();
+        if matches!(result, Ok(Effect::AudioDriver)) {
+            if let Some(job) = self.driver_job.as_mut() {
+                job.operation = Some(id);
+            }
+        }
         if let Some(job) = self
             .composite_structure
             .as_mut()
@@ -872,6 +896,7 @@ impl Service {
 
     fn request_budget(&self, command: Option<&Command>) -> usize {
         match command {
+            Some(Command::AudioDriver(_)) => 0,
             Some(
                 Command::SetHostGraphConnected(_)
                 | Command::SelectLoops { .. }
@@ -977,6 +1002,10 @@ impl Service {
 
     pub fn tick(&mut self, elapsed: Duration) {
         if self.closed {
+            self.publish();
+            return;
+        }
+        if self.tick_audio_driver(elapsed) {
             self.publish();
             return;
         }

@@ -2226,6 +2226,9 @@ impl ApplicationModel {
                 success,
                 message,
             } => self.complete_audio_driver_persistence(request_id, success, message),
+            AppIntent::RetryAudioDriverPersistence { .. } => {
+                Err("preference retry is owned by the native host".into())
+            }
             AppIntent::ResetXruns => {
                 self.status.xruns = 0;
                 Ok(())

@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+pub mod audio_driver;
 pub mod codec;
 pub mod composite;
 #[cfg(feature = "std")]
@@ -26,7 +27,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 31;
+pub const VERSION: u16 = 32;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -73,6 +74,7 @@ pub struct OperationId {
 /// Shared operations only. Platform dialogs, script VMs and UI drafts are local.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Command {
+    AudioDriver(audio_driver::Command),
     Composite(composite::Edit),
     SetLoopTimeline {
         loop_id: LoopId,
@@ -139,6 +141,7 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
+            Self::AudioDriver(command) => command.bounded(),
             Self::Composite(edit) => edit.bounded(),
             Self::SetLoopChannelTimings { updates, .. } => {
                 updates.len() <= MAX_LOOP_CHANNEL_TIMING_UPDATES

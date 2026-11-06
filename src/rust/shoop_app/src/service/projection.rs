@@ -131,7 +131,11 @@ impl Service {
             master_auto_connect: self.options.master_auto_connect,
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             status: status(&self.observed.status),
-            audio_drivers: self.observed.audio_drivers.clone(),
+            audio_drivers: if self.driver_controller.is_some() {
+                self.driver_state.clone()
+            } else {
+                self.observed.audio_drivers.clone()
+            },
             capabilities: [
                 BackendCapability::Grab,
                 BackendCapability::ReplacingMode,
@@ -149,7 +153,11 @@ impl Service {
             .into_iter()
             .fold(BackendCapabilities::NONE, |caps, capability| {
                 caps.with(capability, self.backend.capabilities().supports(capability))
-            }),
+            })
+            .with(
+                BackendCapability::AudioDriverSwitching,
+                self.driver_controller.is_some(),
+            ),
             connections,
             host_graph: self.host_graph.clone(),
             track_processors: self.track_processors.clone(),

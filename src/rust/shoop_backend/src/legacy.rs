@@ -7988,21 +7988,7 @@ impl Backend for FakeBackend {
         self.status.buffer_size = resolved.buffer_size;
         self.active_audio_driver = resolved;
         match self.replace_session(session) {
-            Ok(mut replacement) => {
-                let corrupt = {
-                    let mut control = self
-                        .audio_driver_control
-                        .state
-                        .lock()
-                        .unwrap_or_else(|error| error.into_inner());
-                    std::mem::take(&mut control.corrupt_next_replacement_mapping)
-                };
-                if corrupt {
-                    replacement.tracks.clear();
-                    replacement.global_ports.clear();
-                }
-                Ok(replacement)
-            }
+            Ok(replacement) => Ok(replacement),
             Err(error) => {
                 self.status.sample_rate = previous.sample_rate;
                 self.status.buffer_size = previous.buffer_size;
@@ -10068,6 +10054,19 @@ impl Backend for FakeBackend {
                 .ok_or_else(|| anyhow!("session mixer route has a stale destination"))?;
             staged.set_mixer_route(source_port_id, destination_channel_id, true)?;
         }
+        let corrupt = {
+            let mut control = self
+                .audio_driver_control
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            std::mem::take(&mut control.corrupt_next_replacement_mapping)
+        };
+        if corrupt {
+            replacement.tracks.clear();
+            replacement.global_ports.clear();
+        }
+        staged.audio_driver_control = self.audio_driver_control.clone();
         staged.capabilities = self.capabilities;
         *self = staged;
         Ok(replacement)

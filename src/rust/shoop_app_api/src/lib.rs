@@ -896,6 +896,54 @@ pub enum AudioDriverConfig {
 }
 
 impl AudioDriverConfig {
+    pub fn bounded(&self) -> bool {
+        let text = |value: &str| value.len() <= 128 && !value.contains('\0');
+        match self {
+            Self::Dummy(config) => {
+                (1..=768_000).contains(&config.sample_rate)
+                    && (1..=65_536).contains(&config.buffer_size)
+            }
+            Self::Jack(config) => text(&config.client_name) && config.validate().is_ok(),
+            Self::Cpal(config) => {
+                [
+                    &config.client_name,
+                    &config.host,
+                    &config.output_device,
+                    &config.input_device,
+                    &config.output_channels,
+                    &config.input_channels,
+                ]
+                .into_iter()
+                .all(|value| text(value))
+                    && config.sample_rate <= 768_000
+                    && config.buffer_size <= 65_536
+                    && config.capture_ring_frames <= 1_048_576
+                    && config.midi_inputs.len() <= 32
+                    && config.midi_outputs.len() <= 32
+                    && config
+                        .midi_inputs
+                        .iter()
+                        .chain(&config.midi_outputs)
+                        .all(|value| text(value))
+                    && [
+                        &config.client_name,
+                        &config.host,
+                        &config.output_device,
+                        &config.input_device,
+                        &config.output_channels,
+                        &config.input_channels,
+                    ]
+                    .into_iter()
+                    .chain(config.midi_inputs.iter())
+                    .chain(config.midi_outputs.iter())
+                    .map(String::len)
+                    .sum::<usize>()
+                        <= 768
+            }
+            Self::WebAudio => false,
+        }
+    }
+
     pub const fn kind(&self) -> AudioDriverKind {
         match self {
             Self::Dummy(_) => AudioDriverKind::Dummy,
@@ -2769,6 +2817,9 @@ pub enum AppIntent {
         success: bool,
         message: String,
     },
+    RetryAudioDriverPersistence {
+        request_id: u64,
+    },
     ResetXruns,
     DismissNotification {
         id: u64,
@@ -3048,6 +3099,7 @@ impl AppIntent {
             Self::CompleteAudioDriverSwitchPersistence { .. } => {
                 "audio_driver.complete_persistence"
             }
+            Self::RetryAudioDriverPersistence { .. } => "audio_driver.retry_persistence",
             Self::ResetXruns => "audio.reset_xruns",
             Self::DismissNotification { .. } => "app.dismiss_notification",
             Self::RequestNewSession => "session.request_new",

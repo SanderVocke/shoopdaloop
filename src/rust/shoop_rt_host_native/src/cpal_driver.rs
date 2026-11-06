@@ -114,6 +114,53 @@ fn select_host(name: Option<&str>) -> Result<cpal::Host, StartError> {
     cpal::host_from_id(id).map_err(|error| StartError::Device(error.to_string()))
 }
 
+pub fn preflight_cpal(config: &CpalConfig, max_frames: usize) -> Result<(u32, u32), StartError> {
+    let host = select_host(config.host.as_deref())?;
+    preflight_cpal_on(&host, config, max_frames)
+}
+
+pub fn preflight_cpal_on<H: HostTrait>(
+    host: &H,
+    config: &CpalConfig,
+    max_frames: usize,
+) -> Result<(u32, u32), StartError> {
+    let output = select_device(host, true, &config.output_device)?.ok_or(StartError::NoDevice {
+        direction: "output",
+        name: None,
+    })?;
+    let default = output.default_output_config().map_err(device_error)?;
+    let rate = config.sample_rate.unwrap_or(default.sample_rate());
+    let channels = config.output_channels.unwrap_or(default.channels());
+    if !output
+        .supported_output_configs()
+        .map_err(device_error)?
+        .any(|range| {
+            range.min_sample_rate() <= rate
+                && range.max_sample_rate() >= rate
+                && range.channels() == channels
+        })
+    {
+        return Err(StartError::InvalidConfig("output format is unavailable"));
+    }
+    buffer_size(config.buffer_frames, default.buffer_size(), max_frames)?;
+    if let Some(input) = select_device(host, false, &config.input_device)? {
+        let default = input.default_input_config().map_err(device_error)?;
+        let channels = config.input_channels.unwrap_or(default.channels());
+        if !input
+            .supported_input_configs()
+            .map_err(device_error)?
+            .any(|range| {
+                range.min_sample_rate() <= rate
+                    && range.max_sample_rate() >= rate
+                    && range.channels() == channels
+            })
+        {
+            return Err(StartError::InvalidConfig("input format is unavailable"));
+        }
+    }
+    Ok((rate, config.buffer_frames.unwrap_or(max_frames as u32)))
+}
+
 /// Devices and MIDI ports of a CPAL host, the platform default when unset.
 pub fn discover(host: Option<&str>) -> Result<Discovery, StartError> {
     let selected = select_host(host)?;
