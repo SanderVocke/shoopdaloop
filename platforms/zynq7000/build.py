@@ -157,7 +157,7 @@ def build():
         credential.write_text(definition)
         sources.append(credential)
         manifest = PLATFORM / "firmware/Cargo.toml"
-        rust_flags = "-D warnings -C target-cpu=cortex-a9"
+        rust_flags = "-D warnings -C target-cpu=cortex-a9 -C target-feature=+neon"
         cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
         features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
         if features:

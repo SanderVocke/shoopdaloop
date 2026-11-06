@@ -122,6 +122,11 @@ void vApplicationTickHook(void) {
 #define RENDER_MAX_PERCENT 80
 #endif
 static void render(void *owner) {
+    /* RunFast for this task's FPSCR: flush denormals to zero and use default NaNs,
+       as NEON always does. Decaying ramps and filters otherwise produce denormals. */
+    uint32_t fpscr;
+    __asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
+    __asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr | (1u << 24) | (1u << 25)));
 #ifndef SHOOP_FIXTURE
     const uint64_t window = shoop_timer_hz() * RENDER_WINDOW_MS / 1000;
     uint64_t window_start = shoop_timer_ticks(), busy = 0;
