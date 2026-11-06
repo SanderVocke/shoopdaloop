@@ -654,8 +654,9 @@ impl Service {
                     job.target.as_ref().unwrap()
                 };
                 job.phase = Phase::Restoration;
+                let automatic_buffer = matches!(&expected.configured, AudioDriverConfig::Cpal(config) if config.buffer_size == 0);
                 if profile.sample_rate != expected.sample_rate
-                    || expected.buffer_size != 0 && profile.buffer_size != expected.buffer_size
+                    || !automatic_buffer && profile.buffer_size != expected.buffer_size
                 {
                     if !job.rollback {
                         job.reconfirm = Some(profile);

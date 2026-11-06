@@ -4797,6 +4797,40 @@ mod tests {
             .clone();
         let dialogs = before.scripting.dialogs.clone();
         runtime
+            .dispatch(AppIntent::RequestLoadSessionPicker)
+            .unwrap();
+        let file = wait_for_snapshot(runtime, "active file picker", |s| s.io_task.is_some());
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let busy = wait_for_snapshot(runtime, "file workflow refusal", |s| {
+            s.notifications.iter().any(|n| {
+                n.message
+                    .contains("Finish the active file workflow before switching")
+            })
+        });
+        assert_eq!(busy.status.sample_rate, 48_000);
+        assert_ne!(
+            busy.audio_drivers.switch.status,
+            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        runtime
+            .dispatch(AppIntent::CancelIoTask {
+                task_id: file.io_task.as_ref().unwrap().id,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled file picker", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Cancelled)
+        });
+
+        runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
                     sample_rate: 32_000,
@@ -4807,6 +4841,39 @@ mod tests {
         let prepared = wait_for_snapshot(runtime, "switch confirmation", |s| {
             s.audio_drivers.switch.status
                 == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        runtime
+            .dispatch(AppIntent::RequestLoadSessionPicker)
+            .unwrap();
+        let file = wait_for_snapshot(runtime, "file workflow during confirmation", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Running)
+        });
+        let notifications = file.notifications.len();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: prepared.audio_drivers.switch.request_id,
+                accept: true,
+            })
+            .unwrap();
+        let busy = wait_for_snapshot(runtime, "confirmation file workflow refusal", |s| {
+            s.notifications.len() > notifications
+        });
+        assert_eq!(
+            busy.audio_drivers.switch.status,
+            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        assert_eq!(busy.status.sample_rate, 48_000);
+        runtime
+            .dispatch(AppIntent::CancelIoTask {
+                task_id: file.io_task.as_ref().unwrap().id,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled second file picker", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Cancelled)
         });
         runtime
             .dispatch(AppIntent::ConfirmAudioDriverSwitch {

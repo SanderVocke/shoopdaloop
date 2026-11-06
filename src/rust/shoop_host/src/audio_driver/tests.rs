@@ -22,6 +22,7 @@ struct Control {
     preflights: usize,
     changed_rate: bool,
     changed_open: bool,
+    reopened_buffer: Option<u32>,
 }
 struct FakeController(Arc<Mutex<Control>>);
 impl AudioDriverController for FakeController {
@@ -57,6 +58,9 @@ impl AudioDriverController for FakeController {
                 DriverWork::Start { mut profile, .. } => {
                     if profile.buffer_size == 0 {
                         profile.buffer_size = 256;
+                    }
+                    if control.starts > 0 && matches!(&profile.configured, AudioDriverConfig::Cpal(config) if config.buffer_size == 0) {
+                        if let Some(buffer) = control.reopened_buffer { profile.buffer_size = buffer; }
                     }
                     if control.changed_open && control.starts == 0 {
                         profile.buffer_size = 128;
@@ -434,6 +438,50 @@ fn automatic_buffer_consent_accepts_the_opened_size_without_reconfirmation() {
         256
     );
     assert_eq!(f.control.lock().unwrap().starts, 1);
+}
+
+#[shoop_test]
+fn rollback_to_automatic_cpal_accepts_a_different_observed_callback_size() {
+    let mut f = Fixture::new();
+    assert!(matches!(
+        f.run(Command::AudioDriver(DriverCommand::Request(
+            AudioDriverConfig::Cpal(CpalAudioDriverConfig::default())
+        ))),
+        Outcome::Confirmed { .. }
+    ));
+    let id = f.service.snapshot().audio_drivers.switch.request_id;
+    assert!(matches!(f.confirm(id), Outcome::Confirmed { .. }));
+    for _ in 0..5 {
+        f.tick();
+    }
+    {
+        let mut control = f.control.lock().unwrap();
+        control.failures.push(2);
+        control.reopened_buffer = Some(512);
+    }
+    let id = f.request();
+    assert!(matches!(f.confirm(id), Outcome::Refused { .. }));
+    let state = f.service.snapshot();
+    assert_eq!(
+        state.audio_drivers.switch.status,
+        AudioDriverSwitchStatus::Failed
+    );
+    assert!(state
+        .audio_drivers
+        .switch
+        .message
+        .contains("prior driver and session were restored"));
+    assert_eq!(
+        state
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap()
+            .configured
+            .kind(),
+        AudioDriverKind::Cpal
+    );
+    assert_eq!(f.control.lock().unwrap().starts, 3);
 }
 
 #[shoop_test]

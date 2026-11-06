@@ -1086,6 +1086,23 @@ impl Runtime {
                 return provider.apply(intent, state, session_scripts);
             }
         }
+        if matches!(
+            &intent,
+            AppIntent::RequestAudioDriverSwitch { .. }
+                | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+        ) && self
+            .persistence_io
+            .as_ref()
+            .and_then(|provider| provider.task())
+            .is_some_and(|task| {
+                !matches!(
+                    task.status,
+                    IoTaskStatus::Completed | IoTaskStatus::Failed | IoTaskStatus::Cancelled
+                )
+            })
+        {
+            anyhow::bail!("Finish the active file workflow before switching audio drivers");
+        }
         let command = match intent {
             AppIntent::RefreshAudioDriverDiscovery { config } => {
                 Command::AudioDriver(audio_driver::Command::Discover(config))
