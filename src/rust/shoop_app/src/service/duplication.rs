@@ -9,6 +9,7 @@ pub(super) struct Job {
     view: LoopState,
     composite: Option<Versioned>,
     additions: Vec<TrackId>,
+    annotations: Vec<(bool, u32, Option<String>)>,
 }
 
 impl Job {
@@ -46,6 +47,7 @@ impl Service {
                 view: entry.view.clone(),
                 composite: None,
                 additions: Vec::new(),
+                annotations: Vec::new(),
             });
             return Ok(Effect::Duplication);
         }
@@ -160,6 +162,14 @@ impl Service {
             view: source_entry.view.clone(),
             composite,
             additions,
+            annotations: self
+                .channel_annotations
+                .iter()
+                .filter_map(|((id, midi, channel), (revision, value))| {
+                    (*id == source && *revision == source_entry.view.content_revision)
+                        .then(|| (*midi, *channel, value.clone()))
+                })
+                .collect(),
         });
         Ok(Effect::Duplication)
     }
@@ -262,6 +272,13 @@ impl Service {
                 }
                 if let Ok(observed) = self.backend.poll() {
                     self.apply_observation(observed);
+                }
+                self.channel_annotations
+                    .retain(|(id, _, _), _| *id != target);
+                let revision = self.loops[&target].view.content_revision;
+                for (midi, channel, value) in job.annotations {
+                    self.channel_annotations
+                        .insert((target, midi, channel), (revision, value));
                 }
                 if let Some(operation) = operation {
                     self.pending.get_mut(&operation).unwrap().effect = Effect::None;

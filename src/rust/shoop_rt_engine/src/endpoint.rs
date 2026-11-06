@@ -1118,10 +1118,8 @@ impl ControlEndpoint {
                     {
                         entry.default_dry = dry_through_wet;
                         self.model.revision += 1;
-                        if self.job.is_some() {
-                            if let Some(entry) = self.next.strip_mut(strip) {
-                                entry.default_dry = dry_through_wet;
-                            }
+                        if let Some(entry) = self.next.strip_mut(strip) {
+                            entry.default_dry = dry_through_wet;
                         }
                         Ok(Some(Outcome::Done))
                     }

@@ -163,7 +163,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         let mut entry = from.clone();
         entry.slot = slot;
-        entry.view = LoopView::default();
+        entry.view = LoopView {
+            length: from.view.length,
+            ..LoopView::default()
+        };
         entry.composite = None;
         entry.content = candidate.loops[&target]
             .content

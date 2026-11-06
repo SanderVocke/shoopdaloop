@@ -82,12 +82,13 @@ Depends on Stages 3 and 4.
 
 Depends on all previous stages.
 
-- [ ] Run native typed/socket workflows: create supported media, clone, overwrite occupied slots, duplicate composites, edit either copy, play and save/load/save. Compare exact media and persistent fields. Verify stopped destinations, fresh load identities and preserved unrelated playback/recording.
-- [ ] Run actual browser/application AudioWorklet workflows covering direct, role-aware and supported composite copies. Verify content/output and bounded render memory. Exercise supported UI reattachment while retaining the browser-page-crash exclusion. Use CI for other supported operating systems and applicable firmware checks.
-- [ ] Run formatting, a warning-denying workspace build, the native workspace nextest command and test-usage, feature-parity, dependency-boundary and Python checks documented in `VALIDATION.md`. At the planning base the consolidated boundary command is `python3 scripts/check_dependency_boundaries.py --scope runtime --scope loops --scope engine`.
-- [ ] Run relevant loop/runtime ownership hosts and selected Miri checks if those layers change. Do not expand to unrelated stress suites without a concrete concern.
-- [ ] Update the persistence contract and P11 backlog with supported duplication behavior, capacities, refusal rules and implementation links. Keep P11 OPEN for MIDI restoration and reconcile `LoopDuplication` coverage without changing other parity scopes. Put revision-specific results in PR/CI artifacts.
-- [ ] Commit milestones, push and open a PR targeting `feat/backend-replacement`. Resolve applicable CI failures and verify the final head. Report independently blocked checks truthfully rather than claiming a pass.
+- [x] Run native typed/socket workflows: create supported media, clone, overwrite occupied slots, duplicate composites, edit either copy, play and save/load/save. Compare exact media and persistent fields. Verify stopped destinations, fresh load identities and preserved unrelated playback/recording.
+- [x] Run actual browser/application AudioWorklet workflows covering direct, role-aware and supported composite copies. Verify content/output and bounded render memory. Exercise supported UI reattachment while retaining the browser-page-crash exclusion. Use CI for other supported operating systems and applicable firmware checks.
+- [x] Run formatting, a warning-denying workspace build, the native workspace nextest command and test-usage, feature-parity, dependency-boundary and Python checks documented in `VALIDATION.md`. At the planning base the consolidated boundary command is `python3 scripts/check_dependency_boundaries.py --scope runtime --scope loops --scope engine`.
+- [x] Run relevant loop/runtime ownership hosts and selected Miri checks if those layers change. Do not expand to unrelated stress suites without a concrete concern.
+- [x] Update the persistence contract and P11 backlog with supported duplication behavior, capacities, refusal rules and implementation links. Keep P11 OPEN for MIDI restoration and reconcile `LoopDuplication` coverage without changing other parity scopes. Put revision-specific results in PR/CI artifacts.
+- [x] Commit milestones, push and open a PR targeting `feat/backend-replacement`.
+- [ ] Resolve applicable CI failures and verify the final head. Report independently blocked checks truthfully rather than claiming a pass.
 - [ ] Check automated review after pushes, address feedback and repeat through approval. Explicitly report unavailable or absent review. Leave the PR unmerged with a clean worktree; do not merge autonomously.
 
 ## Testing strategy

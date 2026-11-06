@@ -2796,6 +2796,74 @@ fn duplication_copies_confirmed_composites_with_independent_events_and_refuses_c
             source.active.as_ref().unwrap().document.instances[0].instance_id,
             target.active.as_ref().unwrap().document.instances[0].instance_id
         );
+        for value in [
+            edit(loops[4], vec![loops[2]], false),
+            Command::Composite(arrangement::Edit::Kind {
+                target: loops[4],
+                kind: CompositeKind::Script,
+            }),
+            Command::Composite(arrangement::Edit::Timing {
+                target: loops[4],
+                basis: arrangement::TimingBasis {
+                    sample_rate: 1000,
+                    unit_frames: 64,
+                },
+            }),
+            clone(loops[4], loops[5]),
+        ] {
+            assert!(matches!(
+                command(&mut f.service, &mut client, ConnectionId(1), value),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        let state = client.snapshot().unwrap();
+        let active = |id| {
+            state
+                .composites
+                .iter()
+                .find(|view| view.loop_id == id)
+                .unwrap()
+                .active
+                .as_ref()
+                .unwrap()
+        };
+        let original = active(loops[4]).clone();
+        let copied = active(loops[5]);
+        assert_eq!(copied.document.kind, CompositeKind::Script);
+        assert_eq!(copied.document.instances[0].loop_id, loops[2]);
+        assert_eq!(copied.prepared.spans, original.prepared.spans);
+        assert_eq!(copied.document.basis, original.document.basis);
+        assert_ne!(
+            copied.document.instances[0].instance_id,
+            original.document.instances[0].instance_id
+        );
+        let event = copied.document.instances[0].instance_id;
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Composite(arrangement::Edit::Duration {
+                    target: loops[5],
+                    event,
+                    n_cycles: Some(3)
+                })
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(
+            client
+                .snapshot()
+                .unwrap()
+                .composites
+                .iter()
+                .find(|view| view.loop_id == loops[4])
+                .unwrap()
+                .active
+                .as_ref()
+                .unwrap(),
+            &original
+        );
         assert!(matches!(
             command(
                 &mut f.service,

@@ -232,8 +232,16 @@ fn dry_wet_duplication_preserves_role_order_and_exact_sysex() {
             BackendAsyncResult::Pending(_) => backend.clock_mut().render(1),
         }
     }
+    backend
+        .set_track_default_playback_mode(track.track_id, BackendDefaultPlaybackMode::DryThroughWet)
+        .unwrap();
+    backend.wait_idle();
     let before = backend.capture_session().unwrap().tracks[0].loops[0].clone();
     copy(&mut backend, track.loops[0], Some(track.loops[1]), &[]).unwrap();
+    assert_eq!(
+        backend.poll().unwrap().tracks[&track.track_id].default_playback_mode,
+        BackendDefaultPlaybackMode::DryThroughWet
+    );
     let after = backend.capture_session().unwrap().tracks[0].loops[1].clone();
     assert_eq!(before.audio, after.audio);
     assert_eq!(before.midi, after.midi);

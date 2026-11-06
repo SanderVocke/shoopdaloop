@@ -623,7 +623,8 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         transport = transport.id()
     )
     .entered();
-    let (root, mut host, entry) = launch(transport, 192)?;
+    // Loading overlaps both copies with their previous runtime owners.
+    let (root, mut host, entry) = launch(transport, 384)?;
     let app = crate::application::ApplicationRuntime::attach(
         entry.clone(),
         crate::application::ApplicationStartOptions {
@@ -718,8 +719,44 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         action: LoopAction::PlayClicked,
     })?;
     file_wait(&handle, |s| s.tracks[1].loops[0].mode == LoopMode::Playing)?;
+    handle.dispatch(AppIntent::Loop {
+        track_id: old_track,
+        loop_id: old_loop,
+        action: LoopAction::DuplicateTo(state.tracks[1].loops[1].id),
+    })?;
+    file_wait(&handle, |s| {
+        s.tracks[1].loops[1].length_frames == s.tracks[1].loops[0].length_frames
+            && s.tracks[1].loops[1].mode == LoopMode::Stopped
+    })?;
     let session_file = root.path().join("roundtrip.shoop");
     let before = file_save(&handle, &session_file)?;
+    let copied = before
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|g| &g.tracks)
+        .find(|track| track.name == "Persistence canary")
+        .unwrap();
+    ensure!(
+        copied.loops[0].length_frames == copied.loops[1].length_frames,
+        "file copy length changed"
+    );
+    for (source, target) in copied.loops[0]
+        .channels
+        .iter()
+        .zip(&copied.loops[1].channels)
+    {
+        ensure!(
+            source.mode == target.mode
+                && source.data_length_frames == target.data_length_frames
+                && source.start_offset_frames == target.start_offset_frames
+                && source.capture_alignment_frames == target.capture_alignment_frames
+                && source.preplay_frames == target.preplay_frames
+                && source.media_id.as_ref().and_then(|id| before.media.get(id))
+                    == target.media_id.as_ref().and_then(|id| before.media.get(id)),
+            "file copy changed raw media or channel timing"
+        );
+    }
     ensure!(
         before
             .media
