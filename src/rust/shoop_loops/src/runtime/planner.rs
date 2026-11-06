@@ -596,6 +596,9 @@ impl LoopPlanner {
                         let row = self.rows[slot].as_mut().expect("completed capture");
                         row.windows = take.windows;
                         row.length_override = None;
+                        if take.edit.is_some() {
+                            self.refresh_wet_reservation(slot, decision, frame, io)?;
+                        }
                     }
                 }
             }
@@ -664,14 +667,21 @@ impl LoopPlanner {
                 row.next_bank = 1 - take.bank;
                 row.failure = None;
             }
-            if let Some(shared) = &mut self.shared {
+            if let Some(shared) = &self.shared {
                 if let Some(id) = shared.live_for(decision.state.id) {
                     let job = shared.live_job(id)?;
                     if job.following_recording.is_some_and(|revision| {
                         decision.state.mode != Mode::Recording
                             || revision != decision.state.capture_revision
                     }) {
-                        shared.cancel_live(id, io)?;
+                        if !(job.autonomous
+                            && self.replacing_targets[slot]
+                            && self
+                                .seal_recording_reservation(slot, id, decision, frame, io)
+                                .is_ok())
+                        {
+                            self.shared.as_mut().unwrap().cancel_live(id, io)?;
+                        }
                     }
                 }
             }

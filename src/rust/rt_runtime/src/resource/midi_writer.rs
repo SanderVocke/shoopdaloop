@@ -689,6 +689,13 @@ impl Core {
         writer.position = 0;
         Ok(())
     }
+    pub fn resume_writer_window(&self, writer: &mut Writer) -> Result<(), Error> {
+        if writer.kind != Kind::Windowed {
+            return Err(Error::InvalidState);
+        }
+        writer.position = 0;
+        Ok(())
+    }
     pub fn begin_writer(
         &mut self,
         mut media: Media,

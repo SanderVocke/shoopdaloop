@@ -987,6 +987,23 @@ impl ResourceStore {
                 .seek_writer(job.writer.as_mut().ok_or(Error::Busy)?, position)
         })
     }
+    /// Resume a prepared writer after an unwritten source interval.
+    pub fn resume_indexed_midi_window_writer(&mut self, id: WriterId) -> Result<(), Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.writers.get_mut(id.key)?;
+            if resources.revision(job.resource)? != job.expected {
+                return Err(Error::StaleRevision);
+            }
+            if !job.complete {
+                return Err(Error::Busy);
+            }
+            pool.core
+                .resume_writer_window(job.writer.as_mut().ok_or(Error::Busy)?)?;
+            job.source = None;
+            job.next = None;
+            Ok(())
+        })
+    }
     /// Retain the last complete private cut without consuming the writer.
     pub fn snapshot_indexed_midi_writer(&mut self, id: WriterId) -> Result<ResourceId, Error> {
         self.indexed_midi_credit()?;
@@ -1301,6 +1318,9 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn resume_indexed_midi_window_writer(&mut self, id: WriterId) -> Result<(), Error> {
+        self.store.resume_indexed_midi_window_writer(id)
+    }
     pub fn prepare_indexed_midi_recording(
         &mut self,
         store: StoreId,

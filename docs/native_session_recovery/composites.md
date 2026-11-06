@@ -117,7 +117,7 @@ writer slots before a future Record can begin. Reservations share the negotiated
 writer/media pools with primitive input edits. Admission waits for bounded MIDI
 index preparation and refuses if the complete candidate cannot be prepared.
 A failed candidate releases its partial reservations and leaves playback intact.
-Content/timing changes invalidate an inactive reservation; cancellation, removal
+Dry-media/timing changes invalidate an inactive reservation; cancellation, removal
 and shutdown release it. A graph/source-generation change can rebind an inactive
 writer only for the same physical source and unchanged media/timing fence.
 
@@ -126,6 +126,11 @@ audio as one prepared transaction. Wet and dry have separate channel windows and
 immutable snapshot owners, including unequal widths. Record→Replace attaches the
 completed recording at the actual cut. Processor settings are captured at that
 render-owned boundary. Replacing never depends on a controller at event boundaries.
+
+Normal Record replaces an unused fixed cache with a streaming MIDI follower.
+Stopping seals that prepared index, so a short gap before Replacing requires no
+reimport. Wet rerecord preserves the dry/MIDI cache and refreshes the wet fork at
+the actual cut; a partial subsequent Replace retains the newly rerecorded wet tail.
 
 ## Production preparation and publication
 

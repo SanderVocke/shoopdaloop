@@ -36,6 +36,7 @@ pub(in crate::runtime) struct LiveJob {
     import: Option<indexed_midi::ImportId>,
     writer: Option<indexed_midi::WriterId>,
     pub ready: bool,
+    midi_started: bool,
     pub active: bool,
     pub following_recording: Option<Revision>,
     pub failure: Option<Error>,
@@ -131,7 +132,7 @@ impl Shared {
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
         let job = self.live_job(id)?;
-        if job.wet.is_some()
+        if job.wet.is_some() && job.active
             || job.kind != indexed_midi::WriteKind::Fixed && job.following_recording.is_none()
         {
             return Err(Error::InvalidState);
@@ -156,14 +157,25 @@ impl Shared {
                         return Err(error);
                     }
                 };
-            self.live[id.slot as usize].value.as_mut().unwrap().wet = Some(WetWriter {
-                resource,
-                revision: io.info(resource)?.revision,
-                frames: snapshot.description.frames,
-                export: Some(export),
-                windows,
-                channels,
-            });
+            let previous = self.live[id.slot as usize]
+                .value
+                .as_mut()
+                .unwrap()
+                .wet
+                .replace(WetWriter {
+                    resource,
+                    revision: io.info(resource)?.revision,
+                    frames: snapshot.description.frames,
+                    export: Some(export),
+                    windows,
+                    channels,
+                });
+            if let Some(previous) = previous {
+                if let Some(export) = previous.export {
+                    io.cancel_reserved_snapshot(export)?;
+                }
+                io.remove(previous.resource)?;
+            }
         }
         self.live[id.slot as usize]
             .value
@@ -333,6 +345,7 @@ impl Shared {
             import: None,
             writer: None,
             ready: false,
+            midi_started: false,
             active: false,
             following_recording: None,
             failure: None,
@@ -498,6 +511,7 @@ impl Shared {
             import: None,
             writer: None,
             ready: midi.is_none(),
+            midi_started: true,
             active: true,
             following_recording: Some(revision),
             failure: None,
@@ -671,6 +685,8 @@ impl Shared {
         if let Some(writer) = job.writer {
             if job.following_recording.is_some() {
                 io.fix_indexed_midi_writer_window(writer)?;
+            } else if job.midi_started {
+                io.resume_indexed_midi_window_writer(writer)?;
             } else {
                 io.start_indexed_midi_writer(
                     writer,
@@ -687,6 +703,7 @@ impl Shared {
             job.kind = indexed_midi::WriteKind::Fixed;
         }
         job.active = true;
+        job.midi_started = true;
         job.position = position;
         Ok(())
     }
@@ -1107,6 +1124,131 @@ impl Shared {
 }
 
 impl LoopPlanner {
+    pub(in crate::runtime) fn refresh_wet_reservation(
+        &mut self,
+        slot: usize,
+        decision: Decision,
+        frame: Frame,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<(), Error> {
+        let row = self.rows[slot].ok_or(Error::InvalidId)?;
+        let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+        let Some(id) = shared.live_for(decision.state.id) else {
+            return Ok(());
+        };
+        let job = shared.live_job(id)?;
+        if !job.autonomous || job.active || row.prepared.is_some_and(|take| take.writer == Some(id))
+        {
+            return Ok(());
+        }
+        let refreshed = (|| {
+            if job.fence.revision
+                != self
+                    .resolver
+                    .state(decision.state.id)
+                    .map_err(runtime_error)?
+                    .content_revision
+                || job.fence.length != decision.state.content_length
+                || job.fence.timing_revision != row.timing_revision
+            {
+                return Err(Error::StaleRevision);
+            }
+            let view = self.ledger.view(
+                self.ledger
+                    .playback(decision.state.id)?
+                    .ok_or(Error::InvalidState)?,
+            )?;
+            let mut windows = Windows::default();
+            let width = row.audio_widths[0];
+            windows.audio[..width].copy_from_slice(
+                &row.windows.audio[row.audio_widths[1]..row.audio_widths[1] + width],
+            );
+            shared.configure_processed(
+                id,
+                view.audio.map(|source| source.snapshot),
+                windows,
+                width,
+                frame,
+                io,
+            )?;
+            shared.live[id.slot as usize]
+                .value
+                .as_mut()
+                .unwrap()
+                .fence
+                .revision = decision.state.content_revision;
+            Ok::<_, Error>(())
+        })();
+        if refreshed.is_err() {
+            shared.cancel_live(id, io)?;
+        }
+        Ok(())
+    }
+
+    pub(in crate::runtime) fn seal_recording_reservation(
+        &mut self,
+        slot: usize,
+        id: LiveWriterId,
+        decision: Decision,
+        frame: Frame,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<(), Error> {
+        let row = self.rows[slot].ok_or(Error::InvalidId)?;
+        let view = self.ledger.view(
+            self.ledger
+                .playback(decision.state.id)?
+                .ok_or(Error::InvalidState)?,
+        )?;
+        let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+        let job = shared.live_job(id)?;
+        if !job.ready
+            || job.failure.is_some()
+            || job.following_recording != Some(decision.state.content_revision)
+            || job.frames == 0
+            || job.frames != decision.state.content_length
+        {
+            return Err(Error::InvalidState);
+        }
+        let audio = if row.dry_wet {
+            view.auxiliary
+        } else {
+            view.audio
+        };
+        shared.attach_recording_audio(id, audio.map(|source| source.snapshot), frame, io)?;
+        if row.dry_wet {
+            let mut windows = Windows::default();
+            let width = row.audio_widths[0];
+            windows.audio[..width].copy_from_slice(
+                &row.windows.audio[row.audio_widths[1]..row.audio_widths[1] + width],
+            );
+            shared.configure_processed(
+                id,
+                view.audio.map(|source| source.snapshot),
+                windows,
+                width,
+                frame,
+                io,
+            )?;
+        }
+        if let Some(writer) = job.writer {
+            io.fix_indexed_midi_writer_window(writer)?;
+        }
+        let job = shared.live[id.slot as usize].value.as_mut().unwrap();
+        job.fence = Fence {
+            target: decision.state.id,
+            timing_revision: row.timing_revision,
+            revision: decision.state.content_revision,
+            length: decision.state.content_length,
+            graph: self.graph_epoch,
+            topology: self.resolver.epoch(),
+        };
+        job.following_recording = None;
+        job.active = false;
+        job.kind = indexed_midi::WriteKind::Fixed;
+        job.position = 0;
+        Ok(())
+    }
+
     pub(in crate::runtime) fn prepare_live_take(
         &mut self,
         slot: usize,
@@ -1143,6 +1285,16 @@ impl LoopPlanner {
             return Ok(None);
         };
         let job = shared.live_job(id)?;
+        if job.autonomous
+            && !job.active
+            && job.following_recording.is_none()
+            && decision.state.mode != Mode::Replacing
+        {
+            if decision.state.mode != Mode::RecordingDryIntoWet {
+                self.shared.as_mut().unwrap().cancel_live(id, io)?;
+            }
+            return Ok(None);
+        }
         if job.active && job.following_recording.is_none() {
             return Ok(None);
         }
@@ -1196,6 +1348,29 @@ impl LoopPlanner {
             || decision.state.mode == Mode::Recording && job.frames != decision.state.capture_frames
         {
             return Err(Error::InvalidShape);
+        }
+        if before.mode == Mode::RecordingDryIntoWet {
+            let resource = row
+                .active
+                .and_then(|take| take.edit)
+                .ok_or(Error::InvalidState)?
+                .0;
+            let snapshot = io.snapshot(resource, self.resolver.frame())?;
+            let mut windows = Windows::default();
+            let width = row.audio_widths[0];
+            windows.audio[..width].copy_from_slice(
+                &row.windows.audio[row.audio_widths[1]..row.audio_widths[1] + width],
+            );
+            let result = self.shared.as_mut().unwrap().configure_processed(
+                id,
+                Some(snapshot),
+                windows,
+                width,
+                self.resolver.frame(),
+                io,
+            );
+            io.release_snapshot(snapshot.id)?;
+            result?;
         }
         let media = self.ledger.reserve(media::Description {
             auxiliary_channels: if row.dry_wet {
