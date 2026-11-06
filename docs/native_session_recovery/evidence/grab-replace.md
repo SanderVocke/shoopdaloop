@@ -175,7 +175,7 @@ replay against the retained real-worklet journal; warning-
 denied workspace build, formatting, attributes, tracing, parity and dependency/DSP
 isolation. The full 3,094-test run exposed the legacy latency and reset issues
 above; both were corrected and passed their focused/strict reruns. Final source/
-base CI is the remaining Phase B gate. No pending check is claimed green. Ready-for-review
+base CI now passes, as pinned below. Ready-for-review
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) remains unmerged.
 
 The first final-source [Build/Test round](https://github.com/SanderVocke/shoopdaloop/actions/runs/42085353425)
@@ -188,7 +188,7 @@ catalog, updates the fixture layout, and resolves Cargo's actual build output.
 Local release measurement covers all twenty Q/partition combinations; 39 focused
 shared-engine cases, the raw worklet/profiling contract and five trace-transport
 cases pass. The fresh binary also passes the archive's compiled-script rejection
-check. Final CI is required for the corrected source before closing P04/P05.
+check. Later correction rounds and the final successful source/base are recorded below.
 
 Firmware uses the same input preparation, transactions and capability negotiation.
 Its default resource policy can disable histories; an explicit engine policy can
@@ -222,7 +222,7 @@ the UI for two seconds and verifies `data-input-self-test=Passed`. Its full loca
 workflow passes against the untouched packaged release at 44.1 kHz/Q128 with zero
 xruns. Newly staged native socket/shared-memory input canaries, the warnings-denied
 workspace build, formatting, attributes, tracing, parity and affected dependency
-gates also pass. Fresh final-source CI remains required before parity closure.
+gates also pass. The final source/base CI below validates those corrections.
 
 Preparation omits processor-only MIDI banks where processors and external dry/wet
 are unavailable; admitted MIDI restoration and normal input/output capacities remain
@@ -237,4 +237,54 @@ no repeat-wait interval to observe after reattachment. Setup now waits for actua
 source frames exceeding twice the arrangement period and for confirmed Stop.
 The same wait/release, delayed-launch, staged-edit, media and recovery assertions
 pass locally on both carriers and in repeated one-CPU socket runs. Production
-composite behavior is unchanged; fresh final-source CI remains required.
+composite behavior is unchanged; final source/base CI below validates the correction.
+
+## Final CI and parity closure — 2026-11-06
+
+P04 and P05 are COMPLETE for primitive-track application Grab/Replacing.
+Implementation source `8d8690296d40f311fe612c022772b62c9483820c` is tested against
+target `273853aa0b3b433d02c0373ec646925b96443681`; the tested PR merge tree is
+`5ec66a639c0613a9e199ef03f340582b35a550af`.
+
+| Final workflow | Applicable passing jobs | Evidence |
+| --- | --- | --- |
+| Build and Test | 15 | [Run 42120488745](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745), attempts 1–2 |
+| Zynq FreeRTOS | 5 | [Run 42120488771](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771) |
+| Hosted track processors | 5 | [Run 42120488674](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674) |
+| CodeQL | 4 | [Run 42120488997](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997) |
+| Docs | 1 | [Run 42120488921](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488921) |
+
+All thirty applicable jobs pass; Codecov project and patch checks pass separately.
+The [raw CI record](grab-replace-ci.json) includes job URLs, attempts and retained
+artifact links: packaged Linux/macOS/Windows and web applications, real JACK,
+loop/runtime native reports, debug Wasm reports, shared-media callback measurements,
+processor measurements/Wasm tests and board/USB/network firmware evidence.
+The record preserves both first-attempt macOS cancellations: no hosted runner
+could be acquired because of capacity. Attempt 2 ran both ARM64 jobs successfully.
+The schedule/dispatch-only CPAL-free nightly job is inapplicable to this PR.
+There are no platform waivers or pending implementation checks in this closure.
+
+Normal default native startup, socket/shared-memory packaging, UI/keyboard/Lua,
+Chromium and Firefox AudioWorklet workflows pass on this implementation matrix.
+Firmware runs both configuration policies on both board memory profiles and its
+enabled USB case. The explicit policy is available through normal image builds,
+USB builds and deployment; disabling histories is a resource policy, not a target
+restriction. Exact media, synchronization, saved/reloaded edits, detached prefix
+completion, bounded owners and teardown are covered by the complementary scenarios
+above. Role-aware persistence and processor lifecycle/accounting regression gates
+also pass.
+
+The sole discussion report is Codecov: 94.87909% patch coverage and 90.02% project
+coverage, with both configured check gates passing. No submitted review or inline
+review comment existed at final inspection; no review approval is claimed.
+PR #940 remains ready for review, assigned to
+SanderVocke, open and unmerged. Ten unrelated parity rows remain OPEN; the existing
+P17 interaction boundary, physical-device certification limit and all measured
+callback misses remain explicit.
+
+The closure commit changes documentation/evidence only. Local parity coverage,
+all 91 relative links across the nine edited Markdown files, whitespace checks
+and the warnings-as-errors Sphinx build pass. The plan has no unchecked items and
+the ledger contains ten OPEN rows out of seventeen. The full implementation
+result is pinned above. Subsequent documentation-only CI is
+reported separately rather than labelled as this implementation result.

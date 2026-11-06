@@ -2,7 +2,7 @@
 
 Implementation contract for [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
 Grab and Replacing run through negotiated production capabilities and the normal
-service, adapter, companion and AudioWorklet. P04/P05 closure is tracked in the
+service, adapter, companion, firmware and AudioWorklet. P04/P05 are COMPLETE under the
 [application acceptance evidence](evidence/grab-replace.md), including exact-media
 checks, measured capacity limits and final validation pins.
 
@@ -100,7 +100,10 @@ Replacing uses fixed-period overwrite and cursor repetition, without ordinary
 playback from that loop. Input monitoring remains a separate route. Playing to
 Replacing preserves phase; Stop rewinds according to the reference. MIDI empty
 positive intervals erase originals, and edits have natural suffix-state effects.
-No synthetic restoration packet is stored at a splice.
+No synthetic restoration packet is stored at a splice. With repeat-sync enabled,
+a completed pass waits at the period end without advancing or editing audio.
+Zero-width MIDI ticks preserve input continuity; the next sync pulse resumes the
+same admitted owners at zero.
 
 Unsynced Grab must seed a growing recording with the retained prefix and join
 the live stream once at the cut. A normal Record transition that starts a fresh
@@ -128,6 +131,12 @@ before its mapped source offset, and density refusal preserves the preceding
 complete cut. Switching between Playing and Replacing preserves phase/cycles
 unless an explicit restart is requested. Growing prefix media still requires an
 identity raw mapping; public Grab settlement must establish that new layout.
+
+Firmware builds use the same histories and input transactions. An explicit
+[engine policy](../../platforms/zynq7000/README.md) selects source/loop pools, history
+duration and shared reservations. Both enabled and disabled policies are exercised
+on both board memory profiles; [firmware evidence](evidence/grab-replace-firmware.json)
+records their actual memory, stack, media and teardown results.
 
 ## Production capacity and ownership
 

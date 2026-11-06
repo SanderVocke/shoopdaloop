@@ -26,7 +26,8 @@ archive and protocol formats do not encode sharing, page addresses or edit roots
 Tests cover grabbed and imported sources through adoption, playback, full
 configuration replacement, retained exports and bounded teardown, plus session,
 exact-audio and WAV round trips for original and edited revisions. Application Grab and Replacing use these same formats and immutable owners;
-[application evidence](evidence/grab-replace.md) covers exact save/load/re-edit.
+[completed application evidence](evidence/grab-replace.md) covers P04/P05 exact
+save/load/re-edit across native/browser hosts and configured firmware.
 Active or scheduled Replacing obeys the recording conflict policy. Default Grab
 persists, while histories, accepted input jobs and private writers do not. Reload
 uses fresh identities and stopped loops; old exports retain their original data.

@@ -2,7 +2,7 @@
 
 ## Status, baseline and delivery
 
-Application delivery is superseded by [PLAN_FINISH_GRAB_REPLACE.md](PLAN_FINISH_GRAB_REPLACE.md)
+Application P04/P05 delivery is complete under [PLAN_FINISH_GRAB_REPLACE.md](PLAN_FINISH_GRAB_REPLACE.md)
 and its [acceptance evidence](docs/native_session_recovery/evidence/grab-replace.md).
 The historical foundation evidence below does not replace application validation.
 

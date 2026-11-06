@@ -1,7 +1,10 @@
 # Shared audio/MIDI on fixed execution
 
 The shared foundation uses the sole production graph and domain at
-Q=1/16/32/64/128. Application P04/P05 remain open. The
+Q=1/16/32/64/128. Application P04/P05 are now COMPLETE under the
+[application acceptance](grab-replace.md) and
+[completed delivery plan](../../../PLAN_FINISH_GRAB_REPLACE.md). The historical
+foundation gates and waivers below remain provenance. The
 [implementation plan](../../../PLAN_RECONCILE_GRAB.md) tracks final-head delivery;
 [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927) records the delivered
 head/base, applicable matrix and latest artifacts. The user waived macOS checks

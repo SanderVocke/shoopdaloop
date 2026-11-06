@@ -2,7 +2,8 @@
 
 Implemented design for F2/F3 of [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
 The persistent semantic index, rolling sources, fixed/growing writers and global
-credit admission are used by normal native/AudioWorklet hosts. The
+credit admission are used by normal native/AudioWorklet hosts and configured
+firmware. P04/P05 application delivery is complete; the
 [application evidence](evidence/grab-replace.md) records public routes, allocator
 guards, exact packet/state oracles and measured limits. The investigation history
 below explains the representation choices; its intermediate integration caveats

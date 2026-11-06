@@ -2,11 +2,11 @@
 
 ## Status and delivery
 
-Current execution phase: Phase A implementation and local acceptance are complete.
-Phase B is active: the target is reconciled and the final iterative CI correction
-loop is running. CI was not inspected or corrected during Phase A.
+All stages F0–F8 and reconciliation R0–R2 are complete. Phase A implementation
+and local acceptance were followed by Phase B's final iterative CI correction.
+CI was not inspected or corrected during Phase A.
 
-Status refreshed on 2026-11-05. Work is on `feat/finish-grab-replace`; ready-for-review
+Status refreshed on 2026-11-06. Work is on `feat/finish-grab-replace`; ready-for-review
 [PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets
 `feat/backend-replacement`. Phase A implementation/acceptance is committed as
 `b53ed797`, following FX/composite reconciliation `e5b87190`. The Phase B target
@@ -24,11 +24,14 @@ profiling budgets), now reconciled on top of target `78d39677`.
 | F5 | Complete service gesture/exact-list policy, default Grab, solo, lifecycle fencing and persistence/recovery ownership. |
 | F6 | Complete normal UI, keyboard and Lua routes, Replacing menu, capabilities and incomplete-capture projection. |
 | F7 | Complete: lifecycle, exact file round trips, protected resource pressure, native stack/reset corrections and complete pool/callback measurements pass local acceptance. |
-| F8 | Local acceptance complete: packaged native carriers, real JACK, Chromium/Firefox and enabled firmware on both board memory profiles pass. Final CI correction/review and parity closure remain. |
+| F8 | Complete: normal packaged application/native/browser/firmware acceptance, all 30 applicable final CI jobs, review inspection, P04/P05 parity closure and unmerged PR handoff. |
 
 Grab and Replacing are enabled through negotiated application support. P04/P05
-remain OPEN until the complete acceptance and final CI gates pass. No Phase A CI
-inspection or push occurred.
+are COMPLETE in the [parity ledger](docs/native_session_recovery/feature-parity.md).
+Every target has a configuration enable path, including firmware. The
+[acceptance report](docs/native_session_recovery/evidence/grab-replace.md) records
+exact behavior, finite capacity and measured timing limits. No Phase A CI inspection
+or push occurred.
 
 Execution originally started from fixed-runtime head
 `2e19210bdbb5e32510322f8b8344715ce7cbefe5`. Written using
@@ -636,6 +639,58 @@ Local socket/shared-memory canaries and repeated single-CPU socket runs validate
 the correction; it changes probe setup, not production composite semantics.
 Fresh CI is required for this final correction.
 
+## Final acceptance and handoff — 2026-11-06
+
+Implementation source: `8d8690296d40f311fe612c022772b62c9483820c`.
+Target: `273853aa0b3b433d02c0373ec646925b96443681` on
+`feat/backend-replacement`. The PR merge tree tested by CI is
+`5ec66a639c0613a9e199ef03f340582b35a550af`.
+
+- [Build and Test](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745):
+  all 15 applicable jobs pass, including Linux/macOS/Windows debug and release,
+  Node/Chrome libraries, Chromium/Firefox application workflows, real JACK,
+  packaged native carriers, coverage, fixed-media measurements, bare-metal and
+  host inspection. Attempt 1 could not acquire hosted macOS runners and cancelled
+  those jobs; attempt 2 ran and passed both. The dispatch/schedule-only
+  CPAL-free nightly job is inapplicable; no applicable platform job is waived.
+- [Firmware](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771):
+  all five jobs pass, including enabled histories on both memory profiles,
+  default-policy recovery, USB transfer and network deployment.
+- [Hosted processors](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674):
+  all five jobs pass, including Miri and the four build/startup policy combinations.
+- [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997):
+  all four jobs pass. [Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488921)
+  passes; Codecov project and patch checks pass on the implementation source.
+
+The [machine-readable CI record](docs/native_session_recovery/evidence/grab-replace-ci.json)
+pins every job/attempt and artifact, including the original runner-capacity
+cancellations. Earlier code/test/harness failures and their corrections remain in
+the chronological record above. Native normal-startup input canaries and their
+browser equivalents exercise actual Grab/Replacing, persistence and completion;
+configured firmware exercises the same service/engine behavior. No private
+history installation or capability override substitutes for startup negotiation.
+
+The sole discussion report is Codecov: 94.87909% patch coverage and 90.02% project
+coverage; both configured check gates pass. No submitted reviews or inline review
+comments existed at final inspection; no review approval is claimed.
+PR #940 is assigned to SanderVocke, ready for review,
+and remains open and unmerged. Its title/body describe the final application work.
+
+P04/P05 are COMPLETE with implementation and production-route evidence inline.
+Ten unrelated parity rows remain OPEN, including the existing P17 composite/FX
+interaction boundary. The callback measurements retain every tail and miss;
+extreme synthetic MIDI density exceeds this environment's deadline. Firmware
+results are actual QEMU executions of both board memory profiles, not physical
+board certification. These recorded limitations are not CI waivers.
+
+This closure updates documentation and evidence only after the implementation
+matrix passes. Closure validation passes: `git diff --check`,
+`python3 scripts/check_feature_parity.py`, all 91 relative links in the nine edited
+Markdown files, and the Sphinx build with warnings treated as errors.
+The plan has no unchecked items; the ledger has ten OPEN rows out of seventeen.
+Implementation acceptance is pinned to the source above; subsequent
+documentation-only CI is separate and is not represented as implementation CI.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -756,7 +811,7 @@ or an inherited waiver of this plan's final gates.
   resolver/composite, normal processor-host startup and adapter checks before
   resuming F4/F5 integration. Verify direct Grab/Replacing alongside unrelated FX
   and composite playback, and atomic refusal of unsupported mixed batches.
-- [ ] R2: include role-aware persistence, processor fault/retirement and combined
+- [x] R2: include role-aware persistence, processor fault/retirement and combined
   memory/MIDI output accounting in F7/F8. Retain final-only CI correction, review
   and PR handoff; no autonomous PR merge.
 
@@ -1399,7 +1454,7 @@ do not multiply the full workflow across all media/carrier/platform combinations
   negotiates unavailable capabilities, while a documented enabled policy uses the
   common engine/service path and passes exact Grab/Replacing, owned completion,
   persistence/re-edit and teardown on both supported board memory profiles.
-- [ ] Only after the complete implementation and local acceptance are finished,
+- [x] Only after the complete implementation and local acceptance are finished,
   start Phase B: refresh/reconcile the target, run affected local checks and push
   the complete implementation. Obtain fresh applicable CI on the final
   source/base: warnings denied, full Rust suites, native hosts/drivers/carriers,
@@ -1409,16 +1464,16 @@ do not multiply the full workflow across all media/carrier/platform combinations
   reproduce or explain each required failure, implement the correction here, run
   affected local checks, push and rerun affected CI until the required gates pass.
   Distinguish any later unvalidated consolidation explicitly.
-- [ ] Inspect incoming automated reviews; address applicable feedback and rerun
+- [x] Inspect incoming automated reviews; address applicable feedback and rerun
   affected checks until approval. If no review arrives, record that without claiming
   approval. Resolve threads and align PR title/body with the final application work.
-- [ ] Update `docs/native_session_recovery/feature-parity.md`: put implementation
+- [x] Update `docs/native_session_recovery/feature-parity.md`: put implementation
   and production UI/Lua/service/protocol/RT evidence directly in P04 and P05 rows,
   mark both COMPLETE, reconcile capability coverage/open-row totals and replace the
   foundation-only remaining-work paragraph. Link an app-facing evidence document,
   final CI/artifacts, actual budgets and supported-feature boundaries. Update the
   shared/persistence contracts and previous plan handoffs to point to this delivery.
-- [ ] Verify a clean normal app actually exposes and executes both features on
+- [x] Verify a clean normal app actually exposes and executes both features on
   the delivered tree. Record final head/base, CI/review status, honest skips and
   remaining unrelated parity items. Leave the PR unmerged for the user.
 
