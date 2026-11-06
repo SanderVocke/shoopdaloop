@@ -132,6 +132,13 @@ pub fn effective_driver_config(
                 DeviceSelection::None => "none".into(),
                 DeviceSelection::Named(name) => name.clone(),
             };
+            let midi_selectors = |ports: &[String]| {
+                if ports.is_empty() {
+                    vec!["none".to_owned()]
+                } else {
+                    ports.to_vec()
+                }
+            };
             effective.host = config.host.clone().unwrap_or_else(|| "default".into());
             effective.client_name = config.client_name.clone();
             effective.output_device = name(&config.output_device);
@@ -144,8 +151,8 @@ pub fn effective_driver_config(
             effective.input_channels = config
                 .input_channels
                 .map_or_else(|| "all".into(), |n| n.to_string());
-            effective.midi_inputs = config.midi_inputs.clone();
-            effective.midi_outputs = config.midi_outputs.clone();
+            effective.midi_inputs = midi_selectors(&config.midi_inputs);
+            effective.midi_outputs = midi_selectors(&config.midi_outputs);
             AudioDriverConfig::Cpal(effective)
         }
     }
@@ -354,4 +361,51 @@ pub fn stop_problems(
         problems.push(format!("{midi_lost} MIDI messages were dropped or refused"));
     }
     problems
+}
+
+#[cfg(all(test, feature = "cpal"))]
+mod tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn effective_cpal_profile_preserves_midi_selection_when_inventory_changes() {
+        for (inputs, outputs, initially_empty) in [
+            ("none", "none", false),
+            ("none", "all", false),
+            ("all", "none", false),
+            ("all", "all", true),
+            ("Keys", "Synth", false),
+        ] {
+            let requested = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
+                midi_inputs: vec![inputs.into()],
+                midi_outputs: vec![outputs.into()],
+                ..Default::default()
+            });
+            let mut inventory = Discovery {
+                midi_inputs: vec!["Keys".into(), "Pads".into()],
+                midi_outputs: vec!["Synth".into(), "Drums".into()],
+                ..Default::default()
+            };
+            let initial = if initially_empty {
+                Discovery::default()
+            } else {
+                inventory.clone()
+            };
+            let (source, warnings) = native_config(&requested, &Default::default(), &initial);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            let effective = effective_driver_config(&requested, &source.driver, 48_000, 256);
+            inventory.midi_inputs.push("New input".into());
+            inventory.midi_outputs.push("New output".into());
+            let (reopened, warnings) = native_config(&effective, &Default::default(), &inventory);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            let (DriverConfig::Cpal(source), DriverConfig::Cpal(reopened)) =
+                (source.driver, reopened.driver)
+            else {
+                panic!("expected CPAL configurations")
+            };
+            assert_eq!(reopened.midi_inputs, source.midi_inputs, "{effective:?}");
+            assert_eq!(reopened.midi_outputs, source.midi_outputs, "{effective:?}");
+        }
+    }
 }
