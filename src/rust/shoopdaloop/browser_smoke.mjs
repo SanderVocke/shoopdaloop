@@ -283,7 +283,7 @@ try {
         console.log('Timer diagnostic', await evaluate('({time:performance.now(),ticks:globalThis.shoopTimerProbe?.ticks,visibility:document.visibilityState})'));
         diagnosticAt = Date.now() + 10000;
       }
-      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving', 'BusZeroSaving', 'HostedSaving', 'HostedResaving'].includes(state?.newEngineSelfTest)) {
+      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving', 'BusZeroSaving', 'HostedSaving', 'HostedResaving', 'HostedClearSaved'].includes(state?.newEngineSelfTest)) {
         await evaluate(`(() => {
           const output = document.getElementById('rfd-output');
           if (!output) return;
