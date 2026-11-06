@@ -1,4 +1,5 @@
 use core::fmt::{self, Write};
+use rt_profiling::wire::Record as AudioRecord;
 use rt_runtime::profiling::{Status, CHUNK_SAMPLES, PHASE};
 use shoop_rt_protocol::{EngineMessage, Lane, Name};
 use shoop_rt_transport::carrier::Outbox;
@@ -74,12 +75,66 @@ impl ControlEndpoint {
         if !self.connected {
             return;
         }
+        if !self.profile_catalog {
+            let catalog = profiling_protocol::Descriptor {
+                stream: rt_profiling::wire::stream(1, rt_profiling::wire::RAW_TYPE),
+                name: Name::new("audio.graph.raw").expect("static name"),
+                available: self.profiling.is_some(),
+                min_interval_ms: 200,
+                max_interval_ms: 200,
+                snapshot: false,
+                inspect: false,
+            };
+            if out
+                .push(EngineMessage::Profiling(
+                    profiling_protocol::Record::Descriptor(catalog),
+                ))
+                .is_err()
+            {
+                return;
+            }
+            self.profile_catalog = true;
+        }
+        if self.profile_wire.exhausted() {
+            if let Some(reader) = &self.profiling {
+                reader.control().set_enabled(false);
+            }
+        }
         let status = self
             .profiling
             .as_ref()
             .map_or(Status::default(), |reader| reader.control().status());
         if self.profile_status != Some(status) {
-            if out.push(EngineMessage::ProfilingStatus(status)).is_err() {
+            if out.available(Lane::Profiling) < 2 {
+                return;
+            }
+            let generic = profiling_protocol::Status {
+                stream: rt_profiling::wire::stream(1, rt_profiling::wire::RAW_TYPE),
+                requested: status.requested,
+                active: status.active,
+                interval_ms: 200,
+                outcome: if status.requested && !status.available {
+                    profiling_protocol::Outcome::Unavailable
+                } else {
+                    profiling_protocol::Outcome::Applied
+                },
+                dropped: status.dropped,
+                coalesced: 0,
+            };
+            if out
+                .push(EngineMessage::Profiling(
+                    profiling_protocol::Record::Status(generic),
+                ))
+                .is_err()
+            {
+                return;
+            }
+            if out
+                .push(EngineMessage::Profiling(
+                    self.profile_wire.encode(AudioRecord::Status(status)),
+                ))
+                .is_err()
+            {
                 return;
             }
             self.profile_status = Some(status);
@@ -96,6 +151,7 @@ impl ControlEndpoint {
                 &self.profile_names,
                 &mut self.profile_named,
                 out,
+                &mut self.profile_wire,
             );
         }
         let Some(reader) = &mut self.profiling else {
@@ -113,17 +169,21 @@ impl ControlEndpoint {
                     let key = sample.key & !rt_runtime::profiling::LAYOUT;
                     if let Some(named) = self.profile_named.get_mut(key as usize) {
                         if !*named {
-                            let _ = out.push(EngineMessage::ProfilingNode {
-                                generation: packet.generation,
-                                key,
-                                name: self.profile_names[key as usize],
-                            });
+                            let _ = out.push(EngineMessage::Profiling(self.profile_wire.encode(
+                                AudioRecord::Node {
+                                    generation: packet.generation,
+                                    key,
+                                    name: self.profile_names[key as usize],
+                                },
+                            )));
                             *named = true;
                         }
                     }
                 }
             }
-            let _ = out.push(EngineMessage::Profiling(packet));
+            let _ = out.push(EngineMessage::Profiling(
+                self.profile_wire.encode(AudioRecord::Packet(packet)),
+            ));
         }
     }
 }
@@ -244,17 +304,20 @@ impl Layouts {
         names: &[shoop_rt_protocol::Name],
         named: &mut [bool],
         out: &mut Outbox,
+        encoder: &mut rt_profiling::wire::Encoder,
     ) {
         use rt_runtime::profiling::GraphRecord;
         let t = &self.active;
         if !t.valid {
             if self.cursor == 0
                 && out
-                    .push(EngineMessage::ProfilingGraph {
-                        generation,
-                        epoch,
-                        record: GraphRecord::Unavailable,
-                    })
+                    .push(EngineMessage::Profiling(encoder.encode(
+                        AudioRecord::Graph {
+                            generation,
+                            epoch,
+                            record: GraphRecord::Unavailable,
+                        },
+                    )))
                     .is_ok()
             {
                 self.cursor = 1;
@@ -287,11 +350,13 @@ impl Layouts {
                         break;
                     }
                     if out
-                        .push(EngineMessage::ProfilingNode {
-                            generation,
-                            key: node.key,
-                            name: names[key],
-                        })
+                        .push(EngineMessage::Profiling(encoder.encode(
+                            AudioRecord::Node {
+                                generation,
+                                key: node.key,
+                                name: names[key],
+                            },
+                        )))
                         .is_err()
                     {
                         break;
@@ -300,11 +365,13 @@ impl Layouts {
                 }
             }
             if out
-                .push(EngineMessage::ProfilingGraph {
-                    generation,
-                    epoch,
-                    record,
-                })
+                .push(EngineMessage::Profiling(encoder.encode(
+                    AudioRecord::Graph {
+                        generation,
+                        epoch,
+                        record,
+                    },
+                )))
                 .is_err()
             {
                 break;
@@ -384,26 +451,35 @@ mod tests {
         let names = pool.profiling_names();
         let mut named = alloc::vec![false; pool.nodes()];
         let mut out = Outbox::new(2, 1, 1);
+        let mut encoder = rt_profiling::wire::Encoder::default();
         for _ in 0..256 {
-            out.push(EngineMessage::ProfilingGraph {
-                generation: 1,
-                epoch: 2,
-                record: GraphRecord::End,
-            })
+            out.push(EngineMessage::Profiling(encoder.encode(
+                AudioRecord::Graph {
+                    generation: 1,
+                    epoch: 2,
+                    record: GraphRecord::End,
+                },
+            )))
             .unwrap();
         }
-        layouts.forward(1, 2, &names, &mut named, &mut out);
+        layouts.forward(1, 2, &names, &mut named, &mut out, &mut encoder);
         assert_eq!(layouts.cursor, 0);
         while out.pop().is_some() {}
-        layouts.forward(1, 2, &names, &mut named, &mut out);
+        layouts.forward(1, 2, &names, &mut named, &mut out, &mut encoder);
         let mut records = alloc::vec::Vec::new();
         while let Some(message) = out.pop() {
-            records.push(message);
+            if let EngineMessage::Profiling(record) = message {
+                if let Some(record) = AudioRecord::decode(record) {
+                    records.push(record);
+                }
+            }
         }
-        assert!(records.iter().any(|m| matches!(m, EngineMessage::ProfilingNode { key, .. } if *key == u64::from(node.slot()))));
+        assert!(records
+            .iter()
+            .any(|m| matches!(m, AudioRecord::Node { key, .. } if *key == u64::from(node.slot()))));
         assert!(matches!(
             records.last(),
-            Some(EngineMessage::ProfilingGraph {
+            Some(AudioRecord::Graph {
                 record: GraphRecord::End,
                 ..
             })

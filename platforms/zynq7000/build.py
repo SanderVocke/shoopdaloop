@@ -100,7 +100,7 @@ def build():
     sources += list((lwip / "src/api").glob("*.c"))
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
-    sources += [PLATFORM / "platform.c", PLATFORM / (args.app + ".c")]
+    sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / (args.app + ".c")]
     if args.usb:
         sources.append(PLATFORM / "boards" / (board.firmware["usb_reset"] + "_usb.c"))
         if args.fetch:

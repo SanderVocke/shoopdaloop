@@ -49,23 +49,31 @@ fn app_control(control: StripControl) -> Option<BackendTrackControl> {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
-            EngineMessage::ProfilingGraph {
-                generation,
-                epoch,
-                record,
-            } => {
-                self.profiling.graph(generation, epoch, record);
-                if record == shoop_rt_protocol::profiling::GraphRecord::End {
-                    self.update_profiling_groups();
+            EngineMessage::Profiling(record) => {
+                if let profiling_protocol::Record::Status(status) = record {
+                    if status.stream == rt_profiling::wire::stream(1, rt_profiling::wire::RAW_TYPE)
+                        && status.outcome == profiling_protocol::Outcome::Capacity
+                    {
+                        self.profiling.status(rt_profiling::Status {
+                            generation: u64::MAX,
+                            ..Default::default()
+                        });
+                    }
+                }
+                if let Some(record) = rt_profiling::wire::Record::decode(record) {
+                    let graph_end = matches!(
+                        record,
+                        rt_profiling::wire::Record::Graph {
+                            record: rt_profiling::GraphRecord::End,
+                            ..
+                        }
+                    );
+                    record.collect(&mut self.profiling);
+                    if graph_end {
+                        self.update_profiling_groups();
+                    }
                 }
             }
-            EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
-            EngineMessage::Profiling(packet) => self.profiling.receive(packet),
-            EngineMessage::ProfilingNode {
-                generation,
-                key,
-                name,
-            } => self.profiling.name(generation, key, name.as_str()),
             EngineMessage::Welcome {
                 capabilities,
                 limits,

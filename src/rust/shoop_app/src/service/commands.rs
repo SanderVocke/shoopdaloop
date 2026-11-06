@@ -25,12 +25,8 @@ impl Service {
             Command::SetLoopChannelTimings { loop_id, updates } => {
                 self.set_loop_channel_timings(loop_id, &updates)
             }
-            Command::InspectProfiling(request) => {
-                self.backend.inspect_profiling(request)?;
-                Ok(Effect::None)
-            }
-            Command::SetProfiling(enabled) => {
-                self.backend.set_profiling(enabled)?;
+            Command::Diagnostic(request) => {
+                self.control_profiling(request)?;
                 Ok(Effect::None)
             }
             Command::SetHostGraphConnected(request) => {

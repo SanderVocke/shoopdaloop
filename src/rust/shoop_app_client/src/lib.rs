@@ -7,6 +7,8 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 #[cfg(feature = "runtime")]
 pub mod runtime;
 
+mod diagnostics;
+
 use shoop_app_protocol::*;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -41,6 +43,7 @@ struct Transfer {
 }
 
 pub struct Client {
+    diagnostics: diagnostics::Store,
     id: ClientId,
 
     state: State,
@@ -65,6 +68,7 @@ pub struct Client {
 impl Client {
     pub fn new() -> Self {
         Self {
+            diagnostics: Default::default(),
             id: ClientId(0),
             state: State::Detached,
             authority: None,
@@ -151,6 +155,15 @@ impl Client {
     pub fn refusal(&self) -> Option<Refusal> {
         self.refusal
     }
+    pub fn profiling(&self) -> &shoop_app_api::ProfilingView {
+        &self.diagnostics.audio
+    }
+    pub fn diagnostics(&self) -> &shoop_app_api::DiagnosticsView {
+        &self.diagnostics.view
+    }
+    pub fn advance_diagnostics(&mut self, elapsed: core::time::Duration) {
+        self.diagnostics.advance(elapsed);
+    }
     pub fn snapshot(&self) -> Option<&Arc<SessionSnapshot>> {
         self.snapshot.as_ref()
     }
@@ -168,6 +181,7 @@ impl Client {
         if !matches!(self.state, State::Detached | State::Lost) {
             return Err(Error::Protocol);
         }
+        self.diagnostics = Default::default();
         self.state = State::Attaching;
         self.refusal = None;
         self.authority = None;
@@ -258,6 +272,7 @@ impl Client {
     }
 
     pub fn disconnect(&mut self) {
+        self.diagnostics = Default::default();
         self.captured_image = None;
         self.persistence_replies.clear();
         self.state = State::Lost;
@@ -329,6 +344,11 @@ impl Client {
 
     fn apply(&mut self, message: ServiceMessage) -> Result<(), Error> {
         match message {
+            ServiceMessage::Diagnostic { authority, record } => {
+                if self.authority == Some(authority) {
+                    self.diagnostics.receive(record);
+                }
+            }
             ServiceMessage::CapturedImage {
                 authority,
                 key,
@@ -544,6 +564,9 @@ impl Client {
             return Err(Error::Protocol);
         }
         match message {
+            WireMessage::Diagnostic { authority, record } => {
+                self.receive(ServiceMessage::Diagnostic { authority, record })
+            }
             WireMessage::Persistence { authority, reply } => {
                 self.receive(ServiceMessage::Persistence { authority, reply })
             }

@@ -1,7 +1,10 @@
 # Generalize in-app profiling
 
 Implementation plan based on `feat/backend-replacement` at
-`0b6812259ffc00b9a524bb6095cfc2c6b2112847`. Execution is in progress; unchecked items are not certified complete.
+`0b6812259ffc00b9a524bb6095cfc2c6b2112847`, with the current base updated to
+`27c8927f51303519f621270bd9b521a687c134d7` (expensive-processor graph filter).
+The engine measurement baseline is unchanged. Execution is in progress; unchecked
+items are not certified complete.
 
 ## Goals and scope
 
@@ -139,8 +142,10 @@ Stages are ordered by dependency below. Keep intermediate commits building;
 temporary adapters are permitted during migration but must be removed before
 final validation. Before committing behavior changes, run the complete native
 gates required by `.agents/info/test.md`; use focused tests within each milestone.
-Do not reformat unrelated code. This planning task does not create the
-implementation branch, push commits or open its PR.
+Do not reformat unrelated code. Stages 2–6 form one protocol migration milestone:
+the producer, both incompatible outer protocol versions, service and consumers
+must land together to keep the implementation commit usable. Delivery remains a
+separate final gate.
 
 ## Stage 1 — Establish baseline and freeze the contract
 
@@ -166,16 +171,16 @@ Depends on: none.
 
 Depends on: Stage 1.
 
-- [ ] Add the neutral contract crate with bounded storage/codecs, open IDs,
+- [x] Add the neutral contract crate with bounded storage/codecs, open IDs,
   generic discovery/control/status and bounded incremental assembly. Keep typed
   audio/FreeRTOS payload decoders outside it. Add it to existing Wasm/dependency
   checks without weakening their rules.
-- [ ] Add generic engine/app message wrappers and generic command routing hooks.
+- [x] Add generic engine/app message wrappers and generic command routing hooks.
   Enforce caps, overflow-safe offsets, monotonic identity/sequence handling,
   bounded outstanding inspections and transfer retirement on cancel/disconnect.
   Bump affected protocol/layout versions when compatibility changes; retain
   explicit rejection of incompatible outer protocols.
-- [ ] Verification: focused codec/assembly tests exercise maximum records, unknown
+- [x] Verification: focused codec/assembly tests exercise maximum records, unknown
   IDs/versions, oversized/truncated payloads, duplicate/stale/out-of-order chunks,
   abandoned reports, exhausted assemblies and restart/cancellation. Verify bounded
   behavior from untrusted lengths and an opaque fixture through both protocols.
@@ -184,15 +189,15 @@ Depends on: Stage 1.
 
 Depends on: Stage 2.
 
-- [ ] Move audio payload serialization from `shoop_rt_protocol::codec` to an
+- [x] Move audio payload serialization from `shoop_rt_protocol::codec` to an
   audio-owned codec module; encode existing status/graph/name/packet records in
   generic chunks. Adapt `ControlEndpoint::forward_profiling` and enable/reset
   routing without changing recorder/capture semantics.
-- [ ] Decode at `shoop_rt_backend` and feed the existing collector. Keep topology,
+- [x] Decode at `shoop_rt_backend` and feed the existing collector. Keep topology,
   naming, generation and capture sequencing intact. Update native, worklet,
   socket and shared-memory record integration and MessagePort consumption credits
   wherever changed framing affects them; no report-specific carrier branches.
-- [ ] Verification: retain assertions in `shoop_rt_protocol/tests/profiling.rs`,
+- [x] Verification: retain assertions in `shoop_rt_protocol/tests/profiling.rs`,
   `shoop_rt_transport/tests/profiling.rs`, `shoop_rt_backend/tests/profiling.rs`
   and runtime/engine profiling tests. Exercise unknown reports and profiling
   saturation alongside controls over direct and encoded carriers. Repeat render
@@ -202,21 +207,21 @@ Depends on: Stage 2.
 
 Depends on: Stage 3.
 
-- [ ] Add a portable bounded provider interface/registry to `shoop_app`, with a
+- [x] Add a portable bounded provider interface/registry to `shoop_app`, with a
   backend audio adapter and host registration at composition roots. Providers
   support discovery, demand, polling and routed inspection; collection advances
   once per service turn, independently of connection count.
-- [ ] Publish typed audio views after existing application label/group resolution.
+- [x] Publish typed audio views after existing application label/group resolution.
   Send catalog/status/report/inspection data on the independent channel. Remove
   profiling payloads from `SessionSnapshot` and diagnostic-only session revision
   comparisons once client migration lands. Preserve live refresh throttling,
   final disabled views and paged detail requests.
-- [ ] Extend both ordinary and `with_network` connection writers to use bounded
+- [x] Extend both ordinary and `with_network` connection writers to use bounded
   diagnostic queues and `post_on_lane`. Add per-source rotation and byte/record
   budgets; address starvation in `shoop_transport::stream` while retaining reliable
   priority and existing telemetry/bulk policies. Clear demand/queued assemblies
   on authority change, detach, shutdown and producer removal.
-- [ ] Verification: extend app service and connection session/network tests for
+- [x] Verification: extend app service and connection session/network tests for
   concurrent sources, a stalled client, source fairness, late join/reconnect,
   authority rejection, graph-versus-host reset, and heartbeat/control/shutdown
   progress under diagnostic and bulk pressure. Diagnostic updates must reach a
@@ -226,21 +231,21 @@ Depends on: Stage 3.
 
 Depends on: Stage 4; Stage 4's snapshot removal completes with this stage.
 
-- [ ] Add a bounded client report store and typed decoder dispatch, independent
+- [x] Add a bounded client report store and typed decoder dispatch, independent
   of snapshot assembly. Reject stale authority/source epochs and retain only
   complete current views. Unknown types/versions show unsupported availability
   without disconnecting or attempting typed decoding.
-- [ ] Update `shoop_app_client::{lib,runtime}`, API/intents, backend interfaces and
+- [x] Update `shoop_app_client::{lib,runtime}`, API/intents, backend interfaces and
   native/browser/local paths. Populate the typed UI model from decoded reports;
   preserve connection/lease/attachment fencing and saved audio enable preference.
-- [ ] Add source selection with Audio and Host presentation. Reuse the current
+- [x] Add source selection with Audio and Host presentation. Reuse the current
   graph/table/timeline UI unchanged in meaning; add independent controls, effective
   sampling rate, freshness and loss/unavailable indicators. Closing/unsubscribing
   follows the documented demand policy without disabling other consumers.
-- [ ] Remove obsolete audio-specific outer protocol variants, commands, snapshot
+- [x] Remove obsolete audio-specific outer protocol variants, commands, snapshot
   fields and temporary adapters. Keep report-specific types in schema/consumer
   modules, where adding a renderer is intentional.
-- [ ] Verification: extend client projection and egui behavior tests for audio
+- [x] Verification: extend client projection and egui behavior tests for audio
   parity, asynchronous snapshot/report arrival, stale capture detail, unsupported
   schemas, independent toggles, final disabled data and disconnect clearing.
   Exercise native UI and browser application projection through real codecs.
@@ -249,28 +254,28 @@ Depends on: Stage 4; Stage 4's snapshot removal completes with this stage.
 
 Depends on: Stages 2, 4 and 5.
 
-- [ ] Add a portable typed task schema/codec shared by the host producer and app
+- [x] Add a portable typed task schema/codec shared by the host producer and app
   consumer, with no FreeRTOS headers/FFI dependency in portable/app crates. Include
   task ID/name, state, current/base priority where available, cumulative runtime,
   total runtime, counter width/frequency, sampling bounds and stack watermark in
   explicit bytes. Represent unsupported fields and invalid samples explicitly.
-- [ ] In the platform C adapter, enable/configure runtime statistics using a
+- [x] In the platform C adapter, enable/configure runtime statistics using a
   sufficiently fine monotonic counter. The existing `configGENERATE_RUN_TIME_STATS`
   is zero; reuse/scale the platform timer rather than the millisecond UI clock.
   Verify the pinned kernel's counter width/wrap and task identity semantics.
-- [ ] Provide a bounded FFI snapshot API and preallocated task storage. Collect
+- [x] Provide a bounded FFI snapshot API and preallocated task storage. Collect
   structured `uxTaskGetSystemState()` data, not `vTaskGetRunTimeStats()` text.
   Normalize stack words to bytes; define overflow/capacity failure without an
   assertion or fabricated complete table. Copy names while their lifetime is
   protected. Handle task deletion/reuse, failed reads and counter reset/wrap.
-- [ ] Register the provider in `shoop_host_freertos::embedded::run`; sample only on
+- [x] Register the provider in `shoop_host_freertos::embedded::run`; sample only on
   demand, initially at 1 Hz with advertised bounds. Compute interval CPU usage in
   the typed consumer and render a task table. Label scheduler-accounted runtime:
   it is not a separate interrupt-time measurement. First/reset intervals are
   unavailable. Do not feed host data through `Request::Profiling` or graph nodes.
   Host reporting must work even if the render host has no audio profiling clock;
   preserve explicit audio timing unavailability in that case.
-- [ ] Verification: deterministic fake-platform snapshots test CPU deltas,
+- [x] Verification: deterministic fake-platform snapshots test CPU deltas,
   denominator, wrap/reset, identity reuse, capacities and unavailable fields.
   Cross-build firmware; run real kernel API collection in QEMU. Measure collection
   and watermark scan time, runtime-accounting overhead, heap/stack margins and
@@ -287,11 +292,11 @@ Depends on: all previous stages. This is the final acceptance gate.
   the authenticated app connection/native UI with audio profiling independently
   toggled, network traffic and available USB fixtures. Stall/drain consumers and
   restart the same host endpoints; check bounds, truthful loss and fresh identity.
-- [ ] Repeat Stage 1 off/on/stalled release measurements with matched workloads.
+- [x] Repeat Stage 1 off/on/stalled release measurements with matched workloads.
   Include FreeRTOS collection costs and combined-source saturation. Keep raw
   results/configuration under `work/` or CI artifacts; summarize deltas and
   limitations on the PR. Resolve regressions before claiming acceptance.
-- [ ] Run the native gates from `VALIDATION.md` in the environment specified by
+- [x] Run the native gates from `VALIDATION.md` in the environment specified by
   `.agents/info/build.md`: formatting, warning-denying workspace build, full
   nextest suite, test-usage/feature-parity/dependency-boundary checks and script
   tests. Use targeted packages during earlier stages; do not repeatedly run the
@@ -301,7 +306,7 @@ Depends on: all previous stages. This is the final acceptance gate.
   regressions to existing native/web and `zynq_freertos` workflows. Use current
   documented build entry points and pinned tools. Report unavailable manual or
   physical checks explicitly; compilation/QEMU cannot certify silicon latency.
-- [ ] Update `docs/runtime_profiling.md`, `ARCHITECTURE.md`, owning protocol and
+- [x] Update `docs/runtime_profiling.md`, `ARCHITECTURE.md`, owning protocol and
   connection guides, and the platform guide: extension recipe, schemas/versions,
   source lifecycle, limits, UI behavior and measurement costs. No per-report
   carrier instructions should be necessary.

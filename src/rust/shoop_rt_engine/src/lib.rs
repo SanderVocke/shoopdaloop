@@ -715,6 +715,8 @@ fn prepare_complete(
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),
         profile_names: pool.profiling_names(),
         profile_generation: 0,
+        profile_wire: Default::default(),
+        profile_catalog: false,
         profile_status: None,
         profile_layout: profiling::Layouts::new(
             &pool,

@@ -4151,19 +4151,21 @@ fn profiling_labels_resolve_backend_slots_and_follow_ui_renames_over_the_wire() 
             id,
             encoded,
         ));
+        let mut request = shoop_app_api::profiling_data::wire::subscribe(true);
+        request.epoch = f.service.audio_profiling_view().connection.max(1);
         let id = submit(
             &mut f.service,
             &mut client,
             connection,
-            Command::SetProfiling(true),
+            Command::Diagnostic(request),
         );
         complete(&mut f.service, &mut client, connection, id, encoded);
         for _ in 0..32 {
             f.service.tick(STEP);
             drain(&mut f.service, &mut client, connection, encoded);
         }
-        let view = f.service.snapshot();
-        let profiling = &view.profiling;
+        let view = f.service.audio_profiling_view();
+        let profiling = &view;
         assert!(profiling
             .groups
             .iter()
@@ -4195,13 +4197,9 @@ fn profiling_labels_resolve_backend_slots_and_follow_ui_renames_over_the_wire() 
         );
         f.service.tick(STEP);
         drain(&mut f.service, &mut client, connection, encoded);
-        let renamed = f.service.snapshot();
-        assert_eq!(
-            renamed.profiling.topology.as_deref(),
-            Some(topology.as_ref())
-        );
+        let renamed = f.service.audio_profiling_view();
+        assert_eq!(renamed.topology.as_deref(), Some(topology.as_ref()));
         assert!(renamed
-            .profiling
             .groups
             .iter()
             .any(|g| g.kind == 2 && g.name == "Percussion / Verse"));
@@ -4211,14 +4209,16 @@ fn profiling_labels_resolve_backend_slots_and_follow_ui_renames_over_the_wire() 
                 .map(|g| (g.kind, g.slot, g.entity))
                 .collect::<Vec<_>>(),
             renamed
-                .profiling
                 .groups
                 .iter()
                 .map(|g| (g.kind, g.slot, g.entity))
                 .collect::<Vec<_>>()
         );
-        let projected = client.snapshot().unwrap();
-        assert_eq!(projected.profiling.groups, renamed.profiling.groups);
+        for _ in 0..16 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, encoded);
+        }
+        assert_eq!(client.profiling().groups, renamed.groups);
     }
 }
 
@@ -4507,3 +4507,6 @@ fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() 
 
 #[path = "support/input_cases.rs"]
 mod input_cases;
+
+#[path = "profiling/cases.rs"]
+mod profiling_cases;

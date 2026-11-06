@@ -12,7 +12,6 @@ const AUTHORITY: Authority = Authority {
 fn snapshot(revision: u64, epoch: u64) -> SessionSnapshot {
     SessionSnapshot {
         composites: Vec::new(),
-        profiling: Default::default(),
         preview: Default::default(),
         preview_bus: None,
         bus_limits: Default::default(),

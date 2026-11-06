@@ -27,8 +27,14 @@ pub(crate) struct Window {
     units: Units,
     graph: graph::State,
     table: bool,
+    pub(super) host: bool,
+    control: Option<crate::diagnostics_protocol::Request>,
 }
 impl Window {
+    pub fn take_control(&mut self) -> Option<crate::diagnostics_protocol::Request> {
+        self.control.take()
+    }
+
     pub fn take_request(&mut self) -> Option<shoop_app_api::profiling_data::CaptureRequest> {
         self.graph.request.take()
     }
@@ -38,6 +44,7 @@ impl Window {
         view: &ProfilingView,
         status: &StatusState,
         enabled: bool,
+        diagnostics: &crate::DiagnosticsView,
     ) -> Option<bool> {
         let mut open = self.open;
         let mut changed = None;
@@ -47,6 +54,15 @@ impl Window {
             .min_size([510., 300.])
             .collapsible(false)
             .show(context, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.host, false, "Audio");
+                    ui.selectable_value(&mut self.host, true, "Host");
+                });
+                ui.separator();
+                if self.host {
+                    self.control = show_host(ui, diagnostics, enabled);
+                    return;
+                }
                 changed = show_inner(
                     ui,
                     view,
@@ -61,6 +77,133 @@ impl Window {
         self.open = open;
         changed
     }
+}
+
+fn show_host(
+    ui: &mut egui::Ui,
+    diagnostics: &crate::DiagnosticsView,
+    enabled: bool,
+) -> Option<crate::diagnostics_protocol::Request> {
+    use crate::{
+        diagnostics_protocol::{Action, Request},
+        task_profiling,
+    };
+    let mut control = None;
+    let Some(source) = diagnostics
+        .sources
+        .iter()
+        .find(|s| s.descriptor.stream.source == task_profiling::SOURCE)
+    else {
+        ui.label("This host does not advertise task profiling.");
+        for source in &diagnostics.sources {
+            if !source.supported {
+                ui.label(format!(
+                    "{}: unsupported schema {}",
+                    source.descriptor.name.as_str(),
+                    source.descriptor.stream.schema
+                ));
+            }
+        }
+        return None;
+    };
+    if !source.supported {
+        ui.label("Unsupported host task report schema");
+        return None;
+    }
+    let mut requested = source.status.is_some_and(|s| s.requested);
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled_ui(enabled && source.descriptor.available, |ui| {
+                ui.checkbox(&mut requested, "Collect task statistics")
+            })
+            .inner
+            .changed()
+        {
+            control = Some(Request {
+                source: source.descriptor.stream.source,
+                epoch: source.descriptor.stream.epoch,
+                action: Action::Subscribe {
+                    enabled: requested,
+                    interval_ms: 1000,
+                },
+            });
+        }
+        if let Some(status) = source.status {
+            ui.label(format!(
+                "{:?} · every {} ms · delivery drops {} · coalesced {}",
+                status.outcome, status.interval_ms, status.dropped, status.coalesced
+            ));
+        }
+    });
+    ui.label(format!(
+        "Report age: {} ms ago · incomplete/lost reports {}",
+        source.age_ms, source.assembly_losses
+    ));
+    let Some(sample) = &diagnostics.tasks.sample else {
+        ui.label("No task sample available");
+        return control;
+    };
+    ui.label(format!(
+        "Sample at {} µs · collection {} µs{}",
+        sample.captured_us,
+        sample.collection_us,
+        if sample.complete {
+            ""
+        } else {
+            " · incomplete"
+        }
+    ));
+    ui.label("CPU is scheduler-accounted runtime; stack headroom is the historical minimum unused bytes.");
+    egui::ScrollArea::both().show(ui, |ui| {
+        egui::Grid::new("host_tasks").striped(true).show(ui, |ui| {
+            for title in [
+                "Task",
+                "State",
+                "Priority / base",
+                "CPU %",
+                "Stack free bytes",
+            ] {
+                ui.strong(title);
+            }
+            ui.end_row();
+            for (index, task) in sample.tasks.iter().enumerate() {
+                ui.label(format!("{} ({})", task.name.as_str(), task.id));
+                ui.label(
+                    [
+                        "Running",
+                        "Ready",
+                        "Blocked",
+                        "Suspended",
+                        "Deleted",
+                        "Invalid",
+                    ]
+                    .get(task.state as usize)
+                    .copied()
+                    .unwrap_or("Unknown"),
+                );
+                ui.label(format!(
+                    "{} / {}",
+                    task.priority,
+                    task.base_priority
+                        .map_or_else(|| "—".into(), |n| n.to_string())
+                ));
+                ui.label(
+                    diagnostics
+                        .tasks
+                        .cpu_percent
+                        .get(index)
+                        .and_then(|n| *n)
+                        .map_or_else(|| "—".into(), |n| format!("{n:.1}")),
+                );
+                ui.label(
+                    task.stack_free_bytes
+                        .map_or_else(|| "—".into(), |n| n.to_string()),
+                );
+                ui.end_row();
+            }
+        });
+    });
+    control
 }
 
 fn switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {

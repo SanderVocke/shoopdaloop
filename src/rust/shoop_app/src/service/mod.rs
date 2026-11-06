@@ -16,6 +16,7 @@ mod monitoring;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
 mod preview;
+mod profiling;
 mod projection;
 mod publication;
 
@@ -152,6 +153,9 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    diagnostics: profiling_protocol::broker::Broker,
+    profiling_elapsed: Duration,
+    profiling_connection: u64,
     host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
     host_graph: Arc<HostGraphState>,
     publications: BTreeMap<HostGraphLocalKey, publication::Publication>,
@@ -242,6 +246,9 @@ impl Service {
             .track_processor_catalog()
             .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            diagnostics: profiling::broker(observed.profiling.connection.max(1)),
+            profiling_connection: observed.profiling.connection,
+            profiling_elapsed: Duration::ZERO,
             track_processors,
             host_graph_controller: None,
             host_graph: Arc::default(),
@@ -611,6 +618,7 @@ impl Service {
                     ready: false,
                     snapshot_revision: self.revision,
                 });
+                self.diagnostics.discover();
                 self.emit(ServiceMessage::Attached { authority });
                 self.publish();
             }
@@ -674,6 +682,8 @@ impl Service {
             .is_some_and(|lease| lease.connection == connection)
         {
             self.stop_preview();
+            self.diagnostics.detach();
+            let _ = self.backend.set_profiling(false);
             self.lease = None;
             for (note, tracks) in core::mem::take(&mut self.piano_notes) {
                 for track in tracks {
@@ -688,6 +698,11 @@ impl Service {
     }
 
     pub fn take_update(&mut self, connection: ConnectionId) -> Option<ServiceMessage> {
+        self.take_state_update(connection)
+            .or_else(|| self.take_diagnostic(connection))
+    }
+
+    pub fn take_state_update(&mut self, connection: ConnectionId) -> Option<ServiceMessage> {
         self.lease
             .as_ref()
             .filter(|lease| lease.connection == connection)?;
@@ -980,6 +995,7 @@ impl Service {
             self.publish();
             return;
         }
+        self.diagnostics.advance(elapsed);
         let _span = tracing::trace_span!(
             "app.service.tick",
             revision = self.revision.0,
@@ -1100,6 +1116,7 @@ impl Service {
             Err(error) => {
                 self.init_error = Some(error.to_string());
                 self.observed.status.driver_state = BackendDriverState::Failed;
+                self.observed.profiling = Default::default();
                 let ids: Vec<_> = self.pending.keys().copied().collect();
                 for id in ids {
                     self.pending.get_mut(&id).unwrap().error = Some(CommandError {
@@ -1110,6 +1127,7 @@ impl Service {
                 }
             }
         }
+        self.advance_profiling(elapsed);
         self.advance_persistence();
         if !self.persistence_reads_busy() {
             self.advance_media();

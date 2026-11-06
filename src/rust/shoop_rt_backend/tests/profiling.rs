@@ -1,8 +1,8 @@
 mod support;
 
+use rt_profiling::{Clock, HOST_XRUN};
 use shoop_backend::{Backend, BackendBusRequest, DirectTrackRequest};
 use shoop_rt_backend::RtBackend;
-use shoop_rt_protocol::profiling::{Clock, HOST_XRUN};
 use shoop_wasm_test_support::shoop_test;
 use support::*;
 
@@ -129,15 +129,15 @@ fn production_protocol_reports_stats_and_resets_every_graph_generation() {
         let callback = captured
             .index
             .iter()
-            .find(|t| t.flags & shoop_rt_protocol::profiling::CALLBACK != 0)
+            .find(|t| t.flags & rt_profiling::CALLBACK != 0)
             .unwrap();
         let tick = captured
             .index
             .iter()
-            .find(|t| t.flags & shoop_rt_protocol::profiling::CALLBACK == 0 && callback.contains(t))
+            .find(|t| t.flags & rt_profiling::CALLBACK == 0 && callback.contains(t))
             .unwrap();
         backend
-            .inspect_profiling(shoop_rt_protocol::profiling::CaptureRequest {
+            .inspect_profiling(rt_profiling::CaptureRequest {
                 connection: captured.connection,
                 generation: captured.generation,
                 capture: capture.capture,
