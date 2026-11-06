@@ -93,6 +93,13 @@ versioning, capacity, conversion fences and the application enablement boundary.
 | Strip output | the sum of its loop faders and the monitoring feed; two output banks | Output gain, balance, mute and presence ramps, output meters |
 | Bus | Prepared bus channels; two output banks | Sum of routed strips; gain, stereo balance, mute, presence and meters |
 
+Ramps (banks, monitoring, gain, balance, mute, presence and fades) are decided
+once per processing quantum and rendered as one linear segment across it, so the
+per-sample loops are branch-free arithmetic. A ramp that would end within a
+quantum ends at that quantum's last frame. Meters take each quantum's largest
+sample magnitude by comparing float bit patterns as integers, which avoids
+per-sample float compares; a NaN sample reads as the largest value.
+
 Stereo balance uses the legacy linear factors on two-channel stages. A strip
 output channel `c` takes input channel `c mod inputs`. Routes connect single strip
 output channels to single bus channels; `Limits::buses` and `bus_channels` report
