@@ -159,7 +159,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-jack-acceptance-${{ github.run_id }}
-          path: target/native-jack/*.log
+          path: |
+            target/native-jack/*.log
+            target/native-jack/*.json
           if-no-files-found: error
 
   no_std_core:

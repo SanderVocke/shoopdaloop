@@ -114,14 +114,14 @@ on the implementation PR, and retain unrelated parity capability gates.
 
 | Criterion | Production coverage |
 | --- | --- |
-| A1 confirmation | Host controller tests cover cancel, expiry, stale confirmation and changed-rate reconsent; CPAL mock preflight opens no streams. |
-| A2 conflicts | Service capture recording predicate is shared with persistence; host confirmation test retains an active take. |
-| A3 preservation | Native immutable-image tests compare public identities, media, roles, processor state, controls, selection and targeting. |
-| A4 conversion | Shared conversion unit tests and session integration tests provide dependency/quantum, signed timing, exact MIDI and resampling oracles. |
-| A5 rollback | Production service with injected controller covers startup, restoration, corrupted mapping and double failure. |
-| A6 ownership | Confirmed detach/reattach test verifies retained result and a single driver start; protocol authority/generation tests fence old submissions. |
-| A7 preferences | Save-failure retry test counts driver starts; process tests verify the owning host's sidecar; embedded settings tests preserve unrelated keys. |
-| A8 delivery | Native workspace, feature-isolation, dependency, Wasm and platform CI gates accompany isolated direct-JACK/CPAL-JACK qualification. |
+| A1 confirmation | [Host controller tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) cover cancel, expiry, stale confirmation and changed-rate reconsent; CPAL mock preflight opens no streams. |
+| A2 conflicts | Service capture recording predicate is shared with persistence; [host confirmation tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) retain an active take. |
+| A3 preservation | [Native immutable-image tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) compare public identities, media, roles, processor state, controls, selection and targeting; [embedded application tests](../../src/rust/shoopdaloop/src/main.rs) retain the live Lua VM. |
+| A4 conversion | [Shared conversion tests](../../src/rust/shoop_format_conversion/src/lib.rs) and [native integration tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) provide dependency/quantum, signed timing, exact MIDI and resampling oracles. |
+| A5 rollback | [Production service with injected controller](../../src/rust/shoop_host/src/audio_driver/tests.rs) covers startup, restoration, corrupted mapping and double failure. |
+| A6 ownership | [Confirmed detach/reattach tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) verify retained result and a single driver start; protocol authority/generation tests fence old submissions. |
+| A7 preferences | [Save-failure retry tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) count driver starts; [process tests](../../src/rust/shoop_host/tests/recovery.rs) verify the owning host's sidecar; embedded settings tests preserve unrelated keys. |
+| A8 delivery | [Native/Wasm/platform CI](../../.github/workflows/build_and_test.yml) and [processor CI](../../.github/workflows/hosted_track_processors.yml) accompany [isolated direct-JACK/CPAL-JACK qualification](../../scripts/run_native_jack_tests.py). |
 
 ## Native device qualification
 
@@ -142,6 +142,10 @@ to qualify other available hosts/devices and buffer policies using the same test
 The file uses the host driver's existing JSON representation. Qualification logs
 must identify the selected devices and distinguish virtual devices from physical
 output/MIDI hardware.
+
+The native JACK CI runner also executes this switching scenario. It supplies its
+128-frame server configuration explicitly and uploads the driver configuration
+alongside the acceptance logs.
 
 CPAL shutdown first allows at least two seconds (or four configured callback
 periods, when longer) for the disconnected engine's MIDI reset. It then closes the callback admission gate, pauses streams and waits for
