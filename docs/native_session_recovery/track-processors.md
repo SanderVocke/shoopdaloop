@@ -30,7 +30,7 @@ stereo and isolated non-stereo behavior. The complete maximum shape is eight dry
 plus eight wet channels. Synth is fixed at two dry/two wet/one dry MIDI; it ignores
 dry audio samples. FX also requires dry MIDI. External tracks support independent
 dry/wet widths and optional dry MIDI where native host ports support the shape.
-Bus processor catalogs remain empty and Carla remains unavailable.
+Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and track FX share prepared slots and channel limits. Carla remains unavailable.
 
 ## Routing and media matrix
 
@@ -64,7 +64,7 @@ type choices, smoothing, independent bypass and disabled-stage DSP suppression.
 Synth keeps presets, additive sends, Panic and its existing supported MIDI subset.
 Learn observes valid CC before processor filtering; toggles/types are not learn
 targets. Global FX control fans out supported continuous controls to track
-destinations only; idle processors retain latest values without rendering or
+and Built-in bus destinations; idle processors retain latest values without rendering or
 recording global-only traffic. A dual-routed controller remains additive.
 
 ## Ownership, timing and protocol work
@@ -88,8 +88,7 @@ bank; failure returns reservations and leaves current audio and media untouched.
 Changes to RT/app schemas and worklet configuration must version their wire
 contracts together. Generation-fenced reconnect publishes actual state rather
 than replaying mutations. UI disconnect does not reset voices or buffered output.
-Only implemented facets are advertised; general P09/P10 controls, Carla and bus
-FX remain separately refused. P06 is complete within this contract; P07 remains open for Carla.
+Only implemented facets are advertised; general P09/P10 controls, Carla remains separately refused; Built-in bus FX follows the bus contract. P06 is complete within this contract; P07 remains open for Carla.
 
 ## Delivery limitations
 
@@ -97,7 +96,7 @@ P06 was closed at the user's direction before all platform CI completed.
 The unused-helper build failure and stale lockfile pins were subsequently repaired;
 that does not establish a fully green current matrix. Check
 [PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946/checks) for final
-platform results. Carla, bus FX and dependent composite modes remain open in the
+platform results. Carla and dependent composite modes remain open in the
 [feature backlog](feature-parity.md).
 
 Saturated-synth measurements exceeded their block period in one run. Later lower
