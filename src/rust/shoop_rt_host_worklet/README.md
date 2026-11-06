@@ -5,7 +5,7 @@ is a raw Wasm module for `wasm32-unknown-unknown` with one elapsed-time import, 
 [`shoop_rt_engine`](../shoop_rt_engine) owners, serves the engine's control
 endpoint through the shared transport's `RecordServer` and copies audio, records and MIDI
 between module memory and the processor script. It depends only on the engine,
-the protocol and `rt_runtime`'s buffer types; `scripts/check_rt_engine_boundary.py`
+the protocol and `rt_runtime`'s buffer types; `scripts/check_dependency_boundaries.py --scope engine`
 enforces that it reaches no application crate.
 
 The processor script is `src/rust/shoopdaloop/rt_audio_worklet.js`; it registers

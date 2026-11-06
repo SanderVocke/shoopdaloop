@@ -24,7 +24,7 @@ backend. It is compiled once for every environment: native hosts, the browser's
 AudioWorklet and separate native processes all run this crate. It speaks only
 engine terms (strips, loop slots, connections, routes, telemetry) through the
 [`shoop_rt_protocol`](../shoop_rt_protocol) schema and depends on no application
-crate; `scripts/check_rt_engine_boundary.py` enforces that.
+crate; `scripts/check_dependency_boundaries.py --scope engine` enforces that.
 
 ## Owners
 

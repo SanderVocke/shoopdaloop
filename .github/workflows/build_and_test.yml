@@ -670,10 +670,8 @@ jobs:
           cargo run --locked -p shoop_loops ${{ matrix.cargo_args }} --example coordinated_loop
           python3 scripts/run_rt_runtime_hosts.py --native-only --profile '${{ matrix.profile }}'
           python3 scripts/run_loops_hosts.py --native-only --profile '${{ matrix.profile }}'
-          python3 scripts/check_rt_runtime_boundary.py
-          python3 scripts/check_loops_boundary.py
-          python3 scripts/check_rt_engine_boundary.py
-          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary scripts.tests.test_rt_engine_boundary
+          python3 scripts/check_dependency_boundaries.py --scope runtime --scope loops --scope engine
+          python3 -m unittest scripts.tests.test_dependency_boundaries
 
       - name: Upload rt_runtime native evidence
         if: always() && matrix.target != 'web'
@@ -700,7 +698,7 @@ jobs:
           RUSTFLAGS: -D warnings
         run: |
           cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
-          python3 scripts/check_rt_engine_boundary.py
+          python3 scripts/check_dependency_boundaries.py --scope engine
           python3 -m unittest discover -s scripts/tests
 
       - name: Run intentional Perfetto failure-capture canary
@@ -782,7 +780,7 @@ jobs:
       - name: Inspect browser dependency isolation
         if: matrix.target == 'web'
         run: |
-          python3 scripts/check_rt_engine_boundary.py --target wasm32-unknown-unknown
+          python3 scripts/check_dependency_boundaries.py --scope engine --target wasm32-unknown-unknown
           node src/rust/shoopdaloop/rt_worklet_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_rt_host_worklet.wasm
           node --test scripts/tests/trace_chunk_transport.test.mjs
 
@@ -891,7 +889,7 @@ jobs:
           RUSTFLAGS: -D warnings
         run: |
           cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
-          python3 scripts/check_rt_runtime_boundary.py
+          python3 scripts/check_dependency_boundaries.py --scope runtime
 
       - name: Check independent loop host formatting and boundary
         if: matrix.target == 'web' && env.ACT != 'true'
@@ -900,8 +898,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: |
           cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
-          python3 scripts/check_loops_boundary.py
-          python3 scripts/check_rt_engine_boundary.py
+          python3 scripts/check_dependency_boundaries.py --scope loops --scope engine
 
       - name: Start virtual Firefox audio output
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'

@@ -707,7 +707,7 @@ environment it talks to. The engine, the protocol and the adapter exist once; ho
 and carriers differ per environment and contain no semantics. Application concepts
 end at the adapter: the engine speaks strips, loop slots, host ports, routes,
 operations and telemetry, and the engine-side crates depend on no application or
-legacy crate, which `scripts/check_rt_engine_boundary.py` enforces.
+legacy crate, which `scripts/check_dependency_boundaries.py --scope engine` enforces.
 
 **T1** lies inside the engine, between the control endpoint and the render owner:
 `rt_runtime`'s lock-free, owning control and completion queues in one memory. The

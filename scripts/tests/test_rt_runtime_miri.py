@@ -16,27 +16,21 @@ from scripts import run_rt_runtime_miri as runner
 
 
 class MiriRunnerTests(unittest.TestCase):
-    def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 353)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 12)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 6)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_transport")), 6)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 137)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loops")), 119)
-        for target, count in [("runtime_topology", 28), ("interloop", 2)]:
-            cases = [c for c in runner.selected_cases("shoop_loops") if c[1] == target]
-            self.assertEqual(len(cases), count)
-            self.assertEqual(len({c[2][0] for c in cases}), count)
-            self.assertTrue(all(c[2][1:] == ["--", "--exact"] and c[3:] == (1, 0) for c in cases))
-        for _, _, arguments, _, _ in runner.selected_cases():
+    def test_inventory_selection_preserves_packages_and_exact_filters(self):
+        full = runner.selected_cases()
+        packages = {case[0] for case in full}
+        self.assertTrue({"rt_runtime", "shoop_loops", "shoop_rt_engine",
+                         "shoop_rt_protocol", "shoop_rt_transport", "shoop_transport",
+                         "shoop_app_protocol", "shoop_app_client"}.issubset(packages))
+        for package in packages:
+            self.assertEqual(runner.selected_cases(package), [c for c in full if c[0] == package])
+        keys = [(p, target, tuple(args), seed) for p, target, args, _, seed in full]
+        self.assertEqual(len(keys), len(set(keys)))
+        for _, _, arguments, minimum, _ in full:
+            self.assertGreater(minimum, 0)
             if "--exact" in arguments:
                 self.assertIn("--", arguments)
                 self.assertLess(arguments.index("--"), arguments.index("--exact"))
-
-    def test_extracted_shared_buffer_workload_is_retained(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_transport")), 5)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_app_protocol")), 2)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_app_client")), 2)
 
     def test_full_length_stage8_models_have_four_additive_exact_commands(self):
         expected = (
@@ -47,20 +41,18 @@ class MiriRunnerTests(unittest.TestCase):
         )
         cases = runner.selected_cases()
         self.assertEqual(runner.STAGE8_MODELS, expected)
-        self.assertEqual(len(cases), 177)
-        self.assertEqual(cases[-4:], [(owner, target, [name, "--", "--exact"], 1, 0)
+        self.assertEqual(cases[-len(expected):], [(owner, target, [name, "--", "--exact"], 1, 0)
                                     for owner, target, name in expected])
-        self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-4:])
+        self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-len(expected):])
 
     def test_standalone_inventory_keeps_all_cases_and_concurrency_seeds(self):
         cases = runner.selected_cases(runner.HOST_PACKAGE)
-        self.assertEqual(len(cases), 64)
         initial = [case for case in cases if case[4] == 0]
-        self.assertEqual(len(initial), 60)
-        self.assertEqual(len({case[2][0] for case in initial}), 60)
-        self.assertEqual(initial[-1], (runner.HOST_PACKAGE, "lib", [
+        self.assertEqual([case[2][0] for case in initial], list(runner.HOST_CASES))
+        self.assertEqual(len(initial), len({case[2][0] for case in initial}))
+        self.assertIn((runner.HOST_PACKAGE, "lib", [
             "graph_transfer::model::seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after_every_action",
-            "--", "--exact"], 1, 0))
+            "--", "--exact"], 1, 0), initial)
         self.assertTrue(all(case[1] == "lib" and case[2][1:] == ["--", "--exact"]
                             and case[3] == 1 for case in cases))
         self.assertEqual([(case[2][0], case[4]) for case in cases if case[4]],

@@ -20,6 +20,6 @@ Checks for the portable boundary:
 
     cargo build -p shoop_backend -p shoop_rt_backend --no-default-features
     cargo build -p shoop_backend -p shoop_rt_backend --no-default-features --target wasm32-unknown-unknown
-    python3 scripts/check_rt_engine_boundary.py
+    python3 scripts/check_dependency_boundaries.py --scope engine
 
 Retained reference behavior: `cargo test -p shoop_backend --features legacy --lib`.

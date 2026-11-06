@@ -14,9 +14,7 @@ RUSTFLAGS="-D warnings" cargo build --workspace
 SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
 python3 scripts/check_shoop_test_usage.py
 python3 scripts/check_feature_parity.py
-python3 scripts/check_rt_runtime_boundary.py
-python3 scripts/check_loops_boundary.py
-python3 scripts/check_rt_engine_boundary.py
+python3 scripts/check_dependency_boundaries.py --scope runtime --scope loops --scope engine
 python3 -m unittest discover -s scripts/tests
 ```
 
