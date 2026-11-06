@@ -138,6 +138,11 @@ fn buffer_storage(
     timing: PreparedTiming,
     limits: BufferLimits,
 ) -> Result<usize, Error> {
+    rt_runtime::buffer::MidiCapacity {
+        events: limits.midi_input.events_per_quantum,
+        bytes: limits.midi_input.bytes_per_quantum,
+    }
+    .prepared_bytes()?;
     let m = timing.timing().batch_quanta;
     let b = timing.batch_frames();
     let controls = product(limits.parameters_per_quantum, m)?;
@@ -149,7 +154,10 @@ fn buffer_storage(
         )?,
         sum(
             sum(
-                product(midi_storage(limits.midi_input, m)?, ports.midi_inputs)?,
+                product(
+                    midi_storage(limits.midi_input, if m == 1 { 0 } else { m })?,
+                    ports.midi_inputs,
+                )?,
                 product(midi_storage(limits.midi_output, m)?, ports.midi_outputs)?,
             )?,
             sum(
@@ -236,7 +244,11 @@ impl<B: Backend> BufferedProcessor<B> {
                 generation: 1,
                 audio_input: input,
                 audio_output: output,
-                input: midi_ports(ports.midi_inputs, limits.midi_input, m)?,
+                input: midi_ports(
+                    ports.midi_inputs,
+                    limits.midi_input,
+                    if m == 1 { 0 } else { m },
+                )?,
                 output: midi_ports(ports.midi_outputs, limits.midi_output, m)?,
                 parameters,
                 tag: None,
@@ -453,7 +465,7 @@ impl<B: Backend> BufferedProcessor<B> {
         inputs: &[MidiBuffer],
         outputs: &mut [MidiBuffer],
     ) -> Result<(), Error> {
-        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, None)
+        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, None, None)
     }
 
     /// Observe only when a complete batch executes. The caller retains requests
@@ -470,7 +482,27 @@ impl<B: Backend> BufferedProcessor<B> {
         if !self.backend.supports_observation() {
             return Err(Error::InvalidState);
         }
-        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, Some(observer))
+        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, None, Some(observer))
+    }
+
+    /// Merge borrowed controls while executing one complete source quantum.
+    pub fn process_ports_tick_controls(
+        &mut self,
+        frame: Frame,
+        quantum: Quantum,
+        audio: &mut AudioPorts<'_>,
+        inputs: &[MidiBuffer],
+        outputs: &mut [MidiBuffer],
+        controls: Option<crate::MidiControls<'_>>,
+        observer: Option<&mut dyn SourceObserver>,
+    ) -> Result<(), Error> {
+        if self.timing.timing().batch_quanta != 1
+            || inputs.len() != 1 && controls.is_some()
+            || observer.is_some() && !self.backend.supports_observation()
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, controls, observer)
     }
 
     fn process_ports_tick_inner(
@@ -480,6 +512,7 @@ impl<B: Backend> BufferedProcessor<B> {
         audio: &mut AudioPorts<'_>,
         inputs: &[MidiBuffer],
         outputs: &mut [MidiBuffer],
+        controls: Option<crate::MidiControls<'_>>,
         observer: Option<&mut dyn SourceObserver>,
     ) -> Result<(), Error> {
         if self.state == Lifecycle::Faulted {
@@ -523,7 +556,8 @@ impl<B: Backend> BufferedProcessor<B> {
                 return Err(Error::InvalidState);
             }
             if self.state == Lifecycle::Running {
-                for (input, dest) in inputs.iter().zip(slot.input.iter()) {
+                for (port, (ordinary, dest)) in inputs.iter().zip(slot.input.iter()).enumerate() {
+                    let input = crate::MidiInput::new(ordinary, controls.filter(|_| port == 0));
                     if input.len() > self.limits.midi_input.events_per_quantum
                         || input.byte_len() > self.limits.midi_input.bytes_per_quantum
                         || (self.filled > 0
@@ -532,8 +566,8 @@ impl<B: Backend> BufferedProcessor<B> {
                     {
                         return Err(Error::Capacity);
                     }
-                    for i in 0..input.len() {
-                        if input.get(i).ok_or(Error::InvalidState)?.0 as usize >= q {
+                    for (offset, _) in input.iter() {
+                        if offset as usize >= q {
                             return Err(Error::InvalidEvent);
                         }
                     }
@@ -618,7 +652,7 @@ impl<B: Backend> BufferedProcessor<B> {
                     dest.fill(0.);
                 }
             }
-            if self.state == Lifecycle::Running {
+            if self.state == Lifecycle::Running && b != q {
                 for (input, dest) in inputs.iter().zip(slot.input.iter_mut()) {
                     for i in 0..input.len() {
                         let (at, packet) = input.get(i).ok_or(Error::InvalidState)?;
@@ -638,7 +672,12 @@ impl<B: Backend> BufferedProcessor<B> {
                     tag,
                     frames: b,
                     audio: AudioPorts::new(&slot.audio_input, &mut slot.audio_output, b, 0, b)?,
-                    midi_inputs: &slot.input,
+                    midi_inputs: if b == q && self.state == Lifecycle::Running {
+                        inputs
+                    } else {
+                        &slot.input
+                    },
+                    midi_controls: controls,
                     midi_outputs: &mut slot.output,
                     parameters: &slot.parameters,
                     observer,

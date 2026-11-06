@@ -9,6 +9,12 @@ pub struct AudioStoreId {
     slot: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AudioHistoryId {
+    store: AudioStoreId,
+    history: shared_audio::HistoryId,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Take {
     pub store: AudioStoreId,
@@ -20,6 +26,17 @@ pub(super) struct Export {
     pub store: AudioStoreId,
     pub export: shared_audio::ExportId,
     pub index: shared_audio::ReadIndex,
+}
+
+/// Staged COW samples stay private until commit. Cancel on any paired-media failure.
+#[must_use]
+pub struct AudioWrite {
+    resource: ResourceId,
+    expected: Revision,
+    active: UploadId,
+    revision: Revision,
+    store: AudioStoreId,
+    write: shared_audio::Write,
 }
 
 impl ResourceStore {
@@ -36,11 +53,20 @@ impl ResourceStore {
         config: shared_audio::Config,
         origin: Frame,
     ) -> Result<AudioStoreId, Error> {
+        self.prepare_audio_pool(config, origin, 1)
+    }
+
+    pub fn prepare_audio_pool(
+        &mut self,
+        config: shared_audio::Config,
+        origin: Frame,
+        histories: usize,
+    ) -> Result<AudioStoreId, Error> {
         let slot = self.audio_stores.len();
         if slot == self.config.limits().resource_slots {
             return Err(Error::Capacity);
         }
-        let audio = shared_audio::AudioStore::prepare(self, config, origin)?;
+        let audio = shared_audio::AudioStore::prepare_histories(self, config, origin, histories)?;
         self.audio_stores.push(Some(Box::new(audio)));
         Ok(AudioStoreId {
             scope: self.scope,
@@ -48,6 +74,24 @@ impl ResourceStore {
         })
     }
 
+    pub fn prepare_audio_pool_windowed(
+        &mut self,
+        config: shared_audio::Config,
+        origin: Frame,
+        histories: usize,
+    ) -> Result<AudioStoreId, Error> {
+        let slot = self.audio_stores.len();
+        if slot == self.config.limits().resource_slots {
+            return Err(Error::Capacity);
+        }
+        let audio =
+            shared_audio::AudioStore::prepare_histories_windowed(self, config, origin, histories)?;
+        self.audio_stores.push(Some(Box::new(audio)));
+        Ok(AudioStoreId {
+            scope: self.scope,
+            slot,
+        })
+    }
     pub(super) fn with_audio<T>(
         &mut self,
         id: AudioStoreId,
@@ -67,14 +111,24 @@ impl ResourceStore {
     }
 
     pub fn audio_coverage(&self, id: AudioStoreId) -> Result<Range<Frame>, Error> {
+        self.audio(id)?.coverage()
+    }
+    fn audio(&self, id: AudioStoreId) -> Result<&shared_audio::AudioStore, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
         self.audio_stores
             .get(id.slot)
             .and_then(Option::as_ref)
-            .ok_or(Error::InvalidId)?
-            .coverage()
+            .map(Box::as_ref)
+            .ok_or(Error::InvalidId)
+    }
+    pub fn audio_history(&self, store: AudioStoreId, slot: usize) -> Result<AudioHistoryId, Error> {
+        let history = self.audio(store)?.history_id(slot)?;
+        Ok(AudioHistoryId { store, history })
+    }
+    pub fn audio_source_coverage(&self, id: AudioHistoryId) -> Result<Range<Frame>, Error> {
+        self.audio(id.store)?.history_coverage(id.history)
     }
 
     fn audio_resource(&mut self, audio: Take) -> Result<ResourceId, Error> {
@@ -114,6 +168,7 @@ impl ResourceStore {
             midi: None,
             audio: Some(audio),
             shared_midi: None,
+            indexed_midi: None,
         });
         self.resources[resource.slot() as usize].value = Some(Resource {
             active: Some(active),
@@ -137,9 +192,37 @@ impl ResourceStore {
         store: AudioStoreId,
         range: Range<Frame>,
     ) -> Result<ResourceId, Error> {
+        self.grab_audio_source(self.audio_history(store, 0)?, range)
+    }
+    pub fn grab_audio_source(
+        &mut self,
+        id: AudioHistoryId,
+        range: Range<Frame>,
+    ) -> Result<ResourceId, Error> {
         self.audio_resource_credit()?;
-        let take = self.with_audio(store, |_, audio| audio.grab(range))?;
-        self.audio_resource(Take { store, take })
+        let take = self.with_audio(id.store, |resources, audio| {
+            audio.grab_history(&mut resources.render_io(), id.history, range)
+        })?;
+        self.audio_resource(Take {
+            store: id.store,
+            take,
+        })
+    }
+
+    pub fn grab_audio_window(
+        &mut self,
+        source: AudioHistoryId,
+        range: Range<Frame>,
+        frames: u64,
+    ) -> Result<ResourceId, Error> {
+        self.audio_resource_credit()?;
+        let take = self.with_audio(source.store, |resources, audio| {
+            audio.grab_history_window(&mut resources.render_io(), source.history, range, frames)
+        })?;
+        self.audio_resource(Take {
+            store: source.store,
+            take,
+        })
     }
 
     /// Loaded PCM remains an immutable base. Only edited pages are copied. A
@@ -162,6 +245,53 @@ impl ResourceStore {
             })?
         };
         self.audio_resource(Take { store, take })
+    }
+
+    pub fn empty_audio(&mut self, store: AudioStoreId) -> Result<ResourceId, Error> {
+        self.audio_resource_credit()?;
+        let take = self.with_audio(store, |_, audio| audio.empty_take())?;
+        self.audio_resource(Take { store, take })
+    }
+    pub fn audio_growth_limit(&self, resource: ResourceId, owners: usize) -> Result<u64, Error> {
+        let owner = self.check_writer(resource, None)?;
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let take = get(&self.versions, active.slot, active.generation)?
+            .audio
+            .ok_or(Error::InvalidShape)?;
+        self.audio(take.store)?.growth_limit(take.take, owners)
+    }
+    pub fn prepare_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        maximum_frames: u64,
+    ) -> Result<(), Error> {
+        let owner = self.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let take = get(&self.versions, active.slot, active.generation)?
+            .audio
+            .ok_or(Error::InvalidShape)?;
+        self.with_audio(take.store, |_, audio| {
+            audio.reserve_growth(take.take, maximum_frames)
+        })
+    }
+    pub fn finish_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+    ) -> Result<(), Error> {
+        let owner = self.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let take = get(&self.versions, active.slot, active.generation)?
+            .audio
+            .ok_or(Error::InvalidShape)?;
+        self.with_audio(take.store, |_, audio| audio.finish_growth(take.take))
     }
 
     pub fn cleanup_audio_store(&mut self, id: AudioStoreId) -> Result<(), Error> {
@@ -194,6 +324,9 @@ impl ResourceStore {
     /// Independently retain exactly this revision, even after resource removal.
     pub fn retain_snapshot(&mut self, id: SnapshotId) -> Result<Snapshot, Error> {
         let mut lease = get(&self.snapshots, id.slot, id.generation)?;
+        if lease.reservation.is_some() {
+            return Err(Error::InvalidState);
+        }
         let mut version = get(&self.versions, lease.version.slot, lease.version.generation)?;
         let references = version.references.checked_add(1).ok_or(Error::Exhausted)?;
         let slot = *self.free_snapshots.last().ok_or(Error::Capacity)?;
@@ -213,6 +346,13 @@ impl ResourceStore {
                     store: midi.store,
                     export,
                     index: store.export_index(export)?,
+                })
+            })?);
+        } else if let Some(take) = lease.indexed_midi {
+            lease.indexed_midi = Some(self.with_indexed_midi(take.store, |_, pool| {
+                pool.retain(take.media).map(|media| indexed_midi::Take {
+                    store: take.store,
+                    media,
                 })
             })?);
         } else if let Some(tail) = lease.private_tail {
@@ -252,7 +392,7 @@ impl ResourceStore {
         class: WorkClass,
     ) -> Result<(), Error> {
         let lease = self.index_lease(index)?;
-        if lease.audio.is_some() || lease.shared_midi.is_some() {
+        if lease.audio.is_some() || lease.shared_midi.is_some() || lease.indexed_midi.is_some() {
             return Err(Error::InvalidShape);
         }
         if offset
@@ -288,6 +428,25 @@ impl ResourceStore {
 }
 
 impl RenderIo<'_> {
+    pub fn audio_source_discontinuity(
+        &mut self,
+        id: AudioHistoryId,
+        next: Frame,
+    ) -> Result<(), Error> {
+        self.store.with_audio(id.store, |store, audio| {
+            audio.history_discontinuity(&mut store.render_io(), id.history, next)
+        })
+    }
+    pub fn append_audio_source(
+        &mut self,
+        id: AudioHistoryId,
+        frame: Frame,
+        samples: &[f32],
+    ) -> Result<(), Error> {
+        self.store.with_audio(id.store, |store, audio| {
+            audio.append_history(&mut store.render_io(), id.history, frame, samples)
+        })
+    }
     pub fn audio_history_discontinuity(
         &mut self,
         id: AudioStoreId,
@@ -306,6 +465,139 @@ impl RenderIo<'_> {
         self.store.with_audio(id, |store, audio| {
             audio.append(&mut store.render_io(), frame, samples)
         })
+    }
+
+    pub fn append_audio_take(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        samples: &[f32],
+    ) -> Result<Revision, Error> {
+        let mut owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let mut version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        let revision = if samples.is_empty() {
+            owner.revision
+        } else {
+            owner.revision.checked_next()?
+        };
+        let info = self.store.with_audio(take.store, |resources, audio| {
+            audio.append_take(&mut resources.render_io(), take.take, samples)?;
+            audio.info(audio.take_index(take.take)?)
+        })?;
+        owner.revision = revision;
+        version.revision = revision;
+        version.description.frames = info.frames;
+        version.description.bytes = info.frames as usize * info.channels as usize * 4;
+        self.store.resources[resource.slot() as usize].value = Some(owner);
+        self.store.versions[active.slot as usize].value = Some(version);
+        Ok(revision)
+    }
+
+    pub fn stage_audio_write(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        position: Option<u64>,
+        samples: &[f32],
+    ) -> Result<AudioWrite, Error> {
+        let owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        let revision = if samples.is_empty() {
+            owner.revision
+        } else {
+            owner.revision.checked_next()?
+        };
+        let write = self.store.with_audio(take.store, |store, audio| {
+            audio.stage_write(&mut store.render_io(), take.take, position, samples)
+        })?;
+        Ok(AudioWrite {
+            resource,
+            expected,
+            active,
+            revision,
+            store: take.store,
+            write,
+        })
+    }
+    pub fn stage_audio_window_write(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        samples: &[f32],
+        spans: &[shared_audio::ChannelWrite],
+    ) -> Result<AudioWrite, Error> {
+        let owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        let revision = if spans.iter().any(|span| span.frames > 0) {
+            owner.revision.checked_next()?
+        } else {
+            owner.revision
+        };
+        let write = self.store.with_audio(take.store, |store, audio| {
+            audio.stage_window_write(&mut store.render_io(), take.take, samples, spans)
+        })?;
+        Ok(AudioWrite {
+            resource,
+            expected,
+            active,
+            revision,
+            store: take.store,
+            write,
+        })
+    }
+    pub fn cancel_audio_write(&mut self, write: AudioWrite) -> Result<(), Error> {
+        self.store.with_audio(write.store, |store, audio| {
+            audio.cancel_write(&mut store.render_io(), write.write)
+        })
+    }
+    pub fn commit_audio_write(&mut self, write: AudioWrite) -> Result<Revision, Error> {
+        let checked = self
+            .store
+            .check_writer(write.resource, None)
+            .and_then(|owner| {
+                if owner.revision != write.expected || owner.active != Some(write.active) {
+                    Err(Error::StaleRevision)
+                } else {
+                    Ok(owner)
+                }
+            });
+        let mut owner = match checked {
+            Ok(owner) => owner,
+            Err(error) => {
+                self.cancel_audio_write(write)?;
+                return Err(error);
+            }
+        };
+        let mut version = get(
+            &self.store.versions,
+            write.active.slot,
+            write.active.generation,
+        )?;
+        let info = self.store.with_audio(write.store, |store, audio| {
+            audio.commit_write(&mut store.render_io(), write.write)
+        })?;
+        owner.revision = write.revision;
+        version.revision = owner.revision;
+        version.description.frames = info.frames;
+        version.description.bytes = info.frames as usize * info.channels as usize * 4;
+        self.store.resources[write.resource.slot() as usize].value = Some(owner);
+        self.store.versions[write.active.slot as usize].value = Some(version);
+        Ok(owner.revision)
     }
 
     /// Required COW edit of a resource; immutable generic snapshots stay pinned.
@@ -377,6 +669,45 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn audio_growth_limit(&self, resource: ResourceId, owners: usize) -> Result<u64, Error> {
+        self.store.audio_growth_limit(resource, owners)
+    }
+    pub fn prepare_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        maximum_frames: u64,
+    ) -> Result<(), Error> {
+        self.store
+            .prepare_audio_growth(resource, expected, maximum_frames)
+    }
+    pub fn finish_audio_growth(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+    ) -> Result<(), Error> {
+        self.store.finish_audio_growth(resource, expected)
+    }
+
+    pub fn grab_audio_window(
+        &mut self,
+        source: AudioHistoryId,
+        range: Range<Frame>,
+        frames: u64,
+    ) -> Result<ResourceId, Error> {
+        self.store.grab_audio_window(source, range, frames)
+    }
+
+    pub fn audio_source_coverage(&self, id: AudioHistoryId) -> Result<Range<Frame>, Error> {
+        self.store.audio_source_coverage(id)
+    }
+    pub fn grab_audio_source(
+        &mut self,
+        id: AudioHistoryId,
+        range: Range<Frame>,
+    ) -> Result<ResourceId, Error> {
+        self.store.grab_audio_source(id, range)
+    }
     pub fn audio_coverage(&self, id: AudioStoreId) -> Result<Range<Frame>, Error> {
         self.store.audio_coverage(id)
     }

@@ -137,6 +137,27 @@ impl jack::ProcessHandler for Process {
             self.ports.finish();
             return jack::Control::Continue;
         }
+        if self.shared.phase() == RenderPhase::Disconnected
+            && self.shared.stopping.load(Ordering::Acquire)
+        {
+            for writer in writers.iter_mut().flatten() {
+                let mut reset = rt_runtime::midi::ResetState::default();
+                reset.request();
+                while let Some(bytes) = reset.peek() {
+                    if writer
+                        .write(&jack::RawMidi {
+                            time: 0,
+                            bytes: &bytes,
+                        })
+                        .is_err()
+                    {
+                        Shared::count(&self.shared.counters.midi_out_failed, 1);
+                        break;
+                    }
+                    reset.acknowledge().expect("pending reset packet");
+                }
+            }
+        }
         let mut io = Io {
             scope,
             inputs: &self.ports.inputs,
@@ -386,17 +407,29 @@ pub(crate) fn start(
                 thread::sleep(Duration::from_millis(1));
             }
             worker.close();
+            let grace = reset_wait(observed.driver().buffer_frames, observed.sample_rate())
+                .max(Duration::from_millis(250));
+            let deadline = Instant::now() + grace;
+            while observed.phase() == RenderPhase::Running
+                && observed.failure().is_none()
+                && !shutdown.load(Ordering::Acquire)
+                && Instant::now() < deadline
+            {
+                thread::sleep(Duration::from_millis(1));
+            }
             if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {
                 // Let the reset block cross the graph, including feedback edges, before removing ports.
                 let through = observed.stats().callbacks.saturating_add(2);
-                let deadline = Instant::now()
-                    + reset_wait(observed.driver().buffer_frames, observed.sample_rate());
+                let deadline = Instant::now() + grace;
                 while observed.stats().callbacks < through
                     && !shutdown.load(Ordering::Acquire)
                     && Instant::now() < deadline
                 {
                     thread::sleep(Duration::from_millis(1));
                 }
+                observed
+                    .reset_flushed
+                    .store(observed.stats().callbacks >= through, Ordering::Release);
             }
             if shutdown.load(Ordering::Acquire) {
                 observed.fail(StreamFailure::DeviceNotAvailable);

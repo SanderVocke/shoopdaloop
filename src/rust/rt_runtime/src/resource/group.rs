@@ -638,8 +638,10 @@ impl ResourceStore {
                 capture: version.capture,
             };
             self.snapshots[lease.slot as usize].value = Some(Lease {
+                reservation: None,
                 audio: None,
                 shared_midi: None,
+                indexed_midi: None,
                 snapshot,
                 version: take,
                 private_tail: None,

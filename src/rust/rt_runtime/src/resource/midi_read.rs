@@ -51,6 +51,14 @@ impl ResourceStore {
                 state.system_reset_seen(),
             ))
         };
+        if let Some(midi) = lease.indexed_midi {
+            return self.with_indexed_midi(midi.store, |store, pool| {
+                let state =
+                    pool.core
+                        .state(&mut store.render_io(), pool.views.get(midi.media)?, 0)?;
+                select(&state)
+            });
+        }
         if let Some(midi) = lease.shared_midi {
             return self.with_midi(midi.store, |_, store| {
                 select(store.initial_state(midi.index)?)
@@ -63,7 +71,7 @@ impl ResourceStore {
             lease.snapshot.description.bytes,
         )?)
     }
-    fn midi_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
+    pub(super) fn midi_lease(&self, index: ReadIndex) -> Result<Lease, Error> {
         let lease = self.index_lease(index)?;
         if lease.snapshot.description.format != Format::Midi {
             return Err(Error::InvalidShape);
@@ -154,6 +162,19 @@ impl ResourceStore {
         if frame > lease.snapshot.description.frames {
             return Err(Error::InvalidFrame);
         }
+        if let Some(take) = lease.indexed_midi {
+            return self.with_indexed_midi(take.store, |store, pool| {
+                let state =
+                    pool.core
+                        .state(&mut store.render_io(), pool.views.get(take.media)?, frame)?;
+                Ok((0..16).any(|channel| {
+                    state
+                        .channel(channel)
+                        .expect("MIDI channel")
+                        .parameter_history_untracked()
+                }))
+            });
+        }
         if let Some(midi) = lease.shared_midi {
             return self.with_midi(midi.store, |store, midi_store| {
                 midi_store.parameter_history_untracked(&mut store.render_io(), midi.index, frame)
@@ -189,6 +210,20 @@ impl ResourceStore {
         let lease = self.midi_lease(index)?;
         if frame > lease.snapshot.description.frames {
             return Err(Error::InvalidFrame);
+        }
+        if let Some(take) = lease.indexed_midi {
+            return self.with_indexed_midi(take.store, |store, pool| {
+                let media = pool.views.get(take.media)?;
+                let state = pool.core.state(&mut store.render_io(), media, frame)?;
+                let offset = pool
+                    .core
+                    .byte_before(&mut store.render_io(), media, frame)?;
+                Ok(MidiPosition {
+                    cursor: MidiCursor { index, offset },
+                    state,
+                    replayed_events: 0,
+                })
+            });
         }
         if let Some(midi) = lease.shared_midi {
             return self.with_midi(midi.store, |store, midi_store| {

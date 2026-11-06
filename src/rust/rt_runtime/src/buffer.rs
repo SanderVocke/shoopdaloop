@@ -198,6 +198,41 @@ impl<'a> AudioPorts<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MidiCapacity {
+    pub events: usize,
+    pub bytes: usize,
+}
+impl MidiCapacity {
+    pub fn prepared_bytes(self) -> Result<usize, Error> {
+        self.events
+            .checked_add(crate::midi::ResetState::EVENTS)
+            .and_then(|events| events.checked_mul(size_of::<Event>()))
+            .and_then(|events| {
+                self.bytes
+                    .checked_add(crate::midi::ResetState::BYTES)
+                    .and_then(|bytes| events.checked_add(bytes))
+            })
+            .filter(|bytes| *bytes <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
+    pub fn checked_add(self, other: Self) -> Result<Self, Error> {
+        Ok(Self {
+            events: self
+                .events
+                .checked_add(other.events)
+                .ok_or(Error::Capacity)?,
+            bytes: self.bytes.checked_add(other.bytes).ok_or(Error::Capacity)?,
+        })
+    }
+    pub fn checked_mul(self, count: usize) -> Result<Self, Error> {
+        Ok(Self {
+            events: self.events.checked_mul(count).ok_or(Error::Capacity)?,
+            bytes: self.bytes.checked_mul(count).ok_or(Error::Capacity)?,
+        })
+    }
+}
+
 /// Owned fixed-capacity MIDI/event storage. Construct and destroy outside RT;
 /// clearing and appending never resize or free the backing arenas.
 pub struct MidiBuffer {
@@ -328,6 +363,24 @@ impl MidiBuffer {
     /// Stable ordered insertion for fan-in. Equal-time events keep source order.
     /// Moving descriptors is bounded by event capacity; byte payloads never move.
     pub fn insert(&mut self, offset: u32, frames: usize, payload: &[u8]) -> Result<(), Error> {
+        self.insert_ordered(offset, frames, payload, false)
+    }
+    /// Insert before existing equal-time events, preserving byte payload ownership.
+    pub fn insert_before(
+        &mut self,
+        offset: u32,
+        frames: usize,
+        payload: &[u8],
+    ) -> Result<(), Error> {
+        self.insert_ordered(offset, frames, payload, true)
+    }
+    fn insert_ordered(
+        &mut self,
+        offset: u32,
+        frames: usize,
+        payload: &[u8],
+        before_equal: bool,
+    ) -> Result<(), Error> {
         if offset as usize >= frames || payload.is_empty() {
             return Err(Error::InvalidEvent);
         }
@@ -338,11 +391,17 @@ impl MidiBuffer {
             return Err(Error::Full);
         }
         crate::midi::Message::parse(payload, self.byte_capacity)?;
-        let index = if self.event_len == 0 || self.events[self.event_len - 1].offset <= offset {
+        let precedes = |event: &Event| {
+            if before_equal {
+                event.offset < offset
+            } else {
+                event.offset <= offset
+            }
+        };
+        let index = if self.event_len == 0 || precedes(&self.events[self.event_len - 1]) {
             self.event_len
         } else {
-            let index =
-                self.events[..self.event_len].partition_point(|event| event.offset <= offset);
+            let index = self.events[..self.event_len].partition_point(precedes);
             self.events.copy_within(index..self.event_len, index + 1);
             index
         };

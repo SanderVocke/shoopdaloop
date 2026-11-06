@@ -50,6 +50,14 @@ impl State {
         }
     }
 
+    pub fn writes(self) -> bool {
+        self.mode.records() || self.mode == Mode::Replacing
+    }
+
+    pub fn advances(self) -> bool {
+        self.plays() || (self.mode == Mode::Replacing && self.position < self.content_length)
+    }
+
     pub fn plays(self) -> bool {
         self.composite.is_none()
             && self.content_length != 0

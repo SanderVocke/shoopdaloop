@@ -211,6 +211,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 next_delay,
                 content_revision,
                 recording_armed,
+                capture_incomplete,
                 timing_revision,
                 length,
                 position,
@@ -245,6 +246,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     }
                     entry.view = LoopView {
                         recording_armed,
+                        capture_incomplete,
                         mode,
                         next_mode,
                         next_delay,
@@ -755,6 +757,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::Input {
+            self.input_answered(pending.request, outcome);
+            return;
+        }
         if let Purpose::CompositeControl(sequence) = pending.purpose {
             self.composite_control_answer(sequence, outcome);
             return;
@@ -792,9 +798,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     Outcome::Done | Outcome::TimingApplied(_) => Ok(()),
                     Outcome::CompositeApplied { .. }
                     | Outcome::ContentApplied { .. }
-                    | Outcome::ContentPrepared { .. } => {
-                        Err("unexpected content revision outcome".to_owned())
-                    }
+                    | Outcome::ContentPrepared { .. }
+                    | Outcome::Input(_)
+                    | Outcome::InputCapacity(_) => Err("unexpected transaction outcome".to_owned()),
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
                 },
             });
@@ -802,7 +808,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Outcome::Done | Outcome::TimingApplied(_) => None,
             Outcome::CompositeApplied { .. }
             | Outcome::ContentApplied { .. }
-            | Outcome::ContentPrepared { .. } => Some(Refusal::Internal),
+            | Outcome::ContentPrepared { .. }
+            | Outcome::Input(_)
+            | Outcome::InputCapacity(_) => Some(Refusal::Internal),
             Outcome::Refused(refusal) => Some(refusal),
         };
         match (purpose, refusal) {
@@ -1194,7 +1202,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | Purpose::Smoothing(_)
                 | Purpose::Preview
                 | Purpose::Persistence
-                | Purpose::CancelReads,
+                | Purpose::CancelReads
+                | Purpose::Input,
                 _,
             ) => {}
         }

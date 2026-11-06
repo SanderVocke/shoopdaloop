@@ -2,6 +2,10 @@
 
 ## Status, baseline and delivery
 
+Application P04/P05 delivery is complete under [PLAN_FINISH_GRAB_REPLACE.md](PLAN_FINISH_GRAB_REPLACE.md)
+and its [acceptance evidence](docs/native_session_recovery/evidence/grab-replace.md).
+The historical foundation evidence below does not replace application validation.
+
 The original M0–M7 completion below is historical. Current execution/delivery is
 superseded by [PLAN_RECONCILE_GRAB.md](PLAN_RECONCILE_GRAB.md), targeting
 `feat/fixed-quantum-runtime`. The production integration uses immutable Quantum

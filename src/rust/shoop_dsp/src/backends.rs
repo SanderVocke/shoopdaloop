@@ -44,7 +44,11 @@ fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_, '_>) -> Resu
         }
         instrument.validate_parameter(event.parameter, event.value)?;
     }
-    let mut midi = 0;
+    let mut midi = batch
+        .midi_input(0)
+        .ok_or(Error::InvalidShape)?
+        .iter()
+        .peekable();
     let mut parameter = 0;
     let mut cursor = 0;
     let end_frame = batch.tag.source.checked_add(batch.frames)?;
@@ -56,12 +60,12 @@ fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_, '_>) -> Resu
             instrument.change(event.parameter, event.value)?;
             parameter += 1;
         }
-        while let Some((at, data)) = batch.midi_inputs[0].get(midi) {
+        while let Some(&(at, data)) = midi.peek() {
             if at as usize != cursor {
                 break;
             }
             instrument.midi(data);
-            midi += 1;
+            midi.next();
         }
         let frame = batch.tag.source.checked_add(cursor)?;
         let requested = batch
@@ -86,9 +90,7 @@ fn process<I: Instrument>(instrument: &mut I, batch: &mut Batch<'_, '_>) -> Resu
             Some(_) => return Err(Error::InvalidFrame),
             None => batch.frames,
         };
-        let next_midi = batch.midi_inputs[0]
-            .get(midi)
-            .map_or(batch.frames, |(at, _)| at as usize);
+        let next_midi = midi.peek().map_or(batch.frames, |(at, _)| *at as usize);
         let next_parameter = batch
             .parameters
             .get(parameter)

@@ -419,6 +419,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let loops = track.loops.clone();
         self.mirror.strip_slots.release(strip.0);
         for loop_id in loops {
+            self.cancel_input_for(loop_id);
             if let Some(entry) = self.mirror.loops.get(&loop_id) {
                 self.mirror.loop_slots.release(entry.slot.0);
             }
@@ -1337,6 +1338,7 @@ mod track_role_tests {
                 next_delay: None,
                 content_revision,
                 recording_armed: false,
+                capture_incomplete: false,
                 timing_revision: committed.revision,
                 length,
                 position: 0,

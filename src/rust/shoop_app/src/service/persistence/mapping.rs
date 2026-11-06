@@ -244,7 +244,11 @@ impl Candidate {
         session: &image::Session,
     ) -> Result<(Self, BackendSessionData, BTreeMap<u64, u64>)> {
         if session.sample_rate != service.observed.status.sample_rate
-            || session.global.default_recording_action != DefaultRecordingAction::Record
+            || (session.global.default_recording_action == DefaultRecordingAction::Grab
+                && !service
+                    .backend
+                    .capabilities()
+                    .supports(BackendCapability::Grab))
         {
             return Err(anyhow!(
                 "session requires a different sample rate or unsupported recording policy"

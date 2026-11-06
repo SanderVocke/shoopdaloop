@@ -710,6 +710,7 @@ pub fn dry_wet_routing_state(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
+    pub capture_incomplete: bool,
     pub recorded_processor_state: Option<String>,
     pub repeat_sync: bool,
     pub recording_armed: bool,
@@ -793,6 +794,25 @@ pub struct BackendGrabRequest {
     pub cycles_length: Option<i32>,
     pub go_to_cycle: Option<i32>,
     pub go_to_mode: BackendLoopMode,
+}
+
+/// One member of an all-or-nothing input edit at a common engine cut.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BackendInputEdit {
+    Mode {
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        position: Option<u64>,
+    },
+    Grab(BackendGrabRequest),
+    Gesture {
+        loop_id: BackendLoopId,
+        sync: BackendLoopId,
+        target: Option<BackendLoopId>,
+        synced: bool,
+        cycles: u32,
+        play_after_record: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1478,6 +1498,13 @@ pub trait Backend {
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()>;
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
+    fn input_edits(
+        &mut self,
+        _edits: &[BackendInputEdit],
+        _cycles_delay: Option<u32>,
+    ) -> Result<()> {
+        Err(anyhow!("atomic input edits are unavailable"))
+    }
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
     fn loop_audio_data_with_metadata(
         &mut self,

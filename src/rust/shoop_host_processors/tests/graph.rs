@@ -796,6 +796,7 @@ fn hosted_synth_matches_unbuffered_notes_with_sample_offsets_after_exact_declare
                 frames: 16,
                 audio: AudioPorts::new(&zeros, &mut output, 16, 0, 16).unwrap(),
                 midi_inputs: core::slice::from_ref(&input),
+                midi_controls: None,
                 midi_outputs: &mut [],
                 parameters: &[],
             })

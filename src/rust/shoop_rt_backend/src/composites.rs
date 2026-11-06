@@ -91,6 +91,7 @@ fn app_mode(mode: LoopMode) -> BackendLoopMode {
         LoopMode::Stopped => BackendLoopMode::Stopped,
         LoopMode::Playing => BackendLoopMode::Playing,
         LoopMode::Recording => BackendLoopMode::Recording,
+        LoopMode::Replacing => BackendLoopMode::Replacing,
         LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
         LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
     }
@@ -468,6 +469,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                                     .mode
                                     .ok_or_else(|| anyhow!("script event requires a mode"))?,
                             )? {
+                                LoopMode::Replacing => {
+                                    bail!("composite replacing events are not supported")
+                                }
                                 LoopMode::Stopped => shoop_loop_plan::Mode::Stopped,
                                 LoopMode::Playing => shoop_loop_plan::Mode::Playing,
                                 LoopMode::Recording => shoop_loop_plan::Mode::Recording,
@@ -537,6 +541,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         occurrence_start: span.occurrence_start,
                         ordinal: span.ordinal,
                         mode: match span.mode {
+                            shoop_loop_plan::Mode::Replacing => BackendLoopMode::Replacing,
                             shoop_loop_plan::Mode::Stopped => BackendLoopMode::Stopped,
                             shoop_loop_plan::Mode::Playing => BackendLoopMode::Playing,
                             shoop_loop_plan::Mode::Recording => BackendLoopMode::Recording,
@@ -586,6 +591,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let Some(mut job) = self.composites.jobs.pop_front() else {
             return;
         };
+        if self
+            .input
+            .as_ref()
+            .is_some_and(|input| input.sequence < job.sequence)
+        {
+            self.composites.jobs.push_front(job);
+            return;
+        }
         let mut terminal = None;
         if job.phase == Phase::Finished && job.outstanding == 0 {
             terminal = job.failure.take();

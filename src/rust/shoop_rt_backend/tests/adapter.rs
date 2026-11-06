@@ -303,37 +303,49 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
             .with(BackendCapability::SessionContentLoad, true)
             .with(BackendCapability::LoopContentImport, true)
             .with(BackendCapability::LoopTimingEdits, true)
+            .with(BackendCapability::Grab, true)
+            .with(BackendCapability::ReplacingMode, true)
     );
-    let created = backend.create_direct_track(track(1, false, 1)).unwrap();
-    let loop_id = created.loops[0];
-    let refusals = [
-        (
-            BackendCapability::ReplacingMode,
-            backend
-                .transition_loop(loop_id, BackendLoopMode::Replacing, None)
-                .err(),
-        ),
-        (
-            BackendCapability::DryWetTracks,
-            backend
-                .create_track(TrackRequest {
-                    port_name_base: "dry_wet".to_owned(),
-                    topology: BackendTrackTopology::DryWetExternal {
-                        dry_audio_channels: 1,
-                        wet_audio_channels: 1,
-                        dry_midi: false,
-                    },
-                    initial_loops: 1,
-                })
-                .err(),
-        ),
-    ];
+    let refusals = [(
+        BackendCapability::DryWetTracks,
+        backend
+            .create_track(TrackRequest {
+                port_name_base: "dry_wet".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .err(),
+    )];
     for (capability, error) in refusals {
         let error = error.unwrap_or_else(|| panic!("{capability:?} was accepted"));
         assert_eq!(error.to_string(), capability.unavailable_reason());
     }
     backend.wait_idle();
     assert!(backend.poll().unwrap().mutation_failures.is_empty());
+    drop(backend);
+    let mut disabled = description();
+    disabled.history.seconds = 0;
+    let mut backend = stack(&disabled);
+    let created = backend.create_direct_track(track(1, false, 1)).unwrap();
+    backend.wait_idle();
+    assert!(!backend
+        .capabilities()
+        .supports(BackendCapability::ReplacingMode));
+    let error = backend
+        .transition_loop(created.loops[0], BackendLoopMode::Replacing, None)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        BackendCapability::ReplacingMode.unavailable_reason()
+    );
+    assert_eq!(
+        backend.grab_loops(&[]).unwrap_err().to_string(),
+        BackendCapability::Grab.unavailable_reason()
+    );
 }
 
 #[shoop_test]
@@ -828,4 +840,170 @@ fn a_saved_missing_device_reconnects_on_a_different_prepared_slot() {
     let output = host.midi_output(0);
     assert!((0..output.len()).any(|i| output.get(i).unwrap().1 == [0x90, 60, 100]));
     assert!(!(0..output.len()).any(|i| output.get(i).unwrap().1 == [0x91, 99, 123]));
+}
+
+#[shoop_test]
+fn public_grab_and_replacing_have_one_owned_mutation_and_preserve_old_exports() {
+    use shoop_backend::BackendGrabRequest;
+    let mut d = description();
+    d.quantum = 32;
+    d.max_frames = 64;
+    d.segments = vec![Segment {
+        strips: 2,
+        loops: 4,
+    }];
+    d.history.audio_take_pages = 4096;
+    d.history.midi_pages = 512;
+    d.history.midi_records = 4096;
+    d.history.writers = 4;
+    let mut backend = stack(&d);
+    backend.clock_mut().capture = |_| 0.25;
+    let created = backend.create_direct_track(track(2, true, 3)).unwrap();
+    backend
+        .set_port_connected(created.ports[0].id, "audio_in_1", true)
+        .unwrap();
+    let (target, sync) = (created.loops[0], created.loops[1]);
+    backend
+        .transition_loop(sync, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.advance(std::time::Duration::from_millis(192));
+    backend
+        .transition_loop(sync, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.set_loop_sync_source(target, Some(sync)).unwrap();
+    backend.wait_idle();
+    backend.advance(std::time::Duration::from_millis(1024));
+    backend.poll().unwrap();
+    let before = backend.mutation_cursor();
+    backend
+        .grab_loops(&[BackendGrabRequest {
+            loop_id: target,
+            reverse_start_cycle: Some(1),
+            cycles_length: Some(1),
+            go_to_cycle: Some(0),
+            go_to_mode: BackendLoopMode::Playing,
+        }])
+        .unwrap();
+    let grab = backend.mutation_cursor();
+    assert_eq!(grab, before + 1);
+    assert!(backend.mutations_pending_through(grab));
+    backend.pump();
+    assert!(backend.mutations_pending_through(grab));
+    backend.wait_idle();
+    let snapshot = backend.poll().unwrap();
+    assert!(!backend.mutations_pending_through(grab));
+    let completions: Vec<_> = snapshot
+        .mutation_completions
+        .iter()
+        .filter(|c| c.sequence >= grab)
+        .collect();
+    assert_eq!(completions.len(), 1, "{completions:?}");
+    assert_eq!(completions[0].result, Ok(()));
+    assert!(
+        snapshot.mutation_failures.is_empty(),
+        "{:?}",
+        snapshot.mutation_failures
+    );
+    assert_eq!(snapshot.loops[&target].mode, BackendLoopMode::Playing);
+    assert_eq!(snapshot.loops[&target].length, snapshot.loops[&sync].length);
+    backend.loop_audio_data(target).unwrap();
+    backend.wait_idle();
+    let old = backend.loop_audio_data(target).unwrap().unwrap();
+    assert!(old[0].iter().all(|sample| *sample == 0.25));
+    backend
+        .transition_loop(target, BackendLoopMode::Replacing, Some(u32::MAX))
+        .unwrap();
+    let delayed = backend.mutation_cursor();
+    for _ in 0..20 {
+        backend.pump();
+        backend.clock_mut().render(64);
+    }
+    assert!(backend.mutations_pending_through(delayed));
+    backend
+        .transition_loop(target, BackendLoopMode::Stopped, None)
+        .unwrap();
+    backend.wait_idle();
+    let cancelled = backend.poll().unwrap();
+    assert_eq!(cancelled.loops[&target].mode, BackendLoopMode::Stopped);
+    assert!(cancelled
+        .mutation_completions
+        .iter()
+        .any(|c| c.sequence == delayed && c.result.is_err()));
+    backend.clock_mut().capture = |_| 0.75;
+    backend
+        .transition_loop(target, BackendLoopMode::Replacing, None)
+        .unwrap();
+    backend.wait_idle();
+    let replacing = backend.poll().unwrap();
+    assert!(
+        replacing.mutation_failures.is_empty(),
+        "{:?}",
+        replacing.mutation_failures
+    );
+    assert_eq!(replacing.loops[&target].mode, BackendLoopMode::Replacing);
+    backend.advance(std::time::Duration::from_millis(2048));
+    backend
+        .transition_loop(target, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.loop_audio_data(target).unwrap();
+    backend.wait_idle();
+    let current = backend.loop_audio_data(target).unwrap().unwrap();
+    assert_eq!(current[0].len(), old[0].len());
+    assert!(current[0].iter().all(|sample| *sample == 0.75));
+    assert!(old[0].iter().all(|sample| *sample == 0.25));
+    let third = created.loops[2];
+    backend.set_loop_sync_source(third, Some(sync)).unwrap();
+    backend.wait_idle();
+    backend
+        .grab_loops(&[target, third].map(|loop_id| BackendGrabRequest {
+            loop_id,
+            reverse_start_cycle: None,
+            cycles_length: Some(1),
+            go_to_cycle: Some(0),
+            go_to_mode: BackendLoopMode::Recording,
+        }))
+        .unwrap();
+    backend.wait_idle();
+    let growing = backend.poll().unwrap();
+    assert!(
+        growing.mutation_failures.is_empty(),
+        "{:?}",
+        growing.mutation_failures
+    );
+    for id in [target, third] {
+        assert_eq!(growing.loops[&id].mode, BackendLoopMode::Recording);
+    }
+    backend.advance(std::time::Duration::from_millis(1024));
+    for id in [target, third] {
+        backend
+            .transition_loop(id, BackendLoopMode::Stopped, None)
+            .unwrap();
+    }
+    backend.wait_idle();
+    let completed = backend.poll().unwrap();
+    assert!(
+        completed.mutation_failures.is_empty(),
+        "{:?}",
+        completed.mutation_failures
+    );
+    assert_eq!(
+        completed.loops[&target].length,
+        completed.loops[&third].length
+    );
+    assert!(completed.loops[&target].length > 1024);
+    for id in [target, third] {
+        backend.loop_audio_data(id).unwrap();
+    }
+    backend.wait_idle();
+    for id in [target, third] {
+        let audio = backend.loop_audio_data(id).unwrap().unwrap();
+        assert!(audio[0].iter().all(|sample| *sample == 0.75));
+    }
+    assert_eq!(
+        backend.clock().offline.render.diagnostics().midi_overflows,
+        0
+    );
 }

@@ -1,7 +1,7 @@
 //! Portable host setup vocabulary; execution and OS configuration belong to hosts.
 use crate::{DriverKind, DriverStatus};
 
-pub const HOST_VERSION: u16 = 7;
+pub const HOST_VERSION: u16 = 8;
 pub const MAX_HOST_TEXT_BYTES: usize = 256;
 pub const MAX_SETUP_ITEMS: usize = 256;
 
@@ -53,8 +53,31 @@ pub enum DeviceSelection {
     None,
     Named(Text),
 }
+/// Input histories and their independent shared-take reservation. Page counts
+/// use the engine page size; ordinary loop memory remains a separate allowance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InputHistorySettings {
+    pub seconds: u32,
+    pub audio_take_pages: u32,
+    pub midi_pages: u32,
+    pub midi_records: u32,
+    pub writers: u32,
+}
+impl Default for InputHistorySettings {
+    fn default() -> Self {
+        Self {
+            seconds: 30,
+            audio_take_pages: 32768,
+            midi_pages: 4096,
+            midi_records: 65536,
+            writers: 8,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EngineSettings {
+    pub history: InputHistorySettings,
     pub composite_entries: u32,
     pub composite_segments: u32,
     pub timing_relations: u32,

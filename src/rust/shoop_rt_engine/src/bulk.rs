@@ -457,7 +457,9 @@ impl ControlEndpoint {
                 Outcome::CompositeApplied { .. }
                 | Outcome::TimingApplied(_)
                 | Outcome::ContentApplied { .. }
-                | Outcome::ContentPrepared { .. } => Err(Refusal::Internal),
+                | Outcome::ContentPrepared { .. }
+                | Outcome::Input(_)
+                | Outcome::InputCapacity(_) => Err(Refusal::Internal),
             },
         };
         self.bulk.waiting = Waiting::None;

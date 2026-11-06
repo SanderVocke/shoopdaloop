@@ -24,6 +24,7 @@ pub struct PreparedNode<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     id: NodeId,
     ports: PortCounts,
     operation_bytes: usize,
+    midi_settings: Result<crate::processor::MidiBufferSettings, Error>,
     processor: P,
     marker: PhantomData<fn() -> (L, Q)>,
 }
@@ -33,6 +34,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q
             id,
             ports: processor.ports(),
             operation_bytes: processor.operation_bytes(),
+            midi_settings: processor.midi_buffer_settings(),
             processor,
             marker: PhantomData,
         }
@@ -197,30 +199,65 @@ struct Buffers {
     midi_output_recovery: Vec<bool>,
     midi_input_recovery: Vec<bool>,
     injected: Vec<MidiBuffer>,
+    midi_settings: crate::processor::MidiBufferSettings,
+    midi_forwarded: Vec<bool>,
 }
 impl Buffers {
-    fn new(config: PreparedConfig, ports: PortCounts, frames: usize) -> Result<Self, Error> {
+    fn new(
+        config: PreparedConfig,
+        ports: PortCounts,
+        frames: usize,
+        settings: crate::processor::MidiBufferSettings,
+    ) -> Result<Self, Error> {
         let limits = config.limits();
-        let midi = |count| {
+        let default = crate::buffer::MidiCapacity {
+            events: limits.midi_events_per_port,
+            bytes: limits.midi_bytes_per_port,
+        };
+        settings.prepared_bytes(ports, default)?;
+        let midi = |count, input, overrides| {
             (0..count)
-                .map(|_| MidiBuffer::new(limits.midi_events_per_port, limits.midi_bytes_per_port))
+                .map(|port| {
+                    let capacity = if overrides {
+                        settings.capacity(input, port, default)
+                    } else {
+                        default
+                    };
+                    MidiBuffer::new(capacity.events, capacity.bytes)
+                })
                 .collect::<Result<Vec<_>, _>>()
         };
         let mut buffers = Self {
             input: vec![0.0; ports.audio_inputs * frames].into_boxed_slice(),
             output: vec![0.0; ports.audio_outputs * frames].into_boxed_slice(),
-            midi_input: midi(ports.midi_inputs)?,
-            midi_output: midi(ports.midi_outputs)?,
+            midi_input: midi(ports.midi_inputs, true, true)?,
+            midi_output: midi(ports.midi_outputs, false, true)?,
             midi_output_recovery: vec![false; ports.midi_outputs],
             midi_input_recovery: vec![false; ports.midi_inputs],
-            injected: midi(ports.midi_inputs)?,
+            injected: midi(ports.midi_inputs, true, false)?,
+            midi_settings: settings,
+            midi_forwarded: vec![false; ports.midi_outputs],
         };
         for sample in buffers.input.iter_mut().chain(&mut buffers.output) {
             *core::hint::black_box(sample) = 0.0;
         }
         Ok(buffers)
     }
+    fn midi_source(&self, port: usize) -> Result<&MidiBuffer, Error> {
+        if self.midi_forwarded.get(port).copied().unwrap_or(false) {
+            self.midi_input
+                .get(
+                    self.midi_settings
+                        .forward_input
+                        .ok_or(Error::InvalidGraph)?,
+                )
+                .ok_or(Error::InvalidGraph)
+        } else {
+            self.midi_output.get(port).ok_or(Error::InvalidGraph)
+        }
+    }
     fn clear(&mut self, stride: usize, start: usize, frames: usize) {
+        self.midi_forwarded.fill(false);
         for channel in self.input.chunks_exact_mut(stride) {
             channel[start..start + frames].fill(0.0);
         }
@@ -413,9 +450,22 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             node.processor.admit(node.id, &planner)?;
         }
         let limits = config.limits();
+        let default = crate::buffer::MidiCapacity {
+            events: limits.midi_events_per_port,
+            bytes: limits.midi_bytes_per_port,
+        };
+        let mut midi_bytes = 0usize;
+        for node in &nodes {
+            midi_bytes = midi_bytes
+                .checked_add(node.midi_settings?.prepared_bytes(node.ports, default)?)
+                .ok_or(Error::Capacity)?;
+        }
+        if midi_bytes > i32::MAX as usize {
+            return Err(Error::Capacity);
+        }
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
         for node in nodes {
-            let buffers = Buffers::new(config, node.ports, quantum.frames())?;
+            let buffers = Buffers::new(config, node.ports, quantum.frames(), node.midi_settings?)?;
             slots[node.id.slot() as usize] = Some(Slot {
                 id: node.id,
                 ports: node.ports,
@@ -520,6 +570,20 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.host_buffer = Some(crate::host_buffer::HostBuffer::prepare(
             self.resources.config(),
             self.quantum,
+        )?);
+        Ok(())
+    }
+    pub fn prepare_host_buffering_with_midi_output(
+        &mut self,
+        output: crate::buffer::MidiCapacity,
+    ) -> Result<(), Error> {
+        if self.next_frame() != Frame(0) || self.host_buffer.is_some() {
+            return Err(Error::InvalidState);
+        }
+        self.host_buffer = Some(crate::host_buffer::HostBuffer::prepare_with_output(
+            self.resources.config(),
+            self.quantum,
+            output,
         )?);
         Ok(())
     }
@@ -1300,20 +1364,24 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
                 midi_inputs: &buffers.midi_input,
                 midi_outputs: &mut buffers.midi_output,
+                midi_forwarded: &mut buffers.midi_forwarded,
                 resources: self.resources.io(),
                 domain: &mut self.planner,
             });
             if result == Err(Error::Full) {
+                buffers.midi_forwarded.fill(false);
                 for out in &mut buffers.midi_output {
                     out.force_reset(0);
                 }
             }
-            for (output, recovery) in buffers
+            for ((output, recovery), forwarded) in buffers
                 .midi_output
                 .iter_mut()
                 .zip(&buffers.midi_output_recovery)
+                .zip(&mut buffers.midi_forwarded)
             {
                 if *recovery {
+                    *forwarded = false;
                     output.clear();
                 }
             }
@@ -1416,7 +1484,10 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
     if slot.id != node.id || slot.processor.is_some() {
         return Err(Error::InvalidId);
     }
-    if slot.ports != node.ports || slot.operation_bytes != node.operation_bytes {
+    if slot.ports != node.ports
+        || slot.operation_bytes != node.operation_bytes
+        || slot.buffers.midi_settings != node.midi_settings?
+    {
         return Err(Error::InvalidShape);
     }
     let next_epoch = epoch.checked_next()?;
@@ -1468,7 +1539,7 @@ fn route_offset<P>(
                     ),
                 ),
                 PortType::Midi => target.midi_input[edge.destination.port as usize]
-                    .merge(&source.midi_output[edge.source.port as usize], frames)?,
+                    .merge(source.midi_source(edge.source.port as usize)?, frames)?,
             }
         }
         (None, Some(target)) => {
@@ -1507,7 +1578,7 @@ fn route_offset<P>(
                     &mut audio.output(edge.destination.port as usize)[start..start + frames],
                 ),
                 PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(
-                    &source.midi_output[edge.source.port as usize],
+                    source.midi_source(edge.source.port as usize)?,
                     0,
                     frames,
                     start,

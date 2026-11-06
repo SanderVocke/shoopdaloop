@@ -79,11 +79,10 @@ impl Backend for Gain {
                 batch.audio.output(channel).unwrap()[frame] = sample * self.value;
             }
         }
-        for (port, output) in batch.midi_outputs.iter_mut().enumerate() {
-            if let Some(input) = batch.midi_inputs.get(port) {
-                for i in 0..input.len() {
-                    let (at, bytes) = input.get(i).unwrap();
-                    output.push(at, batch.frames, bytes)?;
+        for port in 0..batch.midi_outputs.len() {
+            if let Some(input) = batch.midi_input(port) {
+                for (at, bytes) in input.iter() {
+                    batch.midi_outputs[port].push(at, batch.frames, bytes)?;
                 }
             }
         }
@@ -601,4 +600,76 @@ fn computed_capture_taps_keep_source_tags_without_early_playback_or_stale_reuse(
             }
         }
     }
+}
+
+#[shoop_test]
+fn one_quantum_borrows_midi_while_larger_batches_reserve_their_owned_input() {
+    struct Sink {
+        pointer: usize,
+    }
+    impl Backend for Sink {
+        fn ports(&self) -> PortCounts {
+            PortCounts {
+                midi_inputs: 1,
+                ..Default::default()
+            }
+        }
+        fn process(&mut self, batch: &mut Batch<'_, '_>) -> Result<(), Error> {
+            let input = batch.midi_input(0).unwrap();
+            let (offset, packet) = input.iter().next().unwrap();
+            assert_eq!((offset, packet), (3, &[0x90, 60, 100][..]));
+            assert_eq!(packet.as_ptr() as usize, self.pointer);
+            Ok(())
+        }
+        fn reset(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+    let limits = BufferLimits {
+        midi_input: MidiLimits {
+            events_per_quantum: 1_000_000,
+            bytes_per_quantum: 64 << 20,
+        },
+        midi_output: MidiLimits {
+            events_per_quantum: 0,
+            bytes_per_quantum: 0,
+        },
+        parameters_per_quantum: 0,
+    };
+    let q = Quantum::new(32).unwrap();
+    let timing = Timing {
+        batch_quanta: 1,
+        slack_quanta: 0,
+    };
+    let mut input = MidiBuffer::new(1, 3).unwrap();
+    input.push(3, 32, &[0x90, 60, 100]).unwrap();
+    let backend = Sink {
+        pointer: input.get(0).unwrap().1.as_ptr() as usize,
+    };
+    let ports = backend.ports();
+    assert_no_heap(|| {
+        assert!(limits.storage_bytes_for(ports, q, timing).unwrap() < 16 * 1024);
+        assert_eq!(
+            limits.storage_bytes_for(
+                ports,
+                q,
+                Timing {
+                    batch_quanta: 2,
+                    slack_quanta: 0
+                }
+            ),
+            Err(Error::Capacity)
+        );
+    });
+    let mut node = BufferedProcessor::with_backend(backend, q, timing, limits).unwrap();
+    assert_no_heap(|| {
+        node.process_ports_tick(
+            Frame(0),
+            q,
+            &mut AudioPorts::new(&[], &mut [], 32, 0, 32).unwrap(),
+            core::slice::from_ref(&input),
+            &mut [],
+        )
+    })
+    .unwrap();
 }

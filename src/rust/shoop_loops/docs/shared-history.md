@@ -2,9 +2,10 @@
 
 `LoopPlanner::prepare_shared` installs prepared history stores before the planner
 transfers to a runtime. `shoop_rt_engine::prepare_with_shared` connects them to
-strip input capture feeds in the production graph. The ordinary engine preparation
-uses no histories. These internal library operations add no application capability
-flag, host wire command or continuous Replacing recording mode.
+strip input capture feeds in the production graph. Normal engine preparation installs common thirty-second audio and indexed MIDI
+histories using a separate bounded reservation. Application input transactions and
+continuous fixed/growing writers use these stores; see the
+[application contract](../../../../docs/native_session_recovery/grab-replace.md).
 
 ## Sources and complete cuts
 
@@ -13,6 +14,16 @@ slot). Configure audio, MIDI or both, with explicit horizons, pages, owner slots
 event/packet limits and transaction credits. Audio scratch covers the core quantum
 Q; maximum host callback size is a separate bound. The tap appends once per source
 and tick, even when every loop is stopped. Independent loops share these pages.
+
+`SharedSettings::audio_pool` optionally supplies one common audio page/index/owner
+budget. Each audio source receives an independent scoped history slot in that
+pool; its source configuration must match the pool's channels and horizon.
+Per-source page/view budgets are then replaced by the common budget. Coverage,
+generation fences and signal routes remain independent. Preparation reports the
+pool once, and shutdown closes it once after every owner has retired. Without a
+common pool, explicit per-source fixture configurations retain their behavior.
+Normal host policy installs this common pool; explicit fixtures may still prepare
+independent stores.
 
 The history MIDI tracker observes input once before storage admission. A loop's
 own recording tracker is a separate observer. Storage refusal leaves this tracker
@@ -134,4 +145,12 @@ Means, tails and maxima describe that CI workload, not a physical-device guarant
 [Recorded measurements and functional evidence](../../../../docs/native_session_recovery/evidence/shared-fixed-media.md)
 include every observed timing miss and output overflow. Very short callbacks are
 not established as deadline-safe, and prepared MIDI state can dominate memory.
-Application P04/P05 admission, selection/sync policy and UI remain open.
+Application admission, selection/sync policy, UI/Lua and continuous fixed/growing
+writers are implemented through the normal production path; the
+[acceptance evidence](../../../../docs/native_session_recovery/evidence/grab-replace.md)
+records final validation and capacity limits.
+
+A fixed Replacing writer keeps its admission while repeat-sync waits at the end
+of a pass. Its position stays at the logical length and audio edits pause. MIDI
+receives zero-width window ticks to preserve the input-frame fence without
+changing packets or initial state. The next sync pulse resumes both media at zero.

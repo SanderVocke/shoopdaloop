@@ -173,6 +173,7 @@ impl Track {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoopView {
     pub recording_armed: bool,
+    pub capture_incomplete: bool,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_delay: Option<u32>,
@@ -184,6 +185,7 @@ impl Default for LoopView {
     fn default() -> Self {
         Self {
             recording_armed: false,
+            capture_incomplete: false,
             mode: LoopMode::Stopped,
             next_mode: None,
             next_delay: None,
@@ -709,6 +711,7 @@ impl Mirror {
             recorded_processor_state: entry.recorded_state(),
             repeat_sync: entry.repeat_sync,
             recording_armed: view.recording_armed,
+            capture_incomplete: view.capture_incomplete,
             timing_revision: timing.revision,
             channel_timings,
             processor_alignment_frames,
@@ -916,6 +919,7 @@ pub(crate) fn app_mode(mode: LoopMode) -> BackendLoopMode {
         LoopMode::Stopped => BackendLoopMode::Stopped,
         LoopMode::Playing => BackendLoopMode::Playing,
         LoopMode::Recording => BackendLoopMode::Recording,
+        LoopMode::Replacing => BackendLoopMode::Replacing,
         LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
         LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
     }

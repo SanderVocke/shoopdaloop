@@ -1,6 +1,6 @@
 //! Plain-data musical operations; transport ownership stays with the host runtime.
 
-use crate::{Error, Frame, LoopId, RequestId, Revision, Sequence};
+use crate::{Error, Frame, LoopId, Mode, RequestId, Revision, Sequence};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Timing {
@@ -33,10 +33,25 @@ pub enum Transition {
     Record {
         monitor_previous: bool,
     },
+    /// Overwrite the fixed period from the current phase unless a position is supplied.
+    ReplaceInput {
+        position: Option<u64>,
+    },
+    /// Continue an already admitted immutable prefix with live input.
+    RecordPrefix {
+        frames: u64,
+    },
     Stop,
     Seek {
         position: u64,
         retrigger: bool,
+    },
+    /// Select already prepared input media and its post-mode at one boundary.
+    Adopt {
+        length: u64,
+        revision: Revision,
+        position: u64,
+        mode: Mode,
     },
     Replace {
         length: u64,
@@ -92,4 +107,6 @@ pub(crate) struct Record {
     pub effective: Frame,
     pub remaining: u64,
     pub terminal: Option<Outcome>,
+    pub batch: Option<RequestId>,
+    pub followup: bool,
 }

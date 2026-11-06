@@ -8,6 +8,21 @@ use rt_runtime::{
 pub const CLEANUP_MAX_EVENTS: usize = 16 * (3 + 128);
 pub const RESTORE_MAX_EVENTS: usize = 1 + 16 * (144 + 3 * 128);
 
+/// A window can span two raw buckets, each containing two admitted input ticks.
+pub fn output_capacity(
+    events: usize,
+    bytes: usize,
+) -> Result<rt_runtime::buffer::MidiCapacity, Error> {
+    use rt_runtime::buffer::MidiCapacity;
+    let state = 2 * CLEANUP_MAX_EVENTS + RESTORE_MAX_EVENTS;
+    MidiCapacity { events, bytes }
+        .checked_mul(4)?
+        .checked_add(MidiCapacity {
+            events: state,
+            bytes: state * 3,
+        })
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Emission {
     pub attempted: usize,

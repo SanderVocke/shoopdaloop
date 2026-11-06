@@ -48,6 +48,12 @@ checkpoints stay shared. Affected suffix checkpoints are rebuilt from the edited
 stream; packet bodies stay shared. Total preparation can scale with that suffix.
 There is no guarantee of readiness at the next callback.
 
+After packet preparation, one separate bounded progress step clips the final root
+along boundary index paths. It consumes no source/inserted records and does not
+replay the suffix. Readiness includes this finalization; its index-work bound is
+independent of suffix length. The immutable source pin keeps discarded original
+subtrees alive, so immediate transaction cleanup visits only the changed paths.
+
 Only `Ready` transactions can commit. Commit checks the expected revision and
 publishes root, initial state, duration, index and revision together. Generic
 resource commits also check that a full-loop upload has not superseded the target
@@ -71,11 +77,23 @@ eight descriptors per chunk. Capacity bounds fragmentation and may refuse an edi
 even when its raw packet bytes would fit.
 
 Payload ownership is separate from checkpoint ownership. Each admitted owner
-conservatively charges a complete root of worst-case packets, including invisible
-chunks outside its clip. Live history and callback scratch have reserved credits.
+conservatively charges worst-case packets for the chunks touched by its window,
+including invisible events in partial boundary chunks. The persistent root is
+clipped along boundary paths without copying packet bodies. An empty take reserves
+one chunk credit. Live history and callback scratch have reserved credits.
 Owner admission may refuse before every metadata slot is occupied. This favors
 predictable admission over dense memory use; it is not application memory policy.
-`capacity` reports checkpoint/state and prepared table/scratch bytes separately;
+`Config::capacity(prepared_runtime)` validates and reports the prepared shape
+without allocating or reserving pages. `MidiStore::capacity` reports the same
+shape after preparation. Checkpoint/index tables follow the total retained-chunk
+credits permitted by the page reservation. Handle/initial-state arrays use the
+smaller of configured view slots and those credits. Unreachable owners do not
+multiply those tables; transaction slots retain their configured capacity.
+Replacement admission reserves the larger original/result root and a source pin;
+commit transfers credits to the result and retiring original. Shrinking roots
+are clipped before publication, and their unused credits return after settlement.
+The estimate reports the owner ceiling and
+checkpoint/state and prepared table/scratch bytes separately;
 common arena storage and allocator overhead are additional. `work` reports record,
 state-copy, index-publication and reclamation work; ordinary resource index/render
 counters also account virtual byte positioning and transfers.
@@ -86,13 +104,15 @@ depth, eight-event chunks and the requested quantum. Virtual byte reads transfer
 at most one configured page, rebasing headers even across split reads. Required
 I/O uses render work; optional byte exports still obey background allowances.
 
-The Linux x86_64 eight-chunk stress fixture (16-byte pages, eight view slots, two
+The original Linux x86_64 eight-chunk stress fixture (16-byte pages, eight view slots, two
 transactions, 48-byte packets and a 4,000-page reservation) reports 2,419,200
 bytes of state projections and 3,550,384 bytes of prepared metadata/state/scratch
 in total, plus 64,000 payload bytes. The current projection is 15,120 bytes.
 These intentionally small pages expose fragmentation and cross-page behavior;
-full checkpoint projections dominate this configuration. Storage grows with
-prepared chunk/owner/transaction counts, even when few packets have arrived.
+full checkpoint projections dominated that configuration. Those measurements
+precede clipped root charging; current CI prints the prepared layout separately.
+Storage grows with the history/retained-chunk/transaction ceilings even when few
+packets have arrived. `Usage` distinguishes owner count from retained-chunk credits.
 
 ## Loaded bases, ordinary resources and teardown
 
@@ -132,4 +152,10 @@ quantized timing warning and drops realtime reset. Identity conversion and expli
 rate/Q conversion keep separate contracts. See the
 [fixed shared-history contract](../../../shoop_loops/docs/shared-history.md) for
 source generations, watermark faults, callback budgets, cleanup and measurement
-scope. Application P04/P05 mode flags and parity gaps remain open.
+scope. The application delivery adds negotiated Grab/Replacing and normal service/UI/Lua
+routes; see [application evidence](../../../../../docs/native_session_recovery/evidence/grab-replace.md).
+The production semantic index protects live source, staged tick and edit workspace
+credits before retained-owner admission. Hidden clipped roots and retirement debt
+remain charged until actual reclamation. Required maintenance does not consume
+optional transfer budgets. Finished writers release their future input allowance
+while their immutable versions keep actual packet/page charges.

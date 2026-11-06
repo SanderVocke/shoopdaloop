@@ -24,6 +24,7 @@ pub enum Mode {
     Recording,
     PlayingDryThroughWet,
     RecordingDryIntoWet,
+    Replacing,
 }
 impl Mode {
     pub fn records(self) -> bool {

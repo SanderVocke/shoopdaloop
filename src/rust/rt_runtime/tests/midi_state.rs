@@ -299,6 +299,83 @@ fn channel_modes_and_reset_baselines_do_not_invent_unknown_controller_values() {
         assert_eq!(state.channel(ch), initial.channel(ch));
     }
 }
+
+#[shoop_test]
+fn compact_projection_preserves_unknown_pressure_known_zero_and_independent_note_flags() {
+    assert!(core::mem::size_of::<rt_runtime::midi_state::NoteState>() <= 3);
+    assert!(core::mem::size_of::<MidiState>() <= 9 * 1024);
+    let mut state = MidiState::default();
+    for channel in 0..16 {
+        assert_eq!(state.channel(channel).unwrap().controller(7), None);
+        let key = channel * 7;
+        assert_eq!(
+            state
+                .channel(channel)
+                .unwrap()
+                .note(key)
+                .unwrap()
+                .pressure(),
+            None
+        );
+        send(&mut state, &[0xb0 | channel, 7, 0]);
+        send(&mut state, &[0x90 | channel, key, 127]);
+        send(&mut state, &[0xb0 | channel, 66, 127]);
+        for pressure in [0, 127] {
+            send(&mut state, &[0xa0 | channel, key, pressure]);
+            let note = state.channel(channel).unwrap().note(key).unwrap();
+            assert_eq!(
+                (
+                    note.velocity(),
+                    note.held(),
+                    note.sostenuto(),
+                    note.pressure()
+                ),
+                (127, true, true, Some(pressure))
+            );
+        }
+        send(&mut state, &[0x80 | channel, key, 0]);
+        let latched = state.channel(channel).unwrap().note(key).unwrap();
+        assert_eq!(
+            (
+                latched.velocity(),
+                latched.held(),
+                latched.sostenuto(),
+                latched.pressure()
+            ),
+            (127, false, true, Some(127))
+        );
+        send(&mut state, &[0xb0 | channel, 66, 0]);
+        let ch = state.channel(channel).unwrap();
+        assert_eq!(ch.controller(7), Some(0));
+        assert_eq!(ch.controller(255), None);
+        assert_eq!(ch.note(key).unwrap().pressure(), Some(127));
+        assert_eq!(note(&state, channel, key), (0, false, false));
+        check_indexes(&state, channel);
+    }
+    roundtrip(&state);
+    let mut reset = MidiState::default();
+    let mut changed = reset;
+    for channel in 0..16 {
+        send(&mut changed, &[0xb0 | channel, 2, 127]);
+        send(&mut reset, &[0xb0 | channel, 121, 0]);
+        send(&mut changed, &[0xb0 | channel, 121, 0]);
+    }
+    assert_eq!(changed, reset);
+    send(&mut state, &[0xff]);
+    for channel in 0..16 {
+        assert_eq!(
+            state
+                .channel(channel)
+                .unwrap()
+                .note(channel * 7)
+                .unwrap()
+                .pressure(),
+            None
+        );
+        assert_eq!(state.channel(channel).unwrap().controller(7), None);
+        check_indexes(&state, channel);
+    }
+}
 #[shoop_test]
 fn pressure_program_pitch_and_copy_snapshots_are_fixed_plain_data() {
     let mut state = MidiState::default();

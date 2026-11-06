@@ -11,6 +11,7 @@ use core::ops::Range;
 mod edit;
 mod history;
 mod import;
+mod layout;
 mod read;
 mod storage;
 pub use edit::{EditId, EditStatus};
@@ -55,6 +56,8 @@ pub struct Info {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Capacity {
+    /// Prepared view slots; private transactions share the retained-chunk budget.
+    pub owners: usize,
     pub chunks: usize,
     pub index_nodes: usize,
     pub state_bytes: usize,
@@ -69,6 +72,7 @@ pub struct Usage {
     pub reserved_pages: usize,
     pub retiring: usize,
     pub owners: usize,
+    pub retained_chunks: usize,
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Work {
@@ -154,6 +158,7 @@ struct View {
     revision: Revision,
     writable: bool,
     retiring: bool,
+    credit: usize,
 }
 #[derive(Clone, Copy)]
 enum Garbage {
@@ -196,6 +201,7 @@ pub struct MidiStore {
     pages: SharedPages,
     reserved: usize,
     debt: usize,
+    owners: usize,
     debt_limit: usize,
     scratch: Box<[u8]>,
     records: [Record; EVENTS_PER_CHUNK],
@@ -245,130 +251,26 @@ impl MidiStore {
         origin: Frame,
         initial: &MidiState,
     ) -> Result<Self, Error> {
-        let page_bytes = store.config.limits().page_bytes;
-        if config.history_frames == 0
-            || config.chunks == 0
-            || !config.chunks.is_power_of_two()
-            || config.views == 0
-            || config.transactions == 0
-            || config.edit_steps == 0
-            || config.max_events == 0
-            || config.max_events > store.config.limits().midi_events_per_port
-            || config.max_bytes > store.config.limits().midi_bytes_per_port
-            || config.max_bytes == 0
-            || config.max_packet == 0
-            || config.max_packet > config.max_bytes
-            || config.max_packet > store.config.limits().midi_bytes_per_port
-        {
-            return Err(Error::InvalidConfig);
-        }
-        let block_pages = config.max_packet.div_ceil(page_bytes).max(1);
-        let credit = config
-            .chunks
-            .checked_mul(EVENTS_PER_CHUNK)
-            .and_then(|n| n.checked_mul(block_pages))
-            .ok_or(Error::Capacity)?;
-        let workspace = config
-            .max_bytes
-            .div_ceil(page_bytes)
-            .checked_add(config.max_events)
-            .and_then(|n| n.checked_add(1))
-            .ok_or(Error::Capacity)?;
-        let baseline = credit.checked_add(workspace).ok_or(Error::Capacity)?;
-        if config.pages < baseline || config.pages > store.free_pages.len() - store.reserved_pages {
+        let layout = layout::Layout::new(store.config, config)?;
+        if config.pages > store.free_pages.len() - store.reserved_pages {
             return Err(Error::Capacity);
         }
-        let depth = config.chunks.trailing_zeros() as usize;
-        let chunks = config
-            .views
-            .checked_add(config.transactions)
-            .and_then(|n| n.checked_add(4))
-            .and_then(|n| n.checked_mul(config.chunks))
-            .and_then(|n| n.checked_add(config.max_events + 1))
-            .ok_or(Error::Capacity)?;
-        let nodes = config
-            .views
-            .checked_add(config.transactions)
-            .and_then(|n| n.checked_add(4))
-            .and_then(|n| n.checked_mul(config.chunks.checked_mul(2)?.checked_sub(1)?))
-            .and_then(|n| n.checked_add(config.max_events.checked_add(1)?.checked_mul(depth + 1)?))
-            .ok_or(Error::Capacity)?;
-        let blocks = config
-            .pages
-            .checked_add(
-                chunks
-                    .checked_mul(EVENTS_PER_CHUNK)
-                    .ok_or(Error::Capacity)?,
-            )
-            .ok_or(Error::Capacity)?;
-        let base_slots = config
-            .views
-            .checked_add(config.transactions)
-            .ok_or(Error::Capacity)?;
-        let map = blocks.checked_mul(block_pages).ok_or(Error::Capacity)?;
-        let garbage = nodes
-            .checked_add(chunks)
-            .and_then(|n| n.checked_add(blocks))
-            .and_then(|n| n.checked_add(config.transactions))
-            .ok_or(Error::Capacity)?;
-        let state_bytes = chunks
-            .checked_add(config.views)
-            .and_then(|n| n.checked_add(config.transactions.checked_mul(3)?))
-            .and_then(|n| n.checked_add(1))
-            .and_then(|n| n.checked_mul(size_of::<MidiState>()))
-            .ok_or(Error::Capacity)?;
-        let metadata_bytes = nodes
-            .checked_mul(size_of::<Option<Node>>() + size_of::<usize>())
-            .and_then(|n| {
-                n.checked_add(chunks.checked_mul(size_of::<Option<Chunk>>() + size_of::<usize>())?)
-            })
-            .and_then(|n| {
-                n.checked_add(blocks.checked_mul(size_of::<Option<Block>>() + size_of::<usize>())?)
-            })
-            .and_then(|n| n.checked_add(map.checked_mul(size_of::<Option<LeaseId>>())?))
-            .and_then(|n| {
-                n.checked_add(
-                    config
-                        .views
-                        .checked_mul(size_of::<Slot<View>>() + 2 * size_of::<usize>())?,
-                )
-            })
-            .and_then(|n| n.checked_add(garbage.checked_mul(2 * size_of::<Job>())?))
-            .and_then(|n| {
-                n.checked_add(
-                    base_slots.checked_mul(size_of::<Option<Base>>() + size_of::<usize>())?,
-                )
-            })
-            .and_then(|n| n.checked_add(state_bytes))
-            .and_then(|n| n.checked_add(page_bytes))
-            .and_then(|n| {
-                n.checked_add(
-                    config
-                        .transactions
-                        .checked_mul(size_of::<Slot<edit::Edit>>() + 2 * size_of::<usize>())?,
-                )
-            })
-            .and_then(|n| {
-                n.checked_add(
-                    config
-                        .transactions
-                        .checked_mul(config.max_events)?
-                        .checked_mul(size_of::<Record>())?,
-                )
-            })
-            .and_then(|n| n.checked_add(store.pages.len().checked_mul(size_of::<usize>())?))
-            .and_then(|n| {
-                n.checked_add(
-                    config
-                        .pages
-                        .checked_mul(size_of::<Slot<usize>>() + size_of::<usize>())?,
-                )
-            })
-            .and_then(|n| n.checked_add(2 * size_of::<usize>() + size_of::<Self>()))
-            .filter(|&n| n <= i32::MAX as usize)
-            .ok_or(Error::Capacity)?;
+        let page_bytes = store.config.limits().page_bytes;
+        let layout::Layout {
+            block_pages,
+            depth,
+            chunks,
+            nodes,
+            blocks,
+            base_slots,
+            map,
+            garbage,
+            views,
+            debt_limit,
+            capacity,
+        } = layout;
         let mut chunk_states = vec![MidiState::default(); chunks].into_boxed_slice();
-        let mut states = vec![MidiState::default(); config.views].into_boxed_slice();
+        let mut states = vec![MidiState::default(); views].into_boxed_slice();
         let mut scratch = vec![0; page_bytes].into_boxed_slice();
         let mut edit_states =
             vec![MidiState::default(); config.transactions * 3].into_boxed_slice();
@@ -401,12 +303,7 @@ impl MidiStore {
             end: 0,
             root: None,
             current: Box::new(*initial),
-            capacity: Capacity {
-                chunks,
-                index_nodes: nodes,
-                state_bytes,
-                metadata_bytes,
-            },
+            capacity,
             nodes: touched(nodes, None),
             free_nodes: (0..nodes).rev().collect(),
             chunks: touched(chunks, None),
@@ -416,23 +313,24 @@ impl MidiStore {
             block_map,
             free_blocks: (0..blocks).rev().collect(),
             views: touched(
-                config.views,
+                views,
                 Slot {
                     generation: 1,
                     value: None,
                 },
             ),
             initial: states,
-            free_views: (0..config.views).rev().collect(),
+            free_views: (0..views).rev().collect(),
             pages,
             reserved: config.pages,
             debt: 0,
-            debt_limit: (config.pages - baseline) / credit,
+            owners: 0,
+            debt_limit,
             scratch,
             records: [Record::default(); EVENTS_PER_CHUNK],
             retired: jobs(garbage),
             immediate: jobs(garbage),
-            pending: touched(config.views + config.transactions + 2, 0).into_boxed_slice(),
+            pending: touched(views + config.transactions + 2, 0).into_boxed_slice(),
             closed: false,
             work: Work::default(),
             edits: touched(
@@ -473,7 +371,8 @@ impl MidiStore {
             free_views: self.free_views.len(),
             reserved_pages: self.reserved,
             retiring: self.retired.len(),
-            owners: self.debt,
+            owners: self.owners,
+            retained_chunks: self.debt,
         }
     }
     pub fn coverage(&self) -> Result<Range<Frame>, Error> {
@@ -500,25 +399,29 @@ impl MidiStore {
             }
         })
     }
-    fn own(&mut self, mut view: View, state: &MidiState, writable: bool) -> Result<Handle, Error> {
+    fn own(&mut self, view: View, state: &MidiState, writable: bool) -> Result<Handle, Error> {
         if self.closed {
             return Err(Error::InvalidState);
         }
-        if self.free_views.is_empty() || self.debt == self.debt_limit {
+        if self.free_views.is_empty() || view.credit > self.debt_limit - self.debt {
             return Err(Error::Capacity);
         }
         self.retain(view.root)?;
+        Ok(self.insert_view(view, state, writable))
+    }
+    fn insert_view(&mut self, mut view: View, state: &MidiState, writable: bool) -> Handle {
         let slot = self.free_views.pop().expect("prepared view");
         view.writable = writable;
         self.views[slot].value = Some(view);
         self.initial[slot] = *state;
-        self.debt += 1;
+        self.debt += view.credit;
+        self.owners += 1;
         self.work.add(0, 1, 0, 0);
-        Ok(Handle {
+        Handle {
             scope: self.scope,
             slot: slot as u32,
             generation: self.views[slot].generation,
-        })
+        }
     }
     pub fn fork(&mut self, take: TakeId) -> Result<TakeId, Error> {
         let v = self.view(take.0)?;
@@ -586,10 +489,15 @@ impl MidiStore {
     }
     fn finish_owner(&mut self, owner: usize) {
         if owner < self.views.len() && self.pending[owner] == 0 {
-            self.debt -= 1;
+            self.debt -= self.views[owner].value.expect("retiring owner").credit;
+            self.owners -= 1;
             release(&mut self.views, &mut self.free_views, owner);
         } else if owner >= self.views.len() + 2 && self.pending[owner] == 0 {
-            self.debt -= 1;
+            self.debt -= self.edits[owner - self.views.len() - 2]
+                .value
+                .expect("retiring edit")
+                .credit;
+            self.owners -= 1;
             release(
                 &mut self.edits,
                 &mut self.free_edits,

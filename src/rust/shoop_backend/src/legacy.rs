@@ -6504,6 +6504,7 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    capture_incomplete: false,
                     recorded_processor_state: None,
                     repeat_sync: false,
                     recording_armed: false,

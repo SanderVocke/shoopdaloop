@@ -20,7 +20,7 @@ fn window(value: windows::ChannelWindow) -> ChannelWindow {
         raw_frames: value.raw_frames,
     }
 }
-fn state(cut: Cut) -> TimingState {
+pub(crate) fn state(cut: Cut) -> TimingState {
     TimingState {
         revision: cut.timing_revision,
         content_revision: cut.state.content_revision.0,

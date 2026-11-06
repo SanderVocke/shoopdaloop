@@ -10,6 +10,7 @@ from pathlib import Path
 import struct
 import subprocess
 import boards
+import engine_policy
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = Path(__file__).resolve().parent
@@ -37,10 +38,12 @@ def build():
     parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
+    parser.add_argument("--engine-config", type=Path, help="JSON engine pool and input-history policy")
     parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker", "handoff-version", "cleanup"])
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
+    policy = engine_policy.load(args.engine_config)
     global BUILD
     BUILD = board.build_dir(ROOT)
     if args.usb and board.firmware["midi"] != "usb-optional":
@@ -161,6 +164,7 @@ def build():
             cargo += ["--features", ",".join(features)]
         rust_target = (PLATFORM / "firmware/target" if board.name == boards.DEFAULT else BUILD.parent / "firmware-target")
         run(cargo, env={**os.environ, "RUSTFLAGS": rust_flags, "CARGO_TARGET_DIR": str(rust_target),
+            **engine_policy.environment(policy),
             "SHOOP_RECORDING_BYTES": str(board.firmware["recording_mib"] * boards.MIB),
             "SHOOP_MEDIA_BYTES": str(board.firmware["media_mib"] * boards.MIB)})
         rust_library = rust_target / "armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
@@ -239,6 +243,7 @@ def build():
             source_hash.update(name + b"\0" + hashlib.sha256(path.read_bytes()).digest())
     elf.with_suffix(".json").write_text(json.dumps({**board.manifest(), "embeddedsw": REVISION,
         "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
+        "engine_policy": policy,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
         "elf_sha256": hashlib.sha256(image).hexdigest(),

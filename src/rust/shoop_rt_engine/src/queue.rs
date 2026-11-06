@@ -100,7 +100,10 @@ impl ControlEndpoint {
     ) -> bool {
         if matches!(
             request,
-            Request::CancelBulk
+            Request::InputCancel { .. }
+                | Request::InputStatus { .. }
+                | Request::InputCapacity
+                | Request::CancelBulk
                 | Request::Composite(shoop_rt_protocol::CompositeCommand::Cancel { .. })
                 | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
@@ -142,7 +145,11 @@ impl ControlEndpoint {
         }
         if matches!(
             request,
-            Request::Composite(shoop_rt_protocol::CompositeCommand::Commit { .. })
+            Request::InputBegin { .. }
+                | Request::InputAppend { .. }
+                | Request::InputPrepare { .. }
+                | Request::InputCommit { .. }
+                | Request::Composite(shoop_rt_protocol::CompositeCommand::Commit { .. })
                 | Request::LoopClear { .. }
                 | Request::SetSmoothing { .. }
                 | Request::ContentApply { .. }
@@ -192,6 +199,14 @@ impl ControlEndpoint {
                 || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. }
+            | Request::InputCancel { .. }
+            | Request::InputStatus { .. }
+            | Request::InputCapacity => false,
+
             Request::Connect {
                 port: EnginePort::GlobalFxControl,
                 ..
@@ -288,6 +303,12 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. } => self.blocked_all = true,
+            Request::InputCancel { .. } | Request::InputStatus { .. } | Request::InputCapacity => {}
+
             Request::Connect {
                 port: EnginePort::GlobalFxControl,
                 ..

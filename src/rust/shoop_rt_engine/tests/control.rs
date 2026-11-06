@@ -637,7 +637,10 @@ fn dropping_the_endpoint_silences_output_and_stopped_cleanup_recovers_pools() {
     stopped.cleanup().unwrap();
     assert_eq!(stopped.media_usage().references, 0);
     let usage = stopped.resource_usage();
-    assert_eq!(usage.free_pages, description.resource_pages);
+    assert_eq!(
+        usage.free_pages,
+        description.history_capacity().unwrap().total_resource_pages
+    );
     assert_eq!(usage.reserved_pages, 0);
 }
 
@@ -736,6 +739,6 @@ fn a_render_fault_silences_output_and_ends_the_connection() {
     assert_eq!(stopped.media_usage().references, 0);
     assert_eq!(
         stopped.resource_usage().free_pages,
-        description.resource_pages
+        description.history_capacity().unwrap().total_resource_pages
     );
 }

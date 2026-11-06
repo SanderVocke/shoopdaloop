@@ -2371,6 +2371,7 @@ impl ApplicationModel {
                     require(Capability::DryWetModes)
                 }
                 LoopAction::GrabClicked => require(Capability::Grab),
+                LoopAction::ReplaceClicked => require(Capability::ReplacingMode),
                 LoopAction::RestoreRecordedFxState => require(Capability::TrackFx),
                 LoopAction::ConvertToComposite
                 | LoopAction::ComposeIntoEnd(_)
@@ -6451,6 +6452,9 @@ impl ApplicationModel {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Recording)
             }
             LoopAction::GrabClicked => self.grab_targets(backend, loop_id),
+            LoopAction::ReplaceClicked => {
+                self.transition_targets(backend, loop_id, BackendLoopMode::Replacing)
+            }
             LoopAction::RerecordClicked => self.rerecord_targets(backend, loop_id),
             LoopAction::StopClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Stopped)

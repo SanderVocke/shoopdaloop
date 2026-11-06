@@ -84,6 +84,7 @@ pub(crate) struct Shared {
     load: AtomicU32,
     /// The host is stopping: drivers keep rendering so a MIDI reset can go out.
     pub stopping: AtomicBool,
+    pub reset_flushed: AtomicBool,
 }
 
 fn state_code(state: DriverRunState) -> u8 {
@@ -110,6 +111,7 @@ impl Shared {
             next_frame: AtomicU64::new(0),
             load: AtomicU32::new(0),
             stopping: AtomicBool::new(false),
+            reset_flushed: AtomicBool::new(false),
         }
     }
 

@@ -638,7 +638,9 @@ impl ControlEndpoint {
                 Outcome::CompositeApplied { .. }
                 | Outcome::TimingApplied(_)
                 | Outcome::ContentApplied { .. }
-                | Outcome::ContentPrepared { .. } => Some(Refusal::Internal),
+                | Outcome::ContentPrepared { .. }
+                | Outcome::Input(_)
+                | Outcome::InputCapacity(_) => Some(Refusal::Internal),
                 Outcome::Refused(reason) => Some(reason),
             },
         };

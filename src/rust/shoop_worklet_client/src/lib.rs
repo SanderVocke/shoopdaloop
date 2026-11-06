@@ -809,6 +809,7 @@ impl RemoteWorkletBackend {
                 self.snapshot.loops.insert(
                     *loop_id,
                     BackendLoopState {
+                        capture_incomplete: false,
                         recorded_processor_state: None,
                         repeat_sync: false,
                         sync_source: None,
@@ -1296,6 +1297,7 @@ impl RemoteWorkletBackend {
                 (
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
+                        capture_incomplete: false,
                         recorded_processor_state: None,
                         repeat_sync: false,
                         recording_armed: false,

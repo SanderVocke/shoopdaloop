@@ -254,6 +254,7 @@ impl Encoder {
                     shoop_rt_protocol::LoopMode::Recording => 2,
                     shoop_rt_protocol::LoopMode::PlayingDryThroughWet => 3,
                     shoop_rt_protocol::LoopMode::RecordingDryIntoWet => 4,
+                    shoop_rt_protocol::LoopMode::Replacing => 5,
                 };
             }
         }

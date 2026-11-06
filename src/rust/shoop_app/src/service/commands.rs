@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 use super::*;
 
 mod control;
+mod input;
 mod timing;
 
 type CommandResult = core::result::Result<Effect, CommandError>;
@@ -664,7 +665,8 @@ impl Service {
                 if mode == BackendLoopMode::Recording
                     && self.global.default_recording_action == DefaultRecordingAction::Grab
                 {
-                    return Err(CommandError::unsupported(BackendCapability::Grab));
+                    self.grab_clicked(id, false)?;
+                    return Ok(Effect::None);
                 }
                 self.transition(
                     vec![id],
@@ -676,11 +678,13 @@ impl Service {
             LoopAction::PlayClicked
             | LoopAction::PlayDryClicked
             | LoopAction::RecordClicked
+            | LoopAction::ReplaceClicked
             | LoopAction::StopClicked => {
                 let mode = match action {
                     LoopAction::PlayClicked => BackendLoopMode::Playing,
                     LoopAction::PlayDryClicked => BackendLoopMode::PlayingDryThroughWet,
                     LoopAction::RecordClicked => BackendLoopMode::Recording,
+                    LoopAction::ReplaceClicked => BackendLoopMode::Replacing,
                     _ => BackendLoopMode::Stopped,
                 };
                 let targets = if entry.view.selected {
@@ -731,9 +735,7 @@ impl Service {
                 order.swap(a, b);
             }
             LoopAction::RerecordClicked => self.rerecord_targets(id)?,
-            LoopAction::GrabClicked => {
-                return Err(CommandError::unsupported(BackendCapability::Grab))
-            }
+            LoopAction::GrabClicked => self.grab_clicked(id, true)?,
             LoopAction::RestoreRecordedFxState => {
                 if !self
                     .backend
@@ -843,6 +845,20 @@ impl Service {
         delay: Option<u32>,
         cycles: Option<u32>,
     ) -> Result<(), CommandError> {
+        if modes
+            .values()
+            .any(|mode| *mode == BackendLoopMode::Replacing)
+        {
+            if modes
+                .values()
+                .any(|mode| *mode != BackendLoopMode::Replacing)
+            {
+                return Err(CommandError::invalid(
+                    "mixed Replacing transport is unavailable",
+                ));
+            }
+            return self.replacing(modes.keys().copied().collect(), delay, true);
+        }
         let targets: BTreeSet<_> = modes.keys().copied().collect();
         let mut tracks = BTreeSet::new();
         for id in &targets {
@@ -1019,7 +1035,7 @@ impl Service {
             }
             GlobalControlAction::SetDefaultRecordingAction(value) => {
                 if value == DefaultRecordingAction::Grab {
-                    return Err(CommandError::unsupported(BackendCapability::Grab));
+                    self.require_input(BackendCapability::Grab)?;
                 }
                 self.global.default_recording_action = value;
             }

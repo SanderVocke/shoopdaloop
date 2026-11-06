@@ -138,20 +138,26 @@ impl Loop {
         let mut body = || {
             let started = Instant::now();
             Shared::count(&shared.counters.callbacks, 1);
+            if frames > cycle.max_frames() {
+                Shared::count(&shared.counters.split_callbacks, 1);
+            }
             let first = cycle.next_frame();
             shared.begin_profiling(first, frames);
-            for (port, samples) in cycle.inputs_mut().iter_mut().enumerate() {
-                let samples = &mut samples[..frames];
-                match input {
-                    Some(input) => {
-                        for (offset, sample) in samples.iter_mut().enumerate() {
-                            *sample = input(port, first + offset as u64);
+            for base in (0..frames).step_by(cycle.max_frames()) {
+                let count = (frames - base).min(cycle.max_frames());
+                for (port, samples) in cycle.inputs_mut().iter_mut().enumerate() {
+                    let samples = &mut samples[..count];
+                    match input {
+                        Some(input) => {
+                            for (offset, sample) in samples.iter_mut().enumerate() {
+                                *sample = input(port, first + base as u64 + offset as u64);
+                            }
                         }
+                        None => samples.fill(0.),
                     }
-                    None => samples.fill(0.),
                 }
+                cycle.render(count, shared.nanos(started), true);
             }
-            cycle.render(frames, shared.nanos(started), true);
             let busy = started.elapsed().as_secs_f32();
             shared.set_load(busy / period(frames, shared.sample_rate()).as_secs_f32());
         };

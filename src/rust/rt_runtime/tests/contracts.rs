@@ -373,6 +373,7 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
     resources.begin_callback();
     assert_no_heap(|| {
         processor.process(&mut ProcessBlock {
+            midi_forwarded: &mut [],
             graph_epoch: rt_runtime::Epoch(0),
             frame: Frame(0),
             frames: 4,

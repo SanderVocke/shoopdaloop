@@ -133,6 +133,8 @@ impl Service {
             status: status(&self.observed.status),
             audio_drivers: self.observed.audio_drivers.clone(),
             capabilities: [
+                BackendCapability::Grab,
+                BackendCapability::ReplacingMode,
                 BackendCapability::CompositeLoops,
                 BackendCapability::BusManagement,
                 BackendCapability::MidiInjection,
@@ -747,6 +749,7 @@ impl Service {
                     })
                     .collect::<Vec<_>>()
                     .into();
+                view.capture_incomplete = state.capture_incomplete;
                 view.mode = mode(state.mode);
                 view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);
                 view.next_transition_delay = state.next_transition_delay;

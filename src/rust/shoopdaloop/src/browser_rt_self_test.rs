@@ -16,6 +16,7 @@ use web_time::Instant;
 use crate::Runtime;
 
 mod composites;
+mod input;
 
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_RECORDING: Duration = Duration::from_millis(600);
@@ -69,6 +70,8 @@ enum Step {
     Loaded,
     Resaving,
     RestoredPlayback,
+    Input,
+    InputFinished,
     Composites,
     LargeMapping,
     LargeImport,
@@ -110,6 +113,7 @@ struct Ids {
 pub struct NewEngineSelfTest {
     hosted_index: usize,
     composites: Option<composites::Canary>,
+    input: input::Canary,
     preview_only: bool,
     preview_denied: bool,
     stress: bool,
@@ -140,6 +144,7 @@ impl NewEngineSelfTest {
             .unwrap_or_default();
         Self {
             hosted_index: 0,
+            input: input::Canary::default(),
             composites: query
                 .contains("composites=1")
                 .then(composites::Canary::default),
@@ -162,6 +167,10 @@ impl NewEngineSelfTest {
     }
 
     pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
+        if self.step == Step::Input {
+            self.input.file_output(output);
+            return;
+        }
         if self.step == Step::Composites {
             self.composites.as_mut().unwrap().file_output(output);
             return;
@@ -215,6 +224,7 @@ impl NewEngineSelfTest {
                         self.step,
                         Step::LargeMapping
                             | Step::Composites
+                            | Step::Input
                             | Step::LargeImport
                             | Step::LargeSaving
                             | Step::LargeLoaded
@@ -223,7 +233,7 @@ impl NewEngineSelfTest {
                     ) || (self.large
                         && matches!(self.step, Step::BusZeroSaving | Step::BusZeroLoaded))
                     {
-                        if self.step == Step::Composites { Duration::from_secs(300) } else { Duration::from_secs(240) }
+                        if matches!(self.step, Step::Composites | Step::Input) { Duration::from_secs(300) } else { Duration::from_secs(240) }
                     } else {
                         STEP_TIMEOUT
                     } => {}
@@ -931,6 +941,18 @@ impl NewEngineSelfTest {
                     Some(position) if position == entry.position => return Ok(None),
                     _ => {}
                 }
+                Step::Input
+            }
+            Step::Input => {
+                if !self.input.advance(snapshot, pending, &mut send)? {
+                    return Ok(None);
+                }
+                self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
+                self.ids.audio = Some((snapshot.tracks[1].id, snapshot.tracks[1].loops[0].id));
+                self.ids.keys = Some((snapshot.tracks[2].id, snapshot.tracks[2].loops[0].id));
+                Step::InputFinished
+            }
+            Step::InputFinished => {
                 if self.composites.is_some() {
                     return Ok(Some(Step::Composites));
                 }

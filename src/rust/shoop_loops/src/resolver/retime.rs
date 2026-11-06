@@ -292,7 +292,7 @@ impl Resolver {
                 return Err(Error::DuplicateId);
             }
             let state = self.state(change.target)?;
-            if state.mode.records()
+            if state.writes()
                 || state.content_length != change.expected_length
                 || state.content_revision != change.expected_revision
                 || change.revision <= state.content_revision
@@ -361,13 +361,16 @@ impl Resolver {
 impl Resolver {
     pub fn recording_armed(&self, target: LoopId) -> Result<bool, Error> {
         let state = self.state(target)?;
-        Ok(state.mode.records()
+        Ok(state.writes()
             || self.records.iter().flatten().any(|record| {
                 record.terminal.is_none()
                     && record.request.target == target
                     && matches!(
                         record.request.transition,
-                        Transition::Record { .. } | Transition::Rerecord
+                        Transition::Record { .. }
+                            | Transition::Rerecord
+                            | Transition::RecordPrefix { .. }
+                            | Transition::ReplaceInput { .. }
                     )
             }))
     }
@@ -430,7 +433,7 @@ impl Resolver {
                             return None;
                         }
                         let source = self.scratch.states.get(source.slot() as usize)?.as_ref()?;
-                        if !source.plays() || source.content_length == 0 {
+                        if !source.advances() || source.content_length == 0 {
                             return None;
                         }
                         source

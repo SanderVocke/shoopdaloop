@@ -401,9 +401,6 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     if !doc.midi_control.bindings.is_empty() || !doc.settings.is_empty() {
         unsupported.insert("reserved MIDI bindings/session settings");
     }
-    if doc.global.default_recording_action != RecordingActionDocument::Record {
-        unsupported.insert("default grab recording (P04)");
-    }
     if doc.buses.len() > 8
         || doc
             .buses
@@ -815,7 +812,10 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         manifest: image::Manifest::Session(image::Session {
             sample_rate: doc.sample_rate,
             global: GlobalControlState {
-                default_recording_action: DefaultRecordingAction::Record,
+                default_recording_action: match g.default_recording_action {
+                    RecordingActionDocument::Record => DefaultRecordingAction::Record,
+                    RecordingActionDocument::Grab => DefaultRecordingAction::Grab,
+                },
                 play_after_record: g.play_after_record,
                 sync: g.sync,
                 solo: g.solo,

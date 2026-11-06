@@ -5058,6 +5058,7 @@ impl Backend for NativeBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    capture_incomplete: false,
                     recorded_processor_state: None,
                     repeat_sync: false,
                     sync_source: loop_.sync_source,

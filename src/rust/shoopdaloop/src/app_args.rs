@@ -97,6 +97,10 @@ pub struct AppArgs {
     /// Exercise public composite authoring, recording, files and client lifetime.
     #[arg(long, requires = "engine_transport", conflicts_with_all = ["probe_engine_transport", "probe_persistence"])]
     pub probe_composites: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise public Grab, continuous replacement, client detach and exact file round trips.
+    #[arg(long, requires = "engine_transport")]
+    pub probe_input: bool,
     #[cfg(target_arch = "wasm32")]
     /// Disable browser audio (the session remains unavailable).
     #[arg(long)]

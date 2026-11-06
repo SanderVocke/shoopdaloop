@@ -19,7 +19,7 @@ impl Service {
             let track = &self.tracks[&entry.track];
             if matches!(
                 entry.view.mode,
-                LoopMode::Recording | LoopMode::RecordingDryIntoWet
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
             ) {
                 return Err(Refusal::NotReady);
             }

@@ -71,6 +71,55 @@ fn composite_span() -> CompositeSpan {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::InputBegin {
+            id: u64::MAX,
+            count: u32::MAX,
+        },
+        Request::InputAppend {
+            id: 7,
+            edit: InputEdit {
+                loop_id: loop_id(0),
+                intent: InputIntent::Grab {
+                    sync: Some(loop_id(1)),
+                    reverse_start_cycle: Some(u32::MAX),
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(0),
+                    mode: LoopMode::Recording,
+                    maximum_frames: u64::MAX,
+                },
+            },
+        },
+        Request::InputAppend {
+            id: 7,
+            edit: InputEdit {
+                loop_id: loop_id(1),
+                intent: InputIntent::Mode {
+                    mode: LoopMode::Replacing,
+                    position: Some(u64::MAX),
+                },
+            },
+        },
+        Request::InputAppend {
+            id: 7,
+            edit: InputEdit {
+                loop_id: loop_id(0),
+                intent: InputIntent::Gesture {
+                    sync: loop_id(1),
+                    target: Some(loop_id(2)),
+                    synced: false,
+                    cycles: u32::MAX,
+                    play_after_record: true,
+                },
+            },
+        },
+        Request::InputPrepare { id: 7 },
+        Request::InputCommit {
+            id: 7,
+            delay: Some(u32::MAX),
+        },
+        Request::InputCancel { id: 7 },
+        Request::InputStatus { id: 7 },
+        Request::InputCapacity,
         Request::Connect {
             port: EnginePort::GlobalFxControl,
             host: HostPortId(5),
@@ -418,6 +467,11 @@ fn client_samples() -> Vec<ClientMessage> {
             mode: LoopMode::Recording,
             delay: Some(2),
         },
+        Request::LoopTransition {
+            loop_id: loop_id(4),
+            mode: LoopMode::Replacing,
+            delay: Some(2),
+        },
         Request::LoopClear {
             loop_id: loop_id(4),
         },
@@ -680,6 +734,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             next_delay: Some(1),
             content_revision: 9,
             recording_armed: true,
+            capture_incomplete: true,
             timing_revision: 0,
             length: 48,
             position: 7,
@@ -926,4 +981,50 @@ fn timing_batches_reject_oversized_and_noncanonical_wire_records() {
     };
     let len = encode_client(&request(edit), &mut buffer).unwrap();
     assert_eq!(decode_client(&buffer[..len]).unwrap(), request(edit));
+}
+
+#[shoop_test]
+fn input_progress_capacity_and_terminal_phases_round_trip_with_exact_frames() {
+    for phase in [
+        InputPhase::Receiving,
+        InputPhase::Preparing,
+        InputPhase::Ready,
+        InputPhase::Committing,
+        InputPhase::Cancelling,
+        InputPhase::Applied,
+        InputPhase::Cancelled,
+        InputPhase::Failed(Refusal::Capacity),
+    ] {
+        let message = EngineMessage::Result {
+            correlation: u64::MAX,
+            outcome: Outcome::Input(InputProgress {
+                id: u64::MAX,
+                phase,
+                received: 127,
+                expected: 128,
+                requested_frame: Some(u64::MAX - 32),
+                effective_frame: Some(u64::MAX),
+            }),
+        };
+        let mut bytes = [0; MAX_RECORD_BYTES];
+        let count = encode_engine(&message, &mut bytes).unwrap();
+        assert!(count < 128);
+        assert_eq!(decode_engine(&bytes[..count]).unwrap(), message);
+        assert!(decode_engine(&bytes[..count - 1]).is_err());
+    }
+    let message = EngineMessage::Result {
+        correlation: 2,
+        outcome: Outcome::InputCapacity(InputCapacity {
+            retention_frames: u64::MAX,
+            writer_slots: u32::MAX,
+            events_per_source: u32::MAX,
+            bytes_per_source: u64::MAX,
+            events_per_tick: u32::MAX,
+            bytes_per_tick: u32::MAX,
+            maximum_packet: u32::MAX,
+        }),
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let count = encode_engine(&message, &mut bytes).unwrap();
+    assert_eq!(decode_engine(&bytes[..count]).unwrap(), message);
 }

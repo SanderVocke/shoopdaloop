@@ -244,7 +244,9 @@ impl Stopped {
             Err(Error::Busy) => {
                 for _ in 0..self.reclaim_bound {
                     self.resources.begin_callback();
-                    self.resources.reclaim();
+                    if self.resources.reclaim() == 0 {
+                        break;
+                    }
                 }
                 self.planner.cleanup(&mut self.resources)?;
             }
@@ -252,7 +254,9 @@ impl Stopped {
         }
         for _ in 0..self.reclaim_bound {
             self.resources.begin_callback();
-            self.resources.reclaim();
+            if self.resources.reclaim() == 0 {
+                break;
+            }
         }
         Ok(())
     }

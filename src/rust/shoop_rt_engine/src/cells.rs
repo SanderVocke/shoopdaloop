@@ -150,7 +150,10 @@ pub(crate) struct LoopCells {
     pub mode: AtomicU32,
     pub length: AtomicU64,
     pub content_revision: AtomicU64,
+    capture_incomplete: AtomicBool,
     pub position: AtomicU64,
+    pending_mode: AtomicU32,
+    pending_delay: AtomicU32,
     /// Clock edges this loop emitted, counted at settled boundaries.
     pub pulses: AtomicU64,
     pub peaks: Peak,
@@ -164,7 +167,9 @@ pub(crate) struct LoopSnapshot {
     pub mode: Mode,
     pub length: u64,
     pub revision: u64,
+    pub capture_incomplete: bool,
     pub position: u64,
+    pub pending: Option<(u32, Mode)>,
     pub iteration: u64,
     pub passes: u64,
     pub waiting_repeat: bool,
@@ -201,7 +206,18 @@ impl LoopCells {
             mode: mode_from_code(self.mode.load(Ordering::SeqCst)),
             length: self.length.load(Ordering::SeqCst),
             revision: self.content_revision.load(Ordering::SeqCst),
+            capture_incomplete: self.capture_incomplete.load(Ordering::SeqCst),
             position: self.position.load(Ordering::SeqCst),
+            pending: self
+                .pending_mode
+                .load(Ordering::SeqCst)
+                .checked_sub(1)
+                .map(|mode| {
+                    (
+                        self.pending_delay.load(Ordering::SeqCst),
+                        mode_from_code(mode),
+                    )
+                }),
             iteration: self.iteration.load(Ordering::SeqCst),
             passes: self.passes.load(Ordering::SeqCst),
             waiting_repeat: self.waiting_repeat.load(Ordering::SeqCst),
@@ -216,6 +232,7 @@ pub(crate) fn mode_code(mode: Mode) -> u32 {
         Mode::Stopped => 0,
         Mode::Playing => 1,
         Mode::Recording => 2,
+        Mode::Replacing => 5,
         Mode::PlayingDryThroughWet => 3,
         Mode::RecordingDryIntoWet => 4,
     }
@@ -224,6 +241,7 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
     match code {
         1 => Mode::Playing,
         2 => Mode::Recording,
+        5 => Mode::Replacing,
         3 => Mode::PlayingDryThroughWet,
         4 => Mode::RecordingDryIntoWet,
         _ => Mode::Stopped,
@@ -363,17 +381,49 @@ pub(crate) struct Observer(
     pub Arc<Cells>,
     pub rt_runtime::Epoch,
     pub(crate) super::monitoring::Demand,
+    Box<[Option<(u32, u32, Mode)>]>,
 );
 impl Observer {
     pub(crate) fn new(cells: Arc<Cells>) -> Self {
         let demand = super::monitoring::Demand::new(cells.loops.len());
-        Self(cells, rt_runtime::Epoch(0), demand)
+        let pending = alloc::vec![None; cells.loops.len()].into_boxed_slice();
+        Self(cells, rt_runtime::Epoch(0), demand, pending)
     }
 }
 
 impl BoundaryObserver for Observer {
     fn settled(&mut self, resolver: &shoop_loops::Resolver) {
         self.2.update(resolver);
+        self.3.fill(None);
+        for pending in resolver.pending_transitions() {
+            use shoop_loops::Transition;
+            let mode = match pending.request.transition {
+                Transition::Stop => Mode::Stopped,
+                Transition::Play { .. } => Mode::Playing,
+                Transition::PlayDry { .. } => Mode::PlayingDryThroughWet,
+                Transition::Record { .. } | Transition::RecordPrefix { .. } => Mode::Recording,
+                Transition::ReplaceInput { .. } => Mode::Replacing,
+                Transition::Rerecord => Mode::RecordingDryIntoWet,
+                Transition::Adopt { mode, .. } => mode,
+                _ => continue,
+            };
+            let delay = pending.remaining_ticks.unwrap_or_else(|| {
+                pending
+                    .effective
+                    .0
+                    .saturating_sub(resolver.frame().0)
+                    .div_ceil(resolver.quantum().frames() as u64)
+            });
+            let Ok(delay) = u32::try_from(delay) else {
+                continue;
+            };
+            let Some(slot) = self.3.get_mut(pending.request.target.slot() as usize) else {
+                continue;
+            };
+            if slot.is_none_or(|(_, previous, _)| delay < previous) {
+                *slot = Some((pending.request.target.generation(), delay, mode));
+            }
+        }
         for strip in &self.0.strips {
             strip.automatic_demand.store(false, Ordering::Relaxed);
         }
@@ -406,7 +456,19 @@ impl BoundaryObserver for Observer {
             if state.last_pulse == Some(frame) {
                 cells.pulses.fetch_add(1, Ordering::SeqCst);
             }
+            let pending =
+                self.3[state.id.slot() as usize].filter(|(owner, _, _)| *owner == generation);
+            cells.pending_mode.store(
+                pending.map_or(0, |(_, _, mode)| mode_code(mode) + 1),
+                Ordering::SeqCst,
+            );
+            cells
+                .pending_delay
+                .store(pending.map_or(0, |(_, delay, _)| delay), Ordering::SeqCst);
             cells.mode.store(mode_code(state.mode), Ordering::SeqCst);
+            cells
+                .capture_incomplete
+                .store(state.capture_incomplete, Ordering::SeqCst);
             let length = if state.mode == Mode::Recording {
                 state.capture_frames
             } else {

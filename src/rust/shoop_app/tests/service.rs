@@ -2295,6 +2295,8 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
             matches!(
                 capability,
                 BackendCapability::MidiInjection
+                    | BackendCapability::Grab
+                    | BackendCapability::ReplacingMode
                     | BackendCapability::BusManagement
                     | BackendCapability::CompositeLoops
                     | BackendCapability::LoopTimingEdits
@@ -4502,3 +4504,6 @@ fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() 
         script.logs
     );
 }
+
+#[path = "support/input_cases.rs"]
+mod input_cases;

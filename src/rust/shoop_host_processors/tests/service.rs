@@ -449,6 +449,31 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
             midi: false,
         },
     );
+    let transport = |loops: Vec<LoopId>, mode| {
+        Command::Control(ControlOperation::Transition {
+            loops,
+            mode,
+            cycles_delay: None,
+            align_to_sync_at: None,
+        })
+    };
+    let sync = f.client.snapshot().unwrap().tracks[0].loops[0].id;
+    f.confirmed(Command::SetLoopTimeline {
+        loop_id: sync,
+        start_offset: None,
+        preplay_samples: None,
+        loop_length: Some(4096),
+    });
+    f.confirmed(transport(vec![sync], LoopMode::Playing));
+    f.confirmed(transport(
+        vec![direct_loops[1], hosted_loops[0]],
+        LoopMode::Recording,
+    ));
+    f.ticks(4);
+    f.confirmed(transport(
+        vec![direct_loops[1], hosted_loops[0]],
+        LoopMode::Stopped,
+    ));
     f.confirmed(Command::Composite(composite::Edit::Append {
         target: direct_loops[0],
         add: vec![direct_loops[1]],
@@ -456,6 +481,60 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
         convert_if_empty: true,
     }));
     f.ticks(4);
+    f.confirmed(transport(vec![direct_loops[0]], LoopMode::Playing));
+    f.confirmed(Command::Global(GlobalControlAction::SetSync(true)));
+    assert!(f
+        .client
+        .snapshot()
+        .unwrap()
+        .capabilities
+        .supports(BackendCapability::Grab));
+    f.confirmed(Command::Control(ControlOperation::Grab {
+        loops: vec![direct_loops[2]],
+    }));
+    let revision = f
+        .client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .find(|state| state.id == direct_loops[2])
+        .unwrap()
+        .content_revision;
+    assert!(matches!(
+        f.run(Command::Control(ControlOperation::Grab {
+            loops: vec![direct_loops[2], hosted_loops[0]],
+        })),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(
+        f.client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|state| state.id == direct_loops[2])
+            .unwrap()
+            .content_revision,
+        revision
+    );
+    f.confirmed(transport(vec![direct_loops[2]], LoopMode::Replacing));
+    f.ticks(70);
+    f.confirmed(transport(vec![direct_loops[2]], LoopMode::Stopped));
+    assert_eq!(
+        f.client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|state| state.id == direct_loops[0])
+            .unwrap()
+            .mode,
+        LoopMode::Playing
+    );
     let before = f.client.snapshot().unwrap().clone();
     let active = before.composites[0].active.as_ref().unwrap().clone();
     for edit in [

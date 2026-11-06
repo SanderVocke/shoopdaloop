@@ -72,19 +72,35 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                 | Transition::PlayIteration { .. }
                 | Transition::SeekIteration { .. } => failure = Some(Error::InvalidState),
                 Transition::Stop => {
-                    if candidate.mode == Mode::Recording {
-                        candidate.length = candidate.captured;
+                    if matches!(candidate.mode, Mode::Recording | Mode::Replacing) {
+                        if candidate.mode == Mode::Recording {
+                            candidate.length = candidate.captured;
+                        }
                         candidate.revision = candidate.take;
                     }
                     candidate.mode = Mode::Stopped;
                     candidate.head = 0;
                     candidate.monitor = false;
                 }
-                Transition::Record { monitor_previous } => {
+                Transition::Record { .. } | Transition::RecordPrefix { .. } => {
+                    let monitor_previous = matches!(
+                        operation,
+                        Transition::Record {
+                            monitor_previous: true
+                        }
+                    );
+                    if candidate.mode == Mode::Replacing {
+                        candidate.revision = candidate.take;
+                    }
                     if let Some(revision) = candidate.watermark.checked_add(1) {
                         candidate.watermark = revision;
                         candidate.take = revision;
-                        candidate.captured = 0;
+                        candidate.captured = if let Transition::RecordPrefix { frames } = operation
+                        {
+                            frames
+                        } else {
+                            0
+                        };
                         candidate.monitor = monitor_previous;
                         candidate.mode = Mode::Recording;
                         pulse = true;
@@ -96,7 +112,11 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                     position,
                     retrigger,
                 } => {
-                    if candidate.mode != Mode::Playing || retrigger {
+                    if candidate.mode == Mode::Replacing && !retrigger {
+                        candidate.revision = candidate.take;
+                        candidate.mode = Mode::Playing;
+                        candidate.monitor = false;
+                    } else if candidate.mode != Mode::Playing || retrigger {
                         let length = if candidate.mode == Mode::Recording {
                             candidate.captured
                         } else {
@@ -107,7 +127,7 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                         } else if position >= length {
                             failure = Some(Error::InvalidFrame);
                         } else {
-                            if candidate.mode == Mode::Recording {
+                            if matches!(candidate.mode, Mode::Recording | Mode::Replacing) {
                                 candidate.revision = candidate.take;
                             }
                             candidate.length = length;
@@ -123,7 +143,7 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                     position,
                     retrigger,
                 } => {
-                    if candidate.mode != Mode::Playing {
+                    if !matches!(candidate.mode, Mode::Playing | Mode::Replacing) {
                         failure = Some(Error::InvalidState);
                     } else if position >= candidate.length {
                         failure = Some(Error::InvalidFrame);
@@ -135,12 +155,82 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                         }
                     }
                 }
+                Transition::ReplaceInput { position } => {
+                    let fixed_length = if candidate.mode == Mode::Recording {
+                        candidate.captured
+                    } else {
+                        candidate.length
+                    };
+                    let moving = matches!(candidate.mode, Mode::Playing | Mode::Replacing);
+                    let head = position.unwrap_or(if moving { candidate.head } else { 0 });
+                    if fixed_length == 0 {
+                        failure = Some(Error::EmptyContent);
+                    } else if head >= fixed_length
+                        && !(moving && position.is_none() && head == fixed_length)
+                    {
+                        failure = Some(Error::InvalidFrame);
+                    } else if candidate.mode != Mode::Replacing && candidate.watermark == u64::MAX {
+                        failure = Some(Error::Exhausted);
+                    } else {
+                        if candidate.mode == Mode::Recording {
+                            candidate.revision = candidate.take;
+                        }
+                        if candidate.mode != Mode::Replacing {
+                            candidate.watermark += 1;
+                            candidate.take = candidate.watermark;
+                        }
+                        if !moving {
+                            candidate.turns = 0;
+                        }
+                        pulse = candidate.mode != Mode::Replacing && head == 0;
+                        candidate.mode = Mode::Replacing;
+                        candidate.length = fixed_length;
+                        candidate.head = head;
+                        candidate.captured = fixed_length;
+                        candidate.monitor = false;
+                    }
+                }
+                Transition::Adopt {
+                    length,
+                    revision,
+                    position,
+                    mode,
+                } => {
+                    if position > length {
+                        failure = Some(Error::InvalidFrame);
+                    } else if length == 0 && matches!(mode, Mode::Playing | Mode::Replacing) {
+                        failure = Some(Error::EmptyContent);
+                    } else if matches!(mode, Mode::Playing | Mode::Replacing) && position >= length
+                    {
+                        failure = Some(Error::InvalidFrame);
+                    } else {
+                        candidate.length = length;
+                        candidate.revision = revision.0;
+                        candidate.watermark = candidate.watermark.max(revision.0);
+                        candidate.head = position;
+                        candidate.turns = 0;
+                        candidate.monitor = false;
+                        if matches!(mode, Mode::Recording | Mode::Replacing) {
+                            if let Some(revision) = candidate.watermark.checked_add(1) {
+                                candidate.watermark = revision;
+                                candidate.take = revision;
+                                candidate.captured = length;
+                            } else {
+                                failure = Some(Error::Exhausted);
+                            }
+                        }
+                        candidate.mode = mode;
+                        pulse = mode == Mode::Playing
+                            || mode == Mode::Recording
+                            || mode == Mode::Replacing && position == 0;
+                    }
+                }
                 Transition::Replace {
                     length,
                     revision,
                     preserve_position,
                 } => {
-                    if candidate.mode == Mode::Recording {
+                    if matches!(candidate.mode, Mode::Recording | Mode::Replacing) {
                         failure = Some(Error::InvalidState);
                     } else if preserve_position && candidate.head != 0 && candidate.head >= length {
                         failure = Some(Error::InvalidFrame);
@@ -170,7 +260,7 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
                     });
                 }
                 machine = candidate;
-                if operation == Transition::Stop {
+                if matches!(operation, Transition::Stop | Transition::Adopt { .. }) {
                     for (other, request) in requests.iter().enumerate() {
                         if result.outcomes[other].is_none()
                             && request.sequence < requests[index].sequence
@@ -184,7 +274,8 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
         let plays = machine.length > 0
             && (machine.mode == Mode::Playing
                 || (machine.mode == Mode::Recording && machine.monitor));
-        if plays && machine.head == machine.length {
+        let moving = plays || machine.mode == Mode::Replacing;
+        if moving && machine.head == machine.length {
             machine.head = 0;
             machine.turns += 1;
             result.events.push(Event {
@@ -206,7 +297,7 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
             if plays { machine.head } else { 0 },
             machine.captured,
         ));
-        if plays {
+        if moving {
             machine.head += 1;
         }
         if machine.mode == Mode::Recording {

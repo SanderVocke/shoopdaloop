@@ -70,6 +70,10 @@ pub(crate) struct Planned {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    Input {
+        id: u64,
+        step: crate::input::Step,
+    },
     TimingSnapshot(LoopSlotId),
     Timing {
         slot: usize,
@@ -218,6 +222,7 @@ pub struct ControlEndpoint {
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
     pub(crate) family: crate::family::Stage,
+    pub(crate) input: crate::input::Stage,
     pub(crate) composite: crate::composite::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
@@ -240,7 +245,7 @@ fn runtime_refusal(error: rt_runtime::Error) -> Refusal {
         _ => Refusal::Internal,
     }
 }
-fn timeline_refusal(error: shoop_loops::Error) -> Refusal {
+pub(crate) fn timeline_refusal(error: shoop_loops::Error) -> Refusal {
     use shoop_loops::Error;
     match error {
         Error::Capacity | Error::Exhausted => Refusal::Capacity,
@@ -310,6 +315,7 @@ fn loop_transition(mode: LoopMode) -> Transition {
         LoopMode::Recording => Transition::Record {
             monitor_previous: false,
         },
+        LoopMode::Replacing => Transition::ReplaceInput { position: None },
     }
 }
 pub(crate) fn protocol_mode(mode: Mode) -> LoopMode {
@@ -317,6 +323,7 @@ pub(crate) fn protocol_mode(mode: Mode) -> LoopMode {
         Mode::Stopped => LoopMode::Stopped,
         Mode::Playing => LoopMode::Playing,
         Mode::Recording => LoopMode::Recording,
+        Mode::Replacing => LoopMode::Replacing,
         Mode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
         Mode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
     }
@@ -406,6 +413,12 @@ impl ControlEndpoint {
             .union(Capabilities::COMPLETE_REPLACEMENT)
             .union(Capabilities::WIDE_CONTENT_UPLOAD)
             .union(Capabilities::LOOP_TIMING);
+        if self.input.supported() {
+            capabilities = capabilities.union(Capabilities::INPUT_BATCH);
+        }
+        if self.input.replacing_supported() {
+            capabilities = capabilities.union(Capabilities::REPLACING);
+        }
         if self.settings.external_dry_wet || !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities
                 .union(Capabilities::DRY_WET)
@@ -509,6 +522,14 @@ impl ControlEndpoint {
                         }
                     ) {
                         self.family.payload = Some(payload);
+                    } else if matches!(
+                        action,
+                        Action::Planner {
+                            operation: Operation::InputBatch { .. },
+                            ..
+                        }
+                    ) {
+                        self.input.payload = Some(payload);
                     } else {
                         self.work.return_payload(payload);
                     }
@@ -558,6 +579,7 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        self.disconnect_input();
         if self.family.id.is_some() && !self.family.committing {
             self.family.cancel_requested = true;
         }
@@ -616,6 +638,7 @@ impl ControlEndpoint {
         let finished = pending.completed && (pending.executed || !pending.expects);
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
+            Purpose::Input { id, step } => self.input_result(id, step, result),
             Purpose::TimingSnapshot(target) => self.timing_snapshot_result(target, result),
             Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
@@ -908,6 +931,25 @@ impl ControlEndpoint {
                 Ok(Some(Outcome::Done))
             }
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. }
+            | Request::InputCancel { .. }
+            | Request::InputStatus { .. }
+            | Request::InputCapacity => {
+                if self.job.is_some()
+                    && !matches!(
+                        request,
+                        Request::InputCancel { .. }
+                            | Request::InputStatus { .. }
+                            | Request::InputCapacity
+                    )
+                {
+                    return Err(());
+                }
+                self.input_request(correlation, request)
+            }
             Request::ContentFamilyBegin { .. }
             | Request::ContentFamilyEdit { .. }
             | Request::ContentFamilyCommit { .. }
@@ -1428,6 +1470,12 @@ impl ControlEndpoint {
             .iter()
             .flatten()
             .map(|planned| (self.remaining(planned), planned.mode))
+            .chain(
+                state
+                    .pending
+                    .filter(|_| current)
+                    .map(|(delay, mode)| (delay, protocol_mode(mode))),
+            )
             .min_by_key(|(remaining, _)| *remaining);
         let mode = if current {
             state.mode
@@ -1449,10 +1497,11 @@ impl ControlEndpoint {
             mode: protocol_mode(mode),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(delay, _)| delay),
+            capture_incomplete: current && state.capture_incomplete,
             recording_armed: self.planned[slot]
                 .iter()
                 .flatten()
-                .any(|planned| planned.mode.records()),
+                .any(|planned| planned.mode.records() || planned.mode == LoopMode::Replacing),
             timing_revision: if current { state.timing_revision } else { 0 },
             content_revision: if current { state.revision } else { 0 },
             length: if current { state.length } else { 0 },
@@ -1557,6 +1606,7 @@ impl Endpoint for ControlEndpoint {
         self.advance_bulk();
         self.advance_preview();
         self.advance_content();
+        self.advance_input();
         self.advance_timing();
         self.flush(out);
         if self.connected {

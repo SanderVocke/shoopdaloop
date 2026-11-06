@@ -74,7 +74,10 @@ fn automatic_mode_renders_buffers_in_real_time_until_stopped() {
     let stopped = report.stopped.unwrap();
     assert_eq!(
         stopped.resource_usage().free_pages,
-        description().resource_pages
+        description()
+            .history_capacity()
+            .unwrap()
+            .total_resource_pages
     );
 }
 
@@ -174,7 +177,11 @@ fn quantum_native_startup_handles_partial_callbacks_and_returns_all_owners() {
         let stopped = host.stop().stopped.unwrap();
         assert_eq!(
             stopped.resource_usage().free_pages,
-            settings.engine.resource_pages
+            settings
+                .engine
+                .history_capacity()
+                .unwrap()
+                .total_resource_pages
         );
         assert_eq!(HEAP_OPERATIONS.load(Ordering::Relaxed), 0);
     }

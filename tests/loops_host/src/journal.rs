@@ -111,6 +111,7 @@ fn encode_decision(frame: Frame, decision: &Decision) -> [u8; STRIDE] {
         Mode::Recording => 2,
         Mode::PlayingDryThroughWet => 3,
         Mode::RecordingDryIntoWet => 4,
+        Mode::Replacing => 5,
     };
     bytes[2] = u8::from(decision.playback_discontinuity)
         | (u8::from(state.capture_incomplete) << 1)
@@ -180,6 +181,13 @@ fn encode_event(event: &Event) -> [u8; STRIDE] {
                 retrigger,
             } => (15, retrigger, position, 0),
             Transition::Rerecord => (16, false, 0, 0),
+            Transition::ReplaceInput { position } => {
+                (17, position.is_some(), position.unwrap_or(0), 0)
+            }
+            Transition::RecordPrefix { frames } => (18, false, frames, 0),
+            Transition::Adopt {
+                length, revision, ..
+            } => (19, false, length, revision.0),
         },
         EventKind::Wrap => (9, false, 0, 0),
         EventKind::Pulse => (10, false, 0, 0),
@@ -197,6 +205,17 @@ fn encode_event(event: &Event) -> [u8; STRIDE] {
     put32(&mut bytes, 20, event.target.generation());
     put64(&mut bytes, 24, a);
     put64(&mut bytes, 32, b);
+    if let EventKind::Transition(Transition::Adopt { position, mode, .. }) = event.kind {
+        put64(&mut bytes, 40, position);
+        bytes[48] = match mode {
+            Mode::Stopped => 0,
+            Mode::Playing => 1,
+            Mode::Recording => 2,
+            Mode::PlayingDryThroughWet => 3,
+            Mode::RecordingDryIntoWet => 4,
+            Mode::Replacing => 5,
+        };
+    }
     bytes
 }
 

@@ -40,12 +40,16 @@ mod bulk;
 mod cells;
 mod composite;
 mod content;
+mod history;
+mod input;
+pub use history::HistoryCapacity;
 mod description;
 mod endpoint;
 mod family;
 mod global_midi;
 mod graph;
 mod jobs;
+mod midi_layout;
 mod model;
 mod monitoring;
 mod node;
@@ -178,8 +182,12 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
     ports.into_boxed_slice()
 }
 
-fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames: usize) -> Config {
-    let (strips, loops) = (pool.strips(), pool.loops());
+fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> Config {
+    let (strips, loops) = (description.strips(), description.loops());
+    let processor_slots = 2
+        * (usize::from(description.processors.fx_instances)
+            + usize::from(description.processors.synth_instances));
+    let nodes = 1 + 2 * strips + 3 * loops + description.buses as usize + processor_slots;
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
     let buses = description.buses as usize;
@@ -197,7 +205,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         + loops * (8 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
-        + pool.processors() * (3 * channels + 3);
+        + processor_slots * (3 * channels + 3);
     let edges = strips
         * (channels * (4 * (audio_in + audio_out) + 2 * buses * master_channels)
             + 2 * midi_in
@@ -205,7 +213,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
-        + pool.processors() * (3 * channels + 3);
+        + processor_slots * (3 * channels + 3);
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND.max(loops) * RECORD_BYTES;
     Config {
@@ -215,7 +223,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         audio_outputs: audio_out,
         midi_inputs: midi_in,
         midi_outputs: midi_out,
-        max_nodes: pool.nodes(),
+        max_nodes: nodes,
         max_ports: ports,
         max_edges: edges.max(1),
         midi_events_per_port: description.midi_events,
@@ -234,7 +242,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
                 + (2 + stream::READ_PAGES) * page_bytes
                 + content::RUNTIME_UPLOAD_BUFFERS
                     * page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES),
-            validation_steps: (3 * pool.nodes() + edges + 2 * loops + 64)
+            validation_steps: (3 * nodes + edges + 2 * loops + 64)
                 .max(page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)),
             publications: slots,
         },
@@ -286,20 +294,13 @@ pub fn prepare(
     description: &EngineDescription,
     driver: DriverStatus,
 ) -> Result<Engine, PrepareError> {
-    prepare_with_shared(
-        description,
-        driver,
-        shoop_loops::runtime::SharedSettings::default(),
-    )
+    let processors = empty_processors(description)?;
+    prepare_with_processors(description, driver, processors)
 }
 
 /// Prepare optional retrospective input histories and bounded private edit jobs.
-/// This does not enable application grab/replacing mode or add wire commands.
-pub fn prepare_with_shared(
-    description: &EngineDescription,
-    driver: DriverStatus,
-    shared_settings: shoop_loops::runtime::SharedSettings,
-) -> Result<Engine, PrepareError> {
+/// Explicit storage limits are installed before the runtime takes ownership.
+fn empty_processors(description: &EngineDescription) -> Result<PreparedProcessors, PrepareError> {
     let mut processors = PreparedProcessors::default();
     processors.effective = description
         .processors
@@ -308,6 +309,15 @@ pub fn prepare_with_shared(
             description.sample_rate,
         )
         .map_err(|_| rt_runtime::Error::InvalidConfig)?;
+    Ok(processors)
+}
+
+pub fn prepare_with_shared(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+) -> Result<Engine, PrepareError> {
+    let processors = empty_processors(description)?;
     prepare_with_shared_and_processors(description, driver, shared_settings, processors)
 }
 
@@ -316,7 +326,16 @@ pub fn prepare_with_processors(
     driver: DriverStatus,
     processors: PreparedProcessors,
 ) -> Result<Engine, PrepareError> {
-    prepare_with_shared_and_processors(description, driver, Default::default(), processors)
+    let prepared = history::Layout::new(description)?;
+    let mut expanded = description.clone();
+    expanded.resource_pages = prepared.capacity.total_resource_pages;
+    prepare_complete(
+        &expanded,
+        driver,
+        prepared.settings(),
+        processors,
+        description.resource_pages / 4,
+    )
 }
 
 pub fn prepare_with_shared_and_processors(
@@ -324,6 +343,22 @@ pub fn prepare_with_shared_and_processors(
     driver: DriverStatus,
     shared_settings: shoop_loops::runtime::SharedSettings,
     processors: PreparedProcessors,
+) -> Result<Engine, PrepareError> {
+    prepare_complete(
+        description,
+        driver,
+        shared_settings,
+        processors,
+        description.resource_pages / 4,
+    )
+}
+
+fn prepare_complete(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+    processors: PreparedProcessors,
+    wet_pages: usize,
 ) -> Result<Engine, PrepareError> {
     description.validate()?;
     let policy = description.processors;
@@ -411,7 +446,7 @@ pub fn prepare_with_shared_and_processors(
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
     let quantum = rt_runtime::Quantum::new(description.quantum)?;
-    let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
+    let config = runtime_capacities(description, quantum.frames()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
@@ -510,21 +545,15 @@ pub fn prepare_with_shared_and_processors(
             observer: Some(Box::new(Observer::new(cells.clone()))),
         },
     )?;
-    if (pool.processors() > 0 || description.external_dry_wet)
-        && shared_settings
-            .histories
-            .iter()
-            .filter(|history| history.audio.is_some())
-            .count()
-            < strips
-    {
+    let input_capacity = input::Stage::capacity(&shared_settings);
+    if pool.processors() > 0 || description.external_dry_wet {
         planner.prepare_wet_edits(
             &mut resources,
             rt_runtime::resource::shared_audio::Config {
                 channels: channels as u32,
                 history_frames: 0,
                 views: 6 * loops + 8,
-                pages: description.resource_pages / 4,
+                pages: wet_pages,
             },
         )?;
     }
@@ -537,6 +566,12 @@ pub fn prepare_with_shared_and_processors(
         }
         planner.prepare_shared(&mut resources, shared_settings)?;
     }
+    let mut node_midi = midi_layout::Layout::new(description)?;
+    if pool.processors() == 0 && !description.external_dry_wet {
+        node_midi.playback_merge = Default::default();
+        node_midi.global = Default::default();
+        node_midi.send = Default::default();
+    }
     let settings = NodeSettings {
         external_midi: description
             .external_dry_wet
@@ -546,6 +581,7 @@ pub fn prepare_with_shared_and_processors(
         master_channels,
         frames: quantum.frames(),
         ramp: description.ramp_frames,
+        midi: node_midi,
     };
     let mut nodes: Vec<PreparedNode<EngineNode, LoopPlanner, EngineOp>> = loop_nodes
         .into_iter()
@@ -567,10 +603,11 @@ pub fn prepare_with_shared_and_processors(
         kinds: processors.instances.iter().map(|p| p.kind).collect(),
         presets: processors.presets,
     };
+    let processor_input = description.processor_midi_input_capacity()?;
     let buffer_limits = rt_buffered::BufferLimits {
         midi_input: rt_buffered::MidiLimits {
-            events_per_quantum: description.midi_events,
-            bytes_per_quantum: description.midi_bytes,
+            events_per_quantum: processor_input.events,
+            bytes_per_quantum: processor_input.bytes,
         },
         midi_output: rt_buffered::MidiLimits {
             events_per_quantum: 0,
@@ -584,6 +621,7 @@ pub fn prepare_with_shared_and_processors(
             processor_cells[slot].clone(),
             quantum,
             buffer_limits,
+            description.global_midi_input_capacity()?,
             slot,
             pool.processors(),
         )?;
@@ -605,7 +643,7 @@ pub fn prepare_with_shared_and_processors(
         runtime.set_profiling(recorder);
     }
     if quantum.frames() > 1 {
-        runtime.prepare_host_buffering()?;
+        runtime.prepare_host_buffering_with_midi_output(settings.midi.tick)?;
     }
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
@@ -766,6 +804,7 @@ pub fn prepare_with_shared_and_processors(
             description.composite_segments,
         ),
         family: family::Stage::new(loops),
+        input: input::Stage::new(loops, input_capacity),
         composite: composite::Stage::new(description.composite_segments),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
@@ -794,6 +833,51 @@ mod tests {
     use shoop_rt_protocol::{LoopSlotId, Outcome, Request, SlotId, StripId, StripShape};
     use shoop_wasm_test_support::heap::assert_no_heap;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test(no_wasm = "native firmware arena and media-overlap sizing")]
+    fn direct_firmware_preparation_preserves_media_overlap_headroom() {
+        for (recording_mb, midi_ports, media_mb, arena_mb) in
+            [(32, 1, 16, 320), (128, 1, 64, 768), (128, 16, 64, 768)]
+        {
+            let description = super::EngineDescription {
+                history: shoop_rt_protocol::host::InputHistorySettings {
+                    seconds: 0,
+                    ..Default::default()
+                },
+                max_frames: 256,
+                resource_pages: recording_mb * 1024 * 1024 / 4096,
+                host: super::HostPorts::numbered(2, 2, midi_ports),
+                midi_bytes: if midi_ports == 1 { 2048 } else { 4096 },
+                ..Default::default()
+            };
+            let (engine, memory) = shoop_wasm_test_support::heap::measure_memory(|| {
+                super::prepare(
+                    &description,
+                    shoop_rt_protocol::DriverStatus {
+                        kind: shoop_rt_protocol::DriverKind::Dummy,
+                        state: shoop_rt_protocol::DriverRunState::Running,
+                        sample_rate: description.sample_rate,
+                        buffer_frames: description.max_frames as u32,
+                    },
+                )
+                .unwrap()
+            });
+            assert!(
+                memory.peak < (arena_mb - 3 * media_mb) * 1024 * 1024,
+                "recording={recording_mb} MiB, ports={midi_ports}: {memory:?}"
+            );
+            assert!(!engine
+                .endpoint
+                .capabilities()
+                .contains(shoop_rt_protocol::Capabilities::INPUT_BATCH));
+            assert!(!engine
+                .endpoint
+                .capabilities()
+                .contains(shoop_rt_protocol::Capabilities::REPLACING));
+            let mut stopped = engine.render.into_stopped();
+            stopped.cleanup().unwrap();
+        }
+    }
 
     #[shoop_test]
     fn late_control_topology_appends_respect_each_render_callback_budget() {

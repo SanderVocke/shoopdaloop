@@ -1,0 +1,1213 @@
+{
+  "captured_at": "2026-11-06T00:34:43.247706+00:00",
+  "source_head": "8d8690296d40f311fe612c022772b62c9483820c",
+  "target_head": "273853aa0b3b433d02c0373ec646925b96443681",
+  "tested_merge_head": "5ec66a639c0613a9e199ef03f340582b35a550af",
+  "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/940",
+  "pull_request_state": "open",
+  "merged": false,
+  "draft": false,
+  "assignees": [
+    "SanderVocke"
+  ],
+  "runs": [
+    {
+      "id": 42120488745,
+      "name": "Build and Test ShoopDaLoop",
+      "run_attempt": 2,
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745",
+      "created_at": "2026-11-05T22:19:21Z",
+      "updated_at": "2026-11-06T00:34:04Z",
+      "latest_jobs": [
+        {
+          "id": 127611000880,
+          "name": "Native JACK audio and MIDI acceptance",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000880",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:29:17Z"
+        },
+        {
+          "id": 127611044619,
+          "name": "windows x86_64 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611044619",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:50:26Z"
+        },
+        {
+          "id": 127611000548,
+          "name": "Rust coverage (Linux)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000548",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T23:17:48Z"
+        },
+        {
+          "id": 127611042464,
+          "name": "linux x86_64 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611042464",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:47:46Z"
+        },
+        {
+          "id": 127611044521,
+          "name": "web wasm32 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611044521",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T23:47:38Z"
+        },
+        {
+          "id": 127611048488,
+          "name": "web wasm32 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611048488",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:59:59Z"
+        },
+        {
+          "id": 127611000108,
+          "name": "Fixed shared media foundation",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000108",
+          "started_at": "2026-11-05T22:24:27Z",
+          "completed_at": "2026-11-05T22:27:12Z"
+        },
+        {
+          "id": 127611000764,
+          "name": "windows x86_64 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000764",
+          "started_at": "2026-11-05T22:24:54Z",
+          "completed_at": "2026-11-05T22:58:57Z"
+        },
+        {
+          "id": 127611056031,
+          "name": "Host process inspection (ubuntu-24.04)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611056031",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:24:51Z"
+        },
+        {
+          "id": 127611000903,
+          "name": "linux x86_64 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000903",
+          "started_at": "2026-11-05T22:24:27Z",
+          "completed_at": "2026-11-05T23:04:35Z"
+        },
+        {
+          "id": 127611000589,
+          "name": "Host process inspection (windows-2025)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000589",
+          "started_at": "2026-11-05T22:24:53Z",
+          "completed_at": "2026-11-05T22:26:04Z"
+        },
+        {
+          "id": 127611000119,
+          "name": "Host process inspection (macos-15)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000119",
+          "started_at": "2026-11-05T22:24:28Z",
+          "completed_at": "2026-11-05T22:24:56Z"
+        },
+        {
+          "id": 127611043839,
+          "name": "Bare-metal runtime and session service",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611043839",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:25:38Z"
+        },
+        {
+          "id": 127610999066,
+          "name": "macos arm64 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127610999066",
+          "started_at": "2026-11-05T23:48:06Z",
+          "completed_at": "2026-11-06T00:24:57Z"
+        },
+        {
+          "id": 127610999147,
+          "name": "macos arm64 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127610999147",
+          "started_at": "2026-11-05T23:47:54Z",
+          "completed_at": "2026-11-06T00:34:04Z"
+        },
+        {
+          "id": 127611042878,
+          "name": "Nightly without CPAL (${{ matrix.flavor }})",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "skipped",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611042878",
+          "started_at": "2026-11-05T23:47:57Z",
+          "completed_at": "2026-11-05T22:24:23Z"
+        }
+      ],
+      "all_attempt_jobs": [
+        {
+          "id": 127573743732,
+          "name": "Native JACK audio and MIDI acceptance",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573743732",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:29:17Z"
+        },
+        {
+          "id": 127573744068,
+          "name": "windows x86_64 debug",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744068",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:50:26Z"
+        },
+        {
+          "id": 127573744136,
+          "name": "Rust coverage (Linux)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744136",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T23:17:48Z"
+        },
+        {
+          "id": 127573744156,
+          "name": "linux x86_64 release",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744156",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:47:46Z"
+        },
+        {
+          "id": 127573744178,
+          "name": "web wasm32 debug",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744178",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T23:47:38Z"
+        },
+        {
+          "id": 127573744200,
+          "name": "web wasm32 release",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744200",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:59:59Z"
+        },
+        {
+          "id": 127573744224,
+          "name": "Fixed shared media foundation",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744224",
+          "started_at": "2026-11-05T22:24:27Z",
+          "completed_at": "2026-11-05T22:27:12Z"
+        },
+        {
+          "id": 127573744284,
+          "name": "windows x86_64 release",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744284",
+          "started_at": "2026-11-05T22:24:54Z",
+          "completed_at": "2026-11-05T22:58:57Z"
+        },
+        {
+          "id": 127573744285,
+          "name": "Host process inspection (ubuntu-24.04)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744285",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:24:51Z"
+        },
+        {
+          "id": 127573744294,
+          "name": "linux x86_64 debug",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744294",
+          "started_at": "2026-11-05T22:24:27Z",
+          "completed_at": "2026-11-05T23:04:35Z"
+        },
+        {
+          "id": 127573744300,
+          "name": "Host process inspection (windows-2025)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744300",
+          "started_at": "2026-11-05T22:24:53Z",
+          "completed_at": "2026-11-05T22:26:04Z"
+        },
+        {
+          "id": 127573744318,
+          "name": "Host process inspection (macos-15)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744318",
+          "started_at": "2026-11-05T22:24:28Z",
+          "completed_at": "2026-11-05T22:24:56Z"
+        },
+        {
+          "id": 127573744351,
+          "name": "Bare-metal runtime and session service",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744351",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:25:38Z"
+        },
+        {
+          "id": 127573744373,
+          "name": "macos arm64 debug",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744373",
+          "started_at": "2026-11-05T22:24:23Z",
+          "completed_at": "2026-11-05T22:39:26Z",
+          "annotations": [
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "failure",
+              "title": "",
+              "message": "The job was not acquired by Runner of type hosted even after multiple attempts",
+              "raw_details": ""
+            },
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "notice",
+              "title": "",
+              "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+              "raw_details": ""
+            },
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "notice",
+              "title": "",
+              "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+              "raw_details": ""
+            },
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "notice",
+              "title": "",
+              "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+              "raw_details": ""
+            }
+          ]
+        },
+        {
+          "id": 127573744487,
+          "name": "macos arm64 release",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573744487",
+          "started_at": "2026-11-05T22:24:23Z",
+          "completed_at": "2026-11-05T22:39:26Z",
+          "annotations": [
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "failure",
+              "title": "",
+              "message": "The job was not acquired by Runner of type hosted even after multiple attempts",
+              "raw_details": ""
+            },
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "notice",
+              "title": "",
+              "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+              "raw_details": ""
+            },
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "notice",
+              "title": "",
+              "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+              "raw_details": ""
+            },
+            {
+              "path": ".github",
+              "blob_href": "https://github.com/SanderVocke/shoopdaloop/blob/8d8690296d40f311fe612c022772b62c9483820c/.github",
+              "start_line": 1,
+              "start_column": null,
+              "end_line": 1,
+              "end_column": null,
+              "annotation_level": "notice",
+              "title": "",
+              "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+              "raw_details": ""
+            }
+          ]
+        },
+        {
+          "id": 127573745388,
+          "name": "Nightly without CPAL (${{ matrix.flavor }})",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "skipped",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127573745388",
+          "started_at": "2026-11-05T22:24:23Z",
+          "completed_at": "2026-11-05T22:24:23Z"
+        },
+        {
+          "id": 127610999066,
+          "name": "macos arm64 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127610999066",
+          "started_at": "2026-11-05T23:48:06Z",
+          "completed_at": "2026-11-06T00:24:57Z"
+        },
+        {
+          "id": 127610999147,
+          "name": "macos arm64 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127610999147",
+          "started_at": "2026-11-05T23:47:54Z",
+          "completed_at": "2026-11-06T00:34:04Z"
+        },
+        {
+          "id": 127611000108,
+          "name": "Fixed shared media foundation",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000108",
+          "started_at": "2026-11-05T22:24:27Z",
+          "completed_at": "2026-11-05T22:27:12Z"
+        },
+        {
+          "id": 127611000119,
+          "name": "Host process inspection (macos-15)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000119",
+          "started_at": "2026-11-05T22:24:28Z",
+          "completed_at": "2026-11-05T22:24:56Z"
+        },
+        {
+          "id": 127611000548,
+          "name": "Rust coverage (Linux)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000548",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T23:17:48Z"
+        },
+        {
+          "id": 127611000589,
+          "name": "Host process inspection (windows-2025)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000589",
+          "started_at": "2026-11-05T22:24:53Z",
+          "completed_at": "2026-11-05T22:26:04Z"
+        },
+        {
+          "id": 127611000764,
+          "name": "windows x86_64 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000764",
+          "started_at": "2026-11-05T22:24:54Z",
+          "completed_at": "2026-11-05T22:58:57Z"
+        },
+        {
+          "id": 127611000880,
+          "name": "Native JACK audio and MIDI acceptance",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000880",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:29:17Z"
+        },
+        {
+          "id": 127611000903,
+          "name": "linux x86_64 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611000903",
+          "started_at": "2026-11-05T22:24:27Z",
+          "completed_at": "2026-11-05T23:04:35Z"
+        },
+        {
+          "id": 127611042464,
+          "name": "linux x86_64 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611042464",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:47:46Z"
+        },
+        {
+          "id": 127611042878,
+          "name": "Nightly without CPAL (${{ matrix.flavor }})",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "skipped",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611042878",
+          "started_at": "2026-11-05T23:47:57Z",
+          "completed_at": "2026-11-05T22:24:23Z"
+        },
+        {
+          "id": 127611043839,
+          "name": "Bare-metal runtime and session service",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611043839",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:25:38Z"
+        },
+        {
+          "id": 127611044521,
+          "name": "web wasm32 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611044521",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T23:47:38Z"
+        },
+        {
+          "id": 127611044619,
+          "name": "windows x86_64 debug",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611044619",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:50:26Z"
+        },
+        {
+          "id": 127611048488,
+          "name": "web wasm32 release",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611048488",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:59:59Z"
+        },
+        {
+          "id": 127611056031,
+          "name": "Host process inspection (ubuntu-24.04)",
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/job/127611056031",
+          "started_at": "2026-11-05T22:24:26Z",
+          "completed_at": "2026-11-05T22:24:51Z"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13466335274,
+          "name": "shoopdaloop-macos-arm64-release-dev-5ec66a63.tar.gz",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13466335274"
+        },
+        {
+          "id": 13465852072,
+          "name": "loop-host-native-macos-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13465852072"
+        },
+        {
+          "id": 13465608949,
+          "name": "rt-runtime-macos-release-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13465608949"
+        },
+        {
+          "id": 13465559080,
+          "name": "loop-host-native-macos-release-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13465559080"
+        },
+        {
+          "id": 13465532722,
+          "name": "rt-runtime-macos-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13465532722"
+        },
+        {
+          "id": 13464808780,
+          "name": "shoopdaloop-macos-arm64-debug-dev-5ec66a63.tar.gz",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13464808780"
+        },
+        {
+          "id": 13463131342,
+          "name": "wasm-test-reports-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13463131342"
+        },
+        {
+          "id": 13461414811,
+          "name": "native-jack-coverage-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13461414811"
+        },
+        {
+          "id": 13461401362,
+          "name": "rt-runtime-windows-release-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13461401362"
+        },
+        {
+          "id": 13461131509,
+          "name": "loop-host-native-windows-release-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13461131509"
+        },
+        {
+          "id": 13460860718,
+          "name": "shoopdaloop-linux-x86_64-debug-dev-5ec66a63.tar.gz",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13460860718"
+        },
+        {
+          "id": 13460802473,
+          "name": "rt-runtime-linux-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13460802473"
+        },
+        {
+          "id": 13460762547,
+          "name": "loop-host-native-linux-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13460762547"
+        },
+        {
+          "id": 13460753001,
+          "name": "perfetto-validation-linux-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13460753001"
+        },
+        {
+          "id": 13460675319,
+          "name": "loop-host-native-windows-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13460675319"
+        },
+        {
+          "id": 13460302190,
+          "name": "rt-runtime-windows-debug-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13460302190"
+        },
+        {
+          "id": 13459671542,
+          "name": "shoopdaloop-windows-x86_64-debug-dev-5ec66a63.zip",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459671542"
+        },
+        {
+          "id": 13459594238,
+          "name": "rt-runtime-linux-release-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459594238"
+        },
+        {
+          "id": 13459406112,
+          "name": "native-jack-acceptance-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459406112"
+        },
+        {
+          "id": 13459360888,
+          "name": "shared-fixed-42120488745-1",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459360888"
+        },
+        {
+          "id": 13459331576,
+          "name": "shoopdaloop-web-wasm32-debug-dev-5ec66a63.zip",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459331576"
+        },
+        {
+          "id": 13459214709,
+          "name": "loop-host-native-linux-release-42120488745",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459214709"
+        },
+        {
+          "id": 13459037248,
+          "name": "shoopdaloop-web-wasm32-release-dev-5ec66a63.html",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459037248"
+        },
+        {
+          "id": 13459007345,
+          "name": "shoopdaloop-web-wasm32-release-dev-5ec66a63.zip",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13459007345"
+        },
+        {
+          "id": 13458982190,
+          "name": "shoopdaloop-linux-x86_64-release-dev-5ec66a63.tar.gz",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13458982190"
+        },
+        {
+          "id": 13458708180,
+          "name": "shoopdaloop-windows-x86_64-release-dev-5ec66a63.zip",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488745/artifacts/13458708180"
+        }
+      ]
+    },
+    {
+      "id": 42120488771,
+      "name": "Zynq FreeRTOS firmware",
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771",
+      "created_at": "2026-11-05T22:19:21Z",
+      "updated_at": "2026-11-05T22:59:01Z",
+      "latest_jobs": [
+        {
+          "id": 127571929359,
+          "name": "Zynq network deployment and SD recovery",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929359",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:59:00Z"
+        },
+        {
+          "id": 127571929556,
+          "name": "Zynq board profiles (zedboard)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929556",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:32:55Z"
+        },
+        {
+          "id": 127571929681,
+          "name": "Zynq TinyUSB MIDI host",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929681",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:35:22Z"
+        },
+        {
+          "id": 127571929757,
+          "name": "Zynq board profiles (qemu)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929757",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:33:22Z"
+        },
+        {
+          "id": 127571929803,
+          "name": "firmware",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929803",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:40:28Z"
+        }
+      ],
+      "all_attempt_jobs": [
+        {
+          "id": 127571929359,
+          "name": "Zynq network deployment and SD recovery",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929359",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:59:00Z"
+        },
+        {
+          "id": 127571929556,
+          "name": "Zynq board profiles (zedboard)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929556",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:32:55Z"
+        },
+        {
+          "id": 127571929681,
+          "name": "Zynq TinyUSB MIDI host",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929681",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:35:22Z"
+        },
+        {
+          "id": 127571929757,
+          "name": "Zynq board profiles (qemu)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929757",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:33:22Z"
+        },
+        {
+          "id": 127571929803,
+          "name": "firmware",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/job/127571929803",
+          "started_at": "2026-11-05T22:20:46Z",
+          "completed_at": "2026-11-05T22:40:28Z"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13461496197,
+          "name": "zynq-network-deployment-evidence",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/artifacts/13461496197"
+        },
+        {
+          "id": 13459591928,
+          "name": "zynq-board-zedboard",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/artifacts/13459591928"
+        },
+        {
+          "id": 13459228294,
+          "name": "zynq-freertos-evidence",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/artifacts/13459228294"
+        },
+        {
+          "id": 13458997590,
+          "name": "zynq-usb-midi-evidence",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/artifacts/13458997590"
+        },
+        {
+          "id": 13458982300,
+          "name": "zynq-board-qemu",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488771/artifacts/13458982300"
+        }
+      ]
+    },
+    {
+      "id": 42120488674,
+      "name": "Hosted track processors",
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674",
+      "created_at": "2026-11-05T22:19:21Z",
+      "updated_at": "2026-11-05T22:24:52Z",
+      "latest_jobs": [
+        {
+          "id": 127571248087,
+          "name": "DSP build and startup (neither)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248087",
+          "started_at": "2026-11-05T22:19:24Z",
+          "completed_at": "2026-11-05T22:20:22Z"
+        },
+        {
+          "id": 127571248403,
+          "name": "DSP build and startup (FX)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248403",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:30Z"
+        },
+        {
+          "id": 127571248484,
+          "name": "DSP build and startup (both)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248484",
+          "started_at": "2026-11-05T22:19:24Z",
+          "completed_at": "2026-11-05T22:24:51Z"
+        },
+        {
+          "id": 127571248546,
+          "name": "DSP build and startup (synth)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248546",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:36Z"
+        },
+        {
+          "id": 127571248844,
+          "name": "Portable processor ownership (Miri)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248844",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:50Z"
+        }
+      ],
+      "all_attempt_jobs": [
+        {
+          "id": 127571248087,
+          "name": "DSP build and startup (neither)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248087",
+          "started_at": "2026-11-05T22:19:24Z",
+          "completed_at": "2026-11-05T22:20:22Z"
+        },
+        {
+          "id": 127571248403,
+          "name": "DSP build and startup (FX)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248403",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:30Z"
+        },
+        {
+          "id": 127571248484,
+          "name": "DSP build and startup (both)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248484",
+          "started_at": "2026-11-05T22:19:24Z",
+          "completed_at": "2026-11-05T22:24:51Z"
+        },
+        {
+          "id": 127571248546,
+          "name": "DSP build and startup (synth)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248546",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:36Z"
+        },
+        {
+          "id": 127571248844,
+          "name": "Portable processor ownership (Miri)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/job/127571248844",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:50Z"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13458187244,
+          "name": "hosted-processor-wasm-tests-42120488674",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/artifacts/13458187244"
+        },
+        {
+          "id": 13458119550,
+          "name": "hosted-processor-measurements-42120488674",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488674/artifacts/13458119550"
+        }
+      ]
+    },
+    {
+      "id": 42120488997,
+      "name": "CodeQL",
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997",
+      "created_at": "2026-11-05T22:19:21Z",
+      "updated_at": "2026-11-05T22:31:39Z",
+      "latest_jobs": [
+        {
+          "id": 127571249031,
+          "name": "Analyze (rust)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249031",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:31:38Z"
+        },
+        {
+          "id": 127571249462,
+          "name": "Analyze (c-cpp)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249462",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:11Z"
+        },
+        {
+          "id": 127571249574,
+          "name": "Analyze (python)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249574",
+          "started_at": "2026-11-05T22:20:12Z",
+          "completed_at": "2026-11-05T22:21:04Z"
+        },
+        {
+          "id": 127571249764,
+          "name": "Analyze (javascript-typescript)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249764",
+          "started_at": "2026-11-05T22:20:19Z",
+          "completed_at": "2026-11-05T22:21:13Z"
+        }
+      ],
+      "all_attempt_jobs": [
+        {
+          "id": 127571249031,
+          "name": "Analyze (rust)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249031",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:31:38Z"
+        },
+        {
+          "id": 127571249462,
+          "name": "Analyze (c-cpp)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249462",
+          "started_at": "2026-11-05T22:19:25Z",
+          "completed_at": "2026-11-05T22:20:11Z"
+        },
+        {
+          "id": 127571249574,
+          "name": "Analyze (python)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249574",
+          "started_at": "2026-11-05T22:20:12Z",
+          "completed_at": "2026-11-05T22:21:04Z"
+        },
+        {
+          "id": 127571249764,
+          "name": "Analyze (javascript-typescript)",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488997/job/127571249764",
+          "started_at": "2026-11-05T22:20:19Z",
+          "completed_at": "2026-11-05T22:21:13Z"
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 42120488921,
+      "name": "Docs",
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488921",
+      "created_at": "2026-11-05T22:19:21Z",
+      "updated_at": "2026-11-05T22:20:32Z",
+      "latest_jobs": [
+        {
+          "id": 127571249090,
+          "name": "docs",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488921/job/127571249090",
+          "started_at": "2026-11-05T22:20:14Z",
+          "completed_at": "2026-11-05T22:20:31Z"
+        }
+      ],
+      "all_attempt_jobs": [
+        {
+          "id": 127571249090,
+          "name": "docs",
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488921/job/127571249090",
+          "started_at": "2026-11-05T22:20:14Z",
+          "completed_at": "2026-11-05T22:20:31Z"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13457734110,
+          "name": "html",
+          "expired": false,
+          "html_url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42120488921/artifacts/13457734110"
+        }
+      ]
+    }
+  ],
+  "external_checks": [
+    {
+      "name": "CodeQL",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/runs/127571570374"
+    },
+    {
+      "name": "codecov/project",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/runs/127599201198"
+    },
+    {
+      "name": "codecov/patch",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/runs/127599209200"
+    }
+  ],
+  "reviews": [],
+  "inline_review_comments": [],
+  "discussion_comments": [
+    {
+      "id": 6645282623,
+      "author": "codecov[bot]",
+      "updated_at": "2026-11-05T23:18:37Z",
+      "html_url": "https://github.com/SanderVocke/shoopdaloop/pull/940#issuecomment-6645282623",
+      "body_excerpt": "## [Codecov](https://app.codecov.io/gh/SanderVocke/shoopdaloop/pull/940?dropdown=coverage&src=pr&el=h1&utm_medium=referral&utm_source=github&utm_content=comment&utm_campaign=pr+comments&utm_term=Sander+Vocke) Report\n:x: Patch coverage is `94.87909%` with `396 lines` in your changes missing coverage. Please review.\n:white_check_mark: Project coverag"
+    }
+  ],
+  "applicable_successful_jobs": 30,
+  "skip_disposition": "The schedule/dispatch-only Nightly without CPAL job is not applicable to this pull request. No applicable platform job is waived.",
+  "retry_disposition": "Main attempt 1 cancelled both macOS ARM64 jobs before acquiring runners due to hosted runner capacity. Attempt 2 reran those jobs; their actual results are recorded above.",
+  "scope": "Implementation acceptance at source_head against target_head. Any subsequent documentation-only closure is identified separately in the delivery plan."
+}

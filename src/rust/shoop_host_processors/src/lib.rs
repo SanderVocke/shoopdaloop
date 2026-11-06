@@ -58,18 +58,21 @@ fn synth_bytes(d: &EngineDescription) -> Result<u64, Error> {
         Ok(0)
     }
 }
-fn limits(d: &EngineDescription) -> BufferLimits {
-    BufferLimits {
+fn limits(d: &EngineDescription) -> Result<BufferLimits, Error> {
+    let input = d
+        .processor_midi_input_capacity()
+        .map_err(|_| Error::Capacity)?;
+    Ok(BufferLimits {
         midi_input: MidiLimits {
-            events_per_quantum: d.midi_events,
-            bytes_per_quantum: d.midi_bytes,
+            events_per_quantum: input.events,
+            bytes_per_quantum: input.bytes,
         },
         midi_output: MidiLimits {
             events_per_quantum: 0,
             bytes_per_quantum: 0,
         },
         parameters_per_quantum: 64,
-    }
+    })
 }
 fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Result<u64, Error> {
     let mut total = 0;
@@ -95,11 +98,15 @@ fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Resul
             midi_inputs: 1,
             midi_outputs: 0,
         };
-        let adapter = limits(d)
+        let adapter = limits(d)?
             .storage_bytes_for(ports, q, timing)
             .map_err(|_| Error::Capacity)? as u64;
-        let auxiliary = shoop_rt_engine::HostedProcessor::additional_prepared_bytes(limits(d))
-            .map_err(|_| Error::Capacity)? as u64;
+        let auxiliary = shoop_rt_engine::HostedProcessor::additional_prepared_bytes(
+            limits(d)?,
+            d.global_midi_input_capacity()
+                .map_err(|_| Error::Capacity)?,
+        )
+        .map_err(|_| Error::Capacity)? as u64;
         let adapter = add(adapter, auxiliary)?;
         let backend = if kind == ProcessorKind::BuiltInFx {
             fx_bytes(d)?

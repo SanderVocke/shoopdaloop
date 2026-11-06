@@ -73,10 +73,25 @@ pub(crate) struct HostBuffer {
 impl HostBuffer {
     pub fn prepare(config: PreparedConfig, quantum: crate::Quantum) -> Result<Self, Error> {
         let c = config.limits();
+        Self::prepare_with_output(
+            config,
+            quantum,
+            crate::buffer::MidiCapacity {
+                events: c.midi_events_per_port,
+                bytes: c.midi_bytes_per_port,
+            },
+        )
+    }
+    pub fn prepare_with_output(
+        config: PreparedConfig,
+        quantum: crate::Quantum,
+        output_capacity: crate::buffer::MidiCapacity,
+    ) -> Result<Self, Error> {
+        let c = config.limits();
         let q = quantum.frames();
-        let midi = |n| {
+        let midi = |n, capacity: crate::buffer::MidiCapacity| {
             (0..n)
-                .map(|_| MidiBuffer::new(c.midi_events_per_port, c.midi_bytes_per_port))
+                .map(|_| MidiBuffer::new(capacity.events, capacity.bytes))
                 .collect::<Result<Vec<_>, _>>()
         };
         let mut input = vec![0.; c.audio_inputs * q].into_boxed_slice();
@@ -90,8 +105,14 @@ impl HostBuffer {
             processed: Frame(0),
             input,
             output,
-            midi_input: midi(c.midi_inputs)?,
-            midi_output: midi(c.midi_outputs)?,
+            midi_input: midi(
+                c.midi_inputs,
+                crate::buffer::MidiCapacity {
+                    events: c.midi_events_per_port,
+                    bytes: c.midi_bytes_per_port,
+                },
+            )?,
+            midi_output: midi(c.midi_outputs, output_capacity)?,
             midi_recovery_wait: false,
             overflows: 0,
         })

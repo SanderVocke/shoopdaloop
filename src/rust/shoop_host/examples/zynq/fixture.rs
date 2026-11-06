@@ -17,13 +17,16 @@ impl Driver {
     fn call(&mut self, command: &str) -> [u32; 11] {
         writeln!(self.0.get_mut(), "{command}").unwrap();
         let mut line = String::new();
-        self.0.read_line(&mut line).expect("driver reply");
+        self.0
+            .read_line(&mut line)
+            .unwrap_or_else(|error| panic!("driver reply for {command}: {error}"));
         let fields: Vec<_> = line.split_whitespace().collect();
         assert_eq!(fields.len(), 12, "{line:?}");
         assert_eq!(fields[0], "D");
         std::array::from_fn(|i| fields[i + 1].parse().unwrap())
     }
 }
+thread_local! { static INPUT_MIDI: Cell<u8> = const { Cell::new(0) }; }
 thread_local! { static DRIVER: RefCell<Option<Driver>> = const { RefCell::new(None) }; }
 thread_local! {
     static CURRENT_KEY: Cell<Option<Key>> = const { Cell::new(None) };
@@ -32,6 +35,12 @@ thread_local! {
 pub fn advance() {
     DRIVER.with_borrow_mut(|driver| {
         if let Some(driver) = driver {
+            INPUT_MIDI.with(|pattern| {
+                if pattern.get() != 0 {
+                    driver.call(if pattern.get() == 1 { "M 1" } else { "M 2" });
+                    pattern.set(3 - pattern.get());
+                }
+            });
             driver.call("S 256");
         }
     });
@@ -220,6 +229,15 @@ pub(super) fn wait_playing(
     track: TrackId,
     loop_id: LoopId,
 ) {
+    wait_mode(client, connection, track, loop_id, LoopMode::Playing);
+}
+fn wait_mode(
+    client: &mut Client,
+    connection: &mut Connection,
+    track: TrackId,
+    loop_id: LoopId,
+    mode: LoopMode,
+) {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if client
@@ -234,15 +252,15 @@ pub(super) fn wait_playing(
             .find(|entry| entry.id == loop_id)
             .unwrap()
             .mode
-            == LoopMode::Playing
+            == mode
         {
             return;
         }
-        assert!(Instant::now() < deadline, "playing state was not observed");
+        assert!(Instant::now() < deadline, "{mode:?} state was not observed");
         pump(client, connection);
     }
 }
-pub fn run(client: &mut Client, connection: &mut Connection) {
+fn input_setup(client: &mut Client, connection: &mut Connection) -> (TrackId, Vec<LoopId>) {
     let socket =
         UnixStream::connect(std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").unwrap()).unwrap();
     socket
@@ -331,6 +349,258 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
             connected: true,
         },
     ));
+    (track, loops)
+}
+
+fn assert_input_audio(image: &Image, expected: &[f32], period: u64) {
+    let Manifest::Session(session) = &image.manifest else {
+        panic!("session capture")
+    };
+    let track = session
+        .tracks
+        .iter()
+        .find(|track| track.name == "Zynq exact media")
+        .unwrap();
+    for (loop_index, value) in expected.iter().enumerate() {
+        let content = &track.loops[loop_index];
+        assert_eq!(content.frames, period);
+        assert_eq!(content.audio.len(), 2);
+        for (channel, audio) in content.audio.iter().enumerate() {
+            let Payload::Audio(samples) = &image.payloads[audio.object.unwrap() as usize - 1]
+            else {
+                panic!("audio payload")
+            };
+            let value = if channel == 0 { *value } else { -*value };
+            assert_eq!(samples.len() as u64, period);
+            assert!(
+                samples
+                    .iter()
+                    .all(|sample| sample.to_bits() == value.to_bits()),
+                "input PCM loop={loop_index} channel={channel}"
+            );
+        }
+    }
+}
+
+pub fn run_input(
+    profile: &shoop_host::remote::RemoteProfile,
+    client: &mut Client,
+    connection: &mut Connection,
+) {
+    for capability in [BackendCapability::Grab, BackendCapability::ReplacingMode] {
+        assert!(client.snapshot().unwrap().capabilities.supports(capability));
+    }
+    let (track, loops) = input_setup(client, connection);
+    let clock_track = client.snapshot().unwrap().tracks[0].id;
+    let clock = client.snapshot().unwrap().tracks[0].loops[0].id;
+    let period = 32768;
+    confirmed(command(
+        client,
+        connection,
+        Command::SetLoopTimeline {
+            loop_id: clock,
+            start_offset: None,
+            preplay_samples: None,
+            loop_length: Some(period),
+        },
+    ));
+    action(
+        client,
+        connection,
+        clock_track,
+        clock,
+        LoopAction::PlayClicked,
+    );
+    for setting in [
+        GlobalControlAction::SetSync(true),
+        GlobalControlAction::SetApplyNCycles(1),
+        GlobalControlAction::SetPlayAfterRecord(false),
+        GlobalControlAction::SetDefaultRecordingAction(DefaultRecordingAction::Grab),
+    ] {
+        confirmed(command(client, connection, Command::Global(setting)));
+    }
+    drive(&format!("I {}", 0.25f32.to_bits()));
+    INPUT_MIDI.set(1);
+    for _ in 0..256 {
+        advance();
+    }
+    confirmed(command(
+        client,
+        connection,
+        Command::Control(ControlOperation::SetLoopSelection {
+            loops: loops[..2].to_vec(),
+            selected: true,
+            clear_others: true,
+        }),
+    ));
+    action(client, connection, track, loops[0], LoopAction::GrabClicked);
+    let grabbed = capture(client, connection, 1);
+    assert_input_audio(&grabbed, &[0.25, 0.25], period);
+    let midi: Vec<_> = grabbed
+        .payloads
+        .iter()
+        .filter_map(|payload| match payload {
+            Payload::Midi(events) => Some(events),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(midi.len(), 2);
+    for events in midi {
+        assert!(events.len() > 1);
+        for event in events.iter() {
+            assert!(matches!(
+                event.data.as_ref(),
+                [0x90, 60, 100] | [0x80, 60, 0]
+            ));
+        }
+        for pair in events.windows(2) {
+            assert_eq!(pair[1].frame - pair[0].frame, 256);
+            assert_ne!(pair[1].data, pair[0].data);
+        }
+    }
+    println!("Configured firmware: selected Grab exported exact stereo PCM and MIDI");
+    INPUT_MIDI.set(0);
+    drive("M 2");
+    drive(&format!("I {}", 0.5f32.to_bits()));
+    let transition = |loops, mode| {
+        Command::Control(ControlOperation::Transition {
+            loops,
+            mode,
+            cycles_delay: None,
+            align_to_sync_at: None,
+        })
+    };
+    confirmed(command(
+        client,
+        connection,
+        transition(loops[..2].to_vec(), LoopMode::Replacing),
+    ));
+    for _ in 0..768 {
+        pump(client, connection);
+    }
+    for state in &client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|state| state.id == track)
+        .unwrap()
+        .loops[..2]
+    {
+        assert_eq!(state.mode, LoopMode::Replacing);
+        assert!(!state.capture_incomplete);
+    }
+    confirmed(command(
+        client,
+        connection,
+        Command::Control(ControlOperation::Transition {
+            loops: loops[..2].to_vec(),
+            mode: LoopMode::Stopped,
+            cycles_delay: Some(1),
+            align_to_sync_at: None,
+        }),
+    ));
+    for loop_id in &loops[..2] {
+        wait_mode(client, connection, track, *loop_id, LoopMode::Stopped);
+    }
+    let replaced = capture(client, connection, 2);
+    assert_input_audio(&replaced, &[0.5, 0.5], period);
+    for payload in &replaced.payloads {
+        if let Payload::Midi(events) = payload {
+            assert!(events.is_empty(), "replacement must erase old MIDI");
+        }
+    }
+    assert_input_audio(&grabbed, &[0.25, 0.25], period);
+    println!("Configured firmware: two Replacing writers preserved length, replaced PCM and erased MIDI across wraps");
+    for setting in [
+        GlobalControlAction::SetSync(false),
+        GlobalControlAction::SetApplyNCycles(2),
+    ] {
+        confirmed(command(client, connection, Command::Global(setting)));
+    }
+    confirmed(command(
+        client,
+        connection,
+        Command::Control(ControlOperation::Grab {
+            loops: vec![loops[2]],
+        }),
+    ));
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .unwrap()
+            .loops[2]
+            .mode,
+        LoopMode::Recording
+    );
+    let shoop_host::connection::Port::Socket(port) = &connection.port else {
+        panic!("TCP expected")
+    };
+    port.stream().shutdown(std::net::Shutdown::Both).unwrap();
+    for _ in 0..768 {
+        advance();
+    }
+    (*client, *connection) = super::attach(profile);
+    let state = &client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.id == track)
+        .unwrap()
+        .loops[2];
+    assert_eq!(state.mode, LoopMode::Stopped);
+    assert_eq!(state.length_frames, 2 * period);
+    println!("Configured firmware: adopted prefix finished in the render owner while the client was disconnected");
+    let saved = capture(client, connection, 3);
+    let key = stage(client, connection, 4, saved);
+    commit(client, connection, key);
+    let loaded = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.name == "Zynq exact media")
+        .unwrap();
+    let loaded_loop = loaded.loops[0].id;
+    let loaded_track = loaded.id;
+    assert_eq!(loaded.loops[0].mode, LoopMode::Stopped);
+    drive(&format!("I {}", 0.75f32.to_bits()));
+    confirmed(command(
+        client,
+        connection,
+        transition(vec![loaded_loop], LoopMode::Replacing),
+    ));
+    for _ in 0..256 {
+        pump(client, connection);
+    }
+    confirmed(command(
+        client,
+        connection,
+        transition(vec![loaded_loop], LoopMode::Stopped),
+    ));
+    wait_mode(
+        client,
+        connection,
+        loaded_track,
+        loaded_loop,
+        LoopMode::Stopped,
+    );
+    let loaded = capture(client, connection, 5);
+    assert_input_audio(&loaded, &[0.75, 0.5], period);
+    println!("Configured firmware: save/load and replacement of loaded media passed");
+    drive("I 0");
+    drive("F 1");
+    drive("P 0");
+    DRIVER.with_borrow_mut(|slot| *slot = None);
+}
+
+pub fn run(client: &mut Client, connection: &mut Connection) {
+    let (track, loops) = input_setup(client, connection);
     let loop_id = loops[0];
     drive(&format!("I {}", 0.25f32.to_bits()));
     action(

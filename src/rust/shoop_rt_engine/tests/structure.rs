@@ -629,7 +629,7 @@ fn repeated_create_and_remove_hands_slots_over_without_leaking() {
     assert_eq!(stopped.media_usage().references, 0);
     assert_eq!(
         stopped.resource_usage().free_pages,
-        description.resource_pages
+        description.history_capacity().unwrap().total_resource_pages
     );
 }
 

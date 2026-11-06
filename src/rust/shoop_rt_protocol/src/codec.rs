@@ -117,7 +117,7 @@ macro_rules! tags {
 }
 
 tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth });
-tags!(LoopMode { 0 => LoopMode::Stopped, 1 => LoopMode::Playing, 2 => LoopMode::Recording, 3 => LoopMode::PlayingDryThroughWet, 4 => LoopMode::RecordingDryIntoWet });
+tags!(LoopMode { 0 => LoopMode::Stopped, 1 => LoopMode::Playing, 2 => LoopMode::Recording, 3 => LoopMode::PlayingDryThroughWet, 4 => LoopMode::RecordingDryIntoWet, 5 => LoopMode::Replacing });
 tags!(PortKind { 0 => PortKind::AudioIn, 1 => PortKind::AudioOut, 2 => PortKind::MidiIn, 3 => PortKind::MidiOut, 4 => PortKind::AudioSend, 5 => PortKind::AudioReturn, 6 => PortKind::MidiSend });
 tags!(Refusal {
     0 => Refusal::Unsupported, 1 => Refusal::Capacity, 2 => Refusal::InvalidId, 3 => Refusal::InvalidValue,
@@ -604,9 +604,182 @@ impl Wire for crate::processors::Snapshot {
     }
 }
 
+impl Wire for crate::InputIntent {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Gesture {
+                sync,
+                target,
+                synced,
+                cycles,
+                play_after_record,
+            } => {
+                w.u8(2)?;
+                sync.put(w)?;
+                target.put(w)?;
+                w.bool(synced)?;
+                w.u32(cycles)?;
+                w.bool(play_after_record)
+            }
+            Self::Mode { mode, position } => {
+                w.u8(0)?;
+                mode.put(w)?;
+                position.put(w)
+            }
+            Self::Grab {
+                sync,
+                reverse_start_cycle,
+                cycles_length,
+                go_to_cycle,
+                mode,
+                maximum_frames,
+            } => {
+                w.u8(1)?;
+                sync.put(w)?;
+                reverse_start_cycle.put(w)?;
+                cycles_length.put(w)?;
+                go_to_cycle.put(w)?;
+                mode.put(w)?;
+                w.u64(maximum_frames)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            2 => Self::Gesture {
+                sync: LoopSlotId::get(r)?,
+                target: Option::get(r)?,
+                synced: r.bool()?,
+                cycles: r.u32()?,
+                play_after_record: r.bool()?,
+            },
+            0 => Self::Mode {
+                mode: LoopMode::get(r)?,
+                position: Option::get(r)?,
+            },
+            1 => Self::Grab {
+                sync: Option::get(r)?,
+                reverse_start_cycle: Option::get(r)?,
+                cycles_length: Option::get(r)?,
+                go_to_cycle: Option::get(r)?,
+                mode: LoopMode::get(r)?,
+                maximum_frames: r.u64()?,
+            },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for crate::InputPhase {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Receiving => w.u8(0),
+            Self::Preparing => w.u8(1),
+            Self::Ready => w.u8(2),
+            Self::Committing => w.u8(3),
+            Self::Applied => w.u8(4),
+            Self::Cancelled => w.u8(5),
+            Self::Cancelling => w.u8(7),
+            Self::Failed(reason) => {
+                w.u8(6)?;
+                reason.put(w)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Receiving,
+            1 => Self::Preparing,
+            2 => Self::Ready,
+            3 => Self::Committing,
+            4 => Self::Applied,
+            5 => Self::Cancelled,
+            6 => Self::Failed(Refusal::get(r)?),
+            7 => Self::Cancelling,
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for crate::InputProgress {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if self.received > self.expected {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.id)?;
+        self.phase.put(w)?;
+        w.u32(self.received)?;
+        w.u32(self.expected)?;
+        self.requested_frame.put(w)?;
+        self.effective_frame.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let value = Self {
+            id: r.u64()?,
+            phase: crate::InputPhase::get(r)?,
+            received: r.u32()?,
+            expected: r.u32()?,
+            requested_frame: Option::get(r)?,
+            effective_frame: Option::get(r)?,
+        };
+        if value.received > value.expected {
+            return Err(CodecError::Invalid);
+        }
+        Ok(value)
+    }
+}
+impl Wire for crate::InputCapacity {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.retention_frames)?;
+        w.u32(self.writer_slots)?;
+        w.u32(self.events_per_source)?;
+        w.u64(self.bytes_per_source)?;
+        w.u32(self.events_per_tick)?;
+        w.u32(self.bytes_per_tick)?;
+        w.u32(self.maximum_packet)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            retention_frames: r.u64()?,
+            writer_slots: r.u32()?,
+            events_per_source: r.u32()?,
+            bytes_per_source: r.u64()?,
+            events_per_tick: r.u32()?,
+            bytes_per_tick: r.u32()?,
+            maximum_packet: r.u32()?,
+        })
+    }
+}
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::InputBegin { id, count } => {
+                w.u8(46)?;
+                w.u64(id)?;
+                w.u32(count)
+            }
+            Self::InputAppend { id, edit } => {
+                w.u8(47)?;
+                w.u64(id)?;
+                edit.loop_id.put(w)?;
+                edit.intent.put(w)
+            }
+            Self::InputPrepare { id } => {
+                w.u8(48)?;
+                w.u64(id)
+            }
+            Self::InputCommit { id, delay } => {
+                w.u8(49)?;
+                w.u64(id)?;
+                delay.put(w)
+            }
+            Self::InputCancel { id } => {
+                w.u8(50)?;
+                w.u64(id)
+            }
+            Self::InputStatus { id } => {
+                w.u8(51)?;
+                w.u64(id)
+            }
+            Self::InputCapacity => w.u8(52),
             Self::ProcessorControl { strip, control } => {
                 w.u8(37)?;
                 strip.put(w)?;
@@ -898,6 +1071,26 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            46 => Self::InputBegin {
+                id: r.u64()?,
+                count: r.u32()?,
+            },
+            47 => Self::InputAppend {
+                id: r.u64()?,
+                edit: crate::InputEdit {
+                    loop_id: LoopSlotId::get(r)?,
+                    intent: crate::InputIntent::get(r)?,
+                },
+            },
+            48 => Self::InputPrepare { id: r.u64()? },
+            49 => Self::InputCommit {
+                id: r.u64()?,
+                delay: Option::get(r)?,
+            },
+            50 => Self::InputCancel { id: r.u64()? },
+            51 => Self::InputStatus { id: r.u64()? },
+            52 => Self::InputCapacity,
+
             45 => Self::ResetComposite {
                 previous: LoopSlotId::get(r)?,
                 loop_id: LoopSlotId::get(r)?,
@@ -1275,6 +1468,15 @@ impl Wire for crate::StripPreset {
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Input(progress) => {
+                w.u8(6)?;
+                progress.put(w)
+            }
+            Self::InputCapacity(capacity) => {
+                w.u8(7)?;
+                capacity.put(w)
+            }
+
             Self::CompositeApplied { version, frame } => {
                 w.u8(4)?;
                 w.u64(*version)?;
@@ -1301,6 +1503,8 @@ impl Wire for Outcome {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            6 => Self::Input(crate::InputProgress::get(r)?),
+            7 => Self::InputCapacity(crate::InputCapacity::get(r)?),
             4 => Self::CompositeApplied {
                 version: r.u64()?,
                 frame: r.u64()?,
@@ -1476,6 +1680,7 @@ impl Wire for Telemetry {
                 next_delay,
                 content_revision,
                 recording_armed,
+                capture_incomplete,
                 timing_revision,
                 length,
                 position,
@@ -1488,6 +1693,7 @@ impl Wire for Telemetry {
                 next_delay.put(w)?;
                 w.u64(*content_revision)?;
                 w.bool(*recording_armed)?;
+                w.bool(*capture_incomplete)?;
                 w.u64(*timing_revision)?;
                 w.u64(*length)?;
                 w.u64(*position)?;
@@ -1543,6 +1749,7 @@ impl Wire for Telemetry {
                 next_delay: Option::get(r)?,
                 content_revision: r.u64()?,
                 recording_armed: r.bool()?,
+                capture_incomplete: r.bool()?,
                 timing_revision: r.u64()?,
                 length: r.u64()?,
                 position: r.u64()?,

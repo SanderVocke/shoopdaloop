@@ -34,12 +34,12 @@ use crate::{unavailable, EngineClock, Link, RtBackend};
 /// Most events in one MIDI input injection, as in the legacy backends.
 const MAX_INJECTED_EVENTS: usize = 128;
 
-fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
+pub(crate) fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
     match mode {
         BackendLoopMode::Stopped => Ok(LoopMode::Stopped),
         BackendLoopMode::Playing => Ok(LoopMode::Playing),
         BackendLoopMode::Recording => Ok(LoopMode::Recording),
-        BackendLoopMode::Replacing => Err(unavailable(BackendCapability::ReplacingMode)),
+        BackendLoopMode::Replacing => Ok(LoopMode::Replacing),
         BackendLoopMode::PlayingDryThroughWet => Ok(LoopMode::PlayingDryThroughWet),
         BackendLoopMode::RecordingDryIntoWet => Ok(LoopMode::RecordingDryIntoWet),
         BackendLoopMode::Unknown => Err(anyhow!("a loop cannot transition to an unknown mode")),
@@ -171,7 +171,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
-    fn live_loop_slot(&self, loop_id: BackendLoopId) -> Result<shoop_rt_protocol::LoopSlotId> {
+    pub(crate) fn live_loop_slot(
+        &self,
+        loop_id: BackendLoopId,
+    ) -> Result<shoop_rt_protocol::LoopSlotId> {
         self.mirror
             .live_loop(loop_id)
             .map(|entry| entry.slot)
@@ -200,7 +203,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Some(dry) => reads.audio_roles(loop_id, version, slot, dry, wet),
             None => reads.audio(loop_id, version, slot, channels),
         };
-        if entry.view.mode.records() {
+        if entry.view.mode.records() || self.input.as_ref().is_some_and(|job| job.touches(loop_id))
+        {
             return Ok(None);
         }
         if self.canonical_imports.contains(&loop_id) {
@@ -287,6 +291,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 .controls
                 .keys()
                 .any(|pending| *pending <= sequence)
+            || self
+                .input
+                .as_ref()
+                .is_some_and(|job| job.sequence <= sequence)
     }
     fn mutation_capacity(&self) -> usize {
         crate::MAX_TRACKED_MUTATIONS.saturating_sub(
@@ -299,7 +307,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .jobs
                     .iter()
                     .map(|job| job.cancel_waiters.len())
-                    .sum::<usize>(),
+                    .sum::<usize>()
+                + usize::from(self.input.is_some()),
         )
     }
 
@@ -355,6 +364,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::Grab,
+                self.capabilities.contains(Capabilities::INPUT_BATCH),
+            )
+            .with(
+                BackendCapability::ReplacingMode,
+                self.capabilities.contains(Capabilities::REPLACING),
+            )
             .with(
                 BackendCapability::CompositeLoops,
                 self.is_ready()
@@ -727,8 +744,19 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
 
-    fn grab_loops(&mut self, _requests: &[BackendGrabRequest]) -> Result<()> {
-        Err(unavailable(BackendCapability::Grab))
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        if !self.capabilities.contains(Capabilities::INPUT_BATCH) {
+            return Err(unavailable(BackendCapability::Grab));
+        }
+        self.grab_input(requests)
+    }
+
+    fn input_edits(
+        &mut self,
+        edits: &[shoop_backend::BackendInputEdit],
+        cycles_delay: Option<u32>,
+    ) -> Result<()> {
+        RtBackend::input_edits(self, edits, cycles_delay)
     }
 
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
@@ -806,7 +834,11 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .track
             .ok_or_else(|| anyhow!("composites have no media channels"))?]
             .midi;
-        if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
+        if entry.view.mode.records() || self.input.as_ref().is_some_and(|job| job.touches(loop_id))
+        {
+            return Ok(None);
+        }
+        if self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
             if let Outcome::Done(data) = self.reads.midi(loop_id, version, slot) {
                 return Ok(Some(self.midi_timing(loop_id, data)));
@@ -921,6 +953,24 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         {
             return Err(unavailable(BackendCapability::DryWetModes));
         }
+        if mode == LoopMode::Replacing {
+            if !self.capabilities.contains(Capabilities::REPLACING) {
+                return Err(unavailable(BackendCapability::ReplacingMode));
+            }
+            return self.begin_input(
+                alloc::vec![(
+                    loop_id,
+                    shoop_rt_protocol::InputEdit {
+                        loop_id: slot,
+                        intent: shoop_rt_protocol::InputIntent::Mode {
+                            mode,
+                            position: None
+                        },
+                    }
+                )],
+                cycles_delay,
+            );
+        }
         if self.pending_clear(loop_id)
             || mode != shoop_rt_protocol::LoopMode::Recording && self.pending_kind_change(loop_id)
         {
@@ -937,6 +987,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             );
             return Ok(());
         }
+        self.cancel_input_for(loop_id);
         self.requests.push(
             Request::LoopTransition {
                 loop_id: slot,
@@ -950,6 +1001,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
         self.ready()?;
+        self.cancel_input_for(loop_id);
         let slot = self.live_loop_slot(loop_id)?;
         if self.pending_kind_change(loop_id)
             || self

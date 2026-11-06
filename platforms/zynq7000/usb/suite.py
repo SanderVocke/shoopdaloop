@@ -22,7 +22,8 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     phases = [
         ('model', 'deployment/build_qemu.py', ['--usb', *(['--fetch'] if args.fetch else [])]),
-        ('direct-hs', 'usb/integration.py', [*(['--fetch'] if args.fetch else [])]),
+        ('direct-hs', 'usb/integration.py', ['--engine-config', str(ROOT / 'platforms/zynq7000/input-history.json'),
+                                          *(['--fetch'] if args.fetch else [])]),
         ('portable', 'usb/tests/run.py', []),
         ('sixteen-cables', 'usb/integration.py', ['--cables', '16']),
         ('direct-fs', 'usb/integration.py', ['--full-speed']),

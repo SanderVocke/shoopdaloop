@@ -18,11 +18,18 @@ use std::{
 };
 
 mod composites;
+mod input;
 pub use composites::run as composites;
+pub use input::run as input;
 
 struct ProbeHost(Child);
 impl Drop for ProbeHost {
     fn drop(&mut self) {
+        if let Ok(Some(status)) = self.0.try_wait() {
+            if !status.success() {
+                eprintln!("Companion exited before probe cleanup: {status}");
+            }
+        }
         let _ = self.0.kill();
         let _ = self.0.wait();
     }

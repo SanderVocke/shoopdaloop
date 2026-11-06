@@ -46,6 +46,7 @@ impl HostPorts {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
+    pub history: shoop_rt_protocol::host::InputHistorySettings,
     pub composite_entries: usize,
     pub composite_segments: usize,
     pub timing_relations: usize,
@@ -80,7 +81,7 @@ pub struct EngineDescription {
     pub control_lead_frames: u32,
     pub resource_pages: usize,
     pub page_bytes: usize,
-    /// MIDI capacity of each port and loop per callback.
+    /// Admitted live-input MIDI capacity per fixed tick; output storage is derived.
     pub midi_events: usize,
     pub midi_bytes: usize,
     /// Loop transitions that may be pending at once, including delayed ones.
@@ -95,6 +96,7 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
+            history: shoop_rt_protocol::host::InputHistorySettings::default(),
             external_dry_wet: false,
             composite_entries: 256,
             composite_segments: 1024,
@@ -195,6 +197,7 @@ impl EngineDescription {
         {
             return Err(Error::Capacity);
         }
+        crate::midi_layout::Layout::new(self)?;
         Ok(())
     }
 }

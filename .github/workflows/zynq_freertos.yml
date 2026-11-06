@@ -112,7 +112,10 @@ jobs:
       - name: Validate board contracts
         run: |
           python3 platforms/zynq7000/tests/boards.py
+          python3 platforms/zynq7000/tests/engine_policy.py
           cargo test --locked -p shoop_host --no-default-features --example zynq_probe
+      - name: Exercise configured firmware Grab and Replacing
+        run: python3 platforms/zynq7000/integration.py --board ${{ matrix.board }} --input --fetch --engine-config platforms/zynq7000/input-history.json
       - name: Cross-build board firmware and boot chain
         run: |
           python3 platforms/zynq7000/build.py --fetch --board ${{ matrix.board }} --app host --deployment
@@ -142,6 +145,8 @@ jobs:
             work/zynq/**/integration/*.log
             work/zynq/**/fixture-test/*.json
             work/zynq/**/fixture-test/*.log
+            work/zynq/**/input-test/*.json
+            work/zynq/**/input-test/*.log
           retention-days: 14
 
   deployment:

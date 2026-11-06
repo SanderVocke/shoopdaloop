@@ -28,6 +28,14 @@ enum Node {
     Buffered(BufferedProcessor),
 }
 impl Processor<LoopPlanner, EngineOp> for Node {
+    fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        match self {
+            Self::Engine(n) => n.midi_buffer_settings(),
+            Self::Buffered(n) => {
+                <BufferedProcessor as Processor<LoopPlanner, EngineOp>>::midi_buffer_settings(n)
+            }
+        }
+    }
     fn ports(&self) -> PortCounts {
         match self {
             Self::Engine(n) => n.ports(),
@@ -80,6 +88,7 @@ fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
         quantum.frames(),
     );
     let settings = NodeSettings {
+        midi: crate::midi_layout::Layout::new(&crate::EngineDescription::default()).unwrap(),
         external_midi: None,
         cells,
         channels: 2,

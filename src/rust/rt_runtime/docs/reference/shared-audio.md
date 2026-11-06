@@ -14,8 +14,9 @@ Zero input at the expected frame changes neither content nor time.
 
 `grab(start..end)` returns an owned editable take within committed history coverage.
 `fork(take)` acquires another editable owner. `export(take)` acquires an immutable
-owner of that revision. These operations retain an index root without walking or
-copying history pages. Tokens check store scope and lease generation. Copying a
+owner of that revision. Grab clips the persistent index along its boundary paths;
+it shares complete interior branches and retains only pages touched by the window.
+Fork and export retain that clipped root. No sample data is copied. Tokens check store scope and lease generation. Copying a
 token acquires nothing; release each independent owner exactly once.
 
 A borrowed read index follows its take's current revision. Export first when a
@@ -31,30 +32,46 @@ capacity failures preserve published content and existing owners.
 ## Capacity and required work
 
 Prepare channel count, history duration, owner slots and a physical-page budget.
+`Config::capacity(prepared_runtime, source_count)` validates and sizes the pool
+without allocating. Preparation also checks its reservation against remaining
+arena pages. `prepare_histories` creates independent source slots sharing one
+global owner, node, page and scratch budget. Each scoped `HistoryId` has its own
+coverage/root; resetting one source preserves the others and all retained takes.
+The single-history methods use slot zero for compatibility. Capacity reports the
+source count and total history-page reservation.
 The ring size is the next power of two above the history's covering page count
 plus boundary slack. Each page contains complete interleaved frames; unused page
 padding is excluded from reads. Transaction scratch covers the largest prepared
 interval's distinct touched pages.
 
 The store reserves its configured pages so unrelated uploads cannot consume them.
-Owner admission conservatively charges a whole history root, including pages
-outside a requested window. This guarantees room for live capture, retained owners
+Owner admission charges the window's covering pages, including partial boundary
+pages. This guarantees room for live capture, retained owners
 and an edit transaction. Owner admission can refuse before every metadata slot is
-occupied. Imported takes charge the larger of a history root and their logical
-page count. Whole-root charging and power-of-two padding are explicit capacity
+occupied. Imported takes charge their logical page count.
+Conservative per-owner charging and power-of-two padding are explicit capacity
 tradeoffs; this is not a final application memory policy.
 
-Capture and edits use render accounting rather than background transfer credits.
+Capture, grabs and edits use render accounting rather than background transfer credits.
+A grab preflights owner and boundary-node credits, then visits a bounded number
+of index paths independent of history duration. It never walks every retained page.
+The prepared index budget follows retained page credits and each owner's boundary
+paths, with separate live/displaced-history and transaction headroom. Increasing
+view slots does not reserve another complete history index for each slot.
 A write copies the touched pages and their index paths; it never clones the whole
 history map. Reads position once per page span. Work scales with touched pages,
 index depth, frame count and channels. Transaction-local garbage can only contain
 changed paths, because unchanged branches remain owned by the new root. Its cleanup
 is part of required write work and does not depend on background maintenance.
 
-On the native sizing fixture, 30 seconds at 48 kHz stereo with 4096-byte pages,
+The original native sizing fixture, 30 seconds at 48 kHz stereo with 4096-byte pages,
 32-frame operations and four owner slots uses a 4096-page ring. The configured
 20483-page reservation is 83,898,368 payload bytes (about 80.01 MiB), with 4,898,856
-additional bytes of index, lease and scratch arrays (about 4.67 MiB). Common arena
+additional bytes of index, lease and scratch arrays (about 4.67 MiB). This was
+measured before clipped ownership and the retained-page index budget. Current
+tests print the prepared size and separately check a 512-view, 30-second stereo
+shape stays below 8 MiB of additional metadata within an 8195-page reservation.
+Common arena
 metadata and allocator overhead are additional. Small edits copy one data page
 and a logarithmic index path. These measurements describe this conservative
 configuration, not every host or target layout.
@@ -74,6 +91,12 @@ drop or automatic budget reset.
 ## Ordinary resource and persistence integration
 
 `ResourceStore::prepare_audio_store` prepares a lifetime-scoped `AudioStoreId`.
+`prepare_audio_pool` prepares several sources in that same store. `audio_history`
+returns a scoped `AudioHistoryId`; `append_audio_source`, `grab_audio_source`,
+`audio_source_coverage` and `audio_source_discontinuity` address that source.
+All resulting resources, exports and edits use the same ordinary ownership
+interface. One source can use available retained-page credits without reserving
+an unused take budget independently for every other source.
 `RenderIo::append_audio_history` writes its history. `grab_audio` returns a new
 ordinary `ResourceId`; `fork_audio` returns a new editable resource from an
 existing immutable snapshot. Both have `ResourceCommand` equivalents. Prepared

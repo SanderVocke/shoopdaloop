@@ -102,6 +102,7 @@ fn exercise(pages: usize, midi_reset: bool) {
         output[0].clear();
         let result = support::assert_no_heap(|| {
             processor.process(&mut ProcessBlock {
+                midi_forwarded: &mut [],
                 graph_epoch: rt_runtime::Epoch(0),
                 frame: Frame(callback * QUANTUM as u64),
                 frames: QUANTUM,

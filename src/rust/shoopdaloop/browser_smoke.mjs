@@ -36,6 +36,7 @@ const stress = process.env.STRESS === '1';
 const largeMedia = process.env.LARGE_MEDIA === '1';
 const composites = process.env.COMPOSITES === '1';
 let compositeStalled = false;
+let inputStalled = false;
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
@@ -260,6 +261,13 @@ try {
     let diagnosticAt = 0;
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
+      if (!inputStalled && state?.inputSelfTest === 'Stall') {
+        inputStalled = true;
+        await evaluate(`(() => { const end = performance.now() + 2000; while (performance.now() < end) {} document.getElementById('runtime_status').setAttribute('data-input-stalled', 'true'); })()`);
+      }
+      if (['Saving', 'Resaving'].includes(state?.inputSelfTest)) {
+        await evaluate("document.getElementById('rfd-output')?.click()");
+      }
       if (composites && !compositeStalled && state?.compositeSelfTest === 'Stall') {
         compositeStalled = true;
         await evaluate(`(() => {
@@ -535,6 +543,7 @@ try {
     newEngineMicrophone: document.getElementById('runtime_status')?.getAttribute('data-new-engine-microphone'),
     newEngineSelfTest: document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test'),
     compositeSelfTest: document.getElementById('runtime_status')?.getAttribute('data-composite-self-test'),
+    inputSelfTest: document.getElementById('runtime_status')?.getAttribute('data-input-self-test'),
   })`;
 
   async function navigateWithAudio(url) {
@@ -589,6 +598,7 @@ try {
       'the new engine workflow did not finish',
       largeMedia ? 900_000 : 300_000,
     );
+    if (!previewOnly && (!inputStalled || state.inputSelfTest !== 'Passed')) { throw new Error(`input acceptance incomplete: ${JSON.stringify(state)}`); }
     if (composites && (!compositeStalled || state.compositeSelfTest !== 'Passed')) {
       throw new Error(`composite acceptance incomplete: ${JSON.stringify(state)}`);
     }

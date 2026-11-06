@@ -1104,6 +1104,8 @@ pub struct LoopChannelTimingState {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub capture_incomplete: bool,
     pub repeat_sync: bool,
     pub timing_revision: u64,
     pub channel_timings: Arc<[LoopChannelTimingState]>,
@@ -1143,6 +1145,7 @@ pub struct LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         Self {
+            capture_incomplete: false,
             repeat_sync: false,
             timing_revision: 0,
             channel_timings: Arc::from([]),
@@ -2438,6 +2441,7 @@ pub enum LoopAction {
     RecordClicked,
     GrabClicked,
     RerecordClicked,
+    ReplaceClicked,
     StopClicked,
     GainChanged(f32),
     BalanceChanged(f32),
@@ -2875,6 +2879,7 @@ impl LoopAction {
             Self::RecordClicked => "loop.record",
             Self::GrabClicked => "loop.grab",
             Self::RerecordClicked => "loop.rerecord",
+            Self::ReplaceClicked => "loop.replace",
             Self::StopClicked => "loop.stop",
             Self::GainChanged(_) => "loop.gain",
             Self::BalanceChanged(_) => "loop.balance",

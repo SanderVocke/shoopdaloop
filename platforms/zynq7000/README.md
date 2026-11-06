@@ -14,6 +14,30 @@ codecs and scripts remain on the client machine. The
 signed firmware, device credentials provisioned on SD, A/B updates and recovery.
 The direct-load development mode below compiles its explicit test credential.
 
+Grab and Replacing use the common engine implementation and negotiated capabilities.
+The shipped engine policy keeps histories disabled to retain its eight-track,
+thirty-two-loop resource shape. Enable them with an explicit configuration:
+
+```sh
+python3 platforms/zynq7000/build.py --app host --fetch --credential-file work/zynq/host.key --engine-config platforms/zynq7000/input-history.json
+python3 platforms/zynq7000/integration.py --input --engine-config platforms/zynq7000/input-history.json
+python3 platforms/zynq7000/integration.py --board zedboard --input --engine-config platforms/zynq7000/input-history.json
+```
+
+The example configures three tracks/twenty loops, thirty-second history, 2,048
+shared audio pages, 512 MIDI pages, 8,192 MIDI records and two writers. Page size
+is 4,096 bytes; history density can evict MIDI before the nominal horizon. Board
+recording/media budgets and physical arena layouts remain unchanged. A policy
+file can override `tracks`, `loops` and individual `input_history` fields; omitted
+fields retain the documented defaults in `engine_policy.py`. The resolved policy
+is recorded in each image manifest. The same option applies to USB and deployment
+builds. Actual memory and exact-media acceptance remain required for a new policy.
+
+Direct Cargo builds select the same settings through `SHOOP_ENGINE_TRACKS`,
+`SHOOP_ENGINE_LOOPS` and `SHOOP_INPUT_HISTORY_{SECONDS,AUDIO_TAKE_PAGES,MIDI_PAGES,
+MIDI_RECORDS,WRITERS}`. Availability follows these settings, independently of the
+compilation target. Policy changes take effect on the next firmware build/boot.
+
 ## Reproducible inputs
 
 `pins.json` records the tested tool versions and immutable AMD source commit.

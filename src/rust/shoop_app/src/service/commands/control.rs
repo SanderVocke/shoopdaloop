@@ -17,6 +17,12 @@ impl Service {
                     self.loop_entry(*id)?;
                     self.require_restored_composite(*id, mode)?;
                     if self.composites.contains_key(id) {
+                        if mode == BackendLoopMode::Replacing {
+                            return Err(CommandError {
+                                reason: Refusal::Unsupported,
+                                message: "Composite loops do not support Replacing.".into(),
+                            });
+                        }
                         if matches!(
                             mode,
                             BackendLoopMode::PlayingDryThroughWet
@@ -40,6 +46,10 @@ impl Service {
                             "aligned primitive transitions are unavailable",
                         ));
                     }
+                }
+                if mode == BackendLoopMode::Replacing {
+                    self.replacing(loops, cycles_delay, false)?;
+                    return Ok(Effect::None);
                 }
                 for id in loops {
                     if self.composites.contains_key(&id) {
@@ -134,8 +144,43 @@ impl Service {
                         .set_loop_repeat_sync(self.loops[&id].backend, active)?;
                 }
             }
-            Grab { .. } | AdoptRingbuffers { .. } => {
-                return Err(CommandError::unsupported(BackendCapability::Grab))
+            Grab { loops } => self.grab_gesture(loops)?,
+            AdoptRingbuffers {
+                loops,
+                reverse_cycle_start,
+                cycles_length,
+                go_to_cycle,
+                go_to_mode,
+            } => {
+                if loops.is_empty() {
+                    return Ok(Effect::None);
+                }
+                self.require_input(BackendCapability::Grab)?;
+                let number = |value| {
+                    i32::try_from(value).map_err(|_| {
+                        CommandError::invalid("Grab cycle exceeds the supported range")
+                    })
+                };
+                let mode = if go_to_mode == LoopMode::Unknown {
+                    BackendLoopMode::Stopped
+                } else {
+                    control_mode(go_to_mode)?
+                };
+                let mut unique = BTreeSet::new();
+                let mut edits = Vec::with_capacity(loops.len());
+                for id in loops {
+                    if !unique.insert(id) {
+                        return Err(CommandError::invalid("duplicate Grab target"));
+                    }
+                    edits.push(BackendInputEdit::Grab(BackendGrabRequest {
+                        loop_id: self.input_target(id)?,
+                        reverse_start_cycle: Some(number(reverse_cycle_start)?),
+                        cycles_length: Some(number(cycles_length)?),
+                        go_to_cycle: Some(number(go_to_cycle)?),
+                        go_to_mode: mode,
+                    }));
+                }
+                self.backend.input_edits(&edits, None)?;
             }
             ComposeAddToEnd {
                 target,
@@ -265,7 +310,7 @@ fn control_mode(mode: LoopMode) -> Result<BackendLoopMode, CommandError> {
         LoopMode::Stopped => Ok(BackendLoopMode::Stopped),
         LoopMode::Playing => Ok(BackendLoopMode::Playing),
         LoopMode::Recording => Ok(BackendLoopMode::Recording),
-        LoopMode::Replacing => Err(CommandError::unsupported(BackendCapability::ReplacingMode)),
+        LoopMode::Replacing => Ok(BackendLoopMode::Replacing),
         LoopMode::PlayingDryThroughWet => Ok(BackendLoopMode::PlayingDryThroughWet),
         LoopMode::RecordingDryIntoWet => Ok(BackendLoopMode::RecordingDryIntoWet),
         LoopMode::Unknown => Err(CommandError::invalid("unknown loop mode")),

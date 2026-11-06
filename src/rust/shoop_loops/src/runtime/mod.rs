@@ -22,12 +22,14 @@ use rt_runtime::{
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod configuration;
+mod input_batch;
+pub use input_batch::{InputAction, InputEdit, INPUT_BATCH_RECORD_BYTES};
 mod family;
 mod shared;
 pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
 pub use shared::{
-    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, SharedCapacity,
-    SharedSettings, SharedTake, SharedWork,
+    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, LiveWriterId,
+    SharedCapacity, SharedSettings, SharedTake, SharedWork,
 };
 mod node_pairs;
 mod planner;
@@ -113,6 +115,12 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    InputBatch {
+        count: usize,
+        timing: Timing,
+        graph: Epoch,
+        topology: Epoch,
+    },
     NodePairSourceWindows {
         id: NodePairSourceId,
         frames: u64,
@@ -133,6 +141,34 @@ pub enum Operation {
         source: HistoryId,
         start: Frame,
         end: Frame,
+    },
+    /// Resolve a raw lookback window at a completed input cut; publication and
+    /// musical target/solo admission remain separate.
+    HistoryWindow {
+        source: HistoryId,
+        window: crate::grab::WindowSpec,
+        sync_frames: u64,
+        sync_position: u64,
+    },
+    WriterBegin {
+        target: LoopId,
+        source: HistoryId,
+        take: SharedTake,
+        kind: indexed_midi::WriteKind,
+    },
+    WriterPrepareReplacing {
+        target: LoopId,
+        source: HistoryId,
+    },
+    WriterPrepareRecording {
+        target: LoopId,
+        source: HistoryId,
+    },
+    WriterStatus {
+        id: LiveWriterId,
+    },
+    WriterCancel {
+        id: LiveWriterId,
     },
     CandidateBegin {
         target: LoopId,
@@ -370,9 +406,30 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    ReplacingPrepared {
+        id: Option<LiveWriterId>,
+        status: CandidateStatus,
+    },
+    InputBatch {
+        requested: Frame,
+        effective: Frame,
+        targets: usize,
+        outcome: crate::Outcome,
+    },
+    Writer {
+        id: LiveWriterId,
+        status: CandidateStatus,
+    },
+
     Timing(Cut),
     History(HistoryStatus),
     Grabbed(SharedTake),
+    WindowGrabbed {
+        take: SharedTake,
+        position: u64,
+        padding: u64,
+        frame: Frame,
+    },
     Candidate {
         id: CandidateId,
         status: CandidateStatus,
@@ -500,6 +557,7 @@ pub struct View {
 #[derive(Clone, Copy)]
 struct Take {
     windows: Windows,
+    writer: Option<LiveWriterId>,
     revision: Revision,
     media: media::MediaId,
     bank: usize,
@@ -534,6 +592,7 @@ struct Row {
 }
 #[derive(Clone, Copy)]
 enum PendingKind {
+    InputBatch,
     Program {
         id: StageId,
         request: RequestId,
@@ -610,6 +669,7 @@ pub struct LoopPlanner {
     views: Box<[View]>,
     pending: Box<[Option<Pending>]>,
     failures: Vec<crate::Observation>,
+    input_batch: input_batch::InputBatch,
     family: Vec<family::Selection>,
 }
 
@@ -992,6 +1052,7 @@ impl LoopPlanner {
             views,
             pending: vec![None; settings.normal_requests + 1].into_boxed_slice(),
             failures,
+            input_batch: input_batch::InputBatch::prepare(slots, dummy)?,
             family: family::prepare(slots, dummy),
         };
         Ok(Prepared {

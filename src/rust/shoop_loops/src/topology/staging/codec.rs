@@ -77,6 +77,7 @@ fn mode(value: u8) -> Result<Mode, Error> {
         2 => Ok(Mode::Recording),
         3 => Ok(Mode::PlayingDryThroughWet),
         4 => Ok(Mode::RecordingDryIntoWet),
+        5 => Ok(Mode::Replacing),
         _ => Err(Error::InvalidProgram),
     }
 }
@@ -87,6 +88,7 @@ fn mode_byte(value: Mode) -> u8 {
         Mode::Recording => 2,
         Mode::PlayingDryThroughWet => 3,
         Mode::RecordingDryIntoWet => 4,
+        Mode::Replacing => 5,
     }
 }
 

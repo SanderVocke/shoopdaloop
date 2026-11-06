@@ -35,8 +35,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if self.requests.timing_pending() {
             bail!("a timing edit is pending");
         }
-        if self.mirror.live_loop(loop_id).is_none() {
-            bail!("unknown loop {loop_id:?}");
+        let entry = self
+            .mirror
+            .live_loop(loop_id)
+            .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
+        if self.input.as_ref().is_some_and(|job| job.touches(loop_id))
+            || entry.view.recording_armed
+            || entry.view.mode.records()
+            || entry
+                .view
+                .next_mode
+                .is_some_and(shoop_rt_protocol::LoopMode::records)
+        {
+            bail!("stop affected recording and settle input edits before importing");
         }
         if !self.canonical_content.contains_key(&loop_id) {
             if let BackendAsyncResult::Pending(progress) = self.capture_core(Some(loop_id))? {

@@ -168,7 +168,7 @@ pub fn simulate(input: &TopologyDescription, frames: u64) -> Expected {
                     current.unwrap_or(Mode::Stopped)
                 };
                 match desired {
-                    Mode::PlayingDryThroughWet | Mode::RecordingDryIntoWet => {
+                    Mode::PlayingDryThroughWet | Mode::RecordingDryIntoWet | Mode::Replacing => {
                         unreachable!("ordinary composite reference fixture")
                     }
                     Mode::Stopped => {

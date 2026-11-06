@@ -62,6 +62,8 @@ pub struct LoopWidget {
     #[cfg(test)]
     test_convert_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_replace_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_drag_preview_rect: Option<egui::Rect>,
 }
 
@@ -102,7 +104,9 @@ fn icon_for_state(
             false,
         ),
         LoopMode::PlayingDryThroughWet => (ICON_PLAY_ARROW, colors::DRY_THROUGH_WET, true),
-        LoopMode::Recording => (ICON_FIBER_MANUAL_RECORD, colors::RECORD_ACTION, false),
+        LoopMode::Recording | LoopMode::Replacing => {
+            (ICON_FIBER_MANUAL_RECORD, colors::RECORD_ACTION, false)
+        }
         LoopMode::RecordingDryIntoWet => (ICON_FIBER_MANUAL_RECORD, colors::DRY_THROUGH_WET, true),
         LoopMode::Stopped if regular_composite => (ICON_VIEW_LIST, colors::DARK_BACKGROUND, false),
         LoopMode::Stopped if script_composite => (ICON_EDIT_NOTE, colors::DARK_BACKGROUND, false),
@@ -326,6 +330,26 @@ impl LoopWidget {
             }
         }
         ui.separator();
+        if state.composite_kind == CompositeKind::None {
+            let replace = ui
+                .add_enabled_ui(!state.empty, |ui| {
+                    add_with_capability(
+                        ui,
+                        BackendCapability::ReplacingMode,
+                        egui::Button::new("Replace input"),
+                    )
+                })
+                .inner;
+            #[cfg(test)]
+            {
+                self.test_replace_rect = Some(replace.rect);
+            }
+            if replace.clicked() {
+                result.actions.push(LoopWidgetAction::ReplaceClicked);
+                ui.close();
+            }
+            ui.separator();
+        }
         if !state.sync {
             let duplicate = add_with_capabilities(
                 ui,
@@ -535,7 +559,7 @@ impl LoopWidget {
         let rounding = egui::CornerRadius::same(2);
         let background = if matches!(
             state.mode,
-            LoopMode::Recording | LoopMode::RecordingDryIntoWet
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
         ) {
             colors::LOOP_RECORDING_BACKGROUND
         } else if state.composite_kind == CompositeKind::Regular {
@@ -553,7 +577,7 @@ impl LoopWidget {
             let progress_color = match state.mode {
                 LoopMode::Playing => colors::LOOP_PROGRESS_PLAYING,
                 LoopMode::PlayingDryThroughWet => colors::LOOP_PROGRESS_PLAYING_DRY,
-                LoopMode::Recording => colors::LOOP_PROGRESS_RECORDING,
+                LoopMode::Recording | LoopMode::Replacing => colors::LOOP_PROGRESS_RECORDING,
                 LoopMode::RecordingDryIntoWet => colors::LOOP_PROGRESS_RECORDING_DRY,
                 _ => colors::LOOP_PROGRESS_OTHER,
             };
@@ -632,6 +656,22 @@ impl LoopWidget {
             egui::StrokeKind::Inside,
         );
 
+        if state.capture_incomplete {
+            ui.painter().text(
+                rect.right_top() + egui::vec2(-5.0, 4.0),
+                egui::Align2::RIGHT_TOP,
+                "!",
+                egui::FontId::proportional(18.0),
+                egui::Color32::YELLOW,
+            );
+            response.clone().on_hover_text(
+                "Recording stopped before completion. The last complete take is preserved.",
+            );
+        } else if state.mode == LoopMode::Replacing {
+            response
+                .clone()
+                .on_hover_text("Replacing input over the current loop");
+        }
         let icon_rect = egui::Rect::from_min_size(rect.min, egui::vec2(24.0, 24.0));
         let has_transition = state.next_transition_delay.is_some() && state.mode != state.next_mode;
         if has_transition {
@@ -1682,6 +1722,51 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn context_menu_exposes_replacing_for_a_supported_primitive_loop() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::NONE.with(BackendCapability::ReplacingMode, true),
+        );
+        let mut widget = LoopWidget::default();
+        let state = LoopState {
+            empty: false,
+            length_frames: 128,
+            ..state()
+        };
+        let _ = context_menu_frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let item = widget.test_replace_rect.expect("replace menu item");
+        let press = |pressed| egui::Event::PointerButton {
+            pos: item.center(),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let _ = context_menu_frame(
+            &context,
+            &mut widget,
+            &state,
+            2.0,
+            vec![pointer(item.center()), press(true)],
+        );
+        let result = context_menu_frame(
+            &context,
+            &mut widget,
+            &state,
+            2.1,
+            vec![pointer(item.center()), press(false)],
+        );
+        assert_eq!(result.actions, vec![LoopWidgetAction::ReplaceClicked]);
+        assert_eq!(
+            icon_for_state(LoopMode::Replacing, false, false, false)
+                .0
+                .codepoint,
+            ICON_FIBER_MANUAL_RECORD.codepoint
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn context_menu_disables_items_the_backend_cannot_perform() {
         for capabilities in [
             crate::BackendCapabilities::NONE,
@@ -1698,6 +1783,7 @@ mod tests {
             let items = [
                 widget.test_convert_rect.expect("conversion menu item"),
                 widget.test_duplicate_rect.expect("clone menu item"),
+                widget.test_replace_rect.expect("replace menu item"),
             ];
             for (index, item) in items.into_iter().enumerate() {
                 let time = 2.0 + index as f64;

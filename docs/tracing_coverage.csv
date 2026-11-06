@@ -55,6 +55,7 @@ src/rust/shoop_loops/src/audio.rs,portable_loop_library,excluded,Prepared domain
 src/rust/shoop_loops/src/command.rs,portable_loop_library,excluded,Plain-data musical requests and results; no host execution or tracing dependency.
 src/rust/shoop_loops/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
 src/rust/shoop_loops/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
+src/rust/shoop_loops/src/grab.rs,portable_loop_library,excluded,Checked musical window arithmetic has no execution or ownership boundary; callers report admission and publication outcomes.
 src/rust/shoop_loops/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
 src/rust/shoop_loops/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
 src/rust/shoop_loops/src/media.rs,portable_loop_library,excluded,Fixed media ownership and checked exports; host tracing stays outside the portable library and generic resource work remains accounted.
@@ -388,6 +389,21 @@ src/rust/shoop_host/src/bin/shoop-deploy.rs,native_host,instrumented_indirect,CL
 src/rust/shoop_deployment_protocol/src/lib.rs,generic_wire_protocol,excluded,Bounded no_std deployment schema and codec; callers instrument authenticated operations.
 src/rust/shoop_app/src/service/deployment.rs,application_service,instrumented_direct,Deployment capability and operation admission instrumented with skip_all.
 src/rust/rt_runtime/src/resource/shared_midi/mod.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
+src/rust/rt_runtime/src/resource/shared_midi/layout.rs,generic_realtime_library,excluded,Allocation-free prepared MIDI capacity validation; no host tracing dependency.
+src/rust/rt_runtime/src/midi_state/interval.rs,generic_realtime_library,excluded,Composable fixed MIDI pedal interval state; no execution or ownership boundary.
+src/rust/rt_runtime/src/midi_state/interval/tests.rs,test_support,excluded,Heap-guarded interval composition and protocol-state oracles; no production boundary.
+src/rust/rt_runtime/src/midi_state/indexed.rs,generic_realtime_library,excluded,Ordered semantic MIDI state queries; no execution or ownership boundary.
+src/rust/rt_runtime/src/midi_state/indexed/tests.rs,test_support,excluded,Linear packet oracles for complete indexed projection semantics; no production boundary.
+src/rust/rt_runtime/src/midi_state/indexed/tree.rs,generic_realtime_library,excluded,Prepared persistent ordered indexes with bounded diagnostics; no host tracing dependency.
+src/rust/rt_runtime/src/midi_state/indexed/tree/tests.rs,test_support,excluded,Heap-guarded tree ownership balance and interval-summary oracles; no production boundary.
+src/rust/rt_runtime/src/midi_state/indexed/store.rs,generic_realtime_library,excluded,Prepared shared MIDI category versions and bounded ownership diagnostics; no host tracing dependency.
+src/rust/rt_runtime/src/midi_state/indexed/store/tests.rs,test_support,excluded,Complete packet projection snapshot and atomic metadata-pressure oracles; no production boundary.
+src/rust/rt_runtime/src/resource/midi_packets.rs,generic_realtime_library,excluded,Prepared immutable MIDI packet slabs with render work accounting; no host tracing dependency.
+src/rust/rt_runtime/src/resource/midi_packets/tests.rs,test_support,excluded,Heap-guarded packet packing SysEx ownership and ordered-version oracles; no production boundary.
+src/rust/rt_runtime/src/resource/midi_writer.rs,generic_realtime_library,excluded,Fixed-tick MIDI writers shared packet staging and bounded admission with required work diagnostics; no host tracing dependency.
+src/rust/rt_runtime/src/resource/midi_writer/tests.rs,test_support,excluded,Independent continuous replacement continuation and immutable-export oracles at one representative quantum; no production boundary.
+src/rust/rt_runtime/src/resource/midi_writer/history.rs,generic_realtime_library,excluded,Shared MIDI rolling source cuts density eviction and padded-window ownership; no host tracing dependency.
+src/rust/rt_runtime/src/resource/shared_audio/layout.rs,generic_realtime_library,excluded,Allocation-free shared source pool sizing and capacity validation; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/storage.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/history.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/read.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
@@ -449,6 +465,20 @@ src/rust/rt_profiling/src/graph.rs,portable_profiling,excluded,Bounded metadata 
 src/rust/rt_profiling/src/capture.rs,portable_profiling,excluded,Pure capture value types and clock-domain containment with no side effects or tracing dependency.
 src/rust/shoop_egui/src/profiling/graph.rs,egui_ui,excluded,Frame-rate graph drawing and hover rendering use profiling data directly; avoid per-frame tracing overhead.
 src/rust/shoop_rt_engine/src/buffered_tests.rs,test_support,excluded,Test-only processor composition and heap guards.
+src/rust/rt_runtime/src/resource/indexed_midi.rs,rt_runtime prepared MIDI resource boundary,excluded,Portable fixed-storage media ownership and required work counters; host spans cover application operations
+src/rust/rt_runtime/src/resource/indexed_midi/tests.rs,test_support,excluded,Heap-guarded ordinary resource exports continuous writer exit source reset and admission pressure oracles; no production boundary.
+src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.
+src/rust/shoop_transport/src/authenticated.rs,session_transport,excluded,Bounded credential admission for provisioned embedded hosts; failures return to connection owners without tracing credentials.
+src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.
+src/rust/rt_runtime/src/resource/reservation.rs,generic_realtime_library,excluded,Prepared snapshot and future backing credits with bounded publication and cancellation; no host tracing dependency.
+src/rust/rt_runtime/src/resource/reservation/tests.rs,test_support,excluded,Heap-guarded paired publication under saturated metadata and cancellation fences; no production boundary.
+src/rust/shoop_loops/src/runtime/shared/writer.rs,portable_loop_library,excluded,Prepared live writer admission and complete-cut publication expose typed outcomes and bounded counters without callback tracing.
+src/rust/shoop_rt_engine/src/history.rs,realtime_engine,excluded,Off-render preparation sizes bounded shared reservations and exposes typed capacities without callback tracing.
+src/rust/shoop_loops/src/runtime/input_batch.rs,rt,instrumented_indirect,Planner operation and boundary scopes cover bounded batch admission and settlement.
+src/rust/shoop_rt_protocol/src/input.rs,control,excluded,Plain bounded input transaction messages with no executable runtime work.
+src/rust/shoop_rt_engine/src/input.rs,control,instrumented_indirect,Endpoint delivery and polling scopes cover input transaction preparation and result ownership.
+src/rust/shoop_rt_engine/src/midi_layout.rs,realtime_engine,excluded,Allocation-free preparation arithmetic sizes bounded MIDI playback merge and host workspaces.
+src/rust/shoop_rt_backend/src/input.rs,control,instrumented_indirect,Backend pump delivery and request refusal scopes cover application input job ownership.
 src/rust/rt_buffered/src/backend.rs,buffered_processing,excluded,Portable prepared backend contract; render execution is observed by the owning runtime.
 src/rust/shoop_dsp/src/lib.rs,host_dsp_contract,excluded,Feature-gated module surface or inline MIDI value definitions; no execution boundary to trace.
 src/rust/shoop_dsp/src/midi_storage.rs,host_dsp_contract,excluded,Feature-gated module surface or inline MIDI value definitions; no execution boundary to trace.
@@ -470,7 +500,8 @@ src/rust/shoop_app/src/service/composites/structure.rs,app_session,instrumented_
 src/rust/shoop_rt_backend/src/composites/control.rs,application_ui_and_control,instrumented_direct,Deferred stable-slot controls trace their logical mutation identity through kind conversion.
 src/rust/shoop_app/src/service/monitoring.rs,app_session,instrumented_direct,Service-owned automatic monitoring policy records deferred reconciliation without scheduling musical phase.
 src/rust/shoop_rt_engine/src/monitoring.rs,realtime_engine,excluded,Fixed prepared recording-demand traversal executes at settled render boundaries without allocation or callback tracing.
-src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.
-src/rust/shoop_transport/src/authenticated.rs,session_transport,excluded,Bounded credential admission for provisioned embedded hosts; failures return to connection owners without tracing credentials.
-src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.
 src/rust/shoop_persistence_codec/src/document/processors.rs,client_codec_worker,excluded,Pure portable processor and channel-role conversion; traced frontend persistence orchestration owns the boundary.
+src/rust/shoop_app/src/service/commands/input.rs,app_session,instrumented_indirect,Atomic input policy executes within traced service commands and retained operation outcomes.
+src/rust/rt_buffered/src/midi.rs,portable_buffered_dsp,excluded,Borrowed bounded MIDI merge iterators have no execution or I/O boundary.
+src/rust/shoopdaloop/src/session_probe/input.rs,input_native_probe,instrumented_direct,Public application input controls exercise companion capture client detach file recovery and shutdown.
+src/rust/shoopdaloop/src/browser_rt_self_test/input.rs,input_browser_probe,instrumented_direct,Public input canary traces AudioWorklet ownership during a stalled main thread and exact persistence.

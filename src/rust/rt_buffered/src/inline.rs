@@ -47,7 +47,7 @@ impl crate::Backend for InlineTestProcessor {
             },
             batch.frames,
             &mut [],
-            batch.midi_inputs.first().ok_or(Error::InvalidShape)?,
+            batch.midi_input(0).ok_or(Error::InvalidShape)?,
             batch.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
         )?;
         Ok(())
@@ -65,30 +65,30 @@ impl InlineTestProcessor {
         Self { scratch }
     }
 
-    pub(crate) fn submit(
+    pub(crate) fn submit<'a>(
         &mut self,
         job: Job,
         frames: usize,
         audio: &mut [f32],
-        input: &MidiBuffer,
+        input: impl Into<crate::MidiInput<'a>>,
         output: &mut MidiBuffer,
     ) -> Result<Completion, Error> {
+        let input = input.into();
         if !audio.is_empty() && frames.checked_mul(2) != Some(audio.len()) {
             return Err(Error::InvalidShape);
         }
         if input.len() > output.remaining_events() || input.byte_len() > output.remaining_bytes() {
             return Err(Error::Capacity);
         }
-        for i in 0..input.len() {
-            if input.get(i).ok_or(Error::InvalidState)?.1.len() > self.scratch.len() {
+        for (_, packet) in input.iter() {
+            if packet.len() > self.scratch.len() {
                 return Err(Error::Capacity);
             }
         }
         for sample in audio {
             *sample *= 2.;
         }
-        for i in 0..input.len() {
-            let (offset, packet) = input.get(i).ok_or(Error::InvalidState)?;
+        for (offset, packet) in input.iter() {
             let bytes = &mut self.scratch[..packet.len()];
             bytes.copy_from_slice(packet);
             if bytes[0] < 0xf0 {

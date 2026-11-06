@@ -164,12 +164,20 @@ pub struct HostedProcessor {
     parameter_count: usize,
     manual_active: Option<(u32, bool)>,
     global: crate::global_midi::GlobalMidi,
+    midi_capacity: rt_runtime::buffer::MidiCapacity,
+    global_capacity: rt_runtime::buffer::MidiCapacity,
 }
 impl HostedProcessor {
-    pub fn additional_prepared_bytes(limits: BufferLimits) -> Result<usize, Error> {
+    pub fn additional_prepared_bytes(
+        limits: BufferLimits,
+        global: rt_runtime::buffer::MidiCapacity,
+    ) -> Result<usize, Error> {
         crate::global_midi::GlobalMidi::storage_bytes(
-            limits.midi_input.events_per_quantum,
-            limits.midi_input.bytes_per_quantum,
+            rt_runtime::buffer::MidiCapacity {
+                events: limits.midi_input.events_per_quantum,
+                bytes: limits.midi_input.bytes_per_quantum,
+            },
+            global,
         )
     }
     pub(crate) fn new(
@@ -177,6 +185,7 @@ impl HostedProcessor {
         cells: Arc<ProcessorCells>,
         quantum: Quantum,
         limits: BufferLimits,
+        global_capacity: rt_runtime::buffer::MidiCapacity,
         slot: usize,
         slots: usize,
     ) -> Result<Self, Error> {
@@ -184,8 +193,11 @@ impl HostedProcessor {
             return Err(Error::InvalidShape);
         }
         let global = crate::global_midi::GlobalMidi::new(
-            limits.midi_input.events_per_quantum,
-            limits.midi_input.bytes_per_quantum,
+            rt_runtime::buffer::MidiCapacity {
+                events: limits.midi_input.events_per_quantum,
+                bytes: limits.midi_input.bytes_per_quantum,
+            },
+            global_capacity,
         )?;
         let mut buffered = BufferedProcessor::with_backend(
             backend,
@@ -220,6 +232,11 @@ impl HostedProcessor {
             parameter_count: 0,
             manual_active: None,
             global,
+            global_capacity,
+            midi_capacity: rt_runtime::buffer::MidiCapacity {
+                events: limits.midi_input.events_per_quantum,
+                bytes: limits.midi_input.bytes_per_quantum,
+            },
         })
     }
     pub(crate) fn attach(&mut self, cells: Arc<crate::cells::Cells>) {
@@ -428,6 +445,25 @@ impl HostedProcessor {
         self.publish(frame);
         Ok(())
     }
+    pub(crate) fn midi_buffer_settings(
+        &self,
+    ) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        use rt_runtime::processor::{MidiBufferSettings, MidiPortCapacity};
+        let mut settings = MidiBufferSettings::default();
+        if self.buffered.ports().midi_inputs == 1 {
+            settings.ports[0] = Some(MidiPortCapacity {
+                input: true,
+                port: 0,
+                capacity: self.midi_capacity,
+            });
+            settings.ports[1] = Some(MidiPortCapacity {
+                input: true,
+                port: 2,
+                capacity: self.global_capacity,
+            });
+        }
+        Ok(settings)
+    }
     pub(crate) fn ports(&self) -> PortCounts {
         let mut ports = self.buffered.ports();
         ports.audio_outputs *= 2;
@@ -562,32 +598,20 @@ impl HostedProcessor {
                 frame: block.frame,
                 done: false,
             };
-            if self.buffered.backend().supports_observation() {
-                self.buffered.process_ports_tick_observed(
-                    block.frame,
-                    block.quantum,
-                    &mut audio,
-                    if has_midi {
-                        core::slice::from_ref(self.global.output())
-                    } else {
-                        block.midi_inputs
-                    },
-                    block.midi_outputs,
-                    &mut observer,
-                )?;
-            } else {
-                self.buffered.process_ports_tick(
-                    block.frame,
-                    block.quantum,
-                    &mut audio,
-                    if has_midi {
-                        core::slice::from_ref(self.global.output())
-                    } else {
-                        block.midi_inputs
-                    },
-                    block.midi_outputs,
-                )?;
-            }
+            let observed = self.buffered.backend().supports_observation();
+            self.buffered.process_ports_tick_controls(
+                block.frame,
+                block.quantum,
+                &mut audio,
+                if has_midi {
+                    &block.midi_inputs[..1]
+                } else {
+                    block.midi_inputs
+                },
+                block.midi_outputs,
+                has_midi.then(|| self.global.controls()),
+                if observed { Some(&mut observer) } else { None },
+            )?;
         }
         for port in 0..ports.audio_outputs {
             let output = block
@@ -735,6 +759,7 @@ mod tests {
                 },
                 parameters_per_quantum: 4,
             },
+            rt_runtime::buffer::MidiCapacity::default(),
             1,
             2,
         )

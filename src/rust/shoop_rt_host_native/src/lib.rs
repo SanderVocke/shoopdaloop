@@ -234,7 +234,9 @@ impl Running {
         // The final callback may finish while joining the driver.
         let mut midi_reset = shared.phase() != RenderPhase::Running;
         if shared.driver().kind == DriverKind::Jack {
-            midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
+            midi_reset &= shared.reset_flushed.load(Ordering::Acquire)
+                && shared.failure().is_none()
+                && shared.stats().midi_out_failed == 0;
         }
         drop(self.pump);
         drop(self.connections);
@@ -402,13 +404,20 @@ impl Prepared {
             .min(outputs))
             .map(|channel| (channel as u8, channel as u16))
             .collect();
-        let description = EngineDescription {
+        let mut description = EngineDescription {
             sample_rate,
             host: ports.clone(),
             master_connections: master_connections.clone(),
             control_lead_frames: template.control_lead_frames.max(buffer_frames),
             ..template.clone()
         };
+        // These drivers deliver bounded render blocks within the physical period.
+        if matches!(kind, DriverKind::Dummy | DriverKind::Jack) {
+            let minimum = template.quantum.min(template.max_frames);
+            while description.max_frames > minimum && description.midi_output_capacity().is_err() {
+                description.max_frames = (description.max_frames / 2).max(minimum);
+            }
+        }
         let driver = DriverStatus {
             kind,
             state: DriverRunState::Starting,
@@ -496,7 +505,7 @@ mod tests {
             Some(128),
         )
         .unwrap();
-        assert_eq!(prepared.description.max_frames, 64);
+        assert_eq!(prepared.description.max_frames, description.max_frames);
         assert_eq!(prepared.description.control_lead_frames, 128);
         assert_eq!(prepared.shared.driver().buffer_frames, 128);
         assert!(super::Prepared::new(

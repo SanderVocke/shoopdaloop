@@ -176,6 +176,7 @@ pub(super) fn compile_with_geometry(
                     shoop_loop_plan::Mode::Stopped => LoopMode::Stopped,
                     shoop_loop_plan::Mode::Playing => LoopMode::Playing,
                     shoop_loop_plan::Mode::Recording => LoopMode::Recording,
+                    shoop_loop_plan::Mode::Replacing => LoopMode::Replacing,
                     shoop_loop_plan::Mode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
                     shoop_loop_plan::Mode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
                 },

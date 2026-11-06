@@ -92,10 +92,14 @@ pub enum LoopMode {
     Recording,
     PlayingDryThroughWet,
     RecordingDryIntoWet,
+    Replacing,
 }
 impl LoopMode {
     pub fn records(self) -> bool {
-        matches!(self, Self::Recording | Self::RecordingDryIntoWet)
+        matches!(
+            self,
+            Self::Recording | Self::RecordingDryIntoWet | Self::Replacing
+        )
     }
 }
 
@@ -166,6 +170,28 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    InputBegin {
+        id: u64,
+        count: u32,
+    },
+    InputAppend {
+        id: u64,
+        edit: crate::InputEdit,
+    },
+    InputPrepare {
+        id: u64,
+    },
+    InputCommit {
+        id: u64,
+        delay: Option<u32>,
+    },
+    InputCancel {
+        id: u64,
+    },
+    InputStatus {
+        id: u64,
+    },
+    InputCapacity,
     ProcessorControl {
         strip: StripId,
         control: crate::processors::Control,
@@ -361,6 +387,8 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    Input(crate::InputProgress),
+    InputCapacity(crate::InputCapacity),
     CompositeApplied { version: u64, frame: u64 },
     TimingApplied(crate::TimingState),
     ContentPrepared { revision: u64 },
@@ -422,6 +450,8 @@ pub struct HostPort {
 pub struct Capabilities(pub u32);
 
 impl Capabilities {
+    pub const INPUT_BATCH: Self = Self(1 << 12);
+    pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
     pub const LOOP_TIMING: Self = Self(1 << 11);
@@ -522,6 +552,7 @@ pub enum Telemetry {
         next_delay: Option<u32>,
         content_revision: u64,
         recording_armed: bool,
+        capture_incomplete: bool,
         timing_revision: u64,
         length: u64,
         position: u64,

@@ -408,3 +408,89 @@ fn editing_during_an_alignment_wait_emits_only_the_new_snapshot_at_actual_restar
         );
     }
 }
+
+#[shoop_test]
+fn refused_batch_during_composite_playback_keeps_cursors_children_pulses_and_pending_clocks() {
+    let make = || {
+        Resolver::prepare(
+            compile(Limits::default(), &description(32, 2)).unwrap(),
+            rt_runtime::Quantum::new(32).unwrap(),
+        )
+        .unwrap()
+    };
+    let mut expected = make();
+    let mut actual = make();
+    let mut plans = [None; 2];
+    for (index, resolver) in [&mut expected, &mut actual].into_iter().enumerate() {
+        request(resolver, 0, 1, 0, play());
+        request(resolver, 1, 2, 0, play());
+        plans[index] = Some(
+            resolver
+                .submit(Request {
+                    target: id(4),
+                    sequence: Sequence(3),
+                    at: Frame(0),
+                    timing: Timing::AfterTicks {
+                        source: id(0),
+                        skip: 6,
+                    },
+                    transition: Transition::Record {
+                        monitor_previous: false,
+                    },
+                })
+                .unwrap(),
+        );
+    }
+    assert_no_heap(|| {
+        for tick in 0..12 {
+            if tick == 4 {
+                let mut receipts = [None; 2];
+                actual
+                    .submit_batch(
+                        &[
+                            Request {
+                                target: id(0),
+                                sequence: Sequence(4),
+                                at: actual.frame(),
+                                timing: Timing::At,
+                                transition: Transition::Stop,
+                            },
+                            Request {
+                                target: id(4),
+                                sequence: Sequence(4),
+                                at: actual.frame(),
+                                timing: Timing::At,
+                                transition: Transition::Play {
+                                    position: 32 * 100,
+                                    retrigger: true,
+                                },
+                            },
+                        ],
+                        &mut receipts,
+                    )
+                    .unwrap();
+            }
+            expected.preview_tick(&[]).unwrap();
+            actual.preview_tick(&[]).unwrap();
+            assert_eq!(actual.decisions().unwrap(), expected.decisions().unwrap());
+            expected.commit().unwrap();
+            actual.commit().unwrap();
+            for slot in 0..5 {
+                assert_eq!(actual.state(id(slot)), expected.state(id(slot)));
+            }
+            let delay = |resolver: &Resolver| {
+                resolver
+                    .pending_transitions()
+                    .find(|pending| pending.request.sequence == Sequence(3))
+                    .map(|pending| pending.remaining_ticks)
+            };
+            assert_eq!(delay(&actual), delay(&expected));
+            expected.finish().unwrap();
+            actual.finish().unwrap();
+        }
+        assert_eq!(
+            actual.completion(plans[1].unwrap()),
+            expected.completion(plans[0].unwrap())
+        );
+    });
+}

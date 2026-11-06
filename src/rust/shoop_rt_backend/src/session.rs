@@ -252,14 +252,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         {
             return Err(anyhow!("session exceeds the host MIDI event budget"));
         }
-        if self.mirror.loops.values().any(|entry| {
-            entry.view.recording_armed
-                || entry.view.mode.records()
-                || entry
-                    .view
-                    .next_mode
-                    .is_some_and(shoop_rt_protocol::LoopMode::records)
-        }) {
+        if self.input.is_some()
+            || self.mirror.loops.values().any(|entry| {
+                entry.view.recording_armed
+                    || entry.view.mode.records()
+                    || entry
+                        .view
+                        .next_mode
+                        .is_some_and(shoop_rt_protocol::LoopMode::records)
+            })
+        {
             return Err(anyhow!(
                 "stop recording and settle pending recording transitions before loading a session"
             ));

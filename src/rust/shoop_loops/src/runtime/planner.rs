@@ -119,6 +119,12 @@ impl LoopPlanner {
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(), Error> {
         if let Some(take) = self.rows[slot].and_then(|r| r.prepared) {
+            if let Some(id) = take.writer {
+                self.shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .cancel_live(id, io)?;
+            }
             if let Some(token) = take.token {
                 io.capture().cancel_take(token)?;
             }
@@ -158,10 +164,12 @@ impl LoopPlanner {
                 .ok_or(Error::InvalidState)?,
         )?;
         let store = self
-            .shared
-            .as_ref()
-            .and_then(|shared| shared.audio_store(row.history_source).ok())
-            .or(self.wet_edits)
+            .wet_edits
+            .or_else(|| {
+                self.shared
+                    .as_ref()
+                    .and_then(|shared| shared.audio_store(row.history_source).ok())
+            })
             .ok_or(Error::InvalidState)?;
         let audio = view.audio.ok_or(Error::InvalidShape)?;
         if audio.snapshot.description.frames < decision.state.content_length {
@@ -191,6 +199,7 @@ impl LoopPlanner {
             }
         };
         let mut take = Take {
+            writer: None,
             windows,
             revision: decision.state.capture_revision,
             media: id,
@@ -230,6 +239,13 @@ impl LoopPlanner {
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
+        if let Some(take) = self.prepare_live_take(slot, decision, io)? {
+            self.rows[slot].as_mut().unwrap().prepared = Some(take);
+            return Ok(());
+        }
+        if decision.state.mode == Mode::Replacing || decision.state.capture_frames != 0 {
+            return Err(Error::Capacity);
+        }
         let id = self.ledger.reserve(media::Description {
             auxiliary_channels: if row.dry_wet {
                 row.binding.auxiliary_channels as u32
@@ -272,16 +288,20 @@ impl LoopPlanner {
             None
         };
         let mut windows = row.windows;
-        for window in windows
+        for channel in windows
             .audio
             .iter_mut()
             .chain(core::iter::once(&mut windows.midi))
         {
-            window.raw_frames = None;
-            window.capture_alignment = 0;
+            if !row.dry_wet {
+                channel.start_offset = 0;
+            }
+            channel.capture_alignment = 0;
+            channel.raw_frames = None;
         }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
             windows,
+            writer: None,
             revision: decision.state.capture_revision,
             media: id,
             bank,
@@ -300,7 +320,10 @@ impl LoopPlanner {
         error: Error,
         starting: bool,
     ) -> Result<(), Error> {
-        if !matches!(error, Error::Capacity | Error::Exhausted) && !starting {
+        let continuous = self.rows[slot]
+            .and_then(|row| row.active)
+            .is_some_and(|take| take.writer.is_some());
+        if !matches!(error, Error::Capacity | Error::Exhausted) && !starting && !continuous {
             return Err(error);
         }
         let target = decision.state.id;
@@ -349,12 +372,15 @@ impl LoopPlanner {
         if frame.checked_add(self.resolver.quantum().frames())? != end {
             return Err(Error::InvalidFrame);
         }
+        if !self.preflight_input_batch()? {
+            return Ok(false);
+        }
         for slot in 0..self.rows.len() {
             let Some(mut row) = self.rows[slot].filter(|row| row.assigned) else {
                 continue;
             };
             let decision = self.views[slot].decision;
-            let recording = decision.state.mode.records();
+            let recording = decision.state.writes();
             let starting = recording
                 && row
                     .active
@@ -378,6 +404,18 @@ impl LoopPlanner {
             }
             let take =
                 if starting { row.prepared } else { row.active }.ok_or(Error::InvalidState)?;
+            if let Some(id) = take.writer {
+                if let Some(error) = self
+                    .shared
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .live_job(id)?
+                    .failure
+                {
+                    self.latch(slot, decision, error, starting)?;
+                    return Ok(false);
+                }
+            }
             if let Some(token) = take.token {
                 let result = if starting {
                     io.capture().reserve_prepared(token, frame)
@@ -479,6 +517,26 @@ impl LoopPlanner {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let take = row.active.ok_or(Error::InvalidState)?;
         let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } if *target==row.binding.target));
+        if let Some(id) = take.writer {
+            let (frames, [audio, midi]) = self
+                .shared
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .finish_live(id, frame, io)?;
+            let expected = self
+                .resolver
+                .state(row.binding.target)
+                .map_err(runtime_error)?
+                .capture_frames;
+            if frames != expected {
+                return Err(Error::InvalidState);
+            }
+            self.rows[slot].as_mut().unwrap().frozen = if row.binding.channels > 0 {
+                [audio, midi, None]
+            } else {
+                [midi, None, None]
+            };
+        }
         if let Some(token) = take.token {
             let mut output = [None; 3];
             let members = usize::from(row.binding.channels > 0)
@@ -528,19 +586,27 @@ impl LoopPlanner {
                 }
                 self.rows[slot].as_mut().expect("row").aborted = false;
             } else if let Some(take) = row.active {
-                if !decision.state.mode.records()
-                    || decision.state.capture_revision != take.revision
-                {
+                if !decision.state.writes() || decision.state.capture_revision != take.revision {
                     let media = self.freeze(slot, frame, io)?;
                     if decision.state.content_revision == take.revision {
                         self.ledger
                             .set_playback(io, row.binding.target, Some(media))?;
-                        self.rows[slot].as_mut().expect("row").windows =
-                            self.ledger.view(media)?.windows.unwrap_or_default();
+                        let row = self.rows[slot].as_mut().expect("completed capture");
+                        row.windows = take.windows;
+                        row.length_override = None;
                     }
                 }
             }
             if let Some(origin) = decision.origin {
+                if let Some(pin) = self.input_batch_pin(origin) {
+                    let media = self.ledger.pinned(pin)?;
+                    self.ledger
+                        .set_playback(io, row.binding.target, Some(media))?;
+                    let windows = self.ledger.view(media)?.windows.unwrap_or_default();
+                    let row = self.rows[slot].as_mut().expect("validated batch row");
+                    row.windows = windows;
+                    row.length_override = None;
+                }
                 for pending in self.pending.iter().flatten() {
                     if let PendingKind::Transition {
                         request,
@@ -569,16 +635,55 @@ impl LoopPlanner {
                 }
             }
             if let Some(take) = self.rows[slot].and_then(|r| r.prepared) {
+                if let Some(id) = take.writer {
+                    let job = self
+                        .shared
+                        .as_ref()
+                        .ok_or(Error::InvalidState)?
+                        .live_job(id)?;
+                    let position = if job.kind == indexed_midi::WriteKind::Fixed
+                        || job.following_recording.is_some()
+                    {
+                        decision.state.position
+                    } else {
+                        decision.state.capture_frames
+                    };
+                    self.shared.as_mut().unwrap().start_live(id, position, io)?;
+                }
                 if let Some(token) = take.token {
                     io.capture().activate(token, frame)?;
                 }
                 let row = self.rows[slot].as_mut().expect("row");
+                if decision.state.mode == Mode::Recording && !decision.state.monitor_previous {
+                    row.windows = take.windows;
+                }
                 row.active = Some(take);
                 row.prepared = None;
                 row.next_bank = 1 - take.bank;
                 row.failure = None;
             }
+            if let Some(shared) = &mut self.shared {
+                if let Some(id) = shared.live_for(decision.state.id) {
+                    let job = shared.live_job(id)?;
+                    if job.following_recording.is_some_and(|revision| {
+                        decision.state.mode != Mode::Recording
+                            || revision != decision.state.capture_revision
+                    }) {
+                        shared.cancel_live(id, io)?;
+                    }
+                }
+            }
             let row = self.rows[slot].expect("row");
+            if let Some(writer) = row
+                .active
+                .and_then(|take| take.writer)
+                .filter(|_| decision.state.mode == Mode::Replacing)
+            {
+                self.shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .seek_live(writer, decision.state.position)?;
+            }
             let media = self
                 .ledger
                 .playback(row.binding.target)?
@@ -727,16 +832,26 @@ impl LoopPlanner {
         }
         let mut sources = [None; 3];
         let result = (|| {
-            for (member, resource) in row.resources[take.bank][usize::from(row.dry_wet)]
-                .iter()
-                .enumerate()
-            {
-                if member == 1 && !row.dry_wet {
-                    continue;
-                }
-                if let Some(resource) = resource {
-                    let snapshot = io.snapshot(*resource, frame)?;
-                    sources[member] = Some(snapshot);
+            if let Some(writer) = take.writer {
+                let [audio, midi] = self
+                    .shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .snapshot_live(writer, frame, io)?;
+                sources[0] = audio;
+                sources[2] = midi;
+            } else {
+                for (member, resource) in row.resources[take.bank][usize::from(row.dry_wet)]
+                    .iter()
+                    .enumerate()
+                {
+                    if member == 1 && !row.dry_wet {
+                        continue;
+                    }
+                    if let Some(resource) = resource {
+                        let snapshot = io.snapshot(*resource, frame)?;
+                        sources[member] = Some(snapshot);
+                    }
                 }
             }
             let audio = sources[0]
@@ -758,7 +873,7 @@ impl LoopPlanner {
                 })
                 .transpose()?;
             self.ledger
-                .publish(
+                .publish_windowed(
                     io,
                     id,
                     media::Input {
@@ -778,6 +893,7 @@ impl LoopPlanner {
                         audio,
                         midi,
                     },
+                    take.windows,
                 )
                 .map_err(|e| e.error)?;
             sources = [None; 3];
@@ -834,6 +950,7 @@ impl LoopPlanner {
                 continue;
             }
             let reply = match pending.kind {
+                PendingKind::InputBatch => self.input_batch_reply()?,
                 PendingKind::Program {
                     id, request, graph, ..
                 } => self
@@ -927,6 +1044,8 @@ impl LoopPlanner {
                 }
             }
         }
+        self.release_input_batch(&mut resources.io())?;
+        self.collect_automatic_finishes()?;
         self.ledger.release_all(&mut resources.io())?;
         for row in self.rows.iter_mut().flatten() {
             for bank in 0..2 {
@@ -976,11 +1095,14 @@ impl Planner for LoopPlanner {
         }
         Ok(())
     }
-    fn finish_tick(&mut self, context: FinishContext<'_, Operation, Reply>) -> Result<(), Error> {
+    fn finish_tick(
+        &mut self,
+        mut context: FinishContext<'_, Operation, Reply>,
+    ) -> Result<(), Error> {
         let end = context.interval.end;
-        self.finish_boundary(context)?;
+        self.finish_boundary(&mut context)?;
         if let Some(shared) = &mut self.shared {
-            shared.finish(end, self.graph_epoch);
+            shared.finish(end, self.graph_epoch, &mut context.resources)?;
         }
         Ok(())
     }
@@ -1063,36 +1185,76 @@ impl LoopPlanner {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
         self.node_pairs.callback(context.callback_start);
-        let result = (|| -> Result<Disposition<Reply>, Failure> {
-            if matches!(
-                operation,
-                Operation::HistoryStatus { .. }
-                    | Operation::HistoryGrab { .. }
-                    | Operation::CandidateBegin { .. }
-                    | Operation::CandidateAudio { .. }
-                    | Operation::CandidateMidi { .. }
-                    | Operation::CandidateStatus { .. }
-                    | Operation::CandidateCancel { .. }
-                    | Operation::CandidatePublish { .. }
-                    | Operation::SharedWork
-                    | Operation::SharedCapacity
-            ) {
-                if !context.payload.is_empty() {
-                    return Err(Error::InvalidShape.into());
+        if let Operation::InputBatch {
+            count,
+            timing,
+            graph,
+            topology,
+        } = operation
+        {
+            let result = (|| -> Result<Disposition<Reply>, Failure> {
+                if graph != context.graph_epoch || topology != self.resolver.epoch() {
+                    return Err(Error::StaleEpoch.into());
                 }
-                return self
-                    .shared_operation(
-                        operation,
-                        context.frame,
-                        context.graph_epoch,
-                        &mut context.resources,
-                    )
-                    .map(Disposition::Complete);
+                let slot = self.pending_slot(context.recovery)?;
+                self.begin_input_batch(
+                    count,
+                    timing,
+                    context.payload,
+                    context.requested_frame,
+                    context.token.sequence(),
+                    context.frame,
+                    &mut context.resources,
+                )?;
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::InputBatch,
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            })();
+            return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
+        }
+        if matches!(
+            operation,
+            Operation::HistoryStatus { .. }
+                | Operation::HistoryGrab { .. }
+                | Operation::HistoryWindow { .. }
+                | Operation::WriterBegin { .. }
+                | Operation::WriterPrepareRecording { .. }
+                | Operation::WriterPrepareReplacing { .. }
+                | Operation::WriterStatus { .. }
+                | Operation::WriterCancel { .. }
+                | Operation::CandidateBegin { .. }
+                | Operation::CandidateAudio { .. }
+                | Operation::CandidateMidi { .. }
+                | Operation::CandidateStatus { .. }
+                | Operation::CandidateCancel { .. }
+                | Operation::CandidatePublish { .. }
+                | Operation::SharedWork
+                | Operation::SharedCapacity
+        ) {
+            if !context.payload.is_empty() {
+                return Ok(Disposition::Complete(Reply::Failed(
+                    Error::InvalidShape.into(),
+                )));
             }
+            let result = self
+                .shared_operation(
+                    operation,
+                    context.frame,
+                    context.graph_epoch,
+                    &mut context.resources,
+                )
+                .map(Disposition::Complete);
+            return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
+        }
+        let result = (|| -> Result<Disposition<Reply>, Failure> {
             if !context.payload.is_empty()
                 && !matches!(
                     operation,
-                    Operation::TopologyBegin { .. }
+                    Operation::InputBatch { .. }
+                        | Operation::TopologyBegin { .. }
                         | Operation::TopologyAppend { .. }
                         | Operation::SelectFamily { .. }
                 )
@@ -1408,6 +1570,11 @@ impl LoopPlanner {
                         | PendingKind::Program { request, .. } = pending.kind
                         {
                             self.resolver.cancel(request)?;
+                        } else if let PendingKind::InputBatch = pending.kind {
+                            let request = self
+                                .input_batch_first_request()
+                                .ok_or(Error::InvalidState)?;
+                            self.resolver.cancel(request)?;
                         } else {
                             return Err(Error::InvalidState.into());
                         }
@@ -1655,7 +1822,7 @@ impl LoopPlanner {
                     }
                     let row = self.row(target)?;
                     let state = self.resolver.state(target)?;
-                    if state.mode.records() {
+                    if state.writes() {
                         return Err(Error::Busy.into());
                     }
                     let revision = state
@@ -1747,7 +1914,9 @@ impl LoopPlanner {
                             }
                             if matches!(
                                 transition,
-                                Transition::Program | Transition::Replace { .. }
+                                Transition::Program
+                                    | Transition::Replace { .. }
+                                    | Transition::Adopt { .. }
                             ) {
                                 return Err(Error::InvalidEvent.into());
                             }
@@ -1781,9 +1950,16 @@ impl LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
+                Operation::InputBatch { .. } => unreachable!("input operation handled"),
                 Operation::NodePairSourceWindows { .. }
                 | Operation::HistoryStatus { .. }
                 | Operation::HistoryGrab { .. }
+                | Operation::HistoryWindow { .. }
+                | Operation::WriterBegin { .. }
+                | Operation::WriterPrepareRecording { .. }
+                | Operation::WriterPrepareReplacing { .. }
+                | Operation::WriterStatus { .. }
+                | Operation::WriterCancel { .. }
                 | Operation::CandidateBegin { .. }
                 | Operation::CandidateAudio { .. }
                 | Operation::CandidateMidi { .. }
@@ -1924,19 +2100,19 @@ impl LoopPlanner {
             }
             self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
             self.observer.topology_epoch(self.resolver.epoch());
+            self.observer.settled(&self.resolver);
             self.observer.boundary(
                 context.frame,
                 self.resolver.decisions().map_err(runtime_error)?,
                 self.resolver.events(),
                 self.resolver.dropped_events(),
             );
-            self.observer.settled(&self.resolver);
             return Ok(interval.end);
         }
     }
     fn finish_boundary(
         &mut self,
-        mut context: FinishContext<'_, Operation, Reply>,
+        context: &mut FinishContext<'_, Operation, Reply>,
     ) -> Result<(), Error> {
         for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
             if let Some(interval) = row.interval {
@@ -1950,8 +2126,26 @@ impl LoopPlanner {
             row.reset_input = false;
         }
         self.resolver.finish().map_err(runtime_error)?;
+        self.collect_automatic_finishes()?;
+        for row in self.rows.iter().flatten() {
+            if let Some(take) = row.active.filter(|take| take.writer.is_some()) {
+                let job = self
+                    .shared
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .live_job(take.writer.unwrap())?;
+                if matches!(job.kind, indexed_midi::WriteKind::Growing { .. }) {
+                    self.resolver
+                        .confirm_capture_frames(row.binding.target, take.revision, job.frames)
+                        .map_err(runtime_error)?;
+                }
+            }
+        }
         for index in 0..self.pending.len() {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
+                if let PendingKind::InputBatch = pending.kind {
+                    self.collect_input_batch(&mut context.resources)?;
+                }
                 if let PendingKind::Transition { request, pin, .. } = pending.kind {
                     self.resolver
                         .take_completion(request)

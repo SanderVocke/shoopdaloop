@@ -30,6 +30,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.pump();
         self.ready()?;
+        if self.input.is_some() {
+            bail!("an input edit is pending");
+        }
         if self.requests.timing_pending() {
             bail!("a timing edit is pending");
         }

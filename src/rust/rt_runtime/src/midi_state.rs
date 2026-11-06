@@ -5,25 +5,48 @@ use crate::{
     Error,
 };
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[allow(dead_code)] // Ordered semantic store integration is staged separately.
+pub(crate) mod indexed;
+#[allow(dead_code)] // Interval-index writer integration is staged separately.
+pub(crate) mod interval;
+
+fn reset_preserves(cc: u8) -> bool {
+    matches!(cc, 0|32|7|39|10|42|70..=79|91..=95|122|124..=127)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NoteState {
     velocity: u8,
-    held: bool,
-    sostenuto: bool,
-    pressure: Option<u8>,
+    flags: u8,
+    pressure: u8,
+}
+impl Default for NoteState {
+    fn default() -> Self {
+        Self {
+            velocity: 0,
+            flags: 0,
+            pressure: 128,
+        }
+    }
 }
 impl NoteState {
     pub fn velocity(self) -> u8 {
         self.velocity
     }
     pub fn held(self) -> bool {
-        self.held
+        self.flags & 1 != 0
     }
     pub fn sostenuto(self) -> bool {
-        self.sostenuto
+        self.flags & 2 != 0
     }
     pub fn pressure(self) -> Option<u8> {
-        self.pressure
+        (self.pressure < 128).then_some(self.pressure)
+    }
+    fn set_held(&mut self, held: bool) {
+        self.flags = (self.flags & !1) | u8::from(held);
+    }
+    fn set_sostenuto(&mut self, sostenuto: bool) {
+        self.flags = (self.flags & !2) | (u8::from(sostenuto) << 1);
     }
 }
 /// Last observed selector family; a reset establishes the null RPN baseline.
@@ -49,7 +72,7 @@ impl Iterator for Keys {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChannelState {
     notes: [NoteState; 128],
-    controllers: [Option<u8>; 128],
+    controllers: [u8; 128],
     note_keys: u128,
     controller_keys: u128,
     program: Option<u8>,
@@ -62,18 +85,13 @@ pub struct ChannelState {
 }
 impl ChannelState {
     const INITIAL: Self = {
-        let mut controllers = [None; 128];
-        controllers[64] = Some(0);
-        controllers[66] = Some(0);
-        controllers[69] = Some(0);
         Self {
             notes: [NoteState {
                 velocity: 0,
-                held: false,
-                sostenuto: false,
-                pressure: None,
+                flags: 0,
+                pressure: 128,
             }; 128],
-            controllers,
+            controllers: [0; 128],
             note_keys: 0,
             controller_keys: (1 << 64) | (1 << 66) | (1 << 69),
             program: None,
@@ -96,7 +114,8 @@ impl ChannelState {
         self.notes.get(key as usize).copied()
     }
     pub fn controller(&self, controller: u8) -> Option<u8> {
-        self.controllers.get(controller as usize).copied().flatten()
+        let value = *self.controllers.get(controller as usize)?;
+        (self.controller_keys & (1u128 << controller) != 0).then_some(value)
     }
     /// Non-default notes in ascending key order, including known zero pressure
     /// and pedal-latched notes. Omitted keys still have the default projection.
@@ -105,13 +124,12 @@ impl ChannelState {
     }
     /// Known controls in ascending number order, including known zero values.
     pub fn known_controllers(&self) -> impl Iterator<Item = (u8, u8)> + '_ {
-        Keys(self.controller_keys)
-            .map(|cc| (cc, self.controllers[cc as usize].expect("known control")))
+        Keys(self.controller_keys).map(|cc| (cc, self.controllers[cc as usize]))
     }
     fn refresh_note(&mut self, key: u8) {
         let note = self.notes[key as usize];
         let bit = 1u128 << key;
-        if note.velocity != 0 || note.held || note.sostenuto || note.pressure.is_some() {
+        if note.velocity != 0 || note.held() || note.sostenuto() || note.pressure().is_some() {
             self.note_keys |= bit;
         } else {
             self.note_keys &= !bit;
@@ -123,7 +141,7 @@ impl ChannelState {
         }
     }
     fn set_controller(&mut self, cc: u8, value: Option<u8>) {
-        self.controllers[cc as usize] = value;
+        self.controllers[cc as usize] = value.unwrap_or(0);
         let bit = 1u128 << cc;
         if value.is_some() {
             self.controller_keys |= bit;
@@ -158,14 +176,14 @@ impl ChannelState {
         self.parameter_history_untracked
     }
     fn down(&self, controller: usize) -> bool {
-        self.controllers[controller].is_some_and(|v| v >= 64)
+        self.controller(controller as u8).is_some_and(|v| v >= 64)
     }
     fn release_unheld(&mut self) {
         if self.down(64) || self.down(69) {
             return;
         }
         for note in &mut self.notes {
-            if !note.held && !note.sostenuto {
+            if !note.held() && !note.sostenuto() {
                 note.velocity = 0;
             }
         }
@@ -173,10 +191,10 @@ impl ChannelState {
     }
     fn notes_off(&mut self, sound_off: bool) {
         for note in &mut self.notes {
-            note.held = false;
+            note.set_held(false);
             if sound_off {
                 note.velocity = 0;
-                note.sostenuto = false;
+                note.set_sostenuto(false);
             }
         }
         self.refresh_notes();
@@ -186,30 +204,24 @@ impl ChannelState {
         // Retain controls that RP-015 leaves unchanged. Device-specific defaults
         // remain unknown; the reset marker preserves their baseline operation.
         for cc in 0..128 {
-            if !matches!(cc,0|32|7|39|10|42|70..=79|91..=95|122|124..=127) {
-                self.controllers[cc] = None;
+            if !reset_preserves(cc as u8) {
+                self.set_controller(cc as u8, None);
             }
         }
         for cc in [1, 64, 65, 66, 67, 69] {
-            self.controllers[cc] = Some(0);
+            self.set_controller(cc, Some(0));
         }
-        self.controllers[11] = Some(127);
+        self.set_controller(11, Some(127));
         for cc in 98..=101 {
-            self.controllers[cc] = Some(127);
-        }
-        self.controller_keys = 0;
-        for cc in 0..128 {
-            if self.controllers[cc].is_some() {
-                self.controller_keys |= 1u128 << cc;
-            }
+            self.set_controller(cc, Some(127));
         }
         self.pitch_bend = 8192;
         self.pressure = Some(0);
         self.reset_controllers = true;
         self.parameter_family = Some(ParameterFamily::Rpn);
         for note in &mut self.notes {
-            note.sostenuto = false;
-            note.pressure = Some(0);
+            note.set_sostenuto(false);
+            note.pressure = 0;
         }
         self.note_keys = u128::MAX;
         self.release_unheld();
@@ -225,13 +237,13 @@ impl ChannelState {
                 self.set_controller(66, Some(value));
                 if value < 64 && was_down {
                     for note in &mut self.notes {
-                        note.sostenuto = false;
+                        note.set_sostenuto(false);
                     }
                     self.refresh_notes();
                     self.release_unheld();
                 } else if value >= 64 && !was_down {
                     for note in &mut self.notes {
-                        note.sostenuto = note.held;
+                        note.set_sostenuto(note.held());
                     }
                     self.refresh_notes();
                 }
@@ -304,14 +316,14 @@ impl MidiState {
         match message.kind() {
             MessageKind::NoteOn { key, velocity, .. } => {
                 channel.notes[key as usize].velocity = velocity;
-                channel.notes[key as usize].held = true;
+                channel.notes[key as usize].set_held(true);
                 channel.refresh_note(key);
             }
             MessageKind::NoteOff { key, .. } => {
                 let sustain = channel.down(64) || channel.down(69);
                 let note = &mut channel.notes[key as usize];
-                note.held = false;
-                if !sustain && !note.sostenuto {
+                note.set_held(false);
+                if !sustain && !note.sostenuto() {
                     note.velocity = 0;
                 }
                 channel.refresh_note(key);
@@ -321,12 +333,12 @@ impl MidiState {
             } => channel.control(controller, value),
             _ => match data[0] & 0xf0 {
                 0xa0 => {
-                    channel.notes[data[1] as usize].pressure = Some(data[2]);
+                    channel.notes[data[1] as usize].pressure = data[2];
                     channel.refresh_note(data[1]);
                 }
                 0xc0 => {
                     channel.program = Some(data[1]);
-                    channel.program_bank = [channel.controllers[0], channel.controllers[32]];
+                    channel.program_bank = [channel.controller(0), channel.controller(32)];
                 }
                 0xd0 => channel.pressure = Some(data[1]),
                 0xe0 => channel.pitch_bend = u16::from(data[1]) | (u16::from(data[2]) << 7),

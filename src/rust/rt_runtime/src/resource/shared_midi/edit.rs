@@ -23,9 +23,11 @@ pub(super) struct Edit {
     pub(super) position: u64,
     pub(super) frames: u64,
     pub(super) ready: bool,
+    pub(super) finalizing: bool,
     pub(super) retiring: bool,
     pub(super) base: Option<usize>,
     pub(super) import_cursor: Option<crate::resource::MidiCursor>,
+    pub(super) credit: usize,
 }
 
 impl MidiStore {
@@ -164,10 +166,19 @@ impl MidiStore {
         } else {
             expected.checked_next()?
         };
+        let credit = if frames == 0 {
+            view.credit
+        } else {
+            (prefix + output.div_ceil(EVENTS_PER_CHUNK)).max(1)
+        };
+        let reserved = credit.max(view.credit);
         let needed = bytes.div_ceil(self.page_bytes) + input.len();
         if self.free_edits.is_empty()
             || self.free_views.is_empty()
-            || self.debt.checked_add(2).is_none_or(|n| n > self.debt_limit)
+            || view
+                .credit
+                .checked_add(reserved)
+                .is_none_or(|n| n > self.debt_limit - self.debt)
             || self.pages.available_leases() < needed
             || self.reserved < needed
         {
@@ -184,9 +195,11 @@ impl MidiStore {
         let source = self.own(view, &source_state, false)?;
         self.retain(view.root).expect("prepared root references");
         let slot = self.free_edits.pop().expect("prepared transaction");
-        self.debt += 1;
+        self.debt += reserved;
+        self.owners += 1;
         let mut staged = view;
         staged.revision = revision;
+        staged.credit = credit;
         if prefix == 0 && frames > 0 {
             staged.first = Point {
                 serial: start.serial,
@@ -239,9 +252,11 @@ impl MidiStore {
             position,
             frames,
             ready: frames == 0,
+            finalizing: false,
             retiring: false,
             base: None,
             import_cursor: None,
+            credit: reserved,
         });
         io.store
             .charge_work(WorkClass::Render, 4 * size_of::<MidiState>(), input.len())?;
@@ -306,6 +321,15 @@ impl MidiStore {
         if edit.ready || quantum == 0 {
             return self.edit_status(id);
         }
+        if edit.finalizing {
+            let clipped = self.clipped_root(io, edit.view)?;
+            self.release_now(io.store, edit.view.root);
+            edit.view.root = clipped;
+            edit.finalizing = false;
+            edit.ready = true;
+            self.edits[slot].value = Some(edit);
+            return Ok(EditStatus::Ready);
+        }
         if edit.base.is_some() {
             return self.progress_import(io, id, quantum);
         }
@@ -364,7 +388,7 @@ impl MidiStore {
             let (bytes, events) = self.between(edit.view.root, edit.view.first, edit.view.last)?;
             edit.view.bytes = bytes;
             edit.view.events = events;
-            edit.ready = true;
+            edit.finalizing = true;
         }
         self.edits[slot].value = Some(edit);
         self.edit_status(id)
@@ -399,7 +423,7 @@ impl MidiStore {
     }
     pub fn commit_edit(&mut self, io: &mut RenderIo<'_>, id: EditId) -> Result<Revision, Error> {
         self.check(io.store)?;
-        let edit = self.edit(id)?;
+        let mut edit = self.edit(id)?;
         if !edit.ready {
             return Err(Error::Busy);
         }
@@ -409,6 +433,8 @@ impl MidiStore {
             return Err(Error::StaleRevision);
         }
         self.views[target.slot as usize].value = Some(edit.view);
+        self.debt -= edit.credit - edit.view.credit;
+        edit.credit = old.credit;
         self.initial[target.slot as usize] = self.edit_states[id.0.slot as usize * 3];
         self.work.add(0, 1, 0, 0);
         self.retire_edit(id, edit, old.root);

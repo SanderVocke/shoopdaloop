@@ -1939,7 +1939,9 @@ impl ControlEndpoint {
                         Outcome::CompositeApplied { .. }
                         | Outcome::TimingApplied(_)
                         | Outcome::ContentApplied { .. }
-                        | Outcome::ContentPrepared { .. },
+                        | Outcome::ContentPrepared { .. }
+                        | Outcome::Input(_)
+                        | Outcome::InputCapacity(_),
                     ) => Some(Refusal::Internal),
                 };
                 (refusal, execution.operation_result, true, None)

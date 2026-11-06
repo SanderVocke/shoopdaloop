@@ -37,10 +37,10 @@ impl Harness {
     fn new(channels: usize, q: usize) -> Self {
         Self::with_pages(channels, q, 1024)
     }
-    fn with_pages(channels: usize, q: usize, shared_pages: usize) -> Self {
-        Self::with_shape(channels, channels, q, shared_pages)
+    fn with_pages(channels: usize, q: usize, retained_pages: usize) -> Self {
+        Self::with_shape(channels, channels, q, retained_pages)
     }
-    fn with_shape(channels: usize, dry: usize, q: usize, shared_pages: usize) -> Self {
+    fn with_shape(channels: usize, dry: usize, q: usize, retained_pages: usize) -> Self {
         let total = channels + dry;
         let config = Config {
             max_frames: q,
@@ -118,6 +118,14 @@ impl Harness {
             Options::default(),
         )
         .unwrap();
+        let mut audio = resource::shared_audio::Config {
+            channels: channels as u32,
+            history_frames: q * 4,
+            views: 32,
+            pages: config.limits().resource_pages,
+        };
+        let capacity = audio.windowed_capacity(config, 1).unwrap();
+        audio.pages = capacity.history_pages + capacity.transaction_pages + retained_pages;
         prepared
             .planner
             .prepare_shared(
@@ -125,12 +133,7 @@ impl Harness {
                 SharedSettings {
                     histories: vec![HistorySettings {
                         source: 0,
-                        audio: Some(resource::shared_audio::Config {
-                            channels: channels as u32,
-                            history_frames: q * 4,
-                            views: 32,
-                            pages: shared_pages,
-                        }),
+                        audio: Some(audio),
                         midi: None,
                     }],
                     ..SharedSettings::default()
@@ -517,7 +520,7 @@ fn independent_maximum_dry_and_wet_sources_survive_wrapping_wet_rerecord() {
 
 #[shoop_test]
 fn refused_wet_edit_returns_all_reservations_and_keeps_dry_playback_running() {
-    let mut h = Harness::with_pages(8, 64, 128);
+    let mut h = Harness::with_pages(8, 64, 31);
     for samples in &mut h.inputs {
         samples.fill(7.);
     }
@@ -546,16 +549,20 @@ fn refused_wet_edit_returns_all_reservations_and_keeps_dry_playback_running() {
         let mut outcomes = 0;
         while let Some(execution) = h.control.try_execution() {
             if execution.sequence == sequence {
-                assert!(matches!(
-                    execution.operation_result,
-                    Some(Reply::Transition(Completion {
-                        outcome: Outcome::Failed {
-                            reason: Error::Capacity,
+                assert!(
+                    matches!(
+                        execution.operation_result,
+                        Some(Reply::Transition(Completion {
+                            outcome: Outcome::Failed {
+                                reason: Error::Capacity,
+                                ..
+                            },
                             ..
-                        },
-                        ..
-                    }))
-                ));
+                        }))
+                    ),
+                    "{:?}",
+                    execution.operation_result
+                );
                 outcomes += 1;
             }
         }

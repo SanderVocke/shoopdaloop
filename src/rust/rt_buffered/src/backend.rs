@@ -34,9 +34,18 @@ pub struct Batch<'a, 'observer> {
     pub frames: usize,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
+    pub midi_controls: Option<crate::MidiControls<'a>>,
     pub midi_outputs: &'a mut [MidiBuffer],
     pub parameters: &'a [ParameterEvent],
     pub observer: Option<&'observer mut dyn SourceObserver>,
+}
+
+impl<'a> Batch<'a, '_> {
+    pub fn midi_input(&self, port: usize) -> Option<crate::MidiInput<'a>> {
+        self.midi_inputs.get(port).map(|ordinary| {
+            crate::MidiInput::new(ordinary, self.midi_controls.filter(|_| port == 0))
+        })
+    }
 }
 
 /// A prepared synchronous implementation. Every method must be bounded and must

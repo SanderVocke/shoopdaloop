@@ -48,6 +48,7 @@ pub(crate) enum Purpose {
     Preview,
     Persistence,
     CancelReads,
+    Input,
 }
 
 #[derive(Clone, Debug)]
@@ -81,9 +82,9 @@ impl Requests {
     }
 
     pub fn push(&mut self, request: Request, purpose: Purpose) -> u64 {
-        self.reserve_mutation();
+        let sequence = self.reserve_mutation();
         self.outgoing.push_back(Pending {
-            sequence: self.next_sequence,
+            sequence,
             request,
             purpose,
         });

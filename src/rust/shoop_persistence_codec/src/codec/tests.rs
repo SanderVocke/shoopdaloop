@@ -966,3 +966,23 @@ fn preview_destination_survives_names_and_order_and_rejects_missing_identity() {
     };
     assert_eq!(session.preview_bus, Some(BusId::from_raw(1)));
 }
+
+#[shoop_test]
+fn default_grab_policy_survives_the_file_and_application_image_round_trip() {
+    let mut bundle = SessionBundle::new(SessionDocument::empty(1000));
+    bundle.document.global.default_recording_action = shoop_session::RecordingActionDocument::Grab;
+    let bytes = encode_session(&bundle, "grab-policy").unwrap();
+    let image = crate::document::from_bundle(decode_session(&bytes).unwrap()).unwrap();
+    let image::Manifest::Session(session) = &image.manifest else {
+        panic!("session")
+    };
+    assert_eq!(
+        session.global.default_recording_action,
+        DefaultRecordingAction::Grab
+    );
+    let restored = crate::document::to_bundle(&image).unwrap();
+    assert_eq!(
+        restored.document.global.default_recording_action,
+        shoop_session::RecordingActionDocument::Grab
+    );
+}

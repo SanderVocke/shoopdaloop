@@ -100,6 +100,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .count(),
         );
         for sequence in sequences {
+            if self
+                .input
+                .as_ref()
+                .is_some_and(|input| input.sequence < sequence)
+            {
+                continue;
+            }
             let Some(mut control) = self.composites.controls.remove(&sequence) else {
                 continue;
             };

@@ -44,10 +44,14 @@ impl MidiStore {
             .store
             .midi_indexes
             .info(version.midi.ok_or(Error::InvalidState)?, lease.version)?;
+        let credit = usize::try_from(info.events)
+            .map_err(|_| Error::Capacity)?
+            .div_ceil(EVENTS_PER_CHUNK)
+            .max(1);
         if info.events > self.config.chunks as u64 * EVENTS_PER_CHUNK as u64
             || self.free_bases.is_empty()
             || self.free_edits.is_empty()
-            || self.debt == self.debt_limit
+            || credit > self.debt_limit - self.debt
         {
             return Err(Error::Capacity);
         }
@@ -67,7 +71,8 @@ impl MidiStore {
             references: 1,
         });
         let slot = self.free_edits.pop().expect("prepared transaction");
-        self.debt += 1;
+        self.debt += credit;
+        self.owners += 1;
         for state in &mut self.edit_states[slot * 3..slot * 3 + 3] {
             *state = position.state;
         }
@@ -87,6 +92,7 @@ impl MidiStore {
                 revision: Revision(0),
                 writable: true,
                 retiring: false,
+                credit,
             },
             original: Point::default(),
             serial: 0,
@@ -97,9 +103,11 @@ impl MidiStore {
             position: 0,
             frames: 0,
             ready: false,
+            finalizing: false,
             retiring: false,
             base: Some(base),
             import_cursor: Some(position.cursor),
+            credit,
         });
         Ok(ImportId(EditId(Handle {
             scope: self.scope,

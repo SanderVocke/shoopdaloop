@@ -74,7 +74,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if only.is_some_and(|id| self.mirror.live_loop(id).is_none()) {
             bail!("unknown capture loop");
         }
-        if !self.composites.controls.is_empty()
+        if self.input.is_some() || !self.composites.controls.is_empty()
             || self
                 .requests
                 .outgoing
@@ -98,7 +98,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     | shoop_rt_protocol::Request::CancelBulk => true,
                     shoop_rt_protocol::Request::LoopTransition {
                         loop_id,
-                        mode: LoopMode::Recording | LoopMode::RecordingDryIntoWet,
+                        mode: LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet,
                         ..
                     } => only.is_none_or(|id| self.mirror.loops[&id].slot == loop_id),
                     _ => false,

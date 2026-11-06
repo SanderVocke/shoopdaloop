@@ -93,6 +93,12 @@ impl CaptureNode {
     }
 }
 impl Processor<LoopPlanner> for LoopNode {
+    fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        match self {
+            Self::Playback(node) => node.midi_buffer_settings(),
+            Self::Capture(node) => node.midi_buffer_settings(),
+        }
+    }
     fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
             Self::Playback(processor) => processor.admit(node, domain),
@@ -114,6 +120,15 @@ impl Processor<LoopPlanner> for LoopNode {
     }
 }
 impl Processor<LoopPlanner> for PlaybackNode {
+    fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        Ok(rt_runtime::processor::MidiBufferSettings {
+            output: Some(crate::midi_restore::output_capacity(
+                self.binding.midi_events,
+                self.binding.midi_bytes,
+            )?),
+            ..Default::default()
+        })
+    }
     fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         let row = domain
             .rows

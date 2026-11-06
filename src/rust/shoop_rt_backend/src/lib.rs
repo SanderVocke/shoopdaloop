@@ -42,6 +42,7 @@ mod composites;
 mod family;
 mod import;
 mod incoming;
+mod input;
 mod mirror;
 mod outgoing;
 mod persistence;
@@ -191,6 +192,7 @@ pub struct RtBackend<C, K> {
     failure_sequence: u64,
     /// Telemetry arrived after the latest outcome.
     telemetry_fresh: bool,
+    input: Option<input::Job>,
     replacement: Option<Replacement>,
     preview: Option<preview::Preview>,
     preview_playing: u64,
@@ -251,6 +253,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             mixer_failures: Vec::new(),
             failure_sequence: 0,
             telemetry_fresh: false,
+            input: None,
             replacement: None,
             preview: None,
             preview_playing: 0,
@@ -491,6 +494,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 );
                 self.read_cancel_needed = false;
             }
+            self.advance_input();
             self.advance_composites();
             self.advance_preview();
             self.advance_persistence();
@@ -532,7 +536,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .jobs
                 .iter()
                 .map(|job| job.cancel_waiters.len())
-                .sum::<usize>();
+                .sum::<usize>()
+            + usize::from(self.input.is_some());
         if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
             || self
                 .requests
@@ -555,6 +560,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.composites.controls.is_empty()
                     && self.composites.jobs.is_empty()
                     && self.requests.is_empty()
+                    && self.input.is_none()
                     && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
@@ -593,7 +599,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return 0;
         }
         let mut sent = 0;
-        while let Some(pending) = self.requests.outgoing.front() {
+        let waiting = self.requests.outgoing.len();
+        for _ in 0..waiting {
+            let Some(pending) = self.requests.outgoing.front() else {
+                break;
+            };
+            if self.input.as_ref().is_some_and(|job| job.blocks(pending)) {
+                let pending = self.requests.outgoing.pop_front().expect("front exists");
+                self.requests.outgoing.push_back(pending);
+                continue;
+            }
             match self.client.request(pending.request) {
                 Ok(correlation) => {
                     let pending = self.requests.outgoing.pop_front().expect("front exists");
@@ -668,6 +683,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             self.mutation_completions.push(BackendMutationCompletion {
                 sequence: pending.sequence,
+                result: Err(reason.clone()),
+            });
+        }
+        if let Some(job) = self.input.take() {
+            self.mutation_completions.push(BackendMutationCompletion {
+                sequence: job.sequence,
                 result: Err(reason.clone()),
             });
         }
