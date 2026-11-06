@@ -423,14 +423,17 @@ fn resolve_loaded(
 fn migrate_session_settings(document: &mut SettingsDocument) -> Vec<SettingsDiagnostic> {
     let mut diagnostics = Vec::new();
     if document.values.remove("audio.backend").is_some() {
-        diagnostics.push(SettingsDiagnostic { key: Some("audio.backend".into()), message: "The saved backend choice was retired. The RT session engine is now used everywhere. Content save/load, FX, composite loops, grab and live driver switching are unavailable.".into() });
+        diagnostics.push(SettingsDiagnostic { key: Some("audio.backend".into()), message: "The saved backend choice was retired. The RT session engine is now used everywhere.".into() });
     }
     if let Some(value) = document.values.remove("audio.engine_transport") {
         document
             .values
             .entry("audio.session_transport".into())
             .or_insert(value);
-        diagnostics.push(SettingsDiagnostic { key: Some("audio.session_transport".into()), message: "Engine transport migrated to session delivery. Socket hosts support UI recovery; shared-memory hosts cannot reattach.".into() });
+        diagnostics.push(SettingsDiagnostic {
+            key: Some("audio.session_transport".into()),
+            message: "Engine transport migrated to session delivery.".into(),
+        });
     }
     diagnostics
 }
