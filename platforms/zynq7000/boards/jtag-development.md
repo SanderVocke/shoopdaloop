@@ -28,7 +28,7 @@ CI's `zynq-board-zedboard` artifact includes board ELFs and manifests, but
 direct-load test ELFs use disposable CI credentials. Build your own image for
 an interactive connection. Preserve each ELF's adjacent JSON manifest.
 
-## Install a Linux workstation environment
+## Install a workstation environment
 
 Use Debian 13 for the firmware compiler versions used by CI. On other
 distributions, use a Debian 13 build container or install the exact pinned
@@ -70,6 +70,37 @@ existing loader can load ELF segments and enter its ELF entry point.
 QEMU is only needed for emulated tests. U-Boot, signing tools, DTC, Bison and
 Flex are needed for the SD workflow, not normal JTAG application builds.
 The native UI has additional desktop dependencies; see the main build guide.
+
+### Windows without WSL
+
+The direct-load ELF also builds natively on Windows 11 from PowerShell, without
+WSL or a container. Only the build has been verified this way; the board steps
+below are still written for a Linux host. Install:
+
+- Git for Windows. Its `usr\bin` directory provides the GNU `patch` the build runs.
+- Python 3.
+- rustup with its default MSVC host toolchain, including the Visual C++ build
+  tools its installer asks for. Host build scripts and procedural macros need them.
+- Arm GNU Toolchain 14.2.Rel1 for Windows,
+  `arm-gnu-toolchain-14.2.rel1-mingw-w64-x86_64-arm-none-eabi.zip` from
+  [Arm's download page](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads).
+  Check it against the published `.sha256asc`. The zip has no top-level folder:
+  extract it into a dedicated directory, such as
+  `%LOCALAPPDATA%\Programs\arm-gnu-toolchain-14.2.rel1`.
+
+Install the pinned Rust toolchain and target with the same two `rustup` commands
+as above. Then, in each PowerShell session used for building:
+
+```powershell
+$armGcc = "$env:LOCALAPPDATA\Programs\arm-gnu-toolchain-14.2.rel1"
+$gitRoot = Split-Path (Split-Path (Get-Command git).Source)
+$env:PATH = "$armGcc\bin;$env:PATH;$gitRoot\usr\bin"
+arm-none-eabi-gcc -dumpfullversion
+patch --version
+```
+
+GCC must report `14.2.1`. Git's `usr\bin` is appended rather than prepended so
+its Unix tools do not shadow Windows commands of the same name.
 
 ## Connect the board
 
@@ -171,6 +202,41 @@ when the pinned AMD sources are already downloaded. The compiler, BSP, FreeRTOS
 and Rust library are linked into the ELF. No AMD SDK installation is involved.
 Optional input-history policy is selected with `--engine-config`; see the
 [platform README](../README.md).
+
+On Windows, with `PATH` prepared as in [Windows without WSL](#windows-without-wsl),
+the same steps in PowerShell are:
+
+```powershell
+New-Item -ItemType Directory -Force work\zynq | Out-Null
+@'
+import os
+from pathlib import Path
+path = Path("work/zynq/zedboard.key")
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "wb") as stream:
+    stream.write(os.urandom(32))
+'@ | python -
+icacls work\zynq\zedboard.key /inheritance:r /grant:r "${env:USERNAME}:F"
+python platforms/zynq7000/build.py --fetch --board zedboard --app host `
+  --credential-file work/zynq/zedboard.key
+arm-none-eabi-readelf -h -l work/zynq/boards/zedboard/build/host.elf
+```
+
+The `0o600` mode has no effect on Windows: the key inherits its folder's
+permissions, which can let every local user read it. The `icacls` line restricts
+it to your account.
+
+Expect these differences from a Debian build:
+
+- The Arm linker warns that `host.elf` has a LOAD segment with RWX permissions.
+  The Debian linker does not print this for the same linker script, and the
+  warning does not fail the build.
+- Arm's toolchain bundles newlib 4.4.0 and binutils 2.43.1 rather than the
+  Debian pins, so the ELF cannot be compared byte-for-byte with CI builds.
+- Git for Windows checks files out with CRLF line endings by default
+  (`core.autocrlf=true`). The manifest's `patch_sha256` and
+  `source_inputs_sha256` therefore differ from a Linux build of the same
+  commit. The patches still apply.
 
 Expected checkpoint: `host.elf`, `host.map` and `host.json` under
 `work/zynq/boards/zedboard/build/`, using the ZedBoard profile and 512 MiB RAM.
