@@ -54,7 +54,27 @@ The graph shows the active executable audio/MIDI plan, including host endpoints.
 It is read-only: inspection cannot change routing or processor state. Use **Fit
 graph**, middle-drag to pan, and Ctrl/Cmd+scroll to zoom. The **Groups** menu
 collapses track, loop and bus members into summary nodes while retaining their
-external connections. Measurements updating do not re-run layout or move nodes.
+external connections. Measurements updating do not re-run layout or move nodes
+unless the expensive-processor filter changes which processors are visible.
+
+Enable **Expensive processors only** to show the top five individual processors
+and their immediate input/output neighbors; adjust **Top** from 1 to 20. Ranking
+uses the selected Avg/Worst/Stddev processor metric for live or capture-interval
+statistics, and actual elapsed step durations for a selected captured tick. It
+waits for all retained node timing pages before ranking a selected tick, and
+excludes unavailable and zero-valued measurements. Equal values use processor
+slot order. **Ranked processors** lists the values in descending order; click an
+entry to pin its details. Ranked graph nodes show their rank; other visible
+processors provide connection context. Filtering precedes group collapse, so a
+summary contains only retained members. Callback entry/exit, between-execution
+statistics and the capture timeline remain available. Turning the filter off
+restores the complete graph.
+
+This filter locates large elapsed spans, not a critical dependency path or proof
+of xrun causality. Independent branches still consume the callback budget, and
+elapsed durations include OS preemption. Per-node Worst values may come from
+different ticks; Stddev ranks variability rather than average cost. Use an actual
+captured tick and its callback timeline to investigate a particular interval.
 
 Hover a processor to see its complete-step Avg/Worst/population Stddev and sample
 count; click to pin details. Hover also highlights upstream dependencies and
