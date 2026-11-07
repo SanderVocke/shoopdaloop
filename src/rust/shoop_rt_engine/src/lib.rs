@@ -79,6 +79,7 @@ pub use processors::{
     ProcessorPreset, ProcessorState,
 };
 pub use render::{Phase, Render, Report, Stopped};
+pub use rt_runtime::AudioRenderMode;
 
 use crate::cells::{Cells, Observer};
 use crate::endpoint::{Settings, Work, PLANNED};
@@ -474,6 +475,7 @@ fn prepare_complete(
                 + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
         },
     )?;
+    resources.set_audio_render_mode(description.audio_render_mode);
     let loop_limits = LoopLimits {
         loop_slots: loops.max(1),
         relations: description.timing_relations.max(loops.max(1)),

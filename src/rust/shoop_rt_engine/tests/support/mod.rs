@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        audio_render_mode: shoop_rt_engine::AudioRenderMode::Current,
+        audio_bench_only: false,
         history: shoop_rt_protocol::host::InputHistorySettings {
             seconds: 30,
             audio_take_pages: 2048,
@@ -52,6 +54,19 @@ pub fn description() -> EngineDescription {
         reliable_credits: 8,
         bulk_credits: 2,
         telemetry_interval_frames: 0,
+    }
+}
+
+pub fn audio_modes() -> [shoop_rt_engine::AudioRenderMode; 3] {
+    use shoop_rt_engine::AudioRenderMode::*;
+    [Current, Chunks, ChunksDescriptors]
+}
+
+pub fn audio_description(mode: shoop_rt_engine::AudioRenderMode) -> EngineDescription {
+    EngineDescription {
+        audio_render_mode: mode,
+        audio_bench_only: true,
+        ..description()
     }
 }
 

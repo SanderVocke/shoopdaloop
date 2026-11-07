@@ -8,6 +8,7 @@ use core::sync::atomic::Ordering;
 use crate::cells::{Cells, Peak};
 use crate::stream::BulkReader;
 use alloc::sync::Arc;
+use rt_runtime::audio_refs::{GainEnvelope, ReferenceBlock};
 use rt_runtime::buffer::MidiBuffer;
 use rt_runtime::graph::PortCounts;
 use rt_runtime::midi_state::MidiState;
@@ -175,6 +176,11 @@ impl Ramp {
             };
         }
     }
+    fn envelope(&mut self, frames: usize) -> GainEnvelope {
+        let from = self.value;
+        self.advance(frames);
+        segment(from, self.value, frames)
+    }
     /// Write this ramp's segment for the next quantum, one value per frame.
     fn fill(&mut self, out: &mut [f32]) {
         let from = self.value;
@@ -198,6 +204,17 @@ fn fill_linear(out: &mut [f32], from: f32, to: f32) {
     }
     if let Some(last) = out.last_mut() {
         *last = to;
+    }
+}
+
+fn segment(from: f32, to: f32, frames: usize) -> GainEnvelope {
+    GainEnvelope {
+        start: if frames == 1 {
+            to
+        } else {
+            from + (to - from) / frames as f32
+        },
+        end: to,
     }
 }
 
@@ -251,6 +268,20 @@ impl Gains {
         fill_linear(&mut self.plain[..frames], before[0], after[0]);
         fill_linear(&mut self.left[..frames], before[1], after[1]);
         fill_linear(&mut self.right[..frames], before[2], after[2]);
+    }
+    fn envelopes(&mut self, frames: usize, scale: &mut Ramp) -> [GainEnvelope; 3] {
+        let before = self.levels(scale);
+        self.gain.advance(frames);
+        self.balance.advance(frames);
+        scale.advance(frames);
+        let after = self.levels(scale);
+        core::array::from_fn(|i| segment(before[i], after[i], frames))
+    }
+    fn unity(&self) -> bool {
+        self.gain.remaining == 0
+            && self.gain.value == 1.
+            && self.balance.remaining == 0
+            && self.balance.value == 0.
     }
     fn levels(&self, scale: &Ramp) -> [f32; 3] {
         let gain = self.gain.value * scale.value;
@@ -707,6 +738,58 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn process_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        use rt_runtime::audio_refs::GainEnvelope;
+        self.apply_configuration(block.graph_epoch);
+        match self {
+            Self::Loop(node) => node.process_references(block),
+            Self::Fader(node) if node.processor.is_none() => {
+                let descriptor = block.resources.audio_render_mode()
+                    == rt_runtime::AudioRenderMode::ChunksDescriptors;
+                if !descriptor && (node.presence.remaining != 0 || node.presence.value != 1.) {
+                    return Ok(false);
+                }
+                let frames = block.quantum.frames();
+                let from = node.presence.value;
+                node.presence.advance(frames);
+                let gain = GainEnvelope {
+                    start: if frames == 1 {
+                        node.presence.value
+                    } else {
+                        from + (node.presence.value - from) / frames as f32
+                    },
+                    end: node.presence.value,
+                };
+                let dry = crate::cells::mode_from_code(
+                    node.cells.loops[node.slot].mode.load(Ordering::Relaxed),
+                )
+                .dry_playback();
+                for port in 0..2 * node.channels {
+                    block.forward(port, port, gain)?;
+                    if (port >= node.channels) == dry {
+                        let value = block.peak(block.outputs[port])?;
+                        node.cells.loops[node.slot]
+                            .peaks
+                            .raise(port % node.channels, value);
+                    }
+                }
+                node.position = (node.position + frames) % frames;
+                Ok(true)
+            }
+            Self::StripOutput(node) if node.processor.is_none() => node.references(block),
+            Self::BusInput(node) if node.preview.is_none() => {
+                for channel in 0..node.channels {
+                    block.forward(channel, channel, GainEnvelope::default())?;
+                }
+                Ok(true)
+            }
+            Self::Bus(node) => node.references(block),
+            _ => Ok(false),
+        }
+    }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         match self {
             Self::Loop(node) => node.midi_buffer_settings(),
@@ -1110,6 +1193,46 @@ impl StripInput {
     }
 }
 
+fn steady(ramp: &Ramp, value: f32) -> bool {
+    ramp.remaining == 0 && ramp.value == value
+}
+
+impl StripOutput {
+    fn references(&mut self, block: &mut ReferenceBlock<'_, LoopPlanner>) -> Result<bool, Error> {
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::ChunksDescriptors
+            && !(self.gains.unity()
+                && steady(&self.mute, 1.)
+                && steady(&self.presence, 1.)
+                && (steady(&self.bank, 0.) || steady(&self.bank, 1.)))
+        {
+            return Ok(false);
+        }
+        let frames = block.quantum.frames();
+        let bank = self.bank.envelope(frames);
+        let mute = self.mute.envelope(frames);
+        let gains = self.gains.envelopes(frames, &mut self.presence);
+        let cells = &self.cells.strips[self.slot];
+        for channel in 0..self.channels {
+            let index = if self.outputs == 2 && channel < 2 {
+                channel + 1
+            } else {
+                0
+            };
+            let source = block.inputs[channel].scaled(gains[index].compose(mute));
+            if channel < self.outputs {
+                cells.output.raise(channel, block.peak(source)?);
+            }
+            block.outputs[channel] = source.scaled(GainEnvelope {
+                start: 1. - bank.start,
+                end: 1. - bank.end,
+            });
+            block.outputs[self.channels + channel] = source.scaled(bank);
+            block.arena.work.forwarded += 2;
+        }
+        Ok(true)
+    }
+}
+
 impl StripOutput {
     pub(crate) fn render(
         &mut self,
@@ -1323,6 +1446,39 @@ impl LoopFader {
             _ => return Err(Error::InvalidParameter),
         }
         Ok(())
+    }
+}
+
+impl BusMixer {
+    fn references(&mut self, block: &mut ReferenceBlock<'_, LoopPlanner>) -> Result<bool, Error> {
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::ChunksDescriptors
+            && !(self.gains.unity()
+                && steady(&self.mute, 1.)
+                && steady(&self.presence, 1.)
+                && (steady(&self.bank, 0.) || steady(&self.bank, 1.)))
+        {
+            return Ok(false);
+        }
+        let frames = block.quantum.frames();
+        let gains = self.gains.envelopes(frames, &mut self.mute);
+        let bank = self.bank.envelope(frames);
+        let presence = self.presence.envelope(frames);
+        for channel in 0..self.channels {
+            let index = if self.active_channels == 2 && channel < 2 {
+                channel + 1
+            } else {
+                0
+            };
+            let source = block.inputs[channel].scaled(gains[index].compose(presence));
+            self.cells.buses[self.slot].raise(channel, block.peak(source)?);
+            block.outputs[channel] = source.scaled(GainEnvelope {
+                start: 1. - bank.start,
+                end: 1. - bank.end,
+            });
+            block.outputs[self.channels + channel] = source.scaled(bank);
+            block.arena.work.forwarded += 2;
+        }
+        Ok(true)
     }
 }
 

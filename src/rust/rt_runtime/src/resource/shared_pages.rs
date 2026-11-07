@@ -14,11 +14,19 @@ pub(super) struct LeaseId {
 }
 
 pub(super) struct SharedPages {
+    live: usize,
+    chunks: Option<Chunks>,
     scope: u32,
     store_scope: u32,
     references: Box<[usize]>,
     leases: Vec<Slot<usize>>,
     free_leases: Vec<usize>,
+}
+
+struct Chunks {
+    data: Box<[f32]>,
+    samples: usize,
+    free: Vec<usize>,
 }
 
 impl SharedPages {
@@ -49,12 +57,153 @@ impl SharedPages {
             };
         }
         Ok(Self {
+            live: 0,
+            chunks: None,
             scope: index::new_scope()?,
             store_scope: store.scope,
             references,
             leases: leases_table,
             free_leases: (0..leases).rev().collect(),
         })
+    }
+
+    pub fn prepare_chunks(
+        store: &mut ResourceStore,
+        physical_pages: usize,
+        count: usize,
+        samples: usize,
+        leases: usize,
+    ) -> Result<Self, Error> {
+        let mut result = Self::prepare(store, leases)?;
+        let size = count
+            .checked_mul(samples)
+            .filter(|&n| n <= i32::MAX as usize / 4)
+            .ok_or(Error::Capacity)?;
+        store.detach_audio_pages(physical_pages)?;
+        let mut data = vec![0.; size].into_boxed_slice();
+        for value in &mut data {
+            *core::hint::black_box(value) = 0.;
+        }
+        result.references = vec![0; count].into_boxed_slice();
+        result.chunks = Some(Chunks {
+            data,
+            samples,
+            free: (0..count).rev().collect(),
+        });
+        Ok(result)
+    }
+
+    pub fn live_payloads(&self) -> usize {
+        if let Some(chunks) = &self.chunks {
+            self.references.len() - chunks.free.len()
+        } else {
+            self.live
+        }
+    }
+    pub fn chunked(&self) -> bool {
+        self.chunks.is_some()
+    }
+
+    pub(super) fn reserve_samples(&mut self, store: &ResourceStore) -> Result<LeaseId, Error> {
+        self.check_store(store)?;
+        if self.free_leases.is_empty() {
+            return Err(Error::Capacity);
+        }
+        let page = self
+            .chunks
+            .as_mut()
+            .ok_or(Error::InvalidState)?
+            .free
+            .pop()
+            .ok_or(Error::Capacity)?;
+        Ok(self.acquire(page))
+    }
+    pub(super) fn fill_samples(
+        &mut self,
+        store: &mut ResourceStore,
+        lease: LeaseId,
+        samples: &[f32],
+    ) -> Result<(), Error> {
+        self.check_store(store)?;
+        let page = self.page(lease)?;
+        if self.references[page] != 1 {
+            return Err(Error::InvalidState);
+        }
+        let chunks = self.chunks.as_mut().ok_or(Error::InvalidState)?;
+        if samples.len() != chunks.samples {
+            return Err(Error::InvalidShape);
+        }
+        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_from_slice(samples);
+        store.charge_work(WorkClass::Render, samples.len() * 4, 0)
+    }
+    pub(super) fn share_reserved(
+        &mut self,
+        store: &ResourceStore,
+        destination: LeaseId,
+        source: LeaseId,
+    ) -> Result<bool, Error> {
+        self.check_store(store)?;
+        let destination_page = self.page(destination)?;
+        let source_page = self.page(source)?;
+        if self.references[destination_page] != 1 {
+            return Err(Error::InvalidState);
+        }
+        if destination_page == source_page || self.references[source_page] == usize::MAX {
+            return Ok(false);
+        }
+        let chunks = self.chunks.as_mut().ok_or(Error::InvalidState)?;
+        self.references[source_page] += 1;
+        self.references[destination_page] = 0;
+        self.leases[destination.slot as usize].value = Some(source_page);
+        chunks.free.push(destination_page);
+        self.live -= 1;
+        Ok(true)
+    }
+    pub fn insert_samples_render(
+        &mut self,
+        store: &mut ResourceStore,
+        samples: &[f32],
+    ) -> Result<LeaseId, Error> {
+        self.check_store(store)?;
+        let chunks = self.chunks.as_mut().ok_or(Error::InvalidState)?;
+        if samples.len() != chunks.samples || self.free_leases.is_empty() {
+            return Err(Error::InvalidShape);
+        }
+        let page = chunks.free.pop().ok_or(Error::Capacity)?;
+        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_from_slice(samples);
+        store.charge_work(WorkClass::Render, samples.len() * 4, 0)?;
+        Ok(self.acquire(page))
+    }
+
+    pub fn copy_span(
+        &self,
+        store: &ResourceStore,
+        lease: LeaseId,
+        start: usize,
+        output: &mut [u8],
+    ) -> Result<(), Error> {
+        if let Some(chunks) = &self.chunks {
+            let page = self.page(lease)?;
+            if start
+                .checked_add(output.len())
+                .is_none_or(|end| end > chunks.samples * 4)
+            {
+                return Err(Error::InvalidOffset);
+            }
+            for (offset, value) in output.iter_mut().enumerate() {
+                let byte = start + offset;
+                *value = chunks.data[page * chunks.samples + byte / 4].to_le_bytes()[byte % 4];
+            }
+        } else {
+            output.copy_from_slice(&self.bytes(store, lease)?[start..start + output.len()]);
+        }
+        Ok(())
+    }
+
+    pub fn sample_span(&self, lease: LeaseId) -> Result<&[f32], Error> {
+        let page = self.page(lease)?;
+        let chunks = self.chunks.as_ref().ok_or(Error::InvalidState)?;
+        Ok(&chunks.data[page * chunks.samples..(page + 1) * chunks.samples])
     }
 
     fn check_store(&self, store: &ResourceStore) -> Result<(), Error> {
@@ -74,6 +223,9 @@ impl SharedPages {
     fn acquire(&mut self, page: usize) -> LeaseId {
         let slot = self.free_leases.pop().expect("reserved lease credit");
         self.leases[slot].value = Some(page);
+        if self.references[page] == 0 {
+            self.live += 1;
+        }
         self.references[page] += 1;
         LeaseId {
             scope: self.scope,
@@ -125,6 +277,20 @@ impl SharedPages {
         bytes: &[u8],
     ) -> Result<LeaseId, Error> {
         self.check_store(store)?;
+        if let Some(chunks) = &mut self.chunks {
+            if bytes.len() != chunks.samples * 4 || self.free_leases.is_empty() {
+                return Err(Error::InvalidShape);
+            }
+            let page = chunks.free.pop().ok_or(Error::Capacity)?;
+            for (target, source) in chunks.data[page * chunks.samples..(page + 1) * chunks.samples]
+                .iter_mut()
+                .zip(bytes.chunks_exact(4))
+            {
+                *target = f32::from_le_bytes(source.try_into().expect("sample bytes"));
+            }
+            store.charge_work(WorkClass::Render, bytes.len(), 0)?;
+            return Ok(self.acquire(page));
+        }
         let page_bytes = store.config.limits().page_bytes;
         if bytes.len() != page_bytes {
             return Err(Error::InvalidShape);
@@ -151,8 +317,15 @@ impl SharedPages {
         store.charge_work(WorkClass::Render, 0, 1)?;
         self.references[page] = remaining;
         if remaining == 0 {
-            store.pages[page] = Page::default();
-            store.free_pages.push(page);
+            self.live -= 1;
+        }
+        if remaining == 0 {
+            if let Some(chunks) = &mut self.chunks {
+                chunks.free.push(page);
+            } else {
+                store.pages[page] = Page::default();
+                store.free_pages.push(page);
+            }
         }
         release(&mut self.leases, &mut self.free_leases, lease.slot as usize);
         Ok(remaining == 0)
@@ -226,8 +399,15 @@ impl SharedPages {
         store.charge_external(0, 1)?;
         self.references[page] = remaining;
         if remaining == 0 {
-            store.pages[page] = Page::default();
-            store.free_pages.push(page);
+            self.live -= 1;
+        }
+        if remaining == 0 {
+            if let Some(chunks) = &mut self.chunks {
+                chunks.free.push(page);
+            } else {
+                store.pages[page] = Page::default();
+                store.free_pages.push(page);
+            }
             store.work.reclaimed_pages += 1;
         }
         release(&mut self.leases, &mut self.free_leases, lease.slot as usize);
@@ -287,6 +467,9 @@ impl SharedPages {
             .checked_sub(1)
             .ok_or(Error::InvalidState)?;
         self.references[page] = remaining;
+        if remaining == 0 {
+            self.live -= 1;
+        }
         if remaining == 0 {
             store.retired_pages.push(page);
         }

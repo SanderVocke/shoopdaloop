@@ -148,6 +148,37 @@ impl ResourceStore {
         if pages > self.free_pages.len() - self.reserved_pages {
             return Err(Error::Capacity);
         }
+        for index in 0..group.members {
+            let member = self.capture_groups.member(take.group, index);
+            let id = member.take.expect("validated take");
+            let version = get(&self.versions, id.slot, id.generation).expect("validated version");
+            if let Some(audio) = version.audio {
+                let export = member.audio_export.ok_or(Error::InvalidState)?;
+                let result = self.with_audio(audio.store, |store, pool| {
+                    pool.reserve_capture_block(&mut store.render_io(), audio.take, export)
+                });
+                match result {
+                    Ok(write) => {
+                        let slot = self.capture_groups.member_index(take.group, index);
+                        self.capture_groups.audio_writes[slot] = Some(CaptureAudioWrite {
+                            store: audio.store,
+                            write,
+                        });
+                    }
+                    Err(error) => {
+                        for previous in 0..index {
+                            let slot = self.capture_groups.member_index(take.group, previous);
+                            if let Some(write) = self.capture_groups.audio_writes[slot].take() {
+                                self.with_audio(write.store, |store, pool| {
+                                    pool.cancel_capture_block(&mut store.render_io(), write.write)
+                                })?;
+                            }
+                        }
+                        return Err(error);
+                    }
+                }
+            }
+        }
         self.reserved_pages += pages;
         for index in 0..group.members {
             let mut member = self.capture_groups.member(take.group, index);
@@ -187,6 +218,12 @@ impl ResourceStore {
         for index in 0..group.members {
             let mut member = self.capture_groups.member(interval.take.group, index);
             self.reserved_pages -= member.append.take().expect("interval reservation").pages;
+            let slot = self.capture_groups.member_index(interval.take.group, index);
+            if let Some(write) = self.capture_groups.audio_writes[slot].take() {
+                self.with_audio(write.store, |store, pool| {
+                    pool.cancel_capture_block(&mut store.render_io(), write.write)
+                })?;
+            }
             self.capture_groups
                 .set_member(interval.take.group, index, member);
         }
@@ -218,10 +255,22 @@ impl ResourceStore {
             return Err(Error::InvalidShape);
         }
         let bytes = samples.len() * 4;
-        self.charge_work(WorkClass::Render, bytes, 0)?;
-        for (index, sample) in samples.iter().enumerate() {
-            let start = member.staging_start + index * 4;
-            self.capture_groups.staging[start..start + 4].copy_from_slice(&sample.to_le_bytes());
+        let slot = self
+            .capture_groups
+            .member_index(interval.take.group, ordinal);
+        if let Some(write) = self.capture_groups.audio_writes[slot].take() {
+            let result = self.with_audio(write.store, |store, pool| {
+                pool.fill_capture_block(&mut store.render_io(), &write.write, samples)
+            });
+            self.capture_groups.audio_writes[slot] = Some(write);
+            result?;
+        } else {
+            self.charge_work(WorkClass::Render, bytes, 0)?;
+            for (index, sample) in samples.iter().enumerate() {
+                let start = member.staging_start + index * 4;
+                self.capture_groups.staging[start..start + 4]
+                    .copy_from_slice(&sample.to_le_bytes());
+            }
         }
         reservation.ready = true;
         reservation.bytes = bytes;
@@ -340,40 +389,53 @@ impl ResourceStore {
                 .expect("running boundary")
                 .checked_add(self.quantum.frames())
                 .expect("reserved frame");
-            self.charge_work(WorkClass::Render, reservation.bytes * 2, 0)
-                .expect("required copies are not budgeted");
-            if let Some(owner) = version.midi {
-                let mut start = member.staging_start;
-                for _ in 0..reservation.events {
-                    let frame = u64::from_le_bytes(
-                        self.capture_groups.staging[start..start + 8]
-                            .try_into()
-                            .expect("staged frame"),
-                    );
-                    let bytes = u32::from_le_bytes(
-                        self.capture_groups.staging[start + 8..start + 12]
-                            .try_into()
-                            .expect("staged length"),
-                    ) as usize;
-                    let mut short = [0; 3];
-                    let count = bytes.min(3);
-                    short[..count].copy_from_slice(
-                        &self.capture_groups.staging[start + 12..start + 12 + count],
-                    );
-                    self.append_group_staging(&mut version, start, 12 + bytes);
-                    self.midi_indexes.append(
-                        owner,
-                        format::RecordSummary {
-                            frame,
-                            end: version.written,
-                            short,
-                        },
-                        WorkClass::Render,
-                    );
-                    start += 12 + bytes;
-                }
+            let slot = self.capture_groups.member_index(interval.take.group, index);
+            if let Some(write) = self.capture_groups.audio_writes[slot].take() {
+                self.with_audio(write.store, |store, pool| {
+                    pool.commit_capture_block(&mut store.render_io(), write.write)
+                })
+                .expect("reserved capture block");
+                version.written += reservation.bytes;
             } else {
-                self.append_group_staging(&mut version, member.staging_start, reservation.bytes);
+                self.charge_work(WorkClass::Render, reservation.bytes * 2, 0)
+                    .expect("required copies are not budgeted");
+                if let Some(owner) = version.midi {
+                    let mut start = member.staging_start;
+                    for _ in 0..reservation.events {
+                        let frame = u64::from_le_bytes(
+                            self.capture_groups.staging[start..start + 8]
+                                .try_into()
+                                .expect("staged frame"),
+                        );
+                        let bytes = u32::from_le_bytes(
+                            self.capture_groups.staging[start + 8..start + 12]
+                                .try_into()
+                                .expect("staged length"),
+                        ) as usize;
+                        let mut short = [0; 3];
+                        let count = bytes.min(3);
+                        short[..count].copy_from_slice(
+                            &self.capture_groups.staging[start + 12..start + 12 + count],
+                        );
+                        self.append_group_staging(&mut version, start, 12 + bytes);
+                        self.midi_indexes.append(
+                            owner,
+                            format::RecordSummary {
+                                frame,
+                                end: version.written,
+                                short,
+                            },
+                            WorkClass::Render,
+                        );
+                        start += 12 + bytes;
+                    }
+                } else {
+                    self.append_group_staging(
+                        &mut version,
+                        member.staging_start,
+                        reservation.bytes,
+                    );
+                }
             }
             self.publish_capture(
                 CaptureId {

@@ -93,6 +93,15 @@ impl CaptureNode {
     }
 }
 impl Processor<LoopPlanner> for LoopNode {
+    fn process_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        match self {
+            Self::Playback(node) => node.process_references(block),
+            Self::Capture(_) => Ok(false),
+        }
+    }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         match self {
             Self::Playback(node) => node.midi_buffer_settings(),
@@ -120,6 +129,68 @@ impl Processor<LoopPlanner> for LoopNode {
     }
 }
 impl Processor<LoopPlanner> for PlaybackNode {
+    fn process_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        use rt_runtime::audio_refs::{AudioSequence, GainEnvelope};
+        let view = *block
+            .domain
+            .views
+            .get(self.binding.target.slot() as usize)
+            .ok_or(Error::InvalidId)?;
+        if view.dry_wet || view.lead || view.raw_position != view.decision.state.position as i64 {
+            return Ok(false);
+        }
+        let Some(renderer) = &mut self.audio else {
+            return Ok(false);
+        };
+        if let Some(source) = view.audio {
+            if !renderer.reference_ready(view.smoothing, view.decision.playback_discontinuity) {
+                return Ok(false);
+            }
+            for channel in 0..self.binding.channels {
+                let window = view.windows.audio[channel];
+                if window.origin() != 0 || window.preplay != 0 {
+                    return Ok(false);
+                }
+                let Some(sequence) =
+                    block.playback(source, view.decision.state.position, channel)?
+                else {
+                    return Ok(false);
+                };
+                let balance = if view.audio_widths[0] == 2 {
+                    if channel == 0 {
+                        1. - view.balance.max(0.)
+                    } else {
+                        1. + view.balance.min(0.)
+                    }
+                } else {
+                    1.
+                };
+                let gain = view.gain * balance * f32::from_bits(window.gain_bits);
+                block.outputs[channel] = sequence.scaled(GainEnvelope::constant(gain));
+            }
+            renderer.set_smoothing(view.smoothing);
+            for channel in 0..self.binding.channels {
+                let sequence = block.outputs[channel];
+                renderer.reference_last(channel, block.arena.last(sequence, block.resources)?);
+                if block.resources.audio_render_mode() == rt_runtime::AudioRenderMode::Chunks
+                    && sequence.gain != GainEnvelope::default()
+                {
+                    block.materialize(channel, sequence)?;
+                }
+            }
+        } else {
+            renderer.reference_silence();
+            block.outputs[..self.binding.channels].fill(AudioSequence::default());
+        }
+        if let Some(auxiliary) = &mut self.auxiliary {
+            auxiliary.reference_silence();
+        }
+        block.arena.work.forwarded += self.binding.channels as u64;
+        Ok(true)
+    }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         Ok(rt_runtime::processor::MidiBufferSettings {
             output: Some(crate::midi_restore::output_capacity(

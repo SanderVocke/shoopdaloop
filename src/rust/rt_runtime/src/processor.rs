@@ -149,6 +149,12 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
         Ok(MidiBufferSettings::default())
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
+    fn process_references(
+        &mut self,
+        _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+    ) -> Result<bool, Error> {
+        Ok(false)
+    }
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
         &mut self,
@@ -164,6 +170,12 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn process_references(
+        &mut self,
+        block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+    ) -> Result<bool, Error> {
+        (**self).process_references(block)
+    }
     fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
         (**self).midi_buffer_settings()
     }

@@ -81,6 +81,12 @@ impl Render {
     pub fn diagnostics(&self) -> rt_runtime::executor::Diagnostics {
         self.runtime.diagnostics()
     }
+    pub fn audio_pool_work(&self) -> rt_runtime::resource::shared_audio::AudioPoolWork {
+        self.runtime.audio_pool_work()
+    }
+    pub fn audio_graph_work(&self) -> rt_runtime::audio_refs::AudioGraphWork {
+        self.runtime.audio_graph_work()
+    }
     pub fn resource_usage(&self) -> rt_runtime::resource::PoolUsage {
         self.runtime.resource_usage()
     }

@@ -132,6 +132,18 @@ impl Inputs<'_, '_> {
     }
 }
 impl AudioRenderer {
+    pub fn reference_ready(&self, smoothing: Smoothing, discontinuity: bool) -> bool {
+        self.ramp_position >= self.ramp_frames && (!discontinuity || smoothing == Smoothing::None)
+    }
+    pub fn reference_last(&mut self, channel: usize, sample: f32) {
+        self.last[channel] = sample;
+    }
+    pub fn reference_silence(&mut self) {
+        self.last.fill(0.);
+        self.anchor.fill(0.);
+        self.ramp_frames = self.next_ramp_frames;
+        self.ramp_position = self.ramp_frames;
+    }
     pub fn prepare(
         channels: usize,
         max_frames: usize,

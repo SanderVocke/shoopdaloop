@@ -5375,6 +5375,7 @@ dependencies = [
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_wasm_test_support",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
 ]

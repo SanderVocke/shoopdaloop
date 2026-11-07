@@ -26,61 +26,63 @@ fn write(id: u64, offset: u64, bytes: &[u8]) -> Request {
 
 #[shoop_test]
 fn uploads_are_inaudible_bounded_and_recycle_resources_while_existing_audio_continues() {
-    let mut h = Harness::new(&description());
-    h.input = Box::new(|_, _| 1.);
-    let strip = strip(0, 1);
-    h.done(Request::CreateStrip {
-        strip,
-        shape: shape(1, 1, false),
-    });
-    h.done(Request::Connect {
-        port: port(strip, PortKind::AudioIn, 0),
-        host: audio_in(0),
-        connected: true,
-    });
-    h.done(route(strip, 0, 0, true));
-    h.done(Request::StripControl {
-        strip,
-        control: StripControl::Monitoring(true),
-    });
-    h.run(8, 4);
-    let start = h.outputs[0].len();
-    for id in 1..=32 {
-        h.done(begin(id, false, 32, 256));
+    for mode in audio_modes() {
+        let mut h = Harness::new(&audio_description(mode));
+        h.input = Box::new(|_, _| 1.);
+        let strip = strip(0, 1);
+        h.done(Request::CreateStrip {
+            strip,
+            shape: shape(1, 1, false),
+        });
+        h.done(Request::Connect {
+            port: port(strip, PortKind::AudioIn, 0),
+            host: audio_in(0),
+            connected: true,
+        });
+        h.done(route(strip, 0, 0, true));
+        h.done(Request::StripControl {
+            strip,
+            control: StripControl::Monitoring(true),
+        });
+        h.run(8, 4);
+        let start = h.outputs[0].len();
+        for id in 1..=32 {
+            h.done(begin(id, false, 32, 256));
+            assert_eq!(
+                h.apply(write(id, 1, &[0; 8])),
+                Outcome::Refused(Refusal::InvalidValue)
+            );
+            assert_eq!(
+                h.apply(Request::ContentFinish { id }),
+                Outcome::Refused(Refusal::InvalidValue)
+            );
+            h.done(write(id, 0, &[0; 248]));
+            h.done(write(id, 248, &[0; 8]));
+            h.done(Request::ContentFinish { id });
+            h.done(Request::ContentFinish { id });
+            h.done(Request::ContentRelease { id });
+            assert_eq!(
+                h.apply(begin(id, false, 0, 0)),
+                Outcome::Refused(Refusal::InvalidId)
+            );
+        }
+        assert!(h.outputs[0][start..].iter().all(|&value| value == 1.));
         assert_eq!(
-            h.apply(write(id, 1, &[0; 8])),
+            h.apply(begin(33, false, u64::MAX, 0)),
             Outcome::Refused(Refusal::InvalidValue)
         );
         assert_eq!(
-            h.apply(Request::ContentFinish { id }),
+            h.apply(begin(33, false, 1, 4)),
             Outcome::Refused(Refusal::InvalidValue)
         );
-        h.done(write(id, 0, &[0; 248]));
-        h.done(write(id, 248, &[0; 8]));
-        h.done(Request::ContentFinish { id });
-        h.done(Request::ContentFinish { id });
-        h.done(Request::ContentRelease { id });
         assert_eq!(
-            h.apply(begin(id, false, 0, 0)),
-            Outcome::Refused(Refusal::InvalidId)
+            h.apply(begin(33, false, 0, content::MAX_CONTENT_BYTES + 1)),
+            Outcome::Refused(Refusal::InvalidValue)
         );
+        h.done(begin(33, false, 0, 0));
+        h.done(Request::ContentFinish { id: 33 });
+        h.done(Request::ContentRelease { id: 33 });
     }
-    assert!(h.outputs[0][start..].iter().all(|&value| value == 1.));
-    assert_eq!(
-        h.apply(begin(33, false, u64::MAX, 0)),
-        Outcome::Refused(Refusal::InvalidValue)
-    );
-    assert_eq!(
-        h.apply(begin(33, false, 1, 4)),
-        Outcome::Refused(Refusal::InvalidValue)
-    );
-    assert_eq!(
-        h.apply(begin(33, false, 0, content::MAX_CONTENT_BYTES + 1)),
-        Outcome::Refused(Refusal::InvalidValue)
-    );
-    h.done(begin(33, false, 0, 0));
-    h.done(Request::ContentFinish { id: 33 });
-    h.done(Request::ContentRelease { id: 33 });
 }
 
 #[shoop_test]

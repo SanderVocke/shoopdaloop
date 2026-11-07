@@ -39,7 +39,7 @@ pub mod shared_audio;
 pub mod shared_midi;
 #[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
 mod shared_pages;
-pub use audio_backing::{AudioHistoryId, AudioStoreId, AudioWrite};
+pub use audio_backing::{AudioChunkRef, AudioHistoryId, AudioStoreId, AudioWrite};
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
 use render::WorkClass;
 pub use render::{RenderIo, RenderWork};
@@ -168,6 +168,8 @@ impl Cursor {
 pub struct SnapshotReservation(SnapshotId);
 
 pub struct ResourceStore {
+    audio_graph_work: crate::audio_refs::AudioGraphWork,
+    audio_render_mode: crate::AudioRenderMode,
     quantum: Quantum,
     scope: u32,
     config: PreparedConfig,
@@ -259,6 +261,8 @@ impl ResourceStore {
             *core::hint::black_box(page) = Page::default();
         }
         Ok(Self {
+            audio_graph_work: Default::default(),
+            audio_render_mode: crate::AudioRenderMode::Current,
             scope,
             config,
             quantum,
@@ -295,6 +299,10 @@ impl ResourceStore {
 
     /// Host boundary only; call once per callback, not per command or processor.
     pub fn begin_callback(&mut self) {
+        self.audio_graph_work = Default::default();
+        for audio in self.audio_stores.iter_mut().flatten() {
+            audio.reset_work();
+        }
         self.copy_remaining = self.config.limits().budgets.transfer_bytes;
         self.steps_remaining = self.config.limits().budgets.validation_steps;
         self.work = Work::default();
@@ -305,6 +313,61 @@ impl ResourceStore {
     }
     pub fn quantum(&self) -> Quantum {
         self.quantum
+    }
+    pub fn set_audio_render_mode(&mut self, mode: crate::AudioRenderMode) {
+        self.audio_render_mode = mode;
+    }
+
+    pub fn audio_render_mode(&self) -> crate::AudioRenderMode {
+        self.audio_render_mode
+    }
+    pub fn audio_graph_work(&self) -> crate::audio_refs::AudioGraphWork {
+        self.audio_graph_work
+    }
+    pub fn audio_pool_work(&self) -> shared_audio::AudioPoolWork {
+        let mut result = shared_audio::AudioPoolWork::default();
+        for store in self.audio_stores.iter().flatten() {
+            let work = store.work();
+            result.index_allocated += work.index_allocated;
+            result.index_reclaimed += work.index_reclaimed;
+            result.shared_payloads += work.shared_payloads;
+            result.payload_live += work.payload_live;
+            result.index_live += work.index_live;
+        }
+        result
+    }
+    pub fn add_audio_graph_work(&mut self, work: crate::audio_refs::AudioGraphWork) {
+        self.audio_graph_work.arena_peak_samples = self
+            .audio_graph_work
+            .arena_peak_samples
+            .max(work.arena_peak_samples);
+        self.audio_graph_work.forwarded += work.forwarded;
+        self.audio_graph_work.materialized += work.materialized;
+        self.audio_graph_work.sample_reads += work.sample_reads;
+        self.audio_graph_work.sample_writes += work.sample_writes;
+    }
+
+    fn detach_audio_pages(&mut self, count: usize) -> Result<(), Error> {
+        let page_bytes = self.config.limits().page_bytes;
+        let end = self.data.len() / page_bytes;
+        let first = end.checked_sub(count).ok_or(Error::Capacity)?;
+        if count > self.free_pages.len().saturating_sub(self.reserved_pages) {
+            return Err(Error::Capacity);
+        }
+        let mut available = vec![false; end];
+        for &page in &self.free_pages {
+            if page < end {
+                available[page] = true;
+            }
+        }
+        if !available[first..].iter().all(|&free| free) {
+            return Err(Error::Busy);
+        }
+        self.free_pages.retain(|&page| page < first);
+        let mut data = core::mem::take(&mut self.data).into_vec();
+        data.truncate(first * page_bytes);
+        self.data = data.into_boxed_slice();
+        Ok(())
     }
     pub fn config(&self) -> PreparedConfig {
         self.config
@@ -957,6 +1020,7 @@ impl ResourceStore {
                 self.work.reclaimed_pages += 1;
                 self.versions[index].value = Some(version);
             } else {
+                self.reserved_pages -= version.reserved;
                 self.retired_versions.pop();
                 release(&mut self.versions, &mut self.free_versions, index);
                 self.work.reclaimed_versions += 1;

@@ -20,6 +20,7 @@
 // Without device drivers, the MIDI bridges and parts of the callback are unused.
 #![cfg_attr(not(feature = "cpal"), allow(dead_code))]
 
+mod benchmark;
 #[cfg(any(feature = "cpal", test))]
 mod callback_gate;
 #[cfg(feature = "cpal")]
@@ -425,6 +426,27 @@ impl Prepared {
             control_lead_frames: template.control_lead_frames.max(buffer_frames),
             ..template.clone()
         };
+        if let Ok(value) = std::env::var("SHOOP_AUDIO_RENDER") {
+            description.audio_render_mode = shoop_rt_engine::AudioRenderMode::parse(&value)
+                .map_err(|_| StartError::InvalidConfig("invalid SHOOP_AUDIO_RENDER mode"))?;
+        }
+        description.audio_bench_only |=
+            std::env::var("SHOOP_AUDIO_BENCH_AUDIO_ONLY").as_deref() == Ok("1");
+        if description.audio_render_mode.chunked() && !description.audio_bench_only {
+            return Err(StartError::InvalidConfig(
+                "experimental render modes require SHOOP_AUDIO_BENCH_AUDIO_ONLY=1",
+            ));
+        }
+
+        if description.audio_bench_only {
+            description.host.midi_inputs.clear();
+            description.host.midi_outputs.clear();
+        }
+        if std::env::var_os("SHOOP_AUDIO_RENDER").is_some() {
+            eprintln!("audio_render={} driver={kind:?} rate={sample_rate} quantum={} callback={buffer_frames} audio_only={} tracks={} loops={}",
+                description.audio_render_mode.name(), description.quantum, description.audio_bench_only,
+                description.strips(), description.loops());
+        }
         // These drivers deliver bounded render blocks within the physical period.
         if matches!(kind, DriverKind::Dummy | DriverKind::Jack) {
             let minimum = template.quantum.min(template.max_frames);
@@ -449,7 +471,10 @@ impl Prepared {
             control.use_outer_callback_budget();
         }
         let outbox = engine.outbox();
-        let shared = Arc::new(Shared::new(engine.host, driver));
+        let mut shared = Shared::new(engine.host, driver);
+        shared.benchmark = crate::benchmark::Recorder::prepare(&description)
+            .map_err(|error| StartError::Thread(format!("benchmark writer: {error}")))?;
+        let shared = Arc::new(shared);
         Ok(Self {
             description,
             endpoint: engine.endpoint,
