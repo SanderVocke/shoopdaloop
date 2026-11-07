@@ -8,6 +8,7 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use arrayvec::ArrayVec;
 use jack::{AudioIn, AudioOut, MidiIn, Port};
 use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState, Name};
@@ -80,14 +81,14 @@ struct Process {
     ports: jack_ports::Callback,
     shared: Arc<Shared>,
 }
-struct Io<'a> {
-    scope: &'a jack::ProcessScope,
+struct Io<'a, 's> {
+    scope: &'s jack::ProcessScope,
     inputs: &'a [Option<Port<AudioIn>>],
     outputs: &'a mut [Option<Port<AudioOut>>],
     midi: &'a [Option<Port<MidiIn>>],
-    writers: [Option<jack::MidiWriter<'a>>; MAX_HOST_PORTS],
+    writers: &'a mut [Option<jack::MidiWriter<'s>>],
 }
-impl DirectIo for Io<'_> {
+impl DirectIo for Io<'_, '_> {
     fn begin(&mut self) {}
     fn input(&self, port: usize, offset: usize, samples: &mut [f32]) {
         if let Some(input) = &self.inputs[port] {
@@ -110,65 +111,72 @@ impl DirectIo for Io<'_> {
         }
     }
     fn midi_output(&mut self, port: usize, offset: u32, bytes: &[u8]) -> bool {
-        self.writers[port].as_mut().is_none_or(|writer| {
-            writer
-                .write(&jack::RawMidi {
-                    time: offset,
-                    bytes,
-                })
-                .is_ok()
-        })
+        self.writers
+            .get_mut(port)
+            .and_then(Option::as_mut)
+            .is_none_or(|writer| {
+                writer
+                    .write(&jack::RawMidi {
+                        time: offset,
+                        bytes,
+                    })
+                    .is_ok()
+            })
     }
 }
 impl jack::ProcessHandler for Process {
     fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
         self.ports.begin(scope);
-        let mut writers = std::array::from_fn(|_| None);
-        for (slot, port) in writers.iter_mut().zip(&mut self.ports.midi_outputs) {
-            if let Some(port) = port {
-                *slot = Some(port.writer(scope));
-            }
-        }
-        if self.shared.failure().is_some() {
-            for port in self.ports.outputs.iter_mut().flatten() {
-                port.as_mut_slice(scope).fill(0.);
-            }
-            drop(writers);
-            self.ports.finish();
-            return jack::Control::Continue;
-        }
-        if self.shared.phase() == RenderPhase::Disconnected
-            && self.shared.stopping.load(Ordering::Acquire)
+        let failed = self.shared.failure().is_some();
         {
-            for writer in writers.iter_mut().flatten() {
-                let mut reset = rt_runtime::midi::ResetState::default();
-                reset.request();
-                while let Some(bytes) = reset.peek() {
-                    if writer
-                        .write(&jack::RawMidi {
-                            time: 0,
-                            bytes: &bytes,
-                        })
-                        .is_err()
-                    {
-                        Shared::count(&self.shared.counters.midi_out_failed, 1);
-                        break;
-                    }
-                    reset.acknowledge().expect("pending reset packet");
+            // One writer per prepared MIDI output; the capacity stays uninitialized.
+            let mut writers: ArrayVec<Option<jack::MidiWriter<'_>>, MAX_HOST_PORTS> = self
+                .ports
+                .midi_outputs
+                .iter_mut()
+                .map(|port| port.as_mut().map(|port| port.writer(scope)))
+                .collect();
+            if failed {
+                for port in self.ports.outputs.iter_mut().flatten() {
+                    port.as_mut_slice(scope).fill(0.);
                 }
+            } else {
+                if self.shared.phase() == RenderPhase::Disconnected
+                    && self.shared.stopping.load(Ordering::Acquire)
+                {
+                    for writer in writers.iter_mut().flatten() {
+                        let mut reset = rt_runtime::midi::ResetState::default();
+                        reset.request();
+                        while let Some(bytes) = reset.peek() {
+                            if writer
+                                .write(&jack::RawMidi {
+                                    time: 0,
+                                    bytes: &bytes,
+                                })
+                                .is_err()
+                            {
+                                Shared::count(&self.shared.counters.midi_out_failed, 1);
+                                break;
+                            }
+                            reset.acknowledge().expect("pending reset packet");
+                        }
+                    }
+                }
+                let mut io = Io {
+                    scope,
+                    inputs: &self.ports.inputs,
+                    outputs: &mut self.ports.outputs,
+                    midi: &self.ports.midi_inputs,
+                    writers: &mut writers,
+                };
+                self.cycle
+                    .process_direct(scope.n_frames() as usize, &mut io);
             }
         }
-        let mut io = Io {
-            scope,
-            inputs: &self.ports.inputs,
-            outputs: &mut self.ports.outputs,
-            midi: &self.ports.midi_inputs,
-            writers,
-        };
-        self.cycle
-            .process_direct(scope.n_frames() as usize, &mut io);
         self.ports.finish();
-        self.shared.set_state(DriverRunState::Running);
+        if !failed {
+            self.shared.set_state(DriverRunState::Running);
+        }
         jack::Control::Continue
     }
     fn buffer_size(&mut self, _: &jack::Client, frames: u32) -> jack::Control {

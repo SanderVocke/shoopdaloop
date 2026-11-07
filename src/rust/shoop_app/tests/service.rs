@@ -4510,3 +4510,30 @@ mod input_cases;
 
 #[path = "profiling/cases.rs"]
 mod profiling_cases;
+
+#[shoop_test]
+fn dsp_load_keeps_the_peak_while_snapshot_publication_is_paced() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let _client = attach(&mut f.service, 1, connection, false);
+    f.service.want_snapshots(connection, false);
+    for load in [0.75, 0.25] {
+        f.render.borrow().host.set_load(load);
+        f.service.tick(STEP);
+    }
+    assert!(f.service.take_state_update(connection).is_none());
+    f.service.want_snapshots(connection, true);
+    f.service.tick(STEP);
+    let Some(ServiceMessage::Snapshot { state, .. }) = f.service.take_state_update(connection)
+    else {
+        panic!("missing paced snapshot")
+    };
+    assert_eq!(state.status.dsp_load_percent, 75.0);
+    f.render.borrow().host.set_load(0.125);
+    f.service.tick(STEP);
+    let Some(ServiceMessage::Snapshot { state, .. }) = f.service.take_state_update(connection)
+    else {
+        panic!("missing next snapshot")
+    };
+    assert_eq!(state.status.dsp_load_percent, 12.5);
+}

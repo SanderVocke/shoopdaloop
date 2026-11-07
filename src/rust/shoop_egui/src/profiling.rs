@@ -20,6 +20,80 @@ impl Units {
     }
 }
 
+/// Overall DSP load over the last `SPAN_S` seconds, sampled while the window is shown.
+#[derive(Default)]
+pub(crate) struct DspHistory {
+    samples: std::collections::VecDeque<(f64, f32)>,
+}
+impl DspHistory {
+    const SPAN_S: f64 = 30.;
+    const INTERVAL_S: f64 = 0.05;
+
+    fn record(&mut self, now: f64, percent: f32) {
+        if self.samples.back().is_some_and(|&(time, _)| now < time) {
+            self.samples.clear();
+        }
+        if self
+            .samples
+            .back()
+            .is_some_and(|&(time, _)| now - time < Self::INTERVAL_S)
+        {
+            return;
+        }
+        self.samples.push_back((now, percent));
+        while self
+            .samples
+            .front()
+            .is_some_and(|&(time, _)| now - time > Self::SPAN_S)
+        {
+            self.samples.pop_front();
+        }
+    }
+
+    fn peak(&self) -> f32 {
+        self.samples
+            .iter()
+            .map(|&(_, percent)| percent)
+            .fold(0., f32::max)
+    }
+
+    fn show(&self, ui: &mut egui::Ui, now: f64) {
+        let (rect, _) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 72.), egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, 4., ui.visuals().extreme_bg_color);
+        // Keep 100% in view and grow the scale for overloads.
+        let top = self.peak().max(100.);
+        let y = |percent: f32| rect.bottom() - rect.height() * (percent / top).clamp(0., 1.);
+        let x = |time: f64| rect.right() - rect.width() * ((now - time) / Self::SPAN_S) as f32;
+        for level in [25., 50., 75.] {
+            painter.hline(
+                rect.x_range(),
+                y(level),
+                egui::Stroke::new(1., colors::MUTED_FOREGROUND.gamma_multiply(0.35)),
+            );
+        }
+        painter.hline(
+            rect.x_range(),
+            y(100.),
+            egui::Stroke::new(1., colors::ERROR.gamma_multiply(0.6)),
+        );
+        let points: Vec<_> = self
+            .samples
+            .iter()
+            .map(|&(time, percent)| egui::pos2(x(time), y(percent)))
+            .collect();
+        if points.len() > 1 {
+            painter.add(egui::Shape::line(
+                points,
+                egui::Stroke::new(1.5, colors::COLORED_HIGHLIGHT),
+            ));
+        }
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(Self::INTERVAL_S));
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Window {
     pub open: bool,
@@ -29,6 +103,7 @@ pub(crate) struct Window {
     table: bool,
     pub(super) host: bool,
     control: Option<crate::diagnostics_protocol::Request>,
+    dsp: DspHistory,
 }
 impl Window {
     pub fn take_control(&mut self) -> Option<crate::diagnostics_protocol::Request> {
@@ -72,6 +147,7 @@ impl Window {
                     enabled,
                     Some(&mut self.graph),
                     &mut self.table,
+                    &mut self.dsp,
                 );
             });
         self.open = open;
@@ -260,6 +336,7 @@ pub(crate) fn show(
         controls_enabled,
         None,
         &mut true,
+        &mut DspHistory::default(),
     )
 }
 
@@ -272,6 +349,7 @@ fn show_inner(
     controls_enabled: bool,
     graph: Option<&mut graph::State>,
     table: &mut bool,
+    dsp: &mut DspHistory,
 ) -> Option<bool> {
     let (sample_rate, quantum_frames) = view
         .topology
@@ -314,27 +392,25 @@ fn show_inner(
         });
     });
     ui.add_space(12.);
+    let now = ui.input(|input| input.time);
+    dsp.record(now, status.dsp_load_percent);
     egui::Frame::group(ui.style())
         .inner_margin(12)
         .corner_radius(8)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Overall DSP");
+                ui.label("Overall DSP")
+                    .on_hover_text("The largest callback load since the previous update.");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.monospace(format!("{:.1}%", status.dsp_load_percent));
+                    ui.weak(format!(
+                        "peak {:.1}% · last {:.0} s",
+                        dsp.peak(),
+                        DspHistory::SPAN_S
+                    ));
                 });
             });
-            ui.add(
-                egui::ProgressBar::new((status.dsp_load_percent / 100.).clamp(0., 1.))
-                    .desired_width(ui.available_width())
-                    .desired_height(8.)
-                    .corner_radius(4)
-                    .fill(if status.dsp_load_percent > 100. {
-                        colors::ERROR
-                    } else {
-                        colors::COLORED_HIGHLIGHT
-                    }),
-            );
+            dsp.show(ui, now);
             if let Some(budget) = budget {
                 ui.small(format!(
                     "{} frames @ {} Hz · {:.3} µs per quantum",
@@ -446,8 +522,55 @@ fn show_inner(
             return changed;
         }
     }
-    ui.weak(match units { Units::Microseconds => "Node durations in µs", Units::Budget => "Node durations as % of one quantum's DSP time budget" })
-        .on_hover_text("Includes input preparation, routing, processing and output recovery. Elapsed time includes preemption. The overall DSP bar measures complete callbacks.");
+    ui.weak(match units { Units::Microseconds => "Node durations in µs", Units::Budget => "Node durations as % of one quantum's DSP time budget; callback entry and exit as % of the callback's" })
+        .on_hover_text("Includes input preparation, routing, processing and output recovery. Elapsed time includes preemption. The overall DSP graph measures complete callbacks.");
+    let wrapper = |name: &'static str,
+                   hint: &'static str,
+                   time: &shoop_app_api::profiling_data::Statistics,
+                   share: &shoop_app_api::profiling_data::Statistics| {
+        let (stats, budget) = match *units {
+            Units::Microseconds => (time, budget),
+            Units::Budget => (
+                share,
+                Some(shoop_app_api::profiling_data::WrappingStats::BUDGET_SCALE as f64),
+            ),
+        };
+        (stats.count > 0).then(|| {
+            (
+                name.to_owned(),
+                Some(hint),
+                stats.count,
+                [stats.mean, stats.worst as f64, stats.stddev()],
+                budget,
+            )
+        })
+    };
+    let names = view.node_names(report);
+    let entry = wrapper(
+        "Callback entry",
+        "Callback entry to first graph start, including input preparation.",
+        &report.wrapping.before,
+        &report.wrapping.before_budget,
+    );
+    let exit = wrapper(
+        "Callback exit",
+        "Last processor completion to callback exit, including final output routing.",
+        &report.wrapping.after,
+        &report.wrapping.after_budget,
+    );
+    let rows: Vec<_> = entry
+        .into_iter()
+        .chain(report.rows.iter().map(|row| {
+            (
+                names[&row.key].clone(),
+                None,
+                row.samples,
+                [row.avg_ns, row.worst_ns as f64, row.stddev_ns],
+                budget,
+            )
+        }))
+        .chain(exit)
+        .collect();
     egui::Frame::group(ui.style())
         .inner_margin(8)
         .corner_radius(8)
@@ -474,9 +597,7 @@ fn show_inner(
                                 );
                             }
                             ui.end_row();
-                            let names = view.node_names(report);
-                            for row in &report.rows {
-                                let name = &names[&row.key];
+                            for (name, hint, samples, values, budget) in &rows {
                                 ui.allocate_ui_with_layout(
                                     egui::vec2(name_width, 20.),
                                     egui::Layout::left_to_right(egui::Align::Center),
@@ -488,14 +609,14 @@ fn show_inner(
                                             )
                                             .truncate(),
                                         )
-                                        .on_hover_text(name);
+                                        .on_hover_text(hint.unwrap_or(name.as_str()));
                                     },
                                 );
-                                for ns in [row.avg_ns, row.worst_ns as f64, row.stddev_ns] {
-                                    let text = if row.samples == 0 {
+                                for &ns in values {
+                                    let text = if *samples == 0 {
                                         "—".into()
                                     } else {
-                                        units.format(ns, budget)
+                                        units.format(ns, *budget)
                                     };
                                     ui.allocate_ui_with_layout(
                                         egui::vec2(96., 20.),
@@ -845,6 +966,8 @@ mod tests {
         row.avg_ns = 1250.;
         row.worst_ns = 3000;
         row.stddev_ns = 500.;
+        profiling.live.wrapping.before.add(2000);
+        profiling.live.wrapping.after.add(4000);
         let render = |profiling: &ProfilingView, mut capture: bool, mut units: Units| {
             let mut output = context.run_ui(
                 egui::RawInput {
@@ -887,6 +1010,10 @@ mod tests {
             "1.250",
             "3.000",
             "0.500",
+            "Callback entry",
+            "Callback exit",
+            "2.000",
+            "4.000",
         ] {
             assert!(
                 labels.iter().any(|text| text == expected),

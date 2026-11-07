@@ -168,7 +168,9 @@ fn jack_buffer_changes_keep_controls_one_server_period_ahead() {
 #[shoop_test]
 fn telemetry_reports_levels_activity_and_driver_inputs() {
     let (mut harness, track, looped) = configured();
+    let records = harness.telemetry.len();
     harness.host.host.set_load(0.25);
+    harness.host.host.set_load(0.125);
     harness.host.host.add_xruns(3);
     harness.host.host.set_driver(DriverStatus {
         kind: DriverKind::Dummy,
@@ -205,7 +207,16 @@ fn telemetry_reports_levels_activity_and_driver_inputs() {
     else {
         unreachable!()
     };
-    assert_eq!((reported, xruns, load), (frame, 3, 0.25));
+    // Each record reports the largest load since the previous one.
+    let loads: Vec<f32> = harness.telemetry[records..]
+        .iter()
+        .filter_map(|(_, record)| match record {
+            Telemetry::Engine { load, .. } => Some(*load),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(loads.first(), Some(&0.25));
+    assert_eq!((reported, xruns, load), (frame, 3, 0.));
     assert!(callbacks > 0);
     assert_eq!(input_peak, 0.5);
     assert!(output_peak > 0.);

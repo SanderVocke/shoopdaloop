@@ -177,8 +177,9 @@ processors. `poll` emits Engine, Strip, Loop and Bus records at most every
 whenever its planned transitions change. A recording loop reports its captured
 length. Next mode and remaining delay come from the planned transitions and the
 source's clock edges. Peaks are the maximum since the previous record. The
-Engine record carries the frame, the callbacks rendered, the host's xrun count
-and load, and the peaks of all host audio inputs and outputs. Loop state is the
+Engine record carries the frame, the callbacks rendered, the host's xrun count,
+its largest callback load since the previous record, and the peaks of all host
+audio inputs and outputs. Loop state is the
 state at the start of the last rendered callback.
 
 `Resync` streams the confirmed state between `Begin` and `End` records, as

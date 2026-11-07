@@ -772,8 +772,10 @@ impl Service {
             self.driver_state.active = observed.audio_drivers.active.clone();
         }
         self.xruns = self.xruns.saturating_add(observed.status.xruns);
+        self.dsp_peak = self.dsp_peak.max(observed.status.dsp_load_percent);
         self.observed = observed;
         self.observed.status.xruns = self.xruns;
+        self.observed.status.dsp_load_percent = self.dsp_peak;
     }
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {

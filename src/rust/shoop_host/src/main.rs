@@ -7,6 +7,17 @@ fn main() {
     }
 }
 #[cfg(not(target_arch = "wasm32"))]
+fn parse_snapshot_hz(value: &str) -> Result<u32, String> {
+    match value {
+        "unlimited" => Ok(0),
+        value => value
+            .parse()
+            .ok()
+            .filter(|hz| *hz <= 60)
+            .ok_or_else(|| "expected 1-60, or 0 or `unlimited`".into()),
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
 fn run() -> anyhow::Result<()> {
     use clap::Parser;
     use std::{io::Read, path::PathBuf};
@@ -34,7 +45,8 @@ fn run() -> anyhow::Result<()> {
         heartbeat_interval_ms: u64,
         #[arg(long, default_value_t = 5000)]
         heartbeat_timeout_ms: u64,
-        #[arg(long, default_value_t = 30)]
+        /// Session snapshots per second on each data connection, 1-60, or 0 or `unlimited`.
+        #[arg(long, default_value = "30", value_parser = parse_snapshot_hz)]
         snapshot_hz: u32,
         #[arg(long, default_value = "127.0.0.1:0")]
         endpoint: std::net::SocketAddr,
