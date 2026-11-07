@@ -18,6 +18,9 @@ use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
+#[path = "executor_audio.rs"]
+mod referenced_audio;
+
 /// Capture a prepared processor's port signature outside rendering. A runtime slot
 /// can later accept another generation with the same signature, not a larger one.
 pub struct PreparedNode<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
@@ -192,6 +195,9 @@ impl<P, L: Planner, Q: ProcessorOperation> Control<P, L, Q> {
 type Ingress<P, L, Q> = RenderEndpoint<Command<P, L, Q>, Retired<P>, Diagnostics>;
 
 struct Buffers {
+    input_sequences: Box<[crate::audio_refs::AudioSequence]>,
+    output_sequences: Box<[crate::audio_refs::AudioSequence]>,
+    input_mixed: Box<[bool]>,
     input: Box<[f32]>,
     output: Box<[f32]>,
     midi_input: Vec<MidiBuffer>,
@@ -228,6 +234,14 @@ impl Buffers {
                 .collect::<Result<Vec<_>, _>>()
         };
         let mut buffers = Self {
+            input_sequences: vec![crate::audio_refs::AudioSequence::default(); ports.audio_inputs]
+                .into_boxed_slice(),
+            output_sequences: vec![
+                crate::audio_refs::AudioSequence::default();
+                ports.audio_outputs
+            ]
+            .into_boxed_slice(),
+            input_mixed: vec![false; ports.audio_inputs].into_boxed_slice(),
             input: vec![0.0; ports.audio_inputs * frames].into_boxed_slice(),
             output: vec![0.0; ports.audio_outputs * frames].into_boxed_slice(),
             midi_input: midi(ports.midi_inputs, true, true)?,
@@ -311,6 +325,8 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    audio_arena: Option<crate::audio_refs::RenderArena>,
+    host_sequences: Box<[crate::audio_refs::AudioSequence]>,
     profiling: rt_profiling::Recorder,
     quantum: crate::Quantum,
     tick_frame: Frame,
@@ -464,6 +480,19 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return Err(Error::Capacity);
         }
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
+        let audio_ports = nodes.iter().try_fold(0usize, |count, node| {
+            count
+                .checked_add(node.ports.audio_inputs + node.ports.audio_outputs)
+                .ok_or(Error::Capacity)
+        })?;
+        let audio_arena = if resources.audio_render_mode().chunked() {
+            Some(crate::audio_refs::RenderArena::prepare(
+                (audio_ports * 4 + limits.audio_inputs) * quantum.frames(),
+                audio_ports * 2,
+            ))
+        } else {
+            None
+        };
         for node in nodes {
             let buffers = Buffers::new(config, node.ports, quantum.frames(), node.midi_settings?)?;
             slots[node.id.slot() as usize] = Some(Slot {
@@ -492,6 +521,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 config,
             },
             Self {
+                audio_arena,
+                host_sequences: vec![
+                    crate::audio_refs::AudioSequence::default();
+                    limits.audio_inputs
+                ]
+                .into_boxed_slice(),
                 profiling: rt_profiling::Recorder::default(),
                 quantum,
                 tick_frame: Frame(0),
@@ -1308,6 +1343,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
+        if self.audio_arena.is_some() {
+            return self.run_graph_references(audio, midi, start, callback_start, quantum);
+        }
         let Some(plan) = &self.active else {
             return Ok(());
         };

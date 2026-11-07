@@ -39,7 +39,7 @@ pub mod shared_audio;
 pub mod shared_midi;
 #[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
 mod shared_pages;
-pub use audio_backing::{AudioHistoryId, AudioStoreId, AudioWrite};
+pub use audio_backing::{AudioChunkRef, AudioHistoryId, AudioStoreId, AudioWrite};
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
 use render::WorkClass;
 pub use render::{RenderIo, RenderWork};
@@ -168,6 +168,7 @@ impl Cursor {
 pub struct SnapshotReservation(SnapshotId);
 
 pub struct ResourceStore {
+    audio_graph_work: crate::audio_refs::AudioGraphWork,
     audio_render_mode: crate::AudioRenderMode,
     quantum: Quantum,
     scope: u32,
@@ -260,6 +261,7 @@ impl ResourceStore {
             *core::hint::black_box(page) = Page::default();
         }
         Ok(Self {
+            audio_graph_work: Default::default(),
             audio_render_mode: crate::AudioRenderMode::Current,
             scope,
             config,
@@ -297,6 +299,10 @@ impl ResourceStore {
 
     /// Host boundary only; call once per callback, not per command or processor.
     pub fn begin_callback(&mut self) {
+        self.audio_graph_work = Default::default();
+        for audio in self.audio_stores.iter_mut().flatten() {
+            audio.reset_work();
+        }
         self.copy_remaining = self.config.limits().budgets.transfer_bytes;
         self.steps_remaining = self.config.limits().budgets.validation_steps;
         self.work = Work::default();
@@ -314,6 +320,31 @@ impl ResourceStore {
 
     pub fn audio_render_mode(&self) -> crate::AudioRenderMode {
         self.audio_render_mode
+    }
+    pub fn audio_graph_work(&self) -> crate::audio_refs::AudioGraphWork {
+        self.audio_graph_work
+    }
+    pub fn audio_pool_work(&self) -> shared_audio::AudioPoolWork {
+        let mut result = shared_audio::AudioPoolWork::default();
+        for store in self.audio_stores.iter().flatten() {
+            let work = store.work();
+            result.index_allocated += work.index_allocated;
+            result.index_reclaimed += work.index_reclaimed;
+            result.shared_payloads += work.shared_payloads;
+            result.payload_live += work.payload_live;
+            result.index_live += work.index_live;
+        }
+        result
+    }
+    pub fn add_audio_graph_work(&mut self, work: crate::audio_refs::AudioGraphWork) {
+        self.audio_graph_work.arena_peak_samples = self
+            .audio_graph_work
+            .arena_peak_samples
+            .max(work.arena_peak_samples);
+        self.audio_graph_work.forwarded += work.forwarded;
+        self.audio_graph_work.materialized += work.materialized;
+        self.audio_graph_work.sample_reads += work.sample_reads;
+        self.audio_graph_work.sample_writes += work.sample_writes;
     }
 
     fn detach_audio_pages(&mut self, count: usize) -> Result<(), Error> {

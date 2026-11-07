@@ -28,6 +28,8 @@ const START: u64 = 48_000;
 
 fn description() -> EngineDescription {
     EngineDescription {
+        audio_render_mode: shoop_rt_engine::AudioRenderMode::Current,
+        audio_bench_only: false,
         history: shoop_rt_protocol::host::InputHistorySettings {
             seconds: 30,
             audio_take_pages: 2048,

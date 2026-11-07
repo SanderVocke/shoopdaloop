@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 const CAPACITY: usize = 8192;
-const FIELDS: usize = 8;
+const FIELDS: usize = 18;
 
 struct Queue {
     slots: Box<[[AtomicU64; FIELDS]]>,
@@ -39,6 +39,9 @@ impl Recorder {
         });
         let reader = queue.clone();
         let mode = description.audio_render_mode.name();
+        let memory = description
+            .history_capacity()
+            .map_err(|_| std::io::Error::other("audio memory layout"))?;
         let sample_rate = description.sample_rate;
         let quantum = description.quantum;
         let worker = std::thread::Builder::new()
@@ -46,7 +49,8 @@ impl Recorder {
             .spawn(move || {
                 let mut output = BufWriter::new(file);
                 let _ = writeln!(output, "# mode={mode} sample_rate={sample_rate} quantum={quantum}");
-                let _ = writeln!(output, "frame,frames,elapsed_ns,late_ns,resource_copy_bytes,resource_steps,nodes_processed,render_fault");
+                let _ = writeln!(output, "# memory={memory:?}");
+                let _ = writeln!(output, "frame,frames,elapsed_ns,late_ns,resource_copy_bytes,resource_steps,nodes_processed,render_fault,forwarded,materialized,sample_reads,sample_writes,arena_peak_samples,index_allocated,index_reclaimed,shared_payloads,payload_live,index_live");
                 loop {
                     let mut read = reader.read.load(Ordering::Relaxed);
                     let write = reader.write.load(Ordering::Acquire);
@@ -54,7 +58,12 @@ impl Recorder {
                         let values = reader.slots[read % CAPACITY]
                             .each_ref()
                             .map(|value| value.load(Ordering::Relaxed));
-                        let _ = writeln!(output, "{},{},{},{},{},{},{},{}", values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7]);
+                        for (i,value) in values.iter().enumerate() {
+                            if i>0 { let _ = write!(output, ","); }
+                            let _ = write!(output,"{value}");
+                        }
+                        let _ = writeln!(output);
+
                         read = read.wrapping_add(1);
                         reader.read.store(read, Ordering::Release);
                     }

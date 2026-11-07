@@ -160,7 +160,9 @@ pub fn controller(
                                 discover(&config).map(DriverReply::Discovered)
                             }
                             DriverWork::Preflight(config) => {
-                                preflight(&config, &settings).map(DriverReply::Resolved)
+                                if std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT").is_some() {
+                                    Err(anyhow!("driver changes require restarting a host with an active callback recorder"))
+                                } else { preflight(&config, &settings).map(DriverReply::Resolved) }
                             }
                             DriverWork::Convert {
                                 image,

@@ -66,6 +66,15 @@ pub struct Info {
     pub revision: Revision,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AudioPoolWork {
+    pub index_allocated: u64,
+    pub index_reclaimed: u64,
+    pub shared_payloads: u64,
+    pub payload_live: u64,
+    pub index_live: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Capacity {
     pub histories: usize,
@@ -172,6 +181,7 @@ struct History {
 }
 
 pub struct AudioStore {
+    work: AudioPoolWork,
     last_payload: Option<LeaseId>,
     scope: u32,
     store_scope: u32,
@@ -206,6 +216,90 @@ pub struct AudioStore {
 }
 
 impl AudioStore {
+    pub(super) fn reset_work(&mut self) {
+        self.work = AudioPoolWork::default();
+    }
+    pub(super) fn work(&self) -> AudioPoolWork {
+        AudioPoolWork {
+            payload_live: if self.closed {
+                0
+            } else {
+                self.pages.live_payloads() as u64
+            },
+            index_live: (self.nodes.len() - self.free_nodes.len()) as u64,
+            ..self.work
+        }
+    }
+
+    pub(super) fn chunk_samples(&self, lease: LeaseId) -> Result<&[f32], Error> {
+        self.pages.sample_span(lease)
+    }
+    pub(super) fn retain_chunk(&mut self, lease: LeaseId) -> Result<LeaseId, Error> {
+        self.pages.retain(lease)
+    }
+    pub(super) fn release_chunk(
+        &mut self,
+        store: &mut ResourceStore,
+        lease: LeaseId,
+    ) -> Result<(), Error> {
+        if !self.pages.chunked() {
+            return Err(Error::InvalidState);
+        }
+        if self.pages.reclaim_render(store, lease)? {
+            self.reserved += 1;
+        }
+        Ok(())
+    }
+    pub(super) fn chunk_sequence(
+        &self,
+        store: super::AudioStoreId,
+        index: ReadIndex,
+        position: u64,
+        frames: usize,
+        channel: usize,
+    ) -> Result<Option<crate::audio_refs::AudioSequence>, Error> {
+        use crate::audio_refs::{AudioSequence, ChunkRef, ChunkSpan};
+        if !self.pages.chunked() {
+            return Ok(None);
+        }
+        let view = self.view(index.0)?;
+        let position = usize::try_from(position).map_err(|_| Error::InvalidOffset)?;
+        if channel >= self.channels
+            || frames > self.page_frames
+            || position
+                .checked_add(frames)
+                .is_none_or(|end| end > view.frames)
+            || view.zero_from.is_some_and(|zero| position + frames > zero)
+        {
+            return Ok(None);
+        }
+        let mut result = AudioSequence::default();
+        let mut at = 0;
+        while at < frames {
+            let physical = view.mapping.physical(position + at);
+            let count = (frames - at)
+                .min(self.page_frames - physical % self.page_frames)
+                .min(view.mapping.contiguous(position + at));
+            let Some(lease) = self.find(view.root, physical / self.page_frames) else {
+                return Ok(None);
+            };
+            if result.len == result.spans.len() {
+                return Ok(None);
+            }
+            result.spans[result.len] = ChunkSpan {
+                chunk: ChunkRef::Persistent(super::AudioChunkRef {
+                    store,
+                    lease,
+                    first: physical % self.page_frames * self.channels + channel,
+                    stride: self.channels,
+                }),
+                frames: count,
+            };
+            result.len += 1;
+            at += count;
+        }
+        Ok(Some(result))
+    }
     pub fn prepare(
         store: &mut ResourceStore,
         config: Config,
@@ -333,6 +427,7 @@ impl AudioStore {
             *core::hint::black_box(base) = None;
         }
         Ok(Self {
+            work: AudioPoolWork::default(),
             last_payload: None,
             scope,
             store_scope: store.scope,
@@ -811,6 +906,7 @@ impl AudioStore {
 
     fn allocate(&mut self, kind: Kind) -> usize {
         let index = self.free_nodes.pop().expect("preflighted index credit");
+        self.work.index_allocated += 1;
         self.nodes[index] = Some(Node {
             references: 1,
             kind,
@@ -901,6 +997,7 @@ impl AudioStore {
                 }
             }
             self.free_nodes.push(index);
+            self.work.index_reclaimed += 1;
         }
     }
 
@@ -965,6 +1062,7 @@ impl AudioStore {
                 })
         });
         let lease = if let Some(shared) = shared {
+            self.work.shared_payloads += 1;
             self.pages.retain(shared)?
         } else {
             self.reserved -= 1;
@@ -1775,6 +1873,7 @@ impl AudioStore {
                     self.pending[owner] -= 1;
                     self.nodes[index] = None;
                     self.free_nodes.push(index);
+                    self.work.index_reclaimed += 1;
                     self.finish_owner(owner);
                     steps += 1;
                     continue;
@@ -1784,6 +1883,7 @@ impl AudioStore {
             self.pending[owner] -= 1;
             self.nodes[index] = None;
             self.free_nodes.push(index);
+            self.work.index_reclaimed += 1;
             self.finish_owner(owner);
             steps += 1;
         }

@@ -72,7 +72,7 @@ pub(crate) struct Counters {
 
 pub(crate) struct Shared {
     pub benchmark: Option<crate::benchmark::Recorder>,
-    pub benchmark_work: [AtomicU64; 4],
+    pub benchmark_work: [AtomicU64; 14],
     pub host: HostStatus,
     pub counters: Counters,
     epoch: Instant,
@@ -224,6 +224,16 @@ impl Shared {
                 self.benchmark_work[1].load(Ordering::Relaxed),
                 self.benchmark_work[2].load(Ordering::Relaxed),
                 self.benchmark_work[3].load(Ordering::Relaxed),
+                self.benchmark_work[4].load(Ordering::Relaxed),
+                self.benchmark_work[5].load(Ordering::Relaxed),
+                self.benchmark_work[6].load(Ordering::Relaxed),
+                self.benchmark_work[7].load(Ordering::Relaxed),
+                self.benchmark_work[8].load(Ordering::Relaxed),
+                self.benchmark_work[9].load(Ordering::Relaxed),
+                self.benchmark_work[10].load(Ordering::Relaxed),
+                self.benchmark_work[11].load(Ordering::Relaxed),
+                self.benchmark_work[12].load(Ordering::Relaxed),
+                self.benchmark_work[13].load(Ordering::Relaxed),
             ]);
         }
     }

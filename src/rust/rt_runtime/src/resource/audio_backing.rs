@@ -15,6 +15,14 @@ pub struct AudioHistoryId {
     history: shared_audio::HistoryId,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AudioChunkRef {
+    pub(super) store: AudioStoreId,
+    pub(super) lease: super::shared_pages::LeaseId,
+    pub(super) first: usize,
+    pub(super) stride: usize,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Take {
     pub store: AudioStoreId,
@@ -40,6 +48,57 @@ pub struct AudioWrite {
 }
 
 impl ResourceStore {
+    pub fn audio_chunk_sequence(
+        &self,
+        index: ReadIndex,
+        position: u64,
+        frames: usize,
+        channel: usize,
+    ) -> Result<Option<crate::audio_refs::AudioSequence>, Error> {
+        let lease = self.index_lease(index)?;
+        let Some(audio) = lease.audio else {
+            return Ok(None);
+        };
+        self.audio(audio.store)?
+            .chunk_sequence(audio.store, audio.index, position, frames, channel)
+    }
+
+    pub fn visit_audio_chunk(
+        &self,
+        reference: AudioChunkRef,
+        frames: usize,
+        consume: impl FnOnce(&[f32], usize, usize),
+    ) -> Result<(), Error> {
+        let samples = self
+            .audio(reference.store)?
+            .chunk_samples(reference.lease)?;
+        if frames > 0
+            && reference
+                .first
+                .checked_add((frames - 1) * reference.stride)
+                .is_none_or(|last| last >= samples.len())
+        {
+            return Err(Error::InvalidOffset);
+        }
+        consume(samples, reference.first, reference.stride);
+        Ok(())
+    }
+
+    pub fn retain_audio_chunk(
+        &mut self,
+        mut reference: AudioChunkRef,
+    ) -> Result<AudioChunkRef, Error> {
+        reference.lease = self.with_audio(reference.store, |_, audio| {
+            audio.retain_chunk(reference.lease)
+        })?;
+        Ok(reference)
+    }
+
+    pub fn release_audio_chunk(&mut self, reference: AudioChunkRef) -> Result<(), Error> {
+        self.with_audio(reference.store, |store, audio| {
+            audio.release_chunk(store, reference.lease)
+        })
+    }
     pub fn audio_store_capacity(
         &mut self,
         id: AudioStoreId,

@@ -437,11 +437,7 @@ impl Prepared {
                 "experimental render modes require SHOOP_AUDIO_BENCH_AUDIO_ONLY=1",
             ));
         }
-        if description.audio_render_mode == shoop_rt_engine::AudioRenderMode::ChunksDescriptors {
-            return Err(StartError::InvalidConfig(
-                "descriptor render implementation is not yet available",
-            ));
-        }
+
         if description.audio_bench_only {
             description.host.midi_inputs.clear();
             description.host.midi_outputs.clear();

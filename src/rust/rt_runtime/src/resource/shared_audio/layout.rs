@@ -24,6 +24,14 @@ impl Config {
     pub fn capacity(self, runtime: PreparedConfig, histories: usize) -> Result<Capacity, Error> {
         Layout::new(runtime, self, histories).map(|layout| layout.capacity)
     }
+    pub fn chunk_capacity(
+        self,
+        runtime: PreparedConfig,
+        histories: usize,
+        frames: usize,
+    ) -> Result<Capacity, Error> {
+        Layout::chunk_capacity(runtime, self, histories, frames)
+    }
     pub fn windowed_capacity(
         self,
         runtime: PreparedConfig,
@@ -56,6 +64,14 @@ impl Layout {
         windowed: bool,
     ) -> Result<Self, Error> {
         Self::with_windows(runtime, config, histories, windowed, Some(frames))
+    }
+    pub fn chunk_capacity(
+        runtime: PreparedConfig,
+        config: Config,
+        histories: usize,
+        frames: usize,
+    ) -> Result<Capacity, Error> {
+        Self::chunks(runtime, config, histories, frames, true).map(|layout| layout.capacity)
     }
     fn with_windows(
         runtime: PreparedConfig,
@@ -171,6 +187,13 @@ impl Layout {
         let lease_limit = config
             .pages
             .checked_add(transaction_pages)
+            .and_then(|n| {
+                n.checked_add(if chunk_frames.is_some() {
+                    config.views.checked_mul(channels)?.checked_mul(2)?
+                } else {
+                    0
+                })
+            })
             .ok_or(Error::Capacity)?;
         let metadata_bytes = node_limit
             .checked_mul(size_of::<Option<Node>>() + size_of::<usize>() * 4)
@@ -196,10 +219,12 @@ impl Layout {
             })
             .and_then(|n| {
                 n.checked_add(
-                    runtime
-                        .limits()
-                        .resource_pages
-                        .checked_mul(size_of::<usize>())?,
+                    (if chunk_frames.is_some() {
+                        config.pages.checked_mul(2)?
+                    } else {
+                        runtime.limits().resource_pages
+                    })
+                    .checked_mul(size_of::<usize>())?,
                 )
             })
             .and_then(|n| {

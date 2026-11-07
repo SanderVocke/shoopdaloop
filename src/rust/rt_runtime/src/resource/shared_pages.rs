@@ -14,6 +14,7 @@ pub(super) struct LeaseId {
 }
 
 pub(super) struct SharedPages {
+    live: usize,
     chunks: Option<Chunks>,
     scope: u32,
     store_scope: u32,
@@ -56,6 +57,7 @@ impl SharedPages {
             };
         }
         Ok(Self {
+            live: 0,
             chunks: None,
             scope: index::new_scope()?,
             store_scope: store.scope,
@@ -91,6 +93,13 @@ impl SharedPages {
         Ok(result)
     }
 
+    pub fn live_payloads(&self) -> usize {
+        if let Some(chunks) = &self.chunks {
+            self.references.len() - chunks.free.len()
+        } else {
+            self.live
+        }
+    }
     pub fn chunked(&self) -> bool {
         self.chunks.is_some()
     }
@@ -159,6 +168,9 @@ impl SharedPages {
     fn acquire(&mut self, page: usize) -> LeaseId {
         let slot = self.free_leases.pop().expect("reserved lease credit");
         self.leases[slot].value = Some(page);
+        if self.references[page] == 0 {
+            self.live += 1;
+        }
         self.references[page] += 1;
         LeaseId {
             scope: self.scope,
@@ -250,6 +262,9 @@ impl SharedPages {
         store.charge_work(WorkClass::Render, 0, 1)?;
         self.references[page] = remaining;
         if remaining == 0 {
+            self.live -= 1;
+        }
+        if remaining == 0 {
             if let Some(chunks) = &mut self.chunks {
                 chunks.free.push(page);
             } else {
@@ -329,6 +344,9 @@ impl SharedPages {
         store.charge_external(0, 1)?;
         self.references[page] = remaining;
         if remaining == 0 {
+            self.live -= 1;
+        }
+        if remaining == 0 {
             if let Some(chunks) = &mut self.chunks {
                 chunks.free.push(page);
             } else {
@@ -394,6 +412,9 @@ impl SharedPages {
             .checked_sub(1)
             .ok_or(Error::InvalidState)?;
         self.references[page] = remaining;
+        if remaining == 0 {
+            self.live -= 1;
+        }
         if remaining == 0 {
             store.retired_pages.push(page);
         }

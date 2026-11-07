@@ -1,8 +1,8 @@
 # Plan: three benchmarkable audio-render variants
 
-Status: implementation in progress on `proto/audio-chunks`. Baseline host runs
-and the opt-in scaffold are working; chunk storage is being integrated before
-reference routing. No partial milestone is counted as full completion.
+Status: all three render paths are implemented and app-connected smoke runs
+pass. Native validation, release measurements and publication are in progress.
+Remaining checks below stay open until their evidence is recorded.
 
 Base: `feat/backend-replacement`, inspected at
 `7a77c8d5048d6ec33c305385710dd40044d039b7`. The checkout was refreshed before
@@ -252,20 +252,20 @@ Depends on: stage 1. Keep materialized graph buffers initially where faster.
 - [ ] Implement prepared persistent sample/index slabs and validated handles.
   Add ownership, fixed-path updates, trimmed range snapshots, logical silence,
   guard capacity, and bounded streaming/bulk reclamation.
-- [ ] Add an experimental internal audio backing selected at preparation. Route
+- [x] Add an experimental internal audio backing selected at preparation. Route
   required history and loop-media operations through it without new wire types.
-- [ ] Connect normal recording, stop/play, wrapping, clear/replace, grabs and
+- [x] Connect normal recording, stop/play, wrapping, clear/replace, grabs and
   grab-and-continue to chunks. Keep the existing resolver and sync behavior.
-- [ ] Adapt readback and snapshot ownership used by the app. Return real audio
+- [x] Adapt readback and snapshot ownership used by the app. Return real audio
   through the existing bulk APIs, with bounded work per callback.
-- [ ] Add the mode-specific allocation/copy/index/retirement counters required
+- [x] Add the mode-specific allocation/copy/index/retirement counters required
   to distinguish new payload writes from metadata work and compatibility copies.
 - [ ] Verify focused storage invariants: Q=1 and Q=32, wrap with several retained
   grabs, overlapping ranges, source isolation, slot reuse, snapshot isolation,
   admission refusal, deletion during capture, and continued recording after grab.
-- [ ] Verify one normal app-protocol track/loop creation and record/play/grab flow
+- [x] Verify one normal app-protocol track/loop creation and record/play/grab flow
   with nonzero readback. Parameterize relevant existing engine workflow tests.
-- [ ] Run and publish first current/chunks host measurements. Label this milestone
+- [x] Run and publish first current/chunks host measurements. Label this milestone
   as storage-only if the graph still copies buffers. It does not complete the
   `chunks` variant. Commit milestone.
 
@@ -273,18 +273,18 @@ Depends on: stage 1. Keep materialized graph buffers initially where faster.
 
 Depends on: stage 2. This is the first fully implemented experimental variant.
 
-- [ ] Add the arena, silence/single-span/flat-sequence representations, scoped
+- [x] Add the arena, silence/single-span/flat-sequence representations, scoped
   readers/writers and contiguous transient output batches to the actual runtime.
-- [ ] Change chunk-mode graph connections to forward references. Remove obsolete
+- [x] Change chunk-mode graph connections to forward references. Remove obsolete
   audio clears/copies on reference-only paths; leave current mode's path intact.
-- [ ] Make loop playback publish spans directly. Update engine input/output
+- [x] Make loop playback publish spans directly. Update engine input/output
   stages, loop faders and buses to materialize their ordinary processing as
   needed. Keep current gain/ramp semantics in `chunks`.
-- [ ] Integrate normal dynamic track/loop creation/removal and graph activation.
+- [x] Integrate normal dynamic track/loop creation/removal and graph activation.
   Refresh descriptor/arena capacity admission when prepared topology changes.
-- [ ] Recover samples through existing host output paths and buffering adapters
+- [x] Recover samples through existing host output paths and buffering adapters
   before arena reset. Keep adapters for supported sample-consuming processors.
-- [ ] Verify the complete accepted audio workflow through `shoop_host` and the
+- [x] Verify the complete accepted audio workflow through `shoop_host` and the
   normal app connection. Compare current/chunks output and state at the recorded
   tolerance; exercise routing fan-out, mixing, monitoring, balance, mute, ramps,
   wrap smoothing, retained grabs, and deletion/recreation.
@@ -299,16 +299,16 @@ Depends on: stage 2. This is the first fully implemented experimental variant.
 
 Depends on: stage 3. Reuse all chunk storage, timing and app-control integration.
 
-- [ ] Add fixed-size per-channel endpoint envelopes to logical audio outputs in
+- [x] Add fixed-size per-channel endpoint envelopes to logical audio outputs in
   `chunks-descriptors` only. Make each eligible gain/ramp node compose the pair
   immediately, passing one descriptor onward rather than accumulating operations.
-- [ ] Use the existing gain/balance/control-ramp values at each quantum's actual
+- [x] Use the existing gain/balance/control-ramp values at each quantum's actual
   first and last samples. Split longer ramps at quantum boundaries; handle Q=1
   and spans with offsets using the same domain.
-- [ ] Implement final incremental gain evaluation. Mix input descriptors directly
+- [x] Implement final incremental gain evaluation. Mix input descriptors directly
   into the mixer's new chunk and emit a unity descriptor. Do not defer a mix tree
   or postpone all composition to the device output.
-- [ ] Preserve capture and meter observation points; materialize non-envelope
+- [x] Preserve capture and meter observation points; materialize non-envelope
   smoothing/effect operations where needed. Keep these policies explicit and
   bounded. Stored audio contains the evaluated capture result.
 - [ ] Verify independent-source fan-in, chains of gains, constant/ramp mixtures,
@@ -318,7 +318,7 @@ Depends on: stage 3. Reuse all chunk storage, timing and app-control integration
 - [ ] Verify unchanged timing and grab ownership across all three modes, and
   identical results for unity/constant-gain cases within tolerance. Ensure chunk
   span or host callback partitioning does not alter the approximation segment.
-- [ ] Run all three through the app workflow and benchmark launcher. Confirm
+- [x] Run all three through the app workflow and benchmark launcher. Confirm
   sample-work counters distinguish eliminated gain buffers from remaining mixes,
   meters, effects and captures. Commit milestone.
 
@@ -326,7 +326,7 @@ Depends on: stage 3. Reuse all chunk storage, timing and app-control integration
 
 Depends on: stage 4. This is the final functional/measurement acceptance gate.
 
-- [ ] Exercise all three modes through the real host/service/RT stack and an
+- [x] Exercise all three modes through the real host/service/RT stack and an
   actual app client. Include a manual remote UI check of track/loop creation,
   input monitoring, recording, play/stop, gains, meters, waveforms and grabbing.
 - [ ] Add reproducible scenarios: empty default sync session; silent and non-silent
@@ -428,3 +428,24 @@ select a different renderer in any reported benchmark.
   media compatibility; reference spans carry channel stride. Graph audio ports
   remain planar. Typed chunk slabs replace reserved byte storage at preparation,
   so payloads are not held in duplicate byte and float pools.
+
+- The reference graph and both experimental modes now run through the actual
+  socket app service. Fixed arena/pin capacity covers the entire prepared node
+  pool, including inactive slots; graph edits need no render-time allocation or
+  arena resizing. Existing input-history/capture and FX/smoothing consumers are
+  materialization boundaries; eligible playback, fader, strip-output and bus
+  stages forward references, and the descriptor mode composes endpoints there.
+- Sample/timing comparisons cover Q=1/32 and callback partitions 1/13/128, with
+  overlapping control ramps, independent-source fan-in, monitoring, capture,
+  repeated wrap, stop/start, clearing and slot reuse. Ordinary chunks compare
+  every sample; descriptors compare quantum endpoints and exact recorded media.
+- The actual remote native UI was manually driven on a local Xvfb display with
+  the descriptor host: stereo track and additional loop creation, record/play,
+  two-channel waveform display, history grab, stop/start, gain/monitor controls,
+  track deletion and recreation. Screenshots are retained under
+  `work/chunk_design/ui`. This is UI evidence, not performance data.
+- The warning-denying workspace build passed. Full test linking exhausted the
+  container disk with debug/incremental artifacts. Disposable incremental cache
+  was removed; the build and full native gate are rerun in a separate target
+  directory with DEV/TEST debug symbols and incremental compilation disabled.
+  Assertions, warning policy and the prescribed test selection are unchanged.

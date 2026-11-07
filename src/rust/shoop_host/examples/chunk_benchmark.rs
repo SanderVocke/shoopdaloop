@@ -36,6 +36,14 @@ struct Args {
     tracks: u32,
     #[arg(long, default_value = "16")]
     loops: u32,
+    #[arg(long, default_value = "4")]
+    voices: usize,
+    #[arg(long)]
+    callbacks: Option<u64>,
+    #[arg(long, default_value = "0.5")]
+    warmup: f64,
+    #[arg(long, default_value = "signal")]
+    input: String,
 }
 
 struct ChildGuard(Child);
@@ -91,9 +99,25 @@ fn main() -> Result<()> {
     ensure!(
         matches!(
             args.scenario.as_str(),
-            "idle" | "record" | "play" | "grab" | "ramps"
+            "idle"
+                | "record"
+                | "play"
+                | "grab"
+                | "ramps"
+                | "shared"
+                | "continue"
+                | "record-play"
+                | "churn"
         ),
         "invalid scenario"
+    );
+    ensure!(
+        matches!(args.input.as_str(), "signal" | "silence"),
+        "invalid input"
+    );
+    ensure!(
+        args.voices > 0 && args.voices < args.loops as usize,
+        "voices exceed loop capacity"
     );
     std::fs::create_dir_all(&args.output)?;
     let output = args.output.canonicalize()?;
@@ -126,7 +150,7 @@ fn main() -> Result<()> {
                 if args.scenario == "idle" {
                     "silence"
                 } else {
-                    "signal"
+                    args.input.as_str()
                 },
             )
             .env("SHOOP_AUDIO_BENCH_OUTPUT", output.join("callbacks.csv"))
@@ -167,6 +191,7 @@ fn main() -> Result<()> {
             .is_empty(),
         "default sync track missing"
     );
+    let mut active = None;
     if args.scenario != "idle" {
         command(
             &mut client,
@@ -187,9 +212,20 @@ fn main() -> Result<()> {
                 creation_request_id: None,
             }),
         )?;
-        let Outcome::TrackCreated { track, loops, .. } = outcome else {
+        let Outcome::TrackCreated {
+            track, mut loops, ..
+        } = outcome
+        else {
             anyhow::bail!("track creation: {outcome:?}");
         };
+        while loops.len() < args.voices.max(2) {
+            let outcome = command(&mut client, &mut connection, Command::AddLoop { track })?;
+            let Outcome::LoopCreated { loop_id, .. } = outcome else {
+                anyhow::bail!("loop creation: {outcome:?}");
+            };
+            loops.push(loop_id);
+        }
+        active = Some((track, loops.clone()));
         pump(&mut client, &mut connection, 0.1)?;
         let inputs: Vec<_> = client.snapshot().unwrap().connections.application_ports.iter()
             .filter(|port| matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track) && port.role == PortRole::AudioInput)
@@ -251,27 +287,42 @@ fn main() -> Result<()> {
                 .as_ref()
                 .map_err(|error| anyhow::anyhow!("media: {error:?}"))?;
             ensure!(
-                media
-                    .audio
-                    .iter()
-                    .any(|channel| channel.samples.iter().any(|sample| sample.abs() > 0.001)),
+                args.input == "silence"
+                    || media
+                        .audio
+                        .iter()
+                        .any(|channel| channel.samples.iter().any(|sample| sample.abs() > 0.001)),
                 "captured audio is silent"
             );
         }
-        if args.scenario == "ramps" {
-            for value in [-12., -3., -9., 0.] {
+        if matches!(args.scenario.as_str(), "play" | "ramps" | "record-play") {
+            for &loop_id in loops.iter().take(args.voices).skip(1) {
                 command(
                     &mut client,
                     &mut connection,
                     Command::Loop {
                         track,
-                        loop_id: loops[0],
-                        action: LoopAction::GainChanged(value),
+                        loop_id,
+                        action: LoopAction::RecordClicked,
                     },
                 )?;
             }
+            pump(&mut client, &mut connection, 0.2)?;
+            if args.scenario != "record-play" {
+                for &loop_id in loops.iter().take(args.voices).skip(1) {
+                    command(
+                        &mut client,
+                        &mut connection,
+                        Command::Loop {
+                            track,
+                            loop_id,
+                            action: LoopAction::PlayClicked,
+                        },
+                    )?;
+                }
+            }
         }
-        if args.scenario == "grab" {
+        if matches!(args.scenario.as_str(), "grab" | "shared" | "continue") {
             let sync = client
                 .snapshot()
                 .unwrap()
@@ -301,28 +352,173 @@ fn main() -> Result<()> {
                 },
             )?;
             pump(&mut client, &mut connection, 0.2)?;
+            let targets = if args.scenario == "grab" {
+                loops[1..2].to_vec()
+            } else {
+                loops[..args.voices].to_vec()
+            };
+            let operation = if args.scenario == "continue" {
+                ControlOperation::AdoptRingbuffers {
+                    loops: targets,
+                    reverse_cycle_start: 1,
+                    cycles_length: 1,
+                    go_to_cycle: 1,
+                    go_to_mode: LoopMode::Recording,
+                }
+            } else {
+                ControlOperation::Grab { loops: targets }
+            };
+            command(&mut client, &mut connection, Command::Control(operation))?;
+        }
+    }
+    pump(&mut client, &mut connection, args.warmup)?;
+    let snapshot = client.snapshot().unwrap();
+    let setup = serde_json::to_value(snapshot)?;
+    if let Some((track, ref loops)) = active {
+        let state = snapshot
+            .tracks
+            .iter()
+            .find(|entry| entry.id == track)
+            .context("track absent")?;
+        ensure!(
+            state
+                .loops
+                .iter()
+                .any(|entry| entry.id == loops[0] && entry.length_frames > 0),
+            "loop never captured"
+        );
+    }
+    let first_frame = (snapshot
+        .status
+        .processed_frames
+        .div_ceil(args.buffer as u64)
+        + 4)
+        * args.buffer as u64;
+    let callbacks = args
+        .callbacks
+        .unwrap_or_else(|| (args.seconds * 48000. / args.buffer as f64).ceil() as u64);
+    ensure!(callbacks > 0, "empty measurement");
+    let last_frame = first_frame + callbacks * args.buffer as u64;
+    let end = Instant::now()
+        + Duration::from_secs_f64(
+            args.seconds
+                .max(callbacks as f64 * args.buffer as f64 / 48000.)
+                * 4.
+                + 30.,
+        );
+    let mut tick = 0;
+    let mut next_control = Instant::now();
+    while client.snapshot().unwrap().status.processed_frames < last_frame + args.buffer as u64 {
+        ensure!(Instant::now() < end, "measurement stalled");
+        if args.scenario == "ramps" && Instant::now() >= next_control {
+            let (track, ref loops) = active.as_ref().unwrap();
+            let value = if tick % 2 == 0 { -12. } else { 0. };
+            command(
+                &mut client,
+                &mut connection,
+                Command::Track {
+                    track: *track,
+                    action: TrackAction::OutputGainChanged(value),
+                },
+            )?;
+            command(
+                &mut client,
+                &mut connection,
+                Command::Track {
+                    track: *track,
+                    action: TrackAction::OutputBalanceChanged(if tick % 2 == 0 {
+                        -0.7
+                    } else {
+                        0.5
+                    }),
+                },
+            )?;
+            command(
+                &mut client,
+                &mut connection,
+                Command::Control(ControlOperation::SetLoopGain {
+                    loops: loops[..args.voices].to_vec(),
+                    gain: if tick % 2 == 0 { 0.5 } else { 1. },
+                }),
+            )?;
+            tick += 1;
+            next_control = Instant::now() + Duration::from_millis(4);
+        } else if args.scenario == "churn" && Instant::now() >= next_control {
+            let (track, _) = active.as_ref().unwrap();
+            command(
+                &mut client,
+                &mut connection,
+                Command::Track {
+                    track: *track,
+                    action: TrackAction::Remove,
+                },
+            )?;
+            let result = command(
+                &mut client,
+                &mut connection,
+                Command::AddTrack(TrackSpec {
+                    name: "Benchmark churn".into(),
+                    topology: TrackSpecTopology::Direct {
+                        audio_channels: 2,
+                        midi: false,
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: vec!["Master".into()],
+                    creation_request_id: None,
+                }),
+            )?;
+            let Outcome::TrackCreated { track, loops, .. } = result else {
+                anyhow::bail!("recreate: {result:?}");
+            };
+            pump(&mut client, &mut connection, 0.02)?;
+            let snapshot = client.snapshot().unwrap();
+            let ports:Vec<_> = snapshot.connections.application_ports.iter().filter(|port|matches!(port.owner,ApplicationPortOwner::Track {track_id,..} if track_id==track) && port.role==PortRole::AudioInput).map(|port|port.id).collect();
+            let hosts: Vec<_> = snapshot
+                .connections
+                .host_ports
+                .iter()
+                .filter(|port| {
+                    port.data_type == PortDataType::Audio && port.direction == PortDirection::Output
+                })
+                .map(|port| port.id.clone())
+                .collect();
+            for (port, host_port) in ports.into_iter().zip(hosts) {
+                command(
+                    &mut client,
+                    &mut connection,
+                    Command::SetPortConnected {
+                        port,
+                        host_port,
+                        connected: true,
+                    },
+                )?;
+            }
             command(
                 &mut client,
                 &mut connection,
                 Command::Loop {
                     track,
-                    loop_id: loops[1],
-                    action: LoopAction::GrabClicked,
+                    loop_id: loops[0],
+                    action: LoopAction::RecordClicked,
                 },
             )?;
+            active = Some((track, loops));
+            tick += 1;
+            next_control = Instant::now() + Duration::from_millis(50);
         }
+        pump(&mut client, &mut connection, 0.002)?;
     }
-    pump(&mut client, &mut connection, 0.25)?;
-    let first_frame = client.snapshot().unwrap().status.processed_frames;
-    pump(&mut client, &mut connection, args.seconds)?;
-    let last_frame = client.snapshot().unwrap().status.processed_frames;
     std::fs::write(
         output.join("run.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
             "mode":args.mode,"scenario":args.scenario,"first_frame":first_frame,"last_frame":last_frame,
             "quantum":args.quantum,"buffer":args.buffer,"seconds":args.seconds,"config":config,
-            "host":args.host,"architecture":std::env::consts::ARCH
+            "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"input":args.input,"setup":setup,"control_updates":tick
         }))?,
+    )?;
+    std::fs::write(
+        output.join("final-state.json"),
+        serde_json::to_vec_pretty(client.snapshot().unwrap())?,
     )?;
     let ClientMessage::Shutdown {
         authority,

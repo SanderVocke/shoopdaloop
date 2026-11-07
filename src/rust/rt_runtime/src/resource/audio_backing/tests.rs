@@ -884,3 +884,117 @@ fn edit_only_pool_reserves_full_block_scratch_and_keeps_unselected_channels_and_
         assert_eq!(store.usage(), baseline);
     });
 }
+
+#[shoop_test]
+fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refusal() {
+    for q in [1, 32] {
+        let mut store = ResourceStore::new(
+            crate::Config {
+                max_frames: 32,
+                resource_slots: 24,
+                resource_pages: 128,
+                page_bytes: 256,
+                budgets: crate::Budgets {
+                    validation_steps: 1,
+                    ..crate::Budgets::default()
+                },
+                ..crate::Config::default()
+            }
+            .prepare()
+            .unwrap(),
+            crate::Quantum::new(q).unwrap(),
+        )
+        .unwrap();
+        store.set_audio_render_mode(crate::AudioRenderMode::Chunks);
+        let pool = audio(&mut store, 2, 3 * q);
+        let mut input = [0f32; 64];
+        let mut arena = crate::audio_refs::RenderArena::prepare(32, 2);
+        assert_no_heap(|| {
+            for tick in 0..3 {
+                input[..q * 2].fill(tick as f32 + 1.);
+                store.begin_callback();
+                store
+                    .render_io()
+                    .append_audio_history(pool, Frame((tick * q) as u64), &input[..q * 2])
+                    .unwrap();
+                assert_eq!(store.render_work().copied_bytes, q * 8);
+            }
+            let a = store
+                .grab_audio(pool, Frame(0)..Frame((2 * q) as u64))
+                .unwrap();
+            let b = store
+                .grab_audio(pool, Frame(q as u64)..Frame((3 * q) as u64))
+                .unwrap();
+            let old = store.snapshot(a, Frame((3 * q) as u64)).unwrap();
+            let peer = store.snapshot(b, Frame((3 * q) as u64)).unwrap();
+            let mut retained = [None; 32];
+            let mut count = 0;
+            loop {
+                match store.grab_audio(pool, Frame(q as u64)..Frame((3 * q) as u64)) {
+                    Ok(resource) => {
+                        retained[count] = Some(resource);
+                        count += 1;
+                        assert!(count < 32);
+                    }
+                    Err(Error::Capacity) => break,
+                    other => panic!("unexpected grab {other:?}"),
+                }
+            }
+            assert!(count > 0);
+            let mut sequence = store
+                .audio_chunk_sequence(store.read_index(old.id).unwrap(), 0, q, 0)
+                .unwrap()
+                .unwrap();
+            arena.pin_sequence(&mut sequence, &mut store).unwrap();
+            assert_eq!(
+                store.prepare_audio_growth(a, Revision(1), u64::MAX),
+                Err(Error::Capacity)
+            );
+            store
+                .prepare_audio_growth(a, Revision(1), (6 * q) as u64)
+                .unwrap();
+            input[..q * 2].fill(7.);
+            let revision = store
+                .render_io()
+                .append_audio_take(a, Revision(1), &input[..q * 2])
+                .unwrap();
+            assert_eq!(store.info(a).unwrap().description.frames, (3 * q) as u64);
+            assert_eq!(
+                store.prepare_audio_growth(a, revision, u64::MAX),
+                Err(Error::Busy)
+            );
+            assert_eq!(store.info(a).unwrap().revision, revision);
+            for tick in 3..80 {
+                store.begin_callback();
+                store
+                    .render_io()
+                    .append_audio_history(pool, Frame((tick * q) as u64), &input[..q * 2])
+                    .unwrap();
+                assert_eq!(store.render_work().copied_bytes, q * 8);
+            }
+            store.remove(a).unwrap();
+            store.release_snapshot(old.id).unwrap();
+            drain(&mut store);
+            let mut observed = [0.; 32];
+            arena
+                .read_into(sequence, &mut observed[..q], &store, false)
+                .unwrap();
+            assert!(observed[..q].iter().all(|&sample| sample == 1.));
+            arena.unpin(&mut store).unwrap();
+            let index = store.read_index(peer.id).unwrap();
+            let sequence = store.audio_chunk_sequence(index, 0, q, 0).unwrap().unwrap();
+            arena
+                .read_into(sequence, &mut observed[..q], &store, false)
+                .unwrap();
+            assert!(observed[..q].iter().all(|&sample| sample == 2.));
+            for resource in retained.into_iter().flatten() {
+                store.remove(resource).unwrap();
+            }
+            store.remove(b).unwrap();
+            store.release_snapshot(peer.id).unwrap();
+            drain(&mut store);
+            store.cleanup_audio_store(pool).unwrap();
+            drain(&mut store);
+        });
+    }
+}
