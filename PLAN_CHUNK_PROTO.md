@@ -8,7 +8,9 @@ Base: `feat/backend-replacement`, inspected at
 `7a77c8d5048d6ec33c305385710dd40044d039b7`. The checkout was refreshed before
 implementation from the original planning revision `b874bbbb`; the current base
 includes upstream Pi idle/control optimizations, bus FX restoration, and native
-audio-driver switching. This plan follows that branch's
+audio-driver switching. Before final measurements it was refreshed again to
+`888bd8a66143a6a6a675883823578a7c1d7e4bee`, including composite integration
+merged upstream while this prototype was in progress. This plan follows that branch's
 `.agents/prompts/write_plan.md` and the subsequent user decisions. It takes
 precedence over earlier exploratory implementation sequencing in
 `IDEA_CHUNKS.md` and `docs/design/chunks/DESIGN.md` where they differ.
@@ -249,7 +251,7 @@ Depends on: stage 0. This stage establishes the common path used by later modes.
 
 Depends on: stage 1. Keep materialized graph buffers initially where faster.
 
-- [ ] Implement prepared persistent sample/index slabs and validated handles.
+- [x] Implement prepared persistent sample/index slabs and validated handles.
   Add ownership, fixed-path updates, trimmed range snapshots, logical silence,
   guard capacity, and bounded streaming/bulk reclamation.
 - [x] Add an experimental internal audio backing selected at preparation. Route
@@ -260,7 +262,7 @@ Depends on: stage 1. Keep materialized graph buffers initially where faster.
   through the existing bulk APIs, with bounded work per callback.
 - [x] Add the mode-specific allocation/copy/index/retirement counters required
   to distinguish new payload writes from metadata work and compatibility copies.
-- [ ] Verify focused storage invariants: Q=1 and Q=32, wrap with several retained
+- [x] Verify focused storage invariants: Q=1 and Q=32, wrap with several retained
   grabs, overlapping ranges, source isolation, slot reuse, snapshot isolation,
   admission refusal, deletion during capture, and continued recording after grab.
 - [x] Verify one normal app-protocol track/loop creation and record/play/grab flow
@@ -288,7 +290,7 @@ Depends on: stage 2. This is the first fully implemented experimental variant.
   normal app connection. Compare current/chunks output and state at the recorded
   tolerance; exercise routing fan-out, mixing, monitoring, balance, mute, ramps,
   wrap smoothing, retained grabs, and deletion/recreation.
-- [ ] Check callback partitioning, stale transient references and sample/metadata
+- [x] Check callback partitioning, stale transient references and sample/metadata
   capacity failures; use existing allocation guards around processing.
 - [ ] Publish repeatable current/chunks results including reference-forwarded
   edges, materializations and compatibility copies. Confirm supported flows no
@@ -311,11 +313,11 @@ Depends on: stage 3. Reuse all chunk storage, timing and app-control integration
 - [x] Preserve capture and meter observation points; materialize non-envelope
   smoothing/effect operations where needed. Keep these policies explicit and
   bounded. Stored audio contains the evaluated capture result.
-- [ ] Verify independent-source fan-in, chains of gains, constant/ramp mixtures,
+- [x] Verify independent-source fan-in, chains of gains, constant/ramp mixtures,
   overlapping ramps, stop/start fades, balance/mute, intermediate capture and
   metering, and multi-quantum ramps. Compare gain endpoints against an independent
   product oracle; intentionally do not require equal interior curves.
-- [ ] Verify unchanged timing and grab ownership across all three modes, and
+- [x] Verify unchanged timing and grab ownership across all three modes, and
   identical results for unity/constant-gain cases within tolerance. Ensure chunk
   span or host callback partitioning does not alter the approximation segment.
 - [x] Run all three through the app workflow and benchmark launcher. Confirm
@@ -366,7 +368,7 @@ Depends on: stage 5. Validation failures can send work back to an earlier stage.
   affected native suites, and the complete native gate required by branch
   instructions. Run real-driver tests without missing-backend exemptions when
   actual device facilities are being claimed.
-- [ ] Check lower-crate `no_std + alloc` builds and existing compile boundaries.
+- [x] Check lower-crate `no_std + alloc` builds and existing compile boundaries.
   Do not require new web/embedded feature parity; existing default configurations
   must continue to compile, with cross-platform regression checks supplied by CI.
 - [ ] Update this plan, the design documents and the PR around the delivered
@@ -449,3 +451,27 @@ select a different renderer in any reported benchmark.
   was removed; the build and full native gate are rerun in a separate target
   directory with DEV/TEST debug symbols and incremental compilation disabled.
   Assertions, warning policy and the prescribed test selection are unchanged.
+
+- Draft implementation PR: https://github.com/SanderVocke/shoopdaloop/pull/959.
+  The lower runtime/loop crates also pass an actual bare-metal ARM check with
+  `--target thumbv7em-none-eabihf`. Remote CI has passed Native JACK acceptance
+  and portable processor Miri ownership checks on the initial implementation.
+- Initial full native execution ran 3,168 tests while a separate release build
+  competed for the container's four-CPU quota. Five existing process-startup/UI
+  tests hit deadlines; their diagnostics are preserved, and the complete gate
+  is repeated without the competing build. This is not recorded as a green gate.
+
+- The idle full native run passed 3,167 tests and rejected the new CPAL Q=1
+  adapter fixture's 30-second/48 kHz chunk index at preparation (capacity limit).
+  The adapter fixture now uses a one-second history equally in all modes; its
+  production callback/sample-delay/heap-guard test passes for all three renderers.
+  Large Q=1/history combinations remain an explicit preparation limitation.
+  A final full native gate will be recorded after measurements.
+
+- Refreshed runtime/loop ARM checks, warning-denying workspace build and optimized
+  host build pass after integrating upstream `888bd8a6`. The actual-host release
+  smoke matrix passes all three modes for shared grabs, grab-and-continue and
+  track deletion/recreation, with post-capture audio verification. The callback
+  recorder now has a producer heap-guard/backpressure/slot-reuse/order test; this
+  addresses an unexercised recorder path identified by the initial CI coverage
+  report (79.67% against the repository's 80% patch floor).

@@ -15,6 +15,7 @@ use web_time::Instant;
 
 use crate::Runtime;
 
+mod composite_roles;
 mod composites;
 mod input;
 
@@ -95,6 +96,7 @@ enum Step {
     HostedDry,
     HostedWet,
     HostedStopped,
+    HostedComposite,
     HostedSaving,
     HostedLoaded,
     HostedResaving,
@@ -112,6 +114,7 @@ struct Ids {
 
 pub struct NewEngineSelfTest {
     hosted_index: usize,
+    hosted_composites: composite_roles::Canary,
     composites: Option<composites::Canary>,
     input: input::Canary,
     preview_only: bool,
@@ -144,6 +147,7 @@ impl NewEngineSelfTest {
             .unwrap_or_default();
         Self {
             hosted_index: 0,
+            hosted_composites: composite_roles::Canary::default(),
             input: input::Canary::default(),
             composites: query
                 .contains("composites=1")
@@ -1616,6 +1620,21 @@ impl NewEngineSelfTest {
                 if pending || track.loops[0].mode != LoopMode::Stopped {
                     return Ok(None);
                 }
+                Step::HostedComposite
+            }
+            Step::HostedComposite => {
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .ok_or("hosted composite track missing")?;
+                if !self
+                    .hosted_composites
+                    .advance(snapshot, pending, track, &mut send)?
+                {
+                    return Ok(None);
+                }
+                self.hosted_composites = composite_roles::Canary::default();
                 self.saved_file = None;
                 self.saved_bundle = None;
                 self.resaved_bundle = None;

@@ -100,6 +100,7 @@ struct History {
     indexed_midi: Option<indexed_midi::SourceId>,
     tracker: Option<midi::MidiCapture>,
     audio_scratch: Box<[f32]>,
+    wet_scratch: Box<[f32]>,
     token: Option<u64>,
     midi_token: Option<u64>,
     generation: u64,
@@ -323,6 +324,7 @@ impl Shared {
                 indexed_midi,
                 tracker,
                 audio_scratch: vec![0.; samples].into_boxed_slice(),
+                wet_scratch: vec![0.; samples].into_boxed_slice(),
                 token: None,
                 midi_token: None,
                 generation: 1,
@@ -357,6 +359,7 @@ impl Shared {
             live: (0..settings.candidates)
                 .map(|_| LiveSlot {
                     generation: 1,
+                    reservation: None,
                     value: None,
                 })
                 .collect(),
@@ -409,7 +412,7 @@ impl Shared {
             add(
                 &mut capacity.coordinator_bytes,
                 history.audio_scratch.len(),
-                size_of::<f32>(),
+                2 * size_of::<f32>(),
             )?;
             if history.tracker.is_some() {
                 add(&mut capacity.coordinator_bytes, 1, size_of::<MidiState>())?;
@@ -465,6 +468,9 @@ impl Shared {
             for v in h.audio_scratch.iter_mut() {
                 core::hint::black_box(v);
             }
+            for v in h.wet_scratch.iter_mut() {
+                core::hint::black_box(v);
+            }
         }
         for v in result.audio_patch.iter_mut() {
             core::hint::black_box(v);
@@ -478,6 +484,7 @@ impl Shared {
         for slot in &mut result.live {
             *core::hint::black_box(slot) = LiveSlot {
                 generation: 1,
+                reservation: None,
                 value: None,
             };
         }
@@ -1413,9 +1420,6 @@ impl LoopPlanner {
             }
             Operation::WriterPrepareReplacing { target, source } => {
                 let row = self.row(target)?;
-                if row.dry_wet {
-                    return Err(Error::InvalidShape.into());
-                }
                 let state = self.resolver.state(target)?;
                 if row.prepared.is_some() {
                     return Err(Error::Busy.into());
@@ -1458,7 +1462,17 @@ impl LoopPlanner {
                 let view = self
                     .ledger
                     .view(self.ledger.playback(target)?.ok_or(Error::InvalidState)?)?;
-                if (row.binding.channels > 0) != view.audio.is_some()
+                let audio = if row.dry_wet {
+                    view.auxiliary
+                } else {
+                    view.audio
+                };
+                if (if row.dry_wet {
+                    row.binding.auxiliary_channels
+                } else {
+                    row.binding.channels
+                } > 0)
+                    != audio.is_some()
                     || row.binding.midi != view.midi.is_some()
                 {
                     return Err(Error::InvalidShape.into());
@@ -1472,20 +1486,43 @@ impl LoopPlanner {
                     topology: self.resolver.epoch(),
                 };
                 let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                let mut windows = row.windows;
+                if row.dry_wet {
+                    windows.audio[row.audio_widths[1]..].fill(Default::default());
+                }
                 let id = shared.begin_live_snapshots(
                     fence,
                     source,
                     state.content_length,
                     [
-                        view.audio.map(|source| source.snapshot),
+                        audio.map(|source| source.snapshot),
                         view.midi.map(|source| source.snapshot),
                     ],
                     indexed_midi::WriteKind::Fixed,
                     1,
-                    row.windows,
+                    windows,
                     frame,
                     io,
+                    false,
                 )?;
+                if row.dry_wet {
+                    let mut wet = Windows::default();
+                    let width = row.audio_widths[0];
+                    wet.audio[..width].copy_from_slice(
+                        &row.windows.audio[row.audio_widths[1]..row.audio_widths[1] + width],
+                    );
+                    if let Err(error) = shared.configure_processed(
+                        id,
+                        view.audio.map(|source| source.snapshot),
+                        wet,
+                        width,
+                        frame,
+                        io,
+                    ) {
+                        shared.cancel_live(id, io)?;
+                        return Err(error.into());
+                    }
+                }
                 let job = shared.live_job(id)?;
                 Ok(Reply::ReplacingPrepared {
                     id: Some(id),
@@ -1513,10 +1550,13 @@ impl LoopPlanner {
                     topology: self.resolver.epoch(),
                 };
                 let midi = if row.binding.midi {
-                    Some(io.snapshot(
-                        row.resources[take.bank][0][2].ok_or(Error::InvalidState)?,
-                        frame,
-                    )?)
+                    Some(
+                        io.snapshot(
+                            row.resources[take.bank][usize::from(row.dry_wet)][2]
+                                .ok_or(Error::InvalidState)?,
+                            frame,
+                        )?,
+                    )
                 } else {
                     None
                 };

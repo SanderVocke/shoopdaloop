@@ -192,7 +192,7 @@ try {
     }
     if (process.env.UPLOAD_DIAGNOSTICS === '1' && message.method === 'Runtime.consoleAPICalled') {
       for (const argument of message.params.args) {
-        if (typeof argument.value === 'string' && (argument.value.includes('backend.rt.content_write') || argument.value.includes('ContentBegin') || argument.value.includes('ContentFinish'))) {
+        if (typeof argument.value === 'string' && (argument.value.includes('backend.rt.content_write') || argument.value.includes('ContentBegin') || argument.value.includes('ContentFinish') || argument.value.includes('service.persistence.prepare_refused'))) {
           console.log(`${new Date(message.params.timestamp).toISOString()} ${argument.value}`);
           if (process.env.UPLOAD_PROFILE && !profiledUpload && argument.value.includes('bytes: 69206016')) {
             profiledUpload = true;

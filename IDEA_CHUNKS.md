@@ -1,5 +1,12 @@
 # Audio chunks and reference-based rendering
 
+The native prototype implementing the three selectable render paths is documented
+in [the prototype guide](docs/design/chunks/PROTOTYPE.md). Its benchmark measurements and implementation
+limitations take precedence over speculative cost estimates below. The prototype
+reuses the binary persistent index and interleaved channel groups; four-way index
+tuning and separate history arenas remain future options.
+
+
 ## Goal
 
 Reduce audio copying and intermediate buffer traffic while keeping render work

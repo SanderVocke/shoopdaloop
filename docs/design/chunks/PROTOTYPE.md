@@ -33,7 +33,9 @@ without render-time heap operations. Generic resource-page usage excludes the
 byte pages detached during preparation; do not interpret those page counters as
 physical chunk availability. Callback CSV contains separate live payload/index
 counts. The prepared metadata reservation is significant and is reported rather
-than hidden in the payload-byte comparison.
+than hidden in the payload-byte comparison. Q=1 correctness uses small histories;
+30-second, 48 kHz Q=1 pools can exceed the metadata admission limit and are refused
+at preparation. There is no renderer fallback for that capacity refusal.
 
 History publication and loop capture materialize at their existing observation
 points. Direct aligned publication writes one new quantum. Loop capture can share
@@ -88,7 +90,10 @@ tracks/loops and sends normal commands. It requires accepted operations and
 nonzero media readback for signal scenarios. The shared/continue scenarios retain
 history in multiple loops; ramps sends controls throughout measurement; churn
 removes/recreates whole tracks and records them again. `record:silence` uses the
-same setup with zero input. Setup and final snapshots are saved for inspection.
+same setup with zero input. Setup and final snapshots are saved for inspection. The existing app service
+refuses bulk media reads while a take is recording; recording scenarios finish a
+take after the timing window and then verify its audio. This does not stop capture
+during measurement.
 
 All modes use one binary, configuration, MIDI policy and recorder. Each run has
 explicit warmup and exactly the selected number of consecutive measured callbacks;

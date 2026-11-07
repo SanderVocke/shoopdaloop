@@ -107,6 +107,22 @@ pub(super) struct NodePairs {
     steps: usize,
 }
 impl NodePairs {
+    pub(super) fn prepared_initial(&self, target: LoopId) -> Option<NodePairInitial> {
+        self.banks
+            .iter()
+            .filter(|bank| bank.status == NodePairStatus::Ready)
+            .flat_map(|bank| &bank.edits)
+            .filter_map(|edit| edit.initial)
+            .find(|initial| initial.target == target)
+    }
+    pub(super) fn prepared_view(&self, target: LoopId) -> Option<media::View> {
+        self.banks
+            .iter()
+            .filter(|bank| bank.status == NodePairStatus::Ready)
+            .flat_map(|bank| &bank.changes)
+            .filter_map(media::OwnerChange::view)
+            .find(|view| view.description.owner == target)
+    }
     pub(super) fn prepare(loops: usize, settings: NodePairSettings) -> Result<Self, Error> {
         if (settings.candidates == 0 && settings.sources != 0)
             || (settings.sources == 0) != (settings.source_packets_per_callback == 0)
@@ -361,7 +377,7 @@ impl NodePairs {
         slot.windows = Some((frames, windows));
         Ok(())
     }
-    fn windows(
+    pub(super) fn windows(
         &self,
         audio: Option<NodePairSourceId>,
         auxiliary: Option<NodePairSourceId>,

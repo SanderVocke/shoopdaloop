@@ -83,6 +83,9 @@ pub(crate) fn wire_mode(mode: BackendLoopMode) -> Result<LoopMode> {
         BackendLoopMode::Stopped => LoopMode::Stopped,
         BackendLoopMode::Playing => LoopMode::Playing,
         BackendLoopMode::Recording => LoopMode::Recording,
+        BackendLoopMode::Replacing => LoopMode::Replacing,
+        BackendLoopMode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
+        BackendLoopMode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
         _ => bail!("composite event mode is unavailable on this engine"),
     })
 }
@@ -173,24 +176,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_loop(id)
             .ok_or_else(|| anyhow!("unknown composite target"))?;
-        for target in
-            core::iter::once(id).chain(plan.spans.iter().map(|span| target_id(span.target)))
-        {
-            if self
-                .mirror
-                .loops
-                .get(&target)
-                .and_then(|entry| entry.track)
-                .is_some_and(|owner| {
-                    !matches!(
-                        self.mirror.tracks[&owner].topology,
-                        BackendTrackTopology::Direct { .. }
-                    )
-                })
-            {
-                bail!("composites currently require Direct tracks");
-            }
-        }
         if entry.program.is_none()
             && (!entry.confirmed
                 || entry.view.mode != LoopMode::Stopped
@@ -297,10 +282,28 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 bail!("invalid composite occurrence");
             }
             let mode = wire_mode(span.mode)?;
+            if mode == LoopMode::Replacing
+                && !self
+                    .capabilities
+                    .contains(shoop_rt_protocol::Capabilities::REPLACING)
+            {
+                bail!("composite Replacing requires prepared input writers");
+            }
             if plan.kind == BackendCompositeKind::Regular && mode != LoopMode::Playing
-                || is_composite && mode == LoopMode::Recording
+                || is_composite && !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
             {
                 bail!("invalid composite child mode");
+            }
+            if matches!(
+                mode,
+                LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+            ) && child.track.is_none_or(|owner| {
+                matches!(
+                    self.mirror.tracks[&owner].topology,
+                    BackendTrackTopology::Direct { .. }
+                )
+            }) {
+                bail!("dry/wet composite events require a dry/wet primitive");
             }
             if let Some((end, old_mode)) = previous.insert(child.slot, (span.end, mode)) {
                 if end > span.start || end == span.start && mode == old_mode {
@@ -469,9 +472,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                                     .mode
                                     .ok_or_else(|| anyhow!("script event requires a mode"))?,
                             )? {
-                                LoopMode::Replacing => {
-                                    bail!("composite replacing events are not supported")
-                                }
+                                LoopMode::Replacing => shoop_loop_plan::Mode::Replacing,
                                 LoopMode::Stopped => shoop_loop_plan::Mode::Stopped,
                                 LoopMode::Playing => shoop_loop_plan::Mode::Playing,
                                 LoopMode::Recording => shoop_loop_plan::Mode::Recording,
@@ -1157,7 +1158,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .filter(|entry| entry.program.is_some() || self.pending_conversion(id))
             .ok_or_else(|| anyhow!("unknown composite"))?;
         let mode = wire_mode(mode)?;
-        if mode == LoopMode::Recording {
+        if !matches!(mode, LoopMode::Playing | LoopMode::Stopped) {
             bail!("a composite's outer mode is Play or Stop");
         }
         if let Some(iteration) = align {

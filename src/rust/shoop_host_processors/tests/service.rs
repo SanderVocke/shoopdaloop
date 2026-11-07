@@ -641,6 +641,134 @@ impl Fixture {
 }
 
 #[shoop_test]
+fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
+    use shoop_app_protocol::composite as c;
+    for kind in [
+        ProcessorKind::External,
+        #[cfg(feature = "builtin-fx")]
+        ProcessorKind::BuiltInFx,
+        #[cfg(feature = "oxisynth")]
+        ProcessorKind::OxiSynth,
+    ] {
+        for mode in [
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+            LoopMode::Replacing,
+        ] {
+            let mut f = Fixture::new(kind);
+            f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
+            let processor = match kind {
+                ProcessorKind::External => TrackProcessorTypeId::EXTERNAL,
+                ProcessorKind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
+                ProcessorKind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
+            };
+            let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+                name: "Composite processor".into(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: TrackProcessorTypeId::new(processor),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            })) else {
+                panic!("track refused")
+            };
+            let transition = |id, mode| {
+                Command::Control(ControlOperation::Transition {
+                    loops: vec![id],
+                    mode,
+                    cycles_delay: None,
+                    align_to_sync_at: None,
+                })
+            };
+            f.confirmed(transition(loops[0], LoopMode::Recording));
+            f.ticks(4);
+            f.confirmed(transition(loops[0], LoopMode::Stopped));
+            f.confirmed(Command::Composite(c::Edit::Append {
+                target: loops[1],
+                add: vec![loops[0]],
+                parallel: false,
+                convert_if_empty: true,
+            }));
+            let event = f.client.snapshot().unwrap().composites[0]
+                .active
+                .as_ref()
+                .unwrap()
+                .document
+                .instances[0]
+                .instance_id;
+            for edit in [
+                c::Edit::Kind {
+                    target: loops[1],
+                    kind: CompositeKind::Script,
+                },
+                c::Edit::Duration {
+                    target: loops[1],
+                    event,
+                    n_cycles: Some(10_000),
+                },
+                c::Edit::Mode {
+                    target: loops[1],
+                    event,
+                    mode,
+                },
+            ] {
+                f.confirmed(Command::Composite(edit));
+            }
+            f.confirmed(transition(loops[1], LoopMode::Playing));
+            f.ticks(4);
+            assert_eq!(f.track(track).loops[0].mode, mode);
+            f.confirmed(transition(loops[1], LoopMode::Stopped));
+            let saved = file_image(f.capture(510, None));
+            let persistence_image::Manifest::Session(before) = &saved.manifest else {
+                panic!()
+            };
+            let before = before
+                .tracks
+                .iter()
+                .find(|t| t.name == "Composite processor")
+                .unwrap();
+            let expected = before.loops[1].composite.as_ref().unwrap().clone();
+            assert_eq!(expected.document.instances[0].mode, Some(mode));
+            assert_eq!(
+                before.loops[0].audio_labels(),
+                ["Dry 1", "Dry 2", "Wet 1", "Wet 2"]
+            );
+            if kind != ProcessorKind::External {
+                assert!(before.loops[0].recorded_processor_state.is_some());
+            }
+            f.load(saved.clone(), 511);
+            let resaved = file_image(f.capture(512, None));
+            let persistence_image::Manifest::Session(after) = &resaved.manifest else {
+                panic!()
+            };
+            let after = after.tracks.iter().find(|t| t.name == before.name).unwrap();
+            let restored = after.loops[1].composite.as_ref().unwrap();
+            assert_eq!(expected.prepared.instances, restored.prepared.instances);
+            assert_eq!(expected.prepared.unit_frames, restored.prepared.unit_frames);
+            assert_eq!(
+                expected.document.instances[0].instance_id,
+                restored.document.instances[0].instance_id
+            );
+            assert_eq!(restored.document.instances[0].mode, Some(mode));
+            assert_ne!(
+                expected.document.instances[0].loop_id,
+                restored.document.instances[0].loop_id
+            );
+            assert_eq!(
+                before.loops[0].recorded_processor_state,
+                after.loops[0].recorded_processor_state
+            );
+            assert_eq!(saved.payloads, resaved.payloads);
+        }
+    }
+}
+
+#[shoop_test]
 fn external_unequal_roles_survive_the_service_and_session_archive() {
     use persistence_image::{ChannelMode, Manifest, Payload};
     let mut f = Fixture::new(ProcessorKind::External);
@@ -741,7 +869,7 @@ fn synth_editor_learn_recorded_restore_and_detached_controls_run_through_the_ser
 }
 
 #[shoop_test]
-fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_interactions() {
+fn hosted_tracks_and_composites_share_archives_and_refuse_invalid_edits_atomically() {
     #[cfg(feature = "builtin-fx")]
     let (kind, processor_type) = (ProcessorKind::BuiltInFx, TrackProcessorTypeId::BUILTIN_FX);
     #[cfg(not(feature = "builtin-fx"))]
@@ -871,7 +999,7 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
         },
         composite::Edit::Append {
             target: direct_loops[0],
-            add: vec![hosted_loops[1]],
+            add: vec![direct_loops[0]],
             parallel: false,
             convert_if_empty: false,
         },
@@ -894,8 +1022,8 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
             .fx
     );
     let image = f.capture(901, None);
-    let mut unsupported = (*image).clone();
-    let persistence_image::Manifest::Session(session) = &mut unsupported.manifest else {
+    let mut processed_child_image = (*image).clone();
+    let persistence_image::Manifest::Session(session) = &mut processed_child_image.manifest else {
         panic!("session capture")
     };
     let child = session
@@ -920,20 +1048,37 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
     for span in &mut arrangement.prepared.spans {
         span.target = child;
     }
-    unsupported.validate().unwrap();
-    f.refuse_load(std::sync::Arc::new(unsupported), 902);
+    processed_child_image.validate().unwrap();
+    f.load(std::sync::Arc::new(processed_child_image), 902);
+    let loaded = f.client.snapshot().unwrap();
+    let hosted_child = loaded
+        .tracks
+        .iter()
+        .find(|track| track.name == "hosted")
+        .unwrap();
     assert_eq!(
-        f.client.snapshot().unwrap().composites[0].active,
-        Some(active.clone())
+        loaded.composites[0]
+            .active
+            .as_ref()
+            .unwrap()
+            .document
+            .instances[0]
+            .loop_id,
+        hosted_child.loops[1].id
     );
     assert_eq!(
-        f.track(hosted).fx,
+        hosted_child
+            .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor)),
         before
             .tracks
             .iter()
             .find(|track| track.id == hosted)
             .unwrap()
             .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor))
     );
     f.load(image, 903);
     f.ticks(4);
@@ -952,13 +1097,18 @@ fn hosted_tracks_and_direct_composites_share_archives_but_refuse_deferred_intera
         DefaultPlaybackMode::DryThroughWet
     );
     assert_eq!(
-        restored_hosted.fx,
+        restored_hosted
+            .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor)),
         before
             .tracks
             .iter()
             .find(|track| track.id == hosted)
             .unwrap()
             .fx
+            .as_ref()
+            .map(|fx| (&fx.processor_type, &fx.editor))
     );
     assert!(after
         .tracks

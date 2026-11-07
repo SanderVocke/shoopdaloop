@@ -906,10 +906,27 @@ fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refu
         )
         .unwrap();
         store.set_audio_render_mode(crate::AudioRenderMode::Chunks);
-        let pool = audio(&mut store, 2, 3 * q);
+        let pool = store
+            .prepare_audio_pool(
+                shared_audio::Config {
+                    channels: 2,
+                    history_frames: 3 * q,
+                    views: 16,
+                    pages: 110,
+                },
+                Frame(0),
+                2,
+            )
+            .unwrap();
+        let independent = store.audio_history(pool, 1).unwrap();
         let mut input = [0f32; 64];
         let mut arena = crate::audio_refs::RenderArena::prepare(32, 2);
         assert_no_heap(|| {
+            input[..q * 2].fill(42.);
+            store
+                .render_io()
+                .append_audio_source(independent, Frame(0), &input[..q * 2])
+                .unwrap();
             for tick in 0..3 {
                 input[..q * 2].fill(tick as f32 + 1.);
                 store.begin_callback();
@@ -990,6 +1007,20 @@ fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refu
             for resource in retained.into_iter().flatten() {
                 store.remove(resource).unwrap();
             }
+            let isolated = store
+                .grab_audio_source(independent, Frame(0)..Frame(q as u64))
+                .unwrap();
+            let isolated_snapshot = store.snapshot(isolated, Frame(q as u64)).unwrap();
+            let isolated_sequence = store
+                .audio_chunk_sequence(store.read_index(isolated_snapshot.id).unwrap(), 0, q, 0)
+                .unwrap()
+                .unwrap();
+            arena
+                .read_into(isolated_sequence, &mut observed[..q], &store, false)
+                .unwrap();
+            assert!(observed[..q].iter().all(|&sample| sample == 42.));
+            store.release_snapshot(isolated_snapshot.id).unwrap();
+            store.remove(isolated).unwrap();
             store.remove(b).unwrap();
             store.release_snapshot(peer.id).unwrap();
             drain(&mut store);

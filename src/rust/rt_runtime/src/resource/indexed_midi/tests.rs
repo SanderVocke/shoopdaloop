@@ -371,6 +371,83 @@ fn source_reset_and_competing_upload_fence_private_writers_and_recover_owners() 
 }
 
 #[shoop_test]
+fn prepared_window_writer_resumes_after_a_source_gap_without_changing_old_exports() {
+    let mut resources = resources();
+    let baseline = resources.usage();
+    let pool = resources.prepare_indexed_midi_store(config()).unwrap();
+    let source = resources.indexed_midi_source(pool, 0).unwrap();
+    let mut original = [0; 15];
+    encode_midi_record(0, &[0x90, 60, 64], &mut original).unwrap();
+    let loaded = upload(&mut resources, &original, Q as u64);
+    resources.begin_callback();
+    let snapshot = resources.snapshot(loaded, Frame(0)).unwrap();
+    let take = import(&mut resources, pool, snapshot, &MidiState::default());
+    resources.release_snapshot(snapshot.id).unwrap();
+    resources.remove(loaded).unwrap();
+    drain(&mut resources);
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    assert_no_heap(|| {
+        let old = resources.snapshot(take, Frame(0)).unwrap();
+        let writer = resources
+            .prepare_indexed_midi_window_writer(take, resources.info(take).unwrap().revision)
+            .unwrap();
+        let ready = (0..100).any(|_| {
+            resources.begin_callback();
+            resources.progress_indexed_midi_writer(writer, 32).unwrap() == Status::Ready
+        });
+        assert!(ready);
+        resources.start_indexed_midi_writer(writer, 0).unwrap();
+        for tick in 0..3 {
+            resources.begin_callback();
+            input.clear();
+            let packet = match tick {
+                0 => [0x90, 69, 64],
+                1 => [0x80, 69, 64],
+                _ => [0x90, 70, 64],
+            };
+            input.push(0, Q, &packet).unwrap();
+            let frame = Frame(tick * Q as u64);
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, frame, &input)
+                .unwrap();
+            if tick == 1 {
+                continue;
+            }
+            if tick == 2 {
+                resources.resume_indexed_midi_window_writer(writer).unwrap();
+            }
+            resources
+                .render_io()
+                .write_indexed_midi_window_tick(
+                    writer,
+                    source,
+                    frame,
+                    WriteSpan {
+                        position: 0,
+                        offset: 0,
+                        frames: Q,
+                    },
+                )
+                .unwrap();
+        }
+        resources.finish_indexed_midi_writer(writer).unwrap();
+        let current = resources.snapshot(take, Frame(3 * Q as u64)).unwrap();
+        let mut expected = [0; 15];
+        encode_midi_record(0, &[0x90, 70, 64], &mut expected).unwrap();
+        assert_eq!(bytes::<15>(&mut resources, current), expected);
+        assert_eq!(bytes::<15>(&mut resources, old), original);
+        resources.release_snapshot(current.id).unwrap();
+        resources.release_snapshot(old.id).unwrap();
+        resources.remove(take).unwrap();
+        drain(&mut resources);
+        resources.cleanup_indexed_midi_store(pool).unwrap();
+        drain(&mut resources);
+        assert_eq!(resources.usage(), baseline);
+    });
+}
+
+#[shoop_test]
 fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
     let mut resources = resources();
     let baseline = resources.usage();

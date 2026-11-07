@@ -1,5 +1,12 @@
 # Audio chunks: index, borrowing, and cost design
 
+The native prototype implementing the three selectable render paths is documented
+in [the prototype guide](PROTOTYPE.md). Its benchmark measurements and implementation
+limitations take precedence over speculative cost estimates below. The prototype
+reuses the binary persistent index and interleaved channel groups; four-way index
+tuning and separate history arenas remain future options.
+
+
 This note develops `IDEA_CHUNKS.md`. It is a proposed architecture with executable
 checks, not an implementation of the production engine or a deadline guarantee.
 

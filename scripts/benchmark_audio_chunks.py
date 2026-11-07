@@ -42,6 +42,20 @@ def percentile(values, p):
 
 def summarize(directory):
     run = json.loads((directory / "run.json").read_text())
+    if run["scenario"] != "idle":
+        track = next(track for track in run["setup"]["tracks"] if track["name"] == "Benchmark")
+        loops = track["loops"]
+        expected = {
+            "record": ["Recording"], "play": ["Playing"] * run["voices"],
+            "ramps": ["Playing"] * run["voices"],
+            "record-play": ["Playing"] + ["Recording"] * (run["voices"]-1),
+            "shared": ["Playing"] * run["voices"], "continue": ["Recording"] * run["voices"],
+            "grab": ["Playing", "Playing"], "churn": ["Playing"],
+        }[run["scenario"]]
+        assert [loop["mode"] for loop in loops[:len(expected)]] == expected, "scenario never reached requested modes"
+        assert all(loop["length_frames"] > 0 for loop in loops[:len(expected)]), "empty scenario voice"
+        if run["scenario"] in ("ramps", "churn"):
+            assert run["control_updates"] > 0, "no controls during measurement"
     lines = (directory / "callbacks.csv").read_text().splitlines()
     assert lines[-1] == "# dropped=0", "missing completion or dropped callback records"
     assert lines[0].startswith(f"# mode={run['mode']} "), "renderer identity mismatch"
@@ -78,6 +92,8 @@ def main():
     parser.add_argument("--quantum", type=int, default=32)
     parser.add_argument("--buffer", type=int, default=256)
     parser.add_argument("--voices", type=int, default=4)
+    parser.add_argument("--loops", type=int, default=16)
+    parser.add_argument("--tracks", type=int, default=4)
     parser.add_argument("--host-cpu", type=int, help="Pin the launcher and all host threads (not render-only affinity)")
     parser.add_argument("--load-cpu", type=int)
     parser.add_argument("--interference", nargs="+", choices=["none", "periodic", "memory"], default=["none"])
@@ -105,9 +121,15 @@ def main():
     metadata = {"command": sys.argv, "platform": platform.platform(), "machine": platform.machine(),
                 "cpu_model": [line for line in (proc('/proc/cpuinfo') or '').splitlines() if line.startswith(('model name', 'Hardware', 'Model'))][:2],
                 "affinity": allowed, "host_cpu": args.host_cpu, "load_cpu": args.load_cpu,
+                "cpu_topology": {str(cpu): {name:proc(f'/sys/devices/system/cpu/cpu{cpu}/{path}') for name,path in
+                    {"core":"topology/core_id","package":"topology/physical_package_id","siblings":"topology/thread_siblings_list","governor":"cpufreq/scaling_governor","frequency_khz":"cpufreq/scaling_cur_freq"}.items()}
+                    for cpu in {args.host_cpu,args.load_cpu} if cpu is not None},
+                "irq_affinity": {entry.name:proc(entry/'smp_affinity_list') for entry in Path('/proc/irq').glob('[0-9]*')},
                 "cpu_quota": proc('/sys/fs/cgroup/cpu.max'), "memory_limit": proc('/sys/fs/cgroup/memory.max'),
                 "preempt": proc('/sys/kernel/realtime'), "isolated": proc('/sys/devices/system/cpu/isolated'),
                 "git_sha": command('git','rev-parse','HEAD'), "dirty": bool(command('git','status','--porcelain')),
+                "rustflags": os.environ.get('RUSTFLAGS',''),
+                "cargo_features": "Provided by caller's build; use one binary for every mode (see guide).",
                 "host_sha256": hashlib.sha256(args.host.read_bytes()).hexdigest(),
                 "launcher_sha256": hashlib.sha256(args.launcher.read_bytes()).hexdigest(),
                 "clock": time.get_clock_info('perf_counter')._asdict() if hasattr(time.get_clock_info('perf_counter'), '_asdict') else vars(time.get_clock_info('perf_counter')),
@@ -129,7 +151,7 @@ def main():
                         directory = args.output / interference / f'{scenario}-{signal}' / f'{repeat}-{mode}'
                         argv = [str(args.launcher.resolve()), '--host', str(args.host.resolve()), '--mode', mode,
                                 '--scenario', scenario, '--input', signal, '--callbacks', str(args.callbacks),
-                                '--output', str(directory), '--quantum', str(args.quantum), '--buffer', str(args.buffer), '--voices', str(args.voices), '--warmup', str(args.warmup)]
+                                '--output', str(directory), '--quantum', str(args.quantum), '--buffer', str(args.buffer), '--voices', str(args.voices), '--loops',str(args.loops),'--tracks',str(args.tracks), '--warmup', str(args.warmup)]
                         if args.host_cpu is not None:
                             argv = ['taskset','--cpu-list',str(args.host_cpu)] + argv
                         subprocess.run(argv, check=True)

@@ -284,6 +284,14 @@ impl ResourceStore {
         })
     }
 
+    pub fn audio_snapshot_store(
+        &self,
+        snapshot: SnapshotId,
+    ) -> Result<Option<AudioStoreId>, Error> {
+        let lease = get(&self.snapshots, snapshot.slot, snapshot.generation)?;
+        Ok(lease.audio.map(|source| source.store))
+    }
+
     /// Loaded PCM remains an immutable base. Only edited pages are copied. A
     /// shared snapshot must come from this prepared audio store.
     pub fn fork_audio(
@@ -728,6 +736,15 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn empty_audio(&mut self, store: AudioStoreId) -> Result<ResourceId, Error> {
+        self.store.empty_audio(store)
+    }
+    pub fn audio_snapshot_store(
+        &self,
+        snapshot: SnapshotId,
+    ) -> Result<Option<AudioStoreId>, Error> {
+        self.store.audio_snapshot_store(snapshot)
+    }
     pub fn audio_growth_limit(&self, resource: ResourceId, owners: usize) -> Result<u64, Error> {
         self.store.audio_growth_limit(resource, owners)
     }

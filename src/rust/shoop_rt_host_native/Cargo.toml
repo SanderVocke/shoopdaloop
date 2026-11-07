@@ -30,6 +30,7 @@ cpal = { workspace = true, optional = true }
 midir = { workspace = true, optional = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 shoop_port_graph = { path = "../shoop_port_graph", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 

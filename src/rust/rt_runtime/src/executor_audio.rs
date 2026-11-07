@@ -17,6 +17,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
+        let frame = audio.frame().checked_add(start)?;
         let mut arena = self.audio_arena.take().ok_or(Error::InvalidState)?;
         if let Err(error) = arena.reset() {
             self.audio_arena = Some(arena);
@@ -24,7 +25,6 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         }
         self.host_sequences.fill(AudioSequence::default());
         let q = quantum.frames();
-        let frame = audio.frame().checked_add(start)?;
         let result = (|| {
             let Some(plan) = &self.active else {
                 return Ok(());
@@ -185,6 +185,8 @@ fn route_referenced<P>(
             arena
                 .output(offset, frames)
                 .copy_from_slice(&audio.input(port)[start..start + frames]);
+            arena.work.sample_reads += frames as u64;
+            arena.work.sample_writes += frames as u64;
             host[port] = arena.transient(offset, frames);
         }
         host[port]

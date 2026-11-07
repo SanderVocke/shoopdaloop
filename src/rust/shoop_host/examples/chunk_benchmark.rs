@@ -90,6 +90,54 @@ fn command(client: &mut Client, connection: &mut Connection, value: Command) -> 
     }
 }
 
+fn verify_media(
+    client: &mut Client,
+    connection: &mut Connection,
+    loop_id: LoopId,
+    signal: &str,
+    output: &std::path::Path,
+    label: &str,
+) -> Result<()> {
+    let read_end = Instant::now() + Duration::from_secs(10);
+    loop {
+        connection
+            .send(client.read_media(loop_id).map_err(app_error)?)
+            .map_err(app_error)?;
+        while client.media().is_none() {
+            pump(client, connection, 0.005)?;
+            ensure!(Instant::now() < read_end, "media read timeout");
+        }
+        if matches!(
+            client.media(),
+            Some(Err(shoop_app_protocol::Refusal::NotReady))
+        ) {
+            ensure!(Instant::now() < read_end, "media did not become ready");
+            pump(client, connection, 0.02)?;
+        } else {
+            break;
+        }
+    }
+    let media = client
+        .media()
+        .unwrap()
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!("media: {error:?}"))?;
+    ensure!(
+        signal == "silence"
+            || media
+                .audio
+                .iter()
+                .any(|channel| channel.samples.iter().any(|sample| sample.abs() > 0.001)),
+        "captured audio is silent"
+    );
+    let observed:Vec<_> = media.audio.iter().map(|channel| serde_json::json!({"frames":channel.samples.len(),"first_samples":channel.samples.iter().take(16).copied().collect::<Vec<_>>()})).collect();
+    std::fs::write(
+        output.join(format!("media-{label}.json")),
+        serde_json::to_vec_pretty(&observed)?,
+    )?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     ensure!(
@@ -273,27 +321,14 @@ fn main() -> Result<()> {
                 },
             )?;
             pump(&mut client, &mut connection, 0.1)?;
-            connection
-                .send(client.read_media(loops[0]).map_err(app_error)?)
-                .map_err(app_error)?;
-            let read_end = Instant::now() + Duration::from_secs(10);
-            while client.media().is_none() {
-                pump(&mut client, &mut connection, 0.005)?;
-                ensure!(Instant::now() < read_end, "media read timeout");
-            }
-            let media = client
-                .media()
-                .unwrap()
-                .as_ref()
-                .map_err(|error| anyhow::anyhow!("media: {error:?}"))?;
-            ensure!(
-                args.input == "silence"
-                    || media
-                        .audio
-                        .iter()
-                        .any(|channel| channel.samples.iter().any(|sample| sample.abs() > 0.001)),
-                "captured audio is silent"
-            );
+            verify_media(
+                &mut client,
+                &mut connection,
+                loops[0],
+                &args.input,
+                &output,
+                "recorded",
+            )?;
         }
         if matches!(args.scenario.as_str(), "play" | "ramps" | "record-play") {
             for &loop_id in loops.iter().take(args.voices).skip(1) {
@@ -369,6 +404,16 @@ fn main() -> Result<()> {
                 ControlOperation::Grab { loops: targets }
             };
             command(&mut client, &mut connection, Command::Control(operation))?;
+            if args.scenario != "continue" {
+                verify_media(
+                    &mut client,
+                    &mut connection,
+                    loops[1],
+                    &args.input,
+                    &output,
+                    "grabbed",
+                )?;
+            }
         }
     }
     pump(&mut client, &mut connection, args.warmup)?;
@@ -516,6 +561,30 @@ fn main() -> Result<()> {
             "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"input":args.input,"setup":setup,"control_updates":tick
         }))?,
     )?;
+    if matches!(
+        args.scenario.as_str(),
+        "record" | "record-play" | "continue" | "churn"
+    ) {
+        let (track, loops) = active.as_ref().unwrap();
+        let index = usize::from(matches!(args.scenario.as_str(), "record-play" | "continue"));
+        command(
+            &mut client,
+            &mut connection,
+            Command::Loop {
+                track: *track,
+                loop_id: loops[index],
+                action: LoopAction::PlayClicked,
+            },
+        )?;
+        verify_media(
+            &mut client,
+            &mut connection,
+            loops[index],
+            &args.input,
+            &output,
+            "finished-capture",
+        )?;
+    }
     std::fs::write(
         output.join("final-state.json"),
         serde_json::to_vec_pretty(client.snapshot().unwrap())?,

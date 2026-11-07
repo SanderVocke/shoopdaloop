@@ -27,6 +27,13 @@ impl Recorder {
         let Some(path) = std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT") else {
             return Ok(None);
         };
+        Self::at_path(description, std::path::Path::new(&path)).map(Some)
+    }
+
+    fn at_path(
+        description: &shoop_rt_engine::EngineDescription,
+        path: &std::path::Path,
+    ) -> std::io::Result<Self> {
         let file = File::create(path)?;
         let queue = Arc::new(Queue {
             slots: (0..CAPACITY)
@@ -79,10 +86,10 @@ impl Recorder {
                 let _ = writeln!(output, "# dropped={}", reader.dropped.load(Ordering::Relaxed));
                 let _ = output.flush();
             })?;
-        Ok(Some(Self {
+        Ok(Self {
             queue,
             worker: Some(worker),
-        }))
+        })
     }
 
     pub fn record(&self, values: [u64; FIELDS]) {
@@ -106,5 +113,60 @@ impl Drop for Recorder {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
+
+    #[shoop_test(no_wasm = "native callback CSV writer")]
+    fn callback_records_survive_backpressure_and_slot_reuse_without_producer_heap_work() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("callbacks.csv");
+        let recorder =
+            Recorder::at_path(&shoop_rt_engine::EngineDescription::default(), &path).unwrap();
+        let first = CAPACITY + 1000;
+        assert_no_heap(|| {
+            for frame in 0..first {
+                recorder.record(std::array::from_fn(|field| {
+                    frame as u64 * 100 + field as u64
+                }));
+            }
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while recorder.queue.read.load(Ordering::Acquire)
+            != recorder.queue.write.load(Ordering::Acquire)
+        {
+            assert!(std::time::Instant::now() < deadline, "writer stalled");
+            std::thread::yield_now();
+        }
+        assert_no_heap(|| {
+            for frame in first..first + 73 {
+                recorder.record(std::array::from_fn(|field| {
+                    frame as u64 * 100 + field as u64
+                }));
+            }
+        });
+        let dropped = recorder.queue.dropped.load(Ordering::Relaxed) as usize;
+        drop(recorder);
+        let output = std::fs::read_to_string(path).unwrap();
+        let mut rows = 0;
+        let mut previous = None;
+        for row in output.lines().filter(|line| !line.starts_with('#')).skip(1) {
+            let values: Vec<u64> = row.split(',').map(|field| field.parse().unwrap()).collect();
+            assert_eq!(values.len(), FIELDS);
+            let frame = values[0] / 100;
+            assert!(previous.is_none_or(|previous| frame > previous));
+            for (field, value) in values.into_iter().enumerate() {
+                assert_eq!(value, frame * 100 + field as u64);
+            }
+            previous = Some(frame);
+            rows += 1;
+        }
+        assert_eq!(rows + dropped, first + 73);
+        assert!(rows > CAPACITY, "slots were never reused");
+        assert!(output.ends_with(&format!("# dropped={dropped}\n")));
     }
 }

@@ -88,6 +88,13 @@ impl AudioSequence {
     pub fn silent(self) -> bool {
         self.len == 0
     }
+    fn source_frames(self) -> u64 {
+        self.spans[..self.len]
+            .iter()
+            .filter(|span| span.chunk != ChunkRef::Silence)
+            .map(|span| span.frames as u64)
+            .sum()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -131,6 +138,9 @@ impl RenderArena {
     }
     pub fn allocate(&mut self, samples: usize) -> Result<usize, Error> {
         let start = self.used;
+        if samples == 0 {
+            return Ok(start);
+        }
         self.used = start
             .checked_add(samples)
             .filter(|&end| end <= self.data.len())
@@ -190,8 +200,8 @@ impl RenderArena {
                 output[offset] += sample;
             },
         )?;
-        self.work.sample_reads += frames as u64;
-        self.work.sample_writes += frames as u64;
+        self.work.sample_reads += sequence.source_frames();
+        self.work.sample_writes += sequence.source_frames() + if add { 0 } else { frames as u64 };
         Ok(())
     }
     pub fn accumulate(
@@ -213,8 +223,8 @@ impl RenderArena {
             resources,
             |index, sample| target[index] += sample,
         )?;
-        self.work.sample_reads += frames as u64;
-        self.work.sample_writes += frames as u64;
+        self.work.sample_reads += sequence.source_frames();
+        self.work.sample_writes += sequence.source_frames();
         Ok(())
     }
     pub fn peak(
@@ -234,7 +244,7 @@ impl RenderArena {
             resources,
             |_, sample| peak = peak.max(sample.to_bits() & 0x7FFF_FFFF),
         )?;
-        self.work.sample_reads += frames as u64;
+        self.work.sample_reads += sequence.source_frames();
         Ok(f32::from_bits(peak))
     }
     pub fn last(&self, sequence: AudioSequence, resources: &ResourceStore) -> Result<f32, Error> {

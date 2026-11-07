@@ -822,7 +822,7 @@ impl ControlEndpoint {
             return Err(Refusal::Unsupported);
         }
         let slot = id.0.index as usize;
-        if entry.program.is_some() && mode == LoopMode::Recording {
+        if entry.program.is_some() && !matches!(mode, LoopMode::Playing | LoopMode::Stopped) {
             return Err(Refusal::InvalidValue);
         }
         if !self.room(PLANNED + 1) {

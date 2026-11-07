@@ -42,6 +42,15 @@ impl OwnerChange {
     pub fn input(&self) -> Option<&Input> {
         self.input.as_ref()
     }
+    pub(crate) fn view(&self) -> Option<View> {
+        self.input.as_ref().map(|input| View {
+            windows: self.windows,
+            description: input.description,
+            audio: input.audio,
+            auxiliary: input.auxiliary,
+            midi: input.midi,
+        })
+    }
     pub fn published(&self) -> Option<MediaId> {
         self.published
     }
