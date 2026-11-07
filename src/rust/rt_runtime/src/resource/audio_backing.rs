@@ -48,6 +48,26 @@ pub struct AudioWrite {
 }
 
 impl ResourceStore {
+    pub(super) fn chunk_capture_store(&self, channels: u32) -> Result<Option<AudioStoreId>, Error> {
+        if !self.audio_render_mode().chunked() {
+            return Ok(None);
+        }
+        self.audio_stores
+            .iter()
+            .enumerate()
+            .find(|(_, audio)| {
+                audio.as_ref().is_some_and(|audio| {
+                    audio.channels() == channels && audio.capture_slots(0).is_ok()
+                })
+            })
+            .map(|(slot, _)| {
+                Some(AudioStoreId {
+                    scope: self.scope,
+                    slot,
+                })
+            })
+            .ok_or(Error::InvalidState)
+    }
     pub fn audio_chunk_sequence(
         &self,
         index: ReadIndex,

@@ -475,3 +475,15 @@ select a different renderer in any reported benchmark.
   recorder now has a producer heap-guard/backpressure/slot-reuse/order test; this
   addresses an unexercised recorder path identified by the initial CI coverage
   report (79.67% against the repository's 80% patch floor).
+
+- Counters exposed an integration gap in the first release matrix: fresh ordinary
+  recordings still used the byte capture-group backing, whereas history grabs
+  and continued grabs already used chunks. That matrix is interim evidence only.
+  Ordinary capture now reserves private typed chunks before rendering, fills them
+  at the capture observation point, and publishes through the existing atomic
+  grouped commit. The pre-reserved final export enables direct reference playback.
+  Cancellation, shared payloads, snapshots and quota reclamation pass under the
+  heap guard at Q=1/32. The full matrix is repeated with the completed path.
+- Prepared render samples and pin slots are explicitly touched before callbacks;
+  arena/pin size admission uses checked arithmetic. Stale transient references are
+  tested after the same arena offset has been allocated in a later quantum.

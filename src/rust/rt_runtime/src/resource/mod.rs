@@ -1020,6 +1020,7 @@ impl ResourceStore {
                 self.work.reclaimed_pages += 1;
                 self.versions[index].value = Some(version);
             } else {
+                self.reserved_pages -= version.reserved;
                 self.retired_versions.pop();
                 release(&mut self.versions, &mut self.free_versions, index);
                 self.work.reclaimed_versions += 1;

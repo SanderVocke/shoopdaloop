@@ -110,17 +110,30 @@ pub struct RenderArena {
     epoch: u64,
     data: Box<[f32]>,
     used: usize,
-    pins: Vec<AudioChunkRef>,
+    pins: Vec<Option<AudioChunkRef>>,
+    pin_limit: usize,
     pub work: AudioGraphWork,
 }
 
 impl RenderArena {
     pub fn prepare(samples: usize, pins: usize) -> Self {
+        let mut data = vec![0.; samples].into_boxed_slice();
+        for sample in &mut data {
+            *core::hint::black_box(sample) = 0.;
+        }
+        let pin_limit = pins;
+        // The extra tag touches the page containing the final usable slot's payload.
+        let mut pins = vec![None; pin_limit + 1];
+        for pin in &mut pins {
+            *core::hint::black_box(pin) = None;
+        }
+        pins.clear();
         Self {
             epoch: 0,
-            data: vec![0.; samples].into_boxed_slice(),
+            data,
             used: 0,
-            pins: Vec::with_capacity(pins),
+            pins,
+            pin_limit,
             work: AudioGraphWork::default(),
         }
     }
@@ -159,13 +172,13 @@ impl RenderArena {
         sequence: &mut AudioSequence,
         resources: &mut ResourceStore,
     ) -> Result<(), Error> {
-        if self.pins.capacity() - self.pins.len() < sequence.len {
+        if self.pin_limit - self.pins.len() < sequence.len {
             return Err(Error::Capacity);
         }
         for span in &mut sequence.spans[..sequence.len] {
             if let ChunkRef::Persistent(reference) = span.chunk {
                 let owned = resources.retain_audio_chunk(reference)?;
-                self.pins.push(owned);
+                self.pins.push(Some(owned));
                 span.chunk = ChunkRef::Persistent(owned);
             }
         }
@@ -173,7 +186,7 @@ impl RenderArena {
     }
     pub fn unpin(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         while let Some(reference) = self.pins.pop() {
-            resources.release_audio_chunk(reference)?;
+            resources.release_audio_chunk(reference.ok_or(Error::InvalidState)?)?;
         }
         Ok(())
     }
@@ -480,12 +493,12 @@ mod tests {
             assert_eq!(arena.allocate(33), Err(Error::Capacity));
             assert_eq!(arena.allocate(32), Ok(96));
             arena.reset().unwrap();
+            let first = arena.allocate(32).unwrap();
             let mut output = [0.; 32];
             assert_eq!(
                 arena.read_into(sequence, &mut output, &resources, false),
                 Err(Error::InvalidState)
             );
-            let first = arena.allocate(32).unwrap();
             assert_eq!(first, 0);
             assert_eq!(arena.output(first, 32), [0.; 32]);
         });

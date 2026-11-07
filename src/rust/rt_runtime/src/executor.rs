@@ -486,10 +486,23 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 .ok_or(Error::Capacity)
         })?;
         let audio_arena = if resources.audio_render_mode().chunked() {
-            Some(crate::audio_refs::RenderArena::prepare(
-                (audio_ports * 4 + limits.audio_inputs) * quantum.frames(),
-                audio_ports * 2,
-            ))
+            let samples = audio_ports
+                .checked_mul(4)
+                .and_then(|ports| ports.checked_add(limits.audio_inputs))
+                .and_then(|ports| ports.checked_mul(quantum.frames()))
+                .filter(|&samples| samples <= i32::MAX as usize / 4)
+                .ok_or(Error::Capacity)?;
+            let pins = audio_ports
+                .checked_mul(2)
+                .filter(|&pins| {
+                    pins.checked_add(1)
+                        .and_then(|pins| {
+                            pins.checked_mul(size_of::<Option<crate::resource::AudioChunkRef>>())
+                        })
+                        .is_some_and(|bytes| bytes <= i32::MAX as usize)
+                })
+                .ok_or(Error::Capacity)?;
+            Some(crate::audio_refs::RenderArena::prepare(samples, pins))
         } else {
             None
         };

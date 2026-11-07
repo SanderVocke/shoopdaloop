@@ -12,7 +12,9 @@ use crate::{Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
 
+mod capture;
 mod layout;
+pub(in crate::resource) use capture::CaptureWrite;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Config {

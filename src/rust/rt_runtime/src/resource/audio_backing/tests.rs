@@ -1029,3 +1029,142 @@ fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refu
         });
     }
 }
+
+#[shoop_test]
+fn ordinary_capture_commits_shared_quantum_chunks_atomically() {
+    use crate::audio_refs::RenderArena;
+    for q in [1, 32] {
+        let mut store = ResourceStore::with_capture_groups(
+            crate::Config {
+                max_frames: 32,
+                resource_slots: 24,
+                resource_pages: 128,
+                page_bytes: 256,
+                budgets: crate::Budgets {
+                    validation_steps: 1,
+                    ..crate::Budgets::default()
+                },
+                ..crate::Config::default()
+            }
+            .prepare()
+            .unwrap(),
+            crate::Quantum::new(q).unwrap(),
+            None,
+            CaptureGroupConfig {
+                groups: 1,
+                members_per_group: 2,
+                staging_bytes_per_group: 512,
+            },
+        )
+        .unwrap();
+        store.set_audio_render_mode(crate::AudioRenderMode::Chunks);
+        let pool = audio(&mut store, 2, 3 * q);
+        let a = store.create().unwrap();
+        let b = store.create().unwrap();
+        let members = [a, b].map(|resource| CaptureMember {
+            resource,
+            format: Format::Audio { channels: 2 },
+            midi_events: 0,
+            midi_bytes: 0,
+        });
+        let group = store.bind_capture_group(&members).unwrap();
+        let mut arena = RenderArena::prepare(32, 4);
+        let mut output = [0.; 32];
+        let input = [1.; 64];
+        let changed = [3.; 64];
+        assert_no_heap(|| {
+            let take = store.prepare_capture_take(group, &[]).unwrap();
+            let tick = store.reserve_prepared_capture_tick(take, Frame(0)).unwrap();
+            store.activate_capture_take(take, Frame(0)).unwrap();
+            store
+                .render_io()
+                .append_audio_history(pool, Frame(0), &input[..q * 2])
+                .unwrap();
+            store.stage_capture_audio(tick, 0, &input[..q * 2]).unwrap();
+            assert_eq!(store.commit_capture_tick(tick), Err(Error::Incomplete));
+            let empty = store.snapshot(a, Frame(0)).unwrap();
+            assert_eq!(empty.description.frames, 0);
+            store.cancel_capture_tick(tick).unwrap();
+            store.release_snapshot(empty.id).unwrap();
+            store.begin_callback();
+            store
+                .render_io()
+                .append_audio_history(pool, Frame(q as u64), &input[..q * 2])
+                .unwrap();
+            let tick = store.reserve_capture_tick(take, Frame(0)).unwrap();
+            for member in 0..2 {
+                store
+                    .stage_capture_audio(tick, member, &input[..q * 2])
+                    .unwrap();
+            }
+            store.commit_capture_tick(tick).unwrap();
+            assert_eq!(
+                store.render_work().copied_bytes,
+                q * 8,
+                "recorders must share the produced history payload"
+            );
+            assert_eq!(store.audio_pool_work().shared_payloads, 2);
+            let old = store.snapshot(a, Frame(q as u64)).unwrap();
+            assert!(store
+                .audio_chunk_sequence(store.read_index(old.id).unwrap(), 0, q, 0)
+                .unwrap()
+                .is_some());
+            let tick = store.reserve_capture_tick(take, Frame(q as u64)).unwrap();
+            for member in 0..2 {
+                store
+                    .stage_capture_audio(tick, member, &changed[..q * 2])
+                    .unwrap();
+            }
+            store.cancel_capture_tick(tick).unwrap();
+            assert_eq!(store.info(a).unwrap().description.frames, q as u64);
+            let tick = store.reserve_capture_tick(take, Frame(q as u64)).unwrap();
+            for member in 0..2 {
+                store
+                    .stage_capture_audio(tick, member, &changed[..q * 2])
+                    .unwrap();
+            }
+            store.commit_capture_tick(tick).unwrap();
+            let mut frozen = [None, None];
+            store
+                .freeze_capture_take(take, Frame((q * 2) as u64), None, &mut frozen)
+                .unwrap();
+            for snapshot in frozen.into_iter().flatten() {
+                for (position, expected) in [(0, 1.), (q, 3.)] {
+                    let sequence = store
+                        .audio_chunk_sequence(
+                            store.read_index(snapshot.id).unwrap(),
+                            position as u64,
+                            q,
+                            1,
+                        )
+                        .unwrap()
+                        .unwrap();
+                    arena
+                        .read_into(sequence, &mut output[..q], &store, false)
+                        .unwrap();
+                    assert!(output[..q].iter().all(|&sample| sample == expected));
+                }
+                store.release_snapshot(snapshot.id).unwrap();
+            }
+            let sequence = store
+                .audio_chunk_sequence(store.read_index(old.id).unwrap(), 0, q, 0)
+                .unwrap()
+                .unwrap();
+            arena
+                .read_into(sequence, &mut output[..q], &store, false)
+                .unwrap();
+            assert!(output[..q].iter().all(|&sample| sample == 1.));
+            store.release_snapshot(old.id).unwrap();
+            store.release_capture_group(group).unwrap();
+            store.remove(a).unwrap();
+            store.remove(b).unwrap();
+            drain(&mut store);
+            assert_eq!(store.usage().reserved_pages, 0);
+            assert_eq!(store.audio_pool_work().payload_live, 2);
+            store.cleanup_audio_store(pool).unwrap();
+            drain(&mut store);
+            assert_eq!(store.audio_pool_work().payload_live, 0);
+            assert_eq!(store.audio_pool_work().index_live, 0);
+        });
+    }
+}

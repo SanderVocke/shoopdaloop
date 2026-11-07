@@ -56,6 +56,14 @@ def summarize(directory):
         assert all(loop["length_frames"] > 0 for loop in loops[:len(expected)]), "empty scenario voice"
         if run["scenario"] in ("ramps", "churn"):
             assert run["control_updates"] > 0, "no controls during measurement"
+        media_paths = list(directory.glob("media-*.json"))
+        assert media_paths, "missing audio readback"
+        for path in media_paths:
+            media = json.loads(path.read_text())
+            assert len(media) == 2, "readback must contain both stereo channels"
+            assert media[0]["frames"] > 0 and media[0]["frames"] == media[1]["frames"], "empty or mismatched stereo readback"
+            assert all(channel["first_samples"] for channel in media), "missing readback samples"
+            assert all(math.isfinite(sample) for channel in media for sample in channel["first_samples"]), "nonfinite readback samples"
     lines = (directory / "callbacks.csv").read_text().splitlines()
     assert lines[-1] == "# dropped=0", "missing completion or dropped callback records"
     assert lines[0].startswith(f"# mode={run['mode']} "), "renderer identity mismatch"
@@ -126,6 +134,10 @@ def main():
                     for cpu in {args.host_cpu,args.load_cpu} if cpu is not None},
                 "irq_affinity": {entry.name:proc(entry/'smp_affinity_list') for entry in Path('/proc/irq').glob('[0-9]*')},
                 "cpu_quota": proc('/sys/fs/cgroup/cpu.max'), "memory_limit": proc('/sys/fs/cgroup/memory.max'),
+                "cpu_stat_before": proc('/sys/fs/cgroup/cpu.stat'),
+                "scheduler": os.sched_getscheduler(0) if hasattr(os, 'sched_getscheduler') else None,
+                "pmu_devices": sorted(path.name for path in Path('/sys/bus/event_source/devices').glob('*')),
+                "perf_event_paranoid": proc('/proc/sys/kernel/perf_event_paranoid'),
                 "preempt": proc('/sys/kernel/realtime'), "isolated": proc('/sys/devices/system/cpu/isolated'),
                 "git_sha": command('git','rev-parse','HEAD'), "dirty": bool(command('git','status','--porcelain')),
                 "rustflags": os.environ.get('RUSTFLAGS',''),
@@ -168,6 +180,8 @@ def main():
         writer = csv.DictWriter(output, columns, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(results)
+    metadata['cpu_stat_after'] = proc('/sys/fs/cgroup/cpu.stat')
+    (args.output / 'machine.json').write_text(json.dumps(metadata, indent=2) + '\n')
     print(args.output / 'summary.csv')
 
 

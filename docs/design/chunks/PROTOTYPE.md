@@ -44,6 +44,11 @@ not rewrite older shared chunks. Partial writes use quantum-sized staging.
 Grabbing retains existing data/index roots. Continued capture produces new chunks;
 retained grabs never trigger a sweep that copies old payloads.
 
+Ordinary recording reserves private chunks before processing. Capture fills those
+chunks, then the existing grouped commit publishes all channels together. The
+final playback export is reserved before capture, so stopping a recording needs
+no payload conversion or copy. Cancelled intervals leave the old take unchanged.
+
 Connections carry at most two spans per channel over one graph quantum (including
 chunk/loop-boundary splits). Unsupported windows and smoothing use bounded
 materialized adapters reading the same typed storage. A prepared arena holds
@@ -102,6 +107,10 @@ incomplete output. Runs rotate mode order. Reports retain slow callbacks, p50/95
 maximum, deadline overruns and separate callback-delivery lateness. Other-core load
 is optional and explicit. `--host-cpu` pins all host/client threads, not exclusively
 the render thread; apply finer affinity and RT policy externally when required.
+
+The CSV callback recorder is wired to the existing dummy callback boundary.
+JACK/CPAL retain their native callback integrations; profile those drivers with
+their existing tools rather than expecting this dummy-specific CSV recorder.
 
 Software counters are not DDR traffic measurements. Resource copy bytes include
 required resource reads/writes. Index allocation/reclamation is counted separately.

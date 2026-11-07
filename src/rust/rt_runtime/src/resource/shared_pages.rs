@@ -104,6 +104,61 @@ impl SharedPages {
         self.chunks.is_some()
     }
 
+    pub(super) fn reserve_samples(&mut self, store: &ResourceStore) -> Result<LeaseId, Error> {
+        self.check_store(store)?;
+        if self.free_leases.is_empty() {
+            return Err(Error::Capacity);
+        }
+        let page = self
+            .chunks
+            .as_mut()
+            .ok_or(Error::InvalidState)?
+            .free
+            .pop()
+            .ok_or(Error::Capacity)?;
+        Ok(self.acquire(page))
+    }
+    pub(super) fn fill_samples(
+        &mut self,
+        store: &mut ResourceStore,
+        lease: LeaseId,
+        samples: &[f32],
+    ) -> Result<(), Error> {
+        self.check_store(store)?;
+        let page = self.page(lease)?;
+        if self.references[page] != 1 {
+            return Err(Error::InvalidState);
+        }
+        let chunks = self.chunks.as_mut().ok_or(Error::InvalidState)?;
+        if samples.len() != chunks.samples {
+            return Err(Error::InvalidShape);
+        }
+        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_from_slice(samples);
+        store.charge_work(WorkClass::Render, samples.len() * 4, 0)
+    }
+    pub(super) fn share_reserved(
+        &mut self,
+        store: &ResourceStore,
+        destination: LeaseId,
+        source: LeaseId,
+    ) -> Result<bool, Error> {
+        self.check_store(store)?;
+        let destination_page = self.page(destination)?;
+        let source_page = self.page(source)?;
+        if self.references[destination_page] != 1 {
+            return Err(Error::InvalidState);
+        }
+        if destination_page == source_page || self.references[source_page] == usize::MAX {
+            return Ok(false);
+        }
+        let chunks = self.chunks.as_mut().ok_or(Error::InvalidState)?;
+        self.references[source_page] += 1;
+        self.references[destination_page] = 0;
+        self.leases[destination.slot as usize].value = Some(source_page);
+        chunks.free.push(destination_page);
+        self.live -= 1;
+        Ok(true)
+    }
     pub fn insert_samples_render(
         &mut self,
         store: &mut ResourceStore,

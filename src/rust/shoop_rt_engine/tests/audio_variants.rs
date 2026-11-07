@@ -56,6 +56,15 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
         control: StripControl::Monitoring(true),
     });
     h.run(8 * q, partition);
+    let padding = (q - h.frame() as usize % q) % q;
+    h.run(padding, partition);
+    h.run(q, q);
+    if mode != AudioRenderMode::Current {
+        assert!(
+            h.host.render.resource_work().1.copied_bytes <= q * 16,
+            "ordinary playback must use persistent chunk references"
+        );
+    }
     h.done(Request::StripControl {
         strip: track,
         control: StripControl::OutputGain(0.6),
