@@ -251,6 +251,8 @@ jobs:
           cargo nextest run --locked --workspace \
             --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
           python3 scripts/run_native_jack_tests.py --output target/native-jack-coverage
+          timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport socket
+          timeout 180s env -u SHOOP_ALLOW_MISSING_BACKENDS "$CARGO_TARGET_DIR/debug/shoopdaloop" --probe-bus-fx --engine-transport shared_memory
           # SIGKILL recovery tests can leave truncated child profiles; retain the valid profiles.
           cargo llvm-cov report --failure-mode all --lcov --output-path lcov.info
 
@@ -908,34 +910,47 @@ jobs:
           pactl set-default-sink shoop_ci
           pactl info
 
-      - name: Install Chromium for session workflow checks
-        if: matrix.target == 'web' && env.ACT != 'true'
+      - name: Install Chromium for release session workflow checks
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         uses: browser-actions/setup-chrome@v2
         id: chrome
 
       - name: Exercise browser session service and AudioWorklet
         if: matrix.target == 'web' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
+        shell: bash
         env:
-          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path || steps.chrome.outputs.chrome-path }}
           NEW_ENGINE: '1'
         run: |
-          node --experimental-websocket browser_smoke.mjs
-          COMPOSITES=1 node --experimental-websocket browser_smoke.mjs
-          PREVIEW_ONLY=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
+          browser_smoke() {
+            node --experimental-websocket browser_smoke.mjs 2>&1 | tee -a "$RUNNER_TEMP/browser-workflow.log"
+          }
+          browser_smoke
+          COMPOSITES=1 browser_smoke
+          PREVIEW_ONLY=1 OUTPUT_ONLY=1 browser_smoke
           if [ '${{ matrix.profile }}' = release ]; then
             SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
-              node --experimental-websocket browser_smoke.mjs
+              browser_smoke
             COMPOSITES=1 SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
-              node --experimental-websocket browser_smoke.mjs
-            LARGE_MEDIA=1 node --experimental-websocket browser_smoke.mjs
+              browser_smoke
+            LARGE_MEDIA=1 browser_smoke
             LARGE_MEDIA=1 SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
-              node --experimental-websocket browser_smoke.mjs
+              browser_smoke
           else
-            DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
-            PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject node --experimental-websocket browser_smoke.mjs
-            PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending node --experimental-websocket browser_smoke.mjs
+            DENY_FIRST=1 browser_smoke
+            PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject browser_smoke
+            PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending browser_smoke
           fi
+
+      - name: Upload browser session workflow logs
+        if: always() && matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-workflow-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/browser-workflow.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Install Firefox browser
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'

@@ -3766,6 +3766,7 @@ fn main() {
     let cli = AppArgs::parse();
     if !cli.probe_engine_transport
         && !cli.probe_persistence
+        && !cli.probe_bus_fx
         && !cli.probe_hosted_processors
         && !cli.probe_composites
         && !cli.probe_input
@@ -3784,11 +3785,14 @@ fn main() {
 
     if cli.probe_engine_transport
         || cli.probe_persistence
+        || cli.probe_bus_fx
         || cli.probe_hosted_processors
         || cli.probe_composites
         || cli.probe_input
     {
-        let result = if cli.probe_input {
+        let result = if cli.probe_bus_fx {
+            session_probe::bus_fx(cli.engine_transport.unwrap())
+        } else if cli.probe_input {
             session_probe::input(cli.engine_transport.unwrap())
         } else if cli.probe_hosted_processors {
             cli.audio
@@ -4846,6 +4850,13 @@ mod tests {
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::DryWetModes, true)
                 .with(BackendCapability::DryWetTracks, true)
+                .with(
+                    BackendCapability::BusFx,
+                    snapshot
+                        .bus_processors
+                        .iter()
+                        .any(|processor| processor.available),
+                )
                 .with(
                     BackendCapability::TrackFx,
                     snapshot

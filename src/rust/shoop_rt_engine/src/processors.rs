@@ -58,6 +58,7 @@ pub use shoop_rt_protocol::processors::Phase as ProcessorPhase;
 pub(crate) struct ProcessorCells {
     global_counts: [AtomicU64; 4],
     global_pending: AtomicU32,
+    global_latest: AtomicU32,
     kind: ProcessorKind,
     revision: AtomicU64,
     frame: AtomicU64,
@@ -70,6 +71,7 @@ impl ProcessorCells {
         Self {
             global_counts: core::array::from_fn(|_| AtomicU64::new(0)),
             global_pending: AtomicU32::new(0),
+            global_latest: AtomicU32::new(0),
             kind,
             revision: AtomicU64::new(0),
             frame: AtomicU64::new(0),
@@ -95,6 +97,12 @@ impl ProcessorCells {
         ]) {
             cell.store(value, Ordering::SeqCst);
         }
+        self.global_latest.store(
+            global
+                .latest_cc
+                .map_or(0, |data| u32::from_le_bytes([data[0], data[1], data[2], 1])),
+            Ordering::SeqCst,
+        );
         self.global_pending
             .store(u32::from(global.pending), Ordering::SeqCst);
         for index in 0..self.kind.scalar_count() {
@@ -120,7 +128,9 @@ impl ProcessorCells {
             core::array::from_fn(|index| f32::from_bits(self.values[index].load(Ordering::SeqCst)));
         let frame = Frame(self.frame.load(Ordering::SeqCst));
         let generation = self.generation.load(Ordering::SeqCst);
+        let latest = self.global_latest.load(Ordering::SeqCst).to_le_bytes();
         let global_midi = shoop_rt_protocol::processors::GlobalMidiDiagnostics {
+            latest_cc: (latest[3] == 1).then_some([latest[0], latest[1], latest[2]]),
             rejected: self.global_counts[0].load(Ordering::SeqCst),
             overwritten: self.global_counts[1].load(Ordering::SeqCst),
             deferred: self.global_counts[2].load(Ordering::SeqCst),
@@ -148,6 +158,11 @@ impl ProcessorCells {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ProcessorTarget {
+    Track { source: usize, generation: u32 },
+    Bus(shoop_rt_protocol::BusId),
+}
 pub struct HostedProcessor {
     buffered: BufferedProcessor<Box<dyn Backend>>,
     cells: Arc<ProcessorCells>,
@@ -158,8 +173,8 @@ pub struct HostedProcessor {
     slots: usize,
     quantum: usize,
     signal: Option<Arc<crate::cells::Cells>>,
-    binding: Option<(usize, u32)>,
-    pending_binding: Option<(rt_runtime::Epoch, usize, u32)>,
+    binding: Option<ProcessorTarget>,
+    pending_binding: Option<(rt_runtime::Epoch, ProcessorTarget)>,
     parameters: [(Frame, u32, f32); 64],
     parameter_count: usize,
     manual_active: Option<(u32, bool)>,
@@ -259,8 +274,39 @@ impl HostedProcessor {
         {
             return Err(Error::InvalidParameter);
         }
-        self.pending_binding = Some((epoch, source as usize, strip_generation));
+        self.pending_binding = Some((
+            epoch,
+            ProcessorTarget::Track {
+                source: source as usize,
+                generation: strip_generation,
+            },
+        ));
         Ok(())
+    }
+    pub(crate) fn bind_bus(
+        &mut self,
+        generation: u32,
+        bus: shoop_rt_protocol::BusId,
+        epoch: rt_runtime::Epoch,
+    ) -> Result<(), Error> {
+        self.check(generation)?;
+        if self.phase != ProcessorPhase::Owned
+            || bus.0.generation == 0
+            || self
+                .signal
+                .as_ref()
+                .is_none_or(|cells| bus.0.index as usize >= cells.buses.len())
+        {
+            return Err(Error::InvalidParameter);
+        }
+        self.pending_binding = Some((epoch, ProcessorTarget::Bus(bus)));
+        Ok(())
+    }
+    fn track_binding(&self) -> Option<(usize, u32)> {
+        match self.binding {
+            Some(ProcessorTarget::Track { source, generation }) => Some((source, generation)),
+            _ => None,
+        }
     }
     fn publish(&self, frame: Frame) {
         self.cells.publish(
@@ -476,18 +522,21 @@ impl HostedProcessor {
         &mut self,
         block: &mut ProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
-        if let Some((_, source, generation)) = self
+        if let Some((_, target)) = self
             .pending_binding
-            .take_if(|(epoch, _, _)| *epoch == block.graph_epoch)
+            .take_if(|(epoch, _)| *epoch == block.graph_epoch)
         {
-            self.binding = Some((source, generation));
+            self.binding = Some(target);
         }
         let mut demand = match self.binding {
-            Some((source, generation)) => self.signal.as_ref().is_some_and(|cells| {
-                let signal = &cells.strips[source];
-                signal.owner_generation.load(Ordering::Relaxed) == generation
-                    && signal.processor_demand.load(Ordering::Relaxed)
-            }),
+            Some(ProcessorTarget::Bus(bus)) => bus.0.generation != 0,
+            Some(ProcessorTarget::Track { source, generation }) => {
+                self.signal.as_ref().is_some_and(|cells| {
+                    let signal = &cells.strips[source];
+                    signal.owner_generation.load(Ordering::Relaxed) == generation
+                        && signal.processor_demand.load(Ordering::Relaxed)
+                })
+            }
             None => self.phase == ProcessorPhase::Running,
         };
         if let Some((routing, active)) = self.manual_active {
@@ -504,7 +553,7 @@ impl HostedProcessor {
             self.silence(block)?;
         }
         if self.phase == ProcessorPhase::Faulted {
-            if let Some((source, _)) = self.binding {
+            if let Some((source, _)) = self.track_binding() {
                 block
                     .domain
                     .abort_source_captures(source as u32, Error::InvalidState);
@@ -527,7 +576,7 @@ impl HostedProcessor {
         Ok(())
     }
     fn routing_state(&self) -> u32 {
-        self.binding
+        self.track_binding()
             .and_then(|(source, _)| {
                 self.signal
                     .as_ref()
@@ -563,7 +612,18 @@ impl HostedProcessor {
                 self.idle_controls(&block.midi_inputs[1], &block.midi_inputs[0])?;
                 self.publish(block.frame.checked_add(block.frames)?);
             }
-            return self.silence(block);
+            self.silence(block)?;
+            if matches!(self.binding, Some(ProcessorTarget::Bus(_)))
+                && self.phase == ProcessorPhase::Owned
+            {
+                for channel in 0..self.buffered.ports().audio_inputs {
+                    for i in 0..block.frames {
+                        let value = block.audio.input(channel).ok_or(Error::InvalidShape)?[i];
+                        block.audio.output(channel).ok_or(Error::InvalidShape)?[i] = value;
+                    }
+                }
+            }
+            return Ok(());
         }
         if has_midi {
             self.global.render(
@@ -587,7 +647,7 @@ impl HostedProcessor {
                 .audio
                 .subset(0..ports.audio_inputs, 0..ports.audio_outputs)?;
             let capture_source = self
-                .binding
+                .track_binding()
                 .map(|(source, _)| source as u32)
                 .filter(|source| block.domain.recording_starts(*source).next().is_some());
             let mut observer = crate::recorded::TakeObserver {
@@ -764,13 +824,36 @@ mod tests {
             2,
         )
         .unwrap();
+        node.attach(crate::cells::Cells::new(
+            1,
+            1,
+            1,
+            512,
+            shoop_rt_protocol::DriverStatus {
+                kind: shoop_rt_protocol::DriverKind::Dummy,
+                state: shoop_rt_protocol::DriverRunState::Running,
+                sample_rate: 8000,
+                buffer_frames: 16,
+            },
+            16,
+        ));
         assert_no_heap(|| {
             assert_eq!(node.claim(Frame(0), 0), Err(Error::InvalidId));
             node.claim(Frame(0), 1).unwrap();
+            node.bind_bus(1, shoop_rt_protocol::BusId::MASTER, rt_runtime::Epoch(1))
+                .unwrap();
+            assert_eq!(
+                node.bind_bus(2, shoop_rt_protocol::BusId::MASTER, rt_runtime::Epoch(1)),
+                Err(Error::InvalidId)
+            );
+            node.binding = node.pending_binding.take().map(|(_, target)| target);
+            assert_eq!(node.track_binding(), None);
+            assert_eq!(node.routing_state(), 0);
             assert_eq!(node.claim(Frame(0), 2), Err(Error::Busy));
             node.parameter(Frame(0), 1, 0, 0.75).unwrap();
             assert_eq!(cells.read().unwrap().values[0], 0.75);
             node.retire(Frame(0), 1).unwrap();
+            assert!(node.binding.is_none() && node.pending_binding.is_none());
             assert!(node.parameter(Frame(0), 1, 0, 1.).is_err());
             for frame in [0, 16, 32, 48, 64] {
                 node.maintain(Frame(frame)).unwrap();

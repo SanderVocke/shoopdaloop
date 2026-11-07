@@ -387,6 +387,7 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
             },
         }],
         buses: vec![image::Bus {
+            fx: None,
             id: BusId::from_raw(1),
             name: "Master".into(),
             gain_db: 0.,

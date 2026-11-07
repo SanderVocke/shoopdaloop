@@ -1086,6 +1086,7 @@ impl Service {
                 bus_display_order: vec![BusId::from_raw(1)],
                 preview_bus: Some(BusId::from_raw(1)),
                 buses: vec![image::Bus {
+                    fx: None,
                     id: BusId::from_raw(1),
                     name: "Master".to_owned(),
                     gain_db: 0.,

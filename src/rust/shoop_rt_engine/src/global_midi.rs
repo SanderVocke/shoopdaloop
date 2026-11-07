@@ -92,6 +92,12 @@ impl GlobalMidi {
     ) -> Result<(), Error> {
         self.current.clear();
         self.deferred.clear();
+        for index in 0..global.len() {
+            let (_, data) = global.get(index).ok_or(Error::InvalidEvent)?;
+            if data.len() == 3 && data[0] & 0xf0 == 0xb0 && data[1] < 128 && data[2] < 128 {
+                self.diagnostics.latest_cc = Some([data[0], data[1], data[2]]);
+            }
+        }
         if !active {
             for index in 0..global.len() {
                 let (_, data) = global.get(index).ok_or(Error::InvalidEvent)?;

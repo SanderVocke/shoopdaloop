@@ -11933,6 +11933,7 @@ impl ApplicationModel {
             .iter()
             .filter_map(|id| self.buses.get(id))
             .map(|bus| BusState {
+                latest_input_midi_message: None,
                 id: bus.id,
                 name: bus.name.clone(),
                 structural_state: bus.structural_state,

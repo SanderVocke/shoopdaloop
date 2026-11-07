@@ -83,6 +83,11 @@ jobs:
           name: hosted-processor-wasm-tests-${{ github.run_id }}
           path: target/wasm-tests/dev/reports/node
           if-no-files-found: warn
+      - name: Run Built-in bus FX in an actual AudioWorklet
+        if: matrix.label == 'both'
+        run: |
+          mkdir -p target/hosted-evidence
+          CHROME_BIN=google-chrome node --experimental-websocket tests/bus_fx_worklet/run.mjs > target/hosted-evidence/bus-fx-worklet.json
       - name: Record cold startup and reserved memory
         if: matrix.label == 'both'
         run: |
@@ -92,6 +97,7 @@ jobs:
           lscpu > target/hosted-evidence/hardware.txt
           cargo test --locked -p shoop_host_processors --features "$DSP_FEATURES" --lib measured_preparation_peak -- --nocapture > target/hosted-evidence/startup-memory.txt
           cargo test --locked -p shoop_host_processors --features "$DSP_FEATURES" --test graph --release hosted_callback_measurement -- --ignored --nocapture > target/hosted-evidence/callback.txt
+          cargo test --locked -p shoop_host_processors --features "$DSP_FEATURES" --test graph --release bus_fx_mixed_callback_measurement -- --ignored --nocapture > target/hosted-evidence/bus-fx-callback.txt
       - uses: actions/upload-artifact@v7
         if: always() && matrix.label == 'both'
         with:

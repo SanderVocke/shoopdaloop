@@ -59,6 +59,7 @@ impl Pool {
         }
         for slot in 0..self.buses() {
             set(self.bus(slot), format_args!("Bus {} output", slot + 1));
+            set(self.bus_input(slot), format_args!("Bus {} input", slot + 1));
         }
         for slot in 0..self.processors() {
             set(

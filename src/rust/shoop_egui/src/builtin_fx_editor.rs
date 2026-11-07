@@ -70,7 +70,7 @@ impl BuiltInFxEditor {
             self,
             context,
             &state.name,
-            state.id.raw(),
+            egui::Id::unique(("track_fx", state.id.raw())),
             &state.fx,
             processor,
             latest_cc,
@@ -89,10 +89,12 @@ impl BuiltInFxEditor {
             self,
             context,
             &state.name,
-            state.id.raw(),
+            egui::Id::unique(("bus_fx", state.id.raw())),
             &state.fx,
             processor,
-            None,
+            state
+                .latest_input_midi_message
+                .and_then(|message| message.midi_cc()),
             BusAction::BuiltInFx,
             BusAction::FxVisibilityChanged(false),
         )
@@ -102,7 +104,7 @@ impl BuiltInFxEditor {
         &mut self,
         context: &egui::Context,
         name: &str,
-        id: u64,
+        id: egui::Id,
         fx: &Option<TrackFxState>,
         processor: Option<&TrackProcessorDescriptor>,
         latest_cc: Option<(u8, u8, u8)>,
@@ -692,6 +694,75 @@ mod tests {
             )))
         );
         assert_eq!(BuiltInFxParameter::ALL.len(), 23);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bus_midi_learn_uses_the_confirmed_global_control_observation() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let (track, processor) = fixture();
+        let bus = BusState {
+            latest_input_midi_message: track.controls.latest_input_midi_message,
+            id: crate::BusId::from_raw(7),
+            name: "FX bus".into(),
+            structural_state: crate::StructuralState::Confirmed,
+            structural_error: None,
+            channels: std::sync::Arc::from([]),
+            gain_db: 0.,
+            balance: 0.,
+            muted: false,
+            output_peaks_db: std::sync::Arc::from([]),
+            control_pending: false,
+            control_error: None,
+            fx: track.fx,
+        };
+        let mut editor = BuiltInFxEditor {
+            midi_learn_open: true,
+            ..Default::default()
+        };
+        let frame = |editor: &mut BuiltInFxEditor, events| {
+            let mut actions = Vec::new();
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900., 1200.),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    actions = editor.show_for_bus(ui.ctx(), &bus, Some(&processor));
+                },
+            );
+            output.textures_delta.clear();
+            actions
+        };
+        frame(&mut editor, Vec::new());
+        frame(&mut editor, Vec::new());
+        let position = editor.midi_assign_rect.unwrap().center();
+        frame(&mut editor, vec![egui::Event::PointerMoved(position)]);
+        let mut actions = Vec::new();
+        for pressed in [true, false] {
+            actions.extend(frame(
+                &mut editor,
+                vec![egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            ));
+        }
+        assert!(
+            actions.contains(&BusAction::BuiltInFx(BuiltInFxControl::AssignMidiCc(
+                BuiltInFxMidiCcAssignment {
+                    parameter: BuiltInFxParameter::CompressorThreshold,
+                    channel: 2,
+                    controller: 17
+                }
+            )))
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

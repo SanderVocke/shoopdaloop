@@ -107,7 +107,7 @@ impl ControlEndpoint {
             if self
                 .submit_op(
                     self.at(),
-                    self.pool.bus(p.bus.0.index as usize),
+                    self.pool.bus_input(p.bus.0.index as usize),
                     operation,
                     Purpose::Preview,
                 )

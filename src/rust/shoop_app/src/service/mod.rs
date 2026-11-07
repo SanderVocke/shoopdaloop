@@ -163,6 +163,7 @@ pub struct Service {
     master_graph_auto_done: bool,
     backend: Box<dyn Backend>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
+    bus_processors: Arc<[TrackProcessorDescriptor]>,
     preview: ClickTrackState,
     preview_bus: Option<BusId>,
     preview_stage: Option<preview::Stage>,
@@ -245,7 +246,11 @@ impl Service {
         let track_processors = backend
             .track_processor_catalog()
             .unwrap_or_else(|_| Arc::from([]));
+        let bus_processors = backend
+            .bus_processor_catalog()
+            .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            bus_processors,
             diagnostics: profiling::broker(observed.profiling.connection.max(1)),
             profiling_connection: observed.profiling.connection,
             profiling_elapsed: Duration::ZERO,
@@ -1051,6 +1056,12 @@ impl Service {
                 if let Ok(catalog) = self.backend.track_processor_catalog() {
                     if catalog != self.track_processors {
                         self.track_processors = catalog;
+                        self.bump();
+                    }
+                }
+                if let Ok(catalog) = self.backend.bus_processor_catalog() {
+                    if catalog != self.bus_processors {
+                        self.bus_processors = catalog;
                         self.bump();
                     }
                 }

@@ -302,8 +302,49 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.loops.get_mut(&id).unwrap().recorded = state.map(|state| (revision, state));
     }
 
+    fn bus_processor_record(&mut self, record: StateRecord) {
+        match record {
+            StateRecord::BusProcessor { bus, slot } => {
+                if let Some(entry) = self
+                    .mirror
+                    .buses
+                    .values_mut()
+                    .find(|entry| entry.slot == bus && !entry.removing)
+                {
+                    if entry.processor_slot != slot {
+                        entry.processor_snapshot = None;
+                    }
+                    entry.processor_slot = slot;
+                }
+            }
+            StateRecord::BusProcessorState {
+                bus,
+                slot,
+                snapshot,
+            } => {
+                if let Some(entry) = self
+                    .mirror
+                    .buses
+                    .values_mut()
+                    .find(|entry| entry.slot == bus && !entry.removing)
+                {
+                    if crate::processor_controls::snapshot_state(
+                        shoop_processor_protocol::Kind::BuiltInFx,
+                        snapshot.values,
+                    )
+                    .is_ok()
+                    {
+                        entry.processor_slot = Some(slot);
+                        entry.processor_snapshot = Some(snapshot);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     fn state_record(&mut self, record: StateRecord) {
         if self.resync.is_none() {
+            self.bus_processor_record(record);
             if let StateRecord::LoopTiming { loop_id, timing } = record {
                 if let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() {
                     self.apply_timing(id, timing);
@@ -528,6 +569,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     content_revision,
                     state,
                 } => self.recorded_snapshot(loop_id, content_revision, state),
+                record @ (StateRecord::BusProcessor { .. }
+                | StateRecord::BusProcessorState { .. }) => self.bus_processor_record(record),
                 StateRecord::ProcessorState {
                     strip,
                     slot,
@@ -1167,6 +1210,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 self.mirror.mixer_revision += 1;
             }
+            (Purpose::BusFxControl(id, control), Some(refusal)) => self.failure(
+                BackendMutationKind::BusFxControl,
+                Some(id.raw()),
+                Some(BackendMutationDetail::BusFxControl(control)),
+                format!("bus FX control refused: {}", refusal_text(refusal)),
+            ),
+            (Purpose::BusFxControl(_, _), None) => {}
             (Purpose::BusControl(id, control), None) => {
                 if let Some(bus) = self.mirror.buses.get_mut(&id) {
                     bus.apply(control);

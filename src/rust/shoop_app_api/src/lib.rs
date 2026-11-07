@@ -1313,6 +1313,7 @@ pub struct BusChannelState {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusState {
+    pub latest_input_midi_message: Option<LatestMidiMessage>,
     pub id: BusId,
     pub name: String,
     pub structural_state: StructuralState,
@@ -3146,6 +3147,7 @@ mod tests {
             output_port_id: PortId::from_raw(id),
         };
         let mut state = BusState {
+            latest_input_midi_message: None,
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
             structural_state: StructuralState::Confirmed,

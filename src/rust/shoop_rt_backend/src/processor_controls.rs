@@ -11,6 +11,15 @@ use shoop_processor_protocol::{
 use shoop_rt_protocol::Request;
 use shoop_rt_transport::carrier::Carrier;
 
+pub(crate) fn snapshot_state(
+    kind: Kind,
+    values: [f32; shoop_processor_protocol::STATE_SCALARS],
+) -> Result<State> {
+    let mut state = State::new(kind)?;
+    state.values = values;
+    state.validate()?;
+    Ok(state)
+}
 pub(crate) fn track_kind(track: &Track) -> Option<Kind> {
     topology_kind(&track.topology)
 }
@@ -45,6 +54,42 @@ pub(crate) fn recorded_state(
     }))
 }
 
+pub(crate) fn bus_session_state(bus: &shoop_backend::BackendSessionBus) -> Result<Option<Control>> {
+    let Some(kind) = bus.processor_type.as_deref() else {
+        if bus.processor_state.is_some() || !bus.builtin_fx_midi_cc_assignments.is_empty() {
+            return Err(anyhow!("bus has state without a processor"));
+        }
+        return Ok(None);
+    };
+    if kind != TrackProcessorTypeId::BUILTIN_FX {
+        return Err(anyhow!("unsupported bus processor"));
+    }
+    let mut state = match &bus.processor_state {
+        Some(encoded) => State::decode(Kind::BuiltInFx, encoded)?,
+        None => State::new(Kind::BuiltInFx)?,
+    };
+    state.values[55] = bus.channels.len() as f32;
+    for a in &bus.builtin_fx_midi_cc_assignments {
+        let index = BuiltInFxParameter::ALL
+            .iter()
+            .position(|p| *p == a.parameter)
+            .unwrap();
+        if state.values[32 + index] >= 0. {
+            return Err(anyhow!("duplicate bus mapping"));
+        }
+        state.values[32 + index] = cc_value(a.channel, a.controller)?;
+    }
+    for (i, &value) in state.values[32..55].iter().enumerate() {
+        if value >= 0. && state.values[32..32 + i].contains(&value) {
+            return Err(anyhow!("duplicate bus MIDI source"));
+        }
+    }
+    state.validate()?;
+    Ok(Some(Control::Restore {
+        values: state.values,
+        replace_mappings: true,
+    }))
+}
 pub(crate) fn session_state(track: &shoop_backend::BackendSessionTrack) -> Result<Option<Control>> {
     let Some(kind) = topology_kind(&track.topology) else {
         if track.processor_state.is_some()
@@ -108,7 +153,27 @@ pub(crate) fn session_state(track: &shoop_backend::BackendSessionTrack) -> Resul
 }
 pub(crate) fn track_fx_state(track: &Track) -> Option<TrackFxState> {
     let kind = track_kind(track)?;
-    let snapshot = track.processor_snapshot?;
+    fx_state(
+        kind,
+        track.processor_snapshot?,
+        track.processor_slot,
+        track.processor_visible,
+    )
+}
+pub(crate) fn bus_fx_state(bus: &crate::mirror::Bus) -> Option<TrackFxState> {
+    fx_state(
+        Kind::BuiltInFx,
+        bus.processor_snapshot?,
+        bus.processor_slot,
+        bus.processor_visible,
+    )
+}
+fn fx_state(
+    kind: Kind,
+    snapshot: shoop_rt_protocol::processors::Snapshot,
+    slot: Option<shoop_rt_protocol::ProcessorSlot>,
+    visible: bool,
+) -> Option<TrackFxState> {
     let values = snapshot.values;
     let editor = match kind {
         Kind::BuiltInFx => TrackProcessorEditorState::BuiltInFx(BuiltInFxState {
@@ -200,16 +265,14 @@ pub(crate) fn track_fx_state(track: &Track) -> Option<TrackFxState> {
             _ => TrackProcessorTypeId::OXISYNTH,
         }),
         active: snapshot.phase == Phase::Running,
-        visible: track.processor_visible,
+        visible,
         lifecycle: match snapshot.phase {
             Phase::Running => FxLifecycle::Running,
             Phase::Faulted => FxLifecycle::Crashed,
             Phase::Free | Phase::Retiring => FxLifecycle::Unavailable,
             Phase::Owned => FxLifecycle::Stopped,
         },
-        generation: track
-            .processor_slot
-            .map_or(0, |slot| u64::from(slot.generation)),
+        generation: slot.map_or(0, |slot| u64::from(slot.generation)),
         deadline_misses: 0,
         stale_completions: 0,
         status_summary: if snapshot.phase == Phase::Faulted {
@@ -237,37 +300,18 @@ fn cc_value(channel: u8, controller: u8) -> Result<f32> {
     Ok((u16::from(channel) * 128 + u16::from(controller)) as f32)
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
-    pub(crate) fn processor_control(
-        &mut self,
-        id: BackendTrackId,
-        control: BackendTrackFxControl,
-    ) -> Result<()> {
-        self.ready()?;
-        let track = self
-            .mirror
-            .live_track(id)
-            .ok_or_else(|| anyhow!("unknown track {id:?}"))?;
-        let kind = track_kind(track).ok_or_else(|| anyhow!("track has no built-in processor"))?;
-        let strip = track.strip;
+    fn processor_update(
+        &self,
+        kind: Kind,
+        width: u32,
+        control: &BackendTrackFxControl,
+    ) -> Result<Control> {
         let parameter = |parameter, value| Control::Parameter { parameter, value };
-        let update = match &control {
+        let update = match control {
             BackendTrackFxControl::SetActive(on) => Control::Active(*on),
-            BackendTrackFxControl::SetVisible(visible) => {
-                self.mirror
-                    .tracks
-                    .get_mut(&id)
-                    .expect("live track")
-                    .processor_visible = *visible;
-                return Ok(());
-            }
-            BackendTrackFxControl::ToggleOrRecover => {
-                let track = self.mirror.tracks.get_mut(&id).expect("live track");
-                track.processor_visible = !track.processor_visible;
-                return Ok(());
-            }
             BackendTrackFxControl::RestoreState(encoded) => {
                 let mut state = State::decode(kind, encoded)?;
-                state.values[55] = track.topology.dry_audio_channels() as f32;
+                state.values[55] = width as f32;
                 Control::Restore {
                     values: state.values,
                     replace_mappings: false,
@@ -344,6 +388,100 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             },
             _ => return Err(anyhow!("unsupported control for this processor")),
         };
+        Ok(update)
+    }
+    pub(crate) fn bus_processor_control(
+        &mut self,
+        id: shoop_backend::BackendBusId,
+        control: shoop_backend::BackendBusFxControl,
+    ) -> Result<()> {
+        use shoop_backend::BackendBusFxControl as BusControl;
+        self.ready()?;
+        if !self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::BUS_PROCESSORS)
+        {
+            return Err(anyhow!("bus FX unavailable on this host"));
+        }
+        self.require_mutation_capacity(1)?;
+        let bus = self
+            .mirror
+            .buses
+            .get(&id)
+            .filter(|bus| !bus.removing)
+            .ok_or_else(|| anyhow!("unknown bus"))?;
+        let slot = bus.slot;
+        let width = bus.channels.len() as u32;
+        let request = if let BusControl::SetProcessor(fx) = &control {
+            if let Some(fx) = fx {
+                let fx = fx.clone().normalized(width as usize)?;
+                if fx.processor_type != TrackProcessorTypeId::BUILTIN_FX {
+                    return Err(anyhow!("unsupported bus processor"));
+                }
+            }
+            Request::SetBusProcessor {
+                bus: slot,
+                enabled: fx.is_some(),
+            }
+        } else {
+            if bus.processor_slot.is_none() {
+                return Err(anyhow!("bus has no processor"));
+            }
+            let track_control = match &control {
+                BusControl::SetVisible(value) => {
+                    self.mirror.buses.get_mut(&id).unwrap().processor_visible = *value;
+                    return Ok(());
+                }
+                BusControl::ToggleOrRecover => {
+                    let bus = self.mirror.buses.get_mut(&id).unwrap();
+                    bus.processor_visible = !bus.processor_visible;
+                    return Ok(());
+                }
+                BusControl::SetActive(value) => BackendTrackFxControl::SetActive(*value),
+                BusControl::RestoreState(state) => {
+                    BackendTrackFxControl::RestoreState(state.clone())
+                }
+                BusControl::BuiltInFx(control) => BackendTrackFxControl::BuiltInFx(*control),
+                _ => return Err(anyhow!("unsupported Built-in bus FX control")),
+            };
+            Request::BusProcessorControl {
+                bus: slot,
+                control: self.processor_update(Kind::BuiltInFx, width, &track_control)?,
+            }
+        };
+        self.requests
+            .push(request, Purpose::BusFxControl(id, control));
+        Ok(())
+    }
+    pub(crate) fn processor_control(
+        &mut self,
+        id: BackendTrackId,
+        control: BackendTrackFxControl,
+    ) -> Result<()> {
+        self.ready()?;
+        let track = self
+            .mirror
+            .live_track(id)
+            .ok_or_else(|| anyhow!("unknown track {id:?}"))?;
+        let kind = track_kind(track).ok_or_else(|| anyhow!("track has no built-in processor"))?;
+        let strip = track.strip;
+        match &control {
+            BackendTrackFxControl::SetVisible(visible) => {
+                self.mirror
+                    .tracks
+                    .get_mut(&id)
+                    .expect("live track")
+                    .processor_visible = *visible;
+                return Ok(());
+            }
+            BackendTrackFxControl::ToggleOrRecover => {
+                let track = self.mirror.tracks.get_mut(&id).expect("live track");
+                track.processor_visible = !track.processor_visible;
+                return Ok(());
+            }
+            _ => {}
+        }
+        let update = self.processor_update(kind, track.topology.dry_audio_channels(), &control)?;
         self.requests.push(
             Request::ProcessorControl {
                 strip,

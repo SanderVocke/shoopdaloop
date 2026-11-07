@@ -71,6 +71,32 @@ fn composite_span() -> CompositeSpan {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::CreateProcessedBus {
+            bus: BusId::MASTER,
+            channels: 8,
+        },
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        },
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: false,
+        },
+        Request::BusProcessorControl {
+            bus: BusId::MASTER,
+            control: processors::Control::Active(false),
+        },
+        Request::ReplacementEdit {
+            id: 9,
+            edit: ReplacementEdit::BusProcessor {
+                bus: BusId::MASTER,
+                state: processors::Control::Restore {
+                    values: [0.; processors::STATE_SCALARS],
+                    replace_mappings: true,
+                },
+            },
+        },
         Request::InputBegin {
             id: u64::MAX,
             count: u32::MAX,
@@ -595,6 +621,33 @@ fn engine_samples() -> Vec<EngineMessage> {
             content_revision: 10,
             state: None,
         }),
+        EngineMessage::State(StateRecord::BusProcessor {
+            bus: BusId::MASTER,
+            slot: None,
+        }),
+        EngineMessage::State(StateRecord::BusProcessor {
+            bus: BusId::MASTER,
+            slot: Some(ProcessorSlot {
+                index: 63,
+                generation: 123,
+            }),
+        }),
+        EngineMessage::State(StateRecord::BusProcessorState {
+            bus: BusId::MASTER,
+            slot: ProcessorSlot {
+                index: 63,
+                generation: 123,
+            },
+            snapshot: processors::Snapshot {
+                source_frame: 42,
+                phase: processors::Phase::Running,
+                global_midi: processors::GlobalMidiDiagnostics {
+                    latest_cc: Some([0xb2, 17, 127]),
+                    ..Default::default()
+                },
+                values: [0.75; processors::STATE_SCALARS],
+            },
+        }),
         EngineMessage::State(StateRecord::ProcessorState {
             strip: strip(0),
             slot: ProcessorSlot {
@@ -1027,4 +1080,29 @@ fn input_progress_capacity_and_terminal_phases_round_trip_with_exact_frames() {
     let mut bytes = [0; MAX_RECORD_BYTES];
     let count = encode_engine(&message, &mut bytes).unwrap();
     assert_eq!(decode_engine(&bytes[..count]).unwrap(), message);
+}
+
+#[shoop_test]
+fn capability_flags_do_not_alias_other_features() {
+    let flags = [
+        Capabilities::MIDI_INJECTION,
+        Capabilities::BULK_MIDI,
+        Capabilities::GROWABLE_LIMITS,
+        Capabilities::CONTENT_UPLOAD,
+        Capabilities::COMPLETE_REPLACEMENT,
+        Capabilities::WIDE_CONTENT_UPLOAD,
+        Capabilities::PROFILING,
+        Capabilities::DRY_WET,
+        Capabilities::TRACK_PROCESSORS,
+        Capabilities::GLOBAL_FX_CONTROL,
+        Capabilities::EXTERNAL_DRY_WET,
+        Capabilities::LOOP_TIMING,
+        Capabilities::INPUT_BATCH,
+        Capabilities::REPLACING,
+        Capabilities::BUS_PROCESSORS,
+    ];
+    for (i, flag) in flags.iter().enumerate() {
+        assert!(flag.0.is_power_of_two());
+        assert!(flags[..i].iter().all(|other| other.0 & flag.0 == 0));
+    }
 }

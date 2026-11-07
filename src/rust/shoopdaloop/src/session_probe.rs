@@ -17,8 +17,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod busfx;
 mod composites;
 mod input;
+pub use busfx::run as bus_fx;
 pub use composites::run as composites;
 pub use input::run as input;
 
@@ -1017,8 +1019,9 @@ pub fn hosted(
     let state = file_wait(&handle, |s| !s.tracks.is_empty())?;
     let descriptors = state.track_processors.clone();
     ensure!(
-        state.bus_processors.is_empty(),
-        "bus FX must remain unavailable"
+        state.bus_processors.iter().any(|d| d.available)
+            == state.capabilities.supports(BackendCapability::BusFx),
+        "bus FX catalog disagrees with host capability"
     );
     handle.dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
     let mut admitted = Vec::new();
