@@ -159,7 +159,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-jack-acceptance-${{ github.run_id }}
-          path: target/native-jack/*.log
+          path: |
+            target/native-jack/*.log
+            target/native-jack/*.json
           if-no-files-found: error
 
   no_std_core:
@@ -806,7 +808,7 @@ jobs:
             --package shoop_plugin_protocol --package shoop_rt_backend --package shoop_rt_engine \
             --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_rt_transport \
             --package shoop_rt_transport_message_port --package shoop_scripting \
-            --package shoop_session --package shoop_settings \
+            --package shoop_session --package shoop_format_conversion --package shoop_settings \
             --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
             --package shoop_worklet_client --package shoopdaloop
 

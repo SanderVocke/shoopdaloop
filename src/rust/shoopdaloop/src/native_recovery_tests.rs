@@ -405,22 +405,28 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
         }),
         draft,
     });
-    while app.settings.active().revision() == revision {
-        let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
-        output.textures_delta.clear();
-        assert!(
-            Instant::now() < deadline,
-            "local preference save did not finish"
-        );
-        std::thread::sleep(Duration::from_millis(5));
+    let switch = wait(&app.runtime, |state| {
+        state.audio_drivers.switch.status
+            == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+            || state.notifications.iter().any(|notice| {
+                notice.message
+                    == shoop_egui::BackendCapability::AudioDriverSwitching.unavailable_reason()
+            })
+    });
+    if switch.audio_drivers.switch.status
+        == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+    {
+        app.runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: switch.audio_drivers.switch.request_id,
+                accept: false,
+            })
+            .unwrap();
+        wait(&app.runtime, |state| {
+            state.audio_drivers.switch.status == shoop_egui::AudioDriverSwitchStatus::Completed
+        });
     }
-    assert_eq!(
-        app.settings
-            .active()
-            .get(shoop_egui::DUMMY_SAMPLE_RATE)
-            .unwrap(),
-        32000
-    );
+    assert_eq!(app.settings.active().revision(), revision);
     assert!(app.pending_audio_settings.is_none());
     let report = shoop_host::connection::host_report(
         app.runtime.remote_entry.as_ref().unwrap(),

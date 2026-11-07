@@ -93,6 +93,15 @@ pub enum Startup {
     Connected(Vec<StartupScript>),
 }
 
+pub fn writes_audio_preferences(intent: &AppIntent) -> bool {
+    matches!(
+        intent,
+        AppIntent::RequestAudioDriverSwitch { .. }
+            | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+            | AppIntent::RetryAudioDriverPersistence { .. }
+    )
+}
+
 pub struct Runtime {
     pending_audio_profiling: Option<bool>,
     client: Client,
@@ -108,6 +117,7 @@ pub struct Runtime {
     io_task: Option<IoTaskState>,
     intents: VecDeque<(u64, AppIntent)>,
     commands: VecDeque<(u64, Command, Option<(u64, bool)>)>,
+    audio_driver_operations: BTreeSet<OperationId>,
     creations: BTreeMap<OperationId, (u64, bool)>,
     seen_results: BTreeSet<OperationId>,
     track_results: VecDeque<TrackCreationResult>,
@@ -150,6 +160,7 @@ impl Runtime {
             io_task: None,
             intents: VecDeque::new(),
             commands: VecDeque::new(),
+            audio_driver_operations: BTreeSet::new(),
             creations: BTreeMap::new(),
             seen_results: BTreeSet::new(),
             track_results: VecDeque::new(),
@@ -188,6 +199,16 @@ impl Runtime {
     }
     pub fn has_pending_commands(&self) -> bool {
         !self.intents.is_empty() || !self.commands.is_empty()
+    }
+    pub fn has_pending_audio_driver_commands(&self) -> bool {
+        self.intents
+            .iter()
+            .any(|(_, intent)| writes_audio_preferences(intent))
+            || self
+                .commands
+                .iter()
+                .any(|(_, command, _)| matches!(command, Command::AudioDriver(_)))
+            || !self.audio_driver_operations.is_empty()
     }
     pub fn take_file_output(&mut self) -> Option<ApplicationFileOutput> {
         self.outputs
@@ -282,6 +303,10 @@ impl Runtime {
             if let Err(error) = self.delivery.poll(&mut self.client) {
                 self.lost(error);
             }
+        }
+        if self.client.state() == State::Ready {
+            self.audio_driver_operations
+                .retain(|operation| self.client.operation_in_flight(*operation));
         }
         if let Some(message) = self.client.ready_message() {
             match self.delivery.send(message) {
@@ -401,6 +426,7 @@ impl Runtime {
                 break;
             };
             let resetting = matches!(command, Command::NewSession);
+            let audio_driver = matches!(command, Command::AudioDriver(_));
             let mut message = match self.client.command(command, None) {
                 Ok(message) => message,
                 Err(Error::Full) => break,
@@ -422,6 +448,9 @@ impl Runtime {
             match self.delivery.send(message) {
                 Ok(()) => {
                     self.commands.pop_front();
+                    if audio_driver {
+                        self.audio_driver_operations.insert(operation);
+                    }
                     if resetting {
                         self.reset_operation = Some(operation);
                         self.reset_queued = false;
@@ -1119,7 +1148,36 @@ impl Runtime {
                 return provider.apply(intent, state, session_scripts);
             }
         }
+        if matches!(
+            &intent,
+            AppIntent::RequestAudioDriverSwitch { .. }
+                | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+        ) && self
+            .persistence_io
+            .as_ref()
+            .and_then(|provider| provider.task())
+            .is_some_and(|task| {
+                !matches!(
+                    task.status,
+                    IoTaskStatus::Completed | IoTaskStatus::Failed | IoTaskStatus::Cancelled
+                )
+            })
+        {
+            anyhow::bail!("Finish the active file workflow before switching audio drivers");
+        }
         let command = match intent {
+            AppIntent::RefreshAudioDriverDiscovery { config } => {
+                Command::AudioDriver(audio_driver::Command::Discover(config))
+            }
+            AppIntent::RequestAudioDriverSwitch { config } => {
+                Command::AudioDriver(audio_driver::Command::Request(config))
+            }
+            AppIntent::ConfirmAudioDriverSwitch { request_id, accept } => {
+                Command::AudioDriver(audio_driver::Command::Confirm { request_id, accept })
+            }
+            AppIntent::RetryAudioDriverPersistence { request_id } => {
+                Command::AudioDriver(audio_driver::Command::RetryPersistence { request_id })
+            }
             AppIntent::AddTrack(spec) => Command::AddTrack(spec.into()),
             AppIntent::AddTrackWithTopology(spec) => {
                 let creation = spec.creation_request_id.map(|id| (id, false));
@@ -1434,10 +1492,7 @@ impl Runtime {
                     | AppIntent::SetTakeProcessorAlignment { .. } => {
                         BackendCapability::TakeAlignment
                     }
-                    AppIntent::RequestAudioDriverSwitch { .. }
-                    | AppIntent::RefreshAudioDriverDiscovery { .. }
-                    | AppIntent::ConfirmAudioDriverSwitch { .. }
-                    | AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
+                    AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
                         BackendCapability::AudioDriverSwitching
                     }
                     _ => anyhow::bail!("{} is unavailable with this engine", other.kind()),

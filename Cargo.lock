@@ -5101,11 +5101,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_format_conversion"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "shoop_app_api",
+ "shoop_wasm_test_support",
+ "thiserror 2.0.21",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_host"
 version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
+ "directories",
  "getrandom 0.4.3",
  "jack",
  "nix",
@@ -5119,6 +5131,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_backend",
  "shoop_deployment_protocol",
+ "shoop_format_conversion",
  "shoop_host",
  "shoop_host_processes",
  "shoop_persistence_codec",
@@ -5498,6 +5511,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shoop_app_api",
+ "shoop_format_conversion",
  "shoop_latency",
  "shoop_script_resources",
  "shoop_wasm_test_support",

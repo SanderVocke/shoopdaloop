@@ -9,7 +9,7 @@ use anyhow::{anyhow, ensure, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
-use shoop_rt_host_native::{DriverConfig, NativeConfig, NativeHost};
+use shoop_rt_host_native::{DriverConfig, NativeConfig};
 use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
 use shoop_transport_socket::setup::Listener;
 use std::{
@@ -34,6 +34,8 @@ pub struct StartOptions {
     pub export_profile: Option<PathBuf>,
     pub network: crate::remote::NetworkOptions,
     pub log_file: Option<PathBuf>,
+    #[serde(default)]
+    pub driver_preferences: Option<PathBuf>,
 
     pub name: String,
 }
@@ -48,6 +50,7 @@ impl StartOptions {
             export_profile: None,
             network: Default::default(),
             log_file: None,
+            driver_preferences: None,
 
             name: "ShoopDaLoop".into(),
         })
@@ -259,13 +262,15 @@ pub fn run_with_ready(
                 "Could not start the configured audio driver: {error}; using dummy"
             ));
             let dummy = shoop_app_api::DummyAudioDriverConfig::default();
-            shoop_rt_host_native::start(&NativeConfig {
+            let fallback = NativeConfig {
                 driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
                 engine: shoop_rt_engine::EngineDescription {
                     processors: config.settings.processors,
                     ..engine::engine_description(&config.pools, dummy.buffer_size)
                 },
-            })?
+            };
+            let started = shoop_rt_host_native::start(&fallback)?;
+            started
         }
         Err(error) => return Err(error.into()),
     };
@@ -275,7 +280,12 @@ pub fn run_with_ready(
     }
     let status = started.host.status().driver;
     let profile = shoop_app_api::ResolvedAudioDriverConfig {
-        configured: config.driver.clone(),
+        configured: engine::effective_driver_config(
+            &config.driver,
+            started.host.driver_config(),
+            status.sample_rate,
+            status.buffer_frames,
+        ),
         sample_rate: status.sample_rate,
         buffer_size: status.buffer_frames,
         instance_name: started.host.instance_name().to_owned(),
@@ -293,6 +303,12 @@ pub fn run_with_ready(
     if let Some(controller) = crate::host_graph::controller(host.as_ref().expect("running host")) {
         service.set_host_graph_controller(controller)?;
     }
+    let (mut driver_owner, controller) = crate::audio_driver::controller(
+        host.take().expect("running host"),
+        config.settings.clone(),
+        crate::audio_driver::preference_writer(options.driver_preferences.clone()),
+    )?;
+    service.set_audio_driver_controller(controller)?;
     service.set_host_settings(config.settings.clone(), warnings.clone())?;
     let deadline = Instant::now() + Duration::from_secs(10);
     while !service.is_ready() {
@@ -413,7 +429,6 @@ pub fn run_with_ready(
 
     let mut last = Instant::now();
     let mut finished = None;
-    let mut cleanup_error = None;
     loop {
         for _ in 0..4 {
             let Ok(mut port) = data.ports.try_recv() else {
@@ -467,15 +482,7 @@ pub fn run_with_ready(
             service
                 .begin_host_cleanup()
                 .map_err(|reason| anyhow!("host cleanup refused: {reason:?}"))?;
-            let result = match host.take() {
-                Some(host) => stop(host),
-                None => Err(cleanup_error
-                    .clone()
-                    .unwrap_or_else(|| "host cleanup could not be completed".into())),
-            };
-            if let Err(error) = &result {
-                cleanup_error = Some(error.clone());
-            }
+            let result = driver_owner.stop();
             if result.is_ok() {
                 finished = Some(Instant::now() + Duration::from_secs(2));
             }
@@ -498,6 +505,7 @@ pub fn run_with_ready(
         thread::sleep(Duration::from_millis(2));
     }
     drop(service);
+    drop(driver_owner);
     drop(host);
     Ok(())
 }
@@ -511,27 +519,6 @@ fn concrete(mut address: SocketAddr) -> SocketAddr {
         });
     }
     address
-}
-fn stop(host: NativeHost) -> Result<(), String> {
-    let report = host.stop();
-    let mut errors = Vec::new();
-    if !report.midi_reset {
-        errors.push("MIDI reset was not confirmed".to_owned());
-    }
-    if report.phase == shoop_rt_host_native::RenderPhase::Faulted {
-        errors.push("rendering faulted".to_owned());
-    }
-    if let Err(error) = report.stopped {
-        errors.push(format!("engine cleanup failed: {error}"));
-    }
-    if report.stats.midi_out_failed > 0 {
-        errors.push("MIDI output cleanup failed".to_owned());
-    }
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors.join("; "))
-    }
 }
 fn send(port: &mut impl RecordPort, message: &WireMessage) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];

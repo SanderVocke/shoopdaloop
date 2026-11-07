@@ -15,6 +15,7 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::AudioDriver(command) => self.audio_driver_command(command),
             Command::Composite(edit) => self.edit_composite(edit),
             Command::SetLoopTimeline {
                 loop_id,

@@ -21,9 +21,9 @@ egui_material_icons = { workspace = true }
 egui_commonmark = { workspace = true }
 image = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

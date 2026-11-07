@@ -20,6 +20,8 @@
 // Without device drivers, the MIDI bridges and parts of the callback are unused.
 #![cfg_attr(not(feature = "cpal"), allow(dead_code))]
 
+#[cfg(any(feature = "cpal", test))]
+mod callback_gate;
 #[cfg(feature = "cpal")]
 mod cpal_driver;
 mod cycle;
@@ -51,8 +53,8 @@ use shoop_rt_transport::client::ProtocolClient;
 
 #[cfg(feature = "cpal")]
 pub use cpal_driver::{
-    audio_devices, cpal_hosts, discover, start_cpal, AudioDevice, CpalConfig, DeviceSelection,
-    Discovery,
+    audio_devices, cpal_hosts, discover, preflight_cpal, preflight_cpal_on, resolve_cpal_devices,
+    resolve_cpal_devices_on, start_cpal, AudioDevice, CpalConfig, DeviceSelection, Discovery,
 };
 pub use dummy::{DummyConfig, DummyControl, DummyMode};
 #[cfg(feature = "jack")]
@@ -208,6 +210,7 @@ impl Driver {
 
 pub(crate) struct Running {
     pub shared: Arc<Shared>,
+    pub configuration: DriverConfig,
     pub driver: Driver,
     pub pump: Option<Pump>,
     pub connections: Vec<Box<dyn Any + Send>>,
@@ -304,6 +307,11 @@ impl NativeHost {
         &self.running().instance_name
     }
 
+    /// The opened configuration, retaining resolved devices and automatic-buffer policy.
+    pub fn driver_config(&self) -> &DriverConfig {
+        &self.running().configuration
+    }
+
     pub fn layout(&self) -> &HostLayout {
         &self.running().layout
     }
@@ -361,6 +369,12 @@ pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
         Err(error) => tracing::warn!(%error, "native host failed to start"),
     }
     started
+}
+
+pub use shoop_host_processors::support as processor_support;
+
+pub fn validate_processor_capacity(engine: &EngineDescription) -> Result<u64, StartError> {
+    shoop_host_processors::reservation_bytes(engine).map_err(StartError::Processors)
 }
 
 /// An engine prepared for an opened driver.

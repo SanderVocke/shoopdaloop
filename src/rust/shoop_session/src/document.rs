@@ -499,34 +499,9 @@ pub struct CompositeDocument {
     pub timing: Option<CompositeTimingDocument>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct CompositeTimingDocument {
-    pub basis_sample_rate: u32,
-    pub basis_unit_frames: u64,
-    pub sample_rate: u32,
-    pub quantum_frames: u32,
-    pub unit_frames: u64,
-    pub iterations: u64,
-    pub instances: Vec<CompositeEffectiveInstanceDocument>,
-    pub spans: Vec<CompositeSpanDocument>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct CompositeEffectiveInstanceDocument {
-    pub instance_id: u64,
-    pub start_frame: u64,
-    pub end_frame: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct CompositeSpanDocument {
-    pub target: u64,
-    pub start: u64,
-    pub end: u64,
-    pub occurrence_start: u64,
-    pub ordinal: u32,
-    pub mode: String,
-}
+pub use shoop_format_conversion::{
+    CompositeEffectiveInstanceDocument, CompositeSpanDocument, CompositeTimingDocument,
+};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -593,20 +568,7 @@ pub struct AudioPayload {
     pub samples: Vec<f32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ExactMidi {
-    pub sample_rate: u32,
-    pub length_frames: u64,
-    pub start_state: Vec<Vec<u8>>,
-    pub events: Vec<ExactMidiEvent>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ExactMidiEvent {
-    pub frame: u64,
-    pub order: u32,
-    pub data: Vec<u8>,
-}
+pub use shoop_format_conversion::{ExactMidi, ExactMidiEvent};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LoopAudio {

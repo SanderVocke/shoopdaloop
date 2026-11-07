@@ -17,6 +17,8 @@ cpal = ["shoop_rt_host_native/cpal"]
 testing = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+directories = { workspace = true }
+shoop_format_conversion = { path = "../shoop_format_conversion" }
 shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }
 jack = { workspace = true, optional = true }
 tempfile = { workspace = true }
@@ -44,6 +46,7 @@ shoop_transport_socket = { path = "../shoop_transport_socket" }
 shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
 
 [dev-dependencies]
+shoop_backend = { path = "../shoop_backend", features = ["legacy"] }
 shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_host = { path = ".", default-features = false, features = ["testing"] }
 tempfile = { workspace = true }

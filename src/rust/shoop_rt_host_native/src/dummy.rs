@@ -264,6 +264,7 @@ mod tests {
             worker.run()
         });
         let report = crate::Running {
+            configuration: crate::DriverConfig::Dummy(DummyConfig::default()),
             shared,
             driver: crate::Driver::Dummy(DummyThread { exit, thread }),
             pump: None,
@@ -337,6 +338,7 @@ pub(crate) fn start(
         endpoint,
         outbox,
         crate::Running {
+            configuration: crate::DriverConfig::Dummy(config.clone()),
             instance_name: "Dummy".to_owned(),
             shared,
             driver: crate::Driver::Dummy(DummyThread { exit, thread }),

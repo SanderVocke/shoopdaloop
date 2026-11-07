@@ -114,6 +114,86 @@ fn select_host(name: Option<&str>) -> Result<cpal::Host, StartError> {
     cpal::host_from_id(id).map_err(|error| StartError::Device(error.to_string()))
 }
 
+pub fn resolve_cpal_devices(config: &CpalConfig) -> Result<CpalConfig, StartError> {
+    let host = select_host(config.host.as_deref())?;
+    let mut resolved = resolve_cpal_devices_on(&host, config)?;
+    resolved.host = Some(host.id().name().to_lowercase());
+    Ok(resolved)
+}
+
+pub fn resolve_cpal_devices_on<H: HostTrait>(
+    host: &H,
+    config: &CpalConfig,
+) -> Result<CpalConfig, StartError> {
+    let mut resolved = config.clone();
+    resolved.output_device = select_device(host, true, &config.output_device)?
+        .map(|device| DeviceSelection::Named(device_name(&device)))
+        .ok_or(StartError::NoDevice {
+            direction: "output",
+            name: None,
+        })?;
+    resolved.input_device = select_device(host, false, &config.input_device)?
+        .map_or(DeviceSelection::None, |device| {
+            DeviceSelection::Named(device_name(&device))
+        });
+    Ok(resolved)
+}
+
+pub fn preflight_cpal(config: &CpalConfig, max_frames: usize) -> Result<(u32, u32), StartError> {
+    let host = select_host(config.host.as_deref())?;
+    preflight_cpal_on(&host, config, max_frames)
+}
+
+pub fn preflight_cpal_on<H: HostTrait>(
+    host: &H,
+    config: &CpalConfig,
+    max_frames: usize,
+) -> Result<(u32, u32), StartError> {
+    let output = select_device(host, true, &config.output_device)?.ok_or(StartError::NoDevice {
+        direction: "output",
+        name: None,
+    })?;
+    let default = output.default_output_config().map_err(device_error)?;
+    let rate = config.sample_rate.unwrap_or(default.sample_rate());
+    let channels = config.output_channels.unwrap_or(default.channels());
+    if channels == 0 || usize::from(channels) > MAX_HOST_PORTS {
+        return Err(StartError::InvalidConfig(
+            "output channel capacity exceeded",
+        ));
+    }
+    if !output
+        .supported_output_configs()
+        .map_err(device_error)?
+        .any(|range| {
+            range.min_sample_rate() <= rate
+                && range.max_sample_rate() >= rate
+                && range.channels() == channels
+        })
+    {
+        return Err(StartError::InvalidConfig("output format is unavailable"));
+    }
+    buffer_size(config.buffer_frames, default.buffer_size(), max_frames)?;
+    if let Some(input) = select_device(host, false, &config.input_device)? {
+        let default = input.default_input_config().map_err(device_error)?;
+        let channels = config.input_channels.unwrap_or(default.channels());
+        if channels == 0 || usize::from(channels) > MAX_HOST_PORTS {
+            return Err(StartError::InvalidConfig("input channel capacity exceeded"));
+        }
+        if !input
+            .supported_input_configs()
+            .map_err(device_error)?
+            .any(|range| {
+                range.min_sample_rate() <= rate
+                    && range.max_sample_rate() >= rate
+                    && range.channels() == channels
+            })
+        {
+            return Err(StartError::InvalidConfig("input format is unavailable"));
+        }
+    }
+    Ok((rate, config.buffer_frames.unwrap_or(0)))
+}
+
 /// Devices and MIDI ports of a CPAL host, the platform default when unset.
 pub fn discover(host: Option<&str>) -> Result<Discovery, StartError> {
     let selected = select_host(host)?;
@@ -276,6 +356,7 @@ fn device_error(error: impl std::fmt::Display) -> StartError {
 
 /// The input stream's side of the duplex bridge.
 struct Capture {
+    callbacks: Arc<crate::callback_gate::CallbackGate>,
     producer: Producer<f32>,
     channels: usize,
     started: Arc<AtomicBool>,
@@ -284,6 +365,9 @@ struct Capture {
 
 impl Capture {
     fn push(&mut self, data: &[f32]) {
+        let Some(_turn) = self.callbacks.enter() else {
+            return;
+        };
         self.started.store(true, Ordering::Relaxed);
         let frames = data.len() / self.channels;
         let room = self.producer.slots() / self.channels;
@@ -327,6 +411,7 @@ impl Playback {
 /// Owns the render cycle inside the output callback and hands it back when CPAL
 /// drops the callback.
 struct Output {
+    callbacks: Arc<crate::callback_gate::CallbackGate>,
     cycle: Option<Cycle>,
     playback: Option<Playback>,
     channels: usize,
@@ -337,6 +422,10 @@ struct Output {
 
 impl Output {
     fn process(&mut self, data: &mut [f32]) {
+        let Some(_turn) = self.callbacks.enter() else {
+            data.fill(0.);
+            return;
+        };
         let started = Instant::now();
         let Some(cycle) = self.cycle.as_mut() else {
             data.fill(0.);
@@ -394,16 +483,33 @@ impl Drop for Output {
 
 /// The streams of a running CPAL driver.
 pub(crate) struct Streams {
-    output: Box<dyn Any + Send>,
-    input: Option<Box<dyn Any + Send>>,
+    output: Option<Box<dyn StreamTrait + Send>>,
+    input: Option<Box<dyn StreamTrait + Send>>,
+    callbacks: Arc<crate::callback_gate::CallbackGate>,
     back: Receiver<Cycle>,
 }
 
 impl Streams {
-    pub fn stop(self) -> Option<Cycle> {
-        drop(self.output);
-        drop(self.input);
+    fn quiesce(&self) {
+        self.callbacks.close();
+        if let Some(output) = &self.output {
+            let _ = output.pause();
+        }
+        if let Some(input) = &self.input {
+            let _ = input.pause();
+        }
+        self.callbacks.wait();
+    }
+    pub fn stop(mut self) -> Option<Cycle> {
+        self.quiesce();
+        self.output.take();
+        self.input.take();
         self.back.recv_timeout(RETURN_TIMEOUT).ok()
+    }
+}
+impl Drop for Streams {
+    fn drop(&mut self) {
+        self.quiesce();
     }
 }
 
@@ -422,6 +528,9 @@ pub(crate) fn start(
     );
     let mut started = start_cpal(&host, config, engine, midi)?;
     if let Some(running) = started.host.running.as_mut() {
+        if let crate::DriverConfig::Cpal(config) = &mut running.configuration {
+            config.host = Some(host.id().name().to_lowercase());
+        }
         warnings.append(&mut running.warnings);
         running.warnings = warnings;
     }
@@ -485,6 +594,19 @@ where
     }
     let output_name = device_name(&output);
     let input_name = input.as_ref().map(|(device, _)| device_name(device));
+    let opened = CpalConfig {
+        host: None,
+        output_device: DeviceSelection::Named(output_name.clone()),
+        input_device: input_name
+            .clone()
+            .map_or(DeviceSelection::None, DeviceSelection::Named),
+        sample_rate: Some(sample_rate),
+        output_channels: Some(output_channels),
+        input_channels: input.as_ref().map(|(_, channels)| *channels),
+        midi_inputs: midi.inputs.iter().map(|port| port.name.clone()).collect(),
+        midi_outputs: midi.outputs.iter().map(|port| port.name.clone()).collect(),
+        ..config.clone()
+    };
     let ports = HostPorts {
         audio_inputs: input
             .as_ref()
@@ -565,6 +687,7 @@ where
         sample_rate,
         buffer_size: buffer,
     };
+    let callbacks = Arc::new(crate::callback_gate::CallbackGate::default());
     let started = Arc::new(AtomicBool::new(false));
     let mut playback = None;
     let input_stream = match input {
@@ -576,6 +699,7 @@ where
                 chunk.fill_from_iter(std::iter::repeat(0.));
             }
             let mut capture = Capture {
+                callbacks: callbacks.clone(),
                 producer,
                 channels: width,
                 started: started.clone(),
@@ -601,6 +725,7 @@ where
     };
     let (back, returned) = sync_channel(1);
     let mut side = Output {
+        callbacks: callbacks.clone(),
         cycle: Some(cycle),
         playback,
         channels: usize::from(output_channels),
@@ -617,24 +742,32 @@ where
             None,
         )
         .map_err(device_error)?;
-    if let Some(stream) = &input_stream {
+    let streams = Streams {
+        output: Some(Box::new(output_stream)),
+        input: input_stream.map(|stream| Box::new(stream) as Box<dyn StreamTrait + Send>),
+        callbacks,
+        back: returned,
+    };
+    if let Some(stream) = &streams.input {
         stream.play().map_err(device_error)?;
     }
-    output_stream.play().map_err(device_error)?;
+    streams
+        .output
+        .as_ref()
+        .unwrap()
+        .play()
+        .map_err(device_error)?;
     shared.set_state(DriverRunState::Running);
     let period_frames = requested.unwrap_or(max_frames as u32);
     Ok(assemble(
         endpoint,
         outbox,
         Running {
+            configuration: crate::DriverConfig::Cpal(opened),
             instance_name: "CPAL".to_owned(),
-            reset_wait: reset_wait(period_frames, sample_rate),
+            reset_wait: reset_wait(period_frames, sample_rate).max(Duration::from_secs(2)),
             shared,
-            driver: Driver::Cpal(Streams {
-                output: Box::new(output_stream),
-                input: input_stream.map(|stream| Box::new(stream) as Box<dyn Any + Send>),
-                back: returned,
-            }),
+            driver: Driver::Cpal(streams),
             pump,
             connections,
             layout,

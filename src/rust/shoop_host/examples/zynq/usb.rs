@@ -429,6 +429,7 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection, path: OsStri
         .unwrap()
         .parse()
         .unwrap();
+    topology("drained");
     for cycle in 0..cycles {
         topology("detach");
         wait(client, connection, |c| {

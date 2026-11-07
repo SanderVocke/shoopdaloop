@@ -12,6 +12,7 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_format_conversion = { path = "../shoop_format_conversion" }
 hound = { workspace = true }
 midly = { workspace = true }
 rubato = { workspace = true }

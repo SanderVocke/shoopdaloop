@@ -7,6 +7,7 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 
+mod audio_driver;
 mod commands;
 mod composites;
 mod deployment;
@@ -74,11 +75,13 @@ struct Intent {
 
 struct Port {
     backend: BackendPortId,
+    preserve_name: bool,
     view: ApplicationPortState,
 }
 
 #[derive(Clone, Debug)]
 enum Effect {
+    AudioDriver,
     None,
     CompositeEdit(LoopId),
     BusCreated(BusId),
@@ -153,6 +156,11 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    driver_controller: Option<Box<dyn crate::AudioDriverController>>,
+    driver_state: AudioDriverRuntimeState,
+    driver_job: Option<audio_driver::Job>,
+    driver_request: u64,
+    driver_ticket: u64,
     diagnostics: profiling_protocol::broker::Broker,
     profiling_elapsed: Duration,
     profiling_connection: u64,
@@ -250,6 +258,11 @@ impl Service {
             .bus_processor_catalog()
             .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            driver_state: observed.audio_drivers.clone(),
+            driver_controller: None,
+            driver_job: None,
+            driver_request: 0,
+            driver_ticket: 0,
             bus_processors,
             diagnostics: profiling::broker(observed.profiling.connection.max(1)),
             profiling_connection: observed.profiling.connection,
@@ -484,7 +497,11 @@ impl Service {
             master_auto_connect: self.options.master_auto_connect,
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             pending_operations: self.pending.len() as u32,
-            restart_required_fields: vec!["driver".into(), "pools".into()],
+            restart_required_fields: if self.driver_controller.is_some() {
+                vec!["pools".into()]
+            } else {
+                vec!["driver".into(), "pools".into()]
+            },
         }
     }
 
@@ -603,7 +620,7 @@ impl Service {
                 if self.lease.is_some() {
                     return Err(Refusal::Busy);
                 }
-                if !self.is_ready() {
+                if !self.is_ready() && !self.audio_driver_fatal() {
                     return Err(Refusal::NotReady);
                 }
                 self.generation = self.generation.checked_add(1).ok_or(Refusal::Overloaded)?;
@@ -686,6 +703,7 @@ impl Service {
             .as_ref()
             .is_some_and(|lease| lease.connection == connection)
         {
+            self.detach_audio_driver();
             self.stop_preview();
             self.diagnostics.detach();
             let _ = self.backend.set_profiling(false);
@@ -795,6 +813,8 @@ impl Service {
             || self.shutdown.is_some()
         {
             Some((Refusal::NotReady, "the session is not accepting commands"))
+        } else if self.audio_driver_busy(command.as_ref()) {
+            Some((Refusal::Busy, "an audio-driver transition is active"))
         } else if epoch.is_some_and(|epoch| epoch != self.persistence_epoch) {
             Some((Refusal::Identity, "the session was replaced"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
@@ -860,6 +880,11 @@ impl Service {
             None => self.prepare_shutdown(),
         };
         let after = self.backend.mutation_cursor();
+        if matches!(result, Ok(Effect::AudioDriver)) {
+            if let Some(job) = self.driver_job.as_mut() {
+                job.operation = Some(id);
+            }
+        }
         if let Some(job) = self
             .composite_structure
             .as_mut()
@@ -892,6 +917,8 @@ impl Service {
 
     fn request_budget(&self, command: Option<&Command>) -> usize {
         match command {
+            None if self.engine_closed => 0,
+            Some(Command::AudioDriver(_)) => 0,
             Some(
                 Command::SetHostGraphConnected(_)
                 | Command::SelectLoops { .. }
@@ -1001,6 +1028,10 @@ impl Service {
             return;
         }
         self.diagnostics.advance(elapsed);
+        if self.tick_audio_driver(elapsed) {
+            self.publish();
+            return;
+        }
         let _span = tracing::trace_span!(
             "app.service.tick",
             revision = self.revision.0,
@@ -1222,6 +1253,7 @@ impl Service {
             self.observed.status.driver_state = BackendDriverState::Failed;
         }
         if self.closed {
+            self.driver_job = None;
             self.observed.status.driver_state = BackendDriverState::Stopped;
         }
         let outcome = match result {

@@ -173,6 +173,9 @@ impl Client {
     pub fn has_unfinished_operations(&self) -> bool {
         !self.pending.is_empty() || !self.submitted.is_empty()
     }
+    pub fn operation_in_flight(&self, operation: OperationId) -> bool {
+        self.pending.contains_key(&operation) || self.submitted.contains(&operation)
+    }
     pub fn results(&self) -> &BTreeMap<OperationId, Outcome> {
         &self.results
     }

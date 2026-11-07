@@ -47,6 +47,44 @@ fn mic() -> MockDevice {
     MockDevice::input("Mic", 1)
 }
 
+#[shoop_test]
+fn preflight_resolves_formats_without_opening_streams_and_refuses_invalid_requests() {
+    let output = speakers();
+    let input = mic();
+    let mock = MockHost::new(vec![output.clone(), input.clone()]);
+    let mut config = CpalConfig {
+        sample_rate: Some(48_000),
+        buffer_frames: Some(64),
+        ..Default::default()
+    };
+    assert_eq!(
+        shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).unwrap(),
+        (48_000, 64)
+    );
+    let resolved = shoop_rt_host_native::resolve_cpal_devices_on(&mock, &config).unwrap();
+    assert_eq!(
+        resolved.output_device,
+        DeviceSelection::Named("Speakers".into())
+    );
+    assert_eq!(resolved.input_device, DeviceSelection::Named("Mic".into()));
+    assert!(output.stream().is_none() && input.stream().is_none());
+    config.buffer_frames = None;
+    assert_eq!(
+        shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).unwrap(),
+        (48_000, 0)
+    );
+    config.buffer_frames = Some(64);
+    config.sample_rate = Some(24_000);
+    assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
+    config.sample_rate = Some(48_000);
+    config.buffer_frames = Some(8);
+    assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
+    config.buffer_frames = Some(64);
+    config.output_device = DeviceSelection::Named("absent".into());
+    assert!(shoop_rt_host_native::preflight_cpal_on(&mock, &config, 1024).is_err());
+    assert!(output.stream().is_none() && input.stream().is_none());
+}
+
 fn open(
     config: &CpalConfig,
     engine: &EngineDescription,
@@ -166,6 +204,27 @@ fn heap_guards_are_live() {
 fn device_channels_and_midi_ports_become_host_ports_with_the_default_outputs_preferred() {
     let mut rig = rig();
     assert!(rig.host().warnings().is_empty());
+    let shoop_rt_host_native::DriverConfig::Cpal(opened) = rig.host().driver_config() else {
+        panic!("expected CPAL configuration")
+    };
+    assert_eq!(
+        opened.output_device,
+        DeviceSelection::Named("Speakers".into())
+    );
+    assert_eq!(opened.input_device, DeviceSelection::Named("Mic".into()));
+    assert_eq!(opened.sample_rate, Some(48_000));
+    assert_eq!(opened.midi_inputs, ["Keys"]);
+    assert_eq!(opened.midi_outputs, ["Synth"]);
+    let changed_defaults = MockHost::new(vec![
+        MockDevice::output("Other speakers", 2),
+        MockDevice::input("Other mic", 1),
+        speakers(),
+        mic(),
+    ]);
+    let reopened =
+        shoop_rt_host_native::resolve_cpal_devices_on(&changed_defaults, opened).unwrap();
+    assert_eq!(reopened.output_device, opened.output_device);
+    assert_eq!(reopened.input_device, opened.input_device);
     let layout = rig.host().layout().clone();
     assert_eq!(layout.master_connections, [(0, 0), (1, 1)]);
     rig.connect();

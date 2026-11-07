@@ -102,6 +102,61 @@ pub fn native_config(
     (config, warnings)
 }
 
+pub fn effective_driver_config(
+    requested: &AudioDriverConfig,
+    driver: &DriverConfig,
+    sample_rate: u32,
+    buffer_size: u32,
+) -> AudioDriverConfig {
+    #[cfg(not(feature = "cpal"))]
+    let _ = requested;
+    match driver {
+        DriverConfig::Dummy(_) => AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate,
+            buffer_size,
+        }),
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(config) => {
+            AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
+                client_name: config.client_name.clone(),
+            })
+        }
+        #[cfg(feature = "cpal")]
+        DriverConfig::Cpal(config) => {
+            let mut effective = match requested {
+                AudioDriverConfig::Cpal(config) => config.clone(),
+                _ => CpalAudioDriverConfig::default(),
+            };
+            effective.host = config.host.clone().unwrap_or_else(|| "default".into());
+            effective.client_name = config.client_name.clone();
+            effective.output_device = resolved_device_selector(&config.output_device);
+            effective.input_device = resolved_device_selector(&config.input_device);
+            effective.buffer_size = config.buffer_frames.unwrap_or(0);
+            effective.midi_inputs = resolved_midi_selectors(&config.midi_inputs);
+            effective.midi_outputs = resolved_midi_selectors(&config.midi_outputs);
+            AudioDriverConfig::Cpal(effective)
+        }
+    }
+}
+
+#[cfg(feature = "cpal")]
+pub(crate) fn resolved_device_selector(device: &DeviceSelection) -> String {
+    match device {
+        DeviceSelection::Default => "default".into(),
+        DeviceSelection::None => "none".into(),
+        DeviceSelection::Named(name) => format!("={name}"),
+    }
+}
+
+#[cfg(feature = "cpal")]
+pub(crate) fn resolved_midi_selectors(ports: &[String]) -> Vec<String> {
+    if ports.is_empty() {
+        vec!["none".to_owned()]
+    } else {
+        ports.iter().map(|name| format!("={name}")).collect()
+    }
+}
+
 pub fn engine_description(pools: &NewEnginePools, max_frames: u32) -> EngineDescription {
     let defaults = EngineDescription::default();
     let loop_memory = pools.loop_memory_mb as usize * (1 << 20);
@@ -134,7 +189,7 @@ pub fn dummy_config(config: &DummyAudioDriverConfig) -> DummyConfig {
 
 /// CPAL settings, with the legacy driver's selectors: `default`, `none`, an index, an exact
 /// name or part of one for devices; `all`, `none`, indices, names or parts of names for MIDI
-/// ports.
+/// ports. Prefix a device or MIDI name with `=` to match it exactly.
 #[cfg(feature = "cpal")]
 pub fn cpal_config(
     config: &CpalAudioDriverConfig,
@@ -193,17 +248,23 @@ pub fn device(
     direction: &str,
     warnings: &mut Vec<String>,
 ) -> DeviceSelection {
-    let wanted = selector.trim();
+    let (wanted, exact) = selector
+        .strip_prefix('=')
+        .map_or((selector.trim(), false), |name| (name, true));
     match wanted {
-        "" | "default" => DeviceSelection::Default,
-        "none" => DeviceSelection::None,
+        "" | "default" if !exact => DeviceSelection::Default,
+        "none" if !exact => DeviceSelection::None,
         _ => {
-            let found = wanted
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| devices.get(index))
-                .or_else(|| devices.iter().find(|device| device.name == wanted))
-                .or_else(|| devices.iter().find(|device| device.name.contains(wanted)));
+            let found = if exact {
+                devices.iter().find(|device| device.name == wanted)
+            } else {
+                wanted
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| devices.get(index))
+                    .or_else(|| devices.iter().find(|device| device.name == wanted))
+                    .or_else(|| devices.iter().find(|device| device.name.contains(wanted)))
+            };
             match found {
                 Some(device) => DeviceSelection::Named(device.name.clone()),
                 None => {
@@ -244,7 +305,11 @@ pub fn midi_ports(
         return Vec::new();
     }
     let matches = |selector: &String, index: usize, port: &String| {
-        *selector == index.to_string() || selector == port || port.contains(selector.as_str())
+        if let Some(name) = selector.strip_prefix('=') {
+            name == port
+        } else {
+            *selector == index.to_string() || selector == port || port.contains(selector.as_str())
+        }
     };
     let all = selectors.is_empty() || selectors.iter().any(|selector| selector == "all");
     if !all {
@@ -268,6 +333,13 @@ pub fn midi_ports(
         })
         .map(|(_, port)| port.clone())
         .collect::<Vec<_>>();
+    if !selectors.is_empty() && selectors.iter().all(|selector| selector.starts_with('=')) {
+        selected.sort_by_key(|port| {
+            selectors
+                .iter()
+                .position(|selector| selector.strip_prefix('=') == Some(port.as_str()))
+        });
+    }
     if selected.len() > MAX_HOST_PORTS {
         warnings.push(format!(
             "The new engine backend opens only the first {MAX_HOST_PORTS} of {} MIDI {direction}s",
@@ -305,4 +377,139 @@ pub fn stop_problems(
         problems.push(format!("{midi_lost} MIDI messages were dropped or refused"));
     }
     problems
+}
+
+#[cfg(all(test, feature = "cpal"))]
+mod tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn effective_cpal_audio_device_names_cannot_select_a_different_device() {
+        for name in [
+            "Speakers",
+            "0",
+            "default",
+            "none",
+            "=Interface",
+            " Interface ",
+        ] {
+            let requested = AudioDriverConfig::Cpal(Default::default());
+            let opened = DriverConfig::Cpal(CpalConfig {
+                output_device: DeviceSelection::Named(name.into()),
+                input_device: DeviceSelection::None,
+                sample_rate: Some(48_000),
+                output_channels: Some(2),
+                ..Default::default()
+            });
+            let effective = effective_driver_config(&requested, &opened, 48_000, 256);
+            let AudioDriverConfig::Cpal(policy) = &effective else {
+                panic!("expected CPAL profile")
+            };
+            assert_eq!(policy.sample_rate, 0);
+            assert_eq!(policy.output_channels, "all");
+            let device = |name: String| AudioDevice {
+                name,
+                default: false,
+                channels: 2,
+                sample_rate: 48_000,
+                buffer_frames: None,
+            };
+            let mut inventory = Discovery {
+                outputs: vec![
+                    device("Other".into()),
+                    device(format!("{name} Pro")),
+                    device(name.into()),
+                ],
+                ..Default::default()
+            };
+            let (reopened, warnings) = native_config(&effective, &Default::default(), &inventory);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            let DriverConfig::Cpal(reopened) = reopened.driver else {
+                panic!("expected CPAL configuration")
+            };
+            assert_eq!(reopened.output_device, DeviceSelection::Named(name.into()));
+            inventory.outputs.pop();
+            let (_, warnings) = native_config(&effective, &Default::default(), &inventory);
+            assert!(
+                !warnings.is_empty(),
+                "missing exact device {name:?} must be reported"
+            );
+        }
+    }
+
+    #[shoop_test]
+    fn effective_cpal_profile_preserves_midi_selection_when_inventory_changes() {
+        for (inputs, outputs, initially_empty) in [
+            ("0", "0", false),
+            ("=0", "=0", false),
+            ("=all", "=none", false),
+            ("==Prefixed", "==Prefixed", false),
+            ("none", "none", false),
+            ("none", "all", false),
+            ("all", "none", false),
+            ("all", "all", true),
+            ("Keys", "Synth", false),
+        ] {
+            let requested = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
+                midi_inputs: vec![inputs.into()],
+                midi_outputs: vec![outputs.into()],
+                ..Default::default()
+            });
+            let mut inventory = Discovery {
+                midi_inputs: ["Keys", "Keys Pro", "Pads", "0", "all", "none", "=Prefixed"]
+                    .map(String::from)
+                    .to_vec(),
+                midi_outputs: [
+                    "Synth",
+                    "Synth Pro",
+                    "Drums",
+                    "0",
+                    "all",
+                    "none",
+                    "=Prefixed",
+                ]
+                .map(String::from)
+                .to_vec(),
+                ..Default::default()
+            };
+            let initial = if initially_empty {
+                Discovery::default()
+            } else {
+                inventory.clone()
+            };
+            let (source, warnings) = native_config(&requested, &Default::default(), &initial);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            let effective = effective_driver_config(&requested, &source.driver, 48_000, 256);
+            inventory.midi_inputs.push("Keys Mini".into());
+            inventory.midi_outputs.push("Synth Mini".into());
+            inventory.midi_inputs.reverse();
+            inventory.midi_outputs.reverse();
+            let (reopened, warnings) = native_config(&effective, &Default::default(), &inventory);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            let (DriverConfig::Cpal(source), DriverConfig::Cpal(reopened)) =
+                (source.driver, reopened.driver)
+            else {
+                panic!("expected CPAL configurations")
+            };
+            assert_eq!(reopened.midi_inputs, source.midi_inputs, "{effective:?}");
+            assert_eq!(reopened.midi_outputs, source.midi_outputs, "{effective:?}");
+            inventory
+                .midi_inputs
+                .retain(|name| !source.midi_inputs.contains(name));
+            inventory
+                .midi_outputs
+                .retain(|name| !source.midi_outputs.contains(name));
+            let (missing, warnings) = native_config(&effective, &Default::default(), &inventory);
+            assert_eq!(
+                warnings.is_empty(),
+                source.midi_inputs.is_empty() && source.midi_outputs.is_empty()
+            );
+            let DriverConfig::Cpal(missing) = missing.driver else {
+                panic!("expected CPAL configuration")
+            };
+            assert!(missing.midi_inputs.is_empty());
+            assert!(missing.midi_outputs.is_empty());
+        }
+    }
 }
