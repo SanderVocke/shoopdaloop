@@ -539,3 +539,12 @@ select a different renderer in any reported benchmark.
   metadata/RSS regress in the native prototype, and all modes have observed
   budget overruns. The independent descriptor option reduces materialization
   under active gains. Separate history arenas remain unimplemented as requested.
+- Final macOS release CI exposed a recovery-test deadline mismatch: management
+  pumping pauses during synchronous driver cleanup, while result polls allowed
+  only two seconds inside a five-second shutdown budget. The three owned-shutdown
+  fixtures now pass the remaining overall deadline to each management request.
+  Overall deadlines and production behavior are unchanged. Both native recovery
+  profiles pass all 16 enabled tests, and the four affected cases pass three
+  repetitions on one CPU with a competing 25%-duty worker. A heavier worker also
+  exposed unrelated startup deadlines; those were not relaxed. The measured
+  production source and archived benchmark data are unchanged by this fixture fix.
