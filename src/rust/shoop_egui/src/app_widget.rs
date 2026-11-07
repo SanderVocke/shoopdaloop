@@ -5257,6 +5257,7 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let bus = |id| crate::BusState {
+            latest_input_midi_message: None,
             id: crate::BusId::from_raw(id),
             name: if id == 1 {
                 "Master".to_owned()

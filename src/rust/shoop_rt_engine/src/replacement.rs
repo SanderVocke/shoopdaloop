@@ -35,6 +35,7 @@ pub(crate) struct Replacement {
     base_revision: u64,
     pub candidate: Model,
     pub initial: Box<[Option<Initial>]>,
+    pub bus_processor_states: Box<[Option<shoop_rt_protocol::processors::Control>]>,
     pub processor_states: Box<[Option<shoop_rt_protocol::processors::Control>]>,
 }
 impl Replacement {
@@ -53,6 +54,7 @@ impl Replacement {
                 program_segments,
             ),
             initial: vec![None; loops].into_boxed_slice(),
+            bus_processor_states: vec![None; buses].into_boxed_slice(),
             processor_states: vec![None; strips].into_boxed_slice(),
         }
     }
@@ -60,6 +62,7 @@ impl Replacement {
         self.id = None;
         self.state = State::Empty;
         self.initial.fill(None);
+        self.bus_processor_states.fill(None);
         self.processor_states.fill(None);
     }
 }
@@ -94,6 +97,7 @@ impl ControlEndpoint {
                 stage.candidate.spans.fill(None);
                 stage.candidate.buses.fill(None);
                 stage.initial.fill(None);
+                stage.bus_processor_states.fill(None);
                 stage.processor_states.fill(None);
                 return Ok(Some(Outcome::Done));
             }
@@ -286,6 +290,29 @@ impl ControlEndpoint {
                     .ok_or(Refusal::InvalidId)?;
                 entry.repeat_sync = enabled;
                 return Ok(());
+            }
+            ReplacementEdit::BusProcessor { bus, state } => {
+                let shoop_rt_protocol::processors::Control::Restore {
+                    values,
+                    replace_mappings: true,
+                } = state
+                else {
+                    return Err(Refusal::InvalidValue);
+                };
+                let entry = self.next.bus(bus).ok_or(Refusal::InvalidId)?;
+                crate::recorded::validate_state(
+                    Some(shoop_rt_protocol::ProcessorKind::BuiltInFx),
+                    Some(shoop_rt_protocol::RecordedProcessorState {
+                        source_frame: 0,
+                        kind: shoop_rt_protocol::ProcessorKind::BuiltInFx,
+                        values,
+                    }),
+                )?;
+                if values[55] != entry.channels as f32 {
+                    return Err(Refusal::InvalidValue);
+                }
+                self.replacement.bus_processor_states[bus.0.index as usize] = Some(state);
+                Request::SetBusProcessor { bus, enabled: true }
             }
             ReplacementEdit::Bus { bus, channels } => Request::CreateBus { bus, channels },
             ReplacementEdit::BusControl { bus, control } => {

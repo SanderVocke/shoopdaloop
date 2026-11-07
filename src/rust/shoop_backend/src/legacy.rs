@@ -2330,6 +2330,7 @@ impl EngineBackend {
             buses.insert(
                 *id,
                 BackendBusState {
+                    latest_input_midi_message: None,
                     id: *id,
                     name: bus.name.clone(),
                     channels,
@@ -7408,6 +7409,7 @@ impl Default for FakeBackend {
             buses: BTreeMap::from([(
                 bus_id,
                 BackendBusState {
+                    latest_input_midi_message: None,
                     id: bus_id,
                     name: "Master".to_owned(),
                     channels: master_channels
@@ -10291,6 +10293,7 @@ impl Backend for FakeBackend {
         self.mixer.buses.insert(
             bus_id,
             BackendBusState {
+                latest_input_midi_message: None,
                 id: bus_id,
                 name: request.name.clone(),
                 channels,

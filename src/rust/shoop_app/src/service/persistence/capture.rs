@@ -349,6 +349,27 @@ impl Cut {
                         .into_iter()
                         .map(|bus| {
                             Ok(image::Bus {
+                                fx: bus
+                                    .fx
+                                    .as_ref()
+                                    .map(|fx| {
+                                        let Some(TrackProcessorEditorState::BuiltInFx(editor)) =
+                                            &fx.editor
+                                        else {
+                                            return Err(anyhow!("bus FX state unavailable"));
+                                        };
+                                        Ok(image::BusFx {
+                                            processor_type: fx.processor_type.clone(),
+                                            state: TrackProcessorEditorState::BuiltInFx(
+                                                editor.clone(),
+                                            )
+                                            .canonical_state()?,
+                                            midi_cc_assignments: editor
+                                                .midi_cc_assignments
+                                                .to_vec(),
+                                        })
+                                    })
+                                    .transpose()?,
                                 id: bus.id,
                                 name: bus.name.clone(),
                                 gain_db: bus.gain_db,

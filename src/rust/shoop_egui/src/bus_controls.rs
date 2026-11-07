@@ -623,6 +623,7 @@ mod tests {
 
     fn state(channels: usize) -> BusState {
         BusState {
+            latest_input_midi_message: None,
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
             structural_state: crate::StructuralState::Confirmed,

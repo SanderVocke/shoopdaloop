@@ -110,6 +110,7 @@ impl Service {
                 BackendCapability::DryWetTracks,
                 BackendCapability::DryWetModes,
                 BackendCapability::TrackFx,
+                BackendCapability::BusFx,
                 BackendCapability::LoopTimingEdits,
             ]
             .into_iter()
@@ -123,7 +124,7 @@ impl Service {
             connections,
             host_graph: self.host_graph.clone(),
             track_processors: self.track_processors.clone(),
-            bus_processors: Arc::from([]),
+            bus_processors: self.bus_processors.clone(),
             pending: self
                 .pending
                 .values()
@@ -375,6 +376,7 @@ impl Service {
             Bus {
                 backend: created.bus_id,
                 view: BusState {
+                    latest_input_midi_message: None,
                     id,
                     name,
                     structural_state,
@@ -746,6 +748,10 @@ impl Service {
                 if bus.view.structural_state == StructuralState::Creating {
                     bus.view.structural_state = StructuralState::Confirmed;
                 }
+                bus.view.fx = state.fx.clone();
+                bus.view.latest_input_midi_message = state
+                    .latest_input_midi_message
+                    .and_then(|message| LatestMidiMessage::new(message.bytes, message.len));
                 bus.view.gain_db = state.gain_db;
                 bus.view.balance = state.balance;
                 bus.view.muted = state.muted;

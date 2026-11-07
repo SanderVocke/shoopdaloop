@@ -5,7 +5,7 @@ use shoop_rt_protocol::{
     BusControl, BusPort, EngineMessage, EnginePort, HostPortId, Lane, PortKind, StateRecord,
     StripPort,
 };
-use shoop_rt_transport::carrier::Outbox;
+use shoop_rt_transport::carrier::{CarrierError, Outbox};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Resync {
@@ -109,50 +109,112 @@ impl ControlEndpoint {
         })
     }
 
+    fn bus_processor_record(&self, bus: shoop_rt_protocol::BusId) -> Option<StateRecord> {
+        let slot = self.model.bus(bus)?.processor?.slot?;
+        let state = self.processor_cells.get(slot.index as usize)?.read()?;
+        if state.generation != slot.generation {
+            return None;
+        }
+        Some(StateRecord::BusProcessorState {
+            bus,
+            slot,
+            snapshot: shoop_rt_protocol::processors::Snapshot {
+                source_frame: state.frame.0,
+                phase: state.phase,
+                global_midi: state.global_midi,
+                values: state.values,
+            },
+        })
+    }
     pub(crate) fn project_processors(&mut self, out: &mut Outbox) {
         if !self.connected || self.resync.is_some() {
             return;
         }
-        for index in 0..self.model.strips.len() {
-            let Some(strip) = self.model.strips[index] else {
-                self.projected_processors[index] = None;
-                continue;
+        let buses = self.model.buses.len();
+        let count = buses + self.model.strips.len();
+        for _ in 0..count {
+            let index = self.processor_projection_cursor;
+            let result = if index < buses {
+                self.project_bus_processor(index, out)
+            } else {
+                self.project_track_processor(index - buses, out)
             };
-            let Some(StateRecord::ProcessorState {
-                strip,
-                slot,
-                snapshot,
-            }) = self.processor_record(strip.id)
-            else {
-                continue;
-            };
-            if self.projected_processors[index].is_some_and(
-                |(previous_strip, previous_slot, previous)| {
-                    previous_strip == strip
-                        && previous_slot == slot
-                        && previous.phase == snapshot.phase
-                        && previous.global_midi == snapshot.global_midi
-                        && previous
-                            .values
-                            .iter()
-                            .zip(snapshot.values)
-                            .all(|(a, b)| a.to_bits() == b.to_bits())
-                },
-            ) {
-                continue;
-            }
-            if out
-                .push(EngineMessage::State(StateRecord::ProcessorState {
-                    strip,
-                    slot,
-                    snapshot,
-                }))
-                .is_err()
-            {
+            if result.is_err() {
                 return;
             }
-            self.projected_processors[index] = Some((strip, slot, snapshot));
+            self.processor_projection_cursor = (index + 1) % count;
         }
+    }
+    fn project_bus_processor(
+        &mut self,
+        index: usize,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        let Some(bus) = self.model.buses[index] else {
+            self.projected_bus_processors[index] = None;
+            return Ok(());
+        };
+        let slot = bus.processor.and_then(|owner| owner.slot);
+        let record = self.bus_processor_record(bus.id);
+        let snapshot = match record {
+            Some(StateRecord::BusProcessorState { mut snapshot, .. }) => {
+                snapshot.source_frame = 0;
+                Some(snapshot)
+            }
+            _ => None,
+        };
+        if slot.is_some() && snapshot.is_none() {
+            return Ok(());
+        }
+        let key = (bus.id, slot, snapshot);
+        if self.projected_bus_processors[index] == Some(key) {
+            return Ok(());
+        }
+        out.push(EngineMessage::State(
+            record.unwrap_or(StateRecord::BusProcessor { bus: bus.id, slot }),
+        ))?;
+        self.projected_bus_processors[index] = Some(key);
+        Ok(())
+    }
+    fn project_track_processor(
+        &mut self,
+        index: usize,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        let Some(strip) = self.model.strips[index] else {
+            self.projected_processors[index] = None;
+            return Ok(());
+        };
+        let Some(StateRecord::ProcessorState {
+            strip,
+            slot,
+            snapshot,
+        }) = self.processor_record(strip.id)
+        else {
+            return Ok(());
+        };
+        if self.projected_processors[index].is_some_and(
+            |(previous_strip, previous_slot, previous)| {
+                previous_strip == strip
+                    && previous_slot == slot
+                    && previous.phase == snapshot.phase
+                    && previous.global_midi == snapshot.global_midi
+                    && previous
+                        .values
+                        .iter()
+                        .zip(snapshot.values)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+            },
+        ) {
+            return Ok(());
+        }
+        out.push(EngineMessage::State(StateRecord::ProcessorState {
+            strip,
+            slot,
+            snapshot,
+        }))?;
+        self.projected_processors[index] = Some((strip, slot, snapshot));
+        Ok(())
     }
     fn host_port_id(&self, kind: PortKind, index: usize) -> HostPortId {
         let [audio_in, audio_out, midi_in, _] = self.settings.host;
@@ -280,7 +342,7 @@ impl ControlEndpoint {
                         shoop_rt_protocol::ProcessorLimits {
                             effective: self.processor_catalog.effective,
                             reserved_bytes: self.processor_catalog.reserved_bytes,
-                            channels: self.settings.channels as u8,
+                            channels: self.shape.processor_channels as u8,
                             builtin_latency_frames: self.limits.quantum,
                         },
                     ));
@@ -549,6 +611,21 @@ impl ControlEndpoint {
                             bus: bus.id,
                             control: *control,
                         });
+                    }
+                    if cursor.part == 4 {
+                        cursor.part += 1;
+                        return Some(StateRecord::BusProcessor {
+                            bus: bus.id,
+                            slot: bus.processor.and_then(|owner| owner.slot),
+                        });
+                    }
+                    if cursor.part == 5 {
+                        if bus.processor.is_some() {
+                            let record = self.bus_processor_record(bus.id)?;
+                            cursor.part += 1;
+                            return Some(record);
+                        }
+                        cursor.part += 1;
                     }
                     while cursor.channel < bus.channels as usize {
                         let mask = bus.outputs.current()[cursor.channel];

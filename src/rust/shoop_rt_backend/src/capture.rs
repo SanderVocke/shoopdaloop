@@ -82,6 +82,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .chain(self.requests.in_flight.values())
                 .any(|pending| match pending.request {
                     shoop_rt_protocol::Request::CreateBus { .. }
+                    | shoop_rt_protocol::Request::CreateProcessedBus { .. }
+                    | shoop_rt_protocol::Request::SetBusProcessor { .. }
+                    | shoop_rt_protocol::Request::BusProcessorControl { .. }
                     | shoop_rt_protocol::Request::RemoveBus { .. }
                     | shoop_rt_protocol::Request::CreateStrip { .. }
                     | shoop_rt_protocol::Request::CreateProcessedStrip { .. }
@@ -535,9 +538,36 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     gain_db: bus.gain_db,
                     balance: bus.balance,
                     muted: bus.muted,
-                    processor_type: None,
-                    processor_state: None,
-                    builtin_fx_midi_cc_assignments: Vec::new(),
+                    processor_type: bus.processor_slot.map(|_| {
+                        alloc::string::String::from(shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+                    }),
+                    processor_state: bus
+                        .processor_snapshot
+                        .map(|snapshot| {
+                            crate::processor_controls::snapshot_state(
+                                shoop_rt_protocol::ProcessorKind::BuiltInFx,
+                                snapshot.values,
+                            )
+                            .map(|state| state.encode())
+                        })
+                        .transpose()
+                        .expect("validated processor snapshot"),
+                    builtin_fx_midi_cc_assignments: crate::processor_controls::bus_fx_state(bus)
+                        .and_then(|fx| fx.editor)
+                        .and_then(|editor| match editor {
+                            shoop_app_api::TrackProcessorEditorState::BuiltInFx(fx) => Some(
+                                fx.midi_cc_assignments
+                                    .iter()
+                                    .map(|a| shoop_backend::BackendBuiltInFxMidiCcAssignment {
+                                        parameter: a.parameter,
+                                        channel: a.channel,
+                                        controller: a.controller,
+                                    })
+                                    .collect(),
+                            ),
+                            _ => None,
+                        })
+                        .unwrap_or_default(),
                 })
                 .collect(),
             mixer_routes: self

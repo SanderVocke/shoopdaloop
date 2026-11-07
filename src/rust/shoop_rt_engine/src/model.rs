@@ -170,6 +170,7 @@ pub(crate) struct Bus {
     pub id: BusId,
     pub channels: u8,
     pub outputs: Banks,
+    pub processor: Option<ProcessorOwner>,
     pub gain: f32,
     pub balance: f32,
     pub mute: bool,
@@ -180,6 +181,7 @@ impl Default for Bus {
             id: BusId::MASTER,
             channels: 2,
             outputs: Banks::default(),
+            processor: None,
             gain: 1.,
             balance: 0.,
             mute: false,
@@ -199,6 +201,10 @@ impl Bus {
 /// A structural change, applied as one activation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Change {
+    BusProcessor {
+        bus: BusId,
+        processor: Option<ProcessorOwner>,
+    },
     ConnectGlobal {
         host: usize,
         connected: bool,
@@ -206,6 +212,7 @@ pub(crate) enum Change {
     CreateBus {
         bus: BusId,
         channels: u8,
+        processor: Option<ProcessorOwner>,
     },
     RemoveBus {
         bus: BusId,
@@ -297,6 +304,7 @@ impl Model {
             model.apply(Change::CreateBus {
                 bus: BusId::MASTER,
                 channels: master_channels,
+                processor: None,
             });
             model.buses[0].as_mut().expect("default bus").outputs.masks[0] = master_outputs;
         }
@@ -368,13 +376,21 @@ impl Model {
     /// Apply a validated change.
     pub(crate) fn apply(&mut self, change: Change) {
         match change {
+            Change::BusProcessor { bus, processor } => {
+                self.bus_mut(bus).expect("validated bus").processor = processor
+            }
             Change::ConnectGlobal { host, connected } => self.global_midi.set(host, connected),
-            Change::CreateBus { bus, channels } => {
+            Change::CreateBus {
+                bus,
+                channels,
+                processor,
+            } => {
                 let slot = bus.0.index as usize;
                 self.bus_generations[slot] = bus.0.generation;
                 self.buses[slot] = Some(Bus {
                     id: bus,
                     channels,
+                    processor,
                     ..Bus::default()
                 });
             }

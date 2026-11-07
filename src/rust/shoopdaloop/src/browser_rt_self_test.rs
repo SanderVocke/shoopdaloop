@@ -880,6 +880,10 @@ impl NewEngineSelfTest {
                     || snapshot
                         .capabilities
                         .supports(shoop_egui::BackendCapability::BusFx)
+                        != snapshot
+                            .bus_processors
+                            .iter()
+                            .any(|processor| processor.available)
                     || snapshot.tracks[0].loops[0].length_frames != self.sync_length
                 {
                     return Err(

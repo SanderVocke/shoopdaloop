@@ -70,6 +70,446 @@ fn done(h: &mut OfflineHost, r: Request) {
 fn strip() -> StripId {
     StripId(SlotId::new(0, 1))
 }
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn bus_fx_processes_summed_audio_bypasses_and_keeps_routes_on_removal() {
+    for width in [1, 2, 8] {
+        let mut d = description(width, ProcessorKind::BuiltInFx);
+        d.master_channels = width;
+        d.master_connections = (0..width).map(|c| (c, c as u16)).collect();
+        let mut h =
+            OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap())
+                .unwrap();
+        h.connect().unwrap();
+        while h.receive().is_some() {}
+        for source in [strip(), StripId(SlotId::new(1, 1))] {
+            done(
+                &mut h,
+                Request::CreateStrip {
+                    strip: source,
+                    shape: StripShape {
+                        audio_inputs: width,
+                        audio_outputs: width,
+                        midi_input: false,
+                        midi_output: false,
+                    },
+                },
+            );
+            for channel in 0..width {
+                done(
+                    &mut h,
+                    Request::Connect {
+                        port: EnginePort::Strip(StripPort {
+                            strip: source,
+                            kind: PortKind::AudioIn,
+                            index: channel,
+                        }),
+                        host: HostPortId(channel as u32),
+                        connected: true,
+                    },
+                );
+                done(
+                    &mut h,
+                    Request::Route {
+                        port: StripPort {
+                            strip: source,
+                            kind: PortKind::AudioOut,
+                            index: channel,
+                        },
+                        bus: BusPort {
+                            bus: BusId::MASTER,
+                            index: channel,
+                        },
+                        connected: true,
+                    },
+                );
+                h.input_mut(channel as usize)
+                    .fill(0.125 * (channel + 1) as f32);
+            }
+            done(
+                &mut h,
+                Request::StripControl {
+                    strip: source,
+                    control: StripControl::Monitoring(true),
+                },
+            );
+        }
+        tick(&mut h, 128);
+        assert_eq!(&h.output(0)[64..128], &[0.25; 64]);
+        done(
+            &mut h,
+            Request::SetBusProcessor {
+                bus: BusId::MASTER,
+                enabled: true,
+            },
+        );
+        for (parameter, value) in [
+            (processors::STAGE_BASE + 5, 0.),
+            (processors::STAGE_BASE + 1, 1.),
+            (7, 0.),
+            (8, -18.),
+        ] {
+            done(
+                &mut h,
+                Request::BusProcessorControl {
+                    bus: BusId::MASTER,
+                    control: processors::Control::Parameter { parameter, value },
+                },
+            );
+        }
+        for _ in 0..16 {
+            tick(&mut h, 128);
+        }
+        for channel in 0..width {
+            let expected = 0.25 * (channel + 1) as f32 * 10f32.powf(-18. / 20.);
+            assert!(
+                h.output(channel as usize)[64..128]
+                    .iter()
+                    .all(|v| (v - expected).abs() < 1e-6),
+                "width {width}, channel {channel}"
+            );
+        }
+        done(
+            &mut h,
+            Request::BusProcessorControl {
+                bus: BusId::MASTER,
+                control: processors::Control::Active(false),
+            },
+        );
+        tick(&mut h, 128);
+        for channel in 0..width {
+            assert_eq!(
+                &h.output(channel as usize)[64..128],
+                &[0.25 * (channel + 1) as f32; 64]
+            );
+        }
+        done(
+            &mut h,
+            Request::SetBusProcessor {
+                bus: BusId::MASTER,
+                enabled: false,
+            },
+        );
+        tick(&mut h, 128);
+        for channel in 0..width {
+            assert_eq!(
+                &h.output(channel as usize)[64..128],
+                &[0.25 * (channel + 1) as f32; 64]
+            );
+        }
+    }
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn bus_fx_state_progresses_with_one_reliable_credit() {
+    let mut d = description(1, ProcessorKind::BuiltInFx);
+    d.master_channels = 1;
+    d.master_connections = vec![(0, 0)];
+    d.reliable_credits = 1;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    h.connect().unwrap();
+    while h.receive().is_some() {}
+    let correlation = h
+        .request(Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        })
+        .unwrap();
+    let (mut confirmed, mut observed) = (false, false);
+    for _ in 0..4000 {
+        while let Some(message) = h.receive() {
+            match message {
+                EngineMessage::Result {
+                    correlation: id,
+                    outcome,
+                } if id == correlation => {
+                    assert_eq!(outcome, Outcome::Done);
+                    confirmed = true;
+                }
+                EngineMessage::State(StateRecord::BusProcessorState {
+                    bus: BusId::MASTER, ..
+                }) => observed = true,
+                _ => {}
+            }
+        }
+        if confirmed && observed {
+            return;
+        }
+        tick(&mut h, 16);
+    }
+    panic!("bus FX failed to make progress: confirmed={confirmed}, observed={observed}");
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn continuous_bus_midi_does_not_starve_track_state_with_one_reliable_record() {
+    let mut d = description(1, ProcessorKind::BuiltInFx);
+    d.master_channels = 1;
+    d.master_connections = vec![(0, 0)];
+    d.processors.fx_instances = 2;
+    d.reliable_credits = 1;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    done(
+        &mut h,
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(4),
+            connected: true,
+        },
+    );
+    while h.receive().is_some() {}
+    let (mut render, client) = h.into_parts();
+    let (mut endpoint, _) = client.into_carrier().into_parts();
+    let mut out = shoop_rt_transport::carrier::Outbox::new(1, 0, 0);
+    let (mut bus, mut track) = (0, 0);
+    for value in 0..128 {
+        render
+            .midi_input_mut(0)
+            .push(0, 16, &[0xb0, 17, value])
+            .unwrap();
+        assert_no_heap(|| render.process(16)).unwrap();
+        assert_no_heap(|| shoop_rt_transport::carrier::Endpoint::poll(&mut endpoint, &mut out));
+        match out.pop() {
+            Some(EngineMessage::State(StateRecord::BusProcessorState { .. })) => bus += 1,
+            Some(EngineMessage::State(StateRecord::ProcessorState { .. })) => track += 1,
+            _ => {}
+        }
+    }
+    assert!(
+        bus >= 32 && track >= 32,
+        "processor state starved: bus={bus}, track={track}"
+    );
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn bus_fx_global_lane_is_independent_of_audio_routes_and_keeps_bypassed_controls() {
+    let mut d = description(1, ProcessorKind::BuiltInFx);
+    d.master_channels = 1;
+    d.master_connections = vec![(0, 0)];
+    d.processors.fx_instances = 2;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 1, ProcessorKind::BuiltInFx);
+    let direct = StripId(SlotId::new(1, 1));
+    done(
+        &mut h,
+        Request::CreateStrip {
+            strip: direct,
+            shape: StripShape {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_input: false,
+                midi_output: false,
+            },
+        },
+    );
+    for source in [strip(), direct] {
+        done(
+            &mut h,
+            Request::Route {
+                port: StripPort {
+                    strip: source,
+                    kind: PortKind::AudioOut,
+                    index: 0,
+                },
+                bus: BusPort {
+                    bus: BusId::MASTER,
+                    index: 0,
+                },
+                connected: true,
+            },
+        );
+    }
+    done(
+        &mut h,
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(4),
+            connected: true,
+        },
+    );
+    done(
+        &mut h,
+        Request::BusProcessorControl {
+            bus: BusId::MASTER,
+            control: processors::Control::Parameter {
+                parameter: processors::CC_BASE + 8,
+                value: 17.,
+            },
+        },
+    );
+    done(
+        &mut h,
+        Request::BusProcessorControl {
+            bus: BusId::MASTER,
+            control: processors::Control::Active(false),
+        },
+    );
+    h.midi_input_mut(0).push(2, 128, &[0x90, 60, 100]).unwrap();
+    h.midi_input_mut(0).push(3, 128, &[0xb0, 17, 0]).unwrap();
+    tick(&mut h, 16);
+    let bus = h.endpoint().processor_state(1).unwrap();
+    assert_eq!(bus.global_midi.rejected, 1);
+    assert_eq!(bus.global_midi.latest_cc, Some([0xb0, 17, 0]));
+    assert_eq!(bus.global_midi.pending, 1);
+    done(
+        &mut h,
+        Request::BusProcessorControl {
+            bus: BusId::MASTER,
+            control: processors::Control::Active(true),
+        },
+    );
+    tick(&mut h, 128);
+    let bus = h.endpoint().processor_state(1).unwrap();
+    assert_eq!(bus.values[8], -18.);
+    assert_eq!(bus.global_midi.pending, 0);
+    assert_eq!(bus.global_midi.drained, 1);
+    assert_eq!(bus.global_midi.rejected, 1);
+    for _ in 0..8 {
+        done(
+            &mut h,
+            Request::SetBusProcessor {
+                bus: BusId::MASTER,
+                enabled: true,
+            },
+        );
+        tick(&mut h, 128);
+    }
+    done(
+        &mut h,
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: false,
+        },
+    );
+    for _ in 0..2000 {
+        tick(&mut h, 128);
+        if (1..4).all(|slot| {
+            h.endpoint().processor_state(slot).unwrap().phase == processors::Phase::Free
+        }) {
+            break;
+        }
+    }
+    for slot in 1..4 {
+        assert_eq!(
+            h.endpoint().processor_state(slot).unwrap().phase,
+            processors::Phase::Free
+        );
+    }
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test(no_wasm = "native release callback measurement")]
+#[ignore = "release measurement artifact"]
+fn bus_fx_mixed_callback_measurement() {
+    use std::time::Instant;
+    let mut d = description(8, ProcessorKind::BuiltInFx);
+    d.sample_rate = 48000;
+    d.quantum = 128;
+    d.master_channels = 8;
+    d.master_connections = (0..8).map(|c| (c, c as u16)).collect();
+    d.processors.fx_instances = 2;
+    d.processors.memory_mb = 512;
+    let prepared = shoop_host_processors::prepare(&d).unwrap();
+    let reserved = prepared.reserved_bytes;
+    let mut h = OfflineHost::new_with_processors(&d, prepared).unwrap();
+    create(&mut h, 8, ProcessorKind::BuiltInFx);
+    for channel in 0..8 {
+        done(
+            &mut h,
+            Request::Route {
+                port: StripPort {
+                    strip: strip(),
+                    kind: PortKind::AudioOut,
+                    index: channel,
+                },
+                bus: BusPort {
+                    bus: BusId::MASTER,
+                    index: channel,
+                },
+                connected: true,
+            },
+        );
+        h.input_mut(channel as usize).fill(0.25);
+    }
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    done(
+        &mut h,
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        },
+    );
+    for stage in 0..6 {
+        let control = processors::Control::Parameter {
+            parameter: processors::STAGE_BASE + stage,
+            value: 1.,
+        };
+        done(
+            &mut h,
+            Request::ProcessorControl {
+                strip: strip(),
+                control,
+            },
+        );
+        done(
+            &mut h,
+            Request::BusProcessorControl {
+                bus: BusId::MASTER,
+                control,
+            },
+        );
+    }
+    done(
+        &mut h,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(16),
+            connected: true,
+        },
+    );
+    let mut times = Vec::with_capacity(256);
+    for _ in 0..256 {
+        for event in 0..d.midi_events {
+            h.midi_input_mut(0)
+                .push(0, 128, &[0xb0, 7, (event % 128) as u8])
+                .unwrap();
+        }
+        let start = Instant::now();
+        tick(&mut h, 128);
+        times.push(start.elapsed().as_nanos());
+        while h.receive().is_some() {}
+    }
+    times.sort_unstable();
+    let period_ns = 128_000_000_000u128 / 48000;
+    println!("bus_fx rate=48000 quantum=128 channels=8 track_fx=1 bus_fx=1 stages=6 midi_per_callback={} callbacks=256 reserved_bytes={} mean_ns={} p99_ns={} max_ns={} period_ns={} misses={}", d.midi_events, reserved, times.iter().sum::<u128>() / times.len() as u128, times[253], times[255], period_ns, times.iter().filter(|&&time| time > period_ns).count());
+}
 fn looped() -> LoopSlotId {
     LoopSlotId(SlotId::new(0, 1))
 }

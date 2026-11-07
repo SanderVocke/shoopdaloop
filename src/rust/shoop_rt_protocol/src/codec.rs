@@ -573,6 +573,11 @@ impl Wire for crate::processors::Snapshot {
         w.u64(self.global_midi.deferred)?;
         w.u64(self.global_midi.drained)?;
         w.u16(self.global_midi.pending)?;
+        w.u32(
+            self.global_midi
+                .latest_cc
+                .map_or(0, |data| u32::from_le_bytes([data[0], data[1], data[2], 1])),
+        )?;
         for value in self.values {
             w.f32(value)?;
         }
@@ -587,6 +592,17 @@ impl Wire for crate::processors::Snapshot {
             deferred: r.u64()?,
             drained: r.u64()?,
             pending: r.u16()?,
+            latest_cc: {
+                let data = r.u32()?.to_le_bytes();
+                if data == [0; 4] {
+                    None
+                } else {
+                    if data[3] != 1 || data[0] & 0xf0 != 0xb0 || data[1] > 127 || data[2] > 127 {
+                        return Err(CodecError::Invalid);
+                    }
+                    Some([data[0], data[1], data[2]])
+                }
+            },
         };
         if usize::from(global_midi.pending) > crate::processors::midi::CONTROL_KEYS {
             return Err(CodecError::Invalid);
@@ -780,6 +796,21 @@ impl Wire for Request {
                 w.u64(id)
             }
             Self::InputCapacity => w.u8(52),
+            Self::CreateProcessedBus { bus, channels } => {
+                w.u8(72)?;
+                bus.put(w)?;
+                w.u8(channels)
+            }
+            Self::SetBusProcessor { bus, enabled } => {
+                w.u8(70)?;
+                bus.put(w)?;
+                w.bool(enabled)
+            }
+            Self::BusProcessorControl { bus, control } => {
+                w.u8(71)?;
+                bus.put(w)?;
+                control.put(w)
+            }
             Self::ProcessorControl { strip, control } => {
                 w.u8(37)?;
                 strip.put(w)?;
@@ -1176,6 +1207,18 @@ impl Wire for Request {
                 shape: StripShape::get(r)?,
                 kind: ProcessorKind::get(r)?,
             },
+            72 => Self::CreateProcessedBus {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            70 => Self::SetBusProcessor {
+                bus: BusId::get(r)?,
+                enabled: r.bool()?,
+            },
+            71 => Self::BusProcessorControl {
+                bus: BusId::get(r)?,
+                control: crate::processors::Control::get(r)?,
+            },
             37 => Self::ProcessorControl {
                 strip: StripId::get(r)?,
                 control: crate::processors::Control::get(r)?,
@@ -1288,6 +1331,11 @@ impl Wire for Request {
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::BusProcessor { bus, state } => {
+                w.u8(11)?;
+                bus.put(w)?;
+                state.put(w)
+            }
             Self::Composite(d) => {
                 w.u8(7)?;
                 d.put(w)
@@ -1387,6 +1435,10 @@ impl Wire for crate::ReplacementEdit {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            11 => Self::BusProcessor {
+                bus: BusId::get(r)?,
+                state: crate::processors::Control::get(r)?,
+            },
             7 => Self::Composite(crate::CompositeDescription::get(r)?),
             8 => Self::CompositeSpan {
                 loop_id: LoopSlotId::get(r)?,
@@ -1902,6 +1954,21 @@ impl Wire for RecordedProcessorState {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::BusProcessor { bus, slot } => {
+                w.u8(30)?;
+                bus.put(w)?;
+                slot.put(w)
+            }
+            Self::BusProcessorState {
+                bus,
+                slot,
+                snapshot,
+            } => {
+                w.u8(31)?;
+                bus.put(w)?;
+                slot.put(w)?;
+                snapshot.put(w)
+            }
             Self::RecordedProcessorState {
                 loop_id,
                 content_revision,
@@ -2075,6 +2142,15 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            30 => Self::BusProcessor {
+                bus: BusId::get(r)?,
+                slot: Option::get(r)?,
+            },
+            31 => Self::BusProcessorState {
+                bus: BusId::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                snapshot: crate::processors::Snapshot::get(r)?,
+            },
             17 => Self::RecordedProcessorState {
                 loop_id: LoopSlotId::get(r)?,
                 content_revision: r.u64()?,

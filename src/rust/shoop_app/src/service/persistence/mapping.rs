@@ -664,6 +664,7 @@ impl Candidate {
                 Bus {
                     backend: BackendBusId::from_raw(bus.id.raw()),
                     view: BusState {
+                        latest_input_midi_message: None,
                         id,
                         name: bus.name.clone(),
                         structural_state: StructuralState::Confirmed,
@@ -686,9 +687,25 @@ impl Candidate {
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
-                processor_type: None,
-                processor_state: None,
-                builtin_fx_midi_cc_assignments: Vec::new(),
+                processor_type: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| fx.processor_type.as_str().to_owned()),
+                processor_state: bus.fx.as_ref().map(|fx| fx.state.clone()),
+                builtin_fx_midi_cc_assignments: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| {
+                        fx.midi_cc_assignments
+                            .iter()
+                            .map(|a| BackendBuiltInFxMidiCcAssignment {
+                                parameter: a.parameter,
+                                channel: a.channel,
+                                controller: a.controller,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             });
         }
         if session.bus_display_order.len() != bus_ids.len()

@@ -56,6 +56,10 @@ def smoke(archive: Path, platform: str) -> None:
                 [str(app), "--probe-hosted-processors", "--engine-transport", transport],
                 cwd=root, env=environment, check=True, timeout=180,
             )
+            subprocess.run(
+                [str(app), "--probe-bus-fx", "--engine-transport", transport],
+                cwd=root, env=environment, check=True, timeout=180,
+            )
         for fx, synth in (("auto", "off"), ("off", "auto"), ("off", "off")):
             subprocess.run(
                 [str(app), "--probe-hosted-processors", "--engine-transport", "socket",

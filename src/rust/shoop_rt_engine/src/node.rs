@@ -54,6 +54,11 @@ pub enum EngineOp {
     ProcessorClaim {
         generation: u32,
     },
+    ProcessorBindBus {
+        generation: u32,
+        bus: shoop_rt_protocol::BusId,
+        epoch: rt_runtime::Epoch,
+    },
     ProcessorBind {
         generation: u32,
         strip_generation: u32,
@@ -363,6 +368,7 @@ pub enum EngineNode {
     StripOutput(StripOutput),
     Fader(LoopFader),
     Bus(BusMixer),
+    BusInput(BusMixer),
     Reader(BulkReader),
 }
 
@@ -631,7 +637,7 @@ impl Processor<LoopPlanner, EngineOp> for BusMixer {
         self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        self.render(block)
+        self.render_output(block)
     }
 }
 
@@ -724,6 +730,11 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripOutput(node) => node.ports(),
             Self::Fader(node) => node.ports(),
             Self::Bus(node) => node.ports(),
+            Self::BusInput(node) => PortCounts {
+                audio_inputs: node.channels,
+                audio_outputs: node.channels,
+                ..PortCounts::default()
+            },
             Self::Reader(node) => node.ports(),
             Self::Processor(node) => node.ports(),
         }
@@ -736,6 +747,16 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         if let Self::Processor(node) = self {
             return match operation {
                 EngineOp::ProcessorClaim { generation } => node.claim(context.frame, generation),
+                EngineOp::ProcessorBindBus {
+                    generation,
+                    bus,
+                    epoch,
+                } => {
+                    if context.graph_epoch.checked_next()? != epoch {
+                        return Err(Error::StaleEpoch);
+                    }
+                    node.bind_bus(generation, bus, epoch)
+                }
                 EngineOp::ProcessorBind {
                     generation,
                     strip_generation,
@@ -1075,6 +1096,7 @@ impl StripInput {
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
             | EngineOp::PreviewStop
+            | EngineOp::ProcessorBindBus { .. }
             | EngineOp::ProcessorBind { .. }
             | EngineOp::ProcessorClaim { .. }
             | EngineOp::ProcessorStart { .. }
@@ -1196,6 +1218,7 @@ impl StripOutput {
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
             | EngineOp::PreviewStop
+            | EngineOp::ProcessorBindBus { .. }
             | EngineOp::ProcessorBind { .. }
             | EngineOp::ProcessorClaim { .. }
             | EngineOp::ProcessorStart { .. }
@@ -1304,13 +1327,12 @@ impl LoopFader {
 }
 
 impl BusMixer {
-    pub(crate) fn render(
+    pub(crate) fn render_input(
         &mut self,
         block: &mut ProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
-        let stereo = self.active_channels == 2;
         self.preview_samples[..frames].fill(0.);
         if let Some((mut cursor, remaining, request_id, source_channels)) = self.preview {
             let count = frames.min(remaining as usize);
@@ -1354,6 +1376,22 @@ impl BusMixer {
                 ))
             };
         }
+        for channel in 0..channels {
+            for i in 0..frames {
+                let value = block.audio.input(channel).ok_or(Error::InvalidShape)?[i]
+                    + self.preview_samples[i];
+                block.audio.output(channel).ok_or(Error::InvalidShape)?[i] = value;
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn render_output(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        let frames = block.frames;
+        let channels = self.channels;
+        let stereo = self.active_channels == 2;
         self.gains.fill(frames, &mut self.mute);
         self.bank.fill(&mut self.weights[..frames]);
         self.presence.fill(&mut self.presence_weights[..frames]);
@@ -1362,8 +1400,7 @@ impl BusMixer {
                 let input = block.audio.input(channel).ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
                 for i in 0..frames {
-                    self.scratch[i] =
-                        (input[i] + self.preview_samples[i]) * gains[i] * self.presence_weights[i];
+                    self.scratch[i] = input[i] * gains[i] * self.presence_weights[i];
                 }
                 self.cells.buses[self.slot].raise(channel, peak(&self.scratch[..frames]));
             }
@@ -1495,7 +1532,7 @@ impl EngineNode {
             Self::StripInput(node) => node.apply(operation),
             Self::StripOutput(node) => node.apply(operation),
             Self::Fader(node) => node.apply(operation),
-            Self::Bus(node) => node.apply(operation),
+            Self::Bus(node) | Self::BusInput(node) => node.apply(operation),
             Self::Reader(node) => node.apply(operation),
         }
     }
@@ -1524,7 +1561,8 @@ impl EngineNode {
             Self::StripInput(node) => node.render(block),
             Self::StripOutput(node) => node.render(block),
             Self::Fader(node) => node.render(block),
-            Self::Bus(node) => node.render(block),
+            Self::Bus(node) => node.render_output(block),
+            Self::BusInput(node) => node.render_input(block),
             Self::Reader(node) => node.render(block),
             Self::Processor(node) => node.process(block),
         }
