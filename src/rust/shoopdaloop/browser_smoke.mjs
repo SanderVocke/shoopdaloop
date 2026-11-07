@@ -30,6 +30,7 @@ if (directFileMicrophone && !selfContained) {
 }
 const previewOnly = process.env.PREVIEW_ONLY === '1';
 const previewResume = process.env.PREVIEW_RESUME || '';
+const audioLatencyHint = process.env.SMOKE_AUDIO_LATENCY_HINT || '';
 let previewSuspended = false;
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
@@ -361,11 +362,12 @@ try {
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
     const Original = globalThis.AudioContext;
     if (!Original) return;
+    const latencyHint = ${JSON.stringify(audioLatencyHint)};
     globalThis.shoopSmokeAudioContexts = [];
     globalThis.shoopSmokeAudioEvents = [];
     globalThis.AudioContext = class extends Original {
       constructor(...args) {
-        super(...args);
+        super(...(latencyHint ? [{ ...args[0], latencyHint }] : args));
         globalThis.shoopSmokeAudioContexts.push(new WeakRef(this));
         if (globalThis.shoopSmokeAudioContexts.length > 16) globalThis.shoopSmokeAudioContexts.shift();
         const record = action => {
@@ -539,7 +541,7 @@ try {
     generation: Number(document.getElementById('runtime_status')?.getAttribute('data-audio-generation')),
     ownedMediaTracks: Number(document.getElementById('runtime_status')?.getAttribute('data-owned-media-tracks')),
     callbacks: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-count')),
-    audioContexts: (globalThis.shoopSmokeAudioContexts || []).map(ref => ref.deref()).filter(Boolean).map(context => ({ state: context.state, time: context.currentTime, sampleRate: context.sampleRate })),
+    audioContexts: (globalThis.shoopSmokeAudioContexts || []).map(ref => ref.deref()).filter(Boolean).map(context => ({ state: context.state, time: context.currentTime, sampleRate: context.sampleRate, baseLatency: context.baseLatency })),
     audioEvents: globalThis.shoopSmokeAudioEvents || [],
     frames: Number(document.getElementById('runtime_status')?.getAttribute('data-processed-frames')),
     inputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-input-peak')),
@@ -649,6 +651,9 @@ try {
       throw new Error(`new engine evidence is incomplete: ${JSON.stringify(state)}`);
     }
     if (state.renderMemoryGrowths !== 0 || state.overflows !== 0) throw new Error(`render boundary invariant failed: ${JSON.stringify(state)}`);
+    if (audioLatencyHint && (!state.audioContexts.some(context => context.state === 'running') || state.audioEvents.some(event => event.action === 'error'))) {
+      throw new Error(`browser output faulted during the workflow: ${JSON.stringify({ audioContexts: state.audioContexts, audioEvents: state.audioEvents, recentBrowser })}`);
+    }
     if (webMidi && (state.webMidiTrackDrops !== 0 || state.webMidiTrackRefusals !== 0 || !state.webMidiInputHandler)) throw new Error(`Web MIDI bridge evidence failed: ${JSON.stringify(state)}`);
     console.log(`${selfContained ? (process.env.SELF_CONTAINED_URL ? 'single-file URL' : 'direct-file') : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
   } else if (settingsOnly && settingsUnavailable) {
