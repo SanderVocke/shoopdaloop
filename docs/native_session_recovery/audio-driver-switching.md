@@ -25,6 +25,9 @@ callback. The service polls results and retains confirmed work across client los
 The RT adapter remains independent of device and application hosting code.
 The worker accepts one outstanding service ticket, with two bounded request slots
 and one result slot. Shutdown waits at most five seconds for lifecycle cleanup.
+The host keeps pumping management requests while polling cleanup and worker exit.
+It publishes successful shutdown only after both have finished; cleanup
+errors remain available for later status/result queries and shutdown retries.
 A stalled OS device call retains its worker and remains pending; the service never
 starts a concurrent transition or claims that a timed-out device was reclaimed.
 

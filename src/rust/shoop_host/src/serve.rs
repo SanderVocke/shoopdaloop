@@ -62,6 +62,36 @@ struct Acceptor {
     join: Option<JoinHandle<()>>,
     ports: Receiver<shoop_transport_socket::Port>,
 }
+
+#[derive(Default)]
+pub(crate) struct ShutdownCleanup {
+    deadline: Option<Instant>,
+}
+impl ShutdownCleanup {
+    pub(crate) fn poll(
+        &mut self,
+        service: &mut Service,
+        owner: &mut crate::audio_driver::Owner,
+    ) -> Result<Option<Result<(), String>>> {
+        if self.deadline.is_none() {
+            if !service.shutdown_ready() {
+                return Ok(None);
+            }
+            service
+                .begin_host_cleanup()
+                .map_err(|reason| anyhow!("host cleanup refused: {reason:?}"))?;
+            self.deadline = Some(Instant::now() + crate::audio_driver::CLEANUP_TIMEOUT);
+        }
+        let result = owner.poll_stop().or_else(|| {
+            (Instant::now() >= self.deadline.unwrap())
+                .then(|| Err("audio lifecycle cleanup did not finish".into()))
+        });
+        if result.is_some() {
+            self.deadline = None;
+        }
+        Ok(result)
+    }
+}
 impl Acceptor {
     fn new(
         listener: Listener,
@@ -429,6 +459,7 @@ pub fn run_with_ready(
 
     let mut last = Instant::now();
     let mut finished = None;
+    let mut cleanup = ShutdownCleanup::default();
     loop {
         for _ in 0..4 {
             let Ok(mut port) = data.ports.try_recv() else {
@@ -479,11 +510,7 @@ pub fn run_with_ready(
         }
         service.tick(elapsed);
         last = now;
-        if service.shutdown_ready() {
-            service
-                .begin_host_cleanup()
-                .map_err(|reason| anyhow!("host cleanup refused: {reason:?}"))?;
-            let result = driver_owner.stop();
+        if let Some(result) = cleanup.poll(&mut service, &mut driver_owner)? {
             if result.is_ok() {
                 finished = Some(Instant::now() + Duration::from_secs(2));
             }
