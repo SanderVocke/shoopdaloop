@@ -1,5 +1,5 @@
 use alloc::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
     vec::Vec,
 };
@@ -12,10 +12,52 @@ use crate::{
     mirror::LoopView,
     persistence::{Job, Work},
     prepared::Upload,
+    requests::Purpose,
     EngineClock, RtBackend,
 };
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    fn validate_duplication_composite(&self, source: BackendLoopId) -> Result<()> {
+        let mut pending = Vec::from([source]);
+        let mut seen = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            let entry = self
+                .mirror
+                .live_loop(id)
+                .ok_or_else(|| anyhow!("unknown composite dependency"))?;
+            if entry.track.is_some_and(|track| {
+                !matches!(
+                    self.mirror.tracks[&track].topology,
+                    BackendTrackTopology::Direct { .. }
+                )
+            }) || entry.program_spans.iter().any(|span| {
+                !matches!(
+                    span.mode,
+                    shoop_rt_protocol::LoopMode::Playing
+                        | shoop_rt_protocol::LoopMode::Stopped
+                        | shoop_rt_protocol::LoopMode::Recording
+                )
+            }) {
+                bail!(
+                    "composite duplication requires Direct tracks and Play, Stop or Record events"
+                );
+            }
+            for span in &entry.program_spans {
+                pending.push(
+                    *self
+                        .mirror
+                        .slot_loops
+                        .get(&span.target)
+                        .ok_or_else(|| anyhow!("unknown composite dependency"))?,
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn duplicate_content(
         &mut self,
         source: BackendLoopId,
@@ -47,7 +89,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         {
             bail!("settle conflicting media and composite operations before duplication");
         }
-        if !self.requests.is_empty() {
+        if self
+            .requests
+            .outgoing
+            .iter()
+            .chain(self.requests.in_flight.values())
+            .any(|pending| pending.purpose != Purpose::Preview)
+        {
             return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
                 key: 0,
                 kind: BackendOperationKind::LoopContentReplacement,
@@ -61,6 +109,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ok_or_else(|| anyhow!("unknown duplication source"))?
             .clone();
         let track = from.track.ok_or_else(|| anyhow!("source has no track"))?;
+        if from.program.is_some() {
+            self.validate_duplication_composite(source)?;
+        }
         if from.view.recording_armed
             || from.view.mode.records()
             || from.view.next_mode.is_some_and(|mode| mode.records())
@@ -75,6 +126,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .mirror
                 .live_loop(id)
                 .ok_or_else(|| anyhow!("unknown duplication destination"))?;
+            if entry.program.is_some() {
+                self.validate_duplication_composite(id)?;
+            }
             if entry.track != Some(track)
                 || entry.view.recording_armed
                 || entry.view.mode.records()

@@ -23,6 +23,37 @@ impl Job {
 }
 
 impl Service {
+    fn validate_duplication_document(&self, root: LoopId) -> Result<(), CommandError> {
+        let mut pending = vec![root];
+        let mut seen = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            let Some(active) = self
+                .composites
+                .get(&id)
+                .and_then(|owner| owner.active.as_ref())
+            else {
+                continue;
+            };
+            for event in &active.document.instances {
+                if event.mode.is_some_and(|mode| {
+                    !matches!(
+                        mode,
+                        LoopMode::Stopped | LoopMode::Playing | LoopMode::Recording
+                    )
+                }) {
+                    return Err(CommandError::invalid(
+                        "composite duplication supports only Play, Stop and Record events",
+                    ));
+                }
+                pending.push(event.loop_id);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn duplicate_loop(
         &mut self,
         source: LoopId,
@@ -93,6 +124,9 @@ impl Service {
                 return Err(CommandError::invalid(
                     "settle affected capture and composite edits before duplication",
                 ));
+            }
+            if self.composites.contains_key(id) {
+                self.validate_duplication_document(*id)?;
             }
         }
         let mut composite = self

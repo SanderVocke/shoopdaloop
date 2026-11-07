@@ -98,7 +98,7 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
                 ),
                 Outcome::Confirmed { .. }
             ));
-            let (_, loops) = created(run(
+            let (track, loops) = created(run(
                 &mut f,
                 &mut client,
                 Command::AddTrack(TrackSpec {
@@ -162,6 +162,18 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
                 run(
                     &mut f,
                     &mut client,
+                    Command::Loop {
+                        track,
+                        loop_id: loops[0],
+                        action: LoopAction::DuplicateTo(loops[4]),
+                    }
+                ),
+                Outcome::Confirmed { .. }
+            ));
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
                     transition(vec![loops[2]], LoopMode::Playing)
                 ),
                 Outcome::Confirmed { .. }
@@ -169,6 +181,18 @@ fn nested_processed_composites_execute_dependent_modes_and_round_trip_role_media
             f.render.borrow_mut().run(32, |_, _| 0.5).unwrap();
             f.service.tick(Duration::ZERO);
             drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::Loop {
+                        track,
+                        loop_id: loops[4],
+                        action: LoopAction::DuplicateTo(loops[5]),
+                    }
+                ),
+                Outcome::Confirmed { .. }
+            ));
             if encoded {
                 f.service.detach(ConnectionId(1));
                 client.disconnect();
@@ -2748,6 +2772,149 @@ fn refused_automatic_policy_is_reconciled_without_losing_manual_monitoring_or_re
             .input_monitoring
     );
     assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+#[shoop_test]
+fn duplication_refuses_p17_composites_and_nested_dependencies_without_mutation() {
+    for encoded in [false, true] {
+        let (mut f, mut client, track, loops) = setup_composites(encoded);
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(loops[2], vec![loops[0]], false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let event = client.snapshot().unwrap().composites[0]
+            .active
+            .as_ref()
+            .unwrap()
+            .document
+            .instances[0]
+            .instance_id;
+        for value in [
+            arrangement::Edit::Kind {
+                target: loops[2],
+                kind: CompositeKind::Script,
+            },
+            arrangement::Edit::Mode {
+                target: loops[2],
+                event,
+                mode: LoopMode::Replacing,
+            },
+        ] {
+            assert!(matches!(
+                command(
+                    &mut f.service,
+                    &mut client,
+                    ConnectionId(1),
+                    Command::Composite(value)
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(loops[3], vec![loops[2]], false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let mut transfer = 80;
+        for shadowed in [false, true] {
+            if shadowed {
+                assert!(matches!(
+                    command(
+                        &mut f.service,
+                        &mut client,
+                        ConnectionId(1),
+                        Command::Composite(arrangement::Edit::Relocate {
+                            target: loops[2],
+                            events: vec![event],
+                            start_cycle: 0,
+                            duplicate: true,
+                        })
+                    ),
+                    Outcome::Confirmed { .. }
+                ));
+                let copied = client
+                    .snapshot()
+                    .unwrap()
+                    .composites
+                    .iter()
+                    .find(|view| view.loop_id == loops[2])
+                    .unwrap()
+                    .active
+                    .as_ref()
+                    .unwrap()
+                    .document
+                    .instances
+                    .last()
+                    .unwrap()
+                    .instance_id;
+                assert!(matches!(
+                    command(
+                        &mut f.service,
+                        &mut client,
+                        ConnectionId(1),
+                        Command::Composite(arrangement::Edit::Mode {
+                            target: loops[2],
+                            event: copied,
+                            mode: LoopMode::Playing,
+                        })
+                    ),
+                    Outcome::Confirmed { .. }
+                ));
+                let active = client
+                    .snapshot()
+                    .unwrap()
+                    .composites
+                    .iter()
+                    .find(|view| view.loop_id == loops[2])
+                    .unwrap()
+                    .active
+                    .as_ref()
+                    .unwrap();
+                assert_eq!(active.document.instances[0].mode, Some(LoopMode::Replacing));
+                assert!(active
+                    .prepared
+                    .spans
+                    .iter()
+                    .all(|span| span.mode == LoopMode::Playing));
+            }
+            for source in [loops[2], loops[3]] {
+                for (source, action) in [
+                    (source, LoopAction::Duplicate),
+                    (source, LoopAction::DuplicateTo(loops[1])),
+                    (loops[0], LoopAction::DuplicateTo(source)),
+                ] {
+                    let before = capture_image(&mut f.service, &mut client, transfer, encoded);
+                    release_image(&mut f.service, &mut client, transfer, 1, encoded);
+                    assert!(matches!(
+                        command(
+                            &mut f.service,
+                            &mut client,
+                            ConnectionId(1),
+                            Command::Loop {
+                                track,
+                                loop_id: source,
+                                action,
+                            }
+                        ),
+                        Outcome::Refused { .. }
+                    ));
+                    let after = capture_image(&mut f.service, &mut client, transfer + 1, encoded);
+                    release_image(&mut f.service, &mut client, transfer + 1, 1, encoded);
+                    assert_eq!(before, after);
+                    transfer += 2;
+                }
+            }
+        }
+    }
 }
 
 #[shoop_test]
