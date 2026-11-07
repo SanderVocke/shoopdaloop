@@ -104,7 +104,13 @@ impl Service {
                 return Err(CommandError::invalid("duplicate Replacing target"));
             }
             edits.push(BackendInputEdit::Mode {
-                loop_id: self.input_target(*id)?,
+                loop_id: {
+                    let entry = self.loop_entry(*id)?;
+                    if self.composites.contains_key(id) {
+                        return Err(CommandError::invalid("Replacing requires primitive loops"));
+                    }
+                    entry.backend
+                },
                 mode: BackendLoopMode::Replacing,
                 position: None,
             });

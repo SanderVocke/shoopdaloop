@@ -568,7 +568,10 @@ impl Service {
                 Ok(Ok(validated)) => {
                     let result = self.target_current(key, target).and_then(|()| {
                         self.prepare_image(authority, key, target, validated)
-                            .map_err(|_| Refusal::Invalid)
+                            .map_err(|error| {
+                                tracing::warn!(error = %error, "service.persistence.prepare_refused");
+                                Refusal::Invalid
+                            })
                     });
                     match result {
                         Ok(ready) => {

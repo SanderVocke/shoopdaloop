@@ -103,6 +103,13 @@ fn preserves_prefix(
 }
 
 impl Resolver {
+    pub(crate) fn pending_program_topology(&self) -> Option<&PreparedTopology> {
+        self.program_change
+            .as_ref()
+            .filter(|change| change.activated_epoch.is_none())
+            .map(|change| &change.candidate)
+    }
+
     /// Retain one owning program change until its eligible boundary and result collection.
     ///
     /// Only this composite's program/compiled nominal length may change. Logical identities,

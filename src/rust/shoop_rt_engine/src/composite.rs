@@ -61,13 +61,6 @@ impl ControlEndpoint {
             .copied()
             .flatten()
             .ok_or(Refusal::InvalidId)?;
-        if previous
-            .strip
-            .and_then(|id| self.model.strip(id))
-            .is_some_and(|strip| strip.processor.is_some())
-        {
-            return Err(Refusal::Unsupported);
-        }
         if let Some(old) = d.previous {
             if old != previous.id
                 || previous.program.is_some()
@@ -168,13 +161,16 @@ impl ControlEndpoint {
                     .model
                     .find_loop(span.target)
                     .ok_or(Refusal::InvalidId)?;
+                if span.mode == LoopMode::Replacing && !self.input.replacing_supported() {
+                    return Err(Refusal::Unsupported);
+                }
                 if matches!(
                     span.mode,
                     LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
-                ) || child
+                ) && child
                     .strip
                     .and_then(|id| self.model.strip(id))
-                    .is_some_and(|strip| strip.processor.is_some())
+                    .is_none_or(|strip| strip.processor.is_none())
                 {
                     return Err(Refusal::Unsupported);
                 }
@@ -185,7 +181,8 @@ impl ControlEndpoint {
                     || span.occurrence_start != span.start
                     || span.ordinal >= d.entries
                     || d.kind == CompositeKind::Regular && span.mode != LoopMode::Playing
-                    || child.program.is_some() && span.mode == LoopMode::Recording
+                    || child.program.is_some()
+                        && !matches!(span.mode, LoopMode::Playing | LoopMode::Stopped)
                     || self.composite.received.checked_sub(1).is_some_and(|i| {
                         let old = self.composite.spans[i];
                         old.target > span.target

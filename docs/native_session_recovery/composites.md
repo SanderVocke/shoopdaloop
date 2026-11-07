@@ -2,9 +2,13 @@
 
 Status: the direct-track core is COMPLETE under [P03](feature-parity.md) and
 [the implementation plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_P03_COMPOSITES.md). The public composite
-capability covers regular programs and explicit Play/Stop/Record events. Replacing
-and dry/wet interactions remain OPEN in the separate
-[P17 item](feature-parity.md#p17-composite-mode-integration), depending on P05/P06/P07.
+capability covers regular programs and explicit Play/Stop/Record events. Authored
+Replacing runs on Direct and negotiated dry/wet primitive targets. Authored dry
+playback and wet rerecord run on dry/wet primitives. These interactions are
+complete under
+[P17](feature-parity.md#p17-composite-mode-integration);
+[PR #952](https://github.com/SanderVocke/shoopdaloop/pull/952) records native,
+packaged and AudioWorklet acceptance, with the approved web-debug CI exception.
 See [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md#final-acceptance-and-closure) for
 the approved scope and final implementation checks.
 
@@ -109,6 +113,27 @@ storage calculations rather than estimating only raw entry bytes. Existing
 single-owner program staging may serialize edit publication; saturation refuses
 new work before acceptance and never stops admitted autonomous playback.
 
+Authored Replacing reserves one prepared writer per referenced primitive target,
+including empty children, stopped programs and candidates. Empty children reserve
+writer slots before a future Record can begin. Reservations share the negotiated
+writer/media pools with primitive input edits. Admission waits for bounded MIDI
+index preparation and refuses if the complete candidate cannot be prepared.
+A failed candidate releases its partial reservations and leaves playback intact.
+Dry-media/timing changes invalidate an inactive reservation; cancellation, removal
+and shutdown release it. A graph/source-generation change can rebind an inactive
+writer only for the same physical source and unchanged media/timing fence.
+
+Each active dry/wet replacement writes retained dry audio/MIDI and processed wet
+audio as one prepared transaction. Wet and dry have separate channel windows and
+immutable snapshot owners, including unequal widths. Record→Replace attaches the
+completed recording at the actual cut. Processor settings are captured at that
+render-owned boundary. Replacing never depends on a controller at event boundaries.
+
+Normal Record replaces an unused fixed cache with a streaming MIDI follower.
+Stopping seals that prepared index, so a short gap before Replacing requires no
+reimport. Wet rerecord preserves the dry/MIDI cache and refreshes the wet fork at
+the actual cut; a partial subsequent Replace retains the newly rerecorded wet tail.
+
 ## Production preparation and publication
 
 The pure `shoop_loop_plan` compiler is shared by loop preparation and adapters.
@@ -147,7 +172,7 @@ Resync carries the complete active spans, source, ownership and repeat policy.
 | Application elapsed-time fallback, one section per pump and discarded overshoot | Superseded by render-owned frame progression. |
 | Safe future-only live edits and deferred wrap edits | Preserve using the prepared frame timeline and real restart eligibility. |
 | Automatic monitoring, persistence and socket recovery | Restore with authoritative service/host ownership. |
-| Replacing/dry-wet script events | Depend on P05/P06/P07; full P03 closure remains gated on these interactions. |
+| Replacing/dry-wet script events | All three modes are integrated through production service, adapter, engine and files. P17 completes their nested, role-aware and platform interaction acceptance. P03 remains closed for its approved direct-track core. |
 
 Retain old-stack fixtures as historical evidence. New-library and production tests
 must describe the new contract explicitly, including source stop/restart/resize,
@@ -226,6 +251,10 @@ capture takes a new complete metadata cut. Active, scheduled or nested future
 recording demand refuses capture; selected-child export also checks its parents.
 Manual input monitoring is saved separately from automatic demand.
 
+Primitive sync-family imports can coexist with composite programs. Only the
+primitive periods are retimed; accepted composite geometry stays frozen. A
+conversion family containing a composite member still refuses as a whole.
+
 Private replacement creates every loop identity before binding composite spans,
 checks the complete action/sync DAG and aggregate capacities, and installs all
 loops stopped at one activation. Its strip preset includes automatic-monitoring
@@ -233,5 +262,7 @@ policy, so the first recording quantum after load needs no policy-repair poll.
 Primitive topology seed lengths remain stable through subsequent program edits;
 current media lengths continue to come from render-owned content state. Invalid
 or cancelled candidates retain the old playing plans and monitoring policy.
-Replacing/dry-wet event modes still refuse complete files until their production
-capabilities exist.
+Dry/wet composite files preserve named media roles, processor state and frozen
+geometry. Unsupported target modes/topologies refuse the whole document. Private
+replacement also prepares future Replacing writers before publication; a loaded
+program can start on its first Play without a repair poll.

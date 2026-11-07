@@ -56,6 +56,52 @@ mod tests {
     }
 
     #[shoop_test]
+    fn primitive_family_retime_preserves_composite_state_and_refuses_composite_members_atomically()
+    {
+        let topology = compile(
+            Limits::default(),
+            &TopologyDescription {
+                loops: vec![
+                    LoopSpec {
+                        id: id(0),
+                        kind: LoopKind::Primitive,
+                        length: 96,
+                        sync_source: None,
+                    },
+                    LoopSpec {
+                        id: id(1),
+                        kind: LoopKind::Composite,
+                        length: 0,
+                        sync_source: None,
+                    },
+                ],
+                programs: vec![ProgramDescription {
+                    source: id(1),
+                    nominal_unit_frames: 32,
+                    sections: vec![],
+                }],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(32).unwrap()).unwrap();
+        let original = resolver.state(id(0)).unwrap();
+        let composite = resolver.state(id(1)).unwrap();
+        assert_eq!(
+            assert_no_heap(
+                || resolver.retime_content([change(0, 96, 128), change(1, 0, 32)].into_iter())
+            ),
+            Err(Error::InvalidState)
+        );
+        assert_eq!(resolver.state(id(0)).unwrap(), original);
+        assert_no_heap(|| resolver.retime_content(core::iter::once(change(0, 96, 128)))).unwrap();
+        tick(&mut resolver);
+        assert_eq!(resolver.state(id(0)).unwrap().content_length, 128);
+        assert_eq!(resolver.state(id(1)).unwrap(), composite);
+    }
+
+    #[shoop_test]
     fn family_retime_preserves_wraps_cycles_pending_counts_and_unrelated_playback() {
         let mut resolver = resolver();
         for slot in 0..3 {
@@ -252,13 +298,10 @@ impl Resolver {
         &mut self,
         changes: impl Iterator<Item = ContentRetime> + Clone,
     ) -> Result<(), Error> {
-        if self
-            .topology
-            .nodes()
-            .iter()
-            .any(|node| node.kind != LoopKind::Primitive)
-        {
-            return Err(Error::InvalidState);
+        for change in changes.clone() {
+            if self.topology.node(change.target)?.kind != LoopKind::Primitive {
+                return Err(Error::InvalidState);
+            }
         }
         self.update_content(changes)
     }

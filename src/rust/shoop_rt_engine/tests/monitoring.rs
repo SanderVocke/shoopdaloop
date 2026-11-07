@@ -21,27 +21,61 @@ fn aligned(h: &mut Harness, q: usize) -> u64 {
     h.frame()
 }
 fn setup(q: usize) -> Harness {
+    setup_kind(q, false)
+}
+fn setup_kind(q: usize, processed: bool) -> Harness {
     let mut d = description();
+    d.external_dry_wet = processed;
     d.segments[1].loops = 4;
     d.quantum = q;
     d.max_frames = 128;
     d.ramp_frames = 0;
     let mut h = Harness::new(&d);
-    h.done(Request::CreateStrip {
-        strip: strip(0, 1),
-        shape: shape(1, 1, true),
+    h.done(if processed {
+        Request::CreateProcessedStrip {
+            strip: strip(0, 1),
+            shape: StripShape {
+                midi_output: false,
+                ..shape(1, 1, true)
+            },
+            kind: ProcessorKind::External,
+        }
+    } else {
+        Request::CreateStrip {
+            strip: strip(0, 1),
+            shape: shape(1, 1, true),
+        }
     });
     for (kind, host) in [
         (PortKind::AudioIn, audio_in(0)),
         (PortKind::AudioOut, audio_out(0)),
         (PortKind::MidiIn, midi_in()),
-        (PortKind::MidiOut, midi_out()),
+        (
+            if processed {
+                PortKind::MidiSend
+            } else {
+                PortKind::MidiOut
+            },
+            midi_out(),
+        ),
     ] {
         h.done(Request::Connect {
             port: port(strip(0, 1), kind, 0),
             host,
             connected: true,
         });
+    }
+    if processed {
+        for (kind, host) in [
+            (PortKind::AudioReturn, audio_in(1)),
+            (PortKind::AudioSend, audio_out(1)),
+        ] {
+            h.done(Request::Connect {
+                port: port(strip(0, 1), kind, 0),
+                host,
+                connected: true,
+            });
+        }
     }
     for index in [0, 1] {
         h.done(Request::CreateLoop {
@@ -57,7 +91,15 @@ fn setup(q: usize) -> Harness {
         strip: strip(0, 1),
         control: StripControl::AutomaticMonitoring(true),
     });
-    h.input = Box::new(|port, _| if port == 0 { 0.25 } else { 0. });
+    h.input = Box::new(move |port, _| {
+        if port == 0 {
+            0.25
+        } else if processed {
+            -0.75
+        } else {
+            0.
+        }
+    });
     h
 }
 fn span(target: u32, start: u64, end: u64, mode: LoopMode) -> CompositeSpan {
@@ -139,6 +181,188 @@ fn packets(bytes: &[u8]) -> Vec<(u64, Vec<u8>)> {
         rest = &rest[12 + len..];
     }
     result
+}
+
+#[shoop_test]
+fn authored_record_to_replace_keeps_exact_paired_media_without_a_controller_at_the_boundary() {
+    for q in [1, 16, 32, 64, 128] {
+        for processed in [false, true] {
+            let mut h = setup_kind(q, processed);
+            let mut d = description_for(3, 1, 1, 4 * q, 4, CompositeKind::Explicit, None);
+            d.quantum = q as u32;
+            install(
+                &mut h,
+                d,
+                &[
+                    span(1, 0, 1, LoopMode::Recording),
+                    CompositeSpan {
+                        ordinal: 1,
+                        ..span(1, 1, 3, LoopMode::Replacing)
+                    },
+                    CompositeSpan {
+                        ordinal: 2,
+                        ..span(1, 3, 4, LoopMode::Playing)
+                    },
+                ],
+            );
+            let origin = aligned(&mut h, q);
+            h.midi_input.push((origin, vec![0x90, 60, 100]));
+            h.midi_input
+                .push((origin + 8 * q as u64, vec![0x90, 69, 100]));
+            h.midi_input
+                .push((origin + 9 * q as u64, vec![0x80, 69, 0]));
+            h.send(transport(3, LoopMode::Playing));
+            h.run(20 * q, 7);
+            let (length, audio, _) = h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 });
+            assert_eq!(length, (4 * q) as u64, "q={q}");
+            assert_eq!(
+                audio,
+                vec![if processed { -0.75 } else { 0.25 }; 4 * q],
+                "q={q} processed={processed}"
+            );
+            let (_, _, midi) = h.read(loop_id(1, 1), BulkSelector::Midi);
+            let events = packets(&midi);
+            assert!(
+                events.contains(&(0, vec![0x90, 69, 100])),
+                "q={q}: {events:?}"
+            );
+            assert!(
+                events.contains(&(q as u64, vec![0x80, 69, 0])),
+                "q={q}: {events:?}"
+            );
+            assert!(!events.iter().any(|(_, bytes)| bytes == &[0x90, 60, 100]));
+            assert!(!automatic(&h));
+            if processed {
+                let origin = aligned(&mut h, q);
+                h.send(transport(1, LoopMode::PlayingDryThroughWet));
+                h.run(3 * q, 7);
+                assert_eq!(
+                    &h.outputs[1][origin as usize + 2 * q..origin as usize + 3 * q],
+                    &vec![0.25; q]
+                );
+            }
+        }
+    }
+}
+
+#[shoop_test]
+fn authored_record_replace_accepts_existing_content_and_a_short_gap_after_dense_midi_recording() {
+    for processed in [false, true] {
+        for partition in [1, 3, 7] {
+            for seeded in [true, false] {
+                for gap in [0, 1] {
+                    let mut h = setup_kind(1, processed);
+                    if seeded {
+                        h.send(transport(1, LoopMode::Recording));
+                        h.run(8, 1);
+                        h.done(transport(1, LoopMode::Stopped));
+                    }
+                    let mut events = vec![span(1, 0, 128, LoopMode::Recording)];
+                    if gap != 0 {
+                        events.push(CompositeSpan {
+                            ordinal: 1,
+                            ..span(1, 128, 129, LoopMode::Stopped)
+                        });
+                    }
+                    events.push(CompositeSpan {
+                        ordinal: 2,
+                        ..span(1, 128 + gap, 256 + gap, LoopMode::Replacing)
+                    });
+                    events.push(CompositeSpan {
+                        ordinal: 3,
+                        ..span(1, 256 + gap, 260 + gap, LoopMode::Playing)
+                    });
+                    install(
+                        &mut h,
+                        description_for(3, 1, 1, 1, 260 + gap, CompositeKind::Explicit, None),
+                        &events,
+                    );
+                    let origin = h.frame();
+                    h.midi_input.extend((0..1000).map(|i| {
+                        (
+                            origin + i / 8,
+                            vec![
+                                if i % 2 == 0 { 0x90 } else { 0x80 },
+                                60 + (i / 2 % 12) as u8,
+                                64,
+                            ],
+                        )
+                    }));
+                    h.input = Box::new(move |port, frame| {
+                        let sample = if frame < origin + 128 { 0.25 } else { 0.75 };
+                        if port == 0 {
+                            sample
+                        } else {
+                            -sample
+                        }
+                    });
+                    h.send(transport(3, LoopMode::Playing));
+                    h.run((264 + gap) as usize, partition);
+                    let (length, audio, _) =
+                        h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 });
+                    assert_eq!(length, 128, "seeded={seeded} gap={gap}");
+                    assert_eq!(
+                        audio,
+                        vec![if processed { -0.75 } else { 0.75 }; 128],
+                        "seeded={seeded} gap={gap}"
+                    );
+                    let (_, _, midi) = h.read(loop_id(1, 1), BulkSelector::Midi);
+                    assert!(packets(&midi).is_empty(), "seeded={seeded} gap={gap}");
+                }
+            }
+        }
+    }
+}
+
+#[shoop_test]
+fn partial_replacing_after_wet_rerecord_retains_the_new_wet_tail_and_original_dry_tail() {
+    for gap in [0, 1] {
+        let mut h = setup_kind(1, true);
+        h.send(transport(1, LoopMode::Recording));
+        h.run(8, 1);
+        h.done(transport(1, LoopMode::Stopped));
+        install(
+            &mut h,
+            description_for(3, 1, 1, 1, 18 + gap, CompositeKind::Explicit, None),
+            &[
+                span(1, 0, 8, LoopMode::RecordingDryIntoWet),
+                CompositeSpan {
+                    ordinal: 1,
+                    ..span(1, 8 + gap, 10 + gap, LoopMode::Replacing)
+                },
+                CompositeSpan {
+                    ordinal: 2,
+                    ..span(1, 10 + gap, 18 + gap, LoopMode::Playing)
+                },
+            ],
+        );
+        let origin = h.frame();
+        h.input = Box::new(move |port, frame| {
+            if port == 0 {
+                0.9
+            } else if frame < origin + 8 {
+                0.5
+            } else {
+                0.75
+            }
+        });
+        h.send(transport(3, LoopMode::Playing));
+        h.run((20 + gap) as usize, 1);
+        let (length, roles, _) = h.read(loop_id(1, 1), BulkSelector::AudioRoles);
+        assert_eq!(length, 8);
+        for (frame, role) in roles.chunks_exact(4).enumerate() {
+            assert_eq!(
+                role[0],
+                if frame < 2 { 0.9 } else { 0.25 },
+                "dry frame {frame}"
+            );
+            assert_eq!(
+                role[2],
+                if frame < 2 { 0.75 } else { 0.5 },
+                "wet frame {frame}"
+            );
+        }
+    }
 }
 
 #[shoop_test]

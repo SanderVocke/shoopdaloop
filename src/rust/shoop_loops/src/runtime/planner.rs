@@ -203,6 +203,7 @@ impl LoopPlanner {
             }
         };
         let mut take = Take {
+            started_at: self.resolver.frame(),
             writer: None,
             windows,
             revision: decision.state.capture_revision,
@@ -304,6 +305,7 @@ impl LoopPlanner {
             channel.raw_frames = None;
         }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            started_at: self.resolver.frame(),
             windows,
             writer: None,
             revision: decision.state.capture_revision,
@@ -525,7 +527,7 @@ impl LoopPlanner {
         let take = row.active.ok_or(Error::InvalidState)?;
         let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } if *target==row.binding.target));
         if let Some(id) = take.writer {
-            let (frames, [audio, midi]) = self
+            let (frames, sources) = self
                 .shared
                 .as_mut()
                 .ok_or(Error::InvalidState)?
@@ -538,11 +540,11 @@ impl LoopPlanner {
             if frames != expected {
                 return Err(Error::InvalidState);
             }
-            self.rows[slot].as_mut().unwrap().frozen = if row.binding.channels > 0 {
-                [audio, midi, None]
-            } else {
-                [midi, None, None]
-            };
+            let frozen = &mut self.rows[slot].as_mut().unwrap().frozen;
+            *frozen = [None; 3];
+            for (index, source) in sources.into_iter().flatten().enumerate() {
+                frozen[index] = Some(source);
+            }
         }
         if let Some(token) = take.token {
             let mut output = [None; 3];
@@ -603,6 +605,9 @@ impl LoopPlanner {
                         let row = self.rows[slot].as_mut().expect("completed capture");
                         row.windows = take.windows;
                         row.length_override = None;
+                        if take.edit.is_some() {
+                            self.refresh_wet_reservation(slot, decision, frame, io)?;
+                        }
                     }
                 }
             }
@@ -673,14 +678,21 @@ impl LoopPlanner {
                 row.next_bank = 1 - take.bank;
                 row.failure = None;
             }
-            if let Some(shared) = &mut self.shared {
+            if let Some(shared) = &self.shared {
                 if let Some(id) = shared.live_for(decision.state.id) {
                     let job = shared.live_job(id)?;
                     if job.following_recording.is_some_and(|revision| {
                         decision.state.mode != Mode::Recording
                             || revision != decision.state.capture_revision
                     }) {
-                        shared.cancel_live(id, io)?;
+                        if !(job.autonomous
+                            && self.replacing_targets[slot]
+                            && self
+                                .seal_recording_reservation(slot, id, decision, frame, io)
+                                .is_ok())
+                        {
+                            self.shared.as_mut().unwrap().cancel_live(id, io)?;
+                        }
                     }
                 }
             }
@@ -740,7 +752,10 @@ impl LoopPlanner {
                 lead: eta.is_some(),
                 decision,
                 dry_wet: row.dry_wet,
-                pre_recording: matches!(next, Some(Transition::Record { .. })),
+                pre_recording: matches!(
+                    next,
+                    Some(Transition::Record { .. } | Transition::ReplaceInput { .. })
+                ),
                 pre_rerecording: matches!(next, Some(Transition::Rerecord)),
                 replace: row.active.as_ref().and_then(|take| take.edit),
                 auxiliary: media
@@ -845,13 +860,11 @@ impl LoopPlanner {
         let mut sources = [None; 3];
         let result = (|| {
             if let Some(writer) = take.writer {
-                let [audio, midi] = self
+                sources = self
                     .shared
                     .as_mut()
                     .ok_or(Error::InvalidState)?
                     .snapshot_live(writer, frame, io)?;
-                sources[0] = audio;
-                sources[2] = midi;
             } else {
                 for (member, resource) in row.resources[take.bank][usize::from(row.dry_wet)]
                     .iter()
@@ -1094,6 +1107,7 @@ impl Planner for LoopPlanner {
         Ok(())
     }
     fn begin_tick(&mut self, mut context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
+        let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
         if let Some(shared) = &mut self.shared {
             shared.progress(context.callback_start, &mut context.resources)?;
         }
@@ -1483,7 +1497,16 @@ impl LoopPlanner {
                 }
                 Operation::TopologyStatus { id } => Some(id),
                 Operation::TopologyValidate { id } => {
-                    let progress = self.topologies.validate(id)?;
+                    let mut progress = self.topologies.validate(id)?;
+                    if progress.ready {
+                        progress.ready = self
+                            .prepare_program_inputs(context.frame, &mut context.resources)?
+                            && self.prepare_candidate_inputs(
+                                id,
+                                context.frame,
+                                &mut context.resources,
+                            )?;
+                    }
                     return Ok(Disposition::Complete(Reply::TopologyProgress {
                         id,
                         progress,
@@ -1517,10 +1540,18 @@ impl LoopPlanner {
                 _ => None,
             };
             if let Some(id) = topology_status {
-                return Ok(Disposition::Complete(Reply::TopologyStatus {
-                    id,
-                    status: self.topologies.status(id)?,
-                }));
+                let mut status = self.topologies.status(id)?;
+                if status == crate::topology::staging::Status::Ready
+                    && !(self.prepare_program_inputs(context.frame, &mut context.resources)?
+                        && self.prepare_candidate_inputs(
+                            id,
+                            context.frame,
+                            &mut context.resources,
+                        )?)
+                {
+                    status = crate::topology::staging::Status::Validating;
+                }
+                return Ok(Disposition::Complete(Reply::TopologyStatus { id, status }));
             }
             match operation {
                 Operation::ProgramActivate {
@@ -2109,6 +2140,7 @@ impl LoopPlanner {
             }
             self.settle(context.frame, &mut context.resources)?;
             self.resolver.commit().map_err(runtime_error)?;
+            let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
             if let Some(permit) = permit {
                 self.graph_epoch = permit.commit();
             }

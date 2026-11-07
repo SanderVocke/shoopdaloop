@@ -93,12 +93,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             let changes_media = matches!(
                 edit.intent,
-                InputIntent::Grab { .. }
-                    | InputIntent::Gesture { .. }
-                    | InputIntent::Mode {
-                        mode: shoop_rt_protocol::LoopMode::Replacing,
-                        ..
-                    }
+                InputIntent::Grab { .. } | InputIntent::Gesture { .. }
             );
             if changes_media
                 && entry
@@ -111,7 +106,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         )
                     })
             {
-                return Err(anyhow!("Grab and Replacing require a direct track"));
+                return Err(anyhow!("Grab requires a direct track"));
             }
         }
         let sequence = self.requests.reserve_mutation();

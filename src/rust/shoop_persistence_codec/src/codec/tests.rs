@@ -289,7 +289,6 @@ fn legacy_composite_migration_uses_saved_lengths_and_unsupported_modes_refuse_wh
         .unwrap()
         .kind = CompositeKindDocument::Script;
     for (mode, diagnostic) in [
-        ("replacing", "replacing composite events"),
         ("playing_dry_through_wet", "dry/wet composite events"),
         ("recording_dry_into_wet", "dry/wet composite events"),
     ] {
@@ -306,6 +305,26 @@ fn legacy_composite_migration_uses_saved_lengths_and_unsupported_modes_refuse_wh
             .to_string();
         assert!(error.contains(diagnostic), "{mode}: {error}");
     }
+    for event in &mut bundle.document.track_groups[1].tracks[0].loops[1]
+        .composite
+        .as_mut()
+        .unwrap()
+        .instances
+    {
+        event.mode = Some("replacing".into());
+    }
+    let restored = document::from_bundle(bundle).unwrap();
+    let image::Manifest::Session(session) = &restored.manifest else {
+        panic!()
+    };
+    assert!(session.tracks[0].loops[1]
+        .composite
+        .as_ref()
+        .unwrap()
+        .document
+        .instances
+        .iter()
+        .all(|event| event.mode == Some(LoopMode::Replacing)));
 }
 
 #[shoop_test]

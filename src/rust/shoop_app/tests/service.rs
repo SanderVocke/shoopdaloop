@@ -3063,12 +3063,22 @@ fn stage_image(
     image: std::sync::Arc<persistence_image::Image>,
     encoded: bool,
 ) -> persistence::Key {
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    stage_image_target(service, client, transfer, image, target, encoded)
+}
+fn stage_image_target(
+    service: &mut Service,
+    client: &mut Client,
+    transfer: u64,
+    image: std::sync::Arc<persistence_image::Image>,
+    target: persistence::Target,
+    encoded: bool,
+) -> persistence::Key {
     let key = persistence::Key {
         transfer: TransferId(transfer),
         epoch: client.snapshot().unwrap().persistence_epoch,
-    };
-    let target = persistence::Target::Session {
-        revision: client.snapshot().unwrap().revision,
     };
     if encoded {
         let mut stream = persistence_transfer::UploadStream::new(image, key, target).unwrap();

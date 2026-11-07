@@ -318,7 +318,7 @@ impl Validator {
                         return Err(Error::InvalidProgram);
                     }
                     if p.kind == ProgramKind::Regular && value.mode != Mode::Playing
-                        || value.mode.records()
+                        || !matches!(value.mode, Mode::Playing | Mode::Stopped)
                             && t.nodes[self.node(t, row.target)?].kind == LoopKind::Composite
                     {
                         return Err(Error::InvalidProgram);

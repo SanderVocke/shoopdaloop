@@ -70,7 +70,7 @@ fn old_playback(h: &mut Harness) -> LoopSlotId {
 }
 
 #[shoop_test]
-fn replacement_refuses_processed_composite_owners_without_interrupting_old_playback() {
+fn replacement_prepares_processed_composite_owners_without_interrupting_old_playback() {
     let mut d = description();
     d.external_dry_wet = true;
     let mut h = Harness::new(&d);
@@ -164,14 +164,7 @@ fn replacement_refuses_processed_composite_owners_without_interrupting_old_playb
                 },
             },
         );
-        assert_eq!(
-            h.apply(Request::ReplacementPrepare { id }),
-            if processed {
-                Outcome::Refused(Refusal::Unsupported)
-            } else {
-                Outcome::Done
-            }
-        );
+        h.done(Request::ReplacementPrepare { id });
         h.done(Request::ReplacementCancel { id });
     }
     h.run(16, 4);

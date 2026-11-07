@@ -392,6 +392,22 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
 
 pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     let mut unsupported = BTreeSet::new();
+    let dry_targets: BTreeSet<_> = doc
+        .track_groups
+        .iter()
+        .flat_map(|group| &group.tracks)
+        .filter(|track| {
+            matches!(
+                track.topology,
+                TrackTopologyDocument::DryWetExternal { .. }
+                    | TrackTopologyDocument::BuiltInFx { .. }
+                    | TrackTopologyDocument::OxiSynth
+            )
+        })
+        .flat_map(|track| &track.loops)
+        .filter(|content| content.composite.is_none())
+        .map(|content| content.id)
+        .collect();
     if !doc.scripts.is_empty() {
         unsupported.insert("session scripts/resources (P16)");
     }
@@ -446,11 +462,12 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                 if let Some(composite) = &content.composite {
                     for event in &composite.instances {
                         match event.mode.as_deref() {
-                            Some("replacing") => {
-                                unsupported.insert("replacing composite events (P05)");
-                            }
-                            Some("playing_dry_through_wet" | "recording_dry_into_wet") => {
-                                unsupported.insert("dry/wet composite events (P06)");
+                            Some("playing_dry_through_wet" | "recording_dry_into_wet")
+                                if !dry_targets.contains(&event.loop_id) =>
+                            {
+                                unsupported.insert(
+                                    "dry/wet composite events require a dry/wet primitive (P17)",
+                                );
                             }
                             _ => {}
                         }

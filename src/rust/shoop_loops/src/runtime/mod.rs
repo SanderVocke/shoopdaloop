@@ -25,6 +25,7 @@ mod configuration;
 mod input_batch;
 pub use input_batch::{InputAction, InputEdit, INPUT_BATCH_RECORD_BYTES};
 mod family;
+mod program_inputs;
 mod shared;
 pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
 pub use shared::{
@@ -556,6 +557,7 @@ pub struct View {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    started_at: Frame,
     windows: Windows,
     writer: Option<LiveWriterId>,
     revision: Revision,
@@ -671,6 +673,7 @@ pub struct LoopPlanner {
     failures: Vec<crate::Observation>,
     input_batch: input_batch::InputBatch,
     family: Vec<family::Selection>,
+    replacing_targets: Box<[bool]>,
 }
 
 /// Preparation choices beyond the loops themselves; the default enables none.
@@ -773,6 +776,7 @@ impl LoopPlanner {
                 size_of::<Row>()
                     + size_of::<MidiState>()
                     + size_of::<View>()
+                    + size_of::<bool>()
                     + size_of::<family::Selection>(),
             )
             .and_then(|n| {
@@ -1030,6 +1034,10 @@ impl LoopPlanner {
         for value in &mut inputs {
             *core::hint::black_box(value) = MidiState::default();
         }
+        let mut replacing_targets = vec![false; slots].into_boxed_slice();
+        for value in &mut replacing_targets {
+            *core::hint::black_box(value) = false;
+        }
         let failure_capacity = slots
             .checked_mul(2)
             .and_then(|n| n.checked_add(limits.pending_requests))
@@ -1054,6 +1062,7 @@ impl LoopPlanner {
             failures,
             input_batch: input_batch::InputBatch::prepare(slots, dummy)?,
             family: family::prepare(slots, dummy),
+            replacing_targets,
         };
         Ok(Prepared {
             planner,
@@ -1090,7 +1099,7 @@ impl LoopPlanner {
                 .decision
                 .state
                 .mode;
-            activity.recording |= mode == Mode::Recording;
+            activity.recording |= matches!(mode, Mode::Recording | Mode::Replacing);
             activity.playing_dry |= mode == Mode::PlayingDryThroughWet;
             activity.rerecording |= mode == Mode::RecordingDryIntoWet;
             let view = &self.views[row.binding.target.slot() as usize];
@@ -1110,7 +1119,7 @@ impl LoopPlanner {
             .filter(|row| row.assigned && row.dry_wet && row.history_source == source)
         {
             let slot = row.binding.target.slot() as usize;
-            if self.views[slot].decision.state.mode.records() {
+            if self.views[slot].decision.state.writes() {
                 row.aborted = true;
                 row.failure = Some(reason);
                 self.views[slot].capture = None;
@@ -1128,9 +1137,11 @@ impl LoopPlanner {
             (row.assigned
                 && row.dry_wet
                 && row.history_source == source
-                && state.mode.records()
-                && state.capture_frames == 0)
-                .then_some((row.binding.target, state.capture_revision))
+                && state.writes()
+                && row
+                    .active
+                    .is_some_and(|take| take.started_at == self.resolver.frame()))
+            .then_some((row.binding.target, state.capture_revision))
         })
     }
 
