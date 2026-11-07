@@ -548,3 +548,10 @@ select a different renderer in any reported benchmark.
   repetitions on one CPU with a competing 25%-duty worker. A heavier worker also
   exposed unrelated startup deadlines; those were not relaxed. The measured
   production source and archived benchmark data are unchanged by this fixture fix.
+
+- Browser CI diagnostics exposed unread child stdout/stderr pipes in the smoke
+  runner. Child output is now discarded; verbose tracing no longer blocks the
+  child on a full pipe. JavaScript syntax validation passes. This harness fix
+  does not resolve the separate hosted-import stall, which is also present in
+  the base branch's Debug CI artifact. Its completion path remains under
+  investigation; phase deadlines and production renderer settings are unchanged.

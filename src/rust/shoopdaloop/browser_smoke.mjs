@@ -59,7 +59,7 @@ const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
 
 function start(command, args, options = {}) {
-  const child = spawn(command, args, { stdio: 'pipe', ...options });
+  const child = spawn(command, args, { stdio: 'ignore', ...options });
   children.push(child);
   return child;
 }
