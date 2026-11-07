@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -57,9 +57,19 @@ const selfContainedUrl = process.env.SELF_CONTAINED_URL || pathToFileURL(selfCon
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-chrome-'));
 const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
+const childOutput = new Map();
+const recentBackend = [];
+const checkpoints = [];
+let lastObservedState;
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, { stdio: 'pipe', ...options });
+  const output = { command, stderr: '' };
+  childOutput.set(child, output);
+  child.stdout?.resume();
+  child.stderr?.on('data', data => {
+    output.stderr = (output.stderr + data.toString()).slice(-8192);
+  });
   children.push(child);
   return child;
 }
@@ -208,6 +218,14 @@ try {
       }
     }
     if (message.method === 'Runtime.exceptionThrown') failures.push(message);
+    if (message.method === 'Runtime.consoleAPICalled') {
+      for (const argument of message.params.args) {
+        if (typeof argument.value === 'string' && argument.value.includes('backend.rt.')) {
+          recentBackend.push(`${new Date(message.params.timestamp).toISOString()} ${argument.value.slice(0, 1200)}`);
+          if (recentBackend.length > 128) recentBackend.shift();
+        }
+      }
+    }
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
       failures.push(message);
     }
@@ -261,6 +279,7 @@ try {
     let diagnosticAt = 0;
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
+      lastObservedState = state;
       if (!inputStalled && state?.inputSelfTest === 'Stall') {
         inputStalled = true;
         await evaluate(`(() => { const end = performance.now() + 2000; while (performance.now() < end) {} document.getElementById('runtime_status').setAttribute('data-input-stalled', 'true'); })()`);
@@ -332,14 +351,19 @@ try {
   if (process.env.UPLOAD_DIAGNOSTICS === '1') {
     await call('Page.addScriptToEvaluateOnNewDocument', { source: 'globalThis.shoopTimerProbe={ticks:0};setInterval(()=>shoopTimerProbe.ticks++,4)' });
   }
-  if (previewOnly) {
-    await call('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
-      const Original = globalThis.AudioContext;
-      globalThis.AudioContext = class extends Original {
-        constructor(...args) { super(...args); globalThis.shoopPreviewContext = this; }
-      };
-    })()` });
-  }
+  await call('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+    const Original = globalThis.AudioContext;
+    if (!Original) return;
+    globalThis.shoopSmokeAudioContexts = [];
+    globalThis.AudioContext = class extends Original {
+      constructor(...args) {
+        super(...args);
+        globalThis.shoopSmokeAudioContexts.push(new WeakRef(this));
+        if (globalThis.shoopSmokeAudioContexts.length > 16) globalThis.shoopSmokeAudioContexts.shift();
+        if (${previewOnly}) globalThis.shoopPreviewContext = this;
+      }
+    };
+  })()` });
   if (webMidi) {
     await call('Page.addScriptToEvaluateOnNewDocument', {
       source: `(() => {
@@ -500,6 +524,7 @@ try {
     generation: Number(document.getElementById('runtime_status')?.getAttribute('data-audio-generation')),
     ownedMediaTracks: Number(document.getElementById('runtime_status')?.getAttribute('data-owned-media-tracks')),
     callbacks: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-count')),
+    audioContexts: (globalThis.shoopSmokeAudioContexts || []).map(ref => ref.deref()).filter(Boolean).map(context => ({ state: context.state, time: context.currentTime, sampleRate: context.sampleRate })),
     frames: Number(document.getElementById('runtime_status')?.getAttribute('data-processed-frames')),
     inputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-input-peak')),
     outputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-output-peak')),
@@ -584,7 +609,9 @@ try {
       candidate => {
         if (candidate.newEngineSelfTest !== step) {
           step = candidate.newEngineSelfTest;
-          console.log(`new engine self-test: ${step}`);
+          checkpoints.push({ step, at: Date.now(), callbacks: candidate.callbacks, frames: candidate.frames, driver: candidate.driver, audioContexts: candidate.audioContexts });
+          if (checkpoints.length > 64) checkpoints.shift();
+          console.log(`new engine self-test: ${step}; callbacks=${candidate.callbacks}; frames=${candidate.frames}; audio=${JSON.stringify(candidate.audioContexts)}`);
         }
         if (composites && candidate.compositeSelfTest !== compositeStep) {
           compositeStep = candidate.compositeSelfTest;
@@ -1152,6 +1179,28 @@ try {
   if (failures.length > 0) {
     throw new Error(`browser reported runtime errors: ${JSON.stringify(failures)}`);
   }
+} catch (error) {
+  try {
+    const directory = process.env.SMOKE_DIAGNOSTICS_DIR || join(tmpdir(), 'shoop-browser-smoke');
+    await mkdir(directory, { recursive: true });
+    const report = join(directory, `failure-${Date.now()}-${process.pid}.json`);
+    await writeFile(report, JSON.stringify({
+      error: String(error?.stack || error).slice(0, 256 * 1024),
+      lastObservedState,
+      checkpoints,
+      recentBackend,
+      children: children.map(child => ({
+        command: childOutput.get(child)?.command,
+        exitCode: child.exitCode,
+        signalCode: child.signalCode,
+        stderr: childOutput.get(child)?.stderr.replace(/\b(?:https?|wss?):\/\/\S+/g, '[URL]'),
+      })),
+    }, null, 2));
+    console.error(`Browser smoke diagnostics: ${report}`);
+  } catch (reportError) {
+    console.error(`Could not save browser smoke diagnostics: ${reportError}`);
+  }
+  throw error;
 } finally {
   if (websocket) websocket.close();
   for (const child of children.reverse()) child.kill('SIGTERM');
