@@ -1448,13 +1448,14 @@ fn audio_driver_switch_preserves_identities_and_persists_on_both_carriers() {
         assert_eq!(state.status.sample_rate, 48_000);
         let request_id = state.audio_drivers.switch.request_id;
         assert!(matches!(
-            command(
+            command_with_timeout(
                 &mut client,
                 &mut connection,
                 shoop_app_protocol::Command::AudioDriver(audio_driver::Command::Confirm {
                     request_id,
                     accept: true
-                })
+                }),
+                Duration::from_secs(30)
             ),
             Outcome::Confirmed { .. }
         ));

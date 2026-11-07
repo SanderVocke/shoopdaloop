@@ -487,3 +487,12 @@ select a different renderer in any reported benchmark.
 - Prepared render samples and pin slots are explicitly touched before callbacks;
   arena/pin size admission uses checked arithmetic. Stale transient references are
   tested after the same arena offset has been allocated in a later quantum.
+- The complete refreshed native gate ran 3,187 tests: 3,186 passed, with one
+  existing driver-switch test exceeding its five-second command wait during
+  replacement-driver preparation. All ten isolated repetitions then passed.
+  That full-restart confirmation now uses the same bounded 30-second wait as the
+  real-device switching fixture, retaining its state/identity/persistence checks.
+  The complete gate will be repeated after the final measurement window.
+- The launcher waits for confirmed state revisions before dependent commands and
+  stops all recording voices after the measurement window before reading media.
+  This keeps near-quota captures from exhausting capacity during bulk verification.

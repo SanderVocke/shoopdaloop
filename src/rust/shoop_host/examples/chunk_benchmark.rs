@@ -83,7 +83,17 @@ fn command(client: &mut Client, connection: &mut Connection, value: Command) -> 
                 !matches!(outcome, Outcome::Refused { .. }),
                 "operation refused: {outcome:?}"
             );
-            return Ok(outcome.clone());
+            let projected = match outcome {
+                Outcome::Confirmed { revision, .. }
+                | Outcome::TrackCreated { revision, .. }
+                | Outcome::LoopCreated { revision, .. } => client
+                    .snapshot()
+                    .is_some_and(|snapshot| snapshot.revision >= *revision),
+                _ => true,
+            };
+            if projected {
+                return Ok(outcome.clone());
+            }
         }
         ensure!(Instant::now() < end, "operation timed out");
         thread::sleep(Duration::from_millis(2));
@@ -122,6 +132,12 @@ fn verify_media(
         .unwrap()
         .as_ref()
         .map_err(|error| anyhow::anyhow!("media: {error:?}"))?;
+    ensure!(
+        media.audio.len() == 2
+            && !media.audio[0].samples.is_empty()
+            && media.audio[0].samples.len() == media.audio[1].samples.len(),
+        "missing or mismatched stereo capture"
+    );
     ensure!(
         signal == "silence"
             || media
@@ -166,6 +182,10 @@ fn main() -> Result<()> {
     ensure!(
         args.voices > 0 && args.voices < args.loops as usize,
         "voices exceed loop capacity"
+    );
+    ensure!(
+        args.scenario != "record-play" || args.voices >= 2,
+        "record-play needs a playing voice and a recording voice"
     );
     std::fs::create_dir_all(&args.output)?;
     let output = args.output.canonicalize()?;
@@ -566,16 +586,25 @@ fn main() -> Result<()> {
         "record" | "record-play" | "continue" | "churn"
     ) {
         let (track, loops) = active.as_ref().unwrap();
-        let index = usize::from(matches!(args.scenario.as_str(), "record-play" | "continue"));
-        command(
-            &mut client,
-            &mut connection,
-            Command::Loop {
-                track: *track,
-                loop_id: loops[index],
-                action: LoopAction::PlayClicked,
-            },
-        )?;
+        let index = usize::from(args.scenario == "record-play");
+        pump(&mut client, &mut connection, 0.02)?;
+        let first = usize::from(args.scenario == "record-play");
+        let count = if matches!(args.scenario.as_str(), "record-play" | "continue") {
+            args.voices
+        } else {
+            1
+        };
+        for &loop_id in loops.iter().take(count).skip(first) {
+            command(
+                &mut client,
+                &mut connection,
+                Command::Loop {
+                    track: *track,
+                    loop_id,
+                    action: LoopAction::PlayClicked,
+                },
+            )?;
+        }
         verify_media(
             &mut client,
             &mut connection,
