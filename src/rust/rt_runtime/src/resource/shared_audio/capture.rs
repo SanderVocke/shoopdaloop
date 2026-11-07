@@ -9,7 +9,7 @@ pub(in crate::resource) struct CaptureWrite {
 
 impl AudioStore {
     pub(in crate::resource) fn capture_slots(&self, members: usize) -> Result<(), Error> {
-        if !self.pages.chunked() || self.closed {
+        if !self.pages.chunked() || self.closed || self.keep == 0 {
             return Err(Error::InvalidState);
         }
         if self.free_views.len() < members.checked_mul(2).ok_or(Error::Capacity)? {

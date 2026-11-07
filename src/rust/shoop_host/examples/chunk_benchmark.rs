@@ -70,6 +70,7 @@ fn pump(client: &mut Client, connection: &mut Connection, seconds: f64) -> Resul
 }
 
 fn command(client: &mut Client, connection: &mut Connection, value: Command) -> Result<Outcome> {
+    let description = format!("{value:?}");
     let message = client.command(value, None).map_err(app_error)?;
     let ClientMessage::Submit { operation, .. } = message else {
         anyhow::bail!("expected submit");
@@ -81,7 +82,7 @@ fn command(client: &mut Client, connection: &mut Connection, value: Command) -> 
         if let Some(outcome) = client.results().get(&operation) {
             ensure!(
                 !matches!(outcome, Outcome::Refused { .. }),
-                "operation refused: {outcome:?}"
+                "operation refused ({description}): {outcome:?}"
             );
             let projected = match outcome {
                 Outcome::Confirmed { revision, .. }
@@ -573,12 +574,21 @@ fn main() -> Result<()> {
         }
         pump(&mut client, &mut connection, 0.002)?;
     }
+    let process_memory = std::fs::read_to_string(format!("/proc/{}/status", child.0.id()))
+        .ok()
+        .map(|status| {
+            status
+                .lines()
+                .filter(|line| line.starts_with("Vm"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        });
     std::fs::write(
         output.join("run.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
             "mode":args.mode,"scenario":args.scenario,"first_frame":first_frame,"last_frame":last_frame,
             "quantum":args.quantum,"buffer":args.buffer,"seconds":args.seconds,"config":config,
-            "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"input":args.input,"setup":setup,"control_updates":tick
+            "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"input":args.input,"setup":setup,"control_updates":tick,"process_memory":process_memory
         }))?,
     )?;
     if matches!(
@@ -588,6 +598,10 @@ fn main() -> Result<()> {
         let (track, loops) = active.as_ref().unwrap();
         let index = usize::from(args.scenario == "record-play");
         pump(&mut client, &mut connection, 0.02)?;
+        std::fs::write(
+            output.join("post-window-state.json"),
+            serde_json::to_vec_pretty(client.snapshot().unwrap())?,
+        )?;
         let first = usize::from(args.scenario == "record-play");
         let count = if matches!(args.scenario.as_str(), "record-play" | "continue") {
             args.voices

@@ -496,3 +496,10 @@ select a different renderer in any reported benchmark.
 - The launcher waits for confirmed state revisions before dependent commands and
   stops all recording voices after the measurement window before reading media.
   This keeps near-quota captures from exhausting capacity during bulk verification.
+- The first long simultaneous native capture run exposed incorrect pool selection:
+  a smaller private wet-edit/import pool preceded the shared history pool. Capture
+  now selects a history-enabled pool of the matching channel group. A deterministic
+  regression prepares both pools, plays one loop and captures three others beyond
+  the smaller pool's budget. It fails before this fix and passes afterward in both
+  experimental modes. Incomplete captures are now rejected by result validation;
+  Linux host RSS/virtual-memory observations accompany the reservation counters.

@@ -48,6 +48,9 @@ Ordinary recording reserves private chunks before processing. Capture fills thos
 chunks, then the existing grouped commit publishes all channels together. The
 final playback export is reserved before capture, so stopping a recording needs
 no payload conversion or copy. Cancelled intervals leave the old take unchanged.
+Capture selects the history-enabled pool for its channel group; the existing
+smaller wet-edit/import pool is excluded. Experimental ordinary recording requires
+input histories to be prepared (the native default).
 
 Connections carry at most two spans per channel over one graph quantum (including
 chunk/loop-boundary splits). Unsupported windows and smoothing use bounded
@@ -117,6 +120,8 @@ required resource reads/writes. Index allocation/reclamation is counted separate
 Graph reads/writes/materializations count the reference evaluator and bridges, not
 every processor's private arithmetic; zeros for `current` mean uninstrumented.
 The prepared memory header excludes allocator overhead and common engine metadata.
+It also excludes metadata for the existing private wet-edit pool. Linux run JSON
+records the host's virtual/resident memory and resident high-water mark separately.
 Use PMU/cache/DDR counters separately when hardware permissions allow them.
 
 On Pi 4, build the same checkout with the same release features and run these

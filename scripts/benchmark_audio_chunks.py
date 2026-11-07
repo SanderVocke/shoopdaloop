@@ -54,6 +54,7 @@ def summarize(directory):
         }[run["scenario"]]
         assert [loop["mode"] for loop in loops[:len(expected)]] == expected, "scenario never reached requested modes"
         assert all(loop["length_frames"] > 0 for loop in loops[:len(expected)]), "empty scenario voice"
+        assert not any(loop["capture_incomplete"] for loop in loops[:len(expected)]), "incomplete setup capture"
         if run["scenario"] in ("ramps", "churn"):
             assert run["control_updates"] > 0, "no controls during measurement"
         media_paths = list(directory.glob("media-*.json"))
@@ -64,6 +65,8 @@ def summarize(directory):
             assert media[0]["frames"] > 0 and media[0]["frames"] == media[1]["frames"], "empty or mismatched stereo readback"
             assert all(channel["first_samples"] for channel in media), "missing readback samples"
             assert all(math.isfinite(sample) for channel in media for sample in channel["first_samples"]), "nonfinite readback samples"
+        state = json.loads((directory / "post-window-state.json").read_text()) if (directory / "post-window-state.json").exists() else json.loads((directory / "final-state.json").read_text())
+        assert not any(loop["capture_incomplete"] for track in state["tracks"] for loop in track["loops"]), "capture failed during measurement"
     lines = (directory / "callbacks.csv").read_text().splitlines()
     assert lines[-1] == "# dropped=0", "missing completion or dropped callback records"
     assert lines[0].startswith(f"# mode={run['mode']} "), "renderer identity mismatch"
