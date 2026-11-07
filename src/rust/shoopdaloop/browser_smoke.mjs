@@ -59,6 +59,7 @@ const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
 const childOutput = new Map();
 const recentBackend = [];
+const recentBrowser = [];
 const checkpoints = [];
 let lastObservedState;
 
@@ -218,6 +219,11 @@ try {
       }
     }
     if (message.method === 'Runtime.exceptionThrown') failures.push(message);
+    if (message.method === 'Log.entryAdded') {
+      const entry = message.params.entry;
+      recentBrowser.push({ source: entry.source, level: entry.level, text: entry.text.slice(0, 1200), timestamp: entry.timestamp });
+      if (recentBrowser.length > 64) recentBrowser.shift();
+    }
     if (message.method === 'Runtime.consoleAPICalled') {
       for (const argument of message.params.args) {
         if (typeof argument.value === 'string' && argument.value.includes('backend.rt.')) {
@@ -348,6 +354,7 @@ try {
 
   await call('Runtime.enable');
   await call('Page.enable');
+  await call('Log.enable');
   if (process.env.UPLOAD_DIAGNOSTICS === '1') {
     await call('Page.addScriptToEvaluateOnNewDocument', { source: 'globalThis.shoopTimerProbe={ticks:0};setInterval(()=>shoopTimerProbe.ticks++,4)' });
   }
@@ -355,11 +362,19 @@ try {
     const Original = globalThis.AudioContext;
     if (!Original) return;
     globalThis.shoopSmokeAudioContexts = [];
+    globalThis.shoopSmokeAudioEvents = [];
     globalThis.AudioContext = class extends Original {
       constructor(...args) {
         super(...args);
         globalThis.shoopSmokeAudioContexts.push(new WeakRef(this));
         if (globalThis.shoopSmokeAudioContexts.length > 16) globalThis.shoopSmokeAudioContexts.shift();
+        const record = action => {
+          globalThis.shoopSmokeAudioEvents.push({ action, at: Date.now(), state: this.state, time: this.currentTime });
+          if (globalThis.shoopSmokeAudioEvents.length > 64) globalThis.shoopSmokeAudioEvents.shift();
+        };
+        this.addEventListener('statechange', () => record('statechange'));
+        this.addEventListener('error', () => record('error'));
+        record('created');
         if (${previewOnly}) globalThis.shoopPreviewContext = this;
       }
     };
@@ -525,6 +540,7 @@ try {
     ownedMediaTracks: Number(document.getElementById('runtime_status')?.getAttribute('data-owned-media-tracks')),
     callbacks: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-count')),
     audioContexts: (globalThis.shoopSmokeAudioContexts || []).map(ref => ref.deref()).filter(Boolean).map(context => ({ state: context.state, time: context.currentTime, sampleRate: context.sampleRate })),
+    audioEvents: globalThis.shoopSmokeAudioEvents || [],
     frames: Number(document.getElementById('runtime_status')?.getAttribute('data-processed-frames')),
     inputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-input-peak')),
     outputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-output-peak')),
@@ -1189,6 +1205,7 @@ try {
       lastObservedState,
       checkpoints,
       recentBackend,
+      recentBrowser,
       children: children.map(child => ({
         command: childOutput.get(child)?.command,
         exitCode: child.exitCode,
