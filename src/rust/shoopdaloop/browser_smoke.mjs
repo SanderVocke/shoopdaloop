@@ -70,7 +70,8 @@ function start(command, args, options = {}) {
   childOutput.set(child, output);
   child.stdout?.resume();
   child.stderr?.on('data', data => {
-    output.stderr = (output.stderr + data.toString()).slice(-8192);
+    const limit = process.env.SMOKE_CHROME_AUDIO_LOGGING === '1' ? 32 * 1024 : 8192;
+    output.stderr = (output.stderr + data.toString()).slice(-limit);
   });
   children.push(child);
   return child;
@@ -171,6 +172,9 @@ try {
     `--user-data-dir=${profile}`,
     'about:blank',
   ];
+  if (process.env.SMOKE_CHROME_AUDIO_LOGGING === '1') {
+    chromeArgs.splice(-1, 0, '--enable-logging=stderr', '--vmodule=*audio*=1');
+  }
   if (!denyFirst) chromeArgs.splice(-1, 0, '--use-fake-ui-for-media-stream');
   if (settingsUnavailable) chromeArgs.splice(-1, 0, '--disable-local-storage');
   start(chrome, chromeArgs);
