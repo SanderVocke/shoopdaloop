@@ -88,8 +88,8 @@ Depends on all previous stages.
 - [x] Run relevant loop/runtime ownership hosts and selected Miri checks if those layers change. Do not expand to unrelated stress suites without a concrete concern.
 - [x] Update the persistence contract and P11 backlog with supported duplication behavior, capacities, refusal rules and implementation links. Keep P11 OPEN for MIDI restoration and reconcile `LoopDuplication` coverage without changing other parity scopes. Put revision-specific results in PR/CI artifacts.
 - [x] Commit milestones, push and open a PR targeting `feat/backend-replacement`.
-- [ ] Resolve applicable CI failures and verify the final head. Report independently blocked checks truthfully rather than claiming a pass.
-- [ ] Check automated review after pushes, address feedback and repeat through approval. Explicitly report unavailable or absent review. Leave the PR unmerged with a clean worktree; do not merge autonomously.
+- [x] Resolve applicable CI failures and verify the final head. Report independently blocked checks truthfully rather than claiming a pass.
+- [x] Check automated review after pushes, address feedback and repeat through approval. Explicitly report unavailable or absent review. Leave the PR unmerged with a clean worktree; do not merge autonomously.
 
 ## Testing strategy
 
