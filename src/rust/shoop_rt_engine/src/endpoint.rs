@@ -996,7 +996,12 @@ impl ControlEndpoint {
                 if matches!(request, Request::ReplacementBegin { .. }) {
                     self.cancel_preview();
                 }
-                if self.preview.is_some() {
+                let patch = match request {
+                    Request::PatchBegin { .. } => true,
+                    Request::ReplacementBegin { .. } => false,
+                    _ => self.replacement.id.is_some() && self.replacement.patch,
+                };
+                if self.preview.is_some() && !patch {
                     return Err(());
                 }
                 self.replacement_request(correlation, request)

@@ -256,7 +256,51 @@ fn bus_fx_creation_is_atomic_and_shares_the_prepared_instance_limit() {
 #[cfg(feature = "builtin-fx")]
 #[shoop_test]
 fn master_preview_flows_through_bus_fx_and_retains_ordinary_bus_controls() {
+    exercise_master_preview_with_bus_fx(false);
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn duplication_preserves_unrelated_bus_fx_and_live_preview_with_no_free_fx_slots() {
+    exercise_master_preview_with_bus_fx(true);
+}
+
+#[cfg(feature = "builtin-fx")]
+fn exercise_master_preview_with_bus_fx(duplicate: bool) {
     let mut f = Fixture::new(ProcessorKind::BuiltInFx);
+    let source = duplicate.then(|| {
+        f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
+        let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+            name: "Copy alongside bus FX".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        })) else {
+            panic!("direct track creation refused")
+        };
+        f.confirmed(Command::Track {
+            track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: false,
+                respect_auto_mute: false,
+            },
+        });
+        for action in [LoopAction::RecordClicked, LoopAction::StopClicked] {
+            f.confirmed(Command::Loop {
+                track,
+                loop_id: loops[0],
+                action,
+            });
+            f.ticks(3);
+        }
+        let source_length = f.track(track).loops[0].length_frames;
+        assert!(source_length > 0);
+        (track, loops, source_length)
+    });
     let bus = f.client.snapshot().unwrap().preview_bus.unwrap();
     f.confirmed(Command::Bus {
         bus,
@@ -275,13 +319,14 @@ fn master_preview_flows_through_bus_fx_and_retains_ordinary_bus_controls() {
             action: BusAction::BuiltInFx(control),
         });
     }
+    let frames = if duplicate { 16384 } else { 8192 };
     f.confirmed(Command::Preview(PreviewCommand::Begin {
         request_id: 7,
         bus,
         sample_rate: 8000,
-        frames: 8192,
+        frames,
     }));
-    for offset in (0..8192).step_by(256) {
+    for offset in (0..frames).step_by(256) {
         f.confirmed(Command::Preview(PreviewCommand::Chunk {
             request_id: 7,
             offset,
@@ -301,6 +346,42 @@ fn master_preview_flows_through_bus_fx_and_retains_ordinary_bus_controls() {
     assert!(f.render.borrow().output(0)[64..128]
         .iter()
         .all(|value| (*value - 0.25 * 10_f32.powf(-18. / 20.)).abs() < 1e-6));
+    if let Some((track, loops, source_length)) = source {
+        let before = f.client.snapshot().unwrap().buses[0]
+            .fx
+            .as_ref()
+            .unwrap()
+            .editor
+            .clone();
+        let before_frames = f.client.snapshot().unwrap().status.processed_frames;
+        f.confirmed(Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::DuplicateTo(loops[1]),
+        });
+        let copied = f.track(track).loops[1].clone();
+        assert_eq!(copied.id, loops[1]);
+        assert_eq!(copied.length_frames, source_length);
+        assert_eq!(copied.mode, LoopMode::Stopped);
+        assert_eq!(copied.position, 0.0);
+        assert_eq!(
+            f.client.snapshot().unwrap().buses[0]
+                .fx
+                .as_ref()
+                .unwrap()
+                .editor,
+            before
+        );
+        f.ticks(3);
+        assert!(
+            f.render.borrow().output(0)[64..128]
+                .iter()
+                .all(|value| (*value - 0.25 * 10_f32.powf(-18. / 20.)).abs() < 1e-6),
+            "after copying: output={:?}, elapsed={} frames",
+            &f.render.borrow().output(0)[64..72],
+            f.client.snapshot().unwrap().status.processed_frames - before_frames,
+        );
+    }
     f.confirmed(Command::Bus {
         bus,
         action: BusAction::GainChanged(-6.0206),

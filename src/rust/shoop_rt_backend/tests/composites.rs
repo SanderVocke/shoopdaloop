@@ -109,6 +109,14 @@ fn processed_track_composites_execute_role_modes_and_refuse_invalid_child_modes_
             .configure_prepared_composite_loop(parent, &candidate)
             .unwrap();
         backend.wait_idle();
+        let cursor = backend.mutation_cursor();
+        assert!(backend
+            .duplicate_loop_async(track.loops[1], Some(child), &[], None)
+            .is_err());
+        assert!(backend
+            .duplicate_loop_async(child, Some(track.loops[1]), &[], None)
+            .is_err());
+        assert_eq!(backend.mutation_cursor(), cursor);
         backend
             .transition_composite_loop(parent, Mode::Playing, None, None)
             .unwrap();

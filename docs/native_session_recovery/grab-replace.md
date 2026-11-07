@@ -13,7 +13,7 @@ checks, measured capacity limits and final validation pins.
 | Normal host preparation | Common thirty-second audio/indexed MIDI histories, independent source generations and a reservation separate from ordinary recording. Native host setup v8 and worklet config v7 carry the limits. |
 | Portable domain | Continuous fixed/growing paired writers, Replacing tag 5, complete-cut exports, reserved exits and render-owned musical finishes. DryPlay/Rerecord retain tags 3/4. |
 | Kernel resources | Persistent audio roots and semantic MIDI indexes share immutable payloads. Global owner admission protects live sources, staging, edit paths and retirement debt. |
-| Engine / protocol | Protocol v24 carries bounded input transactions, effective cuts, status/cancel/completion and negotiated limits. Batch settlement includes targets, solo peers and automatic completion atomically. |
+| Engine / protocol | Protocol v25 carries bounded input transactions, effective cuts, status/cancel/completion and negotiated limits. Batch settlement includes targets, solo peers and automatic completion atomically. |
 | Adapter | One owned admitting input job; confirmed mutation identity, pending projection, revision-driven media invalidation and independent processor controls. |
 | Service | Selection-aware gestures, exact explicit Control/Lua lists, targeting, solo, default Grab, apply-N and play-after-record; persistence and topology changes fence accepted work. |
 | UI / Lua | Normal Grab controls, bundled keyboard/default action and public Lua; primitive-loop “Replace input” menu, confirmed mode/pending state and an incomplete-capture warning. Application protocol v31. |

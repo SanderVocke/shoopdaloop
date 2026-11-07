@@ -819,6 +819,127 @@ impl Fixture {
 
 #[shoop_test]
 #[cfg(all(feature = "builtin-fx", feature = "oxisynth"))]
+fn native_driver_switch_preserves_copies_and_accepts_duplication_on_the_new_backend() {
+    use persistence_image as image;
+    let mut f = Fixture::native();
+    let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+        name: "Driver-switch copies".into(),
+        topology: TrackSpecTopology::Direct {
+            audio_channels: 1,
+            midi: false,
+        },
+        latency: Default::default(),
+        initial_output_bus_names: vec!["Master".into()],
+        creation_request_id: None,
+    })) else {
+        panic!("direct track creation refused")
+    };
+    f.import(
+        persistence::Target::Loop {
+            loop_id: loops[0],
+            content_revision: f.service.snapshot().tracks[1].loops[0].content_revision,
+        },
+        Arc::new(image::Image {
+            manifest: image::Manifest::Update {
+                sample_rate: 48_000,
+                frames: Some(96),
+                audio: vec![image::AudioUpdate {
+                    channel: 0,
+                    content: image::Channel {
+                        mode: image::ChannelMode::Direct,
+                        object: Some(1),
+                        frames: 144,
+                        gain: 1.,
+                        start_offset: 7,
+                        capture_alignment: 0,
+                        preplay: 3,
+                        recording_started_at: Some("copied take".into()),
+                    },
+                }],
+                midi: vec![],
+            },
+            payloads: vec![image::Payload::Audio(Arc::new(vec![0.25; 144]))],
+        }),
+    );
+    let copy = |target| Command::Loop {
+        track,
+        loop_id: loops[0],
+        action: LoopAction::DuplicateTo(target),
+    };
+    let operation = f.queue(copy(loops[1]));
+    assert!(matches!(
+        f.run(Command::AudioDriver(DriverCommand::Request(
+            AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                sample_rate: 32_000,
+                buffer_size: 128,
+            })
+        ))),
+        Outcome::Refused {
+            reason: Refusal::Busy,
+            ..
+        }
+    ));
+    for _ in 0..30_000 {
+        f.tick();
+        if f.client.results().contains_key(&operation) {
+            break;
+        }
+    }
+    assert!(matches!(
+        f.client.results().get(&operation),
+        Some(Outcome::Confirmed { .. })
+    ));
+    f.switch_to(32_000);
+    assert!(matches!(f.run(copy(loops[2])), Outcome::Confirmed { .. }));
+    let saved = f.capture();
+    let image::Manifest::Session(session) = &saved.manifest else {
+        panic!("session capture expected")
+    };
+    let owner = session.tracks.iter().find(|t| t.id == track).unwrap();
+    let source = &owner.loops[0];
+    assert_eq!(source.frames, 64);
+    assert_eq!(source.audio[0].frames, 97);
+    assert_eq!(source.audio[0].start_offset, 5);
+    assert_eq!(source.audio[0].preplay, 2);
+    let image::Payload::Audio(samples) =
+        &saved.payloads[source.audio[0].object.unwrap() as usize - 1]
+    else {
+        panic!("audio payload expected")
+    };
+    assert!((samples[30] - 0.25).abs() < 1e-6);
+    for (index, id) in loops.iter().copied().enumerate().take(3) {
+        let copied = &owner.loops[index];
+        assert_eq!(copied.id, id);
+        assert_eq!(copied.frames, source.frames);
+        let mut channel = copied.audio[0].clone();
+        let mut expected = source.audio[0].clone();
+        channel.object = None;
+        expected.object = None;
+        assert_eq!(channel, expected);
+        assert_eq!(
+            saved.payloads[copied.audio[0].object.unwrap() as usize - 1],
+            image::Payload::Audio(samples.clone())
+        );
+        let state = &f.service.snapshot().tracks[1].loops[index];
+        assert_eq!(state.mode, LoopMode::Stopped);
+        assert_eq!(state.position, 0.);
+    }
+    assert!(matches!(
+        f.run(Command::Loop {
+            track,
+            loop_id: loops[1],
+            action: LoopAction::GainChanged(0.125),
+        }),
+        Outcome::Confirmed { .. }
+    ));
+    let state = f.service.snapshot();
+    assert_eq!(state.tracks[1].loops[0].gain, 1.);
+    assert_eq!(state.tracks[1].loops[1].gain, 0.125);
+    assert_eq!(state.tracks[1].loops[2].gain, 1.);
+}
+
+#[shoop_test]
+#[cfg(all(feature = "builtin-fx", feature = "oxisynth"))]
 fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_state() {
     use persistence_image as image;
     let mut f = Fixture::native();
