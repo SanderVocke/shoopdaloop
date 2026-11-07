@@ -11,8 +11,9 @@ the PR remains unmerged.
 
 Base: `feat/backend-replacement`, inspected at
 `0b6812259ffc00b9a524bb6095cfc2c6b2112847` on 2026-11-06.
-Delivery also incorporates target update
-`27c8927f51303519f621270bd9b521a687c134d7` (profiling graph filtering).
+Delivery incorporates target update
+`7a77c8d5048d6ec33c305385710dd40044d039b7`, including Built-in bus FX, native
+driver switching, profiling and render optimizations.
 Follow `.agents/prompts/write_plan.md` and the branch's current agent instructions
 when executing this plan. Recheck the base before implementation.
 

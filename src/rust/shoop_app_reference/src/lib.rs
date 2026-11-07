@@ -1962,6 +1962,9 @@ impl ApplicationModel {
             | AppIntent::RequestLoadSessionSource { .. } => {
                 Err("task-scoped file callbacks require the production session client".to_owned())
             }
+            AppIntent::ControlProfiling(_) => {
+                Err("Host profiling is unavailable on the reference backend".to_owned())
+            }
             AppIntent::InspectProfiling(request) => backend
                 .inspect_profiling(request)
                 .map_err(|error| error.to_string()),
@@ -2226,6 +2229,9 @@ impl ApplicationModel {
                 success,
                 message,
             } => self.complete_audio_driver_persistence(request_id, success, message),
+            AppIntent::RetryAudioDriverPersistence { .. } => {
+                Err("preference retry is owned by the native host".into())
+            }
             AppIntent::ResetXruns => {
                 self.status.xruns = 0;
                 Ok(())
@@ -11930,6 +11936,7 @@ impl ApplicationModel {
             .iter()
             .filter_map(|id| self.buses.get(id))
             .map(|bus| BusState {
+                latest_input_midi_message: None,
                 id: bus.id,
                 name: bus.name.clone(),
                 structural_state: bus.structural_state,
@@ -11979,6 +11986,7 @@ impl ApplicationModel {
             .flat_map(|(kind, references)| references.map(move |loop_id| (loop_id, kind)))
             .collect::<BTreeMap<_, _>>();
         AppSnapshot {
+            diagnostics: Default::default(),
             profiling: Default::default(),
             host_graph: Arc::default(),
             bus_limits: Default::default(),

@@ -857,14 +857,18 @@ impl JackAudioDriverConfig {
 pub struct CpalAudioDriverConfig {
     pub client_name: String,
     pub host: String,
+    /// Audio selector; `=name` selects one exact device name.
     pub output_device: String,
+    /// Audio selector; `=name` selects one exact device name.
     pub input_device: String,
     pub sample_rate: u32,
     pub buffer_size: u32,
     pub output_channels: String,
     pub input_channels: String,
     pub capture_ring_frames: u32,
+    /// MIDI selectors; `=name` selects one exact port name.
     pub midi_inputs: Vec<String>,
+    /// MIDI selectors; `=name` selects one exact port name.
     pub midi_outputs: Vec<String>,
 }
 
@@ -896,6 +900,54 @@ pub enum AudioDriverConfig {
 }
 
 impl AudioDriverConfig {
+    pub fn bounded(&self) -> bool {
+        let text = |value: &str| value.len() <= 128 && !value.contains('\0');
+        match self {
+            Self::Dummy(config) => {
+                (1..=768_000).contains(&config.sample_rate)
+                    && (1..=65_536).contains(&config.buffer_size)
+            }
+            Self::Jack(config) => text(&config.client_name) && config.validate().is_ok(),
+            Self::Cpal(config) => {
+                [
+                    &config.client_name,
+                    &config.host,
+                    &config.output_device,
+                    &config.input_device,
+                    &config.output_channels,
+                    &config.input_channels,
+                ]
+                .into_iter()
+                .all(|value| text(value))
+                    && config.sample_rate <= 768_000
+                    && config.buffer_size <= 65_536
+                    && config.capture_ring_frames <= 1_048_576
+                    && config.midi_inputs.len() <= 32
+                    && config.midi_outputs.len() <= 32
+                    && config
+                        .midi_inputs
+                        .iter()
+                        .chain(&config.midi_outputs)
+                        .all(|value| text(value))
+                    && [
+                        &config.client_name,
+                        &config.host,
+                        &config.output_device,
+                        &config.input_device,
+                        &config.output_channels,
+                        &config.input_channels,
+                    ]
+                    .into_iter()
+                    .chain(config.midi_inputs.iter())
+                    .chain(config.midi_outputs.iter())
+                    .map(String::len)
+                    .sum::<usize>()
+                        <= 768
+            }
+            Self::WebAudio => false,
+        }
+    }
+
     pub const fn kind(&self) -> AudioDriverKind {
         match self {
             Self::Dummy(_) => AudioDriverKind::Dummy,
@@ -930,6 +982,7 @@ pub struct AudioDriverDescriptor {
 pub struct ResolvedAudioDriverConfig {
     pub configured: AudioDriverConfig,
     pub sample_rate: u32,
+    /// Zero during preflight means that the device chooses its callback size on open.
     pub buffer_size: u32,
     pub instance_name: String,
 }
@@ -1313,6 +1366,7 @@ pub struct BusChannelState {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusState {
+    pub latest_input_midi_message: Option<LatestMidiMessage>,
     pub id: BusId,
     pub name: String,
     pub structural_state: StructuralState,
@@ -2181,8 +2235,25 @@ pub struct AppNotification {
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProfilingSource {
+    pub descriptor: profiling_protocol::Descriptor,
+    pub status: Option<profiling_protocol::Status>,
+    pub age_ms: u64,
+    pub assembly_losses: u64,
+    pub supported: bool,
+}
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DiagnosticsView {
+    pub sources: Vec<ProfilingSource>,
+    pub tasks: freertos_profiling::View,
+}
+pub use freertos_profiling as task_profiling;
+pub use profiling_protocol as diagnostics_protocol;
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
+    pub diagnostics: DiagnosticsView,
     pub profiling: ProfilingView,
     pub bus_limits: BusLimits,
     pub revision: u64,
@@ -2596,6 +2667,7 @@ pub struct ChannelTimelineUpdate {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    ControlProfiling(profiling_protocol::Request),
     SetProfiling(bool),
     InspectProfiling(profiling_data::CaptureRequest),
     SetLoopSmoothingMs(u32),
@@ -2768,6 +2840,9 @@ pub enum AppIntent {
         request_id: u64,
         success: bool,
         message: String,
+    },
+    RetryAudioDriverPersistence {
+        request_id: u64,
     },
     ResetXruns,
     DismissNotification {
@@ -3000,7 +3075,9 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::SetProfiling(_) | Self::InspectProfiling(_) => "developer.profiling",
+            Self::SetProfiling(_) | Self::InspectProfiling(_) | Self::ControlProfiling(_) => {
+                "developer.profiling"
+            }
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
             Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",
@@ -3048,6 +3125,7 @@ impl AppIntent {
             Self::CompleteAudioDriverSwitchPersistence { .. } => {
                 "audio_driver.complete_persistence"
             }
+            Self::RetryAudioDriverPersistence { .. } => "audio_driver.retry_persistence",
             Self::ResetXruns => "audio.reset_xruns",
             Self::DismissNotification { .. } => "app.dismiss_notification",
             Self::RequestNewSession => "session.request_new",
@@ -3126,6 +3204,7 @@ mod tests {
             output_port_id: PortId::from_raw(id),
         };
         let mut state = BusState {
+            latest_input_midi_message: None,
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
             structural_state: StructuralState::Confirmed,

@@ -15,6 +15,7 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::AudioDriver(command) => self.audio_driver_command(command),
             Command::Composite(edit) => self.edit_composite(edit),
             Command::SetLoopTimeline {
                 loop_id,
@@ -25,12 +26,8 @@ impl Service {
             Command::SetLoopChannelTimings { loop_id, updates } => {
                 self.set_loop_channel_timings(loop_id, &updates)
             }
-            Command::InspectProfiling(request) => {
-                self.backend.inspect_profiling(request)?;
-                Ok(Effect::None)
-            }
-            Command::SetProfiling(enabled) => {
-                self.backend.set_profiling(enabled)?;
+            Command::Diagnostic(request) => {
+                self.control_profiling(request)?;
                 Ok(Effect::None)
             }
             Command::SetHostGraphConnected(request) => {
@@ -97,13 +94,16 @@ impl Service {
             } => self.loop_action(track, loop_id, action),
             Command::Bus { bus, action } => self.bus_action(bus, action),
             Command::AddBus(spec) => {
-                if spec.fx.is_some() {
-                    return Err(CommandError::unsupported(BackendCapability::BusFx));
+                if let Some(fx) = &spec.fx {
+                    self.validate_bus_processor(&fx.processor_type, spec.channel_count)?;
                 }
                 let request = BackendBusRequest {
                     name: spec.name,
                     channel_count: spec.channel_count,
-                    fx: None,
+                    fx: spec.fx.map(|fx| shoop_backend::BackendBusFxRequest {
+                        processor_type: fx.processor_type.as_str().to_owned(),
+                        audio_channels: spec.channel_count,
+                    }),
                 }
                 .normalized()?;
                 let limits = self.backend.bus_limits();
@@ -265,6 +265,29 @@ impl Service {
         }
     }
 
+    fn validate_bus_processor(
+        &self,
+        processor: &TrackProcessorTypeId,
+        channels: u32,
+    ) -> CommandResult {
+        if !self
+            .backend
+            .capabilities()
+            .supports(BackendCapability::BusFx)
+        {
+            return Err(CommandError::unsupported(BackendCapability::BusFx));
+        }
+        if !self.bus_processors.iter().any(|entry| {
+            &entry.id == processor
+                && entry.available
+                && entry.constraints.accepts(channels, channels, false)
+        }) {
+            return Err(CommandError::invalid(
+                "unsupported bus processor or channel shape",
+            ));
+        }
+        Ok(Effect::None)
+    }
     fn bus_action(&mut self, id: BusId, action: BusAction) -> CommandResult {
         let bus = self
             .buses
@@ -273,6 +296,39 @@ impl Service {
             .ok_or_else(|| CommandError::invalid("stale or unknown bus"))?;
         let backend = bus.backend;
         match action {
+            BusAction::FxProcessorChanged(processor) => {
+                if let Some(processor) = &processor {
+                    self.validate_bus_processor(processor, bus.view.channels.len() as u32)?;
+                }
+                let fx = processor.map(|processor| shoop_backend::BackendBusFxRequest {
+                    processor_type: processor.as_str().to_owned(),
+                    audio_channels: bus.view.channels.len() as u32,
+                });
+                self.backend.set_bus_fx_control(
+                    backend,
+                    shoop_backend::BackendBusFxControl::SetProcessor(fx),
+                )?;
+                Ok(Effect::BusControl(id))
+            }
+            BusAction::FxActiveChanged(_)
+            | BusAction::FxVisibilityChanged(_)
+            | BusAction::FxToggleOrRecover
+            | BusAction::FxRestoreState(_)
+            | BusAction::FxClearLogs
+            | BusAction::BuiltInFx(_) => {
+                use shoop_backend::BackendBusFxControl as Fx;
+                let control = match action {
+                    BusAction::FxActiveChanged(value) => Fx::SetActive(value),
+                    BusAction::FxVisibilityChanged(value) => Fx::SetVisible(value),
+                    BusAction::FxToggleOrRecover => Fx::ToggleOrRecover,
+                    BusAction::FxRestoreState(value) => Fx::RestoreState(value),
+                    BusAction::FxClearLogs => Fx::ClearLogs,
+                    BusAction::BuiltInFx(value) => Fx::BuiltInFx(value),
+                    _ => unreachable!(),
+                };
+                self.backend.set_bus_fx_control(backend, control)?;
+                Ok(Effect::BusControl(id))
+            }
             BusAction::Remove => {
                 self.backend.remove_bus(backend)?;
                 self.buses

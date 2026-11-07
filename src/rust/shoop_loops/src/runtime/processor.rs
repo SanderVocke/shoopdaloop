@@ -150,7 +150,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
 
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
-        let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
+        let view = block.domain.views.get(slot).ok_or(Error::InvalidId)?;
         if block.node != self.binding.playback
             || view.playback_node != self.binding.playback
             || view.capture_node != self.binding.capture

@@ -32,7 +32,9 @@ pub(crate) enum Staged {
 fn structural(request: &Request) -> bool {
     matches!(
         request,
-        Request::CreateBus { .. }
+        Request::CreateProcessedBus { .. }
+            | Request::CreateBus { .. }
+            | Request::SetBusProcessor { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::CreateProcessedStrip { .. }
@@ -55,7 +57,8 @@ impl ControlEndpoint {
     /// Handle queued requests in order. With `stage`, and no transaction in
     /// progress, the structural requests that can go together start one.
     pub(crate) fn process_queue(&mut self, stage: bool) {
-        let mut staging = stage && self.job.is_none();
+        // Copying the model is costly; an empty queue has nothing to stage.
+        let mut staging = stage && self.job.is_none() && self.queue.len() > 0;
         if staging {
             self.next.copy_from(&self.model);
             self.batch_len = 0;
@@ -221,9 +224,12 @@ impl ControlEndpoint {
             Request::ContentFamilyBegin { root, .. } => loop_(root.0.index, SOFT),
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
-            Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
+            Request::SetBusProcessor { bus: id, .. }
+            | Request::CreateProcessedBus { bus: id, .. }
+            | Request::CreateBus { bus: id, .. }
+            | Request::RemoveBus { bus: id } => bus(id, WAITING),
             Request::PreviewStart { bus: id, .. } => bus(id, HARD),
-            Request::Profiling(_) | Request::PreviewStop | Request::CancelBulk => false,
+            Request::Diagnostic(_) | Request::PreviewStop | Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -256,7 +262,9 @@ impl ControlEndpoint {
             Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
                 loop_(loop_id.0.index, SOFT)
             }
-            Request::BusControl { bus: id, .. } => bus(id, HARD),
+            Request::BusProcessorControl { bus: id, .. } | Request::BusControl { bus: id, .. } => {
+                bus(id, HARD)
+            }
             Request::SetSmoothing { .. } => false,
             Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. } => strip(id.0.index, WAITING),
@@ -337,7 +345,7 @@ impl ControlEndpoint {
             }
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => {}
             Request::PreviewStart { .. }
-            | Request::Profiling(_)
+            | Request::Diagnostic(_)
             | Request::PreviewStop
             | Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
@@ -375,7 +383,10 @@ impl ControlEndpoint {
                     *blocked = true;
                 }
             }
-            Request::CreateBus { bus, .. }
+            Request::SetBusProcessor { bus, .. }
+            | Request::BusProcessorControl { bus, .. }
+            | Request::CreateProcessedBus { bus, .. }
+            | Request::CreateBus { bus, .. }
             | Request::RemoveBus { bus }
             | Request::BusControl { bus, .. }
             | Request::Connect {
@@ -417,9 +428,9 @@ impl ControlEndpoint {
                     }
                 }
             }
-            Change::CreateBus { bus, .. } | Change::RemoveBus { bus } => {
-                self.touched_buses[bus.0.index as usize] = HARD
-            }
+            Change::BusProcessor { bus, .. }
+            | Change::CreateBus { bus, .. }
+            | Change::RemoveBus { bus } => self.touched_buses[bus.0.index as usize] = HARD,
             Change::CreateStrip { strip, .. } => self.touched_strips[strip.0.index as usize] = HARD,
             Change::RemoveStrip { strip } => {
                 self.touched_strips[strip.0.index as usize] = HARD;
@@ -474,11 +485,100 @@ impl ControlEndpoint {
         self.touched_buses.fill(0);
     }
 
+    fn reserve_processor(
+        &self,
+        kind: shoop_rt_protocol::ProcessorKind,
+        excluding: Option<BusId>,
+    ) -> Result<crate::model::ProcessorOwner, Staged> {
+        let limit = match kind {
+            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
+                self.processor_catalog.effective.fx_instances
+            }
+            shoop_rt_protocol::ProcessorKind::OxiSynth => {
+                self.processor_catalog.effective.synth_instances
+            }
+            _ => 0,
+        };
+        if limit == 0 {
+            return Err(Staged::Refused(Refusal::Unsupported));
+        }
+        let owners = || {
+            self.next
+                .strips
+                .iter()
+                .flatten()
+                .filter_map(|strip| strip.processor)
+                .chain(
+                    self.next
+                        .buses
+                        .iter()
+                        .flatten()
+                        .filter(|bus| Some(bus.id) != excluding)
+                        .filter_map(|bus| bus.processor),
+                )
+        };
+        if owners().filter(|owner| owner.kind == kind).count() >= limit as usize {
+            return Err(Staged::Refused(Refusal::Capacity));
+        }
+        for (index, cells) in self.processor_cells.iter().enumerate() {
+            let Some(state) = cells.read() else {
+                continue;
+            };
+            if state.kind != kind
+                || state.phase != crate::ProcessorPhase::Free
+                || owners().any(|owner| owner.slot.is_some_and(|slot| slot.index as usize == index))
+            {
+                continue;
+            }
+            let generation = state
+                .generation
+                .checked_add(1)
+                .ok_or(Staged::Refused(Refusal::Capacity))?;
+            return Ok(crate::model::ProcessorOwner {
+                kind,
+                slot: Some(shoop_rt_protocol::ProcessorSlot {
+                    index: index as u16,
+                    generation,
+                }),
+            });
+        }
+        if self.processor_cells.iter().any(|cells| {
+            cells.read().is_some_and(|state| {
+                state.kind == kind && state.phase == crate::ProcessorPhase::Retiring
+            })
+        }) {
+            return Err(Staged::Wait);
+        }
+        Err(Staged::Refused(Refusal::Capacity))
+    }
     /// Validate a structural request against the staged model.
     pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
         let next = &self.next;
         match request {
-            Request::CreateBus { bus, channels } => {
+            Request::SetBusProcessor { bus, enabled } => {
+                let Some(entry) = next.bus(bus) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                if !replacing && self.model.bus(bus).is_none() {
+                    return Staged::Wait;
+                }
+                if enabled && entry.channels as usize > self.shape.processor_channels {
+                    return Staged::Refused(Refusal::Capacity);
+                }
+                let processor = if enabled {
+                    match self
+                        .reserve_processor(shoop_rt_protocol::ProcessorKind::BuiltInFx, Some(bus))
+                    {
+                        Ok(owner) => Some(owner),
+                        Err(staged) => return staged,
+                    }
+                } else {
+                    None
+                };
+                Staged::Change(Change::BusProcessor { bus, processor })
+            }
+            Request::CreateBus { bus, channels }
+            | Request::CreateProcessedBus { bus, channels } => {
                 let slot = bus.0.index as usize;
                 if slot >= next.buses.len()
                     || channels == 0
@@ -493,7 +593,24 @@ impl ControlEndpoint {
                 } else if !replacing && self.model.buses[slot].is_some() {
                     Staged::Wait
                 } else {
-                    Staged::Change(Change::CreateBus { bus, channels })
+                    let processor = if matches!(request, Request::CreateProcessedBus { .. }) {
+                        if channels as usize > self.shape.processor_channels {
+                            return Staged::Refused(Refusal::Capacity);
+                        }
+                        match self
+                            .reserve_processor(shoop_rt_protocol::ProcessorKind::BuiltInFx, None)
+                        {
+                            Ok(owner) => Some(owner),
+                            Err(staged) => return staged,
+                        }
+                    } else {
+                        None
+                    };
+                    Staged::Change(Change::CreateBus {
+                        bus,
+                        channels,
+                        processor,
+                    })
                 }
             }
             Request::RemoveBus { bus } => match next.bus(bus) {
@@ -526,65 +643,10 @@ impl ControlEndpoint {
                         {
                             return Staged::Refused(Refusal::InvalidValue);
                         }
-                        let limit = match kind {
-                            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
-                                self.processor_catalog.effective.fx_instances
-                            }
-                            shoop_rt_protocol::ProcessorKind::OxiSynth => {
-                                self.processor_catalog.effective.synth_instances
-                            }
-                            shoop_rt_protocol::ProcessorKind::External => 0,
-                        };
-                        if limit == 0 {
-                            return Staged::Refused(Refusal::Unsupported);
+                        match self.reserve_processor(kind, None) {
+                            Ok(owner) => Some(owner),
+                            Err(staged) => return staged,
                         }
-                        if next
-                            .strips
-                            .iter()
-                            .flatten()
-                            .filter(|strip| strip.processor.is_some_and(|owner| owner.kind == kind))
-                            .count()
-                            >= limit as usize
-                        {
-                            return Staged::Refused(Refusal::Capacity);
-                        }
-                        let available =
-                            self.processor_cells
-                                .iter()
-                                .enumerate()
-                                .find_map(|(index, cells)| {
-                                    let state = cells.read()?;
-                                    if state.kind != kind
-                                        || state.phase != crate::ProcessorPhase::Free
-                                        || next.strips.iter().flatten().any(|strip| {
-                                            strip
-                                                .processor
-                                                .and_then(|owner| owner.slot)
-                                                .is_some_and(|slot| slot.index as usize == index)
-                                        })
-                                    {
-                                        return None;
-                                    }
-                                    Some(shoop_rt_protocol::ProcessorSlot {
-                                        index: index as u16,
-                                        generation: state.generation.checked_add(1)?,
-                                    })
-                                });
-                        let Some(slot) = available else {
-                            if self.processor_cells.iter().any(|cells| {
-                                cells.read().is_some_and(|state| {
-                                    state.kind == kind
-                                        && state.phase == crate::ProcessorPhase::Retiring
-                                })
-                            }) {
-                                return Staged::Wait;
-                            }
-                            return Staged::Refused(Refusal::Capacity);
-                        };
-                        Some(crate::model::ProcessorOwner {
-                            kind,
-                            slot: Some(slot),
-                        })
                     }
                 } else {
                     None

@@ -127,7 +127,15 @@ pub struct BusChannel {
     pub port: Port,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BusFx {
+    pub processor_type: TrackProcessorTypeId,
+    pub state: String,
+    pub midi_cc_assignments: Vec<BuiltInFxMidiCcAssignment>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Bus {
+    #[serde(default)]
+    pub fx: Option<BusFx>,
     pub id: BusId,
     pub name: String,
     pub gain_db: f32,

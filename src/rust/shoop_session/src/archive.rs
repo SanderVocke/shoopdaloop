@@ -79,6 +79,15 @@ pub enum SessionError {
     InvalidMediaShape { id: String },
 }
 
+impl From<shoop_format_conversion::Error> for SessionError {
+    fn from(error: shoop_format_conversion::Error) -> Self {
+        match error {
+            shoop_format_conversion::Error::Validation(message) => Self::Validation(message),
+            shoop_format_conversion::Error::ResourceLimit(message) => Self::ResourceLimit(message),
+        }
+    }
+}
+
 impl From<zip::result::ZipError> for SessionError {
     fn from(value: zip::result::ZipError) -> Self {
         Self::Archive(value.to_string())

@@ -176,7 +176,10 @@ clock leaves measurements unavailable, including these virtual nodes.
 
 ## Clocks and browser support
 
-Native hosts supply nanoseconds from a primed `Instant` epoch. A browser worklet
+Native hosts supply nanoseconds from a primed `Instant` epoch. The Zynq FreeRTOS
+firmware converts the Cortex-A9 global timer (CPU/2, about 3 ns per tick on a
+667 MHz ZedBoard) with a fixed-point scale, and reports each render step's busy
+share as its driver load. A browser worklet
 imports `shoop_profiling.now`, using its realm's `performance.now()` when present.
 The observed positive clock step is shown; zero means resolution is unknown.
 Complete native/worklet driver callbacks supply the deadline budget; split engine
@@ -220,8 +223,8 @@ unavailable rather than failing audio preparation.
 
 The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
-bulk, metering and profiling rotate fairly. Engine protocol version 10, application
-protocol version 24, and SDM2 shared-memory descriptors reject incompatible peers.
+bulk, metering and profiling rotate fairly. Engine protocol version 25, application
+protocol version 34, and SDM2 shared-memory descriptors reject incompatible peers.
 The browser MessagePort additionally allows at most 256 unconsumed profiling
 records. The main thread returns credits after decoding consumption, coalesced
 into one asynchronous flush. Status, names, topology and timestamp chunks share that
@@ -262,3 +265,44 @@ projection and UI loss while recording. The browser core workflow checks request
 state, available/unavailable acknowledgement, graph resets and toggles through the
 same application intents as the UI. The worklet artifact contract checks the raw
 ABI and JavaScript processor together.
+
+## Host reports and extension points
+
+The profiling window has **Audio** and **Host** panels. Audio retains its graph,
+statistics and xrun inspection controls. Host shows the advertised FreeRTOS task
+report, with an independent collection switch, acknowledged sampling interval,
+report age and delivery/assembly loss counters. A host without this producer shows
+it as unavailable; unknown schemas are identified without disconnecting the app.
+
+The FreeRTOS producer starts disabled and samples at 1 Hz when requested. It
+reports task name/identity, state, current/base priority, cumulative runtime and
+historical minimum unused stack bytes. CPU percentages use deltas between complete
+samples, include idle tasks and follow scheduler accounting rather than exclusive
+CPU or separate ISR time. First samples, re-enable boundaries, failed/incomplete
+samples and counter resets have unavailable CPU percentages. Disabling retains
+the last sample; detach removes collection demand and a new attachment starts
+with fresh client state. Graph rebuilds do not reset host measurements.
+
+Collection uses a fixed 32-task buffer in the control task. Kernel snapshots and
+stack watermark scanning suspend scheduling; each report includes collection time.
+That time is elapsed host time and may include preemption after scheduling resumes.
+Runtime accounting uses a 64-bit Cortex-A9 timer counter. It has a context-switch
+cost even when report collection is disabled. Bounded create/delete hooks assign
+boot-scoped 64-bit task tokens without recording a scheduler trace; reused TCB
+addresses do not reuse a token. Identity/table exhaustion yields incomplete data.
+QEMU measurements establish software behavior, not physical board deadlines.
+
+Both the engine and application protocols use `profiling_protocol` envelopes.
+`rt_profiling::wire` owns raw audio payloads; the backend still computes audio
+statistics and the service resolves application names. Derived audio views and
+host task reports use a diagnostic channel separate from session snapshots and
+session revisions. Collection, stream forwarding and UI rendering retain their
+separate costs. Reliable controls/heartbeats take priority; snapshot/media and
+profiling delivery have bounded fair service and independent profiling admission.
+
+The [stream contract](profiling/protocol.md) specifies versions, limits, identity,
+fragmentation, loss and subscriptions. To add a report, allocate a stable type ID
+and namespaced name, implement its bounded schema/codec and producer, and register
+it with `Service::register_profiling_provider`. Add the typed decoder and UI in the
+application client. Neither carrier implementations nor outer protocol variants
+need another report-specific case. Reports are not persisted in session files.

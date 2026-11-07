@@ -40,6 +40,7 @@ pub struct Stream<S> {
     queues: [VecDeque<Record>; 4],
     capacities: [usize; 4],
     active: Option<(usize, Record, usize)>,
+    low_lane: usize,
     input: [u8; MAX_RECORD_BYTES],
     used: usize,
     failure: Option<CarrierError>,
@@ -68,6 +69,7 @@ impl<S: ByteIo> Stream<S> {
             queues: core::array::from_fn(|i| VecDeque::with_capacity(capacities[i])),
             capacities,
             active: None,
+            low_lane: 0,
             input: [0; MAX_RECORD_BYTES],
             used: 0,
             failure: None,
@@ -90,11 +92,27 @@ impl<S: ByteIo> Stream<S> {
             return Err(error);
         }
         for _ in 0..32 {
+            if !self.queues[0].is_empty()
+                && self
+                    .active
+                    .as_ref()
+                    .is_some_and(|(lane, _, offset)| *lane != 0 && *offset == 0)
+            {
+                if let Some((lane, record, _)) = self.active.take() {
+                    self.queues[lane].push_front(record);
+                }
+            }
             if self.active.is_none() {
-                for lane in [0, 2, 1, 3] {
-                    if let Some(record) = self.queues[lane].pop_front() {
-                        self.active = Some((lane, record, 0));
-                        break;
+                if let Some(record) = self.queues[0].pop_front() {
+                    self.active = Some((0, record, 0));
+                } else {
+                    for _ in 0..3 {
+                        let lane = [2, 1, 3][self.low_lane];
+                        self.low_lane = (self.low_lane + 1) % 3;
+                        if let Some(record) = self.queues[lane].pop_front() {
+                            self.active = Some((lane, record, 0));
+                            break;
+                        }
                     }
                 }
             }

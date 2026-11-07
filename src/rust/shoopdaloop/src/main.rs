@@ -333,15 +333,6 @@ fn download_browser_trace(bytes: &[u8], filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-struct PendingAudioSettings {
-    request_id: Option<u64>,
-    config: AudioDriverConfig,
-    draft: shoop_settings::SettingsDraft,
-    saving: bool,
-    retry_requested: bool,
-}
-
 #[cfg(target_arch = "wasm32")]
 struct BrowserEphemeralFile {
     name: String,
@@ -412,7 +403,7 @@ struct UnifiedApp {
     settings: SettingsManager,
     pending_profiling_preference: Option<bool>,
     #[cfg(not(target_arch = "wasm32"))]
-    pending_audio_settings: Option<PendingAudioSettings>,
+    pending_audio_settings: Option<u64>,
     #[cfg(not(target_arch = "wasm32"))]
     tracing: Option<SharedNativeTracing>,
     #[cfg(target_arch = "wasm32")]
@@ -967,6 +958,41 @@ impl UnifiedApp {
             }
             action => action,
         };
+        if matches!(
+            &action,
+            SettingsAction::Save(_)
+                | SettingsAction::SaveTrackDefaults { .. }
+                | SettingsAction::RecoverWithDefaults
+        ) {
+            if self.audio_settings_busy() {
+                if let SettingsAction::SaveTrackDefaults { request_id, .. } = &action {
+                    self.widget.notify_track_default_save_result(
+                        *request_id,
+                        TrackDefaultSaveResult::Retry,
+                    );
+                }
+                self.settings.report_action_error(
+                    "Wait for the audio-driver operation to finish before saving settings",
+                );
+                return;
+            }
+            if !matches!(&action, SettingsAction::RecoverWithDefaults)
+                && !self.reconcile_audio_settings(&self.runtime.snapshot())
+            {
+                return;
+            }
+        }
+        if matches!(
+            &action,
+            SettingsAction::RequestAudioDriverSwitch { .. }
+                | SettingsAction::RetryAudioDriverPersistence { .. }
+        ) && self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving
+        {
+            self.settings.report_action_error(
+                "Wait for the settings save to finish before updating audio preferences",
+            );
+            return;
+        }
         let kind = action.kind();
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let action = self.preserve_profiling_preference(action);
@@ -1015,40 +1041,16 @@ impl UnifiedApp {
                 }
             }
             SettingsAction::RequestAudioDriverSwitch { config, draft } => {
-                #[cfg(not(target_arch = "wasm32"))]
-                if self.runtime.remote_entry.is_some() {
-                    if let Err(error) = validate_script_draft(&draft)
-                        .and_then(|()| self.settings.request_save(draft).map_err(Into::into))
-                    {
-                        self.settings.report_action_error(error.to_string());
-                    }
-                    return;
-                }
                 validate_script_draft(&draft).and_then(|()| {
                     self.runtime
-                        .dispatch(AppIntent::RequestAudioDriverSwitch {
-                            config: config.clone(),
-                        })
+                        .dispatch(AppIntent::RequestAudioDriverSwitch { config })
                         .map_err(Into::into)
-                        .map(|()| {
-                            self.pending_audio_settings = Some(PendingAudioSettings {
-                                request_id: None,
-                                config,
-                                draft,
-                                saving: false,
-                                retry_requested: false,
-                            });
-                        })
                 })
             }
-            SettingsAction::RetryAudioDriverPersistence { request_id } => {
-                let pending = self
-                    .pending_audio_settings
-                    .as_mut()
-                    .filter(|pending| pending.request_id == Some(request_id))
-                    .ok_or_else(|| anyhow::anyhow!("stale audio settings retry {request_id}"));
-                pending.map(|pending| pending.retry_requested = true)
-            }
+            SettingsAction::RetryAudioDriverPersistence { request_id } => self
+                .runtime
+                .dispatch(AppIntent::RetryAudioDriverPersistence { request_id })
+                .map_err(Into::into),
             SettingsAction::RequestBrowserPermissions => {
                 self.settings
                     .report_action_error("Browser permissions are unavailable in native builds");
@@ -1200,90 +1202,40 @@ impl UnifiedApp {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn reconcile_audio_settings(&mut self, snapshot: &AppSnapshot) {
-        let Some(mut pending) = self.pending_audio_settings.take() else {
-            return;
-        };
-        let switch = &snapshot.audio_drivers.switch;
-        if pending.request_id.is_none()
-            && switch
+    fn audio_settings_busy(&self) -> bool {
+        self.runtime.handle.has_pending_audio_driver_commands()
+            || matches!(
+                self.runtime.snapshot().audio_drivers.switch.status,
+                shoop_egui::AudioDriverSwitchStatus::Switching
+                    | shoop_egui::AudioDriverSwitchStatus::Resampling
+                    | shoop_egui::AudioDriverSwitchStatus::Restoring
+                    | shoop_egui::AudioDriverSwitchStatus::Persisting
+            )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn reconcile_audio_settings(&mut self, snapshot: &AppSnapshot) -> bool {
+        let state = &snapshot.audio_drivers.switch;
+        if self.runtime.remote_entry.is_some()
+            || state.status != shoop_egui::AudioDriverSwitchStatus::Completed
+            || self.pending_audio_settings == Some(state.request_id)
+            || !state
                 .target
                 .as_ref()
-                .is_some_and(|target| target.configured == pending.config)
+                .zip(snapshot.audio_drivers.active.as_ref())
+                .is_some_and(|(target, active)| target.configured == active.configured)
         {
-            pending.request_id = Some(switch.request_id);
+            return true;
         }
-        let Some(request_id) = pending.request_id else {
-            self.pending_audio_settings = Some(pending);
-            return;
-        };
-        if switch.request_id != request_id {
-            self.pending_audio_settings = Some(pending);
-            return;
+        if self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
+            return false;
         }
-        if switch.status == shoop_egui::AudioDriverSwitchStatus::Completed {
-            return;
+        if let Err(error) = self.settings.reload_driver_preferences() {
+            self.settings.report_action_error(error.to_string());
+            return false;
         }
-        let view = self.settings.view();
-        let desired_settings_saved = view.persistence
-            == shoop_settings::SettingsPersistenceState::Saved
-            && view.active.revision() > pending.draft.base_revision()
-            && shoop_egui::selected_audio_driver(&view.active).ok() == Some(pending.config.kind())
-            && shoop_egui::audio_driver_config_from_snapshot(&view.active, pending.config.kind())
-                .ok()
-                == Some(pending.config.clone());
-        if desired_settings_saved {
-            let _ = self
-                .runtime
-                .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
-                    request_id,
-                    success: true,
-                    message: "Audio driver switched and saved for the next launch".to_owned(),
-                });
-            return;
-        }
-        if switch.status == shoop_egui::AudioDriverSwitchStatus::Persisting && !pending.saving {
-            shoop_egui::set_selected_audio_driver(&mut pending.draft, pending.config.kind());
-            match self.settings.request_save(pending.draft.clone()) {
-                Ok(()) => pending.saving = true,
-                Err(error) => {
-                    let _ =
-                        self.runtime
-                            .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
-                                request_id,
-                                success: false,
-                                message: format!(
-                            "The new audio driver is active, but settings were not saved: {error}"
-                        ),
-                            });
-                }
-            }
-        }
-        if pending.saving {
-            let view = self.settings.view();
-            if view.persistence == shoop_settings::SettingsPersistenceState::Failed {
-                let _ = self.runtime.dispatch(
-                    AppIntent::CompleteAudioDriverSwitchPersistence {
-                        request_id,
-                        success: false,
-                        message: "The new audio driver is active, but settings were not saved. Retry saving without switching again."
-                            .to_owned(),
-                    },
-                );
-                pending.saving = false;
-            }
-        }
-        if pending.retry_requested
-            && !pending.saving
-            && self.settings.view().persistence != shoop_settings::SettingsPersistenceState::Saving
-        {
-            pending.retry_requested = false;
-            match self.settings.request_save(pending.draft.clone()) {
-                Ok(()) => pending.saving = true,
-                Err(error) => self.settings.report_action_error(error.to_string()),
-            }
-        }
-        self.pending_audio_settings = Some(pending);
+        self.pending_audio_settings = Some(state.request_id);
+        true
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1638,6 +1590,10 @@ impl UnifiedApp {
         if self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
             return;
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.audio_settings_busy() || !self.reconcile_audio_settings(&self.runtime.snapshot()) {
+            return;
+        }
         let Some(enabled) = self.pending_profiling_preference.take() else {
             return;
         };
@@ -1653,6 +1609,15 @@ impl UnifiedApp {
     }
 
     fn handle_ui_intent(&mut self, intent: AppIntent) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if shoop_app_client::runtime::writes_audio_preferences(&intent)
+            && self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving
+        {
+            self.settings.report_action_error(
+                "Wait for the settings save to finish before updating audio preferences",
+            );
+            return;
+        }
         let kind = intent.kind();
         let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
         if let Err(error) = self.runtime.dispatch(intent) {
@@ -2463,14 +2428,19 @@ type CatalogScanCompletion = (
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
-        Self::new_with_engine_start(settings, args, |driver, pools, transport| {
-            engine_backend::start_selected_with_processors(
-                driver,
-                pools,
-                transport,
-                args.configured_processors(settings)?,
-            )
-        })
+        Self::new_with_engine_start(
+            settings,
+            args,
+            |driver, pools, transport| {
+                engine_backend::start_selected_with_processors(
+                    driver,
+                    pools,
+                    transport,
+                    args.configured_processors(settings)?,
+                )
+            },
+            None,
+        )
     }
 
     fn new_with_engine_start(
@@ -2481,6 +2451,7 @@ impl Runtime {
             &shoop_egui::NewEnginePools,
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
+        preferences: Option<shoop_host::audio_driver::PreferenceWriter>,
     ) -> anyhow::Result<Self> {
         if let Some(target) = args.host_target()? {
             return Self::attach(settings, target);
@@ -2505,7 +2476,7 @@ impl Runtime {
         let transport = args.selected_engine_transport(settings)?;
         let started = start_engine(&configured_driver, &pools, transport)?;
         startup_warnings.extend(started.warnings);
-        let engine_host = Some(started.host);
+        let mut engine_host = Some(started.host);
         let backend = started.backend;
         let (loop_smoothing_ms, loop_smoothing_warning) =
             match shoop_egui::loop_edge_smoothing_ms(settings) {
@@ -2529,6 +2500,32 @@ impl Runtime {
                 true
             }
         };
+        let graph = engine_host
+            .as_ref()
+            .and_then(|host| host.graph_controller());
+        #[cfg(not(test))]
+        let preferences = match preferences {
+            Some(preferences) => preferences,
+            None => {
+                shoop_settings::default_settings_path().map(settings::driver_preference_writer)?
+            }
+        };
+        #[cfg(test)]
+        let preferences = preferences
+            .unwrap_or_else(|| Box::new(|_| anyhow::bail!("test runtime has no preference store")));
+        let driver = engine_host
+            .as_mut()
+            .unwrap()
+            .enable_audio_driver_switching(
+                shoop_app_api::HostSettings {
+                    driver: configured_driver,
+                    pools,
+                    processors: args.configured_processors(settings)?,
+                    master_auto_connect,
+                    loop_smoothing_ms,
+                },
+                preferences,
+            )?;
         let runtime = ApplicationRuntime::start_with_options(
             backend,
             application::ApplicationStartOptions {
@@ -2537,9 +2534,8 @@ impl Runtime {
                 master_auto_connect,
                 startup_warnings,
             },
-            engine_host
-                .as_ref()
-                .and_then(|host| host.graph_controller()),
+            graph,
+            Some(driver),
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -3766,6 +3762,7 @@ fn main() {
     let cli = AppArgs::parse();
     if !cli.probe_engine_transport
         && !cli.probe_persistence
+        && !cli.probe_bus_fx
         && !cli.probe_hosted_processors
         && !cli.probe_composites
         && !cli.probe_input
@@ -3784,11 +3781,14 @@ fn main() {
 
     if cli.probe_engine_transport
         || cli.probe_persistence
+        || cli.probe_bus_fx
         || cli.probe_hosted_processors
         || cli.probe_composites
         || cli.probe_input
     {
-        let result = if cli.probe_input {
+        let result = if cli.probe_bus_fx {
+            session_probe::bus_fx(cli.engine_transport.unwrap())
+        } else if cli.probe_input {
             session_probe::input(cli.engine_transport.unwrap())
         } else if cli.probe_hosted_processors {
             cli.audio
@@ -4825,10 +4825,303 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn driver_preference_retry_serializes_all_native_settings_writers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let location = Arc::new(Mutex::new(None::<std::path::PathBuf>));
+        let writer_location = location.clone();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let writer_attempts = attempts.clone();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let preferences: shoop_host::audio_driver::PreferenceWriter = Box::new(move |config| {
+            if writer_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                anyhow::bail!("injected initial preference failure");
+            }
+            entered_tx.send(())?;
+            release_rx.recv_timeout(Duration::from_secs(30))?;
+            let path = writer_location.lock().unwrap().clone().unwrap();
+            settings::driver_preference_writer(path)(config)
+        });
+        let mut app =
+            UnifiedApp::new_with_runtime(1.0, false, &new_engine_args(), |settings, args| {
+                Runtime::new_with_engine_start(
+                    settings,
+                    args,
+                    |driver, pools, transport| {
+                        engine_backend::start_selected_with_processors(
+                            driver,
+                            pools,
+                            transport,
+                            Default::default(),
+                        )
+                    },
+                    Some(preferences),
+                )
+            })
+            .unwrap();
+        let path = std::path::PathBuf::from(app.settings.view().storage_location);
+        *location.lock().unwrap() = Some(path.clone());
+        wait_for_snapshot(&app.runtime, "driver discovery", |s| {
+            s.audio_drivers.catalog.len() == 3
+        });
+        app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
+            config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                sample_rate: 32_000,
+                buffer_size: 128,
+            }),
+            draft: shoop_settings::SettingsDraft::from_snapshot(&app.settings.active()),
+        });
+        let confirmation = wait_for_snapshot(&app.runtime, "driver confirmation", |s| {
+            s.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        let request_id = confirmation.audio_drivers.switch.request_id;
+        app.handle_ui_intent(AppIntent::ConfirmAudioDriverSwitch {
+            request_id,
+            accept: true,
+        });
+        wait_for_snapshot(&app.runtime, "failed preference write", |s| {
+            s.audio_drivers.switch.persistence_retry_available && s.status.sample_rate == 32_000
+        });
+        let wait_idle = |app: &UnifiedApp| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while app.audio_settings_busy() {
+                assert!(
+                    Instant::now() < deadline,
+                    "audio preference command did not finish"
+                );
+                thread::sleep(Duration::from_millis(2));
+            }
+        };
+        wait_idle(&app);
+        for recover in [false, true] {
+            let action = if recover {
+                SettingsAction::RecoverWithDefaults
+            } else {
+                SettingsAction::Save(shoop_settings::SettingsDraft::from_snapshot(
+                    &app.settings.active(),
+                ))
+            };
+            app.handle_settings_action(action);
+            assert_eq!(
+                app.settings.view().persistence,
+                shoop_settings::SettingsPersistenceState::Saving
+            );
+            for _ in 0..2 {
+                app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence {
+                    request_id,
+                });
+                assert_eq!(
+                    app.settings.view().persistence,
+                    shoop_settings::SettingsPersistenceState::Saving
+                );
+                assert!(!app.runtime.handle.has_pending_audio_driver_commands());
+            }
+            app.handle_ui_intent(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            });
+            assert!(!app.runtime.handle.has_pending_audio_driver_commands());
+            wait_for_settings_save(&mut app.settings);
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
+        draft.set(shoop_egui::TOUCH_MODE, true);
+        app.handle_settings_action(SettingsAction::Save(draft));
+        wait_for_settings_save(&mut app.settings);
+        let stale = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
+        let before = std::fs::read(&path).unwrap();
+        app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence { request_id });
+        assert!(app.runtime.handle.has_pending_audio_driver_commands());
+        app.handle_settings_action(SettingsAction::Save(stale.clone()));
+        app.handle_settings_action(SettingsAction::RecoverWithDefaults);
+        app.pending_profiling_preference = Some(true);
+        app.save_profiling_preference();
+        assert_eq!(app.pending_profiling_preference, Some(true));
+        assert_ne!(
+            app.settings.view().persistence,
+            shoop_settings::SettingsPersistenceState::Saving
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        release_tx.send(()).unwrap();
+        wait_for_snapshot(&app.runtime, "saved driver preference", |s| {
+            s.audio_drivers.switch.status == shoop_egui::AudioDriverSwitchStatus::Completed
+        });
+        wait_idle(&app);
+        let saved_driver = std::fs::read(&path).unwrap();
+        app.handle_settings_action(SettingsAction::Save(stale));
+        assert_eq!(std::fs::read(&path).unwrap(), saved_driver);
+        assert_eq!(
+            app.settings
+                .active()
+                .get(shoop_egui::DUMMY_SAMPLE_RATE)
+                .unwrap(),
+            32_000
+        );
+        app.save_profiling_preference();
+        wait_for_settings_save(&mut app.settings);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            app.settings
+                .active()
+                .get(shoop_egui::DUMMY_SAMPLE_RATE)
+                .unwrap(),
+            32_000
+        );
+        assert!(app.settings.active().get(shoop_egui::TOUCH_MODE).unwrap());
+        assert!(app
+            .settings
+            .active()
+            .get(shoop_egui::RUNTIME_PROFILING)
+            .unwrap());
+        let stored =
+            shoop_settings::decode_settings(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(
+            stored.values["audio.dummy.sample_rate"],
+            serde_json::json!(32_000)
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let runtime = &mut app.runtime;
+        wait_for_snapshot(runtime, "driver discovery", |s| {
+            s.audio_drivers.catalog.len() == 3
+        });
+        runtime.dispatch(AppIntent::AddScriptSource {
+            name: "switch-survivor.lua".into(),
+            source: std::sync::Arc::from("shoop_announce_api_version(1, 0); print('started once'); local d=require('shoop_dialog'); d.simple('Switch survivor', {d.rich_text('VM still running')})"),
+            kind: ScriptKind::User,
+            enabled: true,
+        }).unwrap();
+        let before = wait_for_snapshot(runtime, "Lua survivor dialog", |s| {
+            s.scripting
+                .dialogs
+                .iter()
+                .any(|d| d.name == "Switch survivor")
+        });
+        let script = before
+            .scripting
+            .scripts
+            .iter()
+            .find(|s| s.name == "switch-survivor.lua")
+            .unwrap()
+            .clone();
+        let dialogs = before.scripting.dialogs.clone();
+        runtime
+            .dispatch(AppIntent::RequestLoadSessionPicker)
+            .unwrap();
+        let file = wait_for_snapshot(runtime, "active file picker", |s| s.io_task.is_some());
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let busy = wait_for_snapshot(runtime, "file workflow refusal", |s| {
+            s.notifications.iter().any(|n| {
+                n.message
+                    .contains("Finish the active file workflow before switching")
+            })
+        });
+        assert_eq!(busy.status.sample_rate, 48_000);
+        assert_ne!(
+            busy.audio_drivers.switch.status,
+            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        runtime
+            .dispatch(AppIntent::CancelIoTask {
+                task_id: file.io_task.as_ref().unwrap().id,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled file picker", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Cancelled)
+        });
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let prepared = wait_for_snapshot(runtime, "switch confirmation", |s| {
+            s.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        runtime
+            .dispatch(AppIntent::RequestLoadSessionPicker)
+            .unwrap();
+        let file = wait_for_snapshot(runtime, "file workflow during confirmation", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Running)
+        });
+        let notifications = file.notifications.len();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: prepared.audio_drivers.switch.request_id,
+                accept: true,
+            })
+            .unwrap();
+        let busy = wait_for_snapshot(runtime, "confirmation file workflow refusal", |s| {
+            s.notifications.len() > notifications
+        });
+        assert_eq!(
+            busy.audio_drivers.switch.status,
+            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        assert_eq!(busy.status.sample_rate, 48_000);
+        runtime
+            .dispatch(AppIntent::CancelIoTask {
+                task_id: file.io_task.as_ref().unwrap().id,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled second file picker", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Cancelled)
+        });
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: prepared.audio_drivers.switch.request_id,
+                accept: true,
+            })
+            .unwrap();
+        let after = wait_for_snapshot(
+            runtime,
+            "runtime switch and unsaved test preferences",
+            |s| {
+                s.status.sample_rate == 32_000 && s.audio_drivers.switch.persistence_retry_available
+            },
+        );
+        let survivor = after
+            .scripting
+            .scripts
+            .iter()
+            .find(|s| s.id == script.id)
+            .unwrap();
+        assert_eq!(survivor.lifecycle, script.lifecycle);
+        assert_eq!(survivor.logs, script.logs);
+        assert_eq!(after.scripting.dialogs, dialogs);
+        assert_eq!(after.tracks[0].id, before.tracks[0].id);
+        assert_eq!(after.tracks[0].loops[0].id, before.tracks[0].loops[0].id);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn application_core_workflow(mut app: UnifiedApp) {
         use shoop_egui::{
             BackendCapabilities, BackendCapability, BusAction, ConfirmedConnectionState,
-            GlobalControlAction, IoTaskStatus, MixerRouteState, NotificationLevel, StructuralState,
+            GlobalControlAction, IoTaskStatus, MixerRouteState, StructuralState,
         };
 
         let runtime = &mut app.runtime;
@@ -4839,6 +5132,7 @@ mod tests {
             snapshot.capabilities,
             BackendCapabilities::NONE
                 .with(BackendCapability::MidiInjection, true)
+                .with(BackendCapability::AudioDriverSwitching, true)
                 .with(BackendCapability::SessionCapture, true)
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
@@ -4846,6 +5140,13 @@ mod tests {
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::DryWetModes, true)
                 .with(BackendCapability::DryWetTracks, true)
+                .with(
+                    BackendCapability::BusFx,
+                    snapshot
+                        .bus_processors
+                        .iter()
+                        .any(|processor| processor.available),
+                )
                 .with(
                     BackendCapability::TrackFx,
                     snapshot
@@ -5116,10 +5417,19 @@ mod tests {
                 }),
             })
             .unwrap();
-        wait_for_snapshot(runtime, "a refused driver switch", |snapshot| {
-            snapshot.notifications.iter().any(|notification| {
-                notification.message == BackendCapability::AudioDriverSwitching.unavailable_reason()
+        let pending = wait_for_snapshot(runtime, "driver-switch confirmation", |snapshot| {
+            snapshot.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        let request_id = pending.audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: false,
             })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled driver switch", |snapshot| {
+            snapshot.audio_drivers.switch.status == shoop_egui::AudioDriverSwitchStatus::Completed
         });
 
         loop_action(runtime, &audio, LoopAction::StopClicked);
@@ -5138,13 +5448,8 @@ mod tests {
             })
         });
         assert_eq!(first_loop(&snapshot, sync.id).mode, LoopMode::Playing);
-        assert_eq!(
-            snapshot
-                .notifications
-                .iter()
-                .map(|notification| notification.level)
-                .collect::<Vec<_>>(),
-            [NotificationLevel::Warning],
+        assert!(
+            snapshot.notifications.is_empty(),
             "{:?}",
             snapshot.notifications
         );
@@ -5200,16 +5505,20 @@ mod tests {
             engine_transport: Some(transport),
             ..new_engine_args()
         };
-        let mut runtime =
-            Runtime::new_with_engine_start(&settings, &args, |driver, pools, kind| {
+        let mut runtime = Runtime::new_with_engine_start(
+            &settings,
+            &args,
+            |driver, pools, kind| {
                 engine_backend::start_selected_with_processors(
                     driver,
                     pools,
                     kind,
                     Default::default(),
                 )
-            })
-            .unwrap();
+            },
+            None,
+        )
+        .unwrap();
         let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {
             snapshot.tracks.len() == 1 && snapshot.connections.backend_available
         });
@@ -5462,7 +5771,7 @@ mod tests {
         let snapshot = wait_for_snapshot(&runtime, "the saved driver", |snapshot| {
             snapshot.status.sample_rate == 32_000 && snapshot.status.buffer_size == 64
         });
-        assert!(!snapshot
+        assert!(snapshot
             .capabilities
             .supports(shoop_egui::BackendCapability::AudioDriverSwitching));
     }

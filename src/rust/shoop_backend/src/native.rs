@@ -1316,6 +1316,7 @@ impl NativeRuntime {
                 (
                     *id,
                     BackendBusState {
+                        latest_input_midi_message: None,
                         id: *id,
                         name: bus.name.clone(),
                         channels,

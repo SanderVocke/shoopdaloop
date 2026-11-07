@@ -125,7 +125,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 23;
+const engineProtocolVersion = 25;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
@@ -178,13 +178,14 @@ if (!node.port.take('records').length) throw new Error('the connected engine sen
 
 // The runtime profiling request uses its appended protocol tag.
 function profilingRequest(enabled, correlation) {
-  const bytes = new Uint8Array(13);
+  const bytes = new Uint8Array(19);
   const view = new DataView(bytes.buffer);
   view.setUint16(0, bytes.length, true);
   bytes[2] = 1;
   view.setBigUint64(3, BigInt(correlation), true);
   bytes[11] = 35;
-  bytes[12] = enabled ? 1 : 0;
+  view.setUint16(12, 5, true);
+  bytes.set([1, 1, 1, enabled ? 1 : 0, 200], 14);
   node.port.deliver({ kind: 'records', bytes });
 }
 function takeEngineRecords(returnCredits = true) {
@@ -199,7 +200,7 @@ function takeEngineRecords(returnCredits = true) {
     }
   }
   if (returnCredits) {
-    const count = records.filter(record => record[2] >= 8 && record[2] <= 11).length;
+    const count = records.filter(record => record[2] === 8).length;
     if (count) node.port.deliver({ kind: 'profiling-credit', count });
   }
   return records;
@@ -231,37 +232,62 @@ if (!profileRecords.some(record => record[2] === 2 &&
     new DataView(record.buffer, record.byteOffset, record.byteLength).getBigUint64(3, true) === 991n && record[11] === 0)) {
   throw new Error('profiling request did not receive a successful completion');
 }
-for (const record of profileRecords) {
-  if (record[2] !== 9) continue;
-  const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
-  const start = view.getBigUint64(59, true);
-  const end = view.getBigUint64(67, true);
-  for (let index = 0; index < record[99]; index += 1) {
-    const key = view.getBigUint64(108 + index * 16, true);
-    const at = view.getBigUint64(116 + index * 16, true);
-    if (at < start || at > end) throw new Error('node timing escaped its measured interval');
+function compactReader(bytes, offset = 0) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    uint() {
+      const tag = bytes[offset++];
+      if (tag < 251) return BigInt(tag);
+      const width = {251: 2, 252: 4, 253: 8}[tag];
+      if (!width || offset + width > bytes.length) throw new Error('invalid compact integer');
+      const value = width === 2 ? BigInt(view.getUint16(offset, true)) : width === 4 ? BigInt(view.getUint32(offset, true)) : view.getBigUint64(offset, true);
+      offset += width; return value;
+    },
+    bytes(length) { const value = bytes.subarray(offset, offset + length); offset += length; return value; },
+  };
+}
+function audioRecord(record) {
+  if (record[2] !== 8) return null;
+  const envelope = compactReader(record, 5);
+  if (envelope.uint() !== 2n) return null;
+  const source = envelope.uint(), epoch = envelope.uint(), type = envelope.uint(), schema = envelope.uint();
+  envelope.uint(); // report sequence
+  const offset = envelope.uint(), total = envelope.uint(), length = Number(envelope.uint());
+  if (source !== 1n || epoch !== 1n || type !== 1n || schema !== 1n || offset !== 0n || total !== BigInt(length)) throw new Error('unexpected raw audio envelope');
+  const raw = compactReader(envelope.bytes(length));
+  const kind = raw.uint();
+  if (kind === 1n) { raw.uint(); raw.uint(); return {graphEnd: raw.uint() === 3n}; }
+  if (kind !== 2n) return null;
+  const packet = {};
+  for (const name of ['generation', 'capture', 'sequence', 'callback', 'callback_frame', 'frame', 'epoch', 'frames', 'start', 'end', 'budget', 'graphs', 'index', 'total', 'len', 'flags', 'trigger']) packet[name] = raw.uint();
+  packet.samples = [];
+  for (let index = 0; index < Number(packet.len); index++) packet.samples.push({key: raw.uint(), at: raw.uint()});
+  return packet;
+}
+for (const packet of profileRecords.map(audioRecord).filter(record => record?.samples)) {
+  for (const {key, at} of packet.samples) {
+    if (at < packet.start || at > packet.end) throw new Error('node timing escaped its measured interval');
     if ((key & ((1n << 63n) | (1n << 62n))) === 0n) timedNodes += 1;
   }
 }
 if (!timedNodes) throw new Error('profiling sent no graph node completion timestamps');
-if (!profileRecords.some(record => record[2] === 11 && record[19] === 3)) throw new Error('profiling sent no complete executable topology');
+if (!profileRecords.some(record => audioRecord(record)?.graphEnd)) throw new Error('profiling sent no complete executable topology');
 node.load = 2;
 const captureMessages = [];
 for (let index = 0; index < 64; index += 1) {
   quantum(node, 0.25);
   captureMessages.push(...takeEngineRecords());
 }
-const captureRecords = captureMessages.filter(record => record[2] === 9).map(record =>
-  new DataView(record.buffer, record.byteOffset, record.byteLength));
-if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(100, true) & 4))) {
+const captureRecords = captureMessages.map(audioRecord).filter(record => record?.samples);
+if (!captureRecords.some(packet => packet.capture !== 0n && (packet.flags & 4n))) {
   throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
 }
-if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getBigUint64(75, true) > 0n)) throw new Error('captured host callbacks lost their original budgets');
-if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getUint32(83, true) > 0)) throw new Error('captured host callbacks lost their graph-execution counts');
+if (!captureRecords.some(packet => (packet.flags & 16n) && packet.budget > 0n)) throw new Error('captured host callbacks lost their original budgets');
+if (!captureRecords.some(packet => (packet.flags & 16n) && packet.graphs > 0n)) throw new Error('captured host callbacks lost their graph-execution counts');
 let stalledRecords = 0;
 for (let index = 0; index < 512; index += 1) {
   quantum(node, 0.25);
-  stalledRecords += takeEngineRecords(false).filter(record => record[2] >= 8 && record[2] <= 11).length;
+  stalledRecords += takeEngineRecords(false).filter(record => record[2] === 8).length;
 }
 if (!stalledRecords || stalledRecords > 256) throw new Error('profiling exceeded its browser credit window');
 profilingRequest(false, 992);

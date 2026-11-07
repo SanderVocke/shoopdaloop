@@ -26,6 +26,27 @@ def main() -> int:
     preview_config.write_text(json.dumps({"Jack": {
         "client_name": "ShoopPreviewAcceptance",
     }}))
+    switching_config = args.output / "switching-drivers.json"
+    cpal_config = {
+        "client_name": "ShoopSwitchAcceptance",
+        "host": "jack",
+        "output_device": "default",
+        "input_device": "default",
+        "sample_rate": 48000,
+        "buffer_size": 0,
+        "output_channels": "all",
+        "input_channels": "all",
+        "capture_ring_frames": 4096,
+        "midi_inputs": [],
+        "midi_outputs": [],
+    }
+    switching_config.write_text(json.dumps([
+        {"Jack": {"client_name": "ShoopSwitchDirect"}},
+        {"Cpal": cpal_config},
+        {"Cpal": {**cpal_config, "buffer_size": 128}},
+        {"Jack": {"client_name": "ShoopSwitchReturn"}},
+        {"Dummy": {"sample_rate": 48000, "buffer_size": 128}},
+    ]))
     cargo_args = ["--release"] if args.profile == "release" else []
     env = os.environ.copy()
     env.pop("SHOOP_ALLOW_MISSING_BACKENDS", None)
@@ -36,6 +57,7 @@ def main() -> int:
     env["SHOOP_INPUT_PROBE_JACK"] = "1"
     env["SHOOP_PREVIEW_DRIVER_CONFIG"] = str(preview_config)
     env["SHOOP_PREVIEW_LOG_DIR"] = str(args.output)
+    env["SHOOP_P14_DRIVER_CONFIGS"] = str(switching_config)
     target_dir = Path(json.loads(subprocess.check_output(
         ["cargo", "metadata", "--format-version", "1", "--no-deps"],
         cwd=ROOT, env=env, text=True,
@@ -46,6 +68,7 @@ def main() -> int:
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_native", "--no-default-features", "--features", "jack", "--test", "jack", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoop_host", "--test", "jack", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoop_host", "--test", "recovery", "native_master_preview_device_acceptance", *cargo_args, "--", "--ignored", "--exact", "--test-threads=1"],
+        ["cargo", "test", "--locked", "-p", "shoop_host", "--test", "recovery", "native_driver_switching_device_acceptance_on_both_carriers", *cargo_args, "--", "--ignored", "--exact", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_process", "native_jack", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoopdaloop", "native_jack_application_start", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "build", "--locked", "-p", "shoopdaloop", "-p", "shoop_host", *cargo_args],

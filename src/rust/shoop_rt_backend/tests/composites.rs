@@ -230,7 +230,7 @@ fn profiling_and_playing_composite_state_remain_coherent_across_conversion_and_r
         .clock_mut()
         .offline
         .render
-        .set_profiling_clock(shoop_rt_protocol::profiling::Clock {
+        .set_profiling_clock(rt_profiling::Clock {
             now,
             resolution_ns: 10,
         });

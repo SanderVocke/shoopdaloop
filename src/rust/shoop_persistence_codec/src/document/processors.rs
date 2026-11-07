@@ -182,6 +182,34 @@ pub(super) fn synth_from_document(parameter: OxiSynthParameterDocument) -> OxiSy
         OxiSynthParameterDocument::ChorusSend => OxiSynthParameter::ChorusSend,
     }
 }
+pub(super) fn bus_processor_chain(bus: &image::Bus) -> Result<Option<FxChainDocument>> {
+    bus.fx
+        .as_ref()
+        .map(|fx| {
+            ensure!(
+                fx.processor_type.as_str() == TrackProcessorTypeId::BUILTIN_FX,
+                "unsupported bus processor"
+            );
+            Ok(FxChainDocument {
+                id: bus.id.raw(),
+                title: bus.name.clone(),
+                chain_type: FxChainTypeDocument::BuiltInFx,
+                ports: Vec::new(),
+                internal_state: canonical_state(FxChainTypeDocument::BuiltInFx, &fx.state)?,
+                builtin_fx_midi_cc_assignments: fx
+                    .midi_cc_assignments
+                    .iter()
+                    .map(|a| BuiltInFxMidiCcAssignmentDocument {
+                        parameter: fx_to_document(a.parameter),
+                        channel: a.channel,
+                        controller: a.controller,
+                    })
+                    .collect(),
+                midi_cc_assignments: Vec::new(),
+            })
+        })
+        .transpose()
+}
 pub(super) fn processor_chain(track: &image::Track) -> Result<Option<FxChainDocument>> {
     let chain_type = match &track.topology {
         TrackTopology::DryWet { processor_type, .. } => match processor_type.as_str() {

@@ -93,6 +93,13 @@ versioning, capacity, conversion fences and the application enablement boundary.
 | Strip output | the sum of its loop faders and the monitoring feed; two output banks | Output gain, balance, mute and presence ramps, output meters |
 | Bus | Prepared bus channels; two output banks | Sum of routed strips; gain, stereo balance, mute, presence and meters |
 
+Ramps (banks, monitoring, gain, balance, mute, presence and fades) are decided
+once per processing quantum and rendered as one linear segment across it, so the
+per-sample loops are branch-free arithmetic. A ramp that would end within a
+quantum ends at that quantum's last frame. Meters take each quantum's largest
+sample magnitude by comparing float bit patterns as integers, which avoids
+per-sample float compares; a NaN sample reads as the largest value.
+
 Stereo balance uses the legacy linear factors on two-channel stages. A strip
 output channel `c` takes input channel `c mod inputs`. Routes connect single strip
 output channels to single bus channels; `Limits::buses` and `bus_channels` report
@@ -170,8 +177,9 @@ processors. `poll` emits Engine, Strip, Loop and Bus records at most every
 whenever its planned transitions change. A recording loop reports its captured
 length. Next mode and remaining delay come from the planned transitions and the
 source's clock edges. Peaks are the maximum since the previous record. The
-Engine record carries the frame, the callbacks rendered, the host's xrun count
-and load, and the peaks of all host audio inputs and outputs. Loop state is the
+Engine record carries the frame, the callbacks rendered, the host's xrun count,
+its largest callback load since the previous record, and the peaks of all host
+audio inputs and outputs. Loop state is the
 state at the start of the last rendered callback.
 
 `Resync` streams the confirmed state between `Begin` and `End` records, as

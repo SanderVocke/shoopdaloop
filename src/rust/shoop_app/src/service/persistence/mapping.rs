@@ -7,6 +7,7 @@ use super::*;
 use shoop_app_protocol::persistence_image as image;
 
 pub(in crate::service) struct Candidate {
+    preserve_ids: bool,
     tracks: BTreeMap<TrackId, Track>,
     order: Vec<TrackId>,
     loops: BTreeMap<LoopId, Loop>,
@@ -204,7 +205,11 @@ impl Candidate {
         if identities.contains_key(&source.state.id) {
             return Err(anyhow!("duplicate session port identity"));
         }
-        let id = PortId::from_raw(next(&mut service.next_port)?);
+        let id = if self.preserve_ids {
+            source.state.id
+        } else {
+            PortId::from_raw(next(&mut service.next_port)?)
+        };
         identities.insert(source.state.id, id);
         let mut view = source.state.clone();
         view.id = id;
@@ -214,6 +219,7 @@ impl Candidate {
             id,
             Port {
                 backend: BackendPortId::from_raw(source.state.id.raw()),
+                preserve_name: self.preserve_ids,
                 view,
             },
         );
@@ -238,12 +244,37 @@ impl Candidate {
         }
         Ok(id)
     }
-    pub(super) fn prepare(
+    pub(in crate::service) fn prepare(
         service: &mut Service,
         image: &image::Image,
         session: &image::Session,
     ) -> Result<(Self, BackendSessionData, BTreeMap<u64, u64>)> {
-        if session.sample_rate != service.observed.status.sample_rate
+        let format = ConversionTarget {
+            sample_rate: service.observed.status.sample_rate,
+            quantum_frames: service.observed.status.quantum_frames,
+        };
+        Self::prepare_format(service, image, session, format, false)
+    }
+
+    pub(in crate::service) fn prepare_switch(
+        service: &mut Service,
+        image: &image::Image,
+        format: ConversionTarget,
+    ) -> Result<(Self, BackendSessionData, BTreeMap<u64, u64>)> {
+        let image::Manifest::Session(session) = &image.manifest else {
+            return Err(anyhow!("driver restoration requires a session"));
+        };
+        Self::prepare_format(service, image, session, format, true)
+    }
+
+    fn prepare_format(
+        service: &mut Service,
+        image: &image::Image,
+        session: &image::Session,
+        format: ConversionTarget,
+        preserve_ids: bool,
+    ) -> Result<(Self, BackendSessionData, BTreeMap<u64, u64>)> {
+        if session.sample_rate != format.sample_rate
             || (session.global.default_recording_action == DefaultRecordingAction::Grab
                 && !service
                     .backend
@@ -261,6 +292,7 @@ impl Candidate {
             ));
         }
         let mut candidate = Self {
+            preserve_ids,
             tracks: BTreeMap::new(),
             order: Vec::new(),
             loops: BTreeMap::new(),
@@ -336,7 +368,11 @@ impl Candidate {
             {
                 return Err(anyhow!("track controls must be finite"));
             }
-            let id = TrackId::from_raw(next(&mut service.next_track)?);
+            let id = if preserve_ids {
+                track.id
+            } else {
+                TrackId::from_raw(next(&mut service.next_track)?)
+            };
             let mut ports = Vec::new();
             for port in &track.ports {
                 if port.state.owner
@@ -393,7 +429,11 @@ impl Candidate {
                 {
                     return Err(anyhow!("session loop shape does not match its track"));
                 }
-                let live = LoopId::from_raw(next(&mut service.next_loop)?);
+                let live = if preserve_ids {
+                    content.id
+                } else {
+                    LoopId::from_raw(next(&mut service.next_loop)?)
+                };
                 if loop_ids.insert(content.id, live).is_some() {
                     return Err(anyhow!("duplicate session loop identity"));
                 }
@@ -402,7 +442,7 @@ impl Candidate {
                 }
                 if let Some(composite) = &content.composite {
                     if composite.prepared.sample_rate != session.sample_rate
-                        || composite.prepared.quantum != service.observed.status.quantum_frames
+                        || composite.prepared.quantum != format.quantum_frames
                     {
                         return Err(anyhow!(
                             "composite timing requires explicit format conversion"
@@ -572,14 +612,22 @@ impl Candidate {
             {
                 return Err(anyhow!("invalid bus or unsupported channel capacity"));
             }
-            let id = BusId::from_raw(next(&mut service.next_bus)?);
+            let id = if preserve_ids {
+                bus.id
+            } else {
+                BusId::from_raw(next(&mut service.next_bus)?)
+            };
             if bus_ids.insert(bus.id, id).is_some() {
                 return Err(anyhow!("duplicate bus identity"));
             }
             let mut channels = Vec::new();
             let mut view_channels = Vec::new();
             for channel in &bus.channels {
-                let channel_id = BusChannelId::from_raw(next(&mut service.next_channel)?);
+                let channel_id = if preserve_ids {
+                    channel.id
+                } else {
+                    BusChannelId::from_raw(next(&mut service.next_channel)?)
+                };
                 if !channel.id.is_valid()
                     || channel.port.state.owner != (ApplicationPortOwner::Bus { bus_id: bus.id })
                     || channel.label.is_empty()
@@ -616,6 +664,7 @@ impl Candidate {
                 Bus {
                     backend: BackendBusId::from_raw(bus.id.raw()),
                     view: BusState {
+                        latest_input_midi_message: None,
                         id,
                         name: bus.name.clone(),
                         structural_state: StructuralState::Confirmed,
@@ -638,9 +687,25 @@ impl Candidate {
                 gain_db: bus.gain_db,
                 balance: bus.balance,
                 muted: bus.muted,
-                processor_type: None,
-                processor_state: None,
-                builtin_fx_midi_cc_assignments: Vec::new(),
+                processor_type: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| fx.processor_type.as_str().to_owned()),
+                processor_state: bus.fx.as_ref().map(|fx| fx.state.clone()),
+                builtin_fx_midi_cc_assignments: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| {
+                        fx.midi_cc_assignments
+                            .iter()
+                            .map(|a| BackendBuiltInFxMidiCcAssignment {
+                                parameter: a.parameter,
+                                channel: a.channel,
+                                controller: a.controller,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             });
         }
         if session.bus_display_order.len() != bus_ids.len()
@@ -841,7 +906,7 @@ impl Candidate {
             sync,
         ))
     }
-    pub(super) fn publish(
+    pub(in crate::service) fn publish(
         mut self,
         service: &mut Service,
         mapping: &BackendSessionReplacement,

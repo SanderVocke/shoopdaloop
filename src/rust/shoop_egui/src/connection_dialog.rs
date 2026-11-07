@@ -1785,6 +1785,7 @@ mod tests {
     fn graph_classifies_master_facets_and_emits_typed_routes() {
         let mut state = state();
         state.buses = Arc::from([BusState {
+            latest_input_midi_message: None,
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
             structural_state: crate::StructuralState::Confirmed,

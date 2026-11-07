@@ -58,6 +58,7 @@ pub struct Snapshot {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct GlobalMidiDiagnostics {
+    pub latest_cc: Option<[u8; 3]>,
     pub rejected: u64,
     pub overwritten: u64,
     pub deferred: u64,

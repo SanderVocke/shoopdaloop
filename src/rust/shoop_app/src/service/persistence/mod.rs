@@ -9,9 +9,9 @@ use shoop_app_protocol::{
     persistence_image as image,
     persistence_transfer::{Assembly, Source},
 };
-mod capture;
+pub(super) mod capture;
 mod family;
-mod mapping;
+pub(super) mod mapping;
 use capture::Cut;
 use mapping::Candidate;
 
@@ -149,7 +149,7 @@ impl Service {
             return Err(Refusal::NotReady);
         }
         self.target_current(key, target)?;
-        if self.persistence_job.is_some() {
+        if self.persistence_job.is_some() || self.driver_freezes_session() {
             return Err(Refusal::Busy);
         }
         if self
@@ -469,12 +469,13 @@ impl Service {
         }
     }
     pub(super) fn persistence_reads_busy(&self) -> bool {
-        matches!(
-            self.persistence_job,
-            Some(Job::Capture { .. } | Job::Commit(_))
-        )
+        self.driver_freezes_session()
+            || matches!(
+                self.persistence_job,
+                Some(Job::Capture { .. } | Job::Commit(_))
+            )
     }
-    fn capture_recording_busy(&self, target: persistence::Target) -> bool {
+    pub(super) fn capture_recording_busy(&self, target: persistence::Target) -> bool {
         let only = match target {
             persistence::Target::Loop { loop_id, .. } => Some(loop_id),
             _ => None,
@@ -540,7 +541,9 @@ impl Service {
     pub(super) fn persistence_detach(&mut self) {
         if !matches!(self.persistence_job, Some(Job::Commit(_))) {
             self.persistence_job = None;
-            self.backend.cancel_media_reads();
+            if !self.driver_freezes_session() {
+                self.backend.cancel_media_reads();
+            }
         }
     }
     pub(super) fn advance_persistence(&mut self) {
@@ -1089,6 +1092,7 @@ impl Service {
                 bus_display_order: vec![BusId::from_raw(1)],
                 preview_bus: Some(BusId::from_raw(1)),
                 buses: vec![image::Bus {
+                    fx: None,
                     id: BusId::from_raw(1),
                     name: "Master".to_owned(),
                     gain_db: 0.,

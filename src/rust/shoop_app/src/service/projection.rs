@@ -55,44 +55,6 @@ impl Service {
         let connections = self.connections();
         Arc::new(SessionSnapshot {
             composites: self.composite_views(),
-            profiling: {
-                let mut profiling = self.observed.profiling.clone();
-                profiling.groups = profiling
-                    .groups
-                    .iter()
-                    .cloned()
-                    .map(|mut group| {
-                        let name = match group.kind {
-                            1 => self
-                                .tracks
-                                .values()
-                                .find(|t| t.backend.raw() == group.entity)
-                                .map(|t| t.view.name.clone()),
-                            2 => self
-                                .loops
-                                .values()
-                                .find(|l| l.backend.raw() == group.entity)
-                                .and_then(|l| {
-                                    self.tracks
-                                        .get(&l.track)
-                                        .map(|t| format!("{} / {}", t.view.name, l.view.name))
-                                }),
-                            3 => self
-                                .buses
-                                .values()
-                                .find(|b| b.backend.raw() == group.entity)
-                                .map(|b| b.view.name.clone()),
-                            _ => None,
-                        };
-                        if let Some(name) = name {
-                            group.name = name.chars().take(512).collect();
-                        }
-                        group
-                    })
-                    .collect::<Vec<_>>()
-                    .into();
-                profiling
-            },
             preview: {
                 let mut state = self.preview.clone();
                 state.master_preview_available = self.backend.supports_audio_preview()
@@ -131,7 +93,11 @@ impl Service {
             master_auto_connect: self.options.master_auto_connect,
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             status: status(&self.observed.status),
-            audio_drivers: self.observed.audio_drivers.clone(),
+            audio_drivers: if self.driver_controller.is_some() {
+                self.driver_state.clone()
+            } else {
+                self.observed.audio_drivers.clone()
+            },
             capabilities: [
                 BackendCapability::Grab,
                 BackendCapability::ReplacingMode,
@@ -144,16 +110,21 @@ impl Service {
                 BackendCapability::DryWetTracks,
                 BackendCapability::DryWetModes,
                 BackendCapability::TrackFx,
+                BackendCapability::BusFx,
                 BackendCapability::LoopTimingEdits,
             ]
             .into_iter()
             .fold(BackendCapabilities::NONE, |caps, capability| {
                 caps.with(capability, self.backend.capabilities().supports(capability))
-            }),
+            })
+            .with(
+                BackendCapability::AudioDriverSwitching,
+                self.driver_controller.is_some(),
+            ),
             connections,
             host_graph: self.host_graph.clone(),
             track_processors: self.track_processors.clone(),
-            bus_processors: Arc::from([]),
+            bus_processors: self.bus_processors.clone(),
             pending: self
                 .pending
                 .values()
@@ -405,6 +376,7 @@ impl Service {
             Bus {
                 backend: created.bus_id,
                 view: BusState {
+                    latest_input_midi_message: None,
                     id,
                     name,
                     structural_state,
@@ -462,6 +434,7 @@ impl Service {
         self.ports.insert(
             id,
             Port {
+                preserve_name: false,
                 backend: descriptor.id,
                 view: ApplicationPortState {
                     publication: None,
@@ -583,7 +556,6 @@ impl Service {
     pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
         if observed.connections.revision != self.observed.connections.revision
             || observed.connections.host_ports != self.observed.connections.host_ports
-            || observed.profiling != self.observed.profiling
             || observed.mixer.revision != self.observed.mixer.revision
         {
             self.bump();
@@ -776,6 +748,10 @@ impl Service {
                 if bus.view.structural_state == StructuralState::Creating {
                     bus.view.structural_state = StructuralState::Confirmed;
                 }
+                bus.view.fx = state.fx.clone();
+                bus.view.latest_input_midi_message = state
+                    .latest_input_midi_message
+                    .and_then(|message| LatestMidiMessage::new(message.bytes, message.len));
                 bus.view.gain_db = state.gain_db;
                 bus.view.balance = state.balance;
                 bus.view.muted = state.muted;
@@ -787,14 +763,19 @@ impl Service {
                 .connections
                 .application_ports
                 .get(&port.backend)
-                .filter(|_| port.view.publication.is_none())
+                .filter(|_| port.view.publication.is_none() && !port.preserve_name)
             {
                 port.view.name = descriptor.name.clone();
             }
         }
+        if self.driver_controller.is_some() && observed.audio_drivers.active.is_some() {
+            self.driver_state.active = observed.audio_drivers.active.clone();
+        }
         self.xruns = self.xruns.saturating_add(observed.status.xruns);
+        self.dsp_peak = self.dsp_peak.max(observed.status.dsp_load_percent);
         self.observed = observed;
         self.observed.status.xruns = self.xruns;
+        self.observed.status.dsp_load_percent = self.dsp_peak;
     }
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {
@@ -1026,5 +1007,46 @@ fn controls(state: &BackendTrackState) -> TrackControlState {
         input_peak_right_db: input_right,
         output_peak_left_db: output_left,
         output_peak_right_db: output_right,
+    }
+}
+
+impl Service {
+    pub fn audio_profiling_view(&self) -> ProfilingView {
+        let mut profiling = self.observed.profiling.clone();
+        profiling.groups = profiling
+            .groups
+            .iter()
+            .cloned()
+            .map(|mut group| {
+                let name = match group.kind {
+                    1 => self
+                        .tracks
+                        .values()
+                        .find(|t| t.backend.raw() == group.entity)
+                        .map(|t| t.view.name.clone()),
+                    2 => self
+                        .loops
+                        .values()
+                        .find(|l| l.backend.raw() == group.entity)
+                        .and_then(|l| {
+                            self.tracks
+                                .get(&l.track)
+                                .map(|t| format!("{} / {}", t.view.name, l.view.name))
+                        }),
+                    3 => self
+                        .buses
+                        .values()
+                        .find(|b| b.backend.raw() == group.entity)
+                        .map(|b| b.view.name.clone()),
+                    _ => None,
+                };
+                if let Some(name) = name {
+                    group.name = name.chars().take(512).collect();
+                }
+                group
+            })
+            .collect::<Vec<_>>()
+            .into();
+        profiling
     }
 }

@@ -1,6 +1,10 @@
 #ifndef SHOOP_FREERTOSCONFIG_H
 #define SHOOP_FREERTOSCONFIG_H
 #include "xparameters.h"
+#include <stdint.h>
+#include "profiling_identity.h"
+#define traceTASK_CREATE(task) shoop_profile_task_created((void *)(task))
+#define traceTASK_DELETE(task) shoop_profile_task_deleted((void *)(task))
 #define configUSE_PREEMPTION 1
 #define configUSE_TIME_SLICING 1
 #define configIDLE_SHOULD_YIELD 1
@@ -31,7 +35,11 @@
 #define configTIMER_QUEUE_LENGTH 32
 #define configTIMER_TASK_STACK_DEPTH 2048
 #define configQUEUE_REGISTRY_SIZE 16
-#define configGENERATE_RUN_TIME_STATS 0
+#define configGENERATE_RUN_TIME_STATS 1
+#define configRUN_TIME_COUNTER_TYPE uint64_t
+uint64_t shoop_profile_counter(void);
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() ((void)0)
+#define portGET_RUN_TIME_COUNTER_VALUE() shoop_profile_counter()
 #define configSUPPORT_STATIC_ALLOCATION 0
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
 #define configINTERRUPT_CONTROLLER_BASE_ADDRESS 0xf8f01000

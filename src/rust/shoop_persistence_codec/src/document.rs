@@ -357,7 +357,7 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                     .iter()
                     .map(|channel| port_to_document(&channel.port))
                     .collect::<Result<_>>()?,
-                fx_chain: None,
+                fx_chain: bus_processor_chain(master)?,
                 gain_db: master.gain_db,
                 balance: master.balance,
                 muted: master.muted,
@@ -425,8 +425,12 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     {
         unsupported.insert("buses exceeding replacement engine capacity");
     }
-    if doc.buses.iter().any(|b| b.fx_chain.is_some()) {
-        unsupported.insert("bus FX (P08)");
+    if doc.buses.iter().any(|b| {
+        b.fx_chain
+            .as_ref()
+            .is_some_and(|chain| chain.chain_type != FxChainTypeDocument::BuiltInFx)
+    }) {
+        unsupported.insert("unsupported bus processor (Carla is out of scope)");
     }
     let mut seen_groups = BTreeSet::new();
     for group in &doc.track_groups {
@@ -566,7 +570,32 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             });
         }
         ensure!(ports.is_empty(), "unsupported extra bus ports");
+        let fx = bus
+            .fx_chain
+            .as_ref()
+            .map(|chain| {
+                ensure!(
+                    chain.chain_type == FxChainTypeDocument::BuiltInFx
+                        && chain.midi_cc_assignments.is_empty(),
+                    "unsupported bus processor"
+                );
+                Ok(image::BusFx {
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
+                    state: canonical_state(chain.chain_type, &chain.internal_state)?,
+                    midi_cc_assignments: chain
+                        .builtin_fx_midi_cc_assignments
+                        .iter()
+                        .map(|a| BuiltInFxMidiCcAssignment {
+                            parameter: fx_from_document(a.parameter),
+                            channel: a.channel,
+                            controller: a.controller,
+                        })
+                        .collect(),
+                })
+            })
+            .transpose()?;
         buses.push(image::Bus {
+            fx,
             id: BusId::from_raw(bus.id),
             name: bus.name,
             channels,

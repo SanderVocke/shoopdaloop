@@ -93,7 +93,17 @@ pub enum Startup {
     Connected(Vec<StartupScript>),
 }
 
+pub fn writes_audio_preferences(intent: &AppIntent) -> bool {
+    matches!(
+        intent,
+        AppIntent::RequestAudioDriverSwitch { .. }
+            | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+            | AppIntent::RetryAudioDriverPersistence { .. }
+    )
+}
+
 pub struct Runtime {
+    pending_audio_profiling: Option<bool>,
     client: Client,
     delivery: Box<dyn Delivery>,
     scripts: ScriptManager,
@@ -107,6 +117,7 @@ pub struct Runtime {
     io_task: Option<IoTaskState>,
     intents: VecDeque<(u64, AppIntent)>,
     commands: VecDeque<(u64, Command, Option<(u64, bool)>)>,
+    audio_driver_operations: BTreeSet<OperationId>,
     creations: BTreeMap<OperationId, (u64, bool)>,
     seen_results: BTreeSet<OperationId>,
     track_results: VecDeque<TrackCreationResult>,
@@ -135,6 +146,7 @@ impl Runtime {
         let mut scripts = ScriptManager::new_with_midi(midi);
         scripts.use_confirmed_control_reads();
         let mut runtime = Self {
+            pending_audio_profiling: None,
             client,
             delivery,
             scripts,
@@ -148,6 +160,7 @@ impl Runtime {
             io_task: None,
             intents: VecDeque::new(),
             commands: VecDeque::new(),
+            audio_driver_operations: BTreeSet::new(),
             creations: BTreeMap::new(),
             seen_results: BTreeSet::new(),
             track_results: VecDeque::new(),
@@ -186,6 +199,16 @@ impl Runtime {
     }
     pub fn has_pending_commands(&self) -> bool {
         !self.intents.is_empty() || !self.commands.is_empty()
+    }
+    pub fn has_pending_audio_driver_commands(&self) -> bool {
+        self.intents
+            .iter()
+            .any(|(_, intent)| writes_audio_preferences(intent))
+            || self
+                .commands
+                .iter()
+                .any(|(_, command, _)| matches!(command, Command::AudioDriver(_)))
+            || !self.audio_driver_operations.is_empty()
     }
     pub fn take_file_output(&mut self) -> Option<ApplicationFileOutput> {
         self.outputs
@@ -248,6 +271,7 @@ impl Runtime {
         Ok(())
     }
     pub fn fail(&mut self, message: String) {
+        self.pending_audio_profiling = None;
         if self.client.state() != State::Lost {
             self.notify(message);
         }
@@ -273,11 +297,16 @@ impl Runtime {
         self.next_notice = self.next_notice.saturating_add(1);
     }
     pub fn tick(&mut self, elapsed: Duration) {
+        self.client.advance_diagnostics(elapsed);
         let _span = tracing::trace_span!("app.client.tick").entered();
         if self.client.state() != State::Lost {
             if let Err(error) = self.delivery.poll(&mut self.client) {
                 self.lost(error);
             }
+        }
+        if self.client.state() == State::Ready {
+            self.audio_driver_operations
+                .retain(|operation| self.client.operation_in_flight(*operation));
         }
         if let Some(message) = self.client.ready_message() {
             match self.delivery.send(message) {
@@ -377,6 +406,19 @@ impl Runtime {
             self.command_epoch = None;
             self.queue_script_operations();
         }
+        if self.pending_audio_profiling.is_some()
+            && self
+                .profiling_request(profiling_data::wire::subscribe(false))
+                .is_some()
+        {
+            let value = self
+                .pending_audio_profiling
+                .take()
+                .expect("pending preference");
+            if let Err(error) = self.apply_intent(AppIntent::SetProfiling(value)) {
+                self.notify(error.to_string());
+            }
+        }
         self.advance_scripting(elapsed);
         self.queue_script_operations();
         for _ in 0..MAX_MESSAGES_PER_TURN {
@@ -384,6 +426,7 @@ impl Runtime {
                 break;
             };
             let resetting = matches!(command, Command::NewSession);
+            let audio_driver = matches!(command, Command::AudioDriver(_));
             let mut message = match self.client.command(command, None) {
                 Ok(message) => message,
                 Err(Error::Full) => break,
@@ -405,6 +448,9 @@ impl Runtime {
             match self.delivery.send(message) {
                 Ok(()) => {
                     self.commands.pop_front();
+                    if audio_driver {
+                        self.audio_driver_operations.insert(operation);
+                    }
                     if resetting {
                         self.reset_operation = Some(operation);
                         self.reset_queued = false;
@@ -441,6 +487,7 @@ impl Runtime {
         }
     }
     fn lost(&mut self, error: Error) {
+        self.pending_audio_profiling = None;
         if !self.loss_reported {
             self.notify(format!(
                 "Session connection lost ({error:?}). Admitted work remains with its host."
@@ -463,6 +510,7 @@ impl Runtime {
         }
     }
     pub fn detach(&mut self) -> Result<(), Error> {
+        self.pending_audio_profiling = None;
         let message = self.client.detach()?;
         self.stop_scripts();
         self.delivery.send(message)
@@ -594,12 +642,26 @@ impl Runtime {
         self.seen_results
             .retain(|id| self.client.results().contains_key(id));
     }
+    fn profiling_request(
+        &self,
+        mut request: profiling_protocol::Request,
+    ) -> Option<profiling_protocol::Request> {
+        let source = self
+            .client
+            .diagnostics()
+            .sources
+            .iter()
+            .find(|s| s.descriptor.stream.source == request.source)?;
+        request.epoch = source.descriptor.stream.epoch;
+        Some(request)
+    }
     fn project(&mut self) {
         let mut view = self
             .client
             .snapshot()
             .map(|state| AppSnapshot {
-                profiling: state.profiling.clone(),
+                profiling: self.client.profiling().clone(),
+                diagnostics: self.client.diagnostics().clone(),
                 bus_limits: state.bus_limits,
                 tracks: state.tracks.clone(),
                 buses: Arc::clone(&state.buses),
@@ -1098,7 +1160,36 @@ impl Runtime {
                 return provider.apply(intent, state, session_scripts);
             }
         }
+        if matches!(
+            &intent,
+            AppIntent::RequestAudioDriverSwitch { .. }
+                | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+        ) && self
+            .persistence_io
+            .as_ref()
+            .and_then(|provider| provider.task())
+            .is_some_and(|task| {
+                !matches!(
+                    task.status,
+                    IoTaskStatus::Completed | IoTaskStatus::Failed | IoTaskStatus::Cancelled
+                )
+            })
+        {
+            anyhow::bail!("Finish the active file workflow before switching audio drivers");
+        }
         let command = match intent {
+            AppIntent::RefreshAudioDriverDiscovery { config } => {
+                Command::AudioDriver(audio_driver::Command::Discover(config))
+            }
+            AppIntent::RequestAudioDriverSwitch { config } => {
+                Command::AudioDriver(audio_driver::Command::Request(config))
+            }
+            AppIntent::ConfirmAudioDriverSwitch { request_id, accept } => {
+                Command::AudioDriver(audio_driver::Command::Confirm { request_id, accept })
+            }
+            AppIntent::RetryAudioDriverPersistence { request_id } => {
+                Command::AudioDriver(audio_driver::Command::RetryPersistence { request_id })
+            }
             AppIntent::AddTrack(spec) => Command::AddTrack(spec.into()),
             AppIntent::AddTrackWithTopology(spec) => {
                 let creation = spec.creation_request_id.map(|id| (id, false));
@@ -1226,8 +1317,26 @@ impl Runtime {
                 destination: destination_channel_id,
                 connected,
             },
-            AppIntent::SetProfiling(value) => Command::SetProfiling(value),
-            AppIntent::InspectProfiling(request) => Command::InspectProfiling(request),
+            AppIntent::SetProfiling(value) => {
+                if let Some(request) =
+                    self.profiling_request(profiling_data::wire::subscribe(value))
+                {
+                    self.pending_audio_profiling = None;
+                    Command::Diagnostic(request)
+                } else {
+                    self.pending_audio_profiling = Some(value);
+                    Command::Diagnostic(profiling_protocol::Request {
+                        source: 0,
+                        epoch: 0,
+                        action: profiling_protocol::Action::Discover,
+                    })
+                }
+            }
+            AppIntent::ControlProfiling(request) => Command::Diagnostic(request),
+            AppIntent::InspectProfiling(request) => Command::Diagnostic(
+                self.profiling_request(profiling_data::wire::inspect(request))
+                    .ok_or_else(|| anyhow::anyhow!("Audio profiling source is unavailable"))?,
+            ),
             AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
             AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
             AppIntent::ResetXruns => Command::ResetXruns,
@@ -1395,10 +1504,7 @@ impl Runtime {
                     | AppIntent::SetTakeProcessorAlignment { .. } => {
                         BackendCapability::TakeAlignment
                     }
-                    AppIntent::RequestAudioDriverSwitch { .. }
-                    | AppIntent::RefreshAudioDriverDiscovery { .. }
-                    | AppIntent::ConfirmAudioDriverSwitch { .. }
-                    | AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
+                    AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
                         BackendCapability::AudioDriverSwitching
                     }
                     _ => anyhow::bail!("{} is unavailable with this engine", other.kind()),

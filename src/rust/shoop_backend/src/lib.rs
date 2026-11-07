@@ -326,6 +326,8 @@ impl BackendBusControl {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendBusState {
+    #[serde(skip)]
+    pub latest_input_midi_message: Option<BackendLatestMidiMessage>,
     pub id: BackendBusId,
     pub name: String,
     pub channels: Vec<BackendBusChannelState>,

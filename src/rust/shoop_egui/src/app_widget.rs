@@ -548,7 +548,7 @@ pub fn register_audio_settings_with_default_driver(
             "all".to_owned(),
             "Audio",
             "MIDI inputs",
-            "Comma-separated midir input names/selectors.",
+            "Comma-separated MIDI selectors, or a JSON array for names containing commas.",
         )
         .category_order(5)
         .setting_order(39)
@@ -558,7 +558,7 @@ pub fn register_audio_settings_with_default_driver(
             "all".to_owned(),
             "Audio",
             "MIDI outputs",
-            "Comma-separated midir output names/selectors.",
+            "Comma-separated MIDI selectors, or a JSON array for names containing commas.",
         )
         .category_order(5)
         .setting_order(40)
@@ -966,8 +966,8 @@ fn audio_driver_config(
                 output_channels: string(CPAL_OUTPUT_CHANNELS)?,
                 input_channels: string(CPAL_INPUT_CHANNELS)?,
                 capture_ring_frames: unsigned(CPAL_CAPTURE_RING_FRAMES)?,
-                midi_inputs: split_selectors(&string(CPAL_MIDI_INPUTS)?),
-                midi_outputs: split_selectors(&string(CPAL_MIDI_OUTPUTS)?),
+                midi_inputs: split_selectors(&string(CPAL_MIDI_INPUTS)?)?,
+                midi_outputs: split_selectors(&string(CPAL_MIDI_OUTPUTS)?)?,
             };
             if config.client_name.trim().is_empty()
                 || config.host.trim().is_empty()
@@ -995,13 +995,17 @@ fn parse_audio_driver_kind(value: String) -> Result<AudioDriverKind, String> {
     }
 }
 
-fn split_selectors(value: &str) -> Vec<String> {
-    value
+fn split_selectors(value: &str) -> Result<Vec<String>, String> {
+    if value.trim_start().starts_with('[') {
+        return serde_json::from_str(value)
+            .map_err(|error| format!("Invalid MIDI selector array: {error}"));
+    }
+    Ok(value
         .split(',')
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .collect()
+        .collect())
 }
 
 pub fn register_bundled_script_settings(
@@ -1420,6 +1424,10 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn open_host_profiling(&mut self) {
+        self.profiling.open = true;
+        self.profiling.host = true;
+    }
     pub fn open_profiling(&mut self) {
         self.profiling.open = true;
     }
@@ -1964,8 +1972,12 @@ impl AppWidget {
             &state.profiling,
             &state.status,
             controls_enabled && state.connections.backend_available,
+            &state.diagnostics,
         ) {
             settings_actions.push(SettingsAction::SetProfiling(enabled));
+        }
+        if let Some(request) = self.profiling.take_control() {
+            actions.push(AppAction::ControlProfiling(request));
         }
         if let Some(request) = self.profiling.take_request() {
             actions.push(AppAction::InspectProfiling(request));
@@ -4919,6 +4931,8 @@ mod tests {
         draft.set(CPAL_HOST, "test-host".to_owned());
         draft.set(CPAL_OUTPUT_DEVICE, "speakers".to_owned());
         draft.set(CPAL_INPUT_DEVICE, "microphone".to_owned());
+        draft.set(CPAL_MIDI_INPUTS, " keys, 1 ".to_owned());
+        draft.set(CPAL_MIDI_OUTPUTS, r#"["=Synth, Port A "]"#.to_owned());
         draft.set(CPAL_SAMPLE_RATE, 44_100);
         set_selected_audio_driver(&mut draft, AudioDriverKind::Cpal);
         let cpal = audio_driver_config_from_draft(&draft, AudioDriverKind::Cpal).unwrap();
@@ -4928,6 +4942,10 @@ mod tests {
         };
         assert_eq!(cpal.host, "test-host");
         assert_eq!(cpal.sample_rate, 44_100);
+        assert_eq!(cpal.midi_inputs, ["keys", "1"]);
+        assert_eq!(cpal.midi_outputs, ["=Synth, Port A "]);
+        draft.set(CPAL_MIDI_INPUTS, "[invalid".to_owned());
+        assert!(audio_driver_config_from_draft(&draft, AudioDriverKind::Cpal).is_err());
         assert_eq!(
             audio_driver_config_from_draft(&draft, AudioDriverKind::Dummy).unwrap(),
             dummy
@@ -5239,6 +5257,7 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let bus = |id| crate::BusState {
+            latest_input_midi_message: None,
             id: crate::BusId::from_raw(id),
             name: if id == 1 {
                 "Master".to_owned()

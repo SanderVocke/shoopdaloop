@@ -518,6 +518,10 @@ pub fn run_input(
     ] {
         confirmed(command(client, connection, Command::Global(setting)));
     }
+    for mode in [LoopMode::Stopped, LoopMode::Playing] {
+        confirmed(command(client, connection, transition(vec![clock], mode)));
+        wait_mode(client, connection, clock_track, clock, mode);
+    }
     confirmed(command(
         client,
         connection,
@@ -525,6 +529,7 @@ pub fn run_input(
             loops: vec![loops[2]],
         }),
     ));
+    wait_mode(client, connection, track, loops[2], LoopMode::Recording);
     assert_eq!(
         client
             .snapshot()

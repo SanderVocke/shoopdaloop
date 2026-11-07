@@ -11,6 +11,7 @@ use rt_runtime::{Error, NodeId};
 pub(crate) struct Shape {
     pub channels: usize,
     pub master_channels: usize,
+    pub processor_channels: usize,
 }
 
 /// Prepared scratch for sorting one node's input edges and the loop bindings.
@@ -195,6 +196,13 @@ impl Builder {
             self.step(plan, node, count, &mut end)?;
         }
         for slot in 0..pool.processors() {
+            if model.buses.iter().flatten().any(|bus| {
+                bus.processor
+                    .and_then(|owner| owner.slot)
+                    .is_some_and(|owner| owner.index as usize == slot)
+            }) {
+                continue;
+            }
             let mut count = 0;
             if let Some((strip_slot, strip)) = model
                 .strips
@@ -259,7 +267,7 @@ impl Builder {
                 let prepared_width = if owner.kind == shoop_rt_protocol::ProcessorKind::OxiSynth {
                     2
                 } else {
-                    channels
+                    shape.processor_channels
                 };
                 for channel in 0..strip.shape.audio_outputs as usize {
                     let source = owner
@@ -367,7 +375,7 @@ impl Builder {
         }
         for (bus_slot, bus) in model.buses.iter().enumerate() {
             let Some(bus) = bus else { continue };
-            let node = pool.bus(bus_slot);
+            let node = pool.bus_input(bus_slot);
             let mut count = 0;
             for (slot, strip) in model.strips.iter().enumerate() {
                 let Some(strip) = strip else { continue };
@@ -394,6 +402,41 @@ impl Builder {
                 }
             }
             self.step(plan, node, count, &mut end)?;
+            if let Some(owner) = bus.processor.and_then(|owner| owner.slot) {
+                let processor = pool.processor(owner.index as usize);
+                let mut count = 0;
+                for channel in 0..bus.channels as usize {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(audio(node, channel), audio(processor, channel)),
+                    )?;
+                }
+                for host in bits(model.global_midi) {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(
+                            Endpoint::host(PortType::Midi, host as u32),
+                            midi(processor, 2),
+                        ),
+                    )?;
+                }
+                self.step(plan, processor, count, &mut end)?;
+            }
+            let mut count = 0;
+            for channel in 0..bus.channels as usize {
+                let source = bus
+                    .processor
+                    .and_then(|owner| owner.slot)
+                    .map_or(node, |owner| pool.processor(owner.index as usize));
+                push(
+                    &mut self.edges,
+                    &mut count,
+                    link(audio(source, channel), audio(pool.bus(bus_slot), channel)),
+                )?;
+            }
+            self.step(plan, pool.bus(bus_slot), count, &mut end)?;
         }
         self.step(plan, pool.reader(), 0, &mut end)?;
         let mut count = 0;

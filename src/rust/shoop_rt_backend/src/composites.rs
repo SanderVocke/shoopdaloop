@@ -693,6 +693,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Request::RemoveLoop { .. }
                             | Request::LoopSync { .. }
                             | Request::CreateBus { .. }
+                            | shoop_rt_protocol::Request::CreateProcessedBus { .. }
+                            | shoop_rt_protocol::Request::SetBusProcessor { .. }
+                            | shoop_rt_protocol::Request::BusProcessorControl { .. }
                             | Request::RemoveBus { .. }
                             | Request::Route { .. }
                     )

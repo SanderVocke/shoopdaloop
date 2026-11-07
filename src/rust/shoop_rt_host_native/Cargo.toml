@@ -23,6 +23,7 @@ rt_runtime = { path = "../rt_runtime" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 rtrb = { workspace = true }
+arrayvec = { workspace = true }
 thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["std"] }
 cpal = { workspace = true, optional = true }

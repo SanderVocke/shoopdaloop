@@ -12,6 +12,8 @@ use support::service;
 struct Memory {
     limit: usize,
     failed: bool,
+    block_profiling: bool,
+    blocked_profiling: usize,
     input: VecDeque<Vec<u8>>,
     output: VecDeque<Vec<u8>>,
 }
@@ -32,6 +34,17 @@ impl RecordPort for Memory {
         }
         self.output.push_back(record.to_vec());
         Ok(())
+    }
+    fn post_on_lane(
+        &mut self,
+        record: &[u8],
+        lane: shoop_transport::Lane,
+    ) -> Result<(), CarrierError> {
+        if self.block_profiling && lane == shoop_transport::Lane::Profiling {
+            self.blocked_profiling += 1;
+            return Err(CarrierError::Full);
+        }
+        self.post(record)
     }
     fn take(&mut self, out: &mut [u8]) -> Option<usize> {
         let record = self.input.pop_front()?;
@@ -281,4 +294,198 @@ fn management_settings_are_coherent_segmented_and_bounded_under_backpressure() {
     assert_eq!(report.diagnostics, diagnostics);
     assert_eq!(report.requested.unwrap(), Default::default());
     assert_eq!(report.pending_operations, 0);
+}
+
+#[shoop_test]
+fn blocked_profiling_admission_does_not_block_reliable_command_results_in_either_writer() {
+    for network in [false, true] {
+        let mut service = service();
+        let mut session = Session::new(ConnectionId(1), Memory::default());
+        if network {
+            session = session
+                .with_network(shoop_app_connection::HeartbeatConfig::default(), 7, 5)
+                .unwrap();
+        }
+        let mut client = Client::new();
+        session
+            .port
+            .send(WireMessage::Client(client.attach().unwrap()));
+        for _ in 0..128 {
+            step(&mut session, &mut service, &mut client);
+            if client.state() == State::Ready {
+                break;
+            }
+        }
+        assert_eq!(client.state(), State::Ready);
+        session.port.block_profiling = true;
+        for _ in 0..128 {
+            step(&mut session, &mut service, &mut client);
+            if session.port.blocked_profiling > 0 {
+                break;
+            }
+        }
+        assert!(session.port.blocked_profiling > 0);
+        let message = client
+            .command(Command::SetLoopSmoothingMs(7), None)
+            .unwrap();
+        let ClientMessage::Submit { operation, .. } = message else {
+            panic!()
+        };
+        session.port.send(WireMessage::Client(message));
+        for _ in 0..128 {
+            step(&mut session, &mut service, &mut client);
+            if client.results().contains_key(&operation) {
+                break;
+            }
+        }
+        assert!(
+            matches!(
+                client.results().get(&operation),
+                Some(Outcome::Confirmed { .. })
+            ),
+            "reliable result blocked with network={network}"
+        );
+    }
+}
+
+#[shoop_test]
+fn snapshot_rate_paces_local_and_network_connections_and_zero_sends_every_one() {
+    let snapshots_per_second = |snapshot_hz, network| {
+        let mut service = service();
+        let session = Session::new(ConnectionId(1), Memory::default());
+        let mut session = if network {
+            session.with_network(Default::default(), 7, snapshot_hz)
+        } else {
+            session.with_snapshot_rate(snapshot_hz)
+        }
+        .unwrap();
+        let mut client = Client::new();
+        session
+            .port
+            .send(WireMessage::Client(client.attach().unwrap()));
+        for _ in 0..64 {
+            step(&mut session, &mut service, &mut client);
+            if client.state() == State::Ready {
+                break;
+            }
+        }
+        assert_eq!(client.state(), State::Ready);
+        let mut snapshots = 0;
+        for _ in 0..100 {
+            session.advance(Duration::from_millis(10));
+            session.receive(&mut service);
+            service.tick(Duration::from_millis(10));
+            session.write(&mut service);
+            while let Some(bytes) = session.port.output.pop_front() {
+                let message = codec::decode(&bytes).unwrap();
+                if let WireMessage::Ping(sequence) = message {
+                    assert!(network, "local pacing must not enable heartbeats");
+                    session.port.send(WireMessage::Pong(sequence));
+                    continue;
+                }
+                if matches!(message, WireMessage::SnapshotBegin { .. }) {
+                    snapshots += 1;
+                }
+                client.receive_wire(message).unwrap();
+            }
+            if let Some(message) = client.ready_message() {
+                session.port.send(WireMessage::Client(message));
+                client.ready_sent().unwrap();
+            }
+        }
+        snapshots
+    };
+    for network in [false, true] {
+        let paced = snapshots_per_second(10, network);
+        assert!((9..=11).contains(&paced), "{paced} snapshots at 10 Hz");
+        assert!(snapshots_per_second(0, network) > 2 * paced);
+    }
+    assert!(Session::new(ConnectionId(1), Memory::default())
+        .with_snapshot_rate(61)
+        .is_err());
+}
+
+#[shoop_test]
+fn paced_sessions_suppress_snapshot_builds_until_due_and_ignore_other_connections() {
+    let mut service = service();
+    let mut session = Session::new(ConnectionId(1), Memory::default())
+        .with_snapshot_rate(1)
+        .unwrap();
+    let mut client = Client::new();
+    session
+        .port
+        .send(WireMessage::Client(client.attach().unwrap()));
+    for _ in 0..64 {
+        step(&mut session, &mut service, &mut client);
+        if client.state() == State::Ready {
+            break;
+        }
+    }
+    assert_eq!(client.state(), State::Ready);
+    for _ in 0..4 {
+        step(&mut session, &mut service, &mut client);
+    }
+    session.receive(&mut service);
+    let mut other = Session::new(ConnectionId(2), Memory::default());
+    other.receive(&mut service);
+    service.tick(Duration::from_millis(10));
+    while let Some(message) = service.take_state_update(session.id) {
+        assert!(!matches!(message, ServiceMessage::Snapshot { .. }));
+    }
+    session.advance(Duration::from_secs(1));
+    session.receive(&mut service);
+    service.tick(Duration::from_millis(10));
+    assert!(matches!(
+        service.take_state_update(session.id),
+        Some(ServiceMessage::Snapshot { .. })
+    ));
+}
+
+#[shoop_test]
+fn paced_sessions_deliver_fresh_state_after_command_completion_without_waiting_for_cadence() {
+    for network in [false, true] {
+        let mut service = service();
+        let session = Session::new(ConnectionId(1), Memory::default());
+        let mut session = if network {
+            session.with_network(Default::default(), 7, 1)
+        } else {
+            session.with_snapshot_rate(1)
+        }
+        .unwrap();
+        let mut client = Client::new();
+        session
+            .port
+            .send(WireMessage::Client(client.attach().unwrap()));
+        for _ in 0..64 {
+            step(&mut session, &mut service, &mut client);
+            if client.state() == State::Ready {
+                break;
+            }
+        }
+        assert_eq!(client.state(), State::Ready);
+        for _ in 0..4 {
+            step(&mut session, &mut service, &mut client);
+        }
+        let message = client
+            .command(Command::SetLoopSmoothingMs(7), None)
+            .unwrap();
+        let ClientMessage::Submit { operation, .. } = message else {
+            panic!()
+        };
+        session.port.send(WireMessage::Client(message));
+        for _ in 0..16 {
+            step(&mut session, &mut service, &mut client);
+            if client.results().contains_key(&operation) {
+                break;
+            }
+        }
+        assert!(matches!(
+            client.results().get(&operation),
+            Some(Outcome::Confirmed { .. })
+        ));
+        for _ in 0..2 {
+            step(&mut session, &mut service, &mut client);
+        }
+        assert_eq!(client.snapshot().unwrap().loop_smoothing_ms, 7);
+    }
 }

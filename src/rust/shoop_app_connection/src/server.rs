@@ -14,16 +14,26 @@ pub struct Session<P> {
     closing: bool,
     closing_since: Option<Duration>,
     semantic: Option<StreamEncoder>,
-    snapshot: bool,
     media: Option<StreamEncoder>,
     pending: Option<Vec<u8>>,
+    pending_lane: shoop_transport::Lane,
     transfer: u64,
     replies: VecDeque<ServiceMessage>,
+}
+/// Zero leaves snapshots unpaced.
+fn snapshot_interval(snapshot_hz: u32) -> Result<Duration, CarrierError> {
+    match snapshot_hz {
+        0 => Ok(Duration::ZERO),
+        1..=60 => Ok(Duration::from_nanos(
+            1_000_000_000_u64.div_ceil(u64::from(snapshot_hz)),
+        )),
+        _ => Err(CarrierError::Codec(shoop_transport::CodecError::Invalid)),
+    }
 }
 impl<P: RecordPort> Session<P> {
     pub fn new(id: ConnectionId, port: P) -> Self {
         Self {
-            network: None,
+            network: Some(Network::new(Duration::ZERO)),
             heartbeat: None,
             id,
             port,
@@ -32,12 +42,18 @@ impl<P: RecordPort> Session<P> {
             closing: false,
             closing_since: None,
             semantic: None,
-            snapshot: false,
             media: None,
             pending: None,
+            pending_lane: shoop_transport::Lane::Reliable,
             transfer: 1,
             replies: VecDeque::new(),
         }
+    }
+    /// Send at most `snapshot_hz` snapshots per second, each the newest one; zero
+    /// sends every snapshot.
+    pub fn with_snapshot_rate(mut self, snapshot_hz: u32) -> Result<Self, CarrierError> {
+        self.network = Some(Network::new(snapshot_interval(snapshot_hz)?));
+        Ok(self)
     }
     pub fn with_heartbeat(
         mut self,
@@ -53,12 +69,8 @@ impl<P: RecordPort> Session<P> {
         seed: u64,
         snapshot_hz: u32,
     ) -> Result<Self, CarrierError> {
-        if !(1..=60).contains(&snapshot_hz) {
-            return Err(CarrierError::Codec(shoop_transport::CodecError::Invalid));
-        }
-        self = self.with_heartbeat(config, seed)?;
-        self.network = Some(Network::new(snapshot_hz));
-        Ok(self)
+        self = self.with_snapshot_rate(snapshot_hz)?;
+        self.with_heartbeat(config, seed)
     }
     pub fn retire(&mut self) {
         if let Some(network) = self.network.as_mut() {
@@ -92,6 +104,10 @@ impl<P: RecordPort> Session<P> {
         if self.closing {
             return;
         }
+        service.want_snapshots(
+            self.id,
+            self.network.as_ref().is_some_and(Network::snapshot_due),
+        );
         let mut bytes = [0; MAX_RECORD_BYTES];
         let mut commands = 0;
         for _ in 0..MAX_PERSISTENCE_RECORDS_PER_TURN {
@@ -139,6 +155,14 @@ impl<P: RecordPort> Session<P> {
             self.attached |= service.has_connection(self.id);
         }
     }
+    fn diagnostic(service: &mut Service, id: ConnectionId) -> Option<WireMessage> {
+        match service.take_diagnostic(id)? {
+            ServiceMessage::Diagnostic { authority, record } => {
+                Some(WireMessage::Diagnostic { authority, record })
+            }
+            _ => None,
+        }
+    }
     pub fn write(&mut self, service: &mut Service) {
         if let Some(heartbeat) = self.heartbeat.as_mut() {
             if heartbeat.pump(&mut self.port).is_err() {
@@ -150,67 +174,6 @@ impl<P: RecordPort> Session<P> {
             network.write(self, service);
             self.network = Some(network);
             return;
-        }
-        let mut records = 0;
-        for _ in 0..2 * MAX_MESSAGES_PER_TURN {
-            if records == MAX_MESSAGES_PER_TURN {
-                break;
-            }
-            if self.pending.is_none() {
-                if self.semantic.is_none() {
-                    let update = self
-                        .replies
-                        .pop_front()
-                        .or_else(|| service.take_update(self.id));
-                    if let Some(update) = update {
-                        let media = matches!(update, ServiceMessage::Media { .. });
-                        self.snapshot = matches!(update, ServiceMessage::Snapshot { .. });
-                        let stream = StreamEncoder::new(update, TransferId(self.transfer));
-                        self.transfer = self.transfer.saturating_add(1);
-                        match stream {
-                            Ok(stream) if media => self.media = Some(stream),
-                            Ok(stream) => self.semantic = Some(stream),
-                            Err(_) => {
-                                self.retire();
-                                return;
-                            }
-                        }
-                    }
-                }
-                let from_media = self.media.is_some()
-                    && (self.semantic.is_none() || (self.snapshot && records % 4 == 3));
-                let stream = if from_media {
-                    &mut self.media
-                } else {
-                    &mut self.semantic
-                };
-                let Some(encoder) = stream.as_mut() else {
-                    break;
-                };
-                let Some(message) = encoder.next_message() else {
-                    *stream = None;
-                    continue;
-                };
-                let mut bytes = [0; MAX_RECORD_BYTES];
-                match codec::encode(&message, &mut bytes) {
-                    Ok(length) => self.pending = Some(bytes[..length].to_vec()),
-                    Err(_) => {
-                        self.retire();
-                        return;
-                    }
-                }
-            }
-            match self.port.post(self.pending.as_ref().unwrap()) {
-                Ok(()) => {
-                    self.pending = None;
-                    records += 1;
-                }
-                Err(CarrierError::Full) => break,
-                Err(_) => {
-                    self.retire();
-                    break;
-                }
-            }
         }
     }
     pub fn alive(&mut self, service: &Service) -> bool {
@@ -385,15 +348,18 @@ struct Network {
     force: bool,
 }
 impl Network {
-    fn new(hz: u32) -> Self {
+    fn new(interval: Duration) -> Self {
         Self {
-            interval: Duration::from_nanos(1_000_000_000_u64.div_ceil(u64::from(hz))),
+            interval,
             since: Duration::ZERO,
             next_snapshot: None,
             urgent: VecDeque::new(),
             bulk: VecDeque::new(),
             force: true,
         }
+    }
+    fn snapshot_due(&self) -> bool {
+        self.force || self.since >= self.interval
     }
     fn clear(&mut self) {
         self.next_snapshot = None;
@@ -420,7 +386,7 @@ impl Network {
             let Some(update) = session
                 .replies
                 .pop_front()
-                .or_else(|| service.take_update(session.id))
+                .or_else(|| service.take_state_update(session.id))
             else {
                 break;
             };
@@ -472,14 +438,36 @@ impl Network {
             self.clear();
             return;
         }
-        for index in 0..16 {
-            if session.port.pending_records() >= 8 {
+        for index in 0..MAX_MESSAGES_PER_TURN {
+            if session.pending.is_some()
+                && session.pending_lane != shoop_transport::Lane::Reliable
+                && !self.urgent.is_empty()
+            {
+                let message = self.urgent.front().unwrap();
+                let mut bytes = [0; MAX_RECORD_BYTES];
+                let Ok(length) = codec::encode(message, &mut bytes) else {
+                    session.retire();
+                    self.clear();
+                    return;
+                };
+                match session.port.post_on_lane(&bytes[..length], message.lane()) {
+                    Ok(()) => {
+                        self.urgent.pop_front();
+                        continue;
+                    }
+                    Err(CarrierError::Full) => break,
+                    Err(_) => {
+                        session.retire();
+                        self.clear();
+                        return;
+                    }
+                }
+            }
+            if session.port.pending_records() >= 8 && self.urgent.is_empty() {
                 break;
             }
             if session.pending.is_none() {
-                if session.semantic.is_none()
-                    && self.next_snapshot.is_some()
-                    && (self.force || self.since >= self.interval)
+                if session.semantic.is_none() && self.next_snapshot.is_some() && self.snapshot_due()
                 {
                     match Self::stream(session, self.next_snapshot.take().unwrap()) {
                         Ok(stream) => session.semantic = Some(stream),
@@ -494,9 +482,13 @@ impl Network {
                 }
                 let message = self.urgent.pop_front().or_else(|| {
                     if index % 4 == 3 {
-                        self.bulk(session).or_else(|| self.snapshot(session))
+                        Session::<P>::diagnostic(service, session.id)
+                            .or_else(|| self.bulk(session))
+                            .or_else(|| self.snapshot(session))
                     } else {
-                        self.snapshot(session).or_else(|| self.bulk(session))
+                        self.snapshot(session)
+                            .or_else(|| self.bulk(session))
+                            .or_else(|| Session::<P>::diagnostic(service, session.id))
                     }
                 });
                 let Some(message) = message else {
@@ -504,7 +496,10 @@ impl Network {
                 };
                 let mut bytes = [0; MAX_RECORD_BYTES];
                 match codec::encode(&message, &mut bytes) {
-                    Ok(n) => session.pending = Some(bytes[..n].to_vec()),
+                    Ok(n) => {
+                        session.pending = Some(bytes[..n].to_vec());
+                        session.pending_lane = message.lane();
+                    }
                     Err(_) => {
                         session.retire();
                         self.clear();
@@ -512,7 +507,10 @@ impl Network {
                     }
                 }
             }
-            match session.port.post(session.pending.as_ref().unwrap()) {
+            match session
+                .port
+                .post_on_lane(session.pending.as_ref().unwrap(), session.pending_lane)
+            {
                 Ok(()) => session.pending = None,
                 Err(CarrierError::Full) => break,
                 Err(_) => {

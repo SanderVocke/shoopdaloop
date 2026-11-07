@@ -345,8 +345,9 @@ impl Cells {
     pub(crate) fn xruns(&self) -> u32 {
         self.xruns.load(Ordering::Relaxed)
     }
-    pub(crate) fn load(&self) -> f32 {
-        f32::from_bits(self.load.load(Ordering::Relaxed))
+    /// The largest load since the previous call.
+    pub(crate) fn take_load(&self) -> f32 {
+        f32::from_bits(self.load.swap(0, Ordering::Relaxed))
     }
 }
 
@@ -370,9 +371,13 @@ impl HostStatus {
             }
         }
     }
-    /// Callback time as a share of the callback period.
+    /// Callback time as a share of the callback period. Telemetry reports the largest
+    /// since its previous record.
     pub fn set_load(&self, load: f32) {
-        self.0.load.store(load.to_bits(), Ordering::Relaxed);
+        // Non-negative floats order like their bit patterns.
+        self.0
+            .load
+            .fetch_max(load.max(0.).to_bits(), Ordering::Relaxed);
     }
 }
 

@@ -62,7 +62,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             && !track.removing
                             && crate::processor_controls::track_kind(track) == Some(kind)
                     })
-                    .count() as u16,
+                    .count()
+                    .saturating_add(
+                        self.mirror
+                            .buses
+                            .values()
+                            .filter(|bus| {
+                                bus.confirmed
+                                    && !bus.removing
+                                    && bus.processor_slot.is_some()
+                                    && kind == shoop_rt_protocol::ProcessorKind::BuiltInFx
+                            })
+                            .count(),
+                    ) as u16,
                 buffering_frames: limits.builtin_latency_frames,
                 reserved_host_bytes: limits.reserved_bytes,
                 budget_host_bytes: limits.effective.memory_bytes,

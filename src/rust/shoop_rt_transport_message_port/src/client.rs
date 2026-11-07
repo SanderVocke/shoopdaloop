@@ -121,14 +121,9 @@ mod tests {
 
     #[shoop_test]
     fn profiling_credit_returns_only_after_a_record_is_consumed() {
-        for message in [
-            EngineMessage::ProfilingStatus(Default::default()),
-            EngineMessage::ProfilingGraph {
-                generation: 1,
-                epoch: 2,
-                record: shoop_rt_protocol::profiling::GraphRecord::End,
-            },
-        ] {
+        for message in [EngineMessage::Profiling(
+            rt_profiling::wire::Record::Status(Default::default()).encode(1),
+        )] {
             let mut client = RecordClient::new(RecordBatches::new());
             let record = engine_record(message);
             client.port_mut().receive(&record);

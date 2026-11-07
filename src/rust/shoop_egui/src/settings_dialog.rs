@@ -1101,15 +1101,27 @@ impl SettingsDialog {
                                 _ => None,
                             });
                             if let Some(choices) = choices.filter(|choices| !choices.is_empty()) {
+                                let exact_device = (definition.key()
+                                    == crate::CPAL_INPUT_DEVICE.id()
+                                    || definition.key() == crate::CPAL_OUTPUT_DEVICE.id())
+                                .then(|| value.strip_prefix('=').map(str::to_owned))
+                                .flatten();
+                                let selected_text = exact_device.as_ref().map_or_else(
+                                    || value.clone(),
+                                    |name| format!("{name} (exact)"),
+                                );
                                 egui::ComboBox::from_id_salt(("audio_choice", definition.key()))
-                                    .selected_text(value.as_str())
+                                    .selected_text(selected_text)
                                     .show_ui(ui, |ui| {
                                         if !choices.contains(value) {
-                                            ui.selectable_value(
-                                                value,
-                                                value.clone(),
-                                                format!("{} (unavailable)", value),
-                                            );
+                                            let label = exact_device
+                                                .as_ref()
+                                                .filter(|name| choices.contains(name))
+                                                .map_or_else(
+                                                    || format!("{} (unavailable)", value),
+                                                    |name| format!("{name} (exact)"),
+                                                );
+                                            ui.selectable_value(value, value.clone(), label);
                                         }
                                         for choice in choices {
                                             ui.selectable_value(value, choice.clone(), choice);

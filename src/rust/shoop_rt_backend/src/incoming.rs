@@ -49,23 +49,31 @@ fn app_control(control: StripControl) -> Option<BackendTrackControl> {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
-            EngineMessage::ProfilingGraph {
-                generation,
-                epoch,
-                record,
-            } => {
-                self.profiling.graph(generation, epoch, record);
-                if record == shoop_rt_protocol::profiling::GraphRecord::End {
-                    self.update_profiling_groups();
+            EngineMessage::Profiling(record) => {
+                if let profiling_protocol::Record::Status(status) = record {
+                    if status.stream == rt_profiling::wire::stream(1, rt_profiling::wire::RAW_TYPE)
+                        && status.outcome == profiling_protocol::Outcome::Capacity
+                    {
+                        self.profiling.status(rt_profiling::Status {
+                            generation: u64::MAX,
+                            ..Default::default()
+                        });
+                    }
+                }
+                if let Some(record) = rt_profiling::wire::Record::decode(record) {
+                    let graph_end = matches!(
+                        record,
+                        rt_profiling::wire::Record::Graph {
+                            record: rt_profiling::GraphRecord::End,
+                            ..
+                        }
+                    );
+                    record.collect(&mut self.profiling);
+                    if graph_end {
+                        self.update_profiling_groups();
+                    }
                 }
             }
-            EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
-            EngineMessage::Profiling(packet) => self.profiling.receive(packet),
-            EngineMessage::ProfilingNode {
-                generation,
-                key,
-                name,
-            } => self.profiling.name(generation, key, name.as_str()),
             EngineMessage::Welcome {
                 capabilities,
                 limits,
@@ -159,14 +167,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let status = &mut self.status;
                 status.frame = frame;
                 status.callbacks = callbacks;
-                status.load = load;
                 status.xruns_reported.get_or_insert(xruns);
                 status.xruns = xruns;
                 if !status.peaks_fresh {
+                    status.load = 0.0;
                     status.input_peak = 0.0;
                     status.output_peak = 0.0;
                     status.peaks_fresh = true;
                 }
+                status.load = status.load.max(load);
                 status.input_peak = status.input_peak.max(input_peak.abs());
                 status.output_peak = status.output_peak.max(output_peak.abs());
                 self.driver = Some(driver);
@@ -294,8 +303,49 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.loops.get_mut(&id).unwrap().recorded = state.map(|state| (revision, state));
     }
 
+    fn bus_processor_record(&mut self, record: StateRecord) {
+        match record {
+            StateRecord::BusProcessor { bus, slot } => {
+                if let Some(entry) = self
+                    .mirror
+                    .buses
+                    .values_mut()
+                    .find(|entry| entry.slot == bus && !entry.removing)
+                {
+                    if entry.processor_slot != slot {
+                        entry.processor_snapshot = None;
+                    }
+                    entry.processor_slot = slot;
+                }
+            }
+            StateRecord::BusProcessorState {
+                bus,
+                slot,
+                snapshot,
+            } => {
+                if let Some(entry) = self
+                    .mirror
+                    .buses
+                    .values_mut()
+                    .find(|entry| entry.slot == bus && !entry.removing)
+                {
+                    if crate::processor_controls::snapshot_state(
+                        shoop_processor_protocol::Kind::BuiltInFx,
+                        snapshot.values,
+                    )
+                    .is_ok()
+                    {
+                        entry.processor_slot = Some(slot);
+                        entry.processor_snapshot = Some(snapshot);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     fn state_record(&mut self, record: StateRecord) {
         if self.resync.is_none() {
+            self.bus_processor_record(record);
             if let StateRecord::LoopTiming { loop_id, timing } = record {
                 if let Some(id) = self.mirror.slot_loops.get(&loop_id).copied() {
                     self.apply_timing(id, timing);
@@ -520,6 +570,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     content_revision,
                     state,
                 } => self.recorded_snapshot(loop_id, content_revision, state),
+                record @ (StateRecord::BusProcessor { .. }
+                | StateRecord::BusProcessorState { .. }) => self.bus_processor_record(record),
                 StateRecord::ProcessorState {
                     strip,
                     slot,
@@ -1159,6 +1211,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 self.mirror.mixer_revision += 1;
             }
+            (Purpose::BusFxControl(id, control), Some(refusal)) => self.failure(
+                BackendMutationKind::BusFxControl,
+                Some(id.raw()),
+                Some(BackendMutationDetail::BusFxControl(control)),
+                format!("bus FX control refused: {}", refusal_text(refusal)),
+            ),
+            (Purpose::BusFxControl(_, _), None) => {}
             (Purpose::BusControl(id, control), None) => {
                 if let Some(bus) = self.mirror.buses.get_mut(&id) {
                     bus.apply(control);

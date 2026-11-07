@@ -130,6 +130,15 @@ impl Progress {
                 {
                     return Err(Refusal::Invalid);
                 }
+                if session.buses.iter().any(|bus| {
+                    bus.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str() != TrackProcessorTypeId::BUILTIN_FX
+                            || fx.state.len() > 1024
+                            || fx.midi_cc_assignments.len() > BuiltInFxParameter::ALL.len()
+                    })
+                }) {
+                    return Err(Refusal::Invalid);
+                }
                 let ids = session.buses.iter().map(|b| b.id).collect::<BTreeSet<_>>();
                 let order = session
                     .bus_display_order

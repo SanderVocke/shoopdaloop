@@ -7,6 +7,7 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 
+mod audio_driver;
 mod commands;
 mod composites;
 mod deployment;
@@ -16,6 +17,7 @@ mod monitoring;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
 mod preview;
+mod profiling;
 mod projection;
 mod publication;
 
@@ -73,11 +75,13 @@ struct Intent {
 
 struct Port {
     backend: BackendPortId,
+    preserve_name: bool,
     view: ApplicationPortState,
 }
 
 #[derive(Clone, Debug)]
 enum Effect {
+    AudioDriver,
     None,
     CompositeEdit(LoopId),
     BusCreated(BusId),
@@ -152,6 +156,14 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    driver_controller: Option<Box<dyn crate::AudioDriverController>>,
+    driver_state: AudioDriverRuntimeState,
+    driver_job: Option<audio_driver::Job>,
+    driver_request: u64,
+    driver_ticket: u64,
+    diagnostics: profiling_protocol::broker::Broker,
+    profiling_elapsed: Duration,
+    profiling_connection: u64,
     host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
     host_graph: Arc<HostGraphState>,
     publications: BTreeMap<HostGraphLocalKey, publication::Publication>,
@@ -159,6 +171,7 @@ pub struct Service {
     master_graph_auto_done: bool,
     backend: Box<dyn Backend>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
+    bus_processors: Arc<[TrackProcessorDescriptor]>,
     preview: ClickTrackState,
     preview_bus: Option<BusId>,
     preview_stage: Option<preview::Stage>,
@@ -174,6 +187,9 @@ pub struct Service {
     engine_closed: bool,
     actors: BTreeMap<ClientId, u64>,
     updates: VecDeque<ServiceMessage>,
+    snapshots_wanted: bool,
+    /// The largest DSP load observed since the previous snapshot.
+    dsp_peak: f32,
     pending: BTreeMap<OperationId, Pending>,
     results: VecDeque<OperationResult>,
     tracks: BTreeMap<TrackId, Track>,
@@ -241,7 +257,19 @@ impl Service {
         let track_processors = backend
             .track_processor_catalog()
             .unwrap_or_else(|_| Arc::from([]));
+        let bus_processors = backend
+            .bus_processor_catalog()
+            .unwrap_or_else(|_| Arc::from([]));
         let mut service = Self {
+            driver_state: observed.audio_drivers.clone(),
+            driver_controller: None,
+            driver_job: None,
+            driver_request: 0,
+            driver_ticket: 0,
+            bus_processors,
+            diagnostics: profiling::broker(observed.profiling.connection.max(1)),
+            profiling_connection: observed.profiling.connection,
+            profiling_elapsed: Duration::ZERO,
             track_processors,
             host_graph_controller: None,
             host_graph: Arc::default(),
@@ -264,6 +292,8 @@ impl Service {
             engine_closed: false,
             actors: BTreeMap::new(),
             updates: VecDeque::with_capacity(QUEUE_CAPACITY),
+            snapshots_wanted: true,
+            dsp_peak: 0.,
             pending: BTreeMap::new(),
             results: VecDeque::with_capacity(MAX_RETAINED_RESULTS),
             tracks: BTreeMap::new(),
@@ -472,7 +502,11 @@ impl Service {
             master_auto_connect: self.options.master_auto_connect,
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             pending_operations: self.pending.len() as u32,
-            restart_required_fields: vec!["driver".into(), "pools".into()],
+            restart_required_fields: if self.driver_controller.is_some() {
+                vec!["pools".into()]
+            } else {
+                vec!["driver".into(), "pools".into()]
+            },
         }
     }
 
@@ -591,7 +625,7 @@ impl Service {
                 if self.lease.is_some() {
                     return Err(Refusal::Busy);
                 }
-                if !self.is_ready() {
+                if !self.is_ready() && !self.audio_driver_fatal() {
                     return Err(Refusal::NotReady);
                 }
                 self.generation = self.generation.checked_add(1).ok_or(Refusal::Overloaded)?;
@@ -604,6 +638,7 @@ impl Service {
                     generation: ConnectionGeneration(self.generation),
                 };
                 self.updates.clear();
+                self.snapshots_wanted = true;
                 self.last_authority = Some(authority);
                 self.lease = Some(Lease {
                     connection,
@@ -611,6 +646,7 @@ impl Service {
                     ready: false,
                     snapshot_revision: self.revision,
                 });
+                self.diagnostics.discover();
                 self.emit(ServiceMessage::Attached { authority });
                 self.publish();
             }
@@ -673,7 +709,10 @@ impl Service {
             .as_ref()
             .is_some_and(|lease| lease.connection == connection)
         {
+            self.detach_audio_driver();
             self.stop_preview();
+            self.diagnostics.detach();
+            let _ = self.backend.set_profiling(false);
             self.lease = None;
             for (note, tracks) in core::mem::take(&mut self.piano_notes) {
                 for track in tracks {
@@ -681,6 +720,7 @@ impl Service {
                 }
             }
             self.updates.clear();
+            self.snapshots_wanted = true;
             self.persistence_detach();
             self.media_loop = None;
             self.media_pending = None;
@@ -688,10 +728,27 @@ impl Service {
     }
 
     pub fn take_update(&mut self, connection: ConnectionId) -> Option<ServiceMessage> {
+        self.take_state_update(connection)
+            .or_else(|| self.take_diagnostic(connection))
+    }
+
+    pub fn take_state_update(&mut self, connection: ConnectionId) -> Option<ServiceMessage> {
         self.lease
             .as_ref()
             .filter(|lease| lease.connection == connection)?;
         self.updates.pop_front()
+    }
+
+    /// Whether the controlling connection would send a snapshot published now. While
+    /// it would not, publishing builds none. Other connections are ignored.
+    pub fn want_snapshots(&mut self, connection: ConnectionId, wanted: bool) {
+        if self
+            .lease
+            .as_ref()
+            .is_some_and(|lease| lease.connection == connection)
+        {
+            self.snapshots_wanted = wanted;
+        }
     }
 
     fn emit(&mut self, message: ServiceMessage) {
@@ -712,8 +769,12 @@ impl Service {
     }
 
     fn publish(&mut self) {
+        if !self.snapshots_wanted {
+            return;
+        }
         if let Some(authority) = self.lease.as_ref().map(|lease| lease.authority) {
             let state = self.snapshot();
+            self.dsp_peak = 0.;
             self.emit(ServiceMessage::Snapshot { authority, state });
         }
     }
@@ -775,6 +836,8 @@ impl Service {
             || self.shutdown.is_some()
         {
             Some((Refusal::NotReady, "the session is not accepting commands"))
+        } else if self.audio_driver_busy(command.as_ref()) {
+            Some((Refusal::Busy, "an audio-driver transition is active"))
         } else if epoch.is_some_and(|epoch| epoch != self.persistence_epoch) {
             Some((Refusal::Identity, "the session was replaced"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
@@ -840,6 +903,11 @@ impl Service {
             None => self.prepare_shutdown(),
         };
         let after = self.backend.mutation_cursor();
+        if matches!(result, Ok(Effect::AudioDriver)) {
+            if let Some(job) = self.driver_job.as_mut() {
+                job.operation = Some(id);
+            }
+        }
         if let Some(job) = self
             .composite_structure
             .as_mut()
@@ -872,6 +940,8 @@ impl Service {
 
     fn request_budget(&self, command: Option<&Command>) -> usize {
         match command {
+            None if self.engine_closed => 0,
+            Some(Command::AudioDriver(_)) => 0,
             Some(
                 Command::SetHostGraphConnected(_)
                 | Command::SelectLoops { .. }
@@ -980,6 +1050,11 @@ impl Service {
             self.publish();
             return;
         }
+        self.diagnostics.advance(elapsed);
+        if self.tick_audio_driver(elapsed) {
+            self.publish();
+            return;
+        }
         let _span = tracing::trace_span!(
             "app.service.tick",
             revision = self.revision.0,
@@ -1035,6 +1110,12 @@ impl Service {
                 if let Ok(catalog) = self.backend.track_processor_catalog() {
                     if catalog != self.track_processors {
                         self.track_processors = catalog;
+                        self.bump();
+                    }
+                }
+                if let Ok(catalog) = self.backend.bus_processor_catalog() {
+                    if catalog != self.bus_processors {
+                        self.bus_processors = catalog;
                         self.bump();
                     }
                 }
@@ -1100,6 +1181,7 @@ impl Service {
             Err(error) => {
                 self.init_error = Some(error.to_string());
                 self.observed.status.driver_state = BackendDriverState::Failed;
+                self.observed.profiling = Default::default();
                 let ids: Vec<_> = self.pending.keys().copied().collect();
                 for id in ids {
                     self.pending.get_mut(&id).unwrap().error = Some(CommandError {
@@ -1110,6 +1192,7 @@ impl Service {
                 }
             }
         }
+        self.advance_profiling(elapsed);
         self.advance_persistence();
         if !self.persistence_reads_busy() {
             self.advance_media();
@@ -1193,6 +1276,7 @@ impl Service {
             self.observed.status.driver_state = BackendDriverState::Failed;
         }
         if self.closed {
+            self.driver_job = None;
             self.observed.status.driver_state = BackendDriverState::Stopped;
         }
         let outcome = match result {

@@ -35,3 +35,13 @@ Deterministic dummy input is confined to test fixtures.
 
 Live JACK graph inventory and connection commands use the same session protocol.
 See the [graph contract and scope](../../../docs/native_session_recovery/jack-graph.md).
+
+Native live driver changes use confirmed service-owned transactions. Audio/MIDI,
+controls, processors, composites, routes and public IDs survive supported changes;
+loops stop and client loss does not cancel accepted work. Failed transitions restore
+the source capture or report fatal recovery failure. Startup preference saving is
+separate and retryable. `--driver-preferences PATH` selects the host-local store;
+without it, `--config FILE` uses a sidecar, otherwise the host's application config
+directory is used. Saved driver preferences override configuration; explicit audio
+CLI flags override both. See the
+[audio-driver switching contract](../../../docs/native_session_recovery/audio-driver-switching.md).

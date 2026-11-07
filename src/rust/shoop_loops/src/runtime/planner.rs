@@ -118,7 +118,11 @@ impl LoopPlanner {
         slot: usize,
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(), Error> {
-        if let Some(take) = self.rows[slot].and_then(|r| r.prepared) {
+        if let Some(take) = self.rows[slot]
+            .as_ref()
+            .and_then(|r| r.prepared.as_ref())
+            .copied()
+        {
             if let Some(id) = take.writer {
                 self.shared
                     .as_mut()
@@ -378,25 +382,28 @@ impl LoopPlanner {
             return Ok(false);
         }
         for slot in 0..self.rows.len() {
-            let Some(mut row) = self.rows[slot].filter(|row| row.assigned) else {
+            // Borrow rather than copy: rows are large and this runs every quantum.
+            let Some(current) = self.rows[slot].as_ref().filter(|row| row.assigned) else {
                 continue;
             };
             let decision = self.views[slot].decision;
             let recording = decision.state.writes();
             let starting = recording
-                && row
+                && current
                     .active
+                    .as_ref()
                     .is_none_or(|take| take.revision != decision.state.capture_revision);
-            if row
+            if current
                 .prepared
+                .as_ref()
                 .is_some_and(|take| !starting || take.revision != decision.state.capture_revision)
             {
                 self.cancel_prepared(slot, io)?;
-                row = self.rows[slot].expect("row");
             }
             if !recording {
                 continue;
             }
+            let mut row = self.rows[slot].expect("row");
             if starting && row.prepared.is_none() {
                 if let Err(error) = self.prepare_take(slot, decision, io) {
                     self.latch(slot, decision, error, true)?;
@@ -573,12 +580,15 @@ impl LoopPlanner {
     }
     fn settle(&mut self, frame: Frame, io: &mut PlannerResourceIo<'_>) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
-            let Some(row) = self.rows[slot].filter(|row| row.assigned) else {
+            // Read only what is needed: copying whole rows every quantum is costly.
+            let Some(current) = self.rows[slot].as_ref().filter(|row| row.assigned) else {
                 continue;
             };
+            let (aborted, target) = (current.aborted, current.binding.target);
+            let active = current.active.as_ref().copied();
             let mut decision = self.views[slot].decision;
-            if row.aborted {
-                if let Some(take) = row.active {
+            if aborted {
+                if let Some(take) = active {
                     if let Some(token) = take.token {
                         io.capture().abort(token)?;
                     }
@@ -587,12 +597,11 @@ impl LoopPlanner {
                     self.rows[slot].as_mut().expect("row").active = None;
                 }
                 self.rows[slot].as_mut().expect("row").aborted = false;
-            } else if let Some(take) = row.active {
+            } else if let Some(take) = active {
                 if !decision.state.writes() || decision.state.capture_revision != take.revision {
                     let media = self.freeze(slot, frame, io)?;
                     if decision.state.content_revision == take.revision {
-                        self.ledger
-                            .set_playback(io, row.binding.target, Some(media))?;
+                        self.ledger.set_playback(io, target, Some(media))?;
                         let row = self.rows[slot].as_mut().expect("completed capture");
                         row.windows = take.windows;
                         row.length_override = None;
@@ -605,8 +614,7 @@ impl LoopPlanner {
             if let Some(origin) = decision.origin {
                 if let Some(pin) = self.input_batch_pin(origin) {
                     let media = self.ledger.pinned(pin)?;
-                    self.ledger
-                        .set_playback(io, row.binding.target, Some(media))?;
+                    self.ledger.set_playback(io, target, Some(media))?;
                     let windows = self.ledger.view(media)?.windows.unwrap_or_default();
                     let row = self.rows[slot].as_mut().expect("validated batch row");
                     row.windows = windows;
@@ -621,9 +629,8 @@ impl LoopPlanner {
                     {
                         if request == origin {
                             let media = self.ledger.pinned(pin)?;
-                            if self.ledger.view(media)?.description.owner == row.binding.target {
-                                self.ledger
-                                    .set_playback(io, row.binding.target, Some(media))?;
+                            if self.ledger.view(media)?.description.owner == target {
+                                self.ledger.set_playback(io, target, Some(media))?;
                                 let windows = self.ledger.view(media)?.windows.unwrap_or_default();
                                 let row = self.rows[slot].as_mut().expect("validated row");
                                 row.windows = windows;
@@ -639,7 +646,11 @@ impl LoopPlanner {
                     }
                 }
             }
-            if let Some(take) = self.rows[slot].and_then(|r| r.prepared) {
+            if let Some(take) = self.rows[slot]
+                .as_ref()
+                .and_then(|r| r.prepared.as_ref())
+                .copied()
+            {
                 if let Some(id) = take.writer {
                     let job = self
                         .shared
@@ -685,9 +696,10 @@ impl LoopPlanner {
                     }
                 }
             }
-            let row = self.rows[slot].expect("row");
+            let row = self.rows[slot].as_ref().expect("row");
             if let Some(writer) = row
                 .active
+                .as_ref()
                 .and_then(|take| take.writer)
                 .filter(|_| decision.state.mode == Mode::Replacing)
             {
@@ -699,7 +711,7 @@ impl LoopPlanner {
             let media = self
                 .ledger
                 .playback(row.binding.target)?
-                .map(|id| self.ledger.view(id))
+                .map(|id| self.ledger.view_ref(id))
                 .transpose()?;
             if media.is_none_or(|m| {
                 row.length_override
@@ -719,7 +731,7 @@ impl LoopPlanner {
             let dry_playing = (decision.state.plays() && decision.state.mode.dry_playback())
                 || matches!(preplay, Some((_, Transition::PlayDry { .. })));
             let playing = decision.state.plays() || eta.is_some();
-            let previous = self.views[slot];
+            let previous = &self.views[slot];
             if previous.lead
                 && eta.is_none()
                 && decision.state.plays()
@@ -745,7 +757,7 @@ impl LoopPlanner {
                     Some(Transition::Record { .. } | Transition::ReplaceInput { .. })
                 ),
                 pre_rerecording: matches!(next, Some(Transition::Rerecord)),
-                replace: row.active.and_then(|take| take.edit),
+                replace: row.active.as_ref().and_then(|take| take.edit),
                 auxiliary: media
                     .filter(|_| dry_playing)
                     .and_then(|m| m.auxiliary)
@@ -2043,7 +2055,9 @@ impl LoopPlanner {
                     target: row.binding.target,
                     reason: timeline_error(row.failure.unwrap_or(Error::InvalidState)),
                 });
-            } else if row.active.is_some_and(|take| take.edit.is_some()) && row.failure.is_some() {
+            } else if row.active.as_ref().is_some_and(|take| take.edit.is_some())
+                && row.failure.is_some()
+            {
                 self.failures.push(crate::Observation::CaptureExhausted {
                     target: row.binding.target,
                 });
@@ -2160,7 +2174,7 @@ impl LoopPlanner {
         self.resolver.finish().map_err(runtime_error)?;
         self.collect_automatic_finishes()?;
         for row in self.rows.iter().flatten() {
-            if let Some(take) = row.active.filter(|take| take.writer.is_some()) {
+            if let Some(take) = row.active.as_ref().filter(|take| take.writer.is_some()) {
                 let job = self
                     .shared
                     .as_ref()

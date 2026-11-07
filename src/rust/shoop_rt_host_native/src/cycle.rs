@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrayvec::ArrayVec;
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_rt_engine::{EngineDescription, Phase, Render, MAX_HOST_PORTS};
 
@@ -110,28 +111,29 @@ impl Cycle {
         for output in self.midi_outputs.iter_mut() {
             output.clear();
         }
-        let mut inputs: [&[f32]; MAX_HOST_PORTS] = [&[]; MAX_HOST_PORTS];
-        for (slot, input) in inputs.iter_mut().zip(self.inputs.iter()) {
-            *slot = &input[..frames];
-        }
-        let output_count = self.outputs.len();
-        let mut outputs: [&mut [f32]; MAX_HOST_PORTS] = std::array::from_fn(|_| Default::default());
-        for (slot, output) in outputs.iter_mut().zip(self.outputs.iter_mut()) {
-            *slot = &mut output[..frames];
-        }
-        self.shared.profile_input();
-        let result = self.render.process(
-            AudioBlock {
-                frame: self.render.next_frame(),
-                frames,
-                inputs: &inputs[..self.inputs.len()],
-                outputs: &mut outputs[..output_count],
-            },
-            MidiBlock {
-                inputs: &self.midi_inputs,
-                outputs: &mut self.midi_outputs,
-            },
-        );
+        let result = {
+            // Only the prepared ports are written; the capacity stays uninitialized.
+            let inputs: ArrayVec<&[f32], MAX_HOST_PORTS> =
+                self.inputs.iter().map(|input| &input[..frames]).collect();
+            let mut outputs: ArrayVec<&mut [f32], MAX_HOST_PORTS> = self
+                .outputs
+                .iter_mut()
+                .map(|output| &mut output[..frames])
+                .collect();
+            self.shared.profile_input();
+            self.render.process(
+                AudioBlock {
+                    frame: self.render.next_frame(),
+                    frames,
+                    inputs: &inputs,
+                    outputs: &mut outputs,
+                },
+                MidiBlock {
+                    inputs: &self.midi_inputs,
+                    outputs: &mut self.midi_outputs,
+                },
+            )
+        };
         for input in self.midi_inputs.iter_mut() {
             input.clear();
         }

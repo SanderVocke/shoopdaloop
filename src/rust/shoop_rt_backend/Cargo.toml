@@ -17,6 +17,10 @@ std = ["anyhow/std", "tracing/std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_profiling = { path = "../rt_profiling" }
+
+profiling_protocol = { path = "../profiling_protocol" }
+
 shoop_loop_plan = { path = "../shoop_loop_plan" }
 libm = { workspace = true }
 shoop_rt_transport = { path = "../shoop_rt_transport" }

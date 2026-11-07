@@ -60,7 +60,7 @@ impl Pool {
             segments: layouts.into_boxed_slice(),
             strips,
             loops,
-            nodes: nodes + buses - 1 + processors,
+            nodes: nodes + 2 * buses - 1 + processors,
             processors,
             buses,
         }
@@ -81,8 +81,11 @@ impl Pool {
         if slot == 0 {
             node(0)
         } else {
-            node(self.nodes - self.processors - self.buses + slot)
+            node(self.nodes - self.processors - 2 * self.buses + slot)
         }
+    }
+    pub(crate) fn bus_input(&self, slot: usize) -> NodeId {
+        node(self.nodes - self.processors - self.buses + slot)
     }
     pub(crate) fn processor(&self, slot: usize) -> NodeId {
         node(self.nodes - self.processors + slot)

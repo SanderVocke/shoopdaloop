@@ -8,7 +8,10 @@ Native hosts and future Cortex-A control tasks share the same implementation.
   root ticks the service once per turn, separately from the connection count.
   After `alive(service)` becomes false, detach its `ConnectionId` and retire its
   carrier. `with_network` adds heartbeat policy and bounded snapshot/media
-  scheduling. Initial data endpoint versioned greeting belongs to composition.
+  scheduling; `with_snapshot_rate` only paces snapshots, sending the newest when
+  due. Rate zero sends every snapshot. Before each service turn, `receive` tells
+  the service whether a snapshot would be due, so it builds none in vain. Initial
+  data endpoint versioned greeting belongs to composition.
 - `Management<P>` emits its versioned greeting, dispatches fenced requests and
   retains a response across backpressure. `pump` returns whether to keep it.
   Device cleanup remains a host responsibility.
@@ -26,3 +29,14 @@ See [LAN setup and the RTOS adapter contract](../../../docs/trusted-lan-networki
 Management also streams bounded host settings/status reports. Each new data
 connection uses a fresh nonce from its composition root; no host/session identity
 is stored or compared by clients.
+
+Diagnostic reports use a separate bounded service channel. Both connection modes
+schedule them on the profiling lane independently of session snapshots. Snapshot
+and media fragments use backpressured bulk delivery; reliable outcomes and
+heartbeats can overtake them. Both modes share the writer scheduler; network mode
+additionally throttles snapshots. A diagnostic record waiting for admission does
+not hold up reliable replies. Source scheduling, assembly loss and replaceable
+snapshot coalescing are specified in the
+[diagnostic contract](../../../docs/profiling/protocol.md). The service's current
+single controller lease owns collection demand; unauthenticated or unattached
+connection candidates do not start sampling.

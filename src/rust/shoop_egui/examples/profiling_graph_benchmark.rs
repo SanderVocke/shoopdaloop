@@ -1,4 +1,6 @@
-pub use shoop_egui::{colors, ProfilingView, StatusState};
+pub use shoop_egui::{
+    colors, diagnostics_protocol, task_profiling, DiagnosticsView, ProfilingView, StatusState,
+};
 #[path = "../src/profiling.rs"]
 mod profiling;
 
@@ -173,7 +175,13 @@ fn main() {
         impl eframe::App for Preview {
             fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
                 ui.label("Synthetic profiling graph fixture — rendering and interaction preview");
-                self.window.show(ui.ctx(), &self.view, &status(), true);
+                self.window.show(
+                    ui.ctx(),
+                    &self.view,
+                    &status(),
+                    true,
+                    &DiagnosticsView::default(),
+                );
                 if let Some(request) = self.window.take_request() {
                     if self.collector.select(request) {
                         self.view.detail = self.collector.view().detail;
@@ -227,12 +235,19 @@ fn main() {
                         ..Default::default()
                     },
                     |ui| {
-                        window.show(ui.ctx(), &view, &status(), true);
+                        window.show(
+                            ui.ctx(),
+                            &view,
+                            &status(),
+                            true,
+                            &DiagnosticsView::default(),
+                        );
                     },
                 )
                 .textures_delta
                 .clear();
             let _ = window.take_request();
+            let _ = window.take_control();
             let elapsed = start.elapsed().as_nanos() as u64;
             if frame == 0 {
                 layout_ns = elapsed;
