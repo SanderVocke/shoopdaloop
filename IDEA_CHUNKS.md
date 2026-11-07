@@ -5,6 +5,7 @@ in [the prototype guide](docs/design/chunks/PROTOTYPE.md). Its benchmark measure
 limitations take precedence over speculative cost estimates below. The prototype
 reuses the binary persistent index and interleaved channel groups; four-way index
 tuning and separate history arenas remain future options.
+Completed native measurements are in [the results report](docs/design/chunks/RESULTS.md).
 
 
 ## Goal

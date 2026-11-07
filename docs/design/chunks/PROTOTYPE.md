@@ -1,5 +1,7 @@
 # Native chunk prototype
 
+See [the measured native results](RESULTS.md) and [raw-data manifest](results/manifest.json).
+
 `SHOOP_AUDIO_RENDER=current|chunks|chunks-descriptors` selects a renderer at
 native host preparation. Experimental modes also require
 `SHOOP_AUDIO_BENCH_AUDIO_ONLY=1`; use the same audio-only profile for comparisons.
@@ -79,18 +81,26 @@ Neither span fragmentation nor host callback partitioning changes this domain.
 python3 scripts/benchmark_audio_chunks.py \
   --host target/release/shoop_host \
   --launcher target/release/examples/chunk_benchmark \
-  --output work/chunk-bench --callbacks 384 --repeats 3
+  --output work/chunk-bench --callbacks 384 --repeats 3 \
+  --scenarios idle:silence record:silence record play record-play shared continue churn ramps
 # Explicitly select two allowed cores, retaining your own RT/IRQ/isolation setup.
 python3 scripts/benchmark_audio_chunks.py \
   --host target/release/shoop_host \
   --launcher target/release/examples/chunk_benchmark \
-  --output work/chunk-interference --scenarios idle play ramps \
-  --host-cpu 2 --load-cpu 3 --interference none periodic memory
+  --output work/chunk-interference --scenarios idle:silence play ramps \
+  --host-cpu 2 --load-cpu 3 --interference periodic memory
 # Fill the default 30-second histories before measuring retained shared grabs.
 python3 scripts/benchmark_audio_chunks.py \
   --host target/release/shoop_host \
   --launcher target/release/examples/chunk_benchmark \
-  --output work/chunk-steady --scenarios shared --warmup 31 --repeats 3
+  --output work/chunk-steady --scenarios shared --warmup 31 --repeats 2 \
+  --loops 9 --voices 8 --host-cpu 2 --load-cpu 3
+# Approach the ordinary capture byte quota with three simultaneous recorders.
+python3 scripts/benchmark_audio_chunks.py \
+  --host target/release/shoop_host \
+  --launcher target/release/examples/chunk_benchmark \
+  --output work/chunk-quota --scenarios record-play --warmup 7 --repeats 2 \
+  --host-cpu 2 --load-cpu 3
 ```
 
 The launcher starts a real `shoop_host`, attaches the ordinary app client, creates
@@ -99,8 +109,8 @@ nonzero media readback for signal scenarios. The shared/continue scenarios retai
 history in multiple loops; ramps sends controls throughout measurement; churn
 removes/recreates whole tracks and records them again. `record:silence` uses the
 same setup with zero input. Setup and final snapshots are saved for inspection. The existing app service
-refuses bulk media reads while a take is recording; recording scenarios finish a
-take after the timing window and then verify its audio. This does not stop capture
+refuses bulk media reads while a take is recording; recording scenarios finish their
+takes after the timing window and then verify its audio. This does not stop capture
 during measurement.
 
 All modes use one binary, configuration, MIDI policy and recorder. Each run has

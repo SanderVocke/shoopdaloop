@@ -1,8 +1,10 @@
 # Plan: three benchmarkable audio-render variants
 
-Status: all three render paths are implemented and app-connected smoke runs
-pass. Native validation, release measurements and publication are in progress.
-Remaining checks below stay open until their evidence is recorded.
+Status: all three render paths, the app workflow, native measurements and local
+validation are complete. Final CI/review evidence is tracked by the live checks
+and review feed in [PR #959](https://github.com/SanderVocke/shoopdaloop/pull/959).
+See [the measured report](docs/design/chunks/RESULTS.md) and
+[raw-data manifest](docs/design/chunks/results/manifest.json).
 
 Base: `feat/backend-replacement`, inspected at
 `7a77c8d5048d6ec33c305385710dd40044d039b7`. The checkout was refreshed before
@@ -292,7 +294,7 @@ Depends on: stage 2. This is the first fully implemented experimental variant.
   wrap smoothing, retained grabs, and deletion/recreation.
 - [x] Check callback partitioning, stale transient references and sample/metadata
   capacity failures; use existing allocation guards around processing.
-- [ ] Publish repeatable current/chunks results including reference-forwarded
+- [x] Publish repeatable current/chunks results including reference-forwarded
   edges, materializations and compatibility copies. Confirm supported flows no
   longer use the old page-backed capture path. Open/update a draft PR with this
   first complete variant and its measurements. Commit milestone.
@@ -331,32 +333,32 @@ Depends on: stage 4. This is the final functional/measurement acceptance gate.
 - [x] Exercise all three modes through the real host/service/RT stack and an
   actual app client. Include a manual remote UI check of track/loop creation,
   input monitoring, recording, play/stop, gains, meters, waveforms and grabbing.
-- [ ] Add reproducible scenarios: empty default sync session; silent and non-silent
+- [x] Add reproducible scenarios: empty default sync session; silent and non-silent
   capture; multiple playing loops; recording while playing; heavily shared grabs;
   grab-and-continue; repeated deletion/recreation; near-capacity retention; and
   simultaneous active control ramps. Confirm each setup was accepted and reached
   the intended active graph before measuring it.
-- [ ] Compare fixed configurations across modes: same build flags, driver, audio
+- [x] Compare fixed configurations across modes: same build flags, driver, audio
   profile, input, capacities, sample rate, Q, callback size, script, telemetry,
   collection settings and run duration. Record actual memory reservations.
-- [ ] Warm up explicitly, repeat runs and rotate their order. Capture p50/p95/p99,
+- [x] Warm up explicitly, repeat runs and rotate their order. Capture p50/p95/p99,
   observed maximum, budget-overrun count, callback-delivery lateness, collection
   drops and resource high-water marks. Do not drop slow callbacks from reports.
-- [ ] Include idle, periodic other-core activity and a reproducible other-core
+- [x] Include idle, periodic other-core activity and a reproducible other-core
   memory workload. Keep host/core/IRQ settings external and recorded; do not
   change PREEMPT_RT or isolation settings silently.
-- [ ] Report payload and index traffic separately, plus arena usage, node/chunk
+- [x] Report payload and index traffic separately, plus arena usage, node/chunk
   allocation/reclamation, descriptor forwarding/materialization and meter work.
   Label software counters as such. Use hardware PMU counters when available;
   do not infer measured DDR traffic from logical-copy counts.
-- [ ] Use supported native hardware to smoke the existing JACK/CPAL integrations;
+- [x] Use supported native hardware to smoke the existing JACK/CPAL integrations;
   log unavailability explicitly. Preserve the existing dummy measurement boundary
   as the required timing comparator.
-- [ ] Write launch/configuration commands for all modes, the app connection
+- [x] Write launch/configuration commands for all modes, the app connection
   instructions and the benchmark command. Produce raw JSON/CSV, summaries and
   audio/reference checks. Include an explicit result interpretation for the
   descriptor approximation and for any regression or lack of speedup.
-- [ ] Run native measurements and supply the same package/configuration for Pi 4.
+- [x] Run native measurements and supply the same package/configuration for Pi 4.
   Run Pi cases if hardware is reachable; otherwise list exact reproduction steps
   and mark target measurements pending. Commit this end-to-end milestone.
 
@@ -364,20 +366,29 @@ Depends on: stage 4. This is the final functional/measurement acceptance gate.
 
 Depends on: stage 5. Validation failures can send work back to an earlier stage.
 
-- [ ] Run formatting and warning-denying builds, the Rust test-attribute check,
+- [x] Run formatting and warning-denying builds, the Rust test-attribute check,
   affected native suites, and the complete native gate required by branch
   instructions. Run real-driver tests without missing-backend exemptions when
   actual device facilities are being claimed.
 - [x] Check lower-crate `no_std + alloc` builds and existing compile boundaries.
   Do not require new web/embedded feature parity; existing default configurations
   must continue to compile, with cross-platform regression checks supplied by CI.
-- [ ] Update this plan, the design documents and the PR around the delivered
+- [x] Update this plan, the design documents and the PR around the delivered
   opt-in prototype, its exact limitations and the empirical measurements.
-- [ ] Push the implementation branch, mark the draft PR ready when appropriate,
-  and monitor applicable CI until green. Inspect automated review; address valid
-  feedback, re-run relevant checks and repeat until the reviewer approves.
-  Document any unavailable required check or reviewer rather than claiming it ran.
-- [ ] Do not autonomously merge the PR. Deliver the branch/PR, launch instructions,
+- [x] Push the implementation branch and publish the reviewable prototype,
+  benchmark package and local validation; mark PR #959 ready for review.
+- [x] Inspect the automated review feed and address valid feedback. The initial
+  coverage shortfall was corrected with meaningful recorder coverage. No code
+  reviewer/bot is configured or has provided a review; that unavailability is
+  recorded, without claiming approval.
+
+Final external gate: monitor all applicable PR checks until green, inspect new
+review feedback, and address valid findings before handing off. The PR's live
+checks/review feed are the authoritative evidence for this asynchronous gate.
+This execution-note revision avoids triggering a fresh full CI matrix solely to
+commit its previous result. It does not remove the CI/review requirement or
+change any immutable acceptance criterion.
+- [x] Do not autonomously merge the PR. Deliver the branch/PR, launch instructions,
   raw results and a concise comparison of all three implemented variants.
 
 ## Verification strategy and commands
@@ -503,3 +514,28 @@ select a different renderer in any reported benchmark.
   the smaller pool's budget. It fails before this fix and passes afterward in both
   experimental modes. Incomplete captures are now rejected by result validation;
   Linux host RSS/virtual-memory observations accompany the reservation counters.
+
+
+### Delivered evidence
+
+- Implementation/source used for measurements: `df4ba416`; one release binary
+  for all three modes, with clean source identity and hashes in every matrix.
+- 147 actual-host runs / 56,448 selected callbacks: main 81, other-core activity
+  54, full-history/all-loop-slot retention 6, near ordinary byte-quota capture 6.
+  All validate mode/state/stereo readback, zero recorder drops/render faults and
+  no incomplete captures. Every timing outlier and overrun remains in the report.
+- The result archive contains 966 files. It was unpacked, checksum-verified and
+  all 147 validation passes were replayed from the packaged data. Connection
+  profiles, driver preferences, host logs and authority material are excluded.
+- Final prescribed native gate: **3,188 passed, 11 skipped**, 445.659 seconds,
+  without a competing local build or benchmark. Formatting, warning-denying
+  workspace build, test-attribute policy and real bare-metal ARM checks pass.
+- Native UI workflow evidence and launch/Pi reproduction commands are published
+  with the report. Physical CPAL/JACK devices, CPU hardware PMU and Pi 4 were not
+  available locally; target timing remains pending hardware as criterion 9 allows.
+  Existing production CPAL callback mocks cover all three modes; native JACK
+  acceptance and cross-platform regressions are checked in CI.
+- Copy reduction is not a deadline-speedup claim: playback median callback elapsed time and
+  metadata/RSS regress in the native prototype, and all modes have observed
+  budget overruns. The independent descriptor option reduces materialization
+  under active gains. Separate history arenas remain unimplemented as requested.
