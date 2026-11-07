@@ -9,17 +9,10 @@ browser-feature = "wasm-test-browser"
 
 [lib]
 
-[[example]]
-name = "carla_inprocess_benchmark"
-required-features = ["carla"]
-
-[[example]]
-name = "carla_bridge_benchmark"
-required-features = ["carla"]
-
 [dependencies]
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+shoop_dsp = { path = "../shoop_dsp", features = ["builtin-fx", "oxisynth"] }
+thiserror = { workspace = true, features = ["std"] }
+anyhow = { workspace = true, features = ["std"] }
 log = { workspace = true }
 regex = { workspace = true }
 arc-swap = { workspace = true }
@@ -41,15 +34,9 @@ assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_latency = { path = "../shoop_latency" }
 shoop_settings = { path = "../shoop_settings" }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
-oxisynth = { workspace = true }
-fundsp = { workspace = true }
-sha2 = { workspace = true }
-
-[build-dependencies]
-soundfont = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libc = { workspace = true }
@@ -75,6 +62,7 @@ app_backend = ["jack"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dev-dependencies]
+shoop_dsp = { path = "../shoop_dsp", features = ["testing"] }
 assert2 = { workspace = true }
 rtrb = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

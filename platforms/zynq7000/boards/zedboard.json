@@ -1,0 +1,53 @@
+{
+  "family": "zynq7000",
+  "name": "zedboard",
+  "profile": "shoop-zedboard-512m-v1",
+  "memory": {
+    "ram_mib": 512,
+    "platform_mib": 64,
+    "rust_mib": 320,
+    "bundle_mib": 32,
+    "loader_mib": 64
+  },
+  "bsp": {
+    "cpu_hz": 666666666,
+    "watchdog_hz": 111111111,
+    "gem_base": 3758141440,
+    "gem_irq": 54,
+    "uart_base": 3758100480,
+    "sd_base": 3759144960,
+    "sd_hz": 50000000,
+    "sd_detect": 1,
+    "sd_wp": 0,
+    "sd_bank": 1,
+    "gem_divisors": {
+      "1000": [
+        8,
+        1
+      ],
+      "100": [
+        8,
+        5
+      ],
+      "10": [
+        8,
+        50
+      ]
+    },
+    "phy_address": 0
+  },
+  "boot": {
+    "device_tree": "zynq-zed",
+    "ps_init": "board/xilinx/zynq/zynq-zed/ps7_init_gpl.c",
+    "ps_init_sha256": "f0b9799eedb0ec8a3174ea442a15f0e643da3b4349094fdb396519d9c00c1cb3"
+  },
+  "firmware": {
+    "recording_mib": 32,
+    "media_mib": 16,
+    "runtime_reserve_mib": 240,
+    "audio": "dummy",
+    "midi": "dummy",
+    "usb_reset": null
+  },
+  "qualification": "Build and emulated PS testing only; physical ZedBoard qualification pending"
+}

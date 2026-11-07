@@ -43,17 +43,17 @@ use shoop_backend::{
     BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData, BackendAudioData,
     BackendBusChannelId, BackendBusChannelState, BackendBusControl, BackendBusCreation,
     BackendBusFxControl, BackendBusFxRequest, BackendBusId, BackendBusRequest, BackendBusState,
-    BackendChannelMode, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
-    BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
-    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
-    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMixerFailure,
-    BackendMixerLink, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
-    BackendOperationKind, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
+    BackendCapabilities, BackendCapability, BackendChannelMode, BackendCompositeConfig,
+    BackendCompositeId, BackendCompositeKind, BackendCompositeState, BackendCompositeTarget,
+    BackendConfirmedLink, BackendConnectionFailure, BackendDefaultPlaybackMode, BackendDriverState,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendMixerFailure, BackendMixerLink, BackendMutationDetail, BackendMutationFailure,
+    BackendMutationKind, BackendOperationKind, BackendOperationProgress, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, BuiltInFxControl, DirectTrackRequest, OxiSynthControl,
     TrackProcessorTypeId, TrackRequest, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
     MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_OUTPUT_PORT_IDS, MAX_BUSES,
     MAX_TOTAL_BUS_CHANNELS,
@@ -242,6 +242,7 @@ impl RemoteWorkletBackend {
         snapshot.mixer.buses.insert(
             MASTER_BUS_ID,
             BackendBusState {
+                latest_input_midi_message: None,
                 id: MASTER_BUS_ID,
                 name: "Master".to_owned(),
                 output_peaks_db: vec![-200.0; channels.len()],
@@ -383,6 +384,7 @@ impl RemoteWorkletBackend {
                         HostMidiDirection::Output => BackendPortDirection::Output,
                     },
                     preferred_playback: false,
+                    available: true,
                 },
             );
         }
@@ -562,7 +564,7 @@ impl RemoteWorkletBackend {
                     WireChannelMode::Wet => BackendChannelMode::Wet,
                 },
                 length: chunk.length,
-                events: Vec::with_capacity(chunk.total_events),
+                events: Vec::with_capacity(chunk.total_events).into(),
                 start_offset: chunk.start_offset,
                 capture_alignment_frames: chunk.capture_alignment_frames,
                 preplay: chunk.preplay,
@@ -582,12 +584,12 @@ impl RemoteWorkletBackend {
         {
             return Err(anyhow!("inconsistent MIDI detail chunk metadata"));
         }
-        channel
-            .events
-            .extend(chunk.events.into_iter().map(|event| BackendMidiEvent {
-                time: event.frame,
-                data: event.data,
-            }));
+        Arc::make_mut(&mut channel.events).extend(chunk.events.into_iter().map(|event| {
+            BackendMidiEvent {
+                frame: event.frame,
+                data: event.data.into(),
+            }
+        }));
         if chunk.final_chunk {
             assembly.next_channel += 1;
             assembly.next_offset = 0;
@@ -808,6 +810,11 @@ impl RemoteWorkletBackend {
                 self.snapshot.loops.insert(
                     *loop_id,
                     BackendLoopState {
+                        capture_incomplete: false,
+                        recorded_processor_state: None,
+                        repeat_sync: false,
+                        sync_source: None,
+                        content_revision: 0,
                         mode: BackendLoopMode::Stopped,
                         length: source_loop.length,
                         stereo: source_track.state.audio_channels == 2,
@@ -879,6 +886,7 @@ impl RemoteWorkletBackend {
             self.snapshot.mixer.buses.insert(
                 bus_id,
                 BackendBusState {
+                    latest_input_midi_message: None,
                     id: bus_id,
                     name: source_bus.name.clone(),
                     output_peaks_db: vec![-200.0; channels.len()],
@@ -1022,6 +1030,7 @@ impl RemoteWorkletBackend {
                         name: port.name,
                         data_type: from_wire_data_type(port.data_type),
                         direction: from_wire_direction(port.direction),
+                        available: true,
                     },
                 )
             })
@@ -1065,6 +1074,7 @@ impl RemoteWorkletBackend {
                 (
                     id,
                     BackendBusState {
+                        latest_input_midi_message: None,
                         id,
                         name: bus.name,
                         channels,
@@ -1290,6 +1300,14 @@ impl RemoteWorkletBackend {
                 (
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
+                        capture_incomplete: false,
+                        recorded_processor_state: None,
+                        repeat_sync: false,
+                        recording_armed: false,
+                        timing_revision: 0,
+                        channel_timings: Vec::new(),
+                        sync_source: None,
+                        content_revision: 0,
                         mode: from_wire_loop_mode(loop_.mode),
                         length: loop_.length,
                         position: loop_.position,
@@ -1321,6 +1339,13 @@ impl RemoteWorkletBackend {
                 (
                     BackendCompositeId::from_raw(composite.id),
                     BackendCompositeState {
+                        observed_frame: 0,
+                        sync_source: None,
+                        repeat_sync: false,
+                        prepared_unit_frames: 0,
+                        waiting_repeat: false,
+                        pending_stage: None,
+                        active_applied_frame: None,
                         mode: from_wire_loop_mode(composite.mode),
                         next_mode: composite.next_mode.map(from_wire_loop_mode),
                         next_transition_delay: composite.next_transition_delay,
@@ -1847,6 +1872,10 @@ impl Backend for RemoteWorkletBackend {
         true
     }
 
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities::FULL.with(BackendCapability::AudioDriverSwitching, false)
+    }
+
     fn composite_plan_mutations_are_synchronous(&self) -> bool {
         false
     }
@@ -2362,7 +2391,7 @@ impl Backend for RemoteWorkletBackend {
         if events.len() > MIDI_BATCH_CAPACITY
             || events
                 .iter()
-                .any(|event| event.time != 0 || event.data.is_empty() || event.data.len() > 4)
+                .any(|event| event.frame != 0 || event.data.is_empty() || event.data.len() > 4)
         {
             return Err(anyhow!("invalid browser MIDI input injection batch"));
         }
@@ -2371,8 +2400,8 @@ impl Backend for RemoteWorkletBackend {
             events: events
                 .iter()
                 .map(|event| WireMidiEvent {
-                    frame: event.time,
-                    data: event.data.clone(),
+                    frame: event.frame,
+                    data: event.data.to_vec(),
                 })
                 .collect(),
         })
@@ -2485,7 +2514,7 @@ impl Backend for RemoteWorkletBackend {
                     let (start_offset, capture_alignment_frames, preplay) =
                         timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
-                        samples,
+                        samples: samples.to_vec().into(),
                         start_offset,
                         capture_alignment_frames,
                         preplay,
@@ -4334,7 +4363,7 @@ mod tests {
                     capture_alignment_frames: 2,
                     content_revision: 1,
                     mode: BackendChannelMode::Direct,
-                    events: Vec::new(),
+                    events: Arc::new(Vec::new()),
                 }],
                 next_channel: 1,
                 next_offset: 0,
@@ -4448,7 +4477,7 @@ mod tests {
             .loop_audio_data_with_metadata(loop_id)
             .unwrap()
             .unwrap();
-        assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
+        assert_eq!(audio.channels[0].samples.as_slice(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
         assert_eq!(audio.channels[0].capture_alignment_frames, 3);
         assert_eq!(audio.channels[0].preplay, 6);
@@ -4461,7 +4490,7 @@ mod tests {
                     content_revision: 1,
                     mode: BackendChannelMode::Direct,
                     length: 16,
-                    events: Vec::new(),
+                    events: Vec::new().into(),
                     start_offset: -4,
                     capture_alignment_frames: 0,
                     preplay: 6,
@@ -5018,8 +5047,8 @@ mod tests {
             .inject_midi_input(
                 creation.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 60, 100],
+                    frame: 0,
+                    data: vec![0x90, 60, 100].into(),
                 }],
             )
             .unwrap();
@@ -5515,6 +5544,9 @@ mod tests {
             .unwrap();
         deliver(&control, 3, 1, Event::Ack);
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),
@@ -5554,7 +5586,7 @@ mod tests {
         let loop_update = BackendLoopContentUpdate {
             audio: vec![shoop_backend::BackendAudioChannelUpdate {
                 channel: 0,
-                samples: vec![0.25; 128],
+                samples: vec![0.25; 128].into(),
                 start_offset: None,
                 capture_alignment_frames: None,
                 preplay: None,
@@ -5617,6 +5649,9 @@ mod tests {
             .unwrap();
         deliver(&control, 1, 1, Event::Ack);
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),
@@ -5713,6 +5748,9 @@ mod tests {
             external_connections: Vec::new(),
         };
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: vec![shoop_backend::BackendSessionTrack {
                 source_id: 1,
@@ -5826,6 +5864,9 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn fixed_bus_mappings_do_not_advance_the_next_track_port_identity() {
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: vec![shoop_backend::BackendSessionBus {
@@ -6253,6 +6294,9 @@ mod tests {
         deliver(&control, 1, 1, Event::Ack);
         sent.borrow_mut().clear();
         let session = BackendSessionData {
+            composites: Default::default(),
+            loop_sync: Default::default(),
+            repeat_sync: Default::default(),
             sample_rate: 48_000,
             tracks: Vec::new(),
             buses: Vec::new(),

@@ -1,0 +1,176 @@
+//! Prepared decisions shared with a signal consumer, with exact-frame automation.
+
+use rt_runtime::buffer::{AudioBlock, MidiBlock};
+use rt_runtime::executor::{Command, GraphRuntime, PreparedNode};
+use rt_runtime::graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType};
+use rt_runtime::planner::{FinishContext, PlanContext, Planner};
+use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
+use rt_runtime::schedule::Action;
+use rt_runtime::transport::Lane;
+use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId};
+
+#[derive(Clone, Copy)]
+enum GainOperation {
+    Set(f32),
+}
+impl ProcessorOperation for GainOperation {
+    type Result = f32;
+}
+
+struct AlternatingGain {
+    decision: [f32; 1],
+    rendered: usize,
+    id: PlannerId,
+}
+impl Planner for AlternatingGain {
+    type Operation = ();
+    type Result = ();
+    fn id(&self) -> Option<PlannerId> {
+        Some(self.id)
+    }
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
+        self.decision[0] = 1.0 + ((context.frame.0 / 8) % 2) as f32;
+        Ok(())
+    }
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
+        assert_eq!(
+            self.rendered as u64,
+            context.interval.end.0 - context.interval.start.0
+        );
+        self.rendered = 0;
+        Ok(())
+    }
+}
+struct Gain {
+    parameter: f32,
+}
+impl Processor<AlternatingGain, GainOperation> for Gain {
+    fn ports(&self) -> PortCounts {
+        PortCounts {
+            audio_inputs: 1,
+            audio_outputs: 1,
+            ..PortCounts::default()
+        }
+    }
+
+    fn operation(
+        &mut self,
+        operation: GainOperation,
+        _context: rt_runtime::processor::OperationContext<'_>,
+    ) -> Result<f32, Error> {
+        let GainOperation::Set(value) = operation;
+        if !value.is_finite() {
+            return Err(Error::InvalidParameter);
+        }
+        self.parameter = value;
+        Ok(value)
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, AlternatingGain>) -> Result<(), Error> {
+        let gain = block.domain.decision[0] * self.parameter;
+        let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
+        for (input, output) in input.iter().zip(output) {
+            *output = input * gain;
+        }
+        block.domain.rendered += block.frames;
+        Ok(())
+    }
+}
+// One-consumer planner variant: a gain follows a planned decision per interval.
+fn main() -> Result<(), Error> {
+    let config = Config {
+        max_frames: 32,
+        max_nodes: 1,
+        max_ports: 4,
+        max_edges: 2,
+        audio_inputs: 1,
+        audio_outputs: 1,
+        midi_inputs: 0,
+        midi_outputs: 0,
+        resource_pages: 4,
+        page_bytes: 64,
+        budgets: Budgets {
+            events: 1,
+            validation_steps: 128,
+            ..Budgets::default()
+        },
+        ..Config::default()
+    }
+    .prepare()?;
+    let node = NodeId::from_parts(0, 1)?;
+    let planner_id = PlannerId::from_parts(0, 1)?;
+    let planner = AlternatingGain {
+        decision: [1.0],
+        rendered: 0,
+        id: planner_id,
+    };
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_planner(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        vec![PreparedNode::new(node, Gain { parameter: 1.0 })],
+        planner,
+    )?;
+    let port = Endpoint::node(node, PortType::Audio, 0);
+    let host = Endpoint {
+        node: None,
+        kind: PortType::Audio,
+        port: 0,
+    };
+    let graph = GraphDescription {
+        nodes: vec![node],
+        connections: vec![
+            Connection {
+                source: host,
+                destination: port,
+            },
+            Connection {
+                source: port,
+                destination: host,
+            },
+        ],
+    };
+    let plan = compile(runtime.catalog(), &graph)?;
+    let _commit = control
+        .submit(Lane::Normal, Command::commit(Epoch(0), plan))
+        .map_err(|error| error.error)?;
+    let _event = control
+        .submit(
+            Lane::Normal,
+            Command::Schedule {
+                at: Frame(13),
+                action: Action::Processor {
+                    node,
+                    operation: GainOperation::Set(0.5),
+                },
+                payload: Box::new([]),
+            },
+        )
+        .map_err(|error| error.error)?;
+    let input = [1.0; 32];
+    let mut output = [0.0; 32];
+    runtime.process(
+        AudioBlock {
+            frame: Frame(0),
+            frames: 32,
+            inputs: &[&input],
+            outputs: &mut [&mut output],
+        },
+        MidiBlock {
+            inputs: &[],
+            outputs: &mut [],
+        },
+    )?;
+    for (frame, sample) in output.iter().enumerate() {
+        assert_eq!(
+            *sample,
+            (1 + (frame / 8) % 2) as f32 * if frame < 13 { 1.0 } else { 0.5 }
+        );
+    }
+    let execution = control.try_execution().ok_or(Error::InvalidState)?;
+    assert_eq!(execution.actual_frame, Frame(13));
+    assert_eq!(execution.result, Ok(()));
+    assert_eq!(execution.processor_result, Some(0.5));
+    assert_eq!(runtime.diagnostics().subranges, 32);
+    while control.try_completion().is_some() {}
+    println!("planned gain: 32 checked samples, 32 fixed ticks, one exact-frame event");
+    Ok(())
+}

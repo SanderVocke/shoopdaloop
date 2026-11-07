@@ -6,13 +6,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use js_sys::{Array, Function, Promise};
-use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
     AppIntent, AppSnapshot, BusAction, BusSpec, ClickTrackRequest, DefaultPlaybackMode,
     DirectTrackSpec, GlobalControlAction, IoTaskKind, IoTaskStatus, LoopAction, LoopMode,
     OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, ScriptKind, TrackAction,
     TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
 };
+use shoop_app_reference::CooperativeApplicationRuntime;
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
 use wasm_bindgen::prelude::*;
@@ -269,7 +269,9 @@ async fn generate_click(harness: &mut RemoteAppHarness, loop_id: shoop_app_api::
         .await;
 }
 
-async fn save_session(harness: &mut RemoteAppHarness) -> shoop_app::ApplicationFileOutput {
+async fn save_session(
+    harness: &mut RemoteAppHarness,
+) -> shoop_app_reference::ApplicationFileOutput {
     let previous_task = harness.snapshot().io_task.as_ref().map(|task| task.id);
     harness.dispatch(AppIntent::RequestSaveSession);
     harness
@@ -287,7 +289,10 @@ async fn save_session(harness: &mut RemoteAppHarness) -> shoop_app::ApplicationF
         .expect("saved session output")
 }
 
-async fn load_session(harness: &mut RemoteAppHarness, output: shoop_app::ApplicationFileOutput) {
+async fn load_session(
+    harness: &mut RemoteAppHarness,
+    output: shoop_app_reference::ApplicationFileOutput,
+) {
     let previous_task = harness.snapshot().io_task.as_ref().map(|task| task.id);
     harness.dispatch(AppIntent::LoadSessionBytes {
         name: output.suggested_name,

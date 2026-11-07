@@ -1,0 +1,891 @@
+//! The request queue. Structural requests that can go together are validated
+//! against the staged model and become one transaction with one activation;
+//! every other request runs as soon as nothing it depends on is pending, so
+//! controls and transitions of untouched strips and loops do not wait behind a
+//! transaction.
+//!
+//! Requests keep their order per target: a request waits while an earlier
+//! request for the same strip, loop or bus waits. Structural requests
+//! keep their order among each other: once one has to wait, the later ones wait
+//! too. A loop transition waits while its strip's structure or connections
+//! change, as they decide what it records; an immediate one does not depend on
+//! the sync source, so a pending sync change does not hold it back.
+
+use crate::endpoint::ControlEndpoint;
+use crate::jobs::Job;
+use crate::model::Change;
+use shoop_rt_protocol::{BusId, BusPort, EnginePort, Outcome, PortKind, Refusal, Request};
+
+/// A pending transaction changes the slot's connections, routes or sync source.
+pub(crate) const SOFT: u8 = 1;
+/// A pending transaction creates or removes the slot's occupant.
+pub(crate) const HARD: u8 = 2;
+
+pub(crate) enum Staged {
+    Change(Change),
+    Done,
+    Refused(Refusal),
+    /// Valid only after the transaction being staged.
+    Wait,
+}
+
+fn structural(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::CreateProcessedBus { .. }
+            | Request::CreateBus { .. }
+            | Request::SetBusProcessor { .. }
+            | Request::RemoveBus { .. }
+            | Request::CreateStrip { .. }
+            | Request::CreateProcessedStrip { .. }
+            | Request::RemoveStrip { .. }
+            | Request::ResetComposite { .. }
+            | Request::CreateComposite { .. }
+            | Request::CreateLoop { .. }
+            | Request::RemoveLoop { .. }
+            | Request::LoopSync { .. }
+            | Request::Connect { .. }
+            | Request::Route { .. }
+    )
+}
+
+fn raise(level: &mut u8, to: u8) {
+    *level = (*level).max(to);
+}
+
+impl ControlEndpoint {
+    /// Handle queued requests in order. With `stage`, and no transaction in
+    /// progress, the structural requests that can go together start one.
+    pub(crate) fn process_queue(&mut self, stage: bool) {
+        // Copying the model is costly; an empty queue has nothing to stage.
+        let mut staging = stage && self.job.is_none() && self.queue.len() > 0;
+        if staging {
+            self.next.copy_from(&self.model);
+            self.batch_len = 0;
+        }
+        self.blocked_strips.fill(false);
+        self.blocked_loops.fill(false);
+        self.blocked_buses.fill(false);
+        self.blocked_all = false;
+        self.blocked_global = false;
+        self.uploads.clear_blocked();
+        let mut open = staging;
+        for _ in 0..self.queue.len() {
+            let Some((correlation, request)) = self.queue.pop() else {
+                break;
+            };
+            if !self.queued(correlation, request, &mut staging, &mut open) {
+                if structural(&request)
+                    || matches!(
+                        request,
+                        Request::LoopClear { .. } | Request::SetSmoothing { .. }
+                    )
+                {
+                    open = false;
+                }
+                self.block(request);
+                let _ = self.queue.push((correlation, request));
+            }
+        }
+        if staging && self.batch_len > 0 {
+            self.job = Some(Job::batch(self.batch_len));
+            self.advance_job();
+        }
+    }
+
+    /// Handle one request; `false` keeps it queued.
+    fn queued(
+        &mut self,
+        correlation: u64,
+        request: Request,
+        staging: &mut bool,
+        open: &mut bool,
+    ) -> bool {
+        if matches!(
+            request,
+            Request::InputCancel { .. }
+                | Request::InputStatus { .. }
+                | Request::InputCapacity
+                | Request::CancelBulk
+                | Request::Composite(shoop_rt_protocol::CompositeCommand::Cancel { .. })
+                | Request::ReplacementBegin { .. }
+                | Request::ReplacementEdit { .. }
+                | Request::ReplacementPrepare { .. }
+                | Request::ReplacementCommit { .. }
+                | Request::ReplacementCancel { .. }
+                | Request::ContentFamilyCancel { .. }
+        ) {
+            return self.start(correlation, request).is_ok();
+        }
+        if self.blocked_all || self.blocked(request) {
+            return false;
+        }
+        if structural(&request) {
+            if !*open {
+                return false;
+            }
+            return match self.stage(request, false) {
+                Staged::Change(change) => {
+                    if self.batch_len == self.batch.len() {
+                        return false;
+                    }
+                    self.touch(change);
+                    self.next.apply(change);
+                    self.batch[self.batch_len] = (Some(correlation), change);
+                    self.batch_len += 1;
+                    true
+                }
+                Staged::Done => {
+                    self.answer(correlation, Outcome::Done);
+                    true
+                }
+                Staged::Refused(refusal) => {
+                    self.answer(correlation, Outcome::Refused(refusal));
+                    true
+                }
+                Staged::Wait => false,
+            };
+        }
+        if matches!(
+            request,
+            Request::InputBegin { .. }
+                | Request::InputAppend { .. }
+                | Request::InputPrepare { .. }
+                | Request::InputCommit { .. }
+                | Request::Composite(shoop_rt_protocol::CompositeCommand::Commit { .. })
+                | Request::LoopClear { .. }
+                | Request::SetSmoothing { .. }
+                | Request::ContentApply { .. }
+                | Request::ContentFamilyBegin { .. }
+                | Request::ContentFamilyEdit { .. }
+                | Request::ContentFamilyCommit { .. }
+        ) {
+            if !*open || self.batch_len > 0 {
+                return false;
+            }
+            if self.start(correlation, request).is_err() {
+                return false;
+            }
+            if self.job.is_some() {
+                *staging = false;
+                *open = false;
+                if let Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } =
+                    request
+                {
+                    self.touched_loops[loop_id.0.index as usize] = HARD;
+                }
+            }
+            return true;
+        }
+        self.start(correlation, request).is_ok()
+    }
+
+    /// Whether `request` depends on a pending transaction or on a request that
+    /// waits before it.
+    fn blocked(&self, request: Request) -> bool {
+        // Structural requests depend only on waiting requests: the transaction
+        // being staged validates them against its own result.
+        const WAITING: u8 = u8::MAX;
+        let strip = |index: u32, level: u8| {
+            let index = index as usize;
+            self.blocked_strips.get(index).copied().unwrap_or(false)
+                || self.touched_strips.get(index).is_some_and(|t| *t >= level)
+        };
+        let loop_ = |index: u32, level: u8| {
+            let index = index as usize;
+            self.blocked_loops.get(index).copied().unwrap_or(false)
+                || self.touched_loops.get(index).is_some_and(|t| *t >= level)
+        };
+        let bus = |id: BusId, level: u8| {
+            let slot = id.0.index as usize;
+            self.blocked_buses.get(slot).copied().unwrap_or(false)
+                || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
+        };
+        match request {
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. }
+            | Request::InputCancel { .. }
+            | Request::InputStatus { .. }
+            | Request::InputCapacity => false,
+
+            Request::Connect {
+                port: EnginePort::GlobalFxControl,
+                ..
+            } => self.blocked_global,
+            Request::Composite(shoop_rt_protocol::CompositeCommand::Begin(d)) => {
+                loop_(d.loop_id.0.index, SOFT)
+            }
+            Request::Composite(_) => false,
+            Request::LoopRepeatSync { loop_id, .. } | Request::LoopIteration { loop_id, .. } => {
+                loop_(loop_id.0.index, HARD)
+            }
+            Request::ContentFamilyBegin { root, .. } => loop_(root.0.index, SOFT),
+            Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
+            Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
+            Request::SetBusProcessor { bus: id, .. }
+            | Request::CreateProcessedBus { bus: id, .. }
+            | Request::CreateBus { bus: id, .. }
+            | Request::RemoveBus { bus: id } => bus(id, WAITING),
+            Request::PreviewStart { bus: id, .. } => bus(id, HARD),
+            Request::Diagnostic(_) | Request::PreviewStop | Request::CancelBulk => false,
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => false,
+            Request::ContentBegin(_) => false,
+            Request::ContentWindow { id, .. }
+            | Request::ContentWrite { id, .. }
+            | Request::ContentInitial { id, .. }
+            | Request::ContentFinish { id }
+            | Request::ContentRelease { id } => self.uploads.blocked(id),
+            Request::StripControl { strip: id, .. }
+            | Request::StripDefaultPlayback { strip: id, .. }
+            | Request::ProcessorControl { strip: id, .. }
+            | Request::InjectMidi { strip: id, .. } => strip(id.0.index, HARD),
+            Request::LoopTransition { loop_id, delay, .. } => {
+                let owner = self
+                    .model
+                    .loops
+                    .get(loop_id.0.index as usize)
+                    .copied()
+                    .flatten()
+                    .and_then(|entry| entry.strip.map(|id| id.0.index));
+                loop_(loop_id.0.index, if delay.is_some() { SOFT } else { HARD })
+                    || owner.is_some_and(|index| strip(index, SOFT))
+            }
+            Request::LoopTiming { loop_id, .. }
+            | Request::LoopGain { loop_id, .. }
+            | Request::LoopBalance { loop_id, .. } => loop_(loop_id.0.index, HARD),
+            Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
+                loop_(loop_id.0.index, SOFT)
+            }
+            Request::BusProcessorControl { bus: id, .. } | Request::BusControl { bus: id, .. } => {
+                bus(id, HARD)
+            }
+            Request::SetSmoothing { .. } => false,
+            Request::CreateStrip { strip: id, .. }
+            | Request::CreateProcessedStrip { strip: id, .. } => strip(id.0.index, WAITING),
+            Request::RemoveStrip { strip: id } => {
+                strip(id.0.index, WAITING)
+                    || self.model.loops.iter().flatten().any(|entry| {
+                        entry.strip == Some(id) && self.blocked_loops[entry.id.0.index as usize]
+                    })
+            }
+            Request::CreateComposite {
+                loop_id,
+                strip: owner,
+            } => {
+                loop_(loop_id.0.index, WAITING)
+                    || owner.is_some_and(|id| strip(id.0.index, WAITING))
+            }
+            Request::CreateLoop { loop_id, strip: id } => {
+                loop_(loop_id.0.index, WAITING) || strip(id.0.index, WAITING)
+            }
+            Request::ResetComposite {
+                previous: loop_id, ..
+            }
+            | Request::RemoveLoop { loop_id }
+            | Request::LoopSync { loop_id, .. } => loop_(loop_id.0.index, WAITING),
+            Request::Connect {
+                port: EnginePort::Strip(port),
+                ..
+            } => strip(port.strip.0.index, WAITING),
+            Request::Connect {
+                port: EnginePort::Bus(port),
+                ..
+            } => bus(port.bus, WAITING),
+            Request::Route {
+                port, bus: target, ..
+            } => bus(target.bus, WAITING) || strip(port.strip.0.index, WAITING),
+        }
+    }
+
+    /// Later requests for the targets of a waiting `request` wait too.
+    fn block(&mut self, request: Request) {
+        let mut strip = |index: u32| {
+            if let Some(blocked) = self.blocked_strips.get_mut(index as usize) {
+                *blocked = true;
+            }
+        };
+        match request {
+            Request::InputBegin { .. }
+            | Request::InputAppend { .. }
+            | Request::InputPrepare { .. }
+            | Request::InputCommit { .. } => self.blocked_all = true,
+            Request::InputCancel { .. } | Request::InputStatus { .. } | Request::InputCapacity => {}
+
+            Request::Connect {
+                port: EnginePort::GlobalFxControl,
+                ..
+            } => self.blocked_global = true,
+            Request::Composite(_) => {}
+            Request::LoopRepeatSync { loop_id, .. } | Request::LoopIteration { loop_id, .. } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(loop_id.0.index as usize) {
+                    *blocked = true;
+                }
+            }
+            Request::ContentFamilyBegin { root, .. } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(root.0.index as usize) {
+                    *blocked = true;
+                }
+            }
+            Request::ContentFamilyEdit { edit, .. } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(edit.loop_id.0.index as usize) {
+                    *blocked = true;
+                }
+                for id in [edit.audio, edit.dry_audio, edit.midi]
+                    .into_iter()
+                    .flatten()
+                {
+                    self.uploads.block(id);
+                }
+            }
+            Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => {}
+            Request::PreviewStart { .. }
+            | Request::Diagnostic(_)
+            | Request::PreviewStop
+            | Request::CancelBulk => {}
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => {}
+            Request::ContentBegin(_) => {}
+            Request::ContentWindow { id, .. }
+            | Request::ContentWrite { id, .. }
+            | Request::ContentInitial { id, .. }
+            | Request::ContentFinish { id }
+            | Request::ContentRelease { id } => self.uploads.block(id),
+            Request::StripControl { strip: id, .. }
+            | Request::StripDefaultPlayback { strip: id, .. }
+            | Request::ProcessorControl { strip: id, .. }
+            | Request::InjectMidi { strip: id, .. }
+            | Request::CreateStrip { strip: id, .. }
+            | Request::CreateProcessedStrip { strip: id, .. }
+            | Request::Connect {
+                port: EnginePort::Strip(shoop_rt_protocol::StripPort { strip: id, .. }),
+                ..
+            } => strip(id.0.index),
+            Request::RemoveStrip { strip: id } => {
+                strip(id.0.index);
+                for slot in 0..self.model.loops.len() {
+                    if self.model.loops[slot].is_some_and(|entry| entry.strip == Some(id)) {
+                        self.blocked_loops[slot] = true;
+                    }
+                }
+            }
+            Request::Route { port, bus, .. } => {
+                strip(port.strip.0.index);
+                if let Some(blocked) = self.blocked_buses.get_mut(bus.bus.0.index as usize) {
+                    *blocked = true;
+                }
+            }
+            Request::SetBusProcessor { bus, .. }
+            | Request::BusProcessorControl { bus, .. }
+            | Request::CreateProcessedBus { bus, .. }
+            | Request::CreateBus { bus, .. }
+            | Request::RemoveBus { bus }
+            | Request::BusControl { bus, .. }
+            | Request::Connect {
+                port: EnginePort::Bus(BusPort { bus, .. }),
+                ..
+            } => {
+                if let Some(blocked) = self.blocked_buses.get_mut(bus.0.index as usize) {
+                    *blocked = true;
+                }
+            }
+            Request::ResetComposite {
+                previous: loop_id, ..
+            }
+            | Request::CreateLoop { loop_id, .. }
+            | Request::CreateComposite { loop_id, .. }
+            | Request::RemoveLoop { loop_id }
+            | Request::LoopSync { loop_id, .. }
+            | Request::LoopTransition { loop_id, .. }
+            | Request::LoopTiming { loop_id, .. }
+            | Request::LoopGain { loop_id, .. }
+            | Request::LoopBalance { loop_id, .. }
+            | Request::ContentApply { loop_id, .. }
+            | Request::LoopClear { loop_id } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(loop_id.0.index as usize) {
+                    *blocked = true;
+                }
+            }
+            Request::SetSmoothing { .. } => self.blocked_all = true,
+        }
+    }
+
+    /// Record what a staged change affects, before it is applied.
+    fn touch(&mut self, change: Change) {
+        match change {
+            Change::ConnectGlobal { .. } => {
+                for (slot, strip) in self.next.strips.iter().enumerate() {
+                    if strip.is_some_and(|strip| strip.processor.is_some()) {
+                        raise(&mut self.touched_strips[slot], SOFT);
+                    }
+                }
+            }
+            Change::BusProcessor { bus, .. }
+            | Change::CreateBus { bus, .. }
+            | Change::RemoveBus { bus } => self.touched_buses[bus.0.index as usize] = HARD,
+            Change::CreateStrip { strip, .. } => self.touched_strips[strip.0.index as usize] = HARD,
+            Change::RemoveStrip { strip } => {
+                self.touched_strips[strip.0.index as usize] = HARD;
+                for slot in 0..self.next.loops.len() {
+                    if let Some(entry) =
+                        self.next.loops[slot].filter(|entry| entry.strip == Some(strip))
+                    {
+                        self.touched_loops[slot] = HARD;
+                        self.touch_followers(entry.id);
+                    }
+                }
+            }
+            Change::CreateLoop { loop_id, .. } | Change::CreateComposite { loop_id, .. } => {
+                self.touched_loops[loop_id.0.index as usize] = HARD
+            }
+            Change::ResetComposite {
+                previous: loop_id, ..
+            } => {
+                raise(&mut self.touched_loops[loop_id.0.index as usize], HARD);
+                self.touch_followers(loop_id);
+            }
+            Change::RemoveLoop { loop_id } => {
+                self.touched_loops[loop_id.0.index as usize] = HARD;
+                self.touch_followers(loop_id);
+            }
+            Change::Sync { loop_id, .. } => {
+                raise(&mut self.touched_loops[loop_id.0.index as usize], SOFT)
+            }
+            Change::Connect { port, .. } => {
+                raise(&mut self.touched_strips[port.strip.0.index as usize], SOFT)
+            }
+            Change::Route { strip, .. } => {
+                raise(&mut self.touched_strips[strip.0.index as usize], SOFT);
+            }
+            Change::ConnectMaster { bus, .. } => {
+                raise(&mut self.touched_buses[bus.0.index as usize], SOFT)
+            }
+        }
+    }
+
+    fn touch_followers(&mut self, source: shoop_rt_protocol::LoopSlotId) {
+        for slot in 0..self.next.loops.len() {
+            if self.next.loops[slot].is_some_and(|entry| entry.sync == Some(source)) {
+                raise(&mut self.touched_loops[slot], SOFT);
+            }
+        }
+    }
+
+    pub(crate) fn clear_touched(&mut self) {
+        self.touched_strips.fill(0);
+        self.touched_loops.fill(0);
+        self.touched_buses.fill(0);
+    }
+
+    fn reserve_processor(
+        &self,
+        kind: shoop_rt_protocol::ProcessorKind,
+        excluding: Option<BusId>,
+    ) -> Result<crate::model::ProcessorOwner, Staged> {
+        let limit = match kind {
+            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
+                self.processor_catalog.effective.fx_instances
+            }
+            shoop_rt_protocol::ProcessorKind::OxiSynth => {
+                self.processor_catalog.effective.synth_instances
+            }
+            _ => 0,
+        };
+        if limit == 0 {
+            return Err(Staged::Refused(Refusal::Unsupported));
+        }
+        let owners = || {
+            self.next
+                .strips
+                .iter()
+                .flatten()
+                .filter_map(|strip| strip.processor)
+                .chain(
+                    self.next
+                        .buses
+                        .iter()
+                        .flatten()
+                        .filter(|bus| Some(bus.id) != excluding)
+                        .filter_map(|bus| bus.processor),
+                )
+        };
+        if owners().filter(|owner| owner.kind == kind).count() >= limit as usize {
+            return Err(Staged::Refused(Refusal::Capacity));
+        }
+        for (index, cells) in self.processor_cells.iter().enumerate() {
+            let Some(state) = cells.read() else {
+                continue;
+            };
+            if state.kind != kind
+                || state.phase != crate::ProcessorPhase::Free
+                || owners().any(|owner| owner.slot.is_some_and(|slot| slot.index as usize == index))
+            {
+                continue;
+            }
+            let generation = state
+                .generation
+                .checked_add(1)
+                .ok_or(Staged::Refused(Refusal::Capacity))?;
+            return Ok(crate::model::ProcessorOwner {
+                kind,
+                slot: Some(shoop_rt_protocol::ProcessorSlot {
+                    index: index as u16,
+                    generation,
+                }),
+            });
+        }
+        if self.processor_cells.iter().any(|cells| {
+            cells.read().is_some_and(|state| {
+                state.kind == kind && state.phase == crate::ProcessorPhase::Retiring
+            })
+        }) {
+            return Err(Staged::Wait);
+        }
+        Err(Staged::Refused(Refusal::Capacity))
+    }
+    /// Validate a structural request against the staged model.
+    pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
+        let next = &self.next;
+        match request {
+            Request::SetBusProcessor { bus, enabled } => {
+                let Some(entry) = next.bus(bus) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                if !replacing && self.model.bus(bus).is_none() {
+                    return Staged::Wait;
+                }
+                if enabled && entry.channels as usize > self.shape.processor_channels {
+                    return Staged::Refused(Refusal::Capacity);
+                }
+                let processor = if enabled {
+                    match self
+                        .reserve_processor(shoop_rt_protocol::ProcessorKind::BuiltInFx, Some(bus))
+                    {
+                        Ok(owner) => Some(owner),
+                        Err(staged) => return staged,
+                    }
+                } else {
+                    None
+                };
+                Staged::Change(Change::BusProcessor { bus, processor })
+            }
+            Request::CreateBus { bus, channels }
+            | Request::CreateProcessedBus { bus, channels } => {
+                let slot = bus.0.index as usize;
+                if slot >= next.buses.len()
+                    || channels == 0
+                    || channels as usize > self.settings.master_channels
+                {
+                    Staged::Refused(Refusal::Capacity)
+                } else if bus.0.generation == 0
+                    || bus.0.generation <= next.bus_generations[slot]
+                    || next.buses[slot].is_some()
+                {
+                    Staged::Refused(Refusal::InvalidId)
+                } else if !replacing && self.model.buses[slot].is_some() {
+                    Staged::Wait
+                } else {
+                    let processor = if matches!(request, Request::CreateProcessedBus { .. }) {
+                        if channels as usize > self.shape.processor_channels {
+                            return Staged::Refused(Refusal::Capacity);
+                        }
+                        match self
+                            .reserve_processor(shoop_rt_protocol::ProcessorKind::BuiltInFx, None)
+                        {
+                            Ok(owner) => Some(owner),
+                            Err(staged) => return staged,
+                        }
+                    } else {
+                        None
+                    };
+                    Staged::Change(Change::CreateBus {
+                        bus,
+                        channels,
+                        processor,
+                    })
+                }
+            }
+            Request::RemoveBus { bus } => match next.bus(bus) {
+                None => Staged::Refused(Refusal::InvalidId),
+                Some(_) if self.model.bus(bus).is_none() => Staged::Wait,
+                Some(_) => Staged::Change(Change::RemoveBus { bus }),
+            },
+            Request::CreateStrip { strip, shape }
+            | Request::CreateProcessedStrip { strip, shape, .. } => {
+                let processor = if let Request::CreateProcessedStrip { kind, .. } = request {
+                    if kind == shoop_rt_protocol::ProcessorKind::External {
+                        if !self.settings.external_dry_wet {
+                            return Staged::Refused(Refusal::Unsupported);
+                        }
+                        if shape.midi_output
+                            || (shape.audio_inputs == 0
+                                && shape.audio_outputs == 0
+                                && !shape.midi_input)
+                        {
+                            return Staged::Refused(Refusal::InvalidValue);
+                        }
+                        Some(crate::model::ProcessorOwner { kind, slot: None })
+                    } else {
+                        if !shape.midi_input
+                            || shape.midi_output
+                            || shape.audio_inputs == 0
+                            || shape.audio_inputs != shape.audio_outputs
+                            || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth
+                                && shape.audio_inputs != 2)
+                        {
+                            return Staged::Refused(Refusal::InvalidValue);
+                        }
+                        match self.reserve_processor(kind, None) {
+                            Ok(owner) => Some(owner),
+                            Err(staged) => return staged,
+                        }
+                    }
+                } else {
+                    None
+                };
+                let slot = strip.0.index as usize;
+                if slot >= next.strips.len() {
+                    Staged::Refused(Refusal::Capacity)
+                } else if strip.0.generation == 0
+                    || strip.0.generation <= next.strip_generations[slot]
+                    || next.strips[slot].is_some()
+                {
+                    Staged::Refused(Refusal::InvalidId)
+                } else if shape.audio_inputs as usize > self.settings.channels
+                    || shape.audio_outputs as usize > self.settings.channels
+                {
+                    Staged::Refused(Refusal::Capacity)
+                } else if !replacing && self.model.strips[slot].is_some() {
+                    Staged::Wait
+                } else {
+                    Staged::Change(Change::CreateStrip {
+                        strip,
+                        shape,
+                        processor,
+                    })
+                }
+            }
+            Request::RemoveStrip { strip } => match next.strip(strip) {
+                None => Staged::Refused(Refusal::InvalidId),
+                Some(_) if self.model.strip(strip).is_none() => Staged::Wait,
+                Some(_) => Staged::Change(Change::RemoveStrip { strip }),
+            },
+            Request::CreateComposite { loop_id, strip } => {
+                let slot = loop_id.0.index as usize;
+                if slot >= next.loops.len() {
+                    Staged::Refused(Refusal::Capacity)
+                } else if loop_id.0.generation == 0
+                    || loop_id.0.generation <= next.loop_generations[slot]
+                    || next.loops[slot].is_some()
+                    || strip.is_some_and(|s| next.strip(s).is_none())
+                {
+                    Staged::Refused(Refusal::InvalidId)
+                } else if !replacing && self.model.loops[slot].is_some() {
+                    Staged::Wait
+                } else {
+                    Staged::Change(Change::CreateComposite {
+                        loop_id,
+                        strip,
+                        program: shoop_rt_protocol::CompositeDescription {
+                            id: 0,
+                            loop_id,
+                            sync: None,
+                            previous: None,
+                            expected_version: 0,
+                            version: 0,
+                            kind: shoop_rt_protocol::CompositeKind::Regular,
+                            unit_frames: u64::from(self.limits.quantum),
+                            iterations: 0,
+                            entries: 0,
+                            segments: 0,
+                            sample_rate: self.cells.driver().sample_rate,
+                            quantum: self.limits.quantum,
+                        },
+                    })
+                }
+            }
+            Request::CreateLoop { loop_id, strip } => {
+                let slot = loop_id.0.index as usize;
+                if slot >= next.loops.len() {
+                    Staged::Refused(Refusal::Capacity)
+                } else if loop_id.0.generation == 0
+                    || loop_id.0.generation <= next.loop_generations[slot]
+                    || next.loops[slot].is_some()
+                    || next.strip(strip).is_none()
+                {
+                    Staged::Refused(Refusal::InvalidId)
+                } else if !replacing && self.model.loops[slot].is_some() {
+                    Staged::Wait
+                } else {
+                    Staged::Change(Change::CreateLoop { loop_id, strip })
+                }
+            }
+            Request::ResetComposite { previous, loop_id } => match next.find_loop(previous) {
+                Some(entry)
+                    if entry.program.is_some()
+                        && entry.strip.is_some()
+                        && previous.0.index == loop_id.0.index
+                        && loop_id.0.generation
+                            > next.loop_generations[loop_id.0.index as usize]
+                        && !next
+                            .spans
+                            .iter()
+                            .flatten()
+                            .any(|span| span.span.target == previous) =>
+                {
+                    Staged::Change(Change::ResetComposite { previous, loop_id })
+                }
+                _ => Staged::Refused(Refusal::InvalidId),
+            },
+            Request::RemoveLoop { loop_id } => match next.find_loop(loop_id) {
+                None => Staged::Refused(Refusal::InvalidId),
+                Some(_) if self.model.find_loop(loop_id).is_none() => Staged::Wait,
+                Some(_) => Staged::Change(Change::RemoveLoop { loop_id }),
+            },
+            Request::LoopSync { loop_id, source } => match next.find_loop(loop_id) {
+                None => Staged::Refused(Refusal::InvalidId),
+                Some(entry) if entry.sync == source => Staged::Done,
+                Some(_) => match source {
+                    Some(source) if next.find_loop(source).is_none() => {
+                        Staged::Refused(Refusal::InvalidId)
+                    }
+                    Some(source) if !next.sync_allowed(loop_id, source) => {
+                        Staged::Refused(Refusal::InvalidValue)
+                    }
+                    _ => Staged::Change(Change::Sync { loop_id, source }),
+                },
+            },
+            Request::Connect {
+                port: EnginePort::Bus(BusPort { bus, index }),
+                host,
+                connected,
+            } => {
+                let channel = index as usize;
+                let Some(entry) = next.bus(bus) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                if channel >= entry.channels as usize {
+                    return Staged::Refused(Refusal::InvalidValue);
+                }
+                let Some(host) = self.host_index(host, PortKind::AudioOut) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                let mask = entry.outputs.current()[channel];
+                if mask.contains(host) == connected {
+                    Staged::Done
+                } else {
+                    Staged::Change(Change::ConnectMaster {
+                        bus,
+                        channel,
+                        host,
+                        connected,
+                    })
+                }
+            }
+            Request::Connect {
+                port: EnginePort::GlobalFxControl,
+                host,
+                connected,
+            } => {
+                if !self.settings.external_dry_wet && self.processor_cells.is_empty() {
+                    return Staged::Refused(Refusal::Unsupported);
+                }
+                let Some(host) = self.host_index(host, PortKind::MidiIn) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                if next.global_midi.contains(host) == connected {
+                    Staged::Done
+                } else {
+                    Staged::Change(Change::ConnectGlobal { host, connected })
+                }
+            }
+            Request::Connect {
+                port: EnginePort::Strip(port),
+                host,
+                connected,
+            } => {
+                let Some(strip) = next.strip(port.strip) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                let index = port.index as usize;
+                let external = strip
+                    .processor
+                    .is_some_and(|owner| owner.kind == shoop_rt_protocol::ProcessorKind::External);
+                let valid = match port.kind {
+                    PortKind::AudioSend => external && index < strip.shape.audio_inputs as usize,
+                    PortKind::AudioReturn => external && index < strip.shape.audio_outputs as usize,
+                    PortKind::MidiSend => external && index == 0 && strip.shape.midi_input,
+                    PortKind::AudioIn => index < strip.shape.audio_inputs as usize,
+                    PortKind::AudioOut => index < strip.shape.audio_outputs as usize,
+                    PortKind::MidiIn => index == 0 && strip.shape.midi_input,
+                    PortKind::MidiOut => index == 0 && strip.shape.midi_output,
+                };
+                if !valid {
+                    return Staged::Refused(Refusal::InvalidValue);
+                }
+                let Some(host) = self.host_index(host, port.kind) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                let mask = match port.kind {
+                    PortKind::AudioSend => strip.sends.current()[index],
+                    PortKind::AudioReturn => strip.returns.current()[index],
+                    PortKind::MidiSend => strip.midi_send,
+                    PortKind::AudioIn => strip.inputs.current()[index],
+                    PortKind::AudioOut => strip.outputs.current()[index],
+                    PortKind::MidiIn => strip.midi_inputs,
+                    PortKind::MidiOut => strip.midi_outputs,
+                };
+                if mask.contains(host) == connected {
+                    Staged::Done
+                } else {
+                    Staged::Change(Change::Connect {
+                        port,
+                        host,
+                        connected,
+                    })
+                }
+            }
+            Request::Route {
+                port,
+                bus: BusPort { bus, index },
+                connected,
+            } => match next.strip(port.strip) {
+                None => Staged::Refused(Refusal::InvalidId),
+                Some(entry)
+                    if port.kind != PortKind::AudioOut
+                        || port.index >= entry.shape.audio_outputs
+                        || next.bus(bus).is_none_or(|b| index >= b.channels) =>
+                {
+                    Staged::Refused(Refusal::InvalidValue)
+                }
+                Some(entry) => {
+                    let (channel, target) = (
+                        port.index as usize,
+                        bus.0.index as usize * shoop_rt_protocol::MAX_STRIP_CHANNELS
+                            + index as usize,
+                    );
+                    let mask = entry.outputs.buses[entry.outputs.active][channel];
+                    if (mask & (1 << target) != 0) == connected {
+                        Staged::Done
+                    } else {
+                        Staged::Change(Change::Route {
+                            strip: port.strip,
+                            channel,
+                            target,
+                            connected,
+                        })
+                    }
+                }
+            },
+            _ => Staged::Refused(Refusal::Internal),
+        }
+    }
+}

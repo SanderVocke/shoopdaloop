@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ShoopTraceChunkTransport } from '../../src/rust/shoopdaloop/raw_wasm_host.js';
+import { ShoopTraceChunkTransport } from '../../reference/legacy_browser/raw_wasm_host.js';
 
 class FakeHost {
   constructor(records = 0) {

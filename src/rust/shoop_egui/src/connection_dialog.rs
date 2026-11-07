@@ -366,6 +366,17 @@ impl ConnectionGraph {
             .host_ports
             .iter()
             .filter(|host| !is_application_owned_host(app_state, host))
+            .filter(|host| {
+                host.available
+                    || state
+                        .confirmed_links
+                        .iter()
+                        .any(|link| link.host_port_id == host.id)
+                    || state
+                        .pending_links
+                        .iter()
+                        .any(|link| link.host_port_id == host.id)
+            })
             .filter(|host| match presentation.tab {
                 ConnectionTab::Tracks => match host.direction {
                     PortDirection::Output => true,
@@ -393,7 +404,12 @@ impl ConnectionGraph {
                 PortDirection::Output => GraphColumn::SystemSources,
                 PortDirection::Input => GraphColumn::SystemSinks,
             };
-            let (group, label) = external_name_parts(&host.name);
+            let display_name = if host.available {
+                host.name.clone()
+            } else {
+                format!("{} (disconnected)", host.name)
+            };
+            let (group, label) = external_name_parts(&display_name);
             let error = state.errors.iter().rev().find_map(|error| {
                 (error.external_port.as_deref() == Some(host.id.as_str()))
                     .then(|| error.message.clone())
@@ -1645,6 +1661,7 @@ mod tests {
         policy: ConnectionPolicy,
     ) -> ApplicationPortState {
         ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(id),
             owner: ApplicationPortOwner::Track {
                 track_id,
@@ -1674,6 +1691,7 @@ mod tests {
             name: name.to_owned(),
             data_type,
             direction,
+            available: true,
         }
     }
 
@@ -1767,6 +1785,7 @@ mod tests {
     fn graph_classifies_master_facets_and_emits_typed_routes() {
         let mut state = state();
         state.buses = Arc::from([BusState {
+            latest_input_midi_message: None,
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
             structural_state: crate::StructuralState::Confirmed,
@@ -1787,6 +1806,7 @@ mod tests {
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(14),
             owner: ApplicationPortOwner::Bus {
                 bus_id: BusId::from_raw(1),
@@ -2114,6 +2134,7 @@ mod tests {
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(99),
             owner: ApplicationPortOwner::LuaControl {
                 script_id,
@@ -2126,6 +2147,7 @@ mod tests {
             connection_policy: ConnectionPolicy::OwnerManaged,
         });
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(100),
             owner: ApplicationPortOwner::GlobalFxControl,
             name: "Global FX Control MIDI In".to_owned(),
@@ -2188,6 +2210,7 @@ mod tests {
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(100),
             owner: ApplicationPortOwner::GlobalFxControl,
             name: "Global FX Control MIDI In".to_owned(),
@@ -2239,6 +2262,7 @@ mod tests {
         state.audio_drivers.active = Some(crate::ResolvedAudioDriverConfig {
             configured: crate::AudioDriverConfig::Jack(crate::JackAudioDriverConfig {
                 client_name: "ShoopDaLoop".to_owned(),
+                ..Default::default()
             }),
             sample_rate: 48_000,
             buffer_size: 128,
@@ -2992,6 +3016,78 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn unrelated_updates_preserve_drags_and_removed_sources_cancel_them() {
+        for remove_source in [false, true] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let mut state = state();
+            let mut dialog = ConnectionDialog::default();
+            dialog.open(ConnectionScope::AllTracks);
+            assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+            let host = HostPortId::new("device:audio_source");
+            let source = connector(&dialog, &EndpointId::Host(host.clone()), true);
+            assert!(frame(
+                &context,
+                &mut dialog,
+                &state,
+                vec![egui::Event::PointerMoved(source), press(source)]
+            )
+            .is_empty());
+            assert!(frame(
+                &context,
+                &mut dialog,
+                &state,
+                vec![egui::Event::PointerMoved(source + egui::vec2(18.0, 0.0))]
+            )
+            .is_empty());
+            for _ in 0..5 {
+                state.revision += 1;
+                state.global_controls.sync = !state.global_controls.sync;
+                assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+                assert!(dialog.drag.is_some());
+            }
+            if remove_source {
+                let connections = Arc::make_mut(&mut state.connections);
+                connections.host_ports = connections
+                    .host_ports
+                    .iter()
+                    .filter(|port| port.id != host)
+                    .cloned()
+                    .collect();
+                connections.revision += 1;
+                assert!(frame(&context, &mut dialog, &state, Vec::new()).is_empty());
+                assert!(dialog.drag.is_none());
+            }
+            let sink = connector(
+                &dialog,
+                &EndpointId::Application(PortId::from_raw(11)),
+                false,
+            );
+            assert!(frame(
+                &context,
+                &mut dialog,
+                &state,
+                vec![egui::Event::PointerMoved(sink)]
+            )
+            .is_empty());
+            let intents = frame(&context, &mut dialog, &state, vec![release(sink)]);
+            if remove_source {
+                assert!(intents.is_empty());
+            } else {
+                assert_eq!(
+                    intents,
+                    [AppIntent::SetPortConnected {
+                        port_id: PortId::from_raw(11),
+                        host_port_id: host,
+                        connected: true,
+                    }]
+                );
+            }
+            assert!(dialog.drag.is_none());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn filter_or_snapshot_change_cancels_an_active_drag() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -3154,6 +3250,48 @@ mod tests {
         recovered.textures_delta.clear();
         assert!(recovered.shapes.len() > 10);
         assert!(!dialog.endpoint_rects.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn offline_bound_ports_remain_visible_and_can_be_disconnected() {
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        let mut ports = connections.host_ports.to_vec();
+        for port in &mut ports {
+            port.available = false;
+        }
+        connections.host_ports = ports.into();
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        let endpoints: Vec<_> = graph
+            .endpoints
+            .values()
+            .flatten()
+            .filter(|endpoint| matches!(endpoint.id, EndpointId::Host(_)))
+            .collect();
+        assert_eq!(endpoints.len(), 1);
+        assert!(endpoints[0].label.contains("disconnected"));
+        assert_eq!(graph.routes.len(), 1);
+        assert_eq!(
+            disconnect_intent(&graph.routes[0]),
+            AppIntent::SetPortConnected {
+                port_id: PortId::from_raw(12),
+                host_port_id: HostPortId::new("synth:midi_sink"),
+                connected: false,
+            }
+        );
+        Arc::make_mut(&mut state.connections).confirmed_links = Arc::from([]);
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert!(graph
+            .endpoints
+            .values()
+            .flatten()
+            .all(|endpoint| !matches!(endpoint.id, EndpointId::Host(_))));
     }
 
     #[shoop_wasm_test_support::shoop_test]

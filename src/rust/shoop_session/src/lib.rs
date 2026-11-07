@@ -3,13 +3,18 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod archive;
 mod click_track;
+mod composite;
+mod conversion;
+pub use composite::materialize_composite_timing;
 mod document;
+mod limits;
 mod media;
+pub use limits::CodecLimits;
 mod resample;
 
 pub use archive::{
-    decode_session, decode_session_with_limits, encode_session, validate_bundle, DecodeLimits,
-    SessionError,
+    decode_session, decode_session_bounded, decode_session_with_limits, encode_session,
+    encode_session_bounded, validate_bundle, DecodeLimits, SessionError,
 };
 pub use click_track::{
     click_sound_ids, generate_audio_click_track, generate_click_track_timing,
@@ -17,15 +22,22 @@ pub use click_track::{
     ClickTrackTimingSpec, MidiClickTrackSpec, MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
     MAX_CLICK_TRACK_MIDI_EVENTS,
 };
+pub use conversion::{
+    convert_audio, convert_midi, convert_midi_with_cancel, AudioConversion, ConversionPlan,
+    FrameScale, LoopConversion, LoopTiming, MediaTiming, SessionFormatPlan,
+};
 pub use document::*;
 pub use media::{
-    decode_exact_midi, decode_loop_audio, decode_standard_midi, decode_wav, encode_exact_midi,
-    encode_float_wav, encode_loop_audio, encode_standard_midi, StandardMidiExport,
+    decode_exact_midi, decode_exact_midi_bounded, decode_loop_audio, decode_loop_audio_bounded,
+    decode_standard_midi, decode_standard_midi_bounded, decode_wav, decode_wav_bounded,
+    encode_exact_midi, encode_exact_midi_bounded, encode_float_wav, encode_loop_audio,
+    encode_loop_audio_bounded, encode_standard_midi, StandardMidiExport,
 };
 pub use resample::{
     resample_exact_midi, resample_loop_audio, resample_session, scale_duration, scale_nearest,
     scale_signed_nearest,
 };
+pub use shoop_app_api::ConversionTarget;
 
 #[cfg(test)]
 mod tests {
@@ -35,7 +47,123 @@ mod tests {
     use zip::write::SimpleFileOptions;
     use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-    fn direct_bundle(channels: usize) -> SessionBundle {
+    fn codec_limits() -> CodecLimits {
+        CodecLimits {
+            file_bytes: 1024 * 1024,
+            metadata_bytes: 64 * 1024,
+            expanded_bytes: 1024 * 1024,
+            media_bytes: 1024,
+            entries: 16,
+            midi_events: 10,
+            packet_bytes: 16,
+            initial_packets: 4,
+            audio_channels: 4,
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bounded_codecs_stop_expansion_and_preserve_exact_round_trips() {
+        let mut bundle = direct_bundle(2);
+        bundle.document.scripts.clear();
+        bundle.scripts.clear();
+        let bytes = encode_session(&bundle, "test").unwrap();
+        assert_eq!(
+            decode_session_bounded(&bytes, codec_limits(), |_| Ok(())).unwrap(),
+            bundle
+        );
+        let mut limits = codec_limits();
+        limits.metadata_bytes = 16;
+        assert!(matches!(
+            decode_session_bounded(&bytes, limits, |_| Ok(())),
+            Err(SessionError::ResourceLimit(_))
+        ));
+        limits = codec_limits();
+        limits.media_bytes = 4;
+        assert!(decode_session_bounded(&bytes, limits, |_| Ok(())).is_err());
+        let error = decode_session_bounded(&bytes, limits, |_| {
+            Err(SessionError::Validation("document policy first".into()))
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("document policy first"));
+        limits = codec_limits();
+        limits.file_bytes = 32;
+        assert!(encode_session_bounded(&bundle, "test", limits).is_err());
+
+        let midi = ExactMidi {
+            sample_rate: 48000,
+            length_frames: 2,
+            start_state: vec![vec![0xc0, 5]],
+            events: vec![ExactMidiEvent {
+                frame: 1,
+                order: 8,
+                data: vec![0x90, 60, 127],
+            }],
+        };
+        let bytes = encode_exact_midi(&midi).unwrap();
+        assert_eq!(
+            decode_exact_midi_bounded(&bytes, codec_limits()).unwrap(),
+            midi
+        );
+        limits = codec_limits();
+        limits.packet_bytes = 2;
+        assert!(decode_exact_midi_bounded(&bytes, limits).is_err());
+        limits = codec_limits();
+        limits.midi_events = 0;
+        assert!(decode_exact_midi_bounded(&bytes, limits).is_err());
+        limits = codec_limits();
+        limits.initial_packets = 0;
+        assert!(decode_exact_midi_bounded(&bytes, limits).is_err());
+        let smf = encode_standard_midi(&midi).unwrap();
+        assert!(decode_standard_midi_bounded(&smf.bytes, 48000, limits).is_ok());
+        limits.midi_events = 1;
+        assert!(decode_standard_midi_bounded(&smf.bytes, 48000, limits).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bounded_audio_checks_pcm_expansion_and_channel_count_before_allocation() {
+        let mut wav = Vec::new();
+        {
+            let mut writer = hound::WavWriter::new(
+                Cursor::new(&mut wav),
+                hound::WavSpec {
+                    channels: 2,
+                    sample_rate: 48000,
+                    bits_per_sample: 8,
+                    sample_format: hound::SampleFormat::Int,
+                },
+            )
+            .unwrap();
+            for _ in 0..200 {
+                writer.write_sample(12i8).unwrap();
+            }
+            writer.finalize().unwrap();
+        }
+        let audio = decode_wav_bounded(&wav, codec_limits()).unwrap();
+        assert_eq!(audio.channels[0].samples.len(), 100);
+        let mut limits = codec_limits();
+        limits.media_bytes = 799;
+        assert!(matches!(
+            decode_wav_bounded(&wav, limits),
+            Err(SessionError::ResourceLimit(_))
+        ));
+        limits = codec_limits();
+        limits.audio_channels = 1;
+        assert!(decode_wav_bounded(&wav, limits).is_err());
+        let archive = encode_loop_audio(&audio).unwrap();
+        assert_eq!(
+            decode_loop_audio_bounded(&archive, codec_limits()).unwrap(),
+            audio
+        );
+        assert!(decode_loop_audio_bounded(&archive, limits).is_err());
+        limits = codec_limits();
+        limits.media_bytes = 799;
+        assert!(decode_loop_audio_bounded(&archive, limits).is_err());
+        limits = codec_limits();
+        limits.file_bytes = 32;
+        assert!(encode_loop_audio_bounded(&audio, limits).is_err());
+    }
+
+    pub(crate) fn direct_bundle(channels: usize) -> SessionBundle {
         let sample_rate = 48_000;
         let mut media = BTreeMap::new();
         let mut loop_channels = Vec::new();
@@ -133,6 +261,7 @@ mod tests {
         });
         let buses = SessionDocument::empty(sample_rate).buses;
         let document = SessionDocument {
+            preview_bus: Default::default(),
             sample_rate,
             connection_model_version: CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {
@@ -167,6 +296,7 @@ mod tests {
                     },
                     latency: TrackLatencyDocument::default(),
                     loops: vec![LoopDocument {
+                        execution: None,
                         id: 10,
                         name: "Loop".to_owned(),
                         length_frames: 301,
@@ -327,6 +457,7 @@ mod tests {
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
+                    execution: None,
                     id: 20,
                     name: "Deferred primitive".to_owned(),
                     length_frames: 960,
@@ -393,6 +524,7 @@ mod tests {
                 controls: TrackControlsDocument::default(),
                 latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
+                    execution: None,
                     id: 30,
                     name: "Script composite".to_owned(),
                     length_frames: 1_920,
@@ -401,6 +533,7 @@ mod tests {
                     balance: 0.0,
                     channels: Vec::new(),
                     composite: Some(CompositeDocument {
+                        timing: None,
                         kind: CompositeKindDocument::Script,
                         instances: vec![CompositeLoopInstanceDocument {
                             instance_id: 1,
@@ -561,7 +694,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 14] {
+        for unsupported in [5, SESSION_DOCUMENT_VERSION + 1] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -757,6 +890,7 @@ mod tests {
         source.document.track_groups[0].tracks[0]
             .loops
             .push(LoopDocument {
+                execution: None,
                 id: 11,
                 name: "Composite".to_owned(),
                 length_frames: 301,
@@ -765,6 +899,7 @@ mod tests {
                 balance: 0.0,
                 channels: Vec::new(),
                 composite: Some(CompositeDocument {
+                    timing: None,
                     kind: CompositeKindDocument::Regular,
                     instances: vec![CompositeLoopInstanceDocument {
                         instance_id: 6_001,

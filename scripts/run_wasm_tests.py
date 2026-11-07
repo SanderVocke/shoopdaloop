@@ -183,6 +183,7 @@ def discover_packages(selected: set[str] | None, env: dict[str, str]):
                 "path": pathlib.Path(package["manifest_path"]).parent,
                 "browser_feature": config.get("browser-feature"),
                 "no_default_features": config.get("no-default-features", False),
+                "features": config.get("features", []),
             }
         )
     packages.sort(key=lambda package: package["name"])
@@ -210,8 +211,8 @@ def asset_input_hash() -> str:
     paths.extend(
         [
             ROOT / "src/rust/shoopdaloop/build_worklet.py",
-            ROOT / "src/rust/shoopdaloop/raw_wasm_host.js",
-            ROOT / "src/rust/shoopdaloop/audio_worker.js",
+            ROOT / "reference/legacy_browser/raw_wasm_host.js",
+            ROOT / "reference/legacy_browser/audio_worker.js",
             ROOT / "tests/wasm/node_worker_bootstrap.mjs",
         ]
     )
@@ -262,9 +263,18 @@ def stage_assets(profile: str, env: dict[str, str]) -> tuple[pathlib.Path, dict]
         ],
         env=env,
     )
+    # Keep executable legacy behavior in test assets, outside the production web bundle.
+    reference_command = ["cargo", "build", "--locked", "--target", "wasm32-unknown-unknown", "-p", "shoop_audio_worklet"]
+    if cargo_profile == "release":
+        reference_command.append("--release")
+    run_checked(reference_command, env=env)
+    target_directory = pathlib.Path(env.get("CARGO_TARGET_DIR", ROOT / "target"))
+    if not target_directory.is_absolute():
+        target_directory = ROOT / target_directory
+    shutil.copy2(target_directory / "wasm32-unknown-unknown" / cargo_profile / "shoop_audio_worklet.wasm", directory / "shoop_audio_worklet.wasm")
     sources = {
-        "raw_wasm_host.js": ROOT / "src/rust/shoopdaloop/raw_wasm_host.js",
-        "audio_worker.js": ROOT / "src/rust/shoopdaloop/audio_worker.js",
+        "raw_wasm_host.js": ROOT / "reference/legacy_browser/raw_wasm_host.js",
+        "audio_worker.js": ROOT / "reference/legacy_browser/audio_worker.js",
         "node_worker_bootstrap.mjs": ROOT / "tests/wasm/node_worker_bootstrap.mjs",
     }
     for name, source in sources.items():
@@ -423,7 +433,7 @@ def invoke_package(
     command.append(str(package["path"]))
     if package["no_default_features"]:
         command.append("--no-default-features")
-    package_features = list(features)
+    package_features = list(features) + package.get("features", [])
     if runtime == "chrome" and package["browser_feature"]:
         package_features.append(package["browser_feature"])
     if package_features:

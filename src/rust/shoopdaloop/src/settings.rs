@@ -64,6 +64,23 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn reload_driver_preferences(&mut self) -> Result<(), SettingsManagerError> {
+        let text = shoop_settings::load_settings_file(&self.path)
+            .map_err(|e| SettingsManagerError::Storage(e.to_string()))?
+            .ok_or_else(|| {
+                SettingsManagerError::Storage("saved settings file is missing".into())
+            })?;
+        let document =
+            decode_settings(&text).map_err(|e| SettingsManagerError::Storage(e.to_string()))?;
+        let resolution = self
+            .registry
+            .resolve(&document, self.active.revision().saturating_add(1));
+        self.document = document;
+        self.active = Arc::new(resolution.snapshot);
+        self.persistence = SettingsPersistenceState::Saved;
+        Ok(())
+    }
     #[cfg(all(not(target_arch = "wasm32"), not(test)))]
     pub fn load(registry: SettingsRegistry, writer_version: impl Into<String>) -> Self {
         let writer_version = writer_version.into();
@@ -159,7 +176,11 @@ impl SettingsManager {
     }
 
     pub fn report_action_error(&mut self, message: impl Into<String>) {
+        let saving = self.persistence == SettingsPersistenceState::Saving;
         self.record_failure(message.into());
+        if saving {
+            self.persistence = SettingsPersistenceState::Saving;
+        }
     }
 
     pub fn active(&self) -> Arc<SettingsSnapshot> {
@@ -287,11 +308,49 @@ impl SettingsManager {
 
     fn record_failure(&mut self, message: String) {
         self.persistence = SettingsPersistenceState::Failed;
-        self.diagnostics.push(SettingsDiagnostic {
+        let diagnostic = SettingsDiagnostic {
             key: None,
             message: format!("Could not save settings: {message}"),
-        });
+        };
+        if self.diagnostics.last().is_none_or(|previous| {
+            previous.key != diagnostic.key || previous.message != diagnostic.message
+        }) {
+            self.diagnostics.push(diagnostic);
+        }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn driver_preference_writer(path: PathBuf) -> shoop_host::audio_driver::PreferenceWriter {
+    Box::new(move |config| {
+        let mut document = shoop_settings::load_settings_file(&path)?
+            .map(|text| decode_settings(&text))
+            .transpose()?
+            .unwrap_or_else(|| SettingsDocument::empty(env!("CARGO_PKG_VERSION")));
+        let value = serde_json::to_value(config)?;
+        let fields = value
+            .as_object()
+            .and_then(|v| v.values().next())
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| anyhow::anyhow!("native driver profile has no settings fields"))?;
+        document
+            .values
+            .insert("audio.selected_driver".into(), config.kind().id().into());
+        for (name, value) in fields {
+            let value = if name == "midi_inputs" || name == "midi_outputs" {
+                let selectors = value
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("invalid MIDI selector list"))?;
+                serde_json::Value::String(serde_json::to_string(selectors)?)
+            } else {
+                value.clone()
+            };
+            document
+                .values
+                .insert(format!("audio.{}.{}", config.kind().id(), name), value);
+        }
+        shoop_settings::save_settings_file(&path, &encode_settings(&document)?)
+    })
 }
 
 fn resolve_loaded(
@@ -318,7 +377,9 @@ fn resolve_loaded(
         Ok(Some(contents)) => match decode_settings(&contents) {
             Ok(mut document) => {
                 migrate_legacy_script_settings(&mut document);
-                let resolved = registry.resolve(&document, 1);
+                let migration = migrate_session_settings(&mut document);
+                let mut resolved = registry.resolve(&document, 1);
+                resolved.diagnostics.extend(migration);
                 (
                     document,
                     Arc::new(resolved.snapshot),
@@ -358,6 +419,24 @@ fn resolve_loaded(
             )
         }
     }
+}
+
+fn migrate_session_settings(document: &mut SettingsDocument) -> Vec<SettingsDiagnostic> {
+    let mut diagnostics = Vec::new();
+    if document.values.remove("audio.backend").is_some() {
+        diagnostics.push(SettingsDiagnostic { key: Some("audio.backend".into()), message: "The saved backend choice was retired. The RT session engine is now used everywhere.".into() });
+    }
+    if let Some(value) = document.values.remove("audio.engine_transport") {
+        document
+            .values
+            .entry("audio.session_transport".into())
+            .or_insert(value);
+        diagnostics.push(SettingsDiagnostic {
+            key: Some("audio.session_transport".into()),
+            message: "Engine transport migrated to session delivery.".into(),
+        });
+    }
+    diagnostics
 }
 
 fn migrate_legacy_script_settings(document: &mut SettingsDocument) {
@@ -430,6 +509,78 @@ mod tests {
     use std::time::{Duration, Instant};
 
     const VALUE: SettingKey<u32> = SettingKey::new("test.value");
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn driver_preferences_preserve_exact_midi_names_with_punctuation_and_whitespace() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("settings.json");
+        let target = shoop_app_api::AudioDriverConfig::Cpal(shoop_app_api::CpalAudioDriverConfig {
+            midi_inputs: vec!["=Keys, Port A".into(), "=  Keys ".into()],
+            midi_outputs: vec!["=Synth, \"B\" \\ output ".into()],
+            ..Default::default()
+        });
+        driver_preference_writer(path.clone())(&target).unwrap();
+        let mut builder = SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
+        assert_eq!(
+            shoop_egui::audio_driver_config_from_snapshot(
+                &manager.active(),
+                shoop_app_api::AudioDriverKind::Cpal,
+            )
+            .unwrap(),
+            target
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn host_driver_preference_save_preserves_other_settings_and_reloads_for_startup() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("settings.json");
+        let mut document = SettingsDocument::empty("test");
+        document.values.insert(
+            "unrecognized.resource".into(),
+            serde_json::json!({"keep": [1, 2, 3]}),
+        );
+        shoop_settings::save_settings_file(&path, &encode_settings(&document).unwrap()).unwrap();
+        let target =
+            shoop_app_api::AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                sample_rate: 32_000,
+                buffer_size: 128,
+            });
+        driver_preference_writer(path.clone())(&target).unwrap();
+        let saved = decode_settings(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            saved.values["unrecognized.resource"],
+            document.values["unrecognized.resource"]
+        );
+        let mut builder = SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let mut manager = SettingsManager::load_from_path(builder.finish(), "test", path.clone());
+        assert_eq!(
+            shoop_egui::audio_driver_config_from_snapshot(
+                &manager.active(),
+                shoop_app_api::AudioDriverKind::Dummy
+            )
+            .unwrap(),
+            target
+        );
+        let retry_target =
+            shoop_app_api::AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                sample_rate: 44_100,
+                buffer_size: 256,
+            });
+        driver_preference_writer(path)(&retry_target).unwrap();
+        manager.reload_driver_preferences().unwrap();
+        assert_eq!(
+            shoop_egui::audio_driver_config_from_snapshot(
+                &manager.active(),
+                shoop_app_api::AudioDriverKind::Dummy
+            )
+            .unwrap(),
+            retry_target
+        );
+    }
 
     fn registry() -> SettingsRegistry {
         let mut builder = SettingsRegistryBuilder::default();
@@ -575,6 +726,47 @@ mod tests {
         let migrated = document.values.clone();
         migrate_legacy_script_settings(&mut document);
         assert_eq!(document.values, migrated);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn retired_backend_preferences_migrate_visibly_and_preserve_other_values() {
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let original = SettingsDocument {
+            writer_version: "old".into(),
+            values: std::collections::BTreeMap::from([
+                ("audio.backend".into(), serde_json::json!("legacy")),
+                ("audio.engine_transport".into(), serde_json::json!("socket")),
+                (
+                    "future.opaque".into(),
+                    serde_json::json!({"preserved": [1, 2]}),
+                ),
+            ]),
+        };
+        let (document, active, diagnostics, rejected) = resolve_loaded(
+            &registry,
+            "new",
+            Ok(Some(encode_settings(&original).unwrap())),
+        );
+        assert!(!rejected);
+        assert!(!document.values.contains_key("audio.backend"));
+        assert!(!document.values.contains_key("audio.engine_transport"));
+        assert_eq!(
+            document.values["future.opaque"],
+            original.values["future.opaque"]
+        );
+        assert_eq!(active.get(shoop_egui::ENGINE_TRANSPORT).unwrap(), "socket");
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("backend choice was retired")));
+        let (_, _, diagnostics, rejected) = resolve_loaded(
+            &registry,
+            "new",
+            Ok(Some(encode_settings(&document).unwrap())),
+        );
+        assert!(!rejected);
+        assert!(diagnostics.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

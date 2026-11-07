@@ -1,3 +1,7 @@
+#![no_std]
+#[cfg(test)]
+extern crate std;
+
 use thiserror::Error;
 
 pub const MAX_COMPENSATION_FRAMES: u32 = 768_000;

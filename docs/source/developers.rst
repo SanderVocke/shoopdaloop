@@ -5,4 +5,3 @@ For Developers / Advanced Users
 .. include:: developers.scripting.rst
 .. include:: developers.software.rst
 .. include:: developers.tracing.rst
-.. include:: developers.tracing_coverage.rst

@@ -1,0 +1,182 @@
+# Native audio driver switching
+
+P14 restores confirmed device and engine transitions under the running session
+service. The service retains application identities, connection authority and
+operation results while its native composition root replaces the render host and
+engine adapter. The independent host keeps its listening endpoints alive.
+
+## Scope and ownership
+
+| Configuration | Native scope | Client delivery |
+| --- | --- | --- |
+| Dummy | All supported native platforms | Embedded typed queues, socket and shared memory |
+| CPAL | Built platform hosts, including ALSA/JACK, WASAPI/ASIO and CoreAudio where available | Same session commands and results |
+| Direct JACK | Builds with native JACK support and a running server | Same commands, with dynamic audio/MIDI graph publication restored |
+| Browser and firmware | Live native driver switching unavailable | Explicit capability refusal; existing rendering and protocol behavior remain |
+
+CPAL's JACK host and the direct JACK backend remain separate choices. Build
+availability, device/server availability and actual device qualification are
+distinct. Mock and virtual-device tests do not establish physical-device behavior.
+
+`AudioDriverController` is injected by the native composition root. Its bounded
+requests carry service-generated tickets. A native worker owns discovery, device
+opening/closing, conversion and startup-preference writes; none runs on a render
+callback. The service polls results and retains confirmed work across client loss.
+The RT adapter remains independent of device and application hosting code.
+The worker accepts one outstanding service ticket, with two bounded request slots
+and one result slot. Shutdown waits at most five seconds for lifecycle cleanup.
+A stalled OS device call retains its worker and remains pending; the service never
+starts a concurrent transition or claims that a timed-out device was reclaimed.
+
+The shared `shoop_format_conversion` layer owns frame scaling, dependency timing,
+audio/MIDI conversion and frozen composite geometry. Session-document and native
+capture adapters share those algorithms without introducing a host/service
+dependency on archive codecs or `shoop_session`.
+
+## Transition contract
+
+Discovery and preflight do not stop current audio. A request produces a bounded
+confirmation describing source and target format, interruption, stopped transport
+and conversion. CPAL preflight pins default/index/partial device selections to
+resolved host and exact device names; those identities appear in confirmation and
+become the saved active profile. Confirmation is scoped to its client authority and request ID;
+unconfirmed preparation expires after 60 seconds or on owner loss. Automatic CPAL
+buffer selection is explicit: preflight leaves callback size unresolved, confirmation
+names the device-default policy, and opening publishes the observed size. Engine
+capacity is never presented as a negotiated device buffer.
+
+Confirmed admission checks active, armed, scheduled and composite-driven recording
+and conflicts with persistence or pending structural work. During capture through
+publication, other session mutations and shutdown refuse Busy. Recording is never
+stopped merely to make switching admissible. The check runs again before teardown.
+
+The service captures immutable media and metadata, prepares an identity-preserving
+candidate, rechecks the target format, and then closes the old engine connection.
+Strict native startup never substitutes Dummy for a failed target. After the new
+adapter restores all media and mappings, the service republishes graph bindings,
+controls and routing intent and confirms runtime success. Loops start stopped;
+pending musical commands, held notes, previews and rolling histories are transient.
+Client Lua VMs are neither serialized nor automatically restarted.
+
+Public track, loop, bus, channel and port identities survive. Backend handles and
+the persistence epoch change. Stale engine replies and transfers cannot operate
+on the replacement. Missing physical ports retain connection intent and a
+diagnostic rather than binding to a similarly named destination.
+
+Failure before teardown leaves the prior runtime intact. Later failure reconstructs
+the original-format session on its prior driver. The original immutable cut remains
+owned until restoration/publication succeeds. Failed rollback publishes a fatal
+state with both errors and retains bounded recovery data. A new socket controller
+can inspect the retained fatal result and request orderly host shutdown; musical
+mutations remain refused. A target rate change
+requires renewed consent, restoring the source first if opening the target was
+necessary to discover it.
+
+## Timing and capacity
+
+Use the persistence contract's rational source-first dependency conversion and
+quantum rounding. Convert each original channel once using its final timing map.
+Audio retains prefix/suffix media, MIDI retains packet order and frame precision,
+and signed offsets, capture alignment and preplay follow the same origin map.
+Frozen composite geometry and authored timing basis remain distinct.
+
+Host media/metadata/object/event limits apply to capture and conversion. Account
+for the source image, converted image, upload scratch, target runtime and retained
+rollback owners separately. Preparation failure and exhaustion report an explicit
+result. Neither finite capacity nor allocation guards establish physical-device
+deadline guarantees.
+
+## Startup preferences
+
+Runtime switching and saving its startup preference have distinct results. A failed
+save keeps the new driver active and enables retry without another transition.
+The service retains this state so retry does not require the originating UI draft.
+
+Embedded settings writes serialize with driver requests, confirmation and preference
+retry from mailbox admission through completion. Ordinary saves, explicit recovery
+and deferred profiling saves cannot overlap a driver-preference write. The client
+reloads successfully saved driver preferences before accepting another settings
+draft; a stale draft refuses instead of overwriting that profile.
+
+Embedded applications write the native settings store. Independent hosts write
+their own driver-preference file: explicit `--driver-preferences`, otherwise a
+sidecar to `--config`, otherwise `native-host-audio.json` in the host's application
+configuration directory. Launch messages may supply the path explicitly. Startup
+loads configuration, then the saved driver preference, then explicit audio command
+line overrides. Exported connection profiles are never used as preference stores.
+Library hosts without a store report unsaved preferences explicitly.
+
+## Validation
+
+The implementation plan defines P14 A1 through A8. Production tests cover the
+native service and independent process routes, both session carriers, exact media
+and timing, identity preservation, recording conflicts, cancellation, rate
+reconfirmation, failed startup/restoration/rollback, save retry and detach recovery.
+Run actual native-driver cases with the device/server available; report physical,
+virtual and mocked evidence separately. Keep final-head results and review evidence
+on the implementation PR, and retain unrelated parity capability gates.
+
+## Acceptance coverage
+
+| Criterion | Production coverage |
+| --- | --- |
+| A1 confirmation | [Host controller tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) cover cancel, expiry, stale confirmation and changed-rate reconsent; CPAL mock preflight opens no streams. |
+| A2 conflicts | Service capture recording predicate is shared with persistence; [host confirmation tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) retain an active take. |
+| A3 preservation | [Native immutable-image tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) compare public identities, media, roles, processor state, controls, selection and targeting; [embedded application tests](../../src/rust/shoopdaloop/src/main.rs) retain the live Lua VM. |
+| A4 conversion | [Shared conversion tests](../../src/rust/shoop_format_conversion/src/lib.rs) and [native integration tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) provide dependency/quantum, signed timing, exact MIDI and resampling oracles. |
+| A5 rollback | [Production service with injected controller](../../src/rust/shoop_host/src/audio_driver/tests.rs) covers startup, restoration, corrupted mapping and double failure. |
+| A6 ownership | [Confirmed detach/reattach tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) verify retained result and a single driver start; protocol authority/generation tests fence old submissions. |
+| A7 preferences | [Save-failure retry tests](../../src/rust/shoop_host/src/audio_driver/tests.rs) count driver starts; [process tests](../../src/rust/shoop_host/tests/recovery.rs) verify the owning host's sidecar; embedded settings tests preserve unrelated keys. |
+| A8 delivery | [Native/Wasm/platform CI](../../.github/workflows/build_and_test.yml) and [processor CI](../../.github/workflows/hosted_track_processors.yml) accompany [isolated direct-JACK/CPAL-JACK qualification](../../scripts/run_native_jack_tests.py). |
+
+## Native device qualification
+
+The ignored `native_driver_switching_device_acceptance_on_both_carriers` test
+records a survivor take, switches configurations, and reads the media back after
+every transition. Its default matrix needs an isolated JACK server at 48 kHz with
+256-frame callbacks and covers Dummy, direct JACK, automatic/fixed CPAL JACK, and
+return transitions on socket and shared memory. Do not enable the missing-backend
+skip flag for this test.
+
+```sh
+JACK_DEFAULT_SERVER=p14-qualification cargo nextest run -p shoop_host --profile ci \
+  -E 'test(native_driver_switching_device_acceptance)' --run-ignored all
+```
+
+Set `SHOOP_P14_DRIVER_CONFIGS` to a JSON array of native `AudioDriverConfig` values
+to qualify other available hosts/devices and buffer policies using the same test.
+The file uses the host driver's existing JSON representation. Qualification logs
+must identify the selected devices and distinguish virtual devices from physical
+output/MIDI hardware.
+
+The native JACK CI runner also executes this switching scenario. It supplies its
+128-frame server configuration explicitly and uploads the driver configuration
+alongside the acceptance logs.
+
+CPAL shutdown first allows at least two seconds (or four configured callback
+periods, when longer) for the disconnected engine's MIDI reset. It then closes the callback admission gate, pauses streams and waits for
+in-flight callbacks before destroying backend streams. This prevents backend thread
+cancellation from unwinding an active Rust render turn. The gate is atomic and
+allocation-free on callbacks; waiting happens on the lifecycle worker. A stalled
+callback retains its owner, and the existing cleanup timeout remains an uncertain
+result instead of permitting forced destruction.
+
+Startup fallback keeps the requested preference intact and reports the effective
+runtime profile separately. Rollback uses that effective configuration, including
+Dummy after a failed device startup. Target startup refuses degraded device/MIDI
+configurations; it never converts warnings or a fallback into switch success.
+
+CPAL MIDI selectors retain partial-name and index selection for user requests.
+Resolved audio and MIDI profiles use `=name` for exact device and port identities,
+including numeric names and `default`, `all` or `none`; a name beginning with `=`
+receives another leading `=`. An empty resolved list remains explicitly disabled
+with `none`.
+Preflight pins the resolved MIDI selections before confirmation, so reopening or
+rollback cannot expand a selected name into other ports with similar names.
+Resolved selections retain their port order when the device inventory is reordered.
+
+The startup profile retains the CPAL host and devices actually opened, so a
+change in system defaults cannot redirect a later rollback. The automatic-buffer
+policy remains automatic. Embedded preferences store MIDI selector arrays as JSON
+text to preserve commas, quotes, backslashes and whitespace in port names;
+comma-separated selectors remain supported for ordinary settings input.

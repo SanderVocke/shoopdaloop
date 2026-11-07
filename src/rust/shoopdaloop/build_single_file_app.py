@@ -40,15 +40,15 @@ def build_single_file(dist: Path, output: Path) -> None:
     wasm_path = exactly_one(
         list(dist.glob("shoopdaloop-*_bg.wasm")), "WebAssembly file"
     )
-    raw_host_script_path = dist / "raw_wasm_host.js"
-    worklet_script_path = dist / "audio_worklet.js"
-    worker_script_path = dist / "audio_worker.js"
-    worklet_wasm_path = dist / "generated" / "shoop_audio_worklet.wasm"
+    rt_worklet_script_path = dist / "rt_audio_worklet.js"
+    rt_worklet_wasm_path = dist / "generated" / "shoop_rt_host_worklet.wasm"
+    codec_wasm_path = dist / "generated" / "shoop_persistence_codec_bg.wasm"
+    codec_js_path = dist / "generated" / "shoop_persistence_codec.js"
     for path, description in [
-        (raw_host_script_path, "raw Wasm host bridge"),
-        (worklet_script_path, "AudioWorklet script"),
-        (worker_script_path, "Worker engine script"),
-        (worklet_wasm_path, "AudioWorklet WebAssembly file"),
+        (rt_worklet_script_path, "new engine AudioWorklet script"),
+        (rt_worklet_wasm_path, "new engine AudioWorklet WebAssembly file"),
+        (codec_wasm_path, "session file codec worker WebAssembly file"),
+        (codec_js_path, "session file codec worker JavaScript bindings"),
     ]:
         if not path.is_file():
             raise RuntimeError(f"missing {description}: {path}")
@@ -97,26 +97,14 @@ def build_single_file(dist: Path, output: Path) -> None:
     if count != 1:
         raise RuntimeError("wasm-bindgen export footer has an unexpected shape")
 
-    raw_host_source = raw_host_script_path.read_text(encoding="utf-8")
-    realm_import = "import { ShoopRawWasmHost, ShoopTraceChunkTransport } from './raw_wasm_host.js';\n"
-
-    def strip_realm_import(path: Path) -> str:
-        source = path.read_text(encoding="utf-8")
-        if source.count(realm_import) != 1:
-            raise RuntimeError(f"could not identify realm host import in {path.name}")
-        return source.replace(realm_import, "")
-
-    worklet_source = strip_realm_import(worklet_script_path)
-    worker_source = strip_realm_import(worker_script_path)
-    encoded_worklet_source = base64.b64encode(
-        f"{raw_host_source}\n{worklet_source}".encode("utf-8")
+    encoded_rt_worklet_source = base64.b64encode(
+        rt_worklet_script_path.read_bytes()
     ).decode("ascii")
-    encoded_worker_source = base64.b64encode(
-        f"{raw_host_source}\n{worker_source}".encode("utf-8")
+    encoded_rt_worklet_wasm = base64.b64encode(
+        rt_worklet_wasm_path.read_bytes()
     ).decode("ascii")
-    encoded_worklet_wasm = base64.b64encode(worklet_wasm_path.read_bytes()).decode(
-        "ascii"
-    )
+    encoded_codec_js = base64.b64encode(codec_js_path.read_bytes()).decode("ascii")
+    encoded_codec_wasm = base64.b64encode(codec_wasm_path.read_bytes()).decode("ascii")
     encoded_wasm = base64.b64encode(wasm_path.read_bytes()).decode("ascii")
     builtins_root = dist / "builtins"
     builtin_files = sorted(path for path in builtins_root.rglob("*") if path.is_file())
@@ -136,17 +124,13 @@ const decodeBase64 = encoded => Uint8Array.from(
 globalThis.shoopEmbeddedBuiltins = Object.freeze({{
 {embedded_builtins}
 }});
-const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,{encoded_worklet_source}";
-const shoopAudioWorkerUrl = "data:text/javascript;base64,{encoded_worker_source}";
-const shoopAudioWorkletBinary = atob("{encoded_worklet_wasm}");
-const shoopAudioWorkletWasmBytes = Uint8Array.from(
-    shoopAudioWorkletBinary,
-    character => character.charCodeAt(0),
-);
+const shoopRtWorkletBinary = atob("{encoded_rt_worklet_wasm}");
+const shoopCodecWorkerBinary = atob("{encoded_codec_wasm}");
 globalThis.shoopEmbeddedAudioWorklet = Object.freeze({{
-    moduleUrl: shoopAudioWorkletModuleUrl,
-    workerUrl: shoopAudioWorkerUrl,
-    wasmBytes: shoopAudioWorkletWasmBytes,
+    rtModuleUrl: "data:text/javascript;base64,{encoded_rt_worklet_source}",
+    rtWasmBytes: Uint8Array.from(shoopRtWorkletBinary, character => character.charCodeAt(0)),
+    codecWasmBytes: Uint8Array.from(shoopCodecWorkerBinary, character => character.charCodeAt(0)),
+    codecBindingsUrl: "data:text/javascript;base64,{encoded_codec_js}",
 }});
 {glue}
 const shoopWasmBinary = atob("{encoded_wasm}");

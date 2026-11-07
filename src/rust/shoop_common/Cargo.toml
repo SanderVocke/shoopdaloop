@@ -10,9 +10,9 @@ log = { workspace = true }
 colored = { workspace = true }
 humantime = { workspace = true }
 lazy_static = { workspace = true }
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["std"] }
 ctor = { workspace = true }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
 shoop_tracing = { workspace = true, features = ["perfetto"] }

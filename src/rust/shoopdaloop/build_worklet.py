@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 
 PACKAGE = pathlib.Path(__file__).resolve().parent
 ROOT = PACKAGE.parents[2]
@@ -11,6 +12,8 @@ GENERATED = PACKAGE / "generated"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--profile", choices=("debug", "release"))
+parser.add_argument("--no-default-features", action="store_true", help="omit built-in host processors unless named by --features")
+parser.add_argument("--features", default=os.environ.get("SHOOP_WORKLET_FEATURES"), help="comma-separated host processor features: builtin-fx,oxisynth")
 parser.add_argument(
     "--output-dir",
     type=pathlib.Path,
@@ -21,13 +24,6 @@ args = parser.parse_args()
 profile = args.profile or os.environ.get("TRUNK_PROFILE", "release")
 if profile not in ("debug", "release"):
     raise RuntimeError(f"unsupported Trunk profile: {profile}")
-target = (
-    ROOT
-    / "target"
-    / "wasm32-unknown-unknown"
-    / profile
-    / "shoop_audio_worklet.wasm"
-)
 
 environment = os.environ.copy()
 linker_key = "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER"
@@ -37,20 +33,39 @@ if linker_key not in environment and shutil.which("lld") is None:
     if candidates:
         environment[linker_key] = str(candidates[-1])
 
+output_dir = args.output_dir.resolve()
+output_dir.mkdir(parents=True, exist_ok=True)
+(output_dir / "shoop_audio_worklet.wasm").unlink(missing_ok=True)
 command = [
-    "cargo",
-    "build",
-    "--locked",
-    "--target",
-    "wasm32-unknown-unknown",
-    "-p",
-    "shoop_audio_worklet",
+    "cargo", "build", "--locked", "--target", "wasm32-unknown-unknown",
+    "-p", "shoop_rt_host_worklet",
 ]
+if args.no_default_features or args.features is not None:
+    features = set(filter(None, (args.features or "").split(",")))
+    unknown = features - {"builtin-fx", "oxisynth"}
+    if unknown:
+        raise RuntimeError(f"unsupported worklet processor features: {sorted(unknown)}")
+    command += ["--no-default-features", "--features", ",".join(["exports", *sorted(features)])]
 if profile == "release":
     command.append("--release")
 subprocess.run(command, cwd=ROOT, env=environment, check=True)
-output_dir = args.output_dir.resolve()
-output_dir.mkdir(parents=True, exist_ok=True)
-destination = output_dir / target.name
-shutil.copy2(target, destination)
-print(f"copied {profile} worklet: {target} -> {destination}")
+target_root = pathlib.Path(environment.get("CARGO_TARGET_DIR", ROOT / "target"))
+if not target_root.is_absolute():
+    target_root = ROOT / target_root
+target = target_root / "wasm32-unknown-unknown" / profile / "shoop_rt_host_worklet.wasm"
+shutil.copy2(target, output_dir / target.name)
+
+(output_dir / "shoop_persistence_codec.wasm").unlink(missing_ok=True)
+with tempfile.TemporaryDirectory(prefix="shoop-codec-") as temporary:
+    subprocess.run(
+        [
+            "wasm-pack", "build", str(ROOT / "src/rust/shoop_persistence_codec"),
+            "--target", "web", "--no-opt", "--no-typescript", "--no-pack",
+            "--out-dir", temporary, "--out-name", "shoop_persistence_codec",
+            "--dev" if profile == "debug" else "--release",
+            "--", "--locked", "--features", "worker-exports",
+        ],
+        cwd=ROOT, env=environment, check=True,
+    )
+    for name in ("shoop_persistence_codec.js", "shoop_persistence_codec_bg.wasm"):
+        shutil.copy2(pathlib.Path(temporary) / name, output_dir / name)

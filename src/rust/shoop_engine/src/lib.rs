@@ -51,7 +51,6 @@ pub mod latency_runtime;
 pub mod loop_mode;
 pub mod midi;
 pub mod midi_buffering_input_port;
-mod midi_cc;
 pub mod midi_channel;
 pub mod midi_event;
 pub mod midi_port;

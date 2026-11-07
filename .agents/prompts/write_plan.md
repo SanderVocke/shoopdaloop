@@ -22,3 +22,9 @@ Include this execution contract in the plan:
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+When asked to write a plan according to these guidelines, after writing, include in your response to the requestor:
+
+- one-line summary per stage
+- summary of the testing plan - in particular how you are balancing testing time vs. confidence at each step
+- summary of whether and to what degree your plan includes checking CI and/or code review and/or autonomous PR merging

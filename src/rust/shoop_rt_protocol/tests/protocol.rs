@@ -1,0 +1,1108 @@
+use shoop_rt_protocol::codec::*;
+use shoop_rt_protocol::*;
+use shoop_wasm_test_support::shoop_test;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+const LIMITS: Limits = Limits {
+    composite_entries: 256,
+    composite_segments: 1024,
+    timing_relations: 512,
+    content_chunk_bytes: 1024,
+    strips: 4,
+    loops: 16,
+    strip_audio_channels: 2,
+    master_channels: 2,
+    buses: 8,
+    bus_channels: 8,
+    host_audio_inputs: 2,
+    host_audio_outputs: 2,
+    host_midi_inputs: 1,
+    host_midi_outputs: 1,
+    max_frames: 256,
+    quantum: 32,
+    processing_latency_frames: 32,
+    smoothing_limit_frames: 4800,
+    reliable_credits: 2,
+    bulk_credits: 1,
+};
+const DRIVER: DriverStatus = DriverStatus {
+    kind: DriverKind::Dummy,
+    state: DriverRunState::Running,
+    sample_rate: 48_000,
+    buffer_frames: 128,
+};
+
+fn strip(index: u32) -> StripId {
+    StripId(SlotId::new(index, 1))
+}
+
+fn loop_id(index: u32) -> LoopSlotId {
+    LoopSlotId(SlotId::new(index, 3))
+}
+
+fn composite_description() -> CompositeDescription {
+    CompositeDescription {
+        id: 42,
+        loop_id: loop_id(3),
+        sync: None,
+        previous: Some(loop_id(2)),
+        expected_version: 0,
+        version: 1,
+        kind: CompositeKind::Explicit,
+        unit_frames: 64,
+        iterations: 9,
+        entries: 2,
+        segments: 1,
+        sample_rate: 48000,
+        quantum: 32,
+    }
+}
+fn composite_span() -> CompositeSpan {
+    CompositeSpan {
+        target: loop_id(1),
+        start: 2,
+        end: 9,
+        occurrence_start: 2,
+        ordinal: 1,
+        mode: LoopMode::Recording,
+    }
+}
+
+fn client_samples() -> Vec<ClientMessage> {
+    let requests = [
+        Request::CreateProcessedBus {
+            bus: BusId::MASTER,
+            channels: 8,
+        },
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: true,
+        },
+        Request::SetBusProcessor {
+            bus: BusId::MASTER,
+            enabled: false,
+        },
+        Request::BusProcessorControl {
+            bus: BusId::MASTER,
+            control: processors::Control::Active(false),
+        },
+        Request::ReplacementEdit {
+            id: 9,
+            edit: ReplacementEdit::BusProcessor {
+                bus: BusId::MASTER,
+                state: processors::Control::Restore {
+                    values: [0.; processors::STATE_SCALARS],
+                    replace_mappings: true,
+                },
+            },
+        },
+        Request::InputBegin {
+            id: u64::MAX,
+            count: u32::MAX,
+        },
+        Request::InputAppend {
+            id: 7,
+            edit: InputEdit {
+                loop_id: loop_id(0),
+                intent: InputIntent::Grab {
+                    sync: Some(loop_id(1)),
+                    reverse_start_cycle: Some(u32::MAX),
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(0),
+                    mode: LoopMode::Recording,
+                    maximum_frames: u64::MAX,
+                },
+            },
+        },
+        Request::InputAppend {
+            id: 7,
+            edit: InputEdit {
+                loop_id: loop_id(1),
+                intent: InputIntent::Mode {
+                    mode: LoopMode::Replacing,
+                    position: Some(u64::MAX),
+                },
+            },
+        },
+        Request::InputAppend {
+            id: 7,
+            edit: InputEdit {
+                loop_id: loop_id(0),
+                intent: InputIntent::Gesture {
+                    sync: loop_id(1),
+                    target: Some(loop_id(2)),
+                    synced: false,
+                    cycles: u32::MAX,
+                    play_after_record: true,
+                },
+            },
+        },
+        Request::InputPrepare { id: 7 },
+        Request::InputCommit {
+            id: 7,
+            delay: Some(u32::MAX),
+        },
+        Request::InputCancel { id: 7 },
+        Request::InputStatus { id: 7 },
+        Request::InputCapacity,
+        Request::Connect {
+            port: EnginePort::GlobalFxControl,
+            host: HostPortId(5),
+            connected: true,
+        },
+        Request::ProcessorControl {
+            strip: strip(0),
+            control: processors::Control::Parameter {
+                parameter: 21,
+                value: 0.75,
+            },
+        },
+        Request::ProcessorControl {
+            strip: strip(0),
+            control: processors::Control::Restore {
+                values: [0.25; processors::STATE_SCALARS],
+                replace_mappings: true,
+            },
+        },
+        Request::StripDefaultPlayback {
+            strip: strip(0),
+            dry_through_wet: true,
+        },
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(0),
+                kind: PortKind::AudioSend,
+                index: 7,
+            }),
+            host: HostPortId(2),
+            connected: true,
+        },
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(0),
+                kind: PortKind::AudioReturn,
+                index: 7,
+            }),
+            host: HostPortId(0),
+            connected: true,
+        },
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(0),
+                kind: PortKind::MidiSend,
+                index: 0,
+            }),
+            host: HostPortId(5),
+            connected: true,
+        },
+        Request::CreateProcessedStrip {
+            strip: strip(0),
+            shape: StripShape {
+                audio_inputs: 2,
+                audio_outputs: 2,
+                midi_input: true,
+                midi_output: false,
+            },
+            kind: ProcessorKind::OxiSynth,
+        },
+        Request::LoopTransition {
+            loop_id: loop_id(0),
+            mode: LoopMode::PlayingDryThroughWet,
+            delay: None,
+        },
+        Request::LoopTransition {
+            loop_id: loop_id(0),
+            mode: LoopMode::RecordingDryIntoWet,
+            delay: Some(2),
+        },
+        Request::LoopIteration {
+            loop_id: loop_id(3),
+            iteration: 8,
+            retrigger: true,
+            seek: false,
+        },
+        Request::CreateComposite {
+            loop_id: loop_id(3),
+            strip: None,
+        },
+        Request::ReplacementEdit {
+            id: 4,
+            edit: ReplacementEdit::Composite(composite_description()),
+        },
+        Request::ReplacementEdit {
+            id: 4,
+            edit: ReplacementEdit::CompositeSpan {
+                loop_id: loop_id(3),
+                index: 0,
+                span: composite_span(),
+            },
+        },
+        Request::ReplacementEdit {
+            id: 4,
+            edit: ReplacementEdit::RepeatSync {
+                loop_id: loop_id(3),
+                enabled: true,
+            },
+        },
+        Request::Composite(CompositeCommand::Begin(composite_description())),
+        Request::Composite(CompositeCommand::Span {
+            id: 42,
+            index: 0,
+            span: composite_span(),
+        }),
+        Request::Composite(CompositeCommand::Commit { id: 42 }),
+        Request::Composite(CompositeCommand::Cancel { id: 42 }),
+        Request::LoopRepeatSync {
+            loop_id: loop_id(3),
+            enabled: true,
+        },
+        Request::Diagnostic(rt_profiling::wire::subscribe(false)),
+        Request::Diagnostic(rt_profiling::wire::subscribe(true)),
+        Request::ContentWindow {
+            id: u64::MAX,
+            frames: u64::MAX,
+            windows: PlaybackWindows::default(),
+        },
+        Request::LoopTiming {
+            loop_id: loop_id(0),
+            expected_revision: u64::MAX,
+            expected_content: u64::MAX,
+            edit: TimingEdit {
+                length: Some(u64::MAX),
+                start_offset: Some(i32::MIN),
+                preplay: Some(u32::MAX),
+                ..TimingEdit::default()
+            },
+        },
+        Request::CreateBus {
+            bus: BusId(SlotId::new(7, 42)),
+            channels: 8,
+        },
+        Request::RemoveBus {
+            bus: BusId(SlotId::new(7, 42)),
+        },
+        Request::ReplacementEdit {
+            id: 2,
+            edit: ReplacementEdit::Bus {
+                bus: BusId(SlotId::new(7, 42)),
+                channels: 8,
+            },
+        },
+        Request::CancelBulk,
+        Request::ReplacementBegin { id: 1 },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Strip {
+                strip: strip(0),
+                shape: StripShape {
+                    audio_inputs: 2,
+                    audio_outputs: 2,
+                    midi_input: true,
+                    midi_output: true,
+                },
+                controls: StripPreset {
+                    automatic_monitoring: false,
+                    input_gain: 0.5,
+                    input_balance: -0.25,
+                    monitoring: false,
+                    output_gain: 1.,
+                    output_balance: 0.25,
+                    output_mute: true,
+                },
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Loop {
+                dry_audio: None,
+                recorded_state: None,
+                loop_id: loop_id(0),
+                strip: strip(0),
+                sync: Some(loop_id(1)),
+                frames: u64::MAX,
+                audio: Some(2),
+                midi: None,
+                gain: 0.5,
+                balance: 0.25,
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Connect {
+                port: EnginePort::Strip(StripPort {
+                    strip: strip(0),
+                    kind: PortKind::AudioOut,
+                    index: 0,
+                }),
+                host: HostPortId(2),
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Route {
+                port: StripPort {
+                    strip: strip(0),
+                    kind: PortKind::AudioOut,
+                    index: 1,
+                },
+                bus: BusPort {
+                    bus: BusId::MASTER,
+                    index: 1,
+                },
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::BusControl {
+                bus: BusId::MASTER,
+                control: BusControl::Mute(true),
+            },
+        },
+        Request::ReplacementPrepare { id: 1 },
+        Request::ReplacementCommit { id: 1 },
+        Request::ReplacementCancel { id: 1 },
+        Request::ContentBegin(ContentDescription {
+            id: 1,
+            midi: false,
+            frames: 64,
+            bytes: 512,
+        }),
+        Request::ContentWrite {
+            id: 1,
+            offset: 0,
+            data: ContentChunk::new(&[42; 1024]).unwrap(),
+        },
+        Request::ContentFinish { id: 1 },
+        Request::ContentFamilyBegin {
+            id: 9,
+            root: loop_id(0),
+            count: 2,
+            sample_rate: 48_000,
+            quantum: 32,
+        },
+        Request::ContentFamilyEdit {
+            id: 9,
+            edit: ContentFamilyEdit {
+                loop_id: loop_id(1),
+                sync_source: loop_id(0),
+                expected_revision: 7,
+                expected_frames: 96,
+                frames: 128,
+                dry_audio: Some(3),
+                recorded_state: Some(RecordedProcessorState {
+                    source_frame: 17,
+                    kind: ProcessorKind::OxiSynth,
+                    values: [0.; 64],
+                }),
+                audio: Some(1),
+                midi: Some(2),
+                replace: true,
+                restart: false,
+                fence_content: true,
+            },
+        },
+        Request::ContentFamilyCommit { id: 9 },
+        Request::ContentFamilyCancel { id: 9 },
+        Request::ContentApply {
+            dry_audio: Some(3),
+            recorded_state: Some(RecordedProcessorState {
+                source_frame: 17,
+                kind: ProcessorKind::OxiSynth,
+                values: [0.; 64],
+            }),
+            loop_id: loop_id(0),
+            frames: 4,
+            audio: Some(1),
+            midi: Some(2),
+        },
+        Request::ContentInitial {
+            id: 1,
+            message: MidiMessage::new(&[0xb0, 7, 64]).unwrap(),
+        },
+        Request::ContentRelease { id: 1 },
+        Request::ReplacementEdit {
+            id: 2,
+            edit: ReplacementEdit::ProcessedStrip {
+                strip: strip(0),
+                shape: StripShape {
+                    audio_inputs: 3,
+                    audio_outputs: 3,
+                    midi_input: true,
+                    midi_output: false,
+                },
+                controls: StripPreset {
+                    input_gain: 1.,
+                    input_balance: 0.,
+                    monitoring: false,
+                    automatic_monitoring: false,
+                    output_gain: 0.75,
+                    output_balance: 0.,
+                    output_mute: false,
+                },
+                kind: ProcessorKind::BuiltInFx,
+                default_dry: true,
+                state: Some(processors::Control::Restore {
+                    values: [0.; 64],
+                    replace_mappings: true,
+                }),
+            },
+        },
+        Request::PreviewStart {
+            request_id: 42,
+            bus: BusId::MASTER,
+            content: 81,
+            frames: 12_000,
+        },
+        Request::PreviewStop,
+        Request::CreateStrip {
+            strip: strip(1),
+            shape: StripShape {
+                audio_inputs: 2,
+                audio_outputs: 2,
+                midi_input: true,
+                midi_output: true,
+            },
+        },
+        Request::RemoveStrip { strip: strip(1) },
+        Request::StripControl {
+            strip: strip(1),
+            control: StripControl::OutputBalance(-0.25),
+        },
+        Request::StripControl {
+            strip: strip(1),
+            control: StripControl::Monitoring(true),
+        },
+        Request::CreateLoop {
+            loop_id: loop_id(4),
+            strip: strip(1),
+        },
+        Request::RemoveLoop {
+            loop_id: loop_id(4),
+        },
+        Request::LoopSync {
+            loop_id: loop_id(4),
+            source: Some(loop_id(0)),
+        },
+        Request::LoopSync {
+            loop_id: loop_id(4),
+            source: None,
+        },
+        Request::LoopTransition {
+            loop_id: loop_id(4),
+            mode: LoopMode::Recording,
+            delay: Some(2),
+        },
+        Request::LoopTransition {
+            loop_id: loop_id(4),
+            mode: LoopMode::Replacing,
+            delay: Some(2),
+        },
+        Request::LoopClear {
+            loop_id: loop_id(4),
+        },
+        Request::LoopGain {
+            loop_id: loop_id(4),
+            gain: 0.5,
+        },
+        Request::LoopBalance {
+            loop_id: loop_id(4),
+            balance: 1.,
+        },
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(1),
+                kind: PortKind::MidiIn,
+                index: 0,
+            }),
+            host: HostPortId(3),
+            connected: true,
+        },
+        Request::Connect {
+            port: EnginePort::Bus(BusPort {
+                bus: BusId::MASTER,
+                index: 1,
+            }),
+            host: HostPortId(2),
+            connected: false,
+        },
+        Request::Route {
+            port: StripPort {
+                strip: strip(1),
+                kind: PortKind::AudioOut,
+                index: 1,
+            },
+            bus: BusPort {
+                bus: BusId::MASTER,
+                index: 0,
+            },
+            connected: false,
+        },
+        Request::BusControl {
+            bus: BusId::MASTER,
+            control: BusControl::Mute(true),
+        },
+        Request::InjectMidi {
+            strip: strip(1),
+            message: MidiMessage::new(&[0x90, 60, 100]).unwrap(),
+        },
+        Request::SetSmoothing { frames: 96 },
+    ];
+    let mut messages = vec![
+        ClientMessage::Hello { version: 1 },
+        ClientMessage::Resync,
+        ClientMessage::Goodbye,
+        ClientMessage::Bulk(BulkRead {
+            id: 5,
+            loop_id: loop_id(2),
+            selector: BulkSelector::Midi,
+            offset: 1024,
+        }),
+        ClientMessage::Bulk(BulkRead {
+            id: 6,
+            loop_id: loop_id(2),
+            selector: BulkSelector::AudioFrames,
+            offset: 128,
+        }),
+        ClientMessage::Bulk(BulkRead {
+            id: 6,
+            loop_id: loop_id(2),
+            selector: BulkSelector::AudioRoles,
+            offset: 128,
+        }),
+        ClientMessage::Bulk(BulkRead {
+            id: 7,
+            loop_id: loop_id(2),
+            selector: BulkSelector::MidiInitial { channel: 15 },
+            offset: 0,
+        }),
+    ];
+    messages.extend(requests.into_iter().enumerate().map(|(index, request)| {
+        ClientMessage::Request {
+            correlation: index as u64 + 1,
+            request,
+        }
+    }));
+    messages
+}
+
+fn engine_samples() -> Vec<EngineMessage> {
+    let mut timing = TimingState {
+        revision: u64::MAX,
+        content_revision: 9,
+        length: 128,
+        raw_audio_frames: 256,
+        raw_midi_frames: 288,
+        ..TimingState::default()
+    };
+    timing.windows.audio[0] = ChannelWindow {
+        gain_bits: 0.5f32.to_bits(),
+        start_offset: i32::MIN,
+        capture_alignment: i32::MAX,
+        preplay: u32::MAX,
+        raw_frames: Some(255),
+    };
+
+    let name = "x".repeat(MAX_NAME_BYTES);
+    let peaks = Peaks::new(&[0.5; MAX_STRIP_CHANNELS]).unwrap();
+    let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
+    vec![
+        EngineMessage::State(StateRecord::RecordedProcessorState {
+            loop_id: loop_id(3),
+            content_revision: 9,
+            state: Some(RecordedProcessorState {
+                source_frame: 123,
+                kind: ProcessorKind::BuiltInFx,
+                values: [0.; processors::STATE_SCALARS],
+            }),
+        }),
+        EngineMessage::State(StateRecord::RecordedProcessorState {
+            loop_id: loop_id(3),
+            content_revision: 10,
+            state: None,
+        }),
+        EngineMessage::State(StateRecord::BusProcessor {
+            bus: BusId::MASTER,
+            slot: None,
+        }),
+        EngineMessage::State(StateRecord::BusProcessor {
+            bus: BusId::MASTER,
+            slot: Some(ProcessorSlot {
+                index: 63,
+                generation: 123,
+            }),
+        }),
+        EngineMessage::State(StateRecord::BusProcessorState {
+            bus: BusId::MASTER,
+            slot: ProcessorSlot {
+                index: 63,
+                generation: 123,
+            },
+            snapshot: processors::Snapshot {
+                source_frame: 42,
+                phase: processors::Phase::Running,
+                global_midi: processors::GlobalMidiDiagnostics {
+                    latest_cc: Some([0xb2, 17, 127]),
+                    ..Default::default()
+                },
+                values: [0.75; processors::STATE_SCALARS],
+            },
+        }),
+        EngineMessage::State(StateRecord::ProcessorState {
+            strip: strip(0),
+            slot: ProcessorSlot {
+                index: 63,
+                generation: 123,
+            },
+            snapshot: processors::Snapshot {
+                source_frame: u64::MAX,
+                phase: processors::Phase::Running,
+                global_midi: processors::GlobalMidiDiagnostics::default(),
+                values: [0.75; processors::STATE_SCALARS],
+            },
+        }),
+        EngineMessage::State(StateRecord::StripDefaultPlayback {
+            strip: strip(0),
+            dry_through_wet: true,
+        }),
+        EngineMessage::State(StateRecord::StripProcessor {
+            strip: strip(0),
+            kind: ProcessorKind::BuiltInFx,
+            slot: Some(ProcessorSlot {
+                index: 127,
+                generation: u32::MAX,
+            }),
+        }),
+        EngineMessage::State(StateRecord::StripProcessor {
+            strip: strip(1),
+            kind: ProcessorKind::External,
+            slot: None,
+        }),
+        EngineMessage::State(StateRecord::Processors(ProcessorLimits {
+            effective: processors::Effective {
+                fx_instances: 2,
+                synth_instances: 2,
+                fx_unavailable: None,
+                synth_unavailable: None,
+                memory_bytes: 256 << 20,
+            },
+            reserved_bytes: 4 << 20,
+            channels: 8,
+            builtin_latency_frames: 32,
+        })),
+        EngineMessage::State(StateRecord::ProcessorPreset(ProcessorPreset {
+            bank: 128,
+            program: 42,
+            name: Name::new("Preset").unwrap(),
+        })),
+        EngineMessage::State(StateRecord::CompositeStageFloor { id: 42 }),
+        EngineMessage::State(StateRecord::CompositePending {
+            description: composite_description(),
+            received: 1,
+            committed: true,
+            admitted: true,
+        }),
+        EngineMessage::State(StateRecord::CompositeStagedSpan {
+            id: 42,
+            index: 0,
+            span: composite_span(),
+        }),
+        EngineMessage::Result {
+            correlation: 777,
+            outcome: Outcome::ContentApplied { revision: 9 },
+        },
+        EngineMessage::Telemetry(Telemetry::Composite {
+            loop_id: loop_id(3),
+            frame: u64::MAX,
+            mode: LoopMode::Playing,
+            position: 512,
+            length: 512,
+            active_version: 8,
+            pending_version: Some(9),
+            pending_admitted: true,
+            iteration: 5,
+            passes: 3,
+            waiting_repeat: true,
+        }),
+        EngineMessage::State(StateRecord::Composite {
+            description: composite_description(),
+            strip: Some(strip(1)),
+            sync: Some(loop_id(0)),
+            gain: 1.,
+            balance: 0.,
+            repeat_sync: true,
+        }),
+        EngineMessage::State(StateRecord::CompositeSpan {
+            loop_id: loop_id(3),
+            index: 0,
+            span: composite_span(),
+        }),
+        EngineMessage::State(StateRecord::RepeatSync {
+            loop_id: loop_id(3),
+            enabled: false,
+        }),
+        EngineMessage::Result {
+            correlation: 3,
+            outcome: Outcome::TimingApplied(timing),
+        },
+        EngineMessage::State(StateRecord::LoopTiming {
+            loop_id: loop_id(0),
+            timing,
+        }),
+        EngineMessage::Welcome {
+            version: 1,
+            capabilities: Capabilities::BULK_MIDI,
+            limits: LIMITS,
+            driver: DRIVER,
+        },
+        EngineMessage::Rejected { version: 3 },
+        EngineMessage::Result {
+            correlation: 9,
+            outcome: Outcome::ContentPrepared { revision: 8 },
+        },
+        EngineMessage::Result {
+            correlation: 8,
+            outcome: Outcome::CompositeApplied {
+                version: 9,
+                frame: 1234,
+            },
+        },
+        EngineMessage::Result {
+            correlation: u64::MAX,
+            outcome: Outcome::Refused(Refusal::Capacity),
+        },
+        EngineMessage::Telemetry(Telemetry::Strip {
+            strip: strip(1),
+            input_peaks: peaks,
+            output_peaks: Peaks::default(),
+            midi_in: true,
+            midi_out: false,
+            latest_input_midi: MidiMessage::new(&[0xb2, 17, 100]),
+            automatic_monitoring: true,
+        }),
+        EngineMessage::Telemetry(Telemetry::Loop {
+            loop_id: loop_id(3),
+            mode: LoopMode::Playing,
+            next_mode: Some(LoopMode::Stopped),
+            next_delay: Some(1),
+            content_revision: 9,
+            recording_armed: true,
+            capture_incomplete: true,
+            timing_revision: 0,
+            length: 48,
+            position: 7,
+            peaks,
+        }),
+        EngineMessage::Telemetry(Telemetry::Preview { request_id: 42 }),
+        EngineMessage::Telemetry(Telemetry::Bus {
+            bus: BusId::MASTER,
+            peaks,
+        }),
+        EngineMessage::State(StateRecord::HostPort(HostPort {
+            id: HostPortId(1),
+            kind: HostPortKind::Audio,
+            direction: Direction::Output,
+            name: Name::new(&name).unwrap(),
+            preferred: true,
+        })),
+        EngineMessage::State(StateRecord::Loop {
+            loop_id: loop_id(3),
+            strip: strip(1),
+            sync: Some(loop_id(0)),
+            gain: 0.75,
+            balance: -1.,
+        }),
+        EngineMessage::State(StateRecord::Connection {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(1),
+                kind: PortKind::AudioOut,
+                index: 1,
+            }),
+            host: HostPortId(2),
+        }),
+        EngineMessage::State(StateRecord::Connection {
+            port: EnginePort::Bus(BusPort {
+                bus: BusId::MASTER,
+                index: 0,
+            }),
+            host: HostPortId(3),
+        }),
+        EngineMessage::State(StateRecord::Route {
+            port: StripPort {
+                strip: strip(1),
+                kind: PortKind::AudioOut,
+                index: 0,
+            },
+            bus: BusPort {
+                bus: BusId::MASTER,
+                index: 1,
+            },
+        }),
+        EngineMessage::State(StateRecord::Bus {
+            bus: BusId::MASTER,
+            control: BusControl::Gain(0.5),
+        }),
+        EngineMessage::Bulk(BulkChunk {
+            id: 1,
+            offset: 256,
+            total: 1000,
+            payload: BulkPayload::audio(&full).unwrap(),
+        }),
+        EngineMessage::Bulk(BulkChunk {
+            id: 2,
+            offset: 0,
+            total: 3,
+            payload: BulkPayload::midi(&[0x90, 1, 2]).unwrap(),
+        }),
+        EngineMessage::Bulk(BulkChunk {
+            id: 3,
+            offset: 0,
+            total: 0,
+            payload: BulkPayload::Refused(Refusal::Unsupported),
+        }),
+        EngineMessage::LimitsChanged(LIMITS),
+        EngineMessage::Disconnected(DisconnectReason::Fault),
+        EngineMessage::State(StateRecord::BusShape {
+            bus: BusId(SlotId::new(7, 42)),
+            channels: 8,
+        }),
+        EngineMessage::State(StateRecord::BusGenerations { generation: 42 }),
+        EngineMessage::State(StateRecord::Generations {
+            strips: u32::MAX,
+            loops: 7,
+        }),
+    ]
+}
+
+#[shoop_test]
+fn every_message_round_trips_through_bounded_records() {
+    assert!(!Capabilities::PROFILING.contains(Capabilities::LOOP_TIMING));
+    assert!(!Capabilities::LOOP_TIMING.contains(Capabilities::PROFILING));
+    let mut buf = [0; MAX_RECORD_BYTES];
+    for message in client_samples() {
+        let len = encode_client(&message, &mut buf).unwrap();
+        assert_eq!(decode_client(&buf[..len]), Ok(message));
+    }
+    for message in engine_samples() {
+        let len = encode_engine(&message, &mut buf).unwrap();
+        assert!(len <= MAX_RECORD_BYTES);
+        assert_eq!(decode_engine(&buf[..len]), Ok(message));
+    }
+}
+
+#[shoop_test]
+fn malformed_records_are_refused_without_panicking() {
+    let mut buf = [0; MAX_RECORD_BYTES];
+    for message in engine_samples() {
+        let len = encode_engine(&message, &mut buf).unwrap();
+        for cut in 0..len {
+            assert!(
+                decode_engine(&buf[..cut]).is_err(),
+                "{message:?} cut at {cut}"
+            );
+        }
+        let mut longer = buf[..len].to_vec();
+        longer.push(0);
+        assert_eq!(decode_engine(&longer), Err(CodecError::Trailing));
+        let mut padded = longer.clone();
+        padded[..2].copy_from_slice(&(len as u16 + 1).to_le_bytes());
+        assert!(decode_engine(&padded).is_err());
+    }
+    let len = encode_client(&ClientMessage::Resync, &mut buf).unwrap();
+    buf[2] = 99;
+    assert_eq!(decode_client(&buf[..len]), Err(CodecError::Invalid));
+    let midi = ClientMessage::Request {
+        correlation: 1,
+        request: Request::InjectMidi {
+            strip: strip(0),
+            message: MidiMessage::new(&[0x90, 1, 2]).unwrap(),
+        },
+    };
+    let len = encode_client(&midi, &mut buf).unwrap();
+    let length_byte = len - 4;
+    for bad in [0, MAX_MIDI_BYTES as u8 + 1] {
+        let mut record = buf[..len].to_vec();
+        record[length_byte] = bad;
+        assert!(decode_client(&record).is_err());
+    }
+    assert!(Name::new(&"y".repeat(MAX_NAME_BYTES + 1)).is_none());
+    assert!(Peaks::new(&[0.; MAX_STRIP_CHANNELS + 1]).is_none());
+    assert!(MidiMessage::new(&[]).is_none());
+    assert!(BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES + 1]).is_none());
+    let bulk = engine_samples()
+        .into_iter()
+        .find(|message| matches!(message, EngineMessage::Bulk(_)))
+        .unwrap();
+    assert_eq!(
+        encode_engine(&bulk, &mut [0; 64]),
+        Err(CodecError::Overflow)
+    );
+    let connect = ClientMessage::Request {
+        correlation: 1,
+        request: Request::Connect {
+            port: EnginePort::Bus(BusPort {
+                bus: BusId::MASTER,
+                index: 7,
+            }),
+            host: HostPortId(2),
+            connected: true,
+        },
+    };
+    let len = encode_client(&connect, &mut buf).unwrap();
+    let tag = buf[..len]
+        .windows(10)
+        .position(|bytes| bytes == [1, 0, 0, 0, 0, 1, 0, 0, 0, 7])
+        .unwrap();
+    let mut record = buf[..len].to_vec();
+    record[tag] = 3;
+    assert_eq!(decode_client(&record), Err(CodecError::Invalid));
+}
+
+#[shoop_test]
+fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
+    let mut limits = ProcessorLimits {
+        effective: processors::Effective {
+            fx_instances: 2,
+            synth_instances: 0,
+            fx_unavailable: None,
+            synth_unavailable: Some(processors::Unavailable::Disabled),
+            memory_bytes: 256 << 20,
+        },
+        reserved_bytes: 4 << 20,
+        channels: 8,
+        builtin_latency_frames: 32,
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for invalid in 0..4 {
+        let valid = limits;
+        match invalid {
+            0 => limits.channels = 9,
+            1 => limits.reserved_bytes = limits.effective.memory_bytes + 1,
+            2 => limits.effective.fx_instances = 65,
+            _ => limits.effective.fx_unavailable = Some(processors::Unavailable::NotCompiled),
+        }
+        let len = encode_engine(
+            &EngineMessage::State(StateRecord::Processors(limits)),
+            &mut bytes,
+        )
+        .unwrap();
+        assert_eq!(decode_engine(&bytes[..len]), Err(CodecError::Invalid));
+        limits = valid;
+    }
+}
+
+#[shoop_test]
+fn timing_batches_reject_oversized_and_noncanonical_wire_records() {
+    let mut buffer = [0; MAX_RECORD_BYTES];
+    let request = |edit| ClientMessage::Request {
+        correlation: 1,
+        request: Request::LoopTiming {
+            loop_id: loop_id(0),
+            expected_revision: 0,
+            expected_content: 0,
+            edit,
+        },
+    };
+    assert_eq!(
+        encode_client(
+            &request(TimingEdit {
+                count: (MAX_TIMING_UPDATES + 1) as u8,
+                ..TimingEdit::default()
+            }),
+            &mut buffer
+        ),
+        Err(CodecError::Invalid)
+    );
+    let len = encode_client(&request(TimingEdit::default()), &mut buffer).unwrap();
+    buffer[len - 1] = (MAX_TIMING_UPDATES + 1) as u8;
+    assert_eq!(decode_client(&buffer[..len]), Err(CodecError::Invalid));
+    let mut edit = TimingEdit {
+        count: 1,
+        start_offset: Some(0),
+        ..TimingEdit::default()
+    };
+    assert_eq!(
+        encode_client(&request(edit), &mut buffer),
+        Err(CodecError::Invalid)
+    );
+    edit.start_offset = None;
+    edit.channels[0] = ChannelTimingUpdate {
+        channel: 7,
+        midi: false,
+        start_offset: Some(i32::MAX),
+        preplay: Some(u32::MAX),
+    };
+    let len = encode_client(&request(edit), &mut buffer).unwrap();
+    assert_eq!(decode_client(&buffer[..len]).unwrap(), request(edit));
+}
+
+#[shoop_test]
+fn input_progress_capacity_and_terminal_phases_round_trip_with_exact_frames() {
+    for phase in [
+        InputPhase::Receiving,
+        InputPhase::Preparing,
+        InputPhase::Ready,
+        InputPhase::Committing,
+        InputPhase::Cancelling,
+        InputPhase::Applied,
+        InputPhase::Cancelled,
+        InputPhase::Failed(Refusal::Capacity),
+    ] {
+        let message = EngineMessage::Result {
+            correlation: u64::MAX,
+            outcome: Outcome::Input(InputProgress {
+                id: u64::MAX,
+                phase,
+                received: 127,
+                expected: 128,
+                requested_frame: Some(u64::MAX - 32),
+                effective_frame: Some(u64::MAX),
+            }),
+        };
+        let mut bytes = [0; MAX_RECORD_BYTES];
+        let count = encode_engine(&message, &mut bytes).unwrap();
+        assert!(count < 128);
+        assert_eq!(decode_engine(&bytes[..count]).unwrap(), message);
+        assert!(decode_engine(&bytes[..count - 1]).is_err());
+    }
+    let message = EngineMessage::Result {
+        correlation: 2,
+        outcome: Outcome::InputCapacity(InputCapacity {
+            retention_frames: u64::MAX,
+            writer_slots: u32::MAX,
+            events_per_source: u32::MAX,
+            bytes_per_source: u64::MAX,
+            events_per_tick: u32::MAX,
+            bytes_per_tick: u32::MAX,
+            maximum_packet: u32::MAX,
+        }),
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let count = encode_engine(&message, &mut bytes).unwrap();
+    assert_eq!(decode_engine(&bytes[..count]).unwrap(), message);
+}
+
+#[shoop_test]
+fn capability_flags_do_not_alias_other_features() {
+    let flags = [
+        Capabilities::MIDI_INJECTION,
+        Capabilities::BULK_MIDI,
+        Capabilities::GROWABLE_LIMITS,
+        Capabilities::CONTENT_UPLOAD,
+        Capabilities::COMPLETE_REPLACEMENT,
+        Capabilities::WIDE_CONTENT_UPLOAD,
+        Capabilities::PROFILING,
+        Capabilities::DRY_WET,
+        Capabilities::TRACK_PROCESSORS,
+        Capabilities::GLOBAL_FX_CONTROL,
+        Capabilities::EXTERNAL_DRY_WET,
+        Capabilities::LOOP_TIMING,
+        Capabilities::INPUT_BATCH,
+        Capabilities::REPLACING,
+        Capabilities::BUS_PROCESSORS,
+    ];
+    for (i, flag) in flags.iter().enumerate() {
+        assert!(flag.0.is_power_of_two());
+        assert!(flags[..i].iter().all(|other| other.0 & flag.0 == 0));
+    }
+}

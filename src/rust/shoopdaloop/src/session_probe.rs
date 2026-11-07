@@ -1,0 +1,1340 @@
+//! Packaged companion canary using the public application protocol.
+use anyhow::{anyhow, ensure, Result};
+use shoop_app_client::{Client, State};
+use shoop_app_protocol::{ClientId, ClientMessage, Command, Outcome};
+use shoop_egui::{
+    AudioDriverConfig, DummyAudioDriverConfig, EngineTransportKind, GlobalControlAction,
+    LoopAction, LoopMode, MidiNote, PianoAction, TrackAction, TrackSpec, TrackSpecTopology,
+};
+use shoop_host::{
+    config::AppTransport,
+    config::HostConfig,
+    connection::{self, Connection},
+    remote::Target as HostEntry,
+};
+use std::{
+    process::Child,
+    time::{Duration, Instant},
+};
+
+mod busfx;
+mod composites;
+mod input;
+pub use busfx::run as bus_fx;
+pub use composites::run as composites;
+pub use input::run as input;
+
+struct ProbeHost(Child);
+impl Drop for ProbeHost {
+    fn drop(&mut self) {
+        if let Ok(Some(status)) = self.0.try_wait() {
+            if !status.success() {
+                eprintln!("Companion exited before probe cleanup: {status}");
+            }
+        }
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+fn wait(
+    client: &mut Client,
+    connection: &mut Connection,
+    ready: impl Fn(&Client) -> bool,
+) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !ready(client) {
+        connection
+            .poll(client)
+            .map_err(|error| anyhow!("probe connection: {error:?}"))?;
+        if let Some(message) = client.ready_message() {
+            connection
+                .send(message)
+                .map_err(|error| anyhow!("probe ready: {error:?}"))?;
+            client
+                .ready_sent()
+                .map_err(|error| anyhow!("probe readiness: {error:?}"))?;
+        }
+        ensure!(client.state() != State::Lost, "probe client lost its host");
+        ensure!(
+            Instant::now() < deadline,
+            "session probe timed out: state={:?}, pending={:?}, profiling={:?}",
+            client.state(),
+            client.pending(),
+            Some(client.profiling())
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    Ok(())
+}
+fn attach(entry: &HostEntry) -> Result<(Client, Connection)> {
+    attach_as(entry, ClientId(shoop_host::remote::identity()?))
+}
+fn attach_as(entry: &HostEntry, _actor: ClientId) -> Result<(Client, Connection)> {
+    let mut connection = connection::connect(entry, Duration::from_secs(3))?;
+    let mut client = Client::new();
+    connection
+        .send(client.attach().map_err(|error| anyhow!("{error:?}"))?)
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.state() == State::Ready
+    })?;
+    Ok((client, connection))
+}
+fn command(client: &mut Client, connection: &mut Connection, command: Command) -> Result<Outcome> {
+    let message = client
+        .command(command, None)
+        .map_err(|error| anyhow!("{error:?}"))?;
+    let ClientMessage::Submit { operation, .. } = &message else {
+        unreachable!()
+    };
+    let operation = *operation;
+    connection
+        .send(message)
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(client, connection, |client| {
+        client.results().contains_key(&operation)
+    })?;
+    let result = client.results()[&operation].clone();
+    ensure!(
+        matches!(
+            result,
+            Outcome::Confirmed { .. } | Outcome::TrackCreated { .. }
+        ),
+        "probe operation failed: {result:?}"
+    );
+    let revision = match &result {
+        Outcome::Confirmed { revision, .. } | Outcome::TrackCreated { revision, .. } => *revision,
+        _ => unreachable!(),
+    };
+    wait(client, connection, |client| {
+        client
+            .snapshot()
+            .is_some_and(|state| state.revision >= revision)
+    })?;
+    Ok(result)
+}
+fn launch(
+    transport: EngineTransportKind,
+    memory_mb: u32,
+) -> Result<(tempfile::TempDir, ProbeHost, HostEntry)> {
+    launch_with_settings(
+        transport,
+        shoop_host::config::HostSettings {
+            driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
+            pools: shoop_egui::NewEnginePools {
+                quantum: 32,
+                buses: 8,
+                bus_channels: 8,
+                tracks: 3,
+                loops: 20,
+                channels: 2,
+                loop_memory_mb: memory_mb,
+            },
+            ..Default::default()
+        },
+    )
+}
+fn launch_with_settings(
+    transport: EngineTransportKind,
+    settings: shoop_host::config::HostSettings,
+) -> Result<(tempfile::TempDir, ProbeHost, HostEntry)> {
+    ensure!(
+        transport != EngineTransportKind::InProcess,
+        "session companion probe requires socket or shared_memory"
+    );
+    let root = tempfile::tempdir()?;
+    let config = HostConfig {
+        settings,
+        transport: if transport == EngineTransportKind::Socket {
+            AppTransport::Socket
+        } else {
+            AppTransport::SharedMemory
+        },
+        ..Default::default()
+    };
+    let companion = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
+    let lan = std::env::var("SHOOP_PROBE_LAN").is_ok_and(|value| value == "1");
+    ensure!(
+        !lan || transport == EngineTransportKind::Socket,
+        "LAN probes require socket delivery"
+    );
+    let mut options = shoop_host::serve::StartOptions::new()?;
+    options.lan = lan;
+    let started = Instant::now();
+    let (child, entry) = shoop_host::launch::spawn(&config, options, &companion)?;
+    let host = ProbeHost(child);
+    ensure!(
+        std::fs::read_dir(root.path())?.count() == 0,
+        "ordinary launch wrote host configuration or records"
+    );
+    for address in [&entry.endpoint, &entry.management] {
+        let description = connection::describe(address, Duration::from_secs(2))?;
+        ensure!(
+            description.instance == entry.instance
+                && description.process == entry.process
+                && description.can_attach,
+            "inspection changed the host or consumed its attachment"
+        );
+    }
+    shoop_host_manager::verify_host_discovery(&entry, Some((false, true)))?;
+    println!(
+        "Host readiness: {} ms, driver={:?}, channels={}, processor policies={:?}/{:?}",
+        started.elapsed().as_millis(),
+        config.settings.driver,
+        config.settings.pools.channels,
+        config.settings.processors.builtin_fx,
+        config.settings.processors.oxisynth
+    );
+    Ok((root, host, entry))
+}
+
+pub fn run(transport: EngineTransportKind) -> Result<()> {
+    let (root, mut host, entry) = launch(transport, 16)?;
+    let (mut client, mut connection) = attach(&entry)?;
+    ensure!(!client.profiling().requested, "profiling must default off");
+    command(
+        &mut client,
+        &mut connection,
+        Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(true)),
+    )?;
+    wait(&mut client, &mut connection, |client| {
+        client.profiling().active
+    })?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    )?;
+    let Outcome::TrackCreated { track, loops, .. } = command(
+        &mut client,
+        &mut connection,
+        Command::AddTrack(TrackSpec {
+            name: "Packaged session".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 2,
+                midi: true,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    )?
+    else {
+        unreachable!()
+    };
+    command(
+        &mut client,
+        &mut connection,
+        Command::Track {
+            track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        },
+    )?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        },
+    )?;
+    wait(&mut client, &mut connection, |client| {
+        client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Recording
+    })?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::Piano(PianoAction::Press(MidiNote::new(60).unwrap())),
+    )?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
+    )?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(-3),
+            preplay_samples: Some(17),
+            loop_length: None,
+        },
+    )?;
+    ensure!(
+        client.snapshot().unwrap().tracks[1].loops[0]
+            .channel_timings
+            .iter()
+            .all(|channel| channel.start_offset == -3 && channel.preplay_samples == 17),
+        "recording timing was not confirmed"
+    );
+    wait(&mut client, &mut connection, |client| {
+        client
+            .profiling()
+            .live
+            .rows
+            .iter()
+            .any(|row| row.samples > 0)
+    })?;
+    wait(&mut client, &mut connection, |client| {
+        let view = &client.profiling();
+        view.topology.as_ref().is_some_and(|t| {
+            t.generation == view.generation && t.epoch == view.live.epoch && t.valid()
+        }) && view
+            .groups
+            .iter()
+            .any(|g| g.kind == 1 && g.name == "Packaged session")
+            && view
+                .groups
+                .iter()
+                .any(|g| g.kind == 2 && g.name.starts_with("Packaged session / "))
+    })?;
+    wait(&mut client, &mut connection, |client| {
+        let wrapping = &client.profiling().live.wrapping;
+        wrapping.before.count > 0
+            && wrapping.before.count == wrapping.after.count
+            && wrapping.before.count == wrapping.between.count
+            && wrapping.valid()
+    })?;
+    let profile_generation = client.profiling().generation;
+    ensure!(
+        client
+            .profiling()
+            .live
+            .rows
+            .iter()
+            .any(|row| row.name.contains("playback")),
+        "profiling lost node metadata"
+    );
+    let before = client.snapshot().unwrap().status.processed_frames;
+    shoop_host_manager::verify_host_discovery(
+        &entry,
+        Some((true, transport == EngineTransportKind::Socket)),
+    )?;
+    if transport == EngineTransportKind::Socket {
+        drop(connection);
+        std::thread::sleep(Duration::from_millis(50));
+        (client, connection) = attach(&entry)?;
+        let state = client.snapshot().unwrap();
+        ensure!(
+            state.tracks[1].id == track
+                && state.tracks[1].loops[0].id == loops[0]
+                && state.tracks[1].name == "Packaged session",
+            "session identity changed on recovery"
+        );
+        ensure!(
+            state.tracks[1].loops[0].mode == LoopMode::Recording
+                && state.tracks[1].loops[0]
+                    .channel_timings
+                    .iter()
+                    .all(|channel| channel.start_offset == -3 && channel.preplay_samples == 17)
+                && state.status.processed_frames > before,
+            "recording did not survive UI loss"
+        );
+    }
+    command(
+        &mut client,
+        &mut connection,
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::PlayClicked,
+        },
+    )?;
+    wait(&mut client, &mut connection, |client| {
+        client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Playing
+    })?;
+    connection
+        .send(
+            client
+                .read_media(loops[0])
+                .map_err(|error| anyhow!("{error:?}"))?,
+        )
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.media().is_some()
+    })?;
+    let media = client
+        .media()
+        .unwrap()
+        .as_ref()
+        .map_err(|error| anyhow!("probe media: {error:?}"))?;
+    ensure!(
+        media.audio.len() == 2
+            && !media.audio[0].samples.is_empty()
+            && media.midi[0].events.len() == 2,
+        "recorded audio/MIDI was not preserved"
+    );
+    let length = client.snapshot().unwrap().tracks[1].loops[0].length_frames;
+    let retained = media.audio[0].samples.len();
+    command(
+        &mut client,
+        &mut connection,
+        Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(1),
+            preplay_samples: Some(31),
+            loop_length: Some((length / 64).max(1) * 32),
+        },
+    )?;
+    let state = &client.snapshot().unwrap().tracks[1].loops[0];
+    ensure!(
+        state.length_frames == (length / 64).max(1) * 32
+            && state
+                .channel_timings
+                .iter()
+                .all(|channel| channel.start_offset == 1 && channel.preplay_samples == 31),
+        "playing timing did not settle"
+    );
+    connection
+        .send(
+            client
+                .read_media(loops[0])
+                .map_err(|error| anyhow!("{error:?}"))?,
+        )
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.media().is_some()
+    })?;
+    ensure!(
+        client
+            .media()
+            .unwrap()
+            .as_ref()
+            .map_err(|error| anyhow!("{error:?}"))?
+            .audio[0]
+            .samples
+            .len()
+            == retained,
+        "timing truncated raw media"
+    );
+    ensure!(
+        client.profiling().generation >= profile_generation,
+        "profiling generation regressed"
+    );
+    command(
+        &mut client,
+        &mut connection,
+        Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(false)),
+    )?;
+    wait(&mut client, &mut connection, |client| {
+        !client.profiling().active
+    })?;
+    ensure!(
+        !client.profiling().live.rows.is_empty(),
+        "disabling lost the final report"
+    );
+    command(
+        &mut client,
+        &mut connection,
+        Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(true)),
+    )?;
+    wait(&mut client, &mut connection, |client| {
+        let profiling = &client.profiling();
+        profiling.active && profiling.generation > profile_generation
+    })?;
+    println!(
+        "Profiling {}: default off, live names/statistics, recovery and runtime toggles passed",
+        transport.id()
+    );
+    let ticket = client.shutdown().map_err(|error| anyhow!("{error:?}"))?;
+    crate::recovery::shutdown(&entry, ticket)
+        .0
+        .map_err(anyhow::Error::msg)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = host.0.try_wait()? {
+            ensure!(status.success(), "session host failed on exit");
+            break;
+        }
+        ensure!(Instant::now() < deadline, "host did not exit after cleanup");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    shoop_host_manager::verify_host_discovery(&entry, None)?;
+    ensure!(
+        std::fs::read_dir(root.path())?.count() == 0,
+        "normal host workflow wrote persistent metadata"
+    );
+    Ok(())
+}
+
+fn file_wait(
+    handle: &crate::application::ApplicationHandle,
+    ready: impl Fn(&shoop_egui::AppSnapshot) -> bool,
+) -> Result<std::sync::Arc<shoop_egui::AppSnapshot>> {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let state = handle.snapshot();
+        if ready(&state) {
+            return Ok(state);
+        }
+        ensure!(
+            handle.status().state != State::Lost,
+            "file probe lost its host: {:?}",
+            handle.status()
+        );
+        ensure!(
+            Instant::now() < deadline,
+            "file probe timed out: {:?} {:?}",
+            state.io_task,
+            state.notifications
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+pub(crate) fn file_done(
+    handle: &crate::application::ApplicationHandle,
+    kind: shoop_egui::IoTaskKind,
+) -> Result<std::sync::Arc<shoop_egui::AppSnapshot>> {
+    let state = file_wait(handle, |s| {
+        s.io_task.as_ref().is_some_and(|t| {
+            t.kind == kind
+                && t.status != shoop_egui::IoTaskStatus::Running
+                && t.status != shoop_egui::IoTaskStatus::AwaitingChannelMapping
+        })
+    })?;
+    ensure!(
+        state.io_task.as_ref().unwrap().status == shoop_egui::IoTaskStatus::Completed,
+        "file probe task failed: {:?}",
+        state.io_task
+    );
+    println!("Persistence file task: {kind:?} confirmed");
+    Ok(state)
+}
+pub(crate) fn file_save(
+    handle: &crate::application::ApplicationHandle,
+    path: &std::path::Path,
+) -> Result<shoop_session::SessionBundle> {
+    use shoop_egui::*;
+    handle.dispatch(AppIntent::RequestSaveSession)?;
+    file_wait(handle, |s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|t| t.kind == IoTaskKind::SaveSession && t.status == IoTaskStatus::Running)
+    })?;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let output = loop {
+        if let Some(output) = handle.take_file_output() {
+            break output;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "file probe output timed out: {:?}",
+            handle.snapshot().io_task
+        );
+        ensure!(
+            handle
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_none_or(|t| t.status != IoTaskStatus::Failed),
+            "file capture failed: {:?}",
+            handle.snapshot().io_task
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    crate::atomic_replace(path, &output.bytes, output.task_id.raw())?;
+    handle.dispatch(AppIntent::CompleteIoOutput {
+        task_id: output.task_id,
+        outcome: FileOutputOutcome::Saved,
+    })?;
+    file_done(handle, IoTaskKind::SaveSession)?;
+    Ok(shoop_session::decode_session(&std::fs::read(path)?)?)
+}
+pub fn files(transport: EngineTransportKind) -> Result<()> {
+    use shoop_egui::*;
+    use shoop_session::*;
+    let _span = tracing::info_span!(
+        "frontend.persistence.companion_probe",
+        transport = transport.id()
+    )
+    .entered();
+    let (root, mut host, entry) = launch(transport, 192)?;
+    let app = crate::application::ApplicationRuntime::attach(
+        entry.clone(),
+        crate::application::ApplicationStartOptions {
+            master_auto_connect: false,
+            loop_smoothing_ms: 0,
+            ..Default::default()
+        },
+    )?;
+    let handle = app.handle();
+    file_wait(&handle, |s| !s.tracks.is_empty())?;
+    handle.dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
+    handle.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+        name: "Persistence canary".into(),
+        audio_channels: 1,
+        midi: true,
+    }))?;
+    let state = file_wait(&handle, |s| {
+        s.tracks.len() == 2 && s.tracks[1].loops.len() == 8
+    })?;
+    let old_track = state.tracks[1].id;
+    let old_loop = state.tracks[1].loops[0].id;
+    let rate = state.status.sample_rate;
+    let frames = 33 * 1024 * 1024 / 4;
+    let audio = LoopAudio {
+        sample_rate: rate,
+        channels: vec![LoopAudioChannel {
+            label: "Mono".into(),
+            role: "direct".into(),
+            samples: (0..frames)
+                .map(|i| if i % 2 == 0 { 0.25 } else { -0.5 })
+                .collect(),
+        }],
+    };
+    let audio_file = root.path().join("source.wav");
+    std::fs::write(&audio_file, encode_float_wav(&audio)?)?;
+    let mut input = crate::platform_input::InputSlot::default();
+    let lease = input.reserve(TaskId::from_raw(1))?;
+    let bytes = crate::read_session_input(&audio_file, &lease)?;
+    ensure!(
+        bytes.len() > 32 * 1024 * 1024,
+        "large input fixture is too small"
+    );
+    drop(lease);
+    handle.dispatch(AppIntent::ImportLoopAudioBytes {
+        loop_id: old_loop,
+        name: "source.wav".into(),
+        bytes: bytes.into(),
+        update_loop_length: true,
+    })?;
+    let mapping = file_wait(&handle, |s| {
+        s.io_task.as_ref().is_some_and(|t| {
+            t.status == IoTaskStatus::AwaitingChannelMapping || t.status == IoTaskStatus::Failed
+        })
+    })?;
+    ensure!(
+        mapping.io_task.as_ref().unwrap().status == IoTaskStatus::AwaitingChannelMapping,
+        "large audio decode failed: {:?}",
+        mapping.io_task
+    );
+    handle.dispatch(AppIntent::ConfirmAudioChannelMapping {
+        task_id: mapping.io_task.as_ref().unwrap().id,
+        source_for_destination: vec![0],
+    })?;
+    file_done(&handle, IoTaskKind::ImportLoopAudio)?;
+    let midi = ExactMidi {
+        sample_rate: rate,
+        length_frames: frames as u64,
+        start_state: vec![vec![0xb0, 7, 99]],
+        events: vec![
+            ExactMidiEvent {
+                frame: 1,
+                order: 0,
+                data: vec![0x90, 60, 100],
+            },
+            ExactMidiEvent {
+                frame: frames as u64 - 1,
+                order: 1,
+                data: vec![0x80, 60, 0],
+            },
+        ],
+    };
+    handle.dispatch(AppIntent::ImportLoopMidiBytes {
+        loop_id: old_loop,
+        name: "source.shoop-midi".into(),
+        bytes: encode_exact_midi(&midi)?.into(),
+        update_loop_length: false,
+    })?;
+    file_done(&handle, IoTaskKind::ImportLoopMidi)?;
+    handle.dispatch(AppIntent::Loop {
+        track_id: old_track,
+        loop_id: old_loop,
+        action: LoopAction::PlayClicked,
+    })?;
+    file_wait(&handle, |s| s.tracks[1].loops[0].mode == LoopMode::Playing)?;
+    let session_file = root.path().join("roundtrip.shoop");
+    let before = file_save(&handle, &session_file)?;
+    ensure!(
+        before
+            .media
+            .values()
+            .any(|m| matches!(m, MediaPayload::Audio(a) if a.samples == audio.channels[0].samples)),
+        "saved PCM changed"
+    );
+    ensure!(
+        before
+            .media
+            .values()
+            .any(|m| matches!(m, MediaPayload::Midi(m) if m == &midi)),
+        "saved MIDI changed"
+    );
+    handle.dispatch(AppIntent::LoadSessionBytes {
+        name: "corrupt.shoop".into(),
+        bytes: vec![0, 1, 2].into(),
+    })?;
+    file_wait(&handle, |s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|t| t.kind == IoTaskKind::LoadSession && t.status == IoTaskStatus::Failed)
+    })?;
+    let state = handle.snapshot();
+    ensure!(
+        state.tracks[1].loops[0].id == old_loop
+            && state.tracks[1].loops[0].mode == LoopMode::Playing,
+        "corrupt load changed playback"
+    );
+    handle.dispatch(AppIntent::RequestLoadSessionSource {
+        source: session_file.to_string_lossy().into_owned(),
+    })?;
+    file_wait(&handle, |s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|t| t.kind == IoTaskKind::LoadSession && t.status == IoTaskStatus::Running)
+    })?;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let request = loop {
+        ensure!(
+            Instant::now() < deadline,
+            "file input request was not delivered"
+        );
+        if let Some(request) = handle.take_file_request() {
+            break request;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    let lease = input.reserve(request.task_id)?;
+    let bytes = crate::read_session_input(
+        std::path::Path::new(request.source.as_ref().unwrap()),
+        &lease,
+    )?;
+    handle.dispatch(AppIntent::CompleteIoInput {
+        task_id: request.task_id,
+        name: "roundtrip.shoop".into(),
+        bytes: bytes.into(),
+    })?;
+    drop(lease);
+    let loaded = file_done(&handle, IoTaskKind::LoadSession)?;
+    ensure!(
+        loaded.tracks[1].id != old_track
+            && loaded.tracks[1].loops[0].id != old_loop
+            && loaded
+                .tracks
+                .iter()
+                .flat_map(|t| &t.loops)
+                .all(|l| l.mode == LoopMode::Stopped),
+        "load did not publish fresh stopped owners"
+    );
+    let after = file_save(&handle, &root.path().join("resaved.shoop"))?;
+    ensure!(
+        before.media.values().collect::<Vec<_>>() == after.media.values().collect::<Vec<_>>(),
+        "large media changed across save/load/save"
+    );
+    let entry_loop = &loaded.tracks[1].loops[0];
+    handle.dispatch(AppIntent::Loop {
+        track_id: loaded.tracks[1].id,
+        loop_id: entry_loop.id,
+        action: LoopAction::PlayClicked,
+    })?;
+    file_wait(&handle, |s| s.tracks[1].loops[0].mode == LoopMode::Playing)?;
+    let ticket = if transport == EngineTransportKind::Socket {
+        drop(handle);
+        drop(app);
+        std::thread::sleep(Duration::from_millis(50));
+        socket_file_loss(&entry, before)?
+    } else {
+        let ticket = handle.prepare_shutdown()?;
+        drop(app);
+        ticket
+    };
+    crate::recovery::shutdown(&entry, ticket)
+        .0
+        .map_err(anyhow::Error::msg)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = host.0.try_wait()? {
+            ensure!(status.success(), "file companion failed on exit");
+            break;
+        }
+        ensure!(Instant::now() < deadline, "file companion did not exit");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    ensure!(
+        !root.path().join("config.json").exists() && !root.path().join("remote.json").exists(),
+        "file companion workflow wrote host profiles/configuration"
+    );
+    println!("Persistence {}: >32 MiB WAV/exact-MIDI, native output/input, corrupt refusal, fresh load and exact resave passed", transport.id());
+    Ok(())
+}
+
+fn persistence_reply(
+    client: &mut Client,
+    connection: &mut Connection,
+    key: shoop_app_protocol::persistence::Key,
+    ready: impl Fn(&shoop_app_protocol::persistence::Reply) -> bool,
+) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        connection
+            .poll(client)
+            .map_err(|error| anyhow!("persistence connection: {error:?}"))?;
+        while let Some(reply) = client.take_persistence_reply() {
+            if reply.key() != key {
+                continue;
+            }
+            ensure!(
+                !matches!(
+                    reply,
+                    shoop_app_protocol::persistence::Reply::Refused { .. }
+                ),
+                "persistence refused: {reply:?}"
+            );
+            if ready(&reply) {
+                return Ok(());
+            }
+        }
+        ensure!(Instant::now() < deadline, "persistence reply timed out");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+fn socket_file_loss(
+    entry: &HostEntry,
+    bundle: shoop_session::SessionBundle,
+) -> Result<ClientMessage> {
+    use shoop_app_protocol::{persistence::*, persistence_transfer::Source, TransferId};
+    use shoop_persistence_codec::codec::{Decoded, Value, Work};
+    let Value::Image(image) = Work::Prepare {
+        decoded: Decoded::Session(bundle),
+        mapping: Vec::new(),
+        update_length: true,
+    }
+    .run()?
+    else {
+        unreachable!()
+    };
+    let source =
+        Source::new(std::sync::Arc::clone(&image)).map_err(|error| anyhow!("{error:?}"))?;
+    let actor = ClientId(shoop_host::remote::identity()?);
+    let (mut client, mut connection) = attach_as(entry, actor)?;
+    let epoch = client.snapshot().unwrap().persistence_epoch;
+    let old_track = client.snapshot().unwrap().tracks[1].id;
+    let old_loop = client.snapshot().unwrap().tracks[1].loops[0].id;
+    for (transfer, capture) in [(100, false), (101, true)] {
+        println!(
+            "Socket file loss: abandoning {}",
+            if capture { "capture" } else { "upload" }
+        );
+        let key = Key {
+            transfer: TransferId(transfer),
+            epoch,
+        };
+        let target = Target::Session {
+            revision: client.snapshot().unwrap().revision,
+        };
+        let request = if capture {
+            Request::Capture { key, target }
+        } else {
+            Request::Begin(source.description(key, target))
+        };
+        connection
+            .send(
+                client
+                    .persistence(request)
+                    .map_err(|error| anyhow!("{error:?}"))?,
+            )
+            .map_err(|error| anyhow!("{error:?}"))?;
+        persistence_reply(&mut client, &mut connection, key, |reply| {
+            if capture {
+                matches!(reply, Reply::Captured(_))
+            } else {
+                matches!(reply, Reply::Begun { .. })
+            }
+        })?;
+        if !capture {
+            connection
+                .send(
+                    client
+                        .persistence(Request::Object {
+                            key,
+                            object: source.object(0).map_err(|e| anyhow!("{e:?}"))?,
+                        })
+                        .map_err(|e| anyhow!("{e:?}"))?,
+                )
+                .map_err(|e| anyhow!("{e:?}"))?;
+            persistence_reply(&mut client, &mut connection, key, |reply| {
+                matches!(reply, Reply::Object { .. })
+            })?;
+        } else {
+            connection
+                .send(
+                    client
+                        .persistence(Request::Read {
+                            key,
+                            object: 0,
+                            offset: 0,
+                        })
+                        .map_err(|e| anyhow!("{e:?}"))?,
+                )
+                .map_err(|e| anyhow!("{e:?}"))?;
+            persistence_reply(&mut client, &mut connection, key, |reply| {
+                matches!(reply, Reply::Chunk { .. })
+            })?;
+        }
+        drop(connection);
+        std::thread::sleep(Duration::from_millis(50));
+        (client, connection) = attach_as(entry, actor)?;
+        ensure!(
+            client.snapshot().unwrap().persistence_epoch == epoch
+                && client.snapshot().unwrap().tracks[1].id == old_track
+                && client.snapshot().unwrap().tracks[1].loops[0].id == old_loop,
+            "abandoned transfer mutated session identity"
+        );
+        command(
+            &mut client,
+            &mut connection,
+            Command::Global(GlobalControlAction::SetSolo(capture)),
+        )?;
+    }
+    let key = Key {
+        transfer: TransferId(102),
+        epoch,
+    };
+    let target = Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    connection
+        .send(
+            client
+                .stage_image(key, target, image)
+                .map_err(|e| anyhow!("{e:?}"))?,
+        )
+        .map_err(|e| anyhow!("{e:?}"))?;
+    persistence_reply(&mut client, &mut connection, key, |reply| {
+        matches!(reply, Reply::Ready { .. })
+    })?;
+    let message = client
+        .command(Command::CommitPersistence(key), None)
+        .map_err(|e| anyhow!("{e:?}"))?;
+    let ClientMessage::Submit { operation, .. } = &message else {
+        unreachable!()
+    };
+    let operation = *operation;
+    connection.send(message).map_err(|e| anyhow!("{e:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.pending().contains_key(&operation) || client.results().contains_key(&operation)
+    })?;
+    drop(connection);
+    std::thread::sleep(Duration::from_millis(50));
+    (client, connection) = attach_as(entry, actor)?;
+    ensure!(
+        client.results().is_empty() && client.pending().is_empty(),
+        "a new connection retained old request assumptions"
+    );
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let outcome = loop {
+        if let Some(result) = client
+            .snapshot()
+            .unwrap()
+            .results
+            .iter()
+            .find(|result| result.id == operation)
+        {
+            break result.outcome.clone();
+        }
+        connection.poll(&mut client).map_err(|e| anyhow!("{e:?}"))?;
+        ensure!(
+            Instant::now() < deadline,
+            "accepted host work did not complete"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    ensure!(
+        matches!(outcome, Outcome::Confirmed { .. }),
+        "host work failed: {outcome:?}"
+    );
+    let state = client.snapshot().unwrap();
+    let tracks = state.tracks.iter().map(|t| t.id).collect::<Vec<_>>();
+    ensure!(
+        state.persistence_epoch == epoch + 1
+            && state.tracks[1].id != old_track
+            && state
+                .tracks
+                .iter()
+                .flat_map(|t| &t.loops)
+                .all(|l| l.mode == LoopMode::Stopped),
+        "lost commit did not restore one fresh stopped session"
+    );
+    command(
+        &mut client,
+        &mut connection,
+        Command::Global(GlobalControlAction::SetSolo(false)),
+    )?;
+    ensure!(
+        client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .map(|t| t.id)
+            .collect::<Vec<_>>()
+            == tracks
+            && client.snapshot().unwrap().persistence_epoch == epoch + 1,
+        "reconciliation replayed the load"
+    );
+    println!("Socket file loss: abandoned upload/capture reclaimed; fresh connection observed accepted host load once without replay");
+    client.management_shutdown().map_err(|e| anyhow!("{e:?}"))
+}
+
+pub fn hosted(
+    transport: EngineTransportKind,
+    processors: shoop_app_api::ProcessorSettings,
+) -> Result<()> {
+    use shoop_egui::*;
+    use shoop_session::*;
+    let (root, mut host, entry) = launch_with_settings(
+        transport,
+        shoop_app_api::HostSettings {
+            driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                sample_rate: 8000,
+                buffer_size: 128,
+            }),
+            pools: NewEnginePools {
+                quantum: 32,
+                buses: 2,
+                bus_channels: 2,
+                tracks: 5,
+                loops: 40,
+                channels: 3,
+                loop_memory_mb: 32,
+            },
+            processors,
+            master_auto_connect: true,
+            loop_smoothing_ms: 0,
+        },
+    )?;
+    let app = crate::application::ApplicationRuntime::attach(
+        entry.clone(),
+        crate::application::ApplicationStartOptions {
+            master_auto_connect: true,
+            loop_smoothing_ms: 0,
+            ..Default::default()
+        },
+    )?;
+    let handle = app.handle();
+    let state = file_wait(&handle, |s| !s.tracks.is_empty())?;
+    let descriptors = state.track_processors.clone();
+    ensure!(
+        state.bus_processors.iter().any(|d| d.available)
+            == state.capabilities.supports(BackendCapability::BusFx),
+        "bus FX catalog disagrees with host capability"
+    );
+    handle.dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
+    let mut admitted = Vec::new();
+    for (kind, widths) in [
+        (TrackProcessorTypeId::BUILTIN_FX, vec![1, 3]),
+        (TrackProcessorTypeId::OXISYNTH, vec![2]),
+        (TrackProcessorTypeId::EXTERNAL, vec![1]),
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|d| d.id.as_str() == kind)
+            .ok_or_else(|| anyhow!("missing processor descriptor {kind}"))?;
+        if !descriptor.available {
+            ensure!(
+                descriptor.unavailable_reason.is_some(),
+                "missing unavailable reason"
+            );
+            continue;
+        }
+        for width in widths {
+            let name = format!("Packaged {kind} {width}");
+            handle.dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: name.clone(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: width,
+                    wet_audio_channels: width,
+                    dry_midi: true,
+                    processor_type: descriptor.id.clone(),
+                    default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            }))?;
+            let state = file_wait(&handle, |s| {
+                s.tracks.iter().any(|t| {
+                    t.name == name
+                        && !t.loops.is_empty()
+                        && t.structural_state == StructuralState::Confirmed
+                })
+            })?;
+            let track = state.tracks.iter().find(|t| t.name == name).unwrap();
+            let (track_id, loop_id) = (track.id, track.loops[0].id);
+            if kind != TrackProcessorTypeId::EXTERNAL {
+                handle.dispatch(AppIntent::Track {
+                    track_id,
+                    action: TrackAction::FxVisibilityChanged(true),
+                })?;
+                let action = if kind == TrackProcessorTypeId::BUILTIN_FX {
+                    TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false))
+                } else {
+                    TrackAction::OxiSynth(OxiSynthControl::SelectPreset("0:40".into()))
+                };
+                handle.dispatch(AppIntent::Track { track_id, action })?;
+                file_wait(&handle, |s| {
+                    s.tracks.iter().find(|t| t.id == track_id).is_some_and(|t| {
+                        t.fx.as_ref()
+                            .is_some_and(|f| f.visible && f.editor.is_some())
+                    })
+                })?;
+            }
+            let channels = (0..width * 2)
+                .map(|channel| LoopAudioChannel {
+                    label: format!("role {channel}"),
+                    role: if channel < width { "dry" } else { "wet" }.into(),
+                    samples: vec![if channel < width { 0.25 } else { 0. }; 4096],
+                })
+                .collect();
+            handle.dispatch(AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name: "roles.wav".into(),
+                bytes: encode_float_wav(&LoopAudio {
+                    sample_rate: 8000,
+                    channels,
+                })?
+                .into(),
+                update_loop_length: true,
+            })?;
+            let mapping = file_wait(&handle, |s| {
+                s.io_task.as_ref().is_some_and(|t| {
+                    t.status == IoTaskStatus::AwaitingChannelMapping
+                        || t.status == IoTaskStatus::Failed
+                })
+            })?;
+            ensure!(
+                mapping.io_task.as_ref().unwrap().status == IoTaskStatus::AwaitingChannelMapping,
+                "role import failed: {:?}",
+                mapping.io_task
+            );
+            handle.dispatch(AppIntent::ConfirmAudioChannelMapping {
+                task_id: mapping.io_task.as_ref().unwrap().id,
+                source_for_destination: (0..width * 2).collect(),
+            })?;
+            file_done(&handle, IoTaskKind::ImportLoopAudio)?;
+            let midi = ExactMidi {
+                sample_rate: 8000,
+                length_frames: 4096,
+                start_state: vec![],
+                events: vec![
+                    ExactMidiEvent {
+                        frame: 3,
+                        order: 0,
+                        data: vec![0x90, 60, 100],
+                    },
+                    ExactMidiEvent {
+                        frame: 2048,
+                        order: 1,
+                        data: vec![0x80, 60, 0],
+                    },
+                ],
+            };
+            handle.dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "notes.shoop-midi".into(),
+                bytes: encode_exact_midi(&midi)?.into(),
+                update_loop_length: false,
+            })?;
+            file_done(&handle, IoTaskKind::ImportLoopMidi)?;
+            handle.dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::DefaultClicked,
+            })?;
+            file_wait(&handle, |s| {
+                s.tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .is_some_and(|t| t.loops[0].mode == LoopMode::PlayingDryThroughWet)
+            })?;
+            if kind != TrackProcessorTypeId::EXTERNAL {
+                file_wait(&handle, |s| {
+                    s.tracks
+                        .iter()
+                        .find(|t| t.id == track_id)
+                        .is_some_and(|t| t.controls.output_peak_left_db > -70.)
+                })?;
+            }
+            let coordinate = handle
+                .snapshot()
+                .tracks
+                .iter()
+                .filter(|t| !t.is_sync)
+                .position(|t| t.id == track_id)
+                .ok_or_else(|| anyhow!("script coordinate missing"))?;
+            for (label, call, mode) in [
+                (
+                    "explicit",
+                    format!("c.loop_trigger({{{coordinate},0}}, c.constants.LoopMode_Playing)"),
+                    LoopMode::Playing,
+                ),
+                (
+                    "default",
+                    format!("c.loop_trigger_default_playback({{{coordinate},0}})"),
+                    LoopMode::PlayingDryThroughWet,
+                ),
+            ] {
+                let script = format!("{name} {label}");
+                handle.dispatch(AppIntent::AddEphemeralScript {
+                    name: script.clone(),
+                    source: format!("shoop_announce_api_version(1, 6); local c = require('shoop_control'); {call}").into(),
+                    source_path: None,
+                })?;
+                let state = file_wait(&handle, |s| {
+                    s.scripting.scripts.iter().any(|entry| {
+                        entry.name == script
+                            && matches!(
+                                entry.lifecycle,
+                                ScriptLifecycle::Finished | ScriptLifecycle::Error
+                            )
+                    })
+                })?;
+                let result = state
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|entry| entry.name == script)
+                    .unwrap();
+                ensure!(
+                    result.lifecycle == ScriptLifecycle::Finished,
+                    "Lua hosted command failed: {:?}",
+                    result.latest_error
+                );
+                file_wait(&handle, |s| {
+                    s.tracks
+                        .iter()
+                        .find(|t| t.id == track_id)
+                        .is_some_and(|t| t.loops[0].mode == mode)
+                })?;
+            }
+            handle.dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })?;
+            file_wait(&handle, |s| {
+                s.tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .is_some_and(|t| t.loops[0].mode == LoopMode::Playing)
+            })?;
+            handle.dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })?;
+            file_wait(&handle, |s| {
+                s.tracks
+                    .iter()
+                    .find(|t| t.id == track_id)
+                    .is_some_and(|t| t.loops[0].mode == LoopMode::Stopped)
+            })?;
+            admitted.push((name, width, kind != TrackProcessorTypeId::EXTERNAL));
+        }
+    }
+    let saved_path = root.path().join("hosted.shoop");
+    let before = file_save(&handle, &saved_path)?;
+    ensure!(
+        before
+            .media
+            .values()
+            .filter(|m| matches!(m, MediaPayload::Audio(_)))
+            .count()
+            >= admitted.len() * 2,
+        "role media missing"
+    );
+    handle.dispatch(AppIntent::LoadSessionBytes {
+        name: "hosted.shoop".into(),
+        bytes: std::fs::read(&saved_path)?.into(),
+    })?;
+    file_done(&handle, IoTaskKind::LoadSession)?;
+    let after = file_save(&handle, &root.path().join("hosted-again.shoop"))?;
+    for (name, _, _) in &admitted {
+        let previous = before
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .find(|t| &t.name == name)
+            .unwrap();
+        let loaded = after
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|g| &g.tracks)
+            .find(|t| &t.name == name)
+            .unwrap();
+        for (old_loop, new_loop) in previous.loops.iter().zip(&loaded.loops) {
+            for (old_channel, new_channel) in old_loop.channels.iter().zip(&new_loop.channels) {
+                let old_media = old_channel
+                    .media_id
+                    .as_ref()
+                    .and_then(|id| before.media.get(id));
+                let new_media = new_channel
+                    .media_id
+                    .as_ref()
+                    .and_then(|id| after.media.get(id));
+                ensure!(
+                    old_media == new_media && old_channel.mode == new_channel.mode,
+                    "{name}: role media changed on reload"
+                );
+            }
+        }
+    }
+    for (name, width, hosted) in &admitted {
+        let state = handle.snapshot();
+        let track = state
+            .tracks
+            .iter()
+            .find(|t| &t.name == name)
+            .ok_or_else(|| anyhow!("loaded track missing"))?;
+        ensure!(
+            track.loops[0].mode == LoopMode::Stopped
+                && track.loops[0].channel_timings.len() == *width as usize * 2 + 1,
+            "loaded role shape changed"
+        );
+        ensure!(
+            track.default_playback_mode == DefaultPlaybackMode::DryThroughWet
+                && track.fx.is_some() == *hosted,
+            "loaded processor/default changed"
+        );
+    }
+    let ticket = if transport == EngineTransportKind::Socket {
+        drop(handle);
+        drop(app);
+        std::thread::sleep(Duration::from_millis(50));
+        let (mut client, connection) = attach(&entry)?;
+        ensure!(
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .filter(|t| t.name.starts_with("Packaged "))
+                .count()
+                == admitted.len(),
+            "reconnect lost processors"
+        );
+        let ticket = client.shutdown().map_err(|error| anyhow!("{error:?}"))?;
+        drop(connection);
+        ticket
+    } else {
+        let ticket = handle.prepare_shutdown()?;
+        drop(app);
+        ticket
+    };
+    crate::recovery::shutdown(&entry, ticket)
+        .0
+        .map_err(anyhow::Error::msg)?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while host.0.try_wait()?.is_none() {
+        ensure!(Instant::now() < deadline, "host shutdown timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    println!("Hosted processor {}: {} tracks, UI intents, role imports, defaults, audio, save/reload and recovery passed", transport.id(), admitted.len());
+    Ok(())
+}
