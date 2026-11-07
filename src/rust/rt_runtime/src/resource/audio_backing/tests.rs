@@ -22,6 +22,44 @@ fn resources() -> ResourceStore {
     .unwrap()
 }
 
+#[shoop_test]
+fn quantum_chunks_keep_grabbed_samples_and_write_only_new_payloads() {
+    let mut store = resources();
+    store.set_audio_render_mode(crate::AudioRenderMode::Chunks);
+    let pool = audio(&mut store, 2, 3);
+    let source = store.audio_history(pool, 0).unwrap();
+    assert_no_heap(|| {
+        for frame in 0..3 {
+            store.begin_callback();
+            store
+                .render_io()
+                .append_audio_source(source, Frame(frame), &[frame as f32 + 1., -1.])
+                .unwrap();
+            assert_eq!(store.render_work().copied_bytes, 8);
+        }
+        let grabbed = store.grab_audio_source(source, Frame(0)..Frame(3)).unwrap();
+        let old = store.snapshot(grabbed, Frame(3)).unwrap();
+        for frame in 3..120 {
+            store.begin_callback();
+            store
+                .render_io()
+                .append_audio_source(source, Frame(frame), &[frame as f32, -2.])
+                .unwrap();
+            assert_eq!(store.render_work().copied_bytes, 8);
+        }
+        let bytes = read::<24>(&mut store, old);
+        let values: [f32; 6] = core::array::from_fn(|i| {
+            f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap())
+        });
+        assert_eq!(values, [1., -1., 2., -1., 3., -1.]);
+        store.release_snapshot(old.id).unwrap();
+        store.remove(grabbed).unwrap();
+        drain(&mut store);
+        store.cleanup_audio_store(pool).unwrap();
+        drain(&mut store);
+    });
+}
+
 fn audio(store: &mut ResourceStore, channels: u32, history_frames: usize) -> AudioStoreId {
     store
         .prepare_audio_store(

@@ -256,6 +256,8 @@ pub fn run_with_ready(
         Ok(started) => started,
         Err(error)
             if !matches!(native.driver, DriverConfig::Dummy(_))
+                && std::env::var_os("SHOOP_AUDIO_RENDER").is_none()
+                && std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT").is_none()
                 && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
         {
             warnings.push(format!(

@@ -2,6 +2,8 @@ use super::*;
 use crate::PreparedConfig;
 
 pub(super) struct Layout {
+    pub(super) chunked: bool,
+    pub(super) payload_pages: usize,
     pub(super) channels: usize,
     pub(super) page_bytes: usize,
     pub(super) page_frames: usize,
@@ -37,23 +39,45 @@ impl Layout {
         config: Config,
         histories: usize,
     ) -> Result<Self, Error> {
-        Self::with_windows(runtime, config, histories, false)
+        Self::with_windows(runtime, config, histories, false, None)
     }
     pub(super) fn new_windowed(
         runtime: PreparedConfig,
         config: Config,
         histories: usize,
     ) -> Result<Self, Error> {
-        Self::with_windows(runtime, config, histories, true)
+        Self::with_windows(runtime, config, histories, true, None)
     }
-    fn with_windows(
+    pub(super) fn chunks(
         runtime: PreparedConfig,
         config: Config,
         histories: usize,
+        frames: usize,
         windowed: bool,
     ) -> Result<Self, Error> {
+        Self::with_windows(runtime, config, histories, windowed, Some(frames))
+    }
+    fn with_windows(
+        runtime: PreparedConfig,
+        mut config: Config,
+        histories: usize,
+        windowed: bool,
+        chunk_frames: Option<usize>,
+    ) -> Result<Self, Error> {
         let channels = config.channels as usize;
-        let page_bytes = runtime.limits().page_bytes;
+        let physical_bytes = runtime.limits().page_bytes;
+        let page_bytes = chunk_frames
+            .map_or(Some(physical_bytes), |frames| {
+                frames.checked_mul(channels)?.checked_mul(4)
+            })
+            .ok_or(Error::Capacity)?;
+        if chunk_frames.is_some() {
+            config.pages = config
+                .pages
+                .checked_mul(physical_bytes)
+                .ok_or(Error::Capacity)?
+                / page_bytes;
+        }
         if channels == 0 || config.views == 0 || histories == 0 || page_bytes / 4 < channels {
             return Err(Error::InvalidConfig);
         }
@@ -69,8 +93,14 @@ impl Layout {
             .history_frames
             .div_ceil(page_frames)
             .checked_add(1)
-            .and_then(usize::checked_next_power_of_two)
             .ok_or(Error::Capacity)?;
+        let ring_pages = if chunk_frames.is_some() {
+            ring_pages
+        } else {
+            ring_pages
+                .checked_next_power_of_two()
+                .ok_or(Error::Capacity)?
+        };
         let max_frames = runtime.limits().max_frames;
         let transaction_span = max_frames.div_ceil(page_frames);
         let mut transaction_pages = if config.history_frames == 0 {
@@ -96,14 +126,19 @@ impl Layout {
         let baseline = history_pages
             .checked_add(transaction_pages)
             .ok_or(Error::Capacity)?;
-        if config.pages < baseline || config.pages > runtime.limits().resource_pages {
+        if config.pages < baseline
+            || chunk_frames.is_none() && config.pages > runtime.limits().resource_pages
+        {
             return Err(Error::Capacity);
         }
-        let index_pages = (runtime.resource_bytes() / (channels * 4))
-            .div_ceil(page_frames)
-            .max(ring_pages)
-            .checked_next_power_of_two()
-            .ok_or(Error::Capacity)?;
+        let index_pages = if chunk_frames.is_some() {
+            config.pages
+        } else {
+            (runtime.resource_bytes() / (channels * 4)).div_ceil(page_frames)
+        }
+        .max(ring_pages)
+        .checked_next_power_of_two()
+        .ok_or(Error::Capacity)?;
         let depth = index_pages.trailing_zeros() as usize;
         let debt_limit = config.pages - baseline;
         let owner_limit = config.views.min(debt_limit);
@@ -179,6 +214,8 @@ impl Layout {
             .filter(|&n| n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
         Ok(Self {
+            chunked: chunk_frames.is_some(),
+            payload_pages: config.pages,
             channels,
             page_bytes,
             page_frames,

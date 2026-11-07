@@ -230,6 +230,8 @@ pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
 }
 pub fn native_engine(value: EngineSettings) -> Result<EngineDescription> {
     Ok(EngineDescription {
+        audio_render_mode: Default::default(),
+        audio_bench_only: false,
         history: value.history,
         composite_entries: value
             .composite_entries

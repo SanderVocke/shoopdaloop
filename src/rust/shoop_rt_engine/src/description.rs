@@ -46,6 +46,8 @@ impl HostPorts {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
+    pub audio_render_mode: rt_runtime::AudioRenderMode,
+    pub audio_bench_only: bool,
     pub history: shoop_rt_protocol::host::InputHistorySettings,
     pub composite_entries: usize,
     pub composite_segments: usize,
@@ -96,6 +98,8 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
+            audio_render_mode: rt_runtime::AudioRenderMode::Current,
+            audio_bench_only: false,
             history: shoop_rt_protocol::host::InputHistorySettings::default(),
             external_dry_wet: false,
             composite_entries: 256,

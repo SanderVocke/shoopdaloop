@@ -71,6 +71,8 @@ pub(crate) struct Counters {
 }
 
 pub(crate) struct Shared {
+    pub benchmark: Option<crate::benchmark::Recorder>,
+    pub benchmark_work: [AtomicU64; 4],
     pub host: HostStatus,
     pub counters: Counters,
     epoch: Instant,
@@ -99,6 +101,8 @@ fn state_code(state: DriverRunState) -> u8 {
 impl Shared {
     pub fn new(host: HostStatus, driver: DriverStatus) -> Self {
         Self {
+            benchmark: None,
+            benchmark_work: std::array::from_fn(|_| AtomicU64::new(0)),
             host,
             counters: Counters::default(),
             epoch: Instant::now(),
@@ -207,6 +211,21 @@ impl Shared {
         }
         self.load.store(load.to_bits(), Ordering::Relaxed);
         self.host.set_load(load);
+    }
+
+    pub fn record_callback(&self, frame: u64, frames: usize, elapsed_ns: u64, late_ns: u64) {
+        if let Some(recorder) = &self.benchmark {
+            recorder.record([
+                frame,
+                frames as u64,
+                elapsed_ns,
+                late_ns,
+                self.benchmark_work[0].load(Ordering::Relaxed),
+                self.benchmark_work[1].load(Ordering::Relaxed),
+                self.benchmark_work[2].load(Ordering::Relaxed),
+                self.benchmark_work[3].load(Ordering::Relaxed),
+            ]);
+        }
     }
 
     pub fn set_render(&self, phase: Phase, next_frame: u64) {

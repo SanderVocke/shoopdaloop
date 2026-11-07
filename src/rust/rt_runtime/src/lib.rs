@@ -39,6 +39,9 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub use rt_profiling as profiling;
 
+mod audio_mode;
+pub use audio_mode::AudioRenderMode;
+
 pub mod buffer;
 pub mod config;
 pub mod error;

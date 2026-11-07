@@ -168,6 +168,7 @@ impl Cursor {
 pub struct SnapshotReservation(SnapshotId);
 
 pub struct ResourceStore {
+    audio_render_mode: crate::AudioRenderMode,
     quantum: Quantum,
     scope: u32,
     config: PreparedConfig,
@@ -259,6 +260,7 @@ impl ResourceStore {
             *core::hint::black_box(page) = Page::default();
         }
         Ok(Self {
+            audio_render_mode: crate::AudioRenderMode::Current,
             scope,
             config,
             quantum,
@@ -305,6 +307,36 @@ impl ResourceStore {
     }
     pub fn quantum(&self) -> Quantum {
         self.quantum
+    }
+    pub fn set_audio_render_mode(&mut self, mode: crate::AudioRenderMode) {
+        self.audio_render_mode = mode;
+    }
+
+    pub fn audio_render_mode(&self) -> crate::AudioRenderMode {
+        self.audio_render_mode
+    }
+
+    fn detach_audio_pages(&mut self, count: usize) -> Result<(), Error> {
+        let page_bytes = self.config.limits().page_bytes;
+        let end = self.data.len() / page_bytes;
+        let first = end.checked_sub(count).ok_or(Error::Capacity)?;
+        if count > self.free_pages.len().saturating_sub(self.reserved_pages) {
+            return Err(Error::Capacity);
+        }
+        let mut available = vec![false; end];
+        for &page in &self.free_pages {
+            if page < end {
+                available[page] = true;
+            }
+        }
+        if !available[first..].iter().all(|&free| free) {
+            return Err(Error::Busy);
+        }
+        self.free_pages.retain(|&page| page < first);
+        let mut data = core::mem::take(&mut self.data).into_vec();
+        data.truncate(first * page_bytes);
+        self.data = data.into_boxed_slice();
+        Ok(())
     }
     pub fn config(&self) -> PreparedConfig {
         self.config
