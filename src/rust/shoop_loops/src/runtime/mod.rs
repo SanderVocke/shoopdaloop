@@ -252,6 +252,15 @@ pub enum Operation {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    /// Replace edited owners while retaining unaffected live playback and capture.
+    ConfigurationEdit {
+        stop: Option<LoopId>,
+        node_pairs: NodePairStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     /// Replace all owners at one cut, stopping playback and resetting host MIDI.
     /// Active/prepared recording and retained logical identities are refused.
     ConfigurationReplace {
@@ -594,6 +603,14 @@ struct Row {
 }
 #[derive(Clone, Copy)]
 enum PendingKind {
+    Configuration {
+        request: RequestId,
+        node_pairs: NodePairStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     InputBatch,
     Program {
         id: StageId,

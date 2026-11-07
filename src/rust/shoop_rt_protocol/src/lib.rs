@@ -27,7 +27,7 @@ pub use schema::*;
 pub use timing::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 25;
+pub const PROTOCOL_VERSION: u16 = 26;
 /// Reserved names for prepared I/O slots that are addressable by the host only.
 pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.

@@ -149,7 +149,10 @@ impl Service {
             return Err(Refusal::NotReady);
         }
         self.target_current(key, target)?;
-        if self.persistence_job.is_some() || self.driver_freezes_session() {
+        if self.persistence_job.is_some()
+            || self.duplication.is_some()
+            || self.driver_freezes_session()
+        {
             return Err(Refusal::Busy);
         }
         if self
@@ -469,7 +472,8 @@ impl Service {
         }
     }
     pub(super) fn persistence_reads_busy(&self) -> bool {
-        self.driver_freezes_session()
+        self.duplication.is_some()
+            || self.driver_freezes_session()
             || matches!(
                 self.persistence_job,
                 Some(Job::Capture { .. } | Job::Commit(_))
@@ -863,7 +867,8 @@ impl Service {
                 }
                 let key = ready.key;
                 let outcome = result.and_then(|mapping| {
-                    let observed = self.backend.poll()?;
+                    let mut observed = self.backend.poll()?;
+                    self.record_completions(core::mem::take(&mut observed.mutation_completions));
                     match ready.input {
                         Input::Family(_) => {
                             self.publish_family_annotations(&ready.image, &observed)

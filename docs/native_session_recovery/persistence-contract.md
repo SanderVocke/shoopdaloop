@@ -138,7 +138,7 @@ normal service work or silently restart against newer content.
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
   mutation. They are not omitted from save or stripped during load. Session script
-  persistence and duplication remain named follow-ups. Audio/MIDI click generation
+  persistence remains a named follow-up. Audio/MIDI click generation
   and insertion use the restored bounded import path. System/Master audio preview
   is complete under P15; see the [preview contract](preview.md).
 
@@ -200,6 +200,52 @@ partially replaced.
 
 Validation evidence is recorded in the [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md). Protocol tests
 alone do not establish engine atomicity, capture coherence or restored UI support.
+
+## Loop duplication
+
+Clone selects the first empty non-composite slot below the source on the same
+track, adding an aligned row under the existing row policy when necessary.
+Clone into replaces an explicit same-track destination. The sync loop is not a
+clone source. Self-copy, stale identities, incompatible tracks, composite cycles
+and affected active/armed/scheduled captures refuse before publication.
+
+The [service operation](../../src/rust/shoop_app/src/service/duplication.rs) uses
+[backend preparation](../../src/rust/shoop_rt_backend/src/duplication.rs) and
+[targeted engine activation](../../src/rust/shoop_rt_engine/src/replacement.rs).
+Earlier immediate mutations settle before preparation. Pending timed transitions
+and composite edits that cannot settle immediately refuse.
+
+Duplication is host-owned and does not use a client file provider, an export codec
+or session save/load. It pins a coherent source cut and privately prepares raw
+role-ordered audio/MIDI, timing windows, gain/balance, recorded processor state,
+repeat/sync settings and any row additions. Existing application slot identities
+are preserved. New destinations start stopped at zero without selection, targeting
+or copied pending transitions. Subsequent edits to either loop are independent.
+
+The candidate reserves fresh runtime owners alongside current owners. At one
+activation boundary, the displaced destination stops and performs normal MIDI
+cleanup or composite child-stop actions. It remains private until that boundary
+has rendered, then its graph/resources retire. Other live loop owners retain their
+identities, playback/capture and processor configuration. Application metadata and
+row layout publish after engine confirmation. Capacity must cover old and new
+owners simultaneously, including one additional runtime slot for an occupied
+destination, uploaded media, indexes, topology and reliable outcomes; insufficient
+headroom refuses unchanged. Existing host media/event budgets still apply.
+
+Supported P03 composites copy the active confirmed document and frozen geometry,
+with fresh event identities and independent document/runtime ownership. Child
+references are retained rather than recursively cloned. Pending conflicting edits
+must settle. Duplication supports P03 Direct-track composites. Processed-track
+composites and Replacing/dry-wet events in the source, occupied destination or
+nested dependencies refuse before preparing a copy. Admission validates authored
+event modes as well as the compiled spans, including events
+hidden by later overlapping events. Native typed/socket carriers
+and the browser worklet use the same operation. Admitted work remains host-owned
+across controller loss and is reconciled once, without automatic replay.
+
+MIDI initial/preroll/seek and parameter-history limitations are unchanged. Supported
+MIDI packets, equal-frame order and raw timestamps are copied exactly; duplication
+does not synthesize missing state. P11 remains OPEN for that separate restoration.
 
 ## Native driver transitions
 

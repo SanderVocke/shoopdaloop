@@ -39,6 +39,7 @@ mod backend;
 mod capture;
 mod clock;
 mod composites;
+mod duplication;
 mod family;
 mod import;
 mod incoming;
@@ -122,6 +123,7 @@ impl Status {
 
 /// A session replacement whose requests are not all answered yet.
 struct Replacement {
+    patch: bool,
     mapping: BackendSessionReplacement,
     candidate: Option<Mirror>,
     job: persistence::Job,
@@ -194,6 +196,7 @@ pub struct RtBackend<C, K> {
     telemetry_fresh: bool,
     input: Option<input::Job>,
     replacement: Option<Replacement>,
+    duplication_result: Option<shoop_backend::BackendLoopDuplication>,
     preview: Option<preview::Preview>,
     preview_playing: u64,
     next_persistence: u64,
@@ -255,6 +258,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             telemetry_fresh: false,
             input: None,
             replacement: None,
+            duplication_result: None,
             preview: None,
             preview_playing: 0,
             next_persistence: 1,

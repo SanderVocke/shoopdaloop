@@ -353,11 +353,7 @@ impl LoopWidget {
         if !state.sync {
             let duplicate = add_with_capabilities(
                 ui,
-                &[
-                    BackendCapability::SessionCapture,
-                    BackendCapability::LoopContentImport,
-                    BackendCapability::LoopDuplication,
-                ],
+                &[BackendCapability::LoopDuplication],
                 egui::Button::new("Clone"),
             );
             #[cfg(test)]

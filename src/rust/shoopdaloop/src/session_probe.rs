@@ -110,6 +110,12 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
         client
             .snapshot()
             .is_some_and(|state| state.revision >= revision)
+    })
+    .map_err(|error| {
+        anyhow!(
+            "confirmed operation revision {revision:?}, snapshot {:?}: {error}",
+            client.snapshot().map(|s| s.revision)
+        )
     })?;
     Ok(result)
 }
@@ -335,6 +341,15 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
                 && state.status.processed_frames > before,
             "recording did not survive UI loss"
         );
+        command(
+            &mut client,
+            &mut connection,
+            Command::Diagnostic(shoop_app_api::profiling_data::wire::subscribe(true)),
+        )?;
+        wait(&mut client, &mut connection, |client| {
+            let profiling = client.profiling();
+            profiling.active && profiling.generation > profile_generation
+        })?;
     }
     command(
         &mut client,
@@ -371,6 +386,70 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     );
     let length = client.snapshot().unwrap().tracks[1].loops[0].length_frames;
     let retained = media.audio[0].samples.len();
+    let original_audio = media.audio.clone();
+    let original_midi = media.midi.clone();
+    ensure!(
+        matches!(
+            command(
+                &mut client,
+                &mut connection,
+                Command::Loop {
+                    track,
+                    loop_id: loops[0],
+                    action: LoopAction::DuplicateTo(loops[1])
+                }
+            )?,
+            Outcome::Confirmed { .. }
+        ),
+        "packaged duplication refused"
+    );
+    ensure!(
+        client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Playing
+            && client.snapshot().unwrap().tracks[1].loops[1].mode == LoopMode::Stopped,
+        "duplication changed source playback or started its destination"
+    );
+    connection
+        .send(
+            client
+                .read_media(loops[1])
+                .map_err(|error| anyhow!("{error:?}"))?,
+        )
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.media().is_some()
+    })
+    .map_err(|error| anyhow!("duplication destination read: {error}"))?;
+    let copied = client
+        .media()
+        .unwrap()
+        .as_ref()
+        .map_err(|error| anyhow!("copied media: {error:?}"))?;
+    ensure!(
+        copied.audio.len() == original_audio.len()
+            && copied
+                .audio
+                .iter()
+                .zip(&original_audio)
+                .all(|(a, b)| a.samples == b.samples
+                    && a.start_offset == b.start_offset
+                    && a.capture_alignment_frames == b.capture_alignment_frames
+                    && a.preplay == b.preplay)
+            && copied.midi.len() == original_midi.len()
+            && copied
+                .midi
+                .iter()
+                .zip(&original_midi)
+                .all(|(a, b)| a.events == b.events
+                    && a.length == b.length
+                    && a.start_offset == b.start_offset
+                    && a.capture_alignment_frames == b.capture_alignment_frames
+                    && a.preplay == b.preplay),
+        "packaged duplication changed exact raw media or timing"
+    );
+    println!(
+        "Duplication {}: exact audio/MIDI and stopped independent destination passed",
+        transport.id()
+    );
     command(
         &mut client,
         &mut connection,
@@ -416,6 +495,11 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         client.profiling().generation >= profile_generation,
         "profiling generation regressed"
     );
+    wait(&mut client, &mut connection, |client| {
+        let profiling = client.profiling();
+        profiling.active && profiling.live.rows.iter().any(|row| row.samples > 0)
+    })?;
+    let profile_generation = client.profiling().generation;
     command(
         &mut client,
         &mut connection,
@@ -648,8 +732,94 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         action: LoopAction::PlayClicked,
     })?;
     file_wait(&handle, |s| s.tracks[1].loops[0].mode == LoopMode::Playing)?;
+    let copy_source = state.tracks[1].loops[1].id;
+    let copy_target = state.tracks[1].loops[2].id;
+    let small_audio = LoopAudio {
+        sample_rate: rate,
+        channels: vec![LoopAudioChannel {
+            label: "Copy".into(),
+            role: "direct".into(),
+            samples: vec![0.125; 512],
+        }],
+    };
+    handle.dispatch(AppIntent::ImportLoopAudioBytes {
+        loop_id: copy_source,
+        name: "copy.wav".into(),
+        bytes: encode_float_wav(&small_audio)?.into(),
+        update_loop_length: true,
+    })?;
+    let mapping = file_wait(&handle, |s| {
+        s.io_task.as_ref().is_some_and(|t| {
+            t.kind == IoTaskKind::ImportLoopAudio
+                && t.status == IoTaskStatus::AwaitingChannelMapping
+        })
+    })?;
+    handle.dispatch(AppIntent::ConfirmAudioChannelMapping {
+        task_id: mapping.io_task.as_ref().unwrap().id,
+        source_for_destination: vec![0],
+    })?;
+    file_done(&handle, IoTaskKind::ImportLoopAudio)?;
+    let small_midi = ExactMidi {
+        sample_rate: rate,
+        length_frames: 512,
+        start_state: vec![vec![0xb0, 7, 99]],
+        events: vec![
+            ExactMidiEvent {
+                frame: 1,
+                order: 0,
+                data: vec![0x90, 62, 100],
+            },
+            ExactMidiEvent {
+                frame: 511,
+                order: 1,
+                data: vec![0x80, 62, 0],
+            },
+        ],
+    };
+    handle.dispatch(AppIntent::ImportLoopMidiBytes {
+        loop_id: copy_source,
+        name: "copy.shoop-midi".into(),
+        bytes: encode_exact_midi(&small_midi)?.into(),
+        update_loop_length: false,
+    })?;
+    file_done(&handle, IoTaskKind::ImportLoopMidi)?;
+    handle.dispatch(AppIntent::Loop {
+        track_id: old_track,
+        loop_id: copy_source,
+        action: LoopAction::DuplicateTo(copy_target),
+    })?;
+    file_wait(&handle, |s| {
+        s.tracks[1].loops[2].length_frames == 512 && s.tracks[1].loops[2].mode == LoopMode::Stopped
+    })?;
     let session_file = root.path().join("roundtrip.shoop");
     let before = file_save(&handle, &session_file)?;
+    let copied = before
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|g| &g.tracks)
+        .find(|track| track.name == "Persistence canary")
+        .unwrap();
+    ensure!(
+        copied.loops[1].length_frames == copied.loops[2].length_frames,
+        "file copy length changed"
+    );
+    for (source, target) in copied.loops[1]
+        .channels
+        .iter()
+        .zip(&copied.loops[2].channels)
+    {
+        ensure!(
+            source.mode == target.mode
+                && source.data_length_frames == target.data_length_frames
+                && source.start_offset_frames == target.start_offset_frames
+                && source.capture_alignment_frames == target.capture_alignment_frames
+                && source.preplay_frames == target.preplay_frames
+                && source.media_id.as_ref().and_then(|id| before.media.get(id))
+                    == target.media_id.as_ref().and_then(|id| before.media.get(id)),
+            "file copy changed raw media or channel timing"
+        );
+    }
     ensure!(
         before
             .media

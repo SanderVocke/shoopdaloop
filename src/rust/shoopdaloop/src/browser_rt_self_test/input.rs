@@ -72,8 +72,8 @@ impl Canary {
             .is_some_and(|since| since.elapsed() > Duration::from_secs(120))
         {
             return Err(format!(
-                "input {:?} timed out: {:?}",
-                self.stage, snapshot.notifications
+                "input {:?} timed out: pending={pending}, file task={:?}, notifications={:?}",
+                self.stage, snapshot.io_task, snapshot.notifications
             ));
         }
         if let Some(error) = self.error.take() {

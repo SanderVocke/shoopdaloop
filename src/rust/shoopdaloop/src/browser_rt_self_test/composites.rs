@@ -16,6 +16,8 @@ enum Stage {
     Mode,
     Playing,
     Stall,
+    DuplicationReady,
+    Duplication,
     Saving,
     Loaded,
     Resaving,
@@ -224,6 +226,28 @@ impl Canary {
                     return Err("AudioWorklet did not continue through main-thread stall".into());
                 }
                 send(AppIntent::Global(GlobalControlAction::StopAll))?;
+                self.next(Stage::DuplicationReady);
+            }
+            Stage::DuplicationReady => {
+                if pending {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[2],
+                    LoopAction::DuplicateTo(self.loops[6]),
+                ))?;
+                self.next(Stage::Duplication);
+            }
+            Stage::Duplication => {
+                if pending {
+                    return Ok(false);
+                }
+                if track.loops[6].composite_kind != track.loops[2].composite_kind
+                    || track.loops[6].length_frames != track.loops[2].length_frames
+                    || track.loops[6].mode != LoopMode::Stopped
+                {
+                    return Ok(false);
+                }
                 send(AppIntent::RequestSaveSession)?;
                 self.next(Stage::Saving);
             }
@@ -233,6 +257,27 @@ impl Canary {
                 };
                 if !output_completed(snapshot)? {
                     return Ok(false);
+                }
+                let saved_track = before
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .nth(1)
+                    .ok_or("saved composite track missing")?;
+                let source = saved_track.loops[2]
+                    .composite
+                    .as_ref()
+                    .ok_or("source composite missing")?;
+                let target = saved_track.loops[6]
+                    .composite
+                    .as_ref()
+                    .ok_or("cloned composite missing")?;
+                if source.timing.as_ref().map(|t| &t.spans)
+                    != target.timing.as_ref().map(|t| &t.spans)
+                    || source.instances[0].instance_id == target.instances[0].instance_id
+                {
+                    return Err("composite clone changed geometry or reused event identity".into());
                 }
                 let child = &before
                     .document

@@ -507,6 +507,14 @@ jobs:
           fi
           trunk --version
 
+      - name: Start virtual browser audio output
+        if: matrix.target == 'web' && env.ACT != 'true'
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=shoop_ci
+          pactl set-default-sink shoop_ci
+          pactl info
+
       - name: Build native application
         if: matrix.target != 'web'
         env:
@@ -904,14 +912,6 @@ jobs:
           cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
           python3 scripts/check_dependency_boundaries.py --scope loops --scope engine
 
-      - name: Start virtual Firefox audio output
-        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
-        run: |
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=shoop_ci
-          pactl set-default-sink shoop_ci
-          pactl info
-
       - name: Install Chromium for release session workflow checks
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         uses: browser-actions/setup-chrome@v2
@@ -924,6 +924,9 @@ jobs:
         env:
           CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path || steps.chrome.outputs.chrome-path }}
           NEW_ENGINE: '1'
+          SMOKE_DIAGNOSTICS_DIR: ${{ github.workspace }}/target/browser-smoke-diagnostics
+          SMOKE_AUDIO_LATENCY_HINT: ${{ matrix.profile == 'debug' && 'playback' || '' }}
+          SMOKE_CHROME_AUDIO_LOGGING: ${{ matrix.profile == 'debug' && '1' || '' }}
         run: |
           browser_smoke() {
             node --experimental-websocket browser_smoke.mjs 2>&1 | tee -a "$RUNNER_TEMP/browser-workflow.log"
@@ -944,6 +947,15 @@ jobs:
             PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject browser_smoke
             PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending browser_smoke
           fi
+
+      - name: Upload browser smoke failure diagnostics
+        if: always() && matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-smoke-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/browser-smoke-diagnostics/*.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload browser session workflow logs
         if: always() && matrix.target == 'web' && env.ACT != 'true'

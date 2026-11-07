@@ -56,6 +56,8 @@ enum Request {
     Stop(mpsc::Sender<Result<(), String>>),
 }
 
+pub(crate) const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub struct Owner {
     sender: SyncSender<Request>,
     join: Option<JoinHandle<()>>,
@@ -63,10 +65,7 @@ pub struct Owner {
     stop_result: Option<Result<(), String>>,
 }
 impl Owner {
-    pub fn stop(&mut self) -> Result<(), String> {
-        if let Some(result) = &self.stop_result {
-            return result.clone();
-        }
+    fn begin_stop(&mut self) -> Result<(), String> {
         if self.stopping.is_none() {
             let (tx, rx) = mpsc::channel();
             self.sender
@@ -74,28 +73,55 @@ impl Owner {
                 .map_err(|_| "audio lifecycle worker is busy or unavailable".to_owned())?;
             self.stopping = Some(rx);
         }
-        let result = match self
-            .stopping
-            .as_ref()
-            .unwrap()
-            .recv_timeout(Duration::from_secs(5))
-        {
-            Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                return Err("audio lifecycle cleanup did not finish".into())
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                Err("audio lifecycle worker lost its cleanup result".into())
-            }
-        };
-        let result = if self.join.take().is_some_and(|join| join.join().is_err()) {
-            Err("audio lifecycle worker panicked".into())
-        } else {
-            result
-        };
+        Ok(())
+    }
+    fn finish_stop(&mut self) -> Result<(), String> {
+        if self.join.take().is_some_and(|join| join.join().is_err()) {
+            self.stop_result = Some(Err("audio lifecycle worker panicked".into()));
+        }
         self.stopping = None;
-        self.stop_result = Some(result.clone());
-        result
+        self.stop_result.as_ref().unwrap().clone()
+    }
+    /// Returns None while device cleanup or the lifecycle worker's exit is pending.
+    pub fn poll_stop(&mut self) -> Option<Result<(), String>> {
+        if self.stop_result.is_none() {
+            if let Err(error) = self.begin_stop() {
+                return Some(Err(error));
+            }
+            self.stop_result = Some(match self.stopping.as_ref().unwrap().try_recv() {
+                Ok(result) => result,
+                Err(mpsc::TryRecvError::Empty) => return None,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    Err("audio lifecycle worker lost its cleanup result".into())
+                }
+            });
+        }
+        if self.join.as_ref().is_some_and(|join| !join.is_finished()) {
+            return None;
+        }
+        Some(self.finish_stop())
+    }
+    pub fn stop(&mut self) -> Result<(), String> {
+        if self.stop_result.is_none() {
+            self.begin_stop()?;
+            self.stop_result = Some(
+                match self
+                    .stopping
+                    .as_ref()
+                    .unwrap()
+                    .recv_timeout(CLEANUP_TIMEOUT)
+                {
+                    Ok(result) => result,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        return Err("audio lifecycle cleanup did not finish".into())
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        Err("audio lifecycle worker lost its cleanup result".into())
+                    }
+                },
+            );
+        }
+        self.finish_stop()
     }
 }
 impl Drop for Owner {

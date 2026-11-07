@@ -318,38 +318,62 @@ fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss(
 }
 
 #[shoop_test]
-async fn public_core_file_capabilities_keep_duplication_refused() {
+async fn public_core_file_capabilities_allow_host_owned_duplication() {
     let mut fixture = Fixture::new();
-    let state = fixture.runtime.snapshot();
     for capability in [
         BackendCapability::SessionCapture,
         BackendCapability::SessionContentLoad,
         BackendCapability::LoopContentImport,
         BackendCapability::ClickTrackInsertion,
+        BackendCapability::LoopDuplication,
     ] {
-        assert!(state.capabilities.supports(capability));
+        assert!(fixture.runtime.snapshot().capabilities.supports(capability));
     }
-    assert!(!state
-        .capabilities
-        .supports(BackendCapability::LoopDuplication));
-    let track = &state.tracks[0];
+    fixture.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+        name: "Copies".into(),
+        audio_channels: 1,
+        midi: true,
+    }));
+    let state = fixture
+        .until(|state| state.tracks.iter().any(|track| !track.is_sync))
+        .await;
+    let track = state.tracks.iter().find(|track| !track.is_sync).unwrap();
+    let id = track.id;
+    let source = track.loops[0].id;
     fixture.dispatch(AppIntent::Loop {
-        track_id: track.id,
-        loop_id: track.loops[0].id,
+        track_id: id,
+        loop_id: source,
+        action: LoopAction::NameChanged("Copied".into()),
+    });
+    fixture
+        .until(|state| {
+            state
+                .tracks
+                .iter()
+                .find(|track| track.id == id)
+                .unwrap()
+                .loops[0]
+                .name
+                == "Copied"
+        })
+        .await;
+    fixture.dispatch(AppIntent::Loop {
+        track_id: id,
+        loop_id: source,
         action: LoopAction::Duplicate,
     });
-    for _ in 0..8 {
-        fixture.step();
-        idle().await;
-    }
-    let state = fixture.runtime.snapshot();
-    assert!(
-        state.notifications.iter().any(|notice| notice
-            .message
-            .contains(BackendCapability::LoopDuplication.unavailable_reason())),
-        "{:?}",
-        state.notifications
-    );
+    fixture
+        .until(|state| {
+            state
+                .tracks
+                .iter()
+                .find(|track| track.id == id)
+                .unwrap()
+                .loops[1]
+                .name
+                == "Copied"
+        })
+        .await;
     assert!(fixture.runtime.take_file_request().is_none());
     assert!(fixture.runtime.take_file_output().is_none());
 }
@@ -738,8 +762,10 @@ impl Fixture {
             }
         }
         panic!(
-            "file workflow timed out: {:?}",
-            self.runtime.snapshot().io_task
+            "file workflow timed out: {:?}; notices: {:?}; pending: {:?}",
+            self.runtime.snapshot().io_task,
+            self.runtime.snapshot().notifications,
+            self.runtime.client().pending()
         )
     }
     fn dispatch(&mut self, intent: AppIntent) {

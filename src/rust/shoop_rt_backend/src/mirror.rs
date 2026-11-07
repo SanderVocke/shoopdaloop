@@ -112,6 +112,7 @@ impl Controls {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Track {
     pub processor_visible: bool,
     pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
@@ -195,6 +196,7 @@ impl Default for LoopView {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Loop {
     pub recorded: Option<(u64, shoop_rt_protocol::RecordedProcessorState)>,
     pub timing: shoop_rt_protocol::TimingState,
@@ -237,11 +239,13 @@ pub(crate) enum PortTarget {
     GlobalFx,
 }
 
+#[derive(Clone)]
 pub(crate) struct Port {
     pub descriptor: BackendPortDescriptor,
     pub target: PortTarget,
 }
 
+#[derive(Clone)]
 pub(crate) struct Bus {
     pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
     pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
@@ -345,6 +349,7 @@ impl Slots {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Mirror {
     pub tracks: BTreeMap<BackendTrackId, Track>,
     pub loops: BTreeMap<BackendLoopId, Loop>,

@@ -1,5 +1,5 @@
-// Canonical RT protocol v25 and worklet configuration v7 records.
-const protocolVersion = 25;
+// Canonical RT protocol v26 and worklet configuration v7 records.
+const protocolVersion = 26;
 const u32 = value => [value & 255, (value >>> 8) & 255, (value >>> 16) & 255, value >>> 24];
 const u64 = value => [...u32(value), 0, 0, 0, 0];
 const id = [...u32(0), ...u32(1)];

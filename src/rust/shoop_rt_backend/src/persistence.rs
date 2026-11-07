@@ -186,7 +186,9 @@ impl Job {
                 || (outcome == Outcome::Refused(Refusal::Busy)
                     && matches!(
                         request,
-                        Request::ReplacementBegin { .. } | Request::ContentFamilyBegin { .. }
+                        Request::PatchBegin { .. }
+                            | Request::ReplacementBegin { .. }
+                            | Request::ContentFamilyBegin { .. }
                     )
                     || retiring_wait))
         {
@@ -372,6 +374,60 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     self.canonical_imports.insert(id);
                     self.reads.forget(id);
                 }
+            }
+            if replacement.patch {
+                let mut candidate = replacement.candidate.take().expect("prepared patch");
+                for (&id, old) in &self.mirror.loops {
+                    if let Some(next) = candidate.loops.get_mut(&id) {
+                        if old.slot == next.slot {
+                            let sync = next.sync;
+                            let program = next.program;
+                            let spans = core::mem::take(&mut next.program_spans);
+                            *next = old.clone();
+                            next.sync = sync;
+                            next.program = program;
+                            next.program_spans = spans;
+                        }
+                    }
+                }
+                for (&id, old) in &self.mirror.tracks {
+                    if let Some(next) = candidate.tracks.get_mut(&id) {
+                        let loops = core::mem::take(&mut next.loops);
+                        *next = old.clone();
+                        next.loops = loops;
+                    }
+                }
+                self.mirror.loop_slots = candidate.loop_slots;
+                self.mirror.slot_loops = candidate.slot_loops;
+                self.mirror.loops = candidate.loops;
+                for (id, track) in candidate.tracks {
+                    self.mirror
+                        .tracks
+                        .get_mut(&id)
+                        .expect("retained track")
+                        .loops = track.loops;
+                }
+                if let Some(result) = &self.duplication_result {
+                    if self.mirror.loops[&result.target].program.is_some() {
+                        self.canonical_content.remove(&result.target);
+                        self.canonical_imports.remove(&result.target);
+                        self.prepared_content.remove(&result.target);
+                        self.reads.forget(result.target);
+                    }
+                }
+                for (id, content) in core::mem::take(&mut replacement.content) {
+                    self.prepared_content
+                        .insert(id, replacement.job.prepared[&content.source_id].clone());
+                    self.canonical_content.insert(id, content);
+                    self.canonical_imports.insert(id);
+                    self.reads.forget(id);
+                }
+                self.link = crate::Link::Resyncing;
+                self.resync = Some(Vec::new());
+                if let Err(error) = self.client.resync() {
+                    self.lose(format!("could not resynchronize duplication: {error:?}"));
+                }
+                return;
             }
             if let Some(mut image) = replacement.candidate.take() {
                 image.host_aliases = self.mirror.host_aliases.clone();

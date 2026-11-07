@@ -87,7 +87,7 @@ impl LoopPlanner {
             })
         }
     }
-    fn pending_slot(&self, recovery: bool) -> Result<usize, Error> {
+    pub(super) fn pending_slot(&self, recovery: bool) -> Result<usize, Error> {
         if recovery {
             let slot = self.settings.normal_requests;
             if self.pending[slot].is_none() {
@@ -975,6 +975,30 @@ impl LoopPlanner {
                 continue;
             }
             let reply = match pending.kind {
+                PendingKind::Configuration {
+                    request,
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                } => self
+                    .resolver
+                    .completion(request)
+                    .map_err(runtime_error)?
+                    .map(|completion| {
+                        if matches!(completion.outcome, crate::Outcome::Applied { .. }) {
+                            Reply::ConfigurationActivated {
+                                node_pairs,
+                                topology,
+                                graph,
+                                graph_epoch,
+                                topology_epoch,
+                            }
+                        } else {
+                            Reply::Transition(completion)
+                        }
+                    }),
                 PendingKind::InputBatch => self.input_batch_reply()?,
                 PendingKind::Program {
                     id, request, graph, ..
@@ -1394,6 +1418,24 @@ impl LoopPlanner {
                         status: self.node_pairs.status(id)?,
                     }));
                 }
+                Operation::ConfigurationEdit {
+                    stop,
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                } => {
+                    return self.edit_configuration(
+                        stop,
+                        node_pairs,
+                        topology,
+                        graph,
+                        graph_epoch,
+                        topology_epoch,
+                        &mut context,
+                    );
+                }
                 Operation::ConfigurationActivate {
                     node_pairs,
                     topology,
@@ -1433,6 +1475,7 @@ impl LoopPlanner {
                         graph_epoch,
                         topology_epoch,
                         matches!(operation, Operation::ConfigurationReplace { .. }),
+                        false,
                         &mut context.graphs,
                         &mut context.resources,
                     )?;
@@ -2024,6 +2067,7 @@ impl LoopPlanner {
                 | Operation::ConfigurationActivate { .. }
                 | Operation::ConvertEmpty { .. }
                 | Operation::SelectFamily { .. }
+                | Operation::ConfigurationEdit { .. }
                 | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }
@@ -2191,6 +2235,12 @@ impl LoopPlanner {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
                 if let PendingKind::InputBatch = pending.kind {
                     self.collect_input_batch(&mut context.resources)?;
+                }
+                if let PendingKind::Configuration { request, .. } = pending.kind {
+                    self.resolver
+                        .take_completion(request)
+                        .map_err(runtime_error)?
+                        .ok_or(Error::InvalidState)?;
                 }
                 if let PendingKind::Transition { request, pin, .. } = pending.kind {
                     self.resolver

@@ -987,7 +987,8 @@ impl ControlEndpoint {
                 }
                 self.family_request(correlation, request)
             }
-            Request::ReplacementBegin { .. }
+            Request::PatchBegin { .. }
+            | Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
@@ -995,7 +996,12 @@ impl ControlEndpoint {
                 if matches!(request, Request::ReplacementBegin { .. }) {
                     self.cancel_preview();
                 }
-                if self.preview.is_some() {
+                let patch = match request {
+                    Request::PatchBegin { .. } => true,
+                    Request::ReplacementBegin { .. } => false,
+                    _ => self.replacement.id.is_some() && self.replacement.patch,
+                };
+                if self.preview.is_some() && !patch {
                     return Err(());
                 }
                 self.replacement_request(correlation, request)
@@ -1117,10 +1123,8 @@ impl ControlEndpoint {
                     {
                         entry.default_dry = dry_through_wet;
                         self.model.revision += 1;
-                        if self.job.is_some() {
-                            if let Some(entry) = self.next.strip_mut(strip) {
-                                entry.default_dry = dry_through_wet;
-                            }
+                        if let Some(entry) = self.next.strip_mut(strip) {
+                            entry.default_dry = dry_through_wet;
                         }
                         Ok(Some(Outcome::Done))
                     }

@@ -2300,6 +2300,7 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
                     | BackendCapability::BusManagement
                     | BackendCapability::CompositeLoops
                     | BackendCapability::LoopTimingEdits
+                    | BackendCapability::LoopDuplication
             )
         );
     }
@@ -4517,6 +4518,415 @@ fn lua_observes_confirmed_manual_lengths_and_change_events_without_restarting() 
 
 #[path = "support/input_cases.rs"]
 mod input_cases;
+
+#[shoop_test]
+fn duplication_preserves_media_and_adds_aligned_rows_through_typed_and_wire_projection() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 1, connection, encoded);
+        let run = |f: &mut Fixture, client: &mut Client, value| {
+            let id = submit(&mut f.service, client, connection, value);
+            complete(&mut f.service, client, connection, id, encoded)
+        };
+        run(
+            &mut f,
+            &mut client,
+            Command::Global(GlobalControlAction::SetSync(false)),
+        );
+        let (track, loops) = created(run(&mut f, &mut client, new_track("Copies", true)));
+        let action = |id, action| Command::Loop {
+            track,
+            loop_id: id,
+            action,
+        };
+        run(
+            &mut f,
+            &mut client,
+            action(loops[0], LoopAction::RecordClicked),
+        );
+        f.service.tick(STEP);
+        run(
+            &mut f,
+            &mut client,
+            action(loops[0], LoopAction::StopClicked),
+        );
+        run(
+            &mut f,
+            &mut client,
+            action(loops[0], LoopAction::NameChanged("Source".into())),
+        );
+        run(
+            &mut f,
+            &mut client,
+            action(loops[0], LoopAction::GainChanged(0.42)),
+        );
+        assert!(matches!(
+            run(&mut f, &mut client, action(loops[0], LoopAction::Duplicate)),
+            Outcome::Confirmed { .. }
+        ));
+        let snapshot = client.snapshot().unwrap().clone();
+        let views = &snapshot
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .unwrap()
+            .loops;
+        assert_eq!(views[1].name, "Source");
+        assert_eq!(views[1].mode, LoopMode::Stopped);
+        assert_eq!(views[1].gain, 0.42);
+        assert!(!views[1].selected);
+        assert!(!views[1].targeted);
+        let image = capture_image(&mut f.service, &mut client, 1, encoded);
+        let persistence_image::Manifest::Session(session) = &image.manifest else {
+            panic!()
+        };
+        let epoch = client.snapshot().unwrap().persistence_epoch;
+        release_image(&mut f.service, &mut client, 1, epoch, encoded);
+        let copies = &session.tracks.iter().find(|t| t.id == track).unwrap().loops;
+        let source = &copies[0];
+        let target = &copies[1];
+        assert_eq!(source.frames, target.frames);
+        assert_eq!(source.gain, target.gain);
+        assert_eq!(
+            image.payloads[source.audio[0].object.unwrap() as usize - 1],
+            image.payloads[target.audio[0].object.unwrap() as usize - 1]
+        );
+        let before = views.len();
+        for id in loops.iter().skip(1) {
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    action(loops[0], LoopAction::DuplicateTo(*id))
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(matches!(
+            run(&mut f, &mut client, action(loops[0], LoopAction::Duplicate)),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(
+            client
+                .snapshot()
+                .unwrap()
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .unwrap()
+                .loops
+                .len(),
+            before + 1
+        );
+        let mut saved = capture_image(&mut f.service, &mut client, 2, encoded);
+        let epoch = client.snapshot().unwrap().persistence_epoch;
+        release_image(&mut f.service, &mut client, 2, epoch, encoded);
+        let persistence_image::Manifest::Session(session) = &mut Arc::make_mut(&mut saved).manifest
+        else {
+            panic!()
+        };
+        session.tracks[1].loops[0].audio[0].recording_started_at =
+            Some("2026-11-01T00:00:00Z".into());
+        session.tracks[1].loops[0].midi[0]
+            .channel
+            .recording_started_at = Some("2026-11-01T00:00:00Z".into());
+        let key = stage_image(&mut f.service, &mut client, 3, saved.clone(), encoded);
+        let operation = submit(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::CommitPersistence(key),
+        );
+        for _ in 0..500 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, encoded);
+            if client.results().contains_key(&operation) {
+                break;
+            }
+        }
+        assert!(
+            matches!(
+                client.results().get(&operation),
+                Some(Outcome::Confirmed { .. })
+            ),
+            "load outcome: {:?}",
+            client.results().get(&operation)
+        );
+        let resaved = capture_image(&mut f.service, &mut client, 4, encoded);
+        assert_eq!(saved.payloads, resaved.payloads);
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|entry| entry.mode == LoopMode::Stopped));
+        let epoch = client.snapshot().unwrap().persistence_epoch;
+        release_image(&mut f.service, &mut client, 4, epoch, encoded);
+        let loaded = client.snapshot().unwrap().tracks[1].clone();
+        run(
+            &mut f,
+            &mut client,
+            Command::Loop {
+                track: loaded.id,
+                loop_id: loaded.loops[0].id,
+                action: LoopAction::DuplicateTo(loaded.loops[1].id),
+            },
+        );
+        let annotated = capture_image(&mut f.service, &mut client, 5, encoded);
+        let persistence_image::Manifest::Session(session) = &annotated.manifest else {
+            panic!()
+        };
+        let copies = &session.tracks[1].loops;
+        assert_eq!(
+            copies[0].audio[0].recording_started_at.as_deref(),
+            Some("2026-11-01T00:00:00Z")
+        );
+        assert_eq!(
+            copies[0].midi[0].channel.recording_started_at.as_deref(),
+            Some("2026-11-01T00:00:00Z")
+        );
+        assert_eq!(
+            copies[0].audio[0].recording_started_at,
+            copies[1].audio[0].recording_started_at
+        );
+        assert_eq!(
+            copies[0].midi[0].channel.recording_started_at,
+            copies[1].midi[0].channel.recording_started_at
+        );
+    }
+}
+
+#[shoop_test]
+fn admitted_duplication_survives_client_loss_once_and_recording_conflicts_refuse_intact() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let (track, loops) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Recovery", true),
+    ));
+    let action = |id, action| Command::Loop {
+        track,
+        loop_id: id,
+        action,
+    };
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        action(loops[0], LoopAction::RecordClicked),
+    );
+    let outcome = command(
+        &mut f.service,
+        &mut client,
+        connection,
+        action(loops[0], LoopAction::Duplicate),
+    );
+    assert!(matches!(outcome, Outcome::Refused { .. }));
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .unwrap()
+            .loops[0]
+            .mode,
+        LoopMode::Recording
+    );
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        action(loops[0], LoopAction::StopClicked),
+    );
+    f.advance.set(false);
+    let message = client
+        .command(action(loops[0], LoopAction::Duplicate), None)
+        .unwrap();
+    let ClientMessage::Submit { operation, .. } = &message else {
+        panic!()
+    };
+    let operation = *operation;
+    f.service.handle(connection, message.clone()).unwrap();
+    f.service.handle(connection, message).unwrap();
+    f.service.detach(connection);
+    f.advance.set(true);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+    }
+    let mut recovered = attach(&mut f.service, 2, connection, true);
+    drain(&mut f.service, &mut recovered, connection, true);
+    let state = recovered.snapshot().unwrap();
+    assert_eq!(
+        state.results.iter().filter(|r| r.id == operation).count(),
+        1
+    );
+    assert!(
+        state
+            .results
+            .iter()
+            .any(|r| r.id == operation && matches!(r.outcome, Outcome::Confirmed { .. })),
+        "{:?}",
+        state.results
+    );
+    let rows = &state.tracks.iter().find(|t| t.id == track).unwrap().loops;
+    assert!(!rows[1].empty);
+    assert!(rows[2].empty);
+}
+
+#[shoop_test]
+fn lua_can_query_and_edit_a_confirmed_duplicate_independently() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Copies".into(),
+            audio_channels: 1,
+            midi: true,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let track = runtime.snapshot().tracks[1].clone();
+    runtime
+        .dispatch(AppIntent::SetLoopTimeline {
+            loop_id: track.loops[0].id,
+            start_offset: None,
+            preplay_samples: None,
+            loop_length: Some(64),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track.id,
+            loop_id: track.loops[0].id,
+            action: LoopAction::Duplicate,
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 100);
+    assert_eq!(runtime.snapshot().tracks[1].loops[1].length_frames, 64);
+    runtime
+        .dispatch(AppIntent::AddScriptSource {
+            name: "copy.lua".into(),
+            kind: ScriptKind::User,
+            enabled: true,
+            source: Arc::from(
+                "shoop_announce_api_version(1,0); local c=require('shoop_control'); if c.loop_get_length({0,1})[1] == 64 and c.loop_get_mode({0,1})[1] == c.constants.LoopMode_Stopped then c.loop_set_gain({0,1}, 0.25); print('copy edited') end",
+            ),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let state = runtime.snapshot();
+    let script = &state.scripting.scripts[0];
+    assert!(script.latest_error.is_none(), "{:?}", script.latest_error);
+    assert!(script
+        .logs
+        .iter()
+        .any(|line| line.message.contains("copy edited")));
+    assert_eq!(state.tracks[1].loops[0].gain, 1.);
+    assert_eq!(state.tracks[1].loops[1].gain, 0.25);
+}
+
+#[shoop_test]
+fn dry_wet_duplication_retains_the_track_default_through_persistence() {
+    let mut f = fixture_with_dry_wet(2, true);
+    let mut client = attach(&mut f.service, 1, ConnectionId(1), false);
+    let run = |f: &mut Fixture, client: &mut Client, value| {
+        let id = submit(&mut f.service, client, ConnectionId(1), value);
+        complete(&mut f.service, client, ConnectionId(1), id, false)
+    };
+    run(
+        &mut f,
+        &mut client,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let (track, loops) = created(run(
+        &mut f,
+        &mut client,
+        Command::AddTrack(TrackSpec {
+            name: "Hosted copy".into(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    ));
+    for action in [
+        LoopAction::RecordClicked,
+        LoopAction::StopClicked,
+        LoopAction::DuplicateTo(loops[1]),
+    ] {
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Loop {
+                    track,
+                    loop_id: loops[0],
+                    action
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    assert_eq!(
+        client.snapshot().unwrap().tracks[1].default_playback_mode,
+        DefaultPlaybackMode::DryThroughWet
+    );
+    let image = capture_image(&mut f.service, &mut client, 1, false);
+    let persistence_image::Manifest::Session(session) = &image.manifest else {
+        panic!()
+    };
+    assert_eq!(
+        session.tracks[1].default_playback_mode,
+        DefaultPlaybackMode::DryThroughWet
+    );
+    let epoch = client.snapshot().unwrap().persistence_epoch;
+    release_image(&mut f.service, &mut client, 1, epoch, false);
+    let key = stage_image(&mut f.service, &mut client, 2, image, false);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::CommitPersistence(key),
+    );
+    for _ in 0..500 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+        if client.results().contains_key(&operation) {
+            break;
+        }
+    }
+    assert!(matches!(
+        client.results().get(&operation),
+        Some(Outcome::Confirmed { .. })
+    ));
+    assert_eq!(
+        client.snapshot().unwrap().tracks[1].default_playback_mode,
+        DefaultPlaybackMode::DryThroughWet
+    );
+}
 
 #[path = "profiling/cases.rs"]
 mod profiling_cases;

@@ -108,6 +108,7 @@ impl ControlEndpoint {
                 | Request::InputCapacity
                 | Request::CancelBulk
                 | Request::Composite(shoop_rt_protocol::CompositeCommand::Cancel { .. })
+                | Request::PatchBegin { .. }
                 | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
                 | Request::ReplacementPrepare { .. }
@@ -230,7 +231,8 @@ impl ControlEndpoint {
             | Request::RemoveBus { bus: id } => bus(id, WAITING),
             Request::PreviewStart { bus: id, .. } => bus(id, HARD),
             Request::Diagnostic(_) | Request::PreviewStop | Request::CancelBulk => false,
-            Request::ReplacementBegin { .. }
+            Request::PatchBegin { .. }
+            | Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
@@ -348,7 +350,8 @@ impl ControlEndpoint {
             | Request::Diagnostic(_)
             | Request::PreviewStop
             | Request::CancelBulk => {}
-            Request::ReplacementBegin { .. }
+            Request::PatchBegin { .. }
+            | Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }

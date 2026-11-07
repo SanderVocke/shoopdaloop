@@ -33,9 +33,9 @@ impl Canary {
         let details = snapshot.details.as_ref().and_then(|d| d.composite.as_ref());
         match self.stage {
             0 => {
-                send(action(0, LoopAction::ComposeIntoEnd(track.loops[1].id)))?;
+                send(action(0, LoopAction::ComposeIntoEnd(track.loops[2].id)))?;
                 send(action(
-                    1,
+                    2,
                     LoopAction::IconClicked(SelectionModifiers::default()),
                 ))?;
                 self.stage = 1;
@@ -46,7 +46,7 @@ impl Canary {
                 };
                 self.event = event.instance_id;
                 send(AppIntent::SetCompositeKind {
-                    target_loop_id: track.loops[1].id,
+                    target_loop_id: track.loops[2].id,
                     kind: CompositeKind::Script,
                 })?;
                 self.stage = 7;
@@ -58,7 +58,7 @@ impl Canary {
                     return Ok(false);
                 }
                 send(AppIntent::SetCompositeLoopCycles {
-                    target_loop_id: track.loops[1].id,
+                    target_loop_id: track.loops[2].id,
                     event: CompositeEventId {
                         instance_id: self.event,
                     },
@@ -72,12 +72,12 @@ impl Canary {
                 }) {
                     return Ok(false);
                 }
-                send(action(1, LoopAction::ComposeIntoEnd(track.loops[2].id)))?;
+                send(action(2, LoopAction::ComposeIntoEnd(track.loops[3].id)))?;
                 self.stage = 3;
             }
             3 => {
                 send(AppIntent::SetCompositeEventMode {
-                    target_loop_id: track.loops[1].id,
+                    target_loop_id: track.loops[2].id,
                     event: CompositeEventId {
                         instance_id: self.event,
                     },
@@ -92,22 +92,22 @@ impl Canary {
                 }) {
                     return Ok(false);
                 }
-                send(action(2, LoopAction::DefaultClicked))?;
+                send(action(3, LoopAction::DefaultClicked))?;
                 self.started = snapshot.status.processed_frames;
                 self.stage = 5;
             }
             5 => {
                 if track.loops[0].mode != modes[self.mode].0
-                    || track.loops[2].mode != LoopMode::Playing
+                    || track.loops[3].mode != LoopMode::Playing
                     || snapshot.status.processed_frames <= self.started + 512
                 {
                     return Ok(false);
                 }
-                send(action(2, LoopAction::StopClicked))?;
+                send(action(3, LoopAction::StopClicked))?;
                 self.stage = 6;
             }
             6 => {
-                if track.loops[..3].iter().any(|l| l.mode != LoopMode::Stopped) {
+                if track.loops[..4].iter().any(|l| l.mode != LoopMode::Stopped) {
                     return Ok(false);
                 }
                 self.mode += 1;

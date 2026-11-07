@@ -245,6 +245,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         )?;
         job.family = Some(update.root);
         self.replacement = Some(crate::Replacement {
+            patch: false,
             mapping: Default::default(),
             candidate: None,
             job,

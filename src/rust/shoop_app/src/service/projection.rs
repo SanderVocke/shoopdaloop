@@ -5,6 +5,63 @@ use alloc::vec::Vec;
 
 use super::*;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn publication_observations_preserve_unrelated_command_outcomes() {
+        let (_render, client) = shoop_rt_engine::testing::OfflineRender::new(
+            &shoop_rt_engine::EngineDescription::default(),
+        )
+        .unwrap();
+        let backend =
+            shoop_rt_backend::RtBackend::connect(client, shoop_rt_backend::NoWait).unwrap();
+        let mut service = Service::new(
+            Box::new(backend),
+            ServiceOptions {
+                master_auto_connect: false,
+                loop_smoothing_ms: 0,
+            },
+        )
+        .unwrap();
+        let id = OperationId {
+            client: ClientId(1),
+            sequence: 1,
+        };
+        service.pending.insert(
+            id,
+            Pending {
+                id,
+                accepted_at: service.revision,
+                first: 100,
+                last: 101,
+                completed: BTreeSet::new(),
+                error: None,
+                effect: Effect::None,
+                publications: Vec::new(),
+                retiring: false,
+                rollback: false,
+            },
+        );
+        for (sequence, result) in [(100, Ok(())), (101, Err("refused".into()))] {
+            let mut observed = service.observed.clone();
+            observed.status.dsp_load_percent = if sequence == 100 { 37. } else { 5. };
+            observed.mutation_completions = vec![BackendMutationCompletion { sequence, result }];
+            service.apply_observation(observed);
+        }
+        service.apply_observation(service.observed.clone());
+        assert_eq!(service.completed_operations(), vec![id]);
+        assert_eq!(
+            service.pending[&id].error.as_ref().unwrap().message,
+            "refused"
+        );
+        assert!(service.observed.mutation_completions.is_empty());
+        assert_eq!(service.observed.status.dsp_load_percent, 37.);
+    }
+}
+
 impl Service {
     pub fn snapshot(&self) -> Arc<SessionSnapshot> {
         let _span =
@@ -107,6 +164,7 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::LoopDuplication,
                 BackendCapability::DryWetTracks,
                 BackendCapability::DryWetModes,
                 BackendCapability::TrackFx,
@@ -553,7 +611,9 @@ impl Service {
         Ok(id)
     }
 
-    pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
+    pub(super) fn apply_observation(&mut self, mut observed: BackendSnapshot) {
+        self.observe_composites(&observed);
+        let completions = core::mem::take(&mut observed.mutation_completions);
         if observed.connections.revision != self.observed.connections.revision
             || observed.connections.host_ports != self.observed.connections.host_ports
             || observed.mixer.revision != self.observed.mixer.revision
@@ -622,7 +682,14 @@ impl Service {
             .iter()
             .map(|(id, entry)| (entry.backend, *id))
             .collect::<BTreeMap<_, _>>();
+        let duplication_target = self
+            .duplication
+            .as_ref()
+            .and_then(|job| job.frozen_target());
         for entry in self.loops.values_mut() {
+            if duplication_target == Some(entry.view.id) {
+                continue;
+            }
             if let Some(state) = observed
                 .composites
                 .get(&BackendCompositeId::from_raw(entry.backend.raw()))
@@ -776,6 +843,58 @@ impl Service {
         self.observed = observed;
         self.observed.status.xruns = self.xruns;
         self.observed.status.dsp_load_percent = self.dsp_peak;
+        self.record_completions(completions);
+    }
+
+    pub(super) fn record_completions(&mut self, completions: Vec<BackendMutationCompletion>) {
+        self.observe_composite_structure(&completions);
+        for completion in completions {
+            self.automatic_monitoring_intent
+                .retain(|_, sequence| *sequence != completion.sequence);
+            publication::engine_complete(&mut self.publications, &completion);
+            for track in self.tracks.values_mut() {
+                if track
+                    .monitoring_intent
+                    .is_some_and(|(sequence, _)| sequence == completion.sequence)
+                {
+                    track.monitoring_intent = None;
+                }
+                if track
+                    .default_playback_intent
+                    .is_some_and(|(sequence, _)| sequence == completion.sequence)
+                {
+                    track.default_playback_intent = None;
+                }
+            }
+            for intent in self
+                .connection_intent
+                .values_mut()
+                .chain(self.route_intent.values_mut())
+            {
+                if intent.pending == Some(completion.sequence) {
+                    intent.pending = None;
+                    intent.error = completion.result.as_ref().err().cloned();
+                }
+            }
+            if completion.sequence <= self.init_through {
+                if let Err(error) = &completion.result {
+                    self.init_error = Some(error.clone());
+                }
+            }
+            for pending in self
+                .pending
+                .values_mut()
+                .filter(|pending| (pending.first..=pending.last).contains(&completion.sequence))
+            {
+                pending.completed.insert(completion.sequence);
+                if let Err(error) = &completion.result {
+                    pending.error = Some(CommandError {
+                        reason: Refusal::Engine,
+                        message: error.clone(),
+                    });
+                }
+            }
+        }
     }
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {

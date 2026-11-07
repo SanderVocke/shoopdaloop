@@ -414,6 +414,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .contains(Capabilities::COMPLETE_REPLACEMENT),
             )
             .with(
+                BackendCapability::LoopDuplication,
+                self.capabilities.contains(Capabilities::CONTENT_UPLOAD)
+                    && self
+                        .capabilities
+                        .contains(Capabilities::COMPLETE_REPLACEMENT),
+            )
+            .with(
                 BackendCapability::LoopContentImport,
                 self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
             )
@@ -1130,6 +1137,16 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 .map(BackendAsyncResult::Ready)
                 .ok_or_else(|| anyhow!("capture omitted target loop")),
         }
+    }
+
+    fn duplicate_loop_async(
+        &mut self,
+        source: BackendLoopId,
+        target: Option<BackendLoopId>,
+        additions: &[BackendTrackId],
+        row_sync: Option<BackendLoopId>,
+    ) -> Result<BackendAsyncResult<shoop_backend::BackendLoopDuplication>> {
+        self.duplicate_content(source, target, additions, row_sync)
     }
 
     fn replace_session(

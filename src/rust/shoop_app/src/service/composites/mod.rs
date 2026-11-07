@@ -528,7 +528,7 @@ impl Service {
         Ok(())
     }
 
-    fn validate_composite_dependencies(
+    pub(super) fn validate_composite_dependencies(
         &self,
         target: LoopId,
         document: &Document,
@@ -713,7 +713,7 @@ impl Service {
     }
 
     pub(super) fn refresh_natural_composites(&mut self) {
-        if self.composite_structure.is_some() {
+        if self.composite_structure.is_some() || self.duplication.is_some() {
             return;
         }
         let refresh = self

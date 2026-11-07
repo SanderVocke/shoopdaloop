@@ -340,7 +340,39 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             .flat_map(|t| &t.loops)
             .all(|l| l.mode == LoopMode::Stopped)
     })?;
+    for track in [&audio, &keys] {
+        action(
+            &handle,
+            track.id,
+            track.loops[0].id,
+            LoopAction::DuplicateTo(track.loops[7].id),
+        )?;
+        ready(&handle, |s| {
+            let track = s.tracks.iter().find(|t| t.id == track.id).unwrap();
+            track.loops[7].length_frames == period && track.loops[7].mode == LoopMode::Stopped
+        })?;
+    }
     let before = file_save(&handle, &root.path().join("input.shoop"))?;
+    for track in before
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|g| &g.tracks)
+        .filter(|t| !t.is_sync)
+    {
+        for (source, target) in track.loops[0].channels.iter().zip(&track.loops[7].channels) {
+            ensure!(
+                source.mode == target.mode
+                    && source.data_length_frames == target.data_length_frames
+                    && source.start_offset_frames == target.start_offset_frames
+                    && source.capture_alignment_frames == target.capture_alignment_frames
+                    && source.preplay_frames == target.preplay_frames
+                    && source.media_id.as_ref().and_then(|id| before.media.get(id))
+                        == target.media_id.as_ref().and_then(|id| before.media.get(id)),
+                "input clone changed exact audio/MIDI or channel timing"
+            );
+        }
+    }
     ensure!(before.media.values().any(|m| matches!(m, shoop_session::MediaPayload::Midi(m) if m.events.iter().any(|e| e.data == [0x90,60,100]) || m.events.iter().any(|e| e.data.first().is_some_and(|s| s & 0xf0 == 0x90)))), "replacement did not retain piano MIDI");
     ensure!(
         before
@@ -415,6 +447,6 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         ensure!(Instant::now() < deadline, "input companion did not exit");
         std::thread::sleep(Duration::from_millis(5));
     }
-    println!("Input {}: selected Grab, bundled keyboard, exact-list Lua, owned prefix completion, stereo/MIDI replacement across wraps, exact file reload/re-edit and shutdown passed", transport.id());
+    println!("Input {}: selected Grab, bundled keyboard, exact-list Lua, owned prefix completion, stereo/MIDI replacement across wraps, exact duplication/file reload/re-edit and shutdown passed", transport.id());
     Ok(())
 }

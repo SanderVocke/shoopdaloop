@@ -1711,4 +1711,142 @@ mod track_role_tests {
             }
         }
     }
+    #[shoop_test]
+    fn duplication_preserves_hosted_track_configuration_and_recorded_state() {
+        use shoop_backend::{BackendAsyncResult, BackendDefaultPlaybackMode, BackendLoopMode};
+        for topology in [
+            BackendTrackTopology::DryWetExternal {
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+            },
+            BackendTrackTopology::DryWetProcessor {
+                processor_type: shoop_app_api::TrackProcessorTypeId::BUILTIN_FX.into(),
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+            },
+        ] {
+            let mut stack = stack();
+            let track = stack.create_track_topology("copy", topology, 2).unwrap();
+            stack
+                .set_track_default_playback_mode(
+                    track.track_id,
+                    BackendDefaultPlaybackMode::DryThroughWet,
+                )
+                .unwrap();
+            stack.wait_idle();
+            stack
+                .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+                .unwrap();
+            stack.wait_idle();
+            stack.clock.wait();
+            stack
+                .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+                .unwrap();
+            stack.wait_idle();
+            stack
+                .replace_loop_content(
+                    track.loops[0],
+                    &shoop_backend::BackendLoopContentUpdate {
+                        length: Some(64),
+                        audio: (0..4)
+                            .map(|channel| shoop_backend::BackendAudioChannelUpdate {
+                                channel,
+                                samples: alloc::vec![0.25;64].into(),
+                                start_offset: None,
+                                capture_alignment_frames: None,
+                                preplay: None,
+                            })
+                            .collect(),
+                        midi: alloc::vec![],
+                    },
+                )
+                .unwrap();
+            stack
+                .replace_loop_content(
+                    track.loops[0],
+                    &shoop_backend::BackendLoopContentUpdate {
+                        length: None,
+                        audio: alloc::vec![],
+                        midi: alloc::vec![shoop_backend::BackendMidiChannelUpdate {
+                            channel: 0,
+                            length: 61,
+                            start_state: alloc::vec![],
+                            events: alloc::vec![
+                                shoop_backend::BackendMidiEvent {
+                                    frame: 3,
+                                    data: alloc::vec![0x90, 60, 99].into()
+                                },
+                                shoop_backend::BackendMidiEvent {
+                                    frame: 31,
+                                    data: alloc::vec![0x80, 60, 0].into()
+                                }
+                            ]
+                            .into(),
+                            start_offset: Some(0),
+                            capture_alignment_frames: Some(0),
+                            preplay: Some(0),
+                        }],
+                    },
+                )
+                .unwrap();
+            for mode in [
+                BackendLoopMode::PlayingDryThroughWet,
+                BackendLoopMode::Playing,
+                BackendLoopMode::Stopped,
+            ] {
+                stack.transition_loop(track.loops[0], mode, None).unwrap();
+                stack.wait_idle();
+            }
+            let before = stack.capture_session().unwrap();
+            let mut completed = false;
+            for _ in 0..10_000 {
+                match stack
+                    .duplicate_loop_async(track.loops[0], Some(track.loops[1]), &[], None)
+                    .unwrap()
+                {
+                    BackendAsyncResult::Ready(_) => {
+                        completed = true;
+                        break;
+                    }
+                    BackendAsyncResult::Pending(_) => {
+                        stack.clock.wait();
+                    }
+                }
+            }
+            assert!(completed, "hosted duplication did not settle");
+            let saved = stack.capture_session().unwrap();
+            assert_eq!(
+                saved.tracks[0].loops[1].audio,
+                before.tracks[0].loops[0].audio
+            );
+            assert_eq!(
+                saved.tracks[0].loops[1].midi,
+                before.tracks[0].loops[0].midi
+            );
+            assert_eq!(
+                saved.tracks[0].state.default_playback_mode,
+                BackendDefaultPlaybackMode::DryThroughWet,
+                "live copy changed track default"
+            );
+            assert_eq!(
+                saved.tracks[0].loops[1].recorded_processor_state,
+                before.tracks[0].loops[0].recorded_processor_state
+            );
+            assert_eq!(
+                saved.tracks[0].processor_state,
+                before.tracks[0].processor_state
+            );
+            let mapping = stack.replace_session(&saved).unwrap();
+            stack.wait_idle();
+            let loaded = stack.poll().unwrap();
+            assert_eq!(
+                loaded.tracks[&mapping.tracks[&track.track_id.raw()].track_id]
+                    .default_playback_mode,
+                BackendDefaultPlaybackMode::DryThroughWet,
+                "reload changed track default"
+            );
+        }
+    }
 }

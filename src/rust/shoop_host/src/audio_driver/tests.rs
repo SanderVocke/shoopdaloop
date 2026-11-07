@@ -819,6 +819,127 @@ impl Fixture {
 
 #[shoop_test]
 #[cfg(all(feature = "builtin-fx", feature = "oxisynth"))]
+fn native_driver_switch_preserves_copies_and_accepts_duplication_on_the_new_backend() {
+    use persistence_image as image;
+    let mut f = Fixture::native();
+    let Outcome::TrackCreated { track, loops, .. } = f.run(Command::AddTrack(TrackSpec {
+        name: "Driver-switch copies".into(),
+        topology: TrackSpecTopology::Direct {
+            audio_channels: 1,
+            midi: false,
+        },
+        latency: Default::default(),
+        initial_output_bus_names: vec!["Master".into()],
+        creation_request_id: None,
+    })) else {
+        panic!("direct track creation refused")
+    };
+    f.import(
+        persistence::Target::Loop {
+            loop_id: loops[0],
+            content_revision: f.service.snapshot().tracks[1].loops[0].content_revision,
+        },
+        Arc::new(image::Image {
+            manifest: image::Manifest::Update {
+                sample_rate: 48_000,
+                frames: Some(96),
+                audio: vec![image::AudioUpdate {
+                    channel: 0,
+                    content: image::Channel {
+                        mode: image::ChannelMode::Direct,
+                        object: Some(1),
+                        frames: 144,
+                        gain: 1.,
+                        start_offset: 7,
+                        capture_alignment: 0,
+                        preplay: 3,
+                        recording_started_at: Some("copied take".into()),
+                    },
+                }],
+                midi: vec![],
+            },
+            payloads: vec![image::Payload::Audio(Arc::new(vec![0.25; 144]))],
+        }),
+    );
+    let copy = |target| Command::Loop {
+        track,
+        loop_id: loops[0],
+        action: LoopAction::DuplicateTo(target),
+    };
+    let operation = f.queue(copy(loops[1]));
+    assert!(matches!(
+        f.run(Command::AudioDriver(DriverCommand::Request(
+            AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                sample_rate: 32_000,
+                buffer_size: 128,
+            })
+        ))),
+        Outcome::Refused {
+            reason: Refusal::Busy,
+            ..
+        }
+    ));
+    for _ in 0..30_000 {
+        f.tick();
+        if f.client.results().contains_key(&operation) {
+            break;
+        }
+    }
+    assert!(matches!(
+        f.client.results().get(&operation),
+        Some(Outcome::Confirmed { .. })
+    ));
+    f.switch_to(32_000);
+    assert!(matches!(f.run(copy(loops[2])), Outcome::Confirmed { .. }));
+    let saved = f.capture();
+    let image::Manifest::Session(session) = &saved.manifest else {
+        panic!("session capture expected")
+    };
+    let owner = session.tracks.iter().find(|t| t.id == track).unwrap();
+    let source = &owner.loops[0];
+    assert_eq!(source.frames, 64);
+    assert_eq!(source.audio[0].frames, 97);
+    assert_eq!(source.audio[0].start_offset, 5);
+    assert_eq!(source.audio[0].preplay, 2);
+    let image::Payload::Audio(samples) =
+        &saved.payloads[source.audio[0].object.unwrap() as usize - 1]
+    else {
+        panic!("audio payload expected")
+    };
+    assert!((samples[30] - 0.25).abs() < 1e-6);
+    for (index, id) in loops.iter().copied().enumerate().take(3) {
+        let copied = &owner.loops[index];
+        assert_eq!(copied.id, id);
+        assert_eq!(copied.frames, source.frames);
+        let mut channel = copied.audio[0].clone();
+        let mut expected = source.audio[0].clone();
+        channel.object = None;
+        expected.object = None;
+        assert_eq!(channel, expected);
+        assert_eq!(
+            saved.payloads[copied.audio[0].object.unwrap() as usize - 1],
+            image::Payload::Audio(samples.clone())
+        );
+        let state = &f.service.snapshot().tracks[1].loops[index];
+        assert_eq!(state.mode, LoopMode::Stopped);
+        assert_eq!(state.position, 0.);
+    }
+    assert!(matches!(
+        f.run(Command::Loop {
+            track,
+            loop_id: loops[1],
+            action: LoopAction::GainChanged(0.125),
+        }),
+        Outcome::Confirmed { .. }
+    ));
+    let state = f.service.snapshot();
+    assert_eq!(state.tracks[1].loops[0].gain, 1.);
+    assert_eq!(state.tracks[1].loops[1].gain, 0.125);
+    assert_eq!(state.tracks[1].loops[2].gain, 1.);
+}
+
+#[shoop_test]
+#[cfg(all(feature = "builtin-fx", feature = "oxisynth"))]
 fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_state() {
     use persistence_image as image;
     let mut f = Fixture::native();
@@ -1271,6 +1392,136 @@ fn lifecycle_controller_bounds_outstanding_work_and_reports_worker_loss() {
     assert_eq!(completion.ticket, 1);
     assert!(completion.result.err().unwrap().contains("disconnected"));
     assert!(controller.poll().is_none());
+}
+
+#[shoop_test]
+fn host_cleanup_keeps_management_responsive_until_worker_completion() {
+    for result in [Ok(()), Err("injected MIDI cleanup failure".to_owned())] {
+        let expected = result.clone();
+        let (release, released) = mpsc::channel();
+        let (progress, progressed) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let mut f = Fixture::new();
+            let ClientMessage::Shutdown {
+                authority,
+                operation,
+            } = f.client.shutdown().unwrap()
+            else {
+                unreachable!()
+            };
+            assert!(matches!(
+                f.service.management(ManagementRequest::Shutdown {
+                    authority,
+                    operation
+                }),
+                ManagementReply::Accepted { .. }
+            ));
+            for _ in 0..100 {
+                f.tick();
+                if f.service.shutdown_ready() {
+                    break;
+                }
+            }
+            assert!(f.service.shutdown_ready());
+            let (sender, requests) = mpsc::sync_channel(2);
+            let join = std::thread::spawn(move || {
+                let Request::Stop(reply) = requests.recv().unwrap() else {
+                    panic!("expected stop")
+                };
+                released.recv().unwrap();
+                reply.send(result).unwrap();
+            });
+            let mut owner = Owner {
+                sender,
+                join: Some(join),
+                stopping: None,
+                stop_result: None,
+            };
+            let mut cleanup = crate::serve::ShutdownCleanup::default();
+            let mut stopped = cleanup.poll(&mut f.service, &mut owner).unwrap();
+            let pending = stopped.is_none()
+                && matches!(
+                    f.service
+                        .management(ManagementRequest::Status { version: VERSION }),
+                    ManagementReply::Status { closed: false, .. }
+                )
+                && matches!(
+                    f.service.management(ManagementRequest::Result {
+                        authority,
+                        operation
+                    }),
+                    ManagementReply::Accepted { .. }
+                );
+            progress.send(pending).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while stopped.is_none() {
+                assert!(std::time::Instant::now() < deadline);
+                f.tick();
+                stopped = cleanup.poll(&mut f.service, &mut owner).unwrap();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let stopped = stopped.unwrap();
+            f.service.complete_shutdown(stopped.clone());
+            let ManagementReply::Finished { result, .. } =
+                f.service.management(ManagementRequest::Result {
+                    authority,
+                    operation,
+                })
+            else {
+                panic!("terminal shutdown result expected")
+            };
+            assert_eq!(
+                matches!(result.outcome, Outcome::Confirmed { .. }),
+                stopped.is_ok()
+            );
+            assert_eq!(owner.stop(), stopped);
+            stopped
+        });
+        let responsive = progressed.recv_timeout(Duration::from_secs(2));
+        release.send(()).unwrap();
+        assert_eq!(server.join().unwrap(), expected);
+        assert!(
+            responsive.unwrap_or(false),
+            "management was blocked by device cleanup"
+        );
+    }
+}
+
+#[shoop_test]
+fn cleanup_result_waits_for_worker_exit_before_publication() {
+    let (sender, requests) = mpsc::sync_channel(2);
+    let (release, released) = mpsc::channel();
+    let join = std::thread::spawn(move || {
+        let Request::Stop(reply) = requests.recv().unwrap() else {
+            panic!("expected stop")
+        };
+        reply.send(Ok(())).unwrap();
+        released.recv_timeout(Duration::from_secs(5)).unwrap();
+    });
+    let mut owner = Owner {
+        sender,
+        join: Some(join),
+        stopping: None,
+        stop_result: None,
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while owner.stop_result.is_none() {
+        assert!(owner.poll_stop().is_none());
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    assert!(owner.poll_stop().is_none());
+    release.send(()).unwrap();
+    let terminal = loop {
+        if let Some(result) = owner.poll_stop() {
+            break result;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::yield_now();
+    };
+    assert_eq!(terminal, Ok(()));
+    assert_eq!(owner.poll_stop(), Some(Ok(())));
+    assert_eq!(owner.stop(), Ok(()));
 }
 
 #[shoop_test]

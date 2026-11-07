@@ -71,6 +71,14 @@ fn composite_span() -> CompositeSpan {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::PatchBegin { id: u64::MAX },
+        Request::ReplacementEdit {
+            id: 17,
+            edit: ReplacementEdit::Retarget {
+                previous: loop_id(1),
+                loop_id: LoopSlotId(SlotId::new(1, 4)),
+            },
+        },
         Request::CreateProcessedBus {
             bus: BusId::MASTER,
             channels: 8,

@@ -11,6 +11,7 @@ mod audio_driver;
 mod commands;
 mod composites;
 mod deployment;
+mod duplication;
 mod management;
 mod media;
 mod monitoring;
@@ -93,6 +94,7 @@ enum Effect {
     TrackRemoved(TrackId),
     Shutdown,
     Persistence(persistence::Key),
+    Duplication,
     HostGraph(shoop_port_graph::OperationId),
     Connection(PortId, String),
     SessionPublished,
@@ -227,6 +229,7 @@ pub struct Service {
     media_pending: Option<(TransferId, LoopId)>,
     persistence_epoch: u64,
     persistence_job: Option<persistence_jobs::Job>,
+    duplication: Option<duplication::Job>,
     persistence_last: Option<(Authority, u64)>,
     persistence_closed: Option<(Authority, persistence::Key)>,
     channel_annotations: BTreeMap<(LoopId, bool, u32), (u64, Option<String>)>,
@@ -331,6 +334,7 @@ impl Service {
             media_pending: None,
             persistence_epoch: 1,
             persistence_job: None,
+            duplication: None,
             persistence_last: None,
             persistence_closed: None,
             channel_annotations: BTreeMap::new(),
@@ -847,6 +851,11 @@ impl Service {
                 Refusal::Busy,
                 "a composite lifecycle operation is preserving dependent arrangements",
             ))
+        } else if self.duplication.is_some() {
+            Some((
+                Refusal::Busy,
+                "loop duplication is preparing a coherent replacement",
+            ))
         } else if self.persistence_busy(command.as_ref()) {
             Some((
                 Refusal::Busy,
@@ -1106,7 +1115,7 @@ impl Service {
         self.backend.advance(elapsed);
         self.advance_preview();
         match self.backend.poll() {
-            Ok(mut observed) => {
+            Ok(observed) => {
                 if let Ok(catalog) = self.backend.track_processor_catalog() {
                     if catalog != self.track_processors {
                         self.track_processors = catalog;
@@ -1119,56 +1128,8 @@ impl Service {
                         self.bump();
                     }
                 }
-                self.observe_composites(&observed);
-                self.observe_composite_structure(&observed.mutation_completions);
-                let completions = core::mem::take(&mut observed.mutation_completions);
                 self.apply_observation(observed);
                 self.refresh_natural_composites();
-                for completion in completions {
-                    self.automatic_monitoring_intent
-                        .retain(|_, sequence| *sequence != completion.sequence);
-                    publication::engine_complete(&mut self.publications, &completion);
-                    for track in self.tracks.values_mut() {
-                        if track
-                            .monitoring_intent
-                            .is_some_and(|(sequence, _)| sequence == completion.sequence)
-                        {
-                            track.monitoring_intent = None;
-                        }
-                        if track
-                            .default_playback_intent
-                            .is_some_and(|(sequence, _)| sequence == completion.sequence)
-                        {
-                            track.default_playback_intent = None;
-                        }
-                    }
-                    for intent in self
-                        .connection_intent
-                        .values_mut()
-                        .chain(self.route_intent.values_mut())
-                    {
-                        if intent.pending == Some(completion.sequence) {
-                            intent.pending = None;
-                            intent.error = completion.result.as_ref().err().cloned();
-                        }
-                    }
-                    if completion.sequence <= self.init_through {
-                        if let Err(error) = &completion.result {
-                            self.init_error = Some(error.clone());
-                        }
-                    }
-                    for pending in self.pending.values_mut().filter(|pending| {
-                        (pending.first..=pending.last).contains(&completion.sequence)
-                    }) {
-                        pending.completed.insert(completion.sequence);
-                        if let Err(error) = &completion.result {
-                            pending.error = Some(CommandError {
-                                reason: Refusal::Engine,
-                                message: error.clone(),
-                            });
-                        }
-                    }
-                }
                 self.advance_composite_structure();
                 self.reconcile_monitoring_policy();
                 self.advance_publications();
@@ -1192,6 +1153,7 @@ impl Service {
                 }
             }
         }
+        self.advance_duplication();
         self.advance_profiling(elapsed);
         self.advance_persistence();
         if !self.persistence_reads_busy() {

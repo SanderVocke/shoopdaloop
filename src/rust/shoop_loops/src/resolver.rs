@@ -993,7 +993,7 @@ impl Resolver {
         expected: Epoch,
         candidate: PreparedTopology,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
-        self.replace_topology_inner(expected, candidate, false)
+        self.replace_topology_inner(expected, candidate, false, false)
     }
 
     /// Replace every logical owner, retiring playback at publication. Recording is refused.
@@ -1003,7 +1003,16 @@ impl Resolver {
         expected: Epoch,
         candidate: PreparedTopology,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
-        self.replace_topology_inner(expected, candidate, true)
+        self.replace_topology_inner(expected, candidate, true, true)
+    }
+
+    /// Retire changed playback owners while retaining unchanged live states.
+    pub fn edit_topology(
+        &mut self,
+        expected: Epoch,
+        candidate: PreparedTopology,
+    ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
+        self.replace_topology_inner(expected, candidate, true, false)
     }
 
     fn replace_topology_inner(
@@ -1011,6 +1020,7 @@ impl Resolver {
         expected: Epoch,
         candidate: PreparedTopology,
         stop_playback: bool,
+        fresh_only: bool,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
         let validation = (|| {
             {
@@ -1032,7 +1042,7 @@ impl Resolver {
                 }
             }
             for node in candidate.nodes() {
-                if stop_playback && self.state(node.id).is_ok() {
+                if fresh_only && self.state(node.id).is_ok() {
                     return Err(Error::InvalidId);
                 }
                 if let Ok(state) = self.state(node.id) {
