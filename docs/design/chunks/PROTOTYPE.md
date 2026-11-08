@@ -135,6 +135,8 @@ It also excludes metadata for the existing private wet-edit pool. Linux run JSON
 records the host's virtual/resident memory and resident high-water mark separately.
 Use PMU/cache/DDR counters separately when hardware permissions allow them.
 
+For the precompiled ARM64 bundle and run commands, see [the Pi benchmark guide](PI_BENCHMARKS.md).
+
 On Pi 4, build the same checkout with the same release features and run these
 commands with your existing PREEMPT_RT and core-isolation configuration. Save the
 kernel/configuration, affinities, CPU frequency/governor, IRQ placement, build SHA,

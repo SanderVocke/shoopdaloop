@@ -9,23 +9,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from benchmark_audio_chunks import MODES, summarize
-
-
-def render_thread(launcher_pid, deadline):
-    while time.monotonic() < deadline:
-        for proc in Path('/proc').glob('[0-9]*'):
-            try:
-                stat = (proc / 'stat').read_text()
-                if int(stat[stat.rfind(')') + 2:].split()[1]) != launcher_pid:
-                    continue
-                for task in (proc / 'task').iterdir():
-                    if (task / 'comm').read_text().strip() == 'shoop-rt-dummy':
-                        return int(proc.name), int(task.name)
-            except (FileNotFoundError, ProcessLookupError):
-                continue
-        time.sleep(0.05)
-    raise RuntimeError('native dummy render thread did not become ready')
+from benchmark_audio_chunks import MODES, configure_render, render_thread, source_info, summarize
 
 
 def stop_owned_host(pid, host, output):
@@ -42,17 +26,19 @@ def stop_owned_host(pid, host, output):
 
 def collect(args, directory, mode, scenario):
     directory.mkdir(parents=True, exist_ok=False)
-    callbacks = math.ceil((args.settle + args.duration + 5) * 48000 / 256)
+    callbacks = math.ceil((args.settle + args.duration + 5) * 48000 / args.buffer)
     launch = ['taskset', '-c', str(args.host_cpu), str(args.launcher),
               '--host', str(args.host), '--mode', mode, '--scenario', scenario,
               '--input', 'silence' if scenario == 'idle' else 'signal',
-              '--callbacks', str(callbacks), '--warmup', '0.5', '--output', str(directory)]
+              '--callbacks', str(callbacks), '--warmup', '0.5', '--output', str(directory),
+              '--buffer', str(args.buffer), '--quantum', str(args.quantum)]
     host_pid = None
     with (directory / 'launcher.log').open('w') as output:
         started = time.monotonic()
         process = subprocess.Popen(launch, stdout=output, stderr=subprocess.STDOUT)
         try:
             host_pid, tid = render_thread(process.pid, started + 30)
+            scheduling = configure_render(host_pid, tid, directory, args.render_cpu, args.rt_priority)
             time.sleep(max(0, args.settle - (time.monotonic() - started)))
             if process.poll() is not None:
                 raise RuntimeError('benchmark ended before sampling began')
@@ -74,13 +60,15 @@ def collect(args, directory, mode, scenario):
             if result:
                 raise RuntimeError(f'benchmark failed with exit status {result}')
             validation = summarize(directory)
+            identity = source_info()
             metadata = {
                 'mode': mode, 'scenario': scenario, 'render_tid': tid, 'host_pid': host_pid,
+                'scheduling': scheduling, 'buffer': args.buffer, 'quantum': args.quantum,
                 'launcher_command': launch, 'perf_command': sample,
                 'sample_start_after_launch_seconds': sampled_at - started,
                 'sampling_wall_seconds': sampled_until - sampled_at,
-                'source_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
-                'source_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], text=True).strip()),
+                'source_sha': identity['git_sha'], 'source_dirty': identity['dirty'],
+                'source': identity,
                 'host_sha256': hashlib.sha256(args.host.read_bytes()).hexdigest(),
                 'launcher_sha256': hashlib.sha256(args.launcher.read_bytes()).hexdigest(),
                 'scope': 'Render-thread on-CPU user time; profiling timings are not unprofiled benchmark results.',
@@ -107,7 +95,11 @@ def main():
     parser.add_argument('--perf-library-path', type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--host-cpu', type=int, default=2)
+    parser.add_argument('--render-cpu', type=int)
+    parser.add_argument('--rt-priority', type=int)
     parser.add_argument('--collector-cpu', type=int, default=0)
+    parser.add_argument('--buffer', type=int, default=256)
+    parser.add_argument('--quantum', type=int, default=32)
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--settle', type=float, default=8)
     parser.add_argument('--frequency', type=int, default=997)
@@ -118,9 +110,17 @@ def main():
     args = parser.parse_args()
     if args.duration <= 0 or args.settle < 5 or args.frequency <= 0:
         parser.error('duration/frequency must be positive and settle must be at least five seconds')
+    if args.buffer <= 0 or args.quantum <= 0:
+        parser.error('buffer and quantum must be positive')
+    if args.rt_priority is not None and not 1 <= args.rt_priority <= 99:
+        parser.error('RT priority must be in 1..99')
     allowed = os.sched_getaffinity(0)
     if args.host_cpu not in allowed or args.collector_cpu not in allowed or args.host_cpu == args.collector_cpu:
         parser.error('choose two distinct allowed CPUs')
+    if args.render_cpu is not None:
+        if args.render_cpu not in allowed or args.render_cpu in (args.host_cpu, args.collector_cpu):
+            parser.error('choose a separate allowed render CPU')
+        os.sched_setaffinity(0, {args.host_cpu})
     for name in ('host', 'launcher', 'perf', 'output'):
         setattr(args, name, getattr(args, name).resolve())
     args.output.mkdir(parents=True, exist_ok=True)
