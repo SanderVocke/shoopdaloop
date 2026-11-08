@@ -1,0 +1,104 @@
+{
+  "date_utc": "2026-11-08",
+  "working_source_sha": "e28ec1646c89f111edd41e9b178550b142c00c5b",
+  "binary_source_sha": "df4ba416996a41cda6c65c85781334aa6cc6b55d",
+  "upstream_sha": "888bd8a66143a6a6a675883823578a7c1d7e4bee",
+  "pi_optimization_sha": "7a77c8d5048d6ec33c305385710dd40044d039b7",
+  "upstream_integration": "Already ancestor of measured source; explicit merge already up to date",
+  "host_sha256": "5b5808860b4878ee074cac2c235a3c28aa9abdaf01187bd9cc5e8e42669b56b2",
+  "launcher_sha256": "156c7c09aad35fad9605339c0b6382302d5ccea201a858e14704f88862687108",
+  "dirty_worktree": "Only added profiling helpers and follow-up documentation; unchanged measured binaries",
+  "timing_runs": 147,
+  "timing_callbacks": 56448,
+  "matrices": {
+    "native-main": 81,
+    "native-retained-full": 6,
+    "native-quota": 6,
+    "native-interference": 54
+  },
+  "profiles": [
+    {
+      "scenario": "idle",
+      "mode": "chunks",
+      "samples": 367,
+      "lost_samples": 0,
+      "unattributed_percent": 0.5449591280653951
+    },
+    {
+      "scenario": "idle",
+      "mode": "chunks-descriptors",
+      "samples": 384,
+      "lost_samples": 0,
+      "unattributed_percent": 0.0
+    },
+    {
+      "scenario": "idle",
+      "mode": "current",
+      "samples": 511,
+      "lost_samples": 0,
+      "unattributed_percent": 0.19569471624266144
+    },
+    {
+      "scenario": "play",
+      "mode": "chunks",
+      "samples": 1122,
+      "lost_samples": 0,
+      "unattributed_percent": 0.08912655971479501
+    },
+    {
+      "scenario": "play",
+      "mode": "chunks-descriptors",
+      "samples": 1210,
+      "lost_samples": 0,
+      "unattributed_percent": 0.24793388429752067
+    },
+    {
+      "scenario": "play",
+      "mode": "current",
+      "samples": 991,
+      "lost_samples": 0,
+      "unattributed_percent": 1.8163471241170535
+    },
+    {
+      "scenario": "ramps",
+      "mode": "chunks",
+      "samples": 1499,
+      "lost_samples": 0,
+      "unattributed_percent": 0.0
+    },
+    {
+      "scenario": "ramps",
+      "mode": "chunks-descriptors",
+      "samples": 1200,
+      "lost_samples": 0,
+      "unattributed_percent": 0.16666666666666666
+    },
+    {
+      "scenario": "ramps",
+      "mode": "current",
+      "samples": 1037,
+      "lost_samples": 0,
+      "unattributed_percent": 1.1571841851494695
+    }
+  ],
+  "artifacts": {
+    "native-followup-2026-11-08.tar.gz": {
+      "sha256": "d75c7d89b2727983629de62fc9f6f1a73d6b1d5b9030a4ec4b50253b985b8654",
+      "bytes": 3717352,
+      "files": 966
+    },
+    "cpu-profiles-2026-11-08.tar.gz": {
+      "sha256": "8b7aab346a0aed87d74e9206c11c33106d17b003b49716d287dd57f4a7908f50",
+      "bytes": 1267334,
+      "files": 90
+    }
+  },
+  "excluded": [
+    "Raw perf data containing stack-memory snapshots",
+    "connection profiles",
+    "driver preferences",
+    "host logs",
+    "authority material"
+  ],
+  "validation": "All 147 timing runs and nine profile runs pass existing app/callback/capture/readback validation; analyzer validates exact event-period totals and zero lost samples; archive extraction and replay verified separately"
+}

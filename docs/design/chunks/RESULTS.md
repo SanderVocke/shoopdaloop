@@ -12,6 +12,9 @@ These are retained observations, not WCET bounds or evidence of a guaranteed ran
 The cause of individual outliers is unresolved by the available counters. No cgroup
 CPU-quota throttling was recorded during any matrix.
 
+A follow-up [CPU sampling and timing reproduction](PROFILING.md) checks the upstream
+Pi optimizations and investigates where the callback spends its time.
+
 ## Source, build and conditions
 
 - Source: `df4ba416`, based on `feat/backend-replacement` at `888bd8a6`.

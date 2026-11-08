@@ -1,6 +1,7 @@
 # Native chunk prototype
 
-See [the measured native results](RESULTS.md) and [raw-data manifest](results/manifest.json).
+See [the measured native results](RESULTS.md), [CPU sampling follow-up](PROFILING.md)
+and [raw-data manifest](results/manifest.json).
 
 `SHOOP_AUDIO_RENDER=current|chunks|chunks-descriptors` selects a renderer at
 native host preparation. Experimental modes also require
