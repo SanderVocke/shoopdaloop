@@ -1,0 +1,227 @@
+[
+  {
+    "case": "play-b256-memory",
+    "mode": "chunks",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 27496.79948611111,
+    "instructions_per_frame": 5806.363533333333,
+    "ipc": 0.21116506800241175,
+    "l1d_refills_per_frame": 141.2242361111111,
+    "l2d_refills_per_frame": 137.41708055555554,
+    "l2_refills_per_1000_instructions": 23.666633989874686,
+    "raw_counts": {
+      "cycles": 19797695630,
+      "instructions": 4180581744,
+      "armv8_cortex_a72/l1d_cache_refill/": 101681450,
+      "armv8_cortex_a72/l2d_cache_refill/": 98940298
+    },
+    "counter_runtime_ns": {
+      "cycles": 13278957256,
+      "instructions": 13278927571,
+      "armv8_cortex_a72/l1d_cache_refill/": 13278915942,
+      "armv8_cortex_a72/l2d_cache_refill/": 13278887887
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "play-b256-memory",
+    "mode": "chunks-descriptors",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 26721.51342361111,
+    "instructions_per_frame": 5781.777904166666,
+    "ipc": 0.21637164828612931,
+    "l1d_refills_per_frame": 140.8419638888889,
+    "l2d_refills_per_frame": 131.20481666666666,
+    "l2_refills_per_1000_instructions": 22.69281505471064,
+    "raw_counts": {
+      "cycles": 19239489665,
+      "instructions": 4162880091,
+      "armv8_cortex_a72/l1d_cache_refill/": 101406214,
+      "armv8_cortex_a72/l2d_cache_refill/": 94467468
+    },
+    "counter_runtime_ns": {
+      "cycles": 12910763497,
+      "instructions": 12910763497,
+      "armv8_cortex_a72/l1d_cache_refill/": 12910763497,
+      "armv8_cortex_a72/l2d_cache_refill/": 12910763497
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "play-b256-memory",
+    "mode": "current",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 28721.47517222222,
+    "instructions_per_frame": 5957.781281944444,
+    "ipc": 0.2074329833763717,
+    "l1d_refills_per_frame": 141.59815694444444,
+    "l2d_refills_per_frame": 146.74768194444445,
+    "l2_refills_per_1000_instructions": 24.63126372046849,
+    "raw_counts": {
+      "cycles": 20679462124,
+      "instructions": 4289602523,
+      "armv8_cortex_a72/l1d_cache_refill/": 101950673,
+      "armv8_cortex_a72/l2d_cache_refill/": 105658331
+    },
+    "counter_runtime_ns": {
+      "cycles": 13866069966,
+      "instructions": 13866074484,
+      "armv8_cortex_a72/l1d_cache_refill/": 13866078058,
+      "armv8_cortex_a72/l2d_cache_refill/": 13866079077
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "play-b256-none",
+    "mode": "chunks",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 5645.987091666667,
+    "instructions_per_frame": 5711.203113888889,
+    "ipc": 1.0115508627921732,
+    "l1d_refills_per_frame": 139.0181986111111,
+    "l2d_refills_per_frame": 16.455905555555557,
+    "l2_refills_per_1000_instructions": 2.881337824518441,
+    "raw_counts": {
+      "cycles": 4065110706,
+      "instructions": 4112066242,
+      "armv8_cortex_a72/l1d_cache_refill/": 100093103,
+      "armv8_cortex_a72/l2d_cache_refill/": 11848252
+    },
+    "counter_runtime_ns": {
+      "cycles": 2734826634,
+      "instructions": 2734813690,
+      "armv8_cortex_a72/l1d_cache_refill/": 2734804968,
+      "armv8_cortex_a72/l2d_cache_refill/": 2734796580
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "play-b256-none",
+    "mode": "chunks-descriptors",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 5695.087440277778,
+    "instructions_per_frame": 5726.068676388889,
+    "ipc": 1.00543999305296,
+    "l1d_refills_per_frame": 141.52361944444445,
+    "l2d_refills_per_frame": 16.26113611111111,
+    "l2_refills_per_1000_instructions": 2.839843010993382,
+    "raw_counts": {
+      "cycles": 4100462957,
+      "instructions": 4122769447,
+      "armv8_cortex_a72/l1d_cache_refill/": 101897006,
+      "armv8_cortex_a72/l2d_cache_refill/": 11708018
+    },
+    "counter_runtime_ns": {
+      "cycles": 2760049740,
+      "instructions": 2760049740,
+      "armv8_cortex_a72/l1d_cache_refill/": 2760049740,
+      "armv8_cortex_a72/l2d_cache_refill/": 2760049740
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "play-b256-none",
+    "mode": "current",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 5352.626768055556,
+    "instructions_per_frame": 5853.371926388889,
+    "ipc": 1.093551293604437,
+    "l1d_refills_per_frame": 136.11180416666667,
+    "l2d_refills_per_frame": 16.91267361111111,
+    "l2_refills_per_1000_instructions": 2.8893898805342135,
+    "raw_counts": {
+      "cycles": 3853891273,
+      "instructions": 4214427787,
+      "armv8_cortex_a72/l1d_cache_refill/": 98000499,
+      "armv8_cortex_a72/l2d_cache_refill/": 12177125
+    },
+    "counter_runtime_ns": {
+      "cycles": 2595176531,
+      "instructions": 2595176531,
+      "armv8_cortex_a72/l1d_cache_refill/": 2595176531,
+      "armv8_cortex_a72/l2d_cache_refill/": 2595186049
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "shared-b256-none",
+    "mode": "chunks",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 7160.186320833333,
+    "instructions_per_frame": 8557.287195833333,
+    "ipc": 1.1951207430084585,
+    "l1d_refills_per_frame": 136.99456527777778,
+    "l2d_refills_per_frame": 16.31819861111111,
+    "l2_refills_per_1000_instructions": 1.9069359526762966,
+    "raw_counts": {
+      "cycles": 5155334151,
+      "instructions": 6161246781,
+      "armv8_cortex_a72/l1d_cache_refill/": 98636087,
+      "armv8_cortex_a72/l2d_cache_refill/": 11749103
+    },
+    "counter_runtime_ns": {
+      "cycles": 3461231949,
+      "instructions": 3461231949,
+      "armv8_cortex_a72/l1d_cache_refill/": 3461231949,
+      "armv8_cortex_a72/l2d_cache_refill/": 3461231949
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "shared-b256-none",
+    "mode": "chunks-descriptors",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 7071.7430208333335,
+    "instructions_per_frame": 8536.252306944445,
+    "ipc": 1.207093114356202,
+    "l1d_refills_per_frame": 140.01150833333332,
+    "l2d_refills_per_frame": 15.140747222222222,
+    "l2_refills_per_1000_instructions": 1.7736995906159971,
+    "raw_counts": {
+      "cycles": 5091654975,
+      "instructions": 6146101661,
+      "armv8_cortex_a72/l1d_cache_refill/": 100808286,
+      "armv8_cortex_a72/l2d_cache_refill/": 10901338
+    },
+    "counter_runtime_ns": {
+      "cycles": 3417290375,
+      "instructions": 3417279356,
+      "armv8_cortex_a72/l1d_cache_refill/": 3417270227,
+      "armv8_cortex_a72/l2d_cache_refill/": 3417261783
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  },
+  {
+    "case": "shared-b256-none",
+    "mode": "current",
+    "frames_nominal": 720000,
+    "cycles_per_frame": 7258.062391666666,
+    "instructions_per_frame": 8872.209055555555,
+    "ipc": 1.2223936054534568,
+    "l1d_refills_per_frame": 140.99113472222223,
+    "l2d_refills_per_frame": 18.56159027777778,
+    "l2_refills_per_1000_instructions": 2.092104701495393,
+    "raw_counts": {
+      "cycles": 5225804922,
+      "instructions": 6387990520,
+      "armv8_cortex_a72/l1d_cache_refill/": 101513617,
+      "armv8_cortex_a72/l2d_cache_refill/": 13364345
+    },
+    "counter_runtime_ns": {
+      "cycles": 3509767678,
+      "instructions": 3509777548,
+      "armv8_cortex_a72/l1d_cache_refill/": 3509784900,
+      "armv8_cortex_a72/l2d_cache_refill/": 3509791640
+    },
+    "duration_s": 15,
+    "normalization": "Nominal 48000*duration_s frames; exact PMU-window processed-frame count not captured"
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "mode": "chunks",
+    "loop_frames": 5632,
+    "selected_callbacks": 6375,
+    "selected_spikes_over_5ms": 290,
+    "selected_dominant_residue": 2816,
+    "selected_dominant_count": 290,
+    "selected_boundary_median_ms": 6.3206015,
+    "selected_max_ms": 6.70737,
+    "whole_csv_boundary_max_ms": 11.635666,
+    "whole_csv_boundary_max_inside_selected": false
+  },
+  {
+    "mode": "chunks-descriptors",
+    "loop_frames": 5376,
+    "selected_callbacks": 6375,
+    "selected_spikes_over_5ms": 304,
+    "selected_dominant_residue": 4608,
+    "selected_dominant_count": 304,
+    "selected_boundary_median_ms": 6.328972,
+    "selected_max_ms": 6.790593,
+    "whole_csv_boundary_max_ms": 11.702259,
+    "whole_csv_boundary_max_inside_selected": false
+  },
+  {
+    "mode": "current",
+    "loop_frames": 5376,
+    "selected_callbacks": 6375,
+    "selected_spikes_over_5ms": 303,
+    "selected_dominant_residue": 3328,
+    "selected_dominant_count": 303,
+    "selected_boundary_median_ms": 6.203037,
+    "selected_max_ms": 6.482278,
+    "whole_csv_boundary_max_ms": 11.566981,
+    "whole_csv_boundary_max_inside_selected": false
+  }
+]

@@ -11,9 +11,10 @@ Named bulk-memory routines beneath planner/resolver frames account for about 3%;
 that diagnostic excludes inlined copying. The timing rerun reproduces idle gains
 and playback regressions, with no demonstrated worst-case improvement.
 
-Subsequent [Pi hardware timings](PI_RESULTS.md) are now available. They support
-the same broad conclusion but do not include Pi stack profiles; the function
-shares below remain specific to this Xeon capture.
+Subsequent [Pi hardware timings](PI_RESULTS.md) and
+[targeted Pi stack/scheduler/PMU profiles](PI_PROFILING.md) are now available.
+The function shares below remain specific to this Xeon capture; the Pi report
+provides its own CPU shares and qualifies the memory-pressure tail interpretation.
 
 ## Upstream verification
 

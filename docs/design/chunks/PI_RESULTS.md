@@ -7,10 +7,13 @@ copying at 256 frames, current has **0 deadline overruns**, chunks **682**, and
 descriptors **64** in the selected playback/ramp windows. At 32 frames all three
 fail the budget in most loaded active callbacks.
 
-Two additional findings deserve investigation: shared-grab loop wraps cause
-repeatable ~6 ms callbacks in every variant, and saturated 32-frame runs exhibit
-~50 ms stalls approximately once per second. The latter are consistent with RT
-bandwidth throttling, but the required scheduler evidence was not captured.
+Shared-grab loop wraps cause repeatable ~6 ms callbacks in every variant, and
+saturated 32-frame runs exhibit ~50 ms stalls approximately once per second.
+The subsequent [targeted profiles](PI_PROFILING.md) confirm RT bandwidth throttling
+as the cause of the long off-CPU pauses, identify substantial common MIDI/state
+work, and show modestly lower memory-pressure cycles/refills for the experiments.
+Those separate captures qualify the explanation of these timings; they do not
+replace this repeated timing comparison.
 
 ## Evidence and conditions
 
@@ -56,8 +59,9 @@ all pass. These app checks complement the earlier deterministic sample-equivalen
 tests; live recording lengths and control arrival can differ between runs.
 
 CFS `nr_throttled` counters remain zero. The `cpu.max`/memory-limit files and the
-RT bandwidth limits were not captured. CFS counters do not rule out RT bandwidth
-throttling. No Pi call-stack profiles or cache/DDR counters were supplied.
+RT bandwidth limits were not captured in this original timing archive. CFS
+counters do not rule out RT bandwidth throttling. Pi call-stack profiles, PMU
+counters and RT settings are available in the [separate follow-up](PI_PROFILING.md).
 
 ## Steady callback timing
 
@@ -155,7 +159,7 @@ is a more specific next experiment than attributing the spikes to bulk copying.
 The small 54 / 55 / 55 count differences reflect slightly different live loop
 lengths/phases and should not be read as a performance ranking.
 
-### The ~50 ms stalls need scheduler evidence
+### The ~50 ms stalls: subsequently confirmed RT throttling
 
 Loaded 32-frame play/ramps contain **202 callbacks of at least 20 ms**, commonly
 around 49 or 53 ms. Using the dummy driver's deadline-increment/reset rules and
@@ -165,18 +169,21 @@ omits post-timer bookkeeping and is approximate, with a median around 0.99 s.
 
 That pattern under near-continuous FIFO rendering is consistent with a familiar
 RT bandwidth configuration: 950 ms allowed per 1,000 ms period, leaving roughly
-50 ms when a runnable RT thread is throttled. **Those settings were not recorded,
-so this remains a hypothesis**, not a demonstrated cause. Interrupts, other RT
-activity and blocking/preemption also need ruling out. The supplied operator
-report's attribution of the entire 53 ms maximum to memory saturation is stronger
-than the evidence supports.
+50 ms when a runnable RT thread is throttled. Those settings were not recorded
+in this timing archive, so the original analysis treated this as a hypothesis.
+The [follow-up settings and scheduler traces](PI_PROFILING.md) now confirm it:
+the global allowance is 950/1,000 ms, and runnable rendering resumes after
+48–53 ms gaps at one-second replenishment boundaries. These maxima are not
+50 ms executions inside one renderer function. The original operator report's
+attribution of the entire 53 ms maximum to memory saturation was too strong.
 
 The wall-clock callback timer includes off-CPU delays. CFS throttling counters
 cannot resolve this question. The updated harness now records
 `sched_rt_period_us` and `sched_rt_runtime_us` read-only for future runs; it changes
-neither setting. A scheduler trace or paired thread-CPU/wall timing would separate
-CPU work from these pauses. Removing the 202 long stalls would still leave the
-ordinary loaded medians and the overwhelming majority of overruns unresolved.
+neither setting. The follow-up scheduler trace separates CPU work from these
+pauses. Removing the 202 long stalls would still leave the ordinary loaded
+medians and the overwhelming majority of overruns unresolved. The 32-frame
+maxima and overrun rankings describe service under the RT cap, not engine WCET.
 
 ## Copy work, metadata and comparison with the Xeon
 
@@ -200,8 +207,12 @@ in the reference path. Low counted copy volume therefore
 does not establish low total memory traffic or a small cache working set. The
 persistent index/reference overhead and larger working set remain plausible
 reasons for the missing general speedup. The sensitivity may involve dependent
-cache-miss/memory latency as well as aggregate bandwidth; no PMU/DDR data here
-separates them.
+cache-miss/memory latency as well as aggregate bandwidth. The
+[subsequent PMU captures](PI_PROFILING.md) confirm severe memory-stall sensitivity
+but show lower L2 refill counts for the experimental paths, despite their larger
+RSS. Larger RSS therefore does not establish increased cache refills or explain
+the playback regression by itself. The new small throughput differences are
+directional, with one capture per case and nominal-frame normalization.
 
 The [local Xeon rerun](PROFILING.md) showed idle 74.7 / 60.4 / 61.2 us, playback
 176.6 / 189.2 / 190.5 us and ramps 171.5 / 208.7 / 195.3 us at 256 frames. The Pi's
@@ -221,8 +232,9 @@ This dataset does not reproduce the original PREEMPT_RT/core-isolated Pi
 configuration; no three-variant comparison in that configuration is included.
 
 The useful next targets are reducing reference/index footprint and repeated
-lookup/ownership work, profiling common loop-boundary work, and measuring the
-remaining internal MIDI maintenance on the Pi. The prior Xeon function shares
+lookup/ownership work and common loop-boundary work. The follow-up Pi profiles
+measure MIDI/history at 26–29% of shared-playback sampled CPU time, making empty
+MIDI state/history paths a concrete common target. The prior Xeon function shares
 cannot be assumed to be the Pi's function shares. Payload sharing and deferred
 gains alone have not delivered the desired worst-case improvement in this prototype.
 
