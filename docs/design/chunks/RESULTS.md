@@ -15,6 +15,9 @@ CPU-quota throttling was recorded during any matrix.
 A follow-up [CPU sampling and timing reproduction](PROFILING.md) checks the upstream
 Pi optimizations and investigates where the callback spends its time.
 
+The subsequent [Pi 4 hardware results](PI_RESULTS.md) reproduce the broad median
+ranking and expose additional memory-pressure and loop-boundary deadline failures.
+
 ## Source, build and conditions
 
 - Source: `df4ba416`, based on `feat/backend-replacement` at `888bd8a6`.
@@ -198,6 +201,8 @@ are rejected at preparation. Ordinary experimental capture requires histories.
 
 Physical CPAL/JACK devices and Pi 4 hardware were unavailable locally. Production
 CPAL mock callback/prefill/sample-delay/heap-guard fixtures cover all variants; native
-JACK acceptance is supplied by CI. Pi measurements remain **pending hardware**.
-The same scripts/configuration are supplied for the user's PREEMPT_RT/core-isolated
-Pi setup. These native results establish neither a Pi DDR benefit nor deadline safety.
+JACK acceptance is supplied by CI. [Operator-supplied Pi measurements](PI_RESULTS.md)
+are now integrated separately: 225 validated runs on a cloud Pi with FIFO render
+priority, ordinary PREEMPT and no kernel-isolated CPUs. The original PREEMPT_RT/
+core-isolated setup is not covered by these archived three-variant comparisons. These native results alone establish
+neither a Pi DDR benefit nor deadline safety.

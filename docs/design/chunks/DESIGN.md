@@ -5,7 +5,8 @@ in [the prototype guide](PROTOTYPE.md). Its benchmark measurements and implement
 limitations take precedence over speculative cost estimates below. The prototype
 reuses the binary persistent index and interleaved channel groups; four-way index
 tuning and separate history arenas remain future options.
-Completed native measurements are in [the results report](RESULTS.md).
+Completed measurements are in [the native report](RESULTS.md) and
+[the Pi hardware report](PI_RESULTS.md).
 
 
 This note develops `IDEA_CHUNKS.md`. It is a proposed architecture with executable

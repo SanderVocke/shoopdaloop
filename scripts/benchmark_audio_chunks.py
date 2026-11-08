@@ -57,6 +57,11 @@ def configure_render(host_pid, tid, directory, render_cpu=None, rt_priority=None
                   'render_affinity': sorted(os.sched_getaffinity(tid)),
                   'render_scheduler': os.sched_getscheduler(tid),
                   'render_priority': os.sched_getparam(tid).sched_priority}
+    for name in ('sched_rt_period_us', 'sched_rt_runtime_us'):
+        try:
+            scheduling[name] = int((Path('/proc/sys/kernel') / name).read_text())
+        except OSError:
+            scheduling[name] = None
     (directory / 'scheduling.json').write_text(json.dumps(scheduling, indent=2) + '\n')
     return scheduling
 
@@ -110,7 +115,7 @@ def percentile(values, p):
     return values[max(0, math.ceil(len(values) * p) - 1)]
 
 
-def summarize(directory):
+def summarize(directory, *, write=True):
     run = json.loads((directory / "run.json").read_text())
     if run["scenario"] != "idle":
         track = next(track for track in run["setup"]["tracks"] if track["name"] == "Benchmark")
@@ -157,7 +162,8 @@ def summarize(directory):
               "max_us": max(durations), "overruns": sum(value > budget for value in durations),
               "late_p99_us": percentile(late, .99), "late_max_us": max(late),
               "dropped": 0, "counters": counters, "memory": lines[1], "directory": str(directory)}
-    (directory / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
+    if write:
+        (directory / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 
 

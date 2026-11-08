@@ -532,7 +532,9 @@ select a different renderer in any reported benchmark.
   workspace build, test-attribute policy and real bare-metal ARM checks pass.
 - Native UI workflow evidence and launch/Pi reproduction commands are published
   with the report. Physical CPAL/JACK devices, CPU hardware PMU and Pi 4 were not
-  available locally; target timing remains pending hardware as criterion 9 allows.
+  available locally at initial delivery. The later operator-supplied Pi timing
+  dataset is integrated below; the original PREEMPT_RT/isolation setup is not
+  covered by these archived three-variant comparisons.
   Existing production CPAL callback mocks cover all three modes; native JACK
   acceptance and cross-platform regressions are checked in CI.
 - Copy reduction is not a deadline-speedup claim: playback median callback elapsed time and
@@ -555,3 +557,25 @@ select a different renderer in any reported benchmark.
   does not resolve the separate hosted-import stall, which is also present in
   the base branch's Debug CI artifact. Its completion path remains under
   investigation; phase deadlines and production renderer settings are unchanged.
+
+
+### Pi hardware follow-up, 2026-11-08
+
+- [Pi hardware report](docs/design/chunks/PI_RESULTS.md): 225 actual-host runs /
+  1,388,187 measured callbacks from the supplied ARM64 bundle. Original ZIP
+  checksum, delivered build identity, every run statistic and all app/callback
+  validation checks pass. All 1,621 evidence files are preserved byte for byte
+  in a recompressed archive with per-file hashes.
+- Render affinity CPU 1 and FIFO/80 are confirmed for 216 timed runs; nine smoke
+  runs use SCHED_OTHER. The operator reports PREEMPT rather than PREEMPT_RT, a
+  three-CPU cpuset and no kernel-isolated CPUs. This does not validate the
+  originally proposed PREEMPT_RT/core-isolated setup for all three variants.
+- Copy reductions reproduce, but playback still regresses. At 256 frames under
+  continuous other-core memory copying, selected active-case overruns are
+  0 current / 682 chunks / 64 descriptors. All modes miss most active deadlines
+  under that load at 32 frames. Shared-loop wrap costs and approximately periodic
+  long FIFO stalls are documented separately; RT bandwidth throttling is a
+  hypothesis requiring additional evidence.
+- Offline replay is read-only. Future run records now include the global RT
+  bandwidth settings without changing them. No render implementation changes
+  are part of this import.

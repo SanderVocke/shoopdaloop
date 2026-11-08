@@ -24,6 +24,10 @@ sets **only rendering** to SCHED_FIFO and requires root or CAP_SYS_NICE. Omit it
 for ordinary scheduling. The scripts do not configure the kernel, IRQs or governor.
 Each run saves the observed render affinity, policy and priority in `scheduling.json`.
 
+The [first Pi hardware dataset and analysis](PI_RESULTS.md) are integrated into
+the working branch. Its cloud host used ordinary PREEMPT without kernel-isolated
+CPUs; its confirmed FIFO priority does not make it a PREEMPT_RT result.
+
 ## What to test
 
 1. **Smoke check:** all variants must complete playback and grabbing, with valid
