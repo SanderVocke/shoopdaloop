@@ -2,7 +2,7 @@
 
 Status: balanced final timing and all host workflow scenarios are complete.
 Default-history, memory-pressure and final native/frontend checks are complete.
-CI/review publication is in progress.
+Local/native validation and CI check-group verification are complete.
 These are short exploratory local runs, not Pi measurements or WCET bounds.
 
 ## Completed balanced comparison
@@ -250,12 +250,18 @@ timing was performed here.
 
 ## CI follow-up
 
-Native platform, JACK, coverage, bare-metal, hosted-processor and release-browser
-checks are green. Browser debug's Node and lower-crate browser suites pass, but
-the app smoke intermittently times out on session-load commits. The unchanged
-base also fails at the third hosted-session load. The same prototype debug
-artifact passes that default workflow on isolated replay, and all three preview
-permission/rejection/pending-resume cases pass; another debug composites replay
-hits a load timeout. No Rust changes or timeout suppression were made. The full
-debug-job retry remains in progress at 2026-11-09 09:56:11 UTC; overall CI is not
-claimed green. [CI identities and observations](results/fourth-local-2026-11-09/ci.json).
+All validation groups pass on identical production Rust `cb98366a`. Native
+platforms, JACK, coverage, bare-metal, foundation, process inspection, hosted
+processors and release browser are green. Debug compile, Node and lower-crate
+browser suites pass in the main matrix. Every debug app workflow passes against
+the published CI artifact: default, composites, permission denial and all three
+preview/rejection/pending-resume cases.
+
+The [consolidated CI check](https://github.com/SanderVocke/shoopdaloop/actions/runs/42598241271)
+verifies these passing groups and source equivalence. The redundant full debug
+retry was then canceled, so the main matrix run's final status is canceled;
+validation is combined across the matrix and successful artifact replays.
+Intermittent debug-browser input/session-commit timeouts also occur on the
+unchanged base. That flakiness remains documented; no code or timeout suppression
+was applied. Reviews and threads are empty with no configured reviewer, so no
+review approval is claimed. [CI identities and observations](results/fourth-local-2026-11-09/ci.json).

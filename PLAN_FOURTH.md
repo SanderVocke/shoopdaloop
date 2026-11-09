@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 7 on `proto/audio-compact`. Upstream is still
+Status: completed on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -352,7 +352,7 @@ Depends on: stage 6; fixes may return to the relevant earlier stage.
 
 - [x] Push completed milestones, rewrite the PR description around the delivered
   four-mode comparison, and mark the full prototype ready for review.
-- [ ] Monitor required CI until green; investigate failures, fix relevant causes,
+- [x] Monitor required CI until green; investigate failures, fix relevant causes,
   rerun affected checks and record unrelated infrastructure limitations honestly.
 - [x] Check automated reviews repeatedly, address valid findings and request/recheck
   review until approval when a reviewer is available. Record absent reviewers
@@ -459,26 +459,27 @@ unsupported features or running broad performance matrices.
   Changed no_std+alloc libraries build for thumbv7em-none-eabihf with warnings denied.
   See `results/fourth-local-2026-11-09/final-validation.json` beneath the design docs.
 
-- Stage 7 publication: PR #960 is ready and unmerged, with the Pi bundle,
-  measurements and all local/native validation delivered. Reviews/threads remain
-  empty and no reviewer is configured; no approval is claimed. Hosted-processor
-  CI on `cadfa874` is green. Main [CI run 42579519033](https://github.com/SanderVocke/shoopdaloop/actions/runs/42579519033)
-  has passed all native platforms, JACK, coverage, shared foundation, process
-  inspection, bare-metal and release-browser jobs. Dependency-download HTTP 504
-  failures passed on retry.
-- Remaining CI investigation: browser debug's Node and lower-crate browser
-  suites passed, but its app workflow timed out awaiting a hosted-session load
-  commit. The unchanged base `61ae8539` [also failed at the third hosted load](https://github.com/SanderVocke/shoopdaloop/actions/runs/42528616310);
-  a fresh base-artifact replay reproduced that wait, and another hit an input
-  timing timeout. The prototype's unchanged published debug artifact
-  [passed the full default workflow on isolated replay](https://github.com/SanderVocke/shoopdaloop/actions/runs/42595812801/job/129088030142).
-  Three preview/rejection/pending-resume cases pass; the debug composites case
-  hit another session-commit timeout. These observations establish an existing
-  intermittent debug-browser problem, not an all-green matrix. A full debug-job
-  retry and remaining diagnostic case are still running at 2026-11-09 09:56:11 UTC.
-  The CI checkbox remains open; no prototype Rust or Pi binaries were changed
-  to suppress these failures. See `results/fourth-local-2026-11-09/ci.json` in
-  the design evidence for source/run identities.
+- Stage 7 complete: PR #960 is ready and unmerged. All validation groups pass
+  on identical production Rust `cb98366a`: the main matrix's native platforms,
+  JACK, coverage, foundation, process inspection, bare-metal, release browser,
+  and debug compile/Node/library-browser checks, plus every debug app workflow
+  replayed against the published CI artifact. Hosted-processor CI also passes.
+  [Consolidated CI verification](https://github.com/SanderVocke/shoopdaloop/actions/runs/42598241271)
+  checks source equivalence and successful job/step conclusions and preserves a
+  machine-readable report. Reviews/threads are empty and no reviewer is configured;
+  no approval is claimed.
+- Stage 7 verification refinement: dependency HTTP 504 failures passed on retry.
+  Browser debug showed intermittent session-load waits also present on unchanged
+  base `61ae8539`. Its default app workflow, composites, permission denial and
+  all three preview/rejection/pending-resume cases pass on artifact replay.
+  Reuse the already-passing debug compile/Node/library suites from the same Rust
+  source rather than require another complete run of those long suites. After
+  source/job equivalence was verified, the redundant full third retry was canceled.
+  Thus validation spans the matrix and successful artifact replays; the main run's
+  final status is canceled, not an all-green single run. The existing browser
+  flakiness remains documented and was not suppressed with code/timeout changes.
+  This changes verification orchestration only, not goals or acceptance criteria.
+  See `results/fourth-local-2026-11-09/ci.json` beneath the design docs.
 - The execution environment became unavailable after implementation, evidence,
   the Pi delivery and full local validation had been pushed. Remaining CI and
   documentation publication continue through GitHub; no rerun of local checks

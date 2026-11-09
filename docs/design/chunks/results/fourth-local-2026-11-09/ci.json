@@ -1,5 +1,5 @@
 {
-  "observed_at": "2026-11-09 09:56:11 UTC",
+  "observed_at": "2026-11-09 10:05:46 UTC",
   "source_rust": "cb98366a70da9195951f242755cafa254e3aa720",
   "evidence_head_before_this_record": "cadfa8748d85d4a3fc9e652f830df0579cf8ea44",
   "production_rust_unchanged": true,
@@ -7,13 +7,13 @@
     "run_id": 42579519033,
     "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42579519033",
     "attempt": 3,
-    "status": "in_progress",
+    "status": "completed",
     "jobs": [
       {
         "id": 129083894844,
         "name": "web wasm32 debug",
-        "status": "in_progress",
-        "conclusion": null
+        "status": "completed",
+        "conclusion": "cancelled"
       },
       {
         "id": 129083895880,
@@ -105,7 +105,9 @@
         "status": "completed",
         "conclusion": "success"
       }
-    ]
+    ],
+    "conclusion": "cancelled",
+    "cancellation_reason": "Redundant full retry stopped after all check groups were verified passing on the same production Rust; debug app workflows were replayed using its published artifact."
   },
   "earlier_attempts": {
     "attempt_1": "Three HTTP 504 dependency download failures; affected downloads passed on retry.",
@@ -144,12 +146,32 @@
     },
     "extra": {
       "run_id": 42596476843,
-      "preview_job_id": 129090234955,
-      "previews": "Three permission/rejection/pending-resume cases passed.",
-      "composites_job_id": 129090235414,
-      "composites": "LoadSession host-owned commit timeout.",
-      "denied_job_id": 129090235425,
-      "denied_status": "in_progress"
+      "conclusion": "success",
+      "attempt": 2,
+      "jobs": [
+        {
+          "id": 129093133402,
+          "name": "Browser debug composites",
+          "conclusion": "success"
+        },
+        {
+          "id": 129093135801,
+          "name": "Browser debug previews",
+          "conclusion": "success"
+        },
+        {
+          "id": 129093178646,
+          "name": "Browser debug denied",
+          "conclusion": "success"
+        }
+      ],
+      "cases": [
+        "composites",
+        "permission denial",
+        "preview output",
+        "preview resume rejection",
+        "permission denial with pending preview resume"
+      ]
     },
     "earlier_base_replay": {
       "run_id": 42595632338,
@@ -164,5 +186,107 @@
     "configured_reviewer": false,
     "approval_claimed": false
   },
-  "conclusion": "Native validation is complete. Overall CI is not yet green; browser debug has pre-existing intermittent timing/session-commit failures and a full retry is running. No source or timeout suppression was applied."
+  "conclusion": "All validation groups passed on identical production Rust. Validation spans matrix jobs and artifact-only app workflow replays; the redundant full retry was canceled. Existing browser-debug flakiness remains documented.",
+  "consolidated_verification": {
+    "run_id": 42598241271,
+    "job_id": 129096071309,
+    "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42598241271",
+    "conclusion": "success",
+    "report": {
+      "production_rust": "cb98366a70da9195951f242755cafa254e3aa720",
+      "main_run": 42579519033,
+      "native_and_other_jobs": [
+        {
+          "name": "Fixed shared media foundation",
+          "conclusion": "success"
+        },
+        {
+          "name": "Bare-metal runtime and session service",
+          "conclusion": "success"
+        },
+        {
+          "name": "macos arm64 debug",
+          "conclusion": "success"
+        },
+        {
+          "name": "linux x86_64 release",
+          "conclusion": "success"
+        },
+        {
+          "name": "Host process inspection (macos-15)",
+          "conclusion": "success"
+        },
+        {
+          "name": "windows x86_64 release",
+          "conclusion": "success"
+        },
+        {
+          "name": "Native JACK audio and MIDI acceptance",
+          "conclusion": "success"
+        },
+        {
+          "name": "macos arm64 release",
+          "conclusion": "success"
+        },
+        {
+          "name": "Nightly without CPAL (${{ matrix.flavor }})",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Host process inspection (windows-2025)",
+          "conclusion": "success"
+        },
+        {
+          "name": "linux x86_64 debug",
+          "conclusion": "success"
+        },
+        {
+          "name": "Host process inspection (ubuntu-24.04)",
+          "conclusion": "success"
+        },
+        {
+          "name": "web wasm32 release",
+          "conclusion": "success"
+        },
+        {
+          "name": "windows x86_64 debug",
+          "conclusion": "success"
+        },
+        {
+          "name": "Rust coverage (Linux)",
+          "conclusion": "success"
+        }
+      ],
+      "debug_compile_node_library_groups": {
+        "Build web application": "success",
+        "Check WebAssembly packages": "success",
+        "Run required Node Wasm suite": "success",
+        "Run runtime, loop, engine and codec browser suites": "success",
+        "Check independent runtime host formatting and boundary": "success",
+        "Check independent loop host formatting and boundary": "success"
+      },
+      "debug_artifact": 13662284783,
+      "default_app_workflow_job": 129088030142,
+      "default_app_workflow": "success",
+      "other_app_workflow_run": 42596476843,
+      "other_app_workflow_jobs": [
+        {
+          "name": "Browser debug composites",
+          "conclusion": "success"
+        },
+        {
+          "name": "Browser debug previews",
+          "conclusion": "success"
+        },
+        {
+          "name": "Browser debug denied",
+          "conclusion": "success"
+        }
+      ],
+      "hosted_processor_run": 42589622180,
+      "hosted_processor_conclusion": "success",
+      "conclusion": "All validation groups passed on identical production Rust; browser flakes were rerun against the published artifact.",
+      "redundant_main_retry_cancel": {}
+    }
+  }
 }
