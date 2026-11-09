@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 5 on `proto/audio-compact`. Upstream is still
+Status: executing stage 6 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -291,16 +291,16 @@ Depends on: stage 3; do not wait for all grab/churn integration or broad CI.
 
 Depends on: stages 2–4.
 
-- [ ] Wire normal grab and adopt-ringbuffer requests to compact frozen views,
+- [x] Wire normal grab and adopt-ringbuffer requests to compact frozen views,
   scheduled publication and writer continuation. Share retained audio without
   depending on the source ring's current contents.
-- [ ] Complete overlapping grabs, multi-loop retention, growing recordings,
+- [x] Complete overlapping grabs, multi-loop retention, growing recordings,
   sync-aligned cuts and activation, bulk readers surviving replacement, removal
   and recreation of loops/tracks, and cancellation/disconnect/fault cleanup.
-- [ ] Verify repeated grabs through several history wraps, simultaneous recording
+- [x] Verify repeated grabs through several history wraps, simultaneous recording
   and playback, deletion while reading, and pool/owner saturation. Check bounded
   per-callback preparation/reclamation and unchanged old takes after refusal.
-- [ ] Pass every existing host scenario in compact, including `grab`, `shared`,
+- [x] Pass every existing host scenario in compact, including `grab`, `shared`,
   `continue`, `record-play` and `churn`. Validate accepted controls, active state,
   finite/nonempty signal readback, and final published media; silence stays separate.
 
@@ -412,3 +412,16 @@ unsupported features or running broad performance matrices.
   reserving unsupported compact edit storage; audio-only also omits unused global
   MIDI state. The public-protocol regression includes that native preparation
   shape in every mode. First four-way timing follows this corrected release.
+
+- Stage 5 complete: all ten real-host compact scenarios pass, including signal
+  grab/shared/continue, simultaneous playback/capture and track churn. Compact
+  shares producer history chunks by identity for ordinary and continued capture;
+  private appends avoid per-tick metadata snapshots and cancelled writes roll back.
+  New heap-guarded oracles match current rendered grabs and continued recordings
+  through repeated wraps at Q=1/32 and callback partitions 1/13/128/256. Retained
+  reader/removal/refusal and all-member capture tests cover both chunk stores.
+  Common audio-only preparation also omits the MIDI edit/recovery buffer and
+  source-reset state construction. CPAL's real driver mock passes all four modes
+  with no MIDI devices opened; JACK audio-only reserves no MIDI port slots.
+  Runtime/loop/engine suites pass; native passes with the documented missing-backend
+  allowance. A real local dummy JACK server is being prepared for final coverage.
