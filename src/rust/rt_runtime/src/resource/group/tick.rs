@@ -279,6 +279,74 @@ impl ResourceStore {
             .set_member(interval.take.group, ordinal, member);
         Ok(())
     }
+    pub fn stage_capture_audio_sequences(
+        &mut self,
+        interval: CaptureTickId,
+        ordinal: usize,
+        sequences: &[crate::audio_refs::AudioSequence],
+    ) -> Result<bool, Error> {
+        use crate::audio_refs::{ChunkRef, GainEnvelope};
+        let (_, mut member) = self.tick_member(interval, ordinal)?;
+        let Format::Audio { channels } = member.spec.format else {
+            return Err(Error::InvalidShape);
+        };
+        let mut reservation = member.append.ok_or(Error::InvalidState)?;
+        if reservation.ready {
+            return Err(Error::InvalidState);
+        }
+        let q = self.quantum.frames();
+        if sequences.len() != channels as usize {
+            return Ok(false);
+        }
+        let mut source = None;
+        for (channel, sequence) in sequences.iter().enumerate() {
+            if sequence.len != 1
+                || sequence.spans[0].frames != q
+                || sequence.gain != GainEnvelope::default()
+            {
+                return Ok(false);
+            }
+            let ChunkRef::Persistent(reference) = sequence.spans[0].chunk else {
+                return Ok(false);
+            };
+            if reference.first != channel || reference.stride != channels as usize {
+                return Ok(false);
+            }
+            if let Some(previous) = source {
+                let previous: AudioChunkRef = previous;
+                if previous.store != reference.store || previous.lease != reference.lease {
+                    return Ok(false);
+                }
+            } else {
+                source = Some(reference);
+            }
+        }
+        let Some(source) = source else {
+            return Ok(false);
+        };
+        let slot = self
+            .capture_groups
+            .member_index(interval.take.group, ordinal);
+        let Some(write) = self.capture_groups.audio_writes[slot].take() else {
+            return Ok(false);
+        };
+        if write.store != source.store {
+            self.capture_groups.audio_writes[slot] = Some(write);
+            return Ok(false);
+        }
+        let result = self.with_audio(write.store, |store, pool| {
+            pool.fill_capture_reference(&mut store.render_io(), &write.write, source.lease)
+        });
+        self.capture_groups.audio_writes[slot] = Some(write);
+        result?;
+        reservation.ready = true;
+        reservation.bytes = q * channels as usize * 4;
+        member.append = Some(reservation);
+        self.capture_groups
+            .set_member(interval.take.group, ordinal, member);
+        Ok(true)
+    }
+
     pub fn stage_capture_midi(
         &mut self,
         interval: CaptureTickId,

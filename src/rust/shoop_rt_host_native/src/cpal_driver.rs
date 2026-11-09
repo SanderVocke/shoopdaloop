@@ -520,12 +520,16 @@ pub(crate) fn start(
 ) -> Result<Started, StartError> {
     let host = select_host(config.host.as_deref())?;
     let mut warnings = Vec::new();
-    let midi = crate::open_midi(
-        &config.client_name,
-        &config.midi_inputs,
-        &config.midi_outputs,
-        &mut warnings,
-    );
+    let midi = if crate::audio_only(engine) {
+        MidiDevices::default()
+    } else {
+        crate::open_midi(
+            &config.client_name,
+            &config.midi_inputs,
+            &config.midi_outputs,
+            &mut warnings,
+        )
+    };
     let mut started = start_cpal(&host, config, engine, midi)?;
     if let Some(running) = started.host.running.as_mut() {
         if let crate::DriverConfig::Cpal(config) = &mut running.configuration {
@@ -549,6 +553,11 @@ where
     H: HostTrait,
     <H::Device as DeviceTrait>::Stream: Send + 'static,
 {
+    let midi = if crate::audio_only(engine) {
+        MidiDevices::default()
+    } else {
+        midi
+    };
     let mut warnings = Vec::new();
     if config.output_device == DeviceSelection::None {
         return Err(StartError::InvalidConfig(

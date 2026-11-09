@@ -369,7 +369,7 @@ fn pools_and_identities_are_enforced() {
         let mut harness = Harness::new(&audio_description(mode));
         let created = |strip| Request::CreateStrip {
             strip,
-            shape: shape(1, 1, true),
+            shape: shape(1, 1, false),
         };
         assert_eq!(
             harness.apply(created(strip(4, 1))),
@@ -648,7 +648,7 @@ fn only_occupied_slots_are_rendered() {
         let track = strip(3, 1);
         harness.done(Request::CreateStrip {
             strip: track,
-            shape: shape(2, 2, true),
+            shape: shape(2, 2, false),
         });
         harness.done(Request::CreateLoop {
             loop_id: loop_id(5, 1),
@@ -656,8 +656,24 @@ fn only_occupied_slots_are_rendered() {
         });
         harness.run(1, 1);
         // Master input/output, the bulk reader, the strip stages and loop playback,
-        // capture and fader.
-        assert_eq!(harness.host.render.diagnostics().nodes_processed, 8);
+        // capture and fader. Compact skips the silent loop pair.
+        let diagnostics = harness.host.render.diagnostics();
+        assert_eq!(
+            diagnostics.nodes_processed,
+            if mode == rt_runtime::AudioRenderMode::Compact {
+                5
+            } else {
+                8
+            }
+        );
+        assert_eq!(
+            diagnostics.nodes_skipped,
+            if mode == rt_runtime::AudioRenderMode::Compact {
+                3
+            } else {
+                0
+            }
+        );
         harness.done(Request::RemoveStrip { strip: track });
         harness.run(1, 1);
         assert_eq!(harness.host.render.diagnostics().nodes_processed, 3);

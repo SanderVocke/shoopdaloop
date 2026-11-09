@@ -1,0 +1,13 @@
+{
+  "modes": [
+    "current",
+    "chunks",
+    "chunks-descriptors",
+    "compact"
+  ],
+  "driver": "real JACK service; dummy hardware",
+  "sample_rate": 48000,
+  "audio_only": true,
+  "workflow": "native app attach and audio track creation",
+  "physical_cpal_device": "unavailable; four-mode real-driver mock passes"
+}

@@ -9,6 +9,8 @@ import struct
 import subprocess
 import zipfile
 
+from benchmark_audio_chunks import MODES
+
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -61,8 +63,9 @@ def main():
     shutil.copy2(repo / 'docs/design/chunks/PI_BENCHMARKS.md', args.output / 'README.md')
     docs = args.output / 'docs'
     docs.mkdir()
-    for name in ('PROTOTYPE.md', 'RESULTS.md', 'PROFILING.md'):
+    for name in ('PROTOTYPE.md', 'RESULTS.md', 'PROFILING.md', 'FOURTH_RESULTS.md'):
         shutil.copy2(repo / 'docs/design/chunks' / name, docs / name)
+    shutil.copy2(repo / 'docs/design/chunks/audio-only-host.json', args.output / 'audio-only-host.json')
     notices = args.output / 'licenses'
     notices.mkdir()
     shutil.copy2(repo / 'LICENSE', notices / 'shoopdaloop-LICENSE')
@@ -93,7 +96,8 @@ def main():
         'features': ['testing', 'cpal', 'jack', 'builtin-fx', 'oxisynth'],
         'requires': '64-bit Linux ARM64, glibc >= 2.36, Python 3, taskset; optional perf/c++filt',
         'binary_validation': 'ARM64 ELF checks; build warnings denied; emulated actual-app smoke tested separately',
-        'modes': ['current', 'chunks', 'chunks-descriptors'],
+        'modes': list(MODES),
+        'benchmark_audio_only': 'MIDI device ports, history/index storage, loop/source state buffers and processing omitted in every mode',
         'files_sha256': {str(p.relative_to(args.output)): digest(p)
                          for p in sorted(args.output.rglob('*')) if p.is_file()},
     }

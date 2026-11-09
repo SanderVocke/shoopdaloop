@@ -57,15 +57,16 @@ pub fn description() -> EngineDescription {
     }
 }
 
-pub fn audio_modes() -> [shoop_rt_engine::AudioRenderMode; 3] {
+pub fn audio_modes() -> [shoop_rt_engine::AudioRenderMode; 4] {
     use shoop_rt_engine::AudioRenderMode::*;
-    [Current, Chunks, ChunksDescriptors]
+    [Current, Chunks, ChunksDescriptors, Compact]
 }
 
 pub fn audio_description(mode: shoop_rt_engine::AudioRenderMode) -> EngineDescription {
     EngineDescription {
         audio_render_mode: mode,
         audio_bench_only: true,
+        host: HostPorts::numbered(2, 2, 0),
         ..description()
     }
 }
@@ -127,6 +128,7 @@ type Input = Box<dyn FnMut(usize, u64) -> f32>;
 /// The offline host with collected engine messages. Every engine call is
 /// heap-guarded; collecting messages happens outside the guard.
 pub struct Harness {
+    midi_enabled: bool,
     pub host: OfflineHost,
     pub results: BTreeMap<u64, Outcome>,
     pub telemetry: Vec<(u64, Telemetry)>,
@@ -144,6 +146,7 @@ pub struct Harness {
 impl Harness {
     pub fn new(description: &EngineDescription) -> Self {
         let mut harness = Self {
+            midi_enabled: !description.host.midi_outputs.is_empty(),
             host: OfflineHost::new(description).unwrap(),
             results: BTreeMap::new(),
             telemetry: Vec::new(),
@@ -219,10 +222,12 @@ impl Harness {
             for port in 0..2 {
                 self.outputs[port].extend_from_slice(&self.host.output(port)[..count]);
             }
-            let output = self.host.midi_output(0);
-            for index in 0..output.len() {
-                let (offset, bytes) = output.get(index).unwrap();
-                self.midi.push((start + u64::from(offset), bytes.to_vec()));
+            if self.midi_enabled {
+                let output = self.host.midi_output(0);
+                for index in 0..output.len() {
+                    let (offset, bytes) = output.get(index).unwrap();
+                    self.midi.push((start + u64::from(offset), bytes.to_vec()));
+                }
             }
             self.pump();
             remaining -= count;

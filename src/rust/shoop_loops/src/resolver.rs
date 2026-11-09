@@ -5,6 +5,7 @@ use crate::config::checked_storage;
 use crate::*;
 use alloc::{vec, vec::Vec};
 
+mod compact;
 mod program_change;
 mod retime;
 pub use program_change::ProgramChangeResult;
@@ -113,6 +114,8 @@ impl ProgramBoundary {
 }
 
 pub struct Resolver {
+    compact_ready: bool,
+    compact_preview: bool,
     quantum: rt_runtime::Quantum,
     topology: PreparedTopology,
     epoch: Epoch,
@@ -198,6 +201,8 @@ impl Resolver {
             loop_generations[node.id.slot() as usize] = node.id.generation();
         }
         Ok(Self {
+            compact_ready: false,
+            compact_preview: false,
             quantum,
             topology,
             epoch: Epoch(0),
@@ -294,6 +299,7 @@ impl Resolver {
         Ok(program_needs_entry_at(program, self.state(id)?, frame))
     }
     pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
+        self.invalidate_compact();
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
@@ -342,6 +348,9 @@ impl Resolver {
     /// cancellation have settled. The reference routing window has skip count one.
     pub fn prerouting_transition(&self, target: LoopId) -> Result<Option<Transition>, Error> {
         self.topology.node(target)?;
+        if self.compact_preview {
+            return Ok(None);
+        }
         let records = if self.preview.is_some() && !self.committed {
             &self.scratch.records
         } else {
@@ -376,6 +385,7 @@ impl Resolver {
     }
 
     pub fn submit(&mut self, request: Request) -> Result<RequestId, Error> {
+        self.invalidate_compact();
         if request.transition == Transition::Program {
             return Err(Error::InvalidProgram);
         }
@@ -388,6 +398,7 @@ impl Resolver {
         requests: &[Request],
         output: &mut [Option<RequestId>],
     ) -> Result<(), Error> {
+        self.invalidate_compact();
         if requests.is_empty() || output.len() != requests.len() {
             return Err(Error::InvalidConfig);
         }
@@ -437,6 +448,7 @@ impl Resolver {
         parent: RequestId,
         request: Request,
     ) -> Result<RequestId, Error> {
+        self.invalidate_compact();
         let owner = self.record(parent)?;
         if owner.terminal.is_some()
             || owner.followup
@@ -480,6 +492,7 @@ impl Resolver {
         batch: Option<RequestId>,
         followup: bool,
     ) -> Result<RequestId, Error> {
+        self.invalidate_compact();
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
@@ -584,6 +597,7 @@ impl Resolver {
     }
 
     pub fn cancel(&mut self, id: RequestId) -> Result<CancelResult, Error> {
+        self.invalidate_compact();
         if self.committed {
             return Err(Error::InvalidState);
         }
@@ -626,6 +640,8 @@ impl Resolver {
     }
 
     fn begin_preview(&mut self, ceiling: Frame, observations: &[Observation]) -> Result<(), Error> {
+        self.compact_preview = false;
+        self.invalidate_compact();
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
@@ -911,6 +927,15 @@ impl Resolver {
             return Err(Error::InvalidState);
         }
         let interval = self.preview.ok_or(Error::InvalidState)?;
+        if self.compact_preview {
+            for decision in &self.scratch.decisions {
+                self.states[decision.state.id.slot() as usize] = Some(decision.state);
+            }
+            core::mem::swap(&mut self.events, &mut self.scratch.events);
+            self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
+            self.committed = true;
+            return Ok(interval);
+        }
         if let Some(epoch) = self.preview_program_epoch {
             let change = self
                 .program_change
@@ -956,6 +981,7 @@ impl Resolver {
             }
         }
         self.frame = end;
+        self.compact_preview = false;
         self.preview = None;
         self.committed = false;
         Ok(())
@@ -1012,6 +1038,7 @@ impl Resolver {
         candidate: PreparedTopology,
         stop_playback: bool,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
+        self.invalidate_compact();
         let validation = (|| {
             {
                 let q = self.quantum;

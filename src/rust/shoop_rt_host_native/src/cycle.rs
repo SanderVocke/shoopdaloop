@@ -146,6 +146,7 @@ impl Cycle {
                 work.copied_bytes as u64,
                 work.validation_steps as u64,
                 diagnostics.nodes_processed as u64,
+                diagnostics.nodes_skipped as u64,
                 u64::from(result.is_err()),
                 graph.forwarded,
                 graph.materialized,

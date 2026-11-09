@@ -553,6 +553,18 @@ impl ControlEndpoint {
     }
     /// Validate a structural request against the staged model.
     pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
+        if self.settings.compact
+            && matches!(
+                request,
+                Request::CreateComposite { .. }
+                    | Request::ResetComposite { .. }
+                    | Request::CreateProcessedStrip { .. }
+                    | Request::CreateProcessedBus { .. }
+                    | Request::SetBusProcessor { enabled: true, .. }
+            )
+        {
+            return Staged::Refused(Refusal::Unsupported);
+        }
         let next = &self.next;
         match request {
             Request::SetBusProcessor { bus, enabled } => {
@@ -620,6 +632,9 @@ impl ControlEndpoint {
             },
             Request::CreateStrip { strip, shape }
             | Request::CreateProcessedStrip { strip, shape, .. } => {
+                if self.settings.audio_only && (shape.midi_input || shape.midi_output) {
+                    return Staged::Refused(Refusal::Unsupported);
+                }
                 let processor = if let Request::CreateProcessedStrip { kind, .. } = request {
                     if kind == shoop_rt_protocol::ProcessorKind::External {
                         if !self.settings.external_dry_wet {

@@ -68,6 +68,16 @@ impl ResourceStore {
             })
             .ok_or(Error::InvalidState)
     }
+    pub fn audio_history_sequence(
+        &self,
+        id: AudioHistoryId,
+        frame: Frame,
+        channel: usize,
+    ) -> Result<Option<crate::audio_refs::AudioSequence>, Error> {
+        self.audio(id.store)?
+            .history_sequence(id.store, id.history, frame, channel)
+    }
+
     pub fn audio_chunk_sequence(
         &self,
         index: ReadIndex,
@@ -616,6 +626,43 @@ impl RenderIo<'_> {
             write,
         })
     }
+    pub fn stage_audio_source_append(
+        &mut self,
+        resource: ResourceId,
+        expected: Revision,
+        source: AudioHistoryId,
+        frame: Frame,
+    ) -> Result<Option<AudioWrite>, Error> {
+        let Some(sequence) = self.store.audio_history_sequence(source, frame, 0)? else {
+            return Ok(None);
+        };
+        let crate::audio_refs::ChunkRef::Persistent(reference) = sequence.spans[0].chunk else {
+            return Ok(None);
+        };
+        let owner = self.store.check_writer(resource, None)?;
+        if owner.revision != expected {
+            return Err(Error::StaleRevision);
+        }
+        let active = owner.active.ok_or(Error::InvalidState)?;
+        let version = get(&self.store.versions, active.slot, active.generation)?;
+        let take = version.audio.ok_or(Error::InvalidShape)?;
+        if take.store != source.store {
+            return Ok(None);
+        }
+        let revision = owner.revision.checked_next()?;
+        let write = self.store.with_audio(take.store, |store, audio| {
+            audio.stage_reference_append(&mut store.render_io(), take.take, reference.lease)
+        })?;
+        Ok(write.map(|write| AudioWrite {
+            resource,
+            expected,
+            active,
+            revision,
+            store: take.store,
+            write,
+        }))
+    }
+
     pub fn stage_audio_window_write(
         &mut self,
         resource: ResourceId,

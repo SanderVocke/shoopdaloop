@@ -62,17 +62,18 @@ pub(crate) struct Stage {
 }
 impl Stage {
     pub fn capacity(settings: &SharedSettings) -> InputCapacity {
-        let Some(midi) = settings.midi_pool else {
-            return InputCapacity::default();
-        };
+        let midi = settings.midi_pool;
         InputCapacity {
-            retention_frames: midi.history_frames,
+            retention_frames: settings
+                .audio_pool
+                .map_or(0, |a| a.history_frames as u64)
+                .max(midi.map_or(0, |m| m.history_frames)),
             writer_slots: settings.candidates as u32,
-            events_per_source: midi.history_events as u32,
-            bytes_per_source: midi.history_bytes as u64,
-            events_per_tick: midi.events_per_tick as u32,
-            bytes_per_tick: midi.bytes_per_tick as u32,
-            maximum_packet: midi.packets.max_packet as u32,
+            events_per_source: midi.map_or(0, |m| m.history_events as u32),
+            bytes_per_source: midi.map_or(0, |m| m.history_bytes as u64),
+            events_per_tick: midi.map_or(0, |m| m.events_per_tick as u32),
+            bytes_per_tick: midi.map_or(0, |m| m.bytes_per_tick as u32),
+            maximum_packet: midi.map_or(0, |m| m.packets.max_packet as u32),
         }
     }
     pub(crate) fn supported(&self) -> bool {

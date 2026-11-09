@@ -1107,6 +1107,7 @@ impl Planner for LoopPlanner {
         Ok(())
     }
     fn begin_tick(&mut self, mut context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
+        self.compact_view_tick = false;
         let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
         if let Some(shared) = &mut self.shared {
             shared.progress(context.callback_start, &mut context.resources)?;
@@ -1114,6 +1115,32 @@ impl Planner for LoopPlanner {
         let q = self.resolver.quantum();
         if context.frame.checked_add(q.frames())? != context.ceiling {
             return Err(Error::InvalidFrame);
+        }
+        if self.compact_views_ready {
+            if let Some(interval) = self.resolver.compact_tick(&[]).map_err(runtime_error)? {
+                for &decision in self.resolver.decisions().map_err(runtime_error)? {
+                    let view = &mut self.views[decision.state.id.slot() as usize];
+                    view.decision = decision;
+                    view.raw_position = decision
+                        .state
+                        .position
+                        .try_into()
+                        .map_err(|_| Error::InvalidFrame)?;
+                }
+                self.resolver.commit().map_err(runtime_error)?;
+                self.observer.settled(&self.resolver);
+                self.observer.boundary(
+                    context.frame,
+                    self.resolver.decisions().map_err(runtime_error)?,
+                    self.resolver.events(),
+                    self.resolver.dropped_events(),
+                );
+                self.compact_view_tick = true;
+                if interval.end != context.ceiling {
+                    return Err(Error::InvalidFrame);
+                }
+                return Ok(());
+            }
         }
         let end = context.ceiling;
         if self.settle_boundary(context)? != end {
@@ -1126,9 +1153,33 @@ impl Planner for LoopPlanner {
         mut context: FinishContext<'_, Operation, Reply>,
     ) -> Result<(), Error> {
         let end = context.interval.end;
-        self.finish_boundary(&mut context)?;
+        if self.compact_view_tick {
+            self.resolver.finish().map_err(runtime_error)?;
+        } else {
+            self.finish_boundary(&mut context)?;
+        }
         if let Some(shared) = &mut self.shared {
             shared.finish(end, self.graph_epoch, &mut context.resources)?;
+        }
+        if self.compact && !self.compact_view_tick {
+            self.compact_views_ready = self.pending.iter().all(Option::is_none)
+                && self.rows.iter().enumerate().all(|(slot, row)| {
+                    let Some(row) = row.as_ref().filter(|r| r.assigned) else {
+                        return true;
+                    };
+                    let view = &self.views[slot];
+                    row.active.is_none()
+                        && !row.aborted
+                        && !view.lead
+                        && !view.dry_wet
+                        && !view.pre_recording
+                        && !view.pre_rerecording
+                        && view.replace.is_none()
+                        && view.raw_position == view.decision.state.position as i64
+                        && view.windows.audio[..row.binding.channels]
+                            .iter()
+                            .all(|w| w.origin() == 0 && w.preplay == 0)
+                });
         }
         Ok(())
     }
@@ -1208,6 +1259,8 @@ impl LoopPlanner {
         operation: Operation,
         mut context: OperationContext<'_, Operation, Reply>,
     ) -> Result<Disposition<Reply>, Error> {
+        self.resolver.invalidate_compact();
+        self.compact_views_ready = false;
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
         self.node_pairs.callback(context.callback_start);
@@ -2093,10 +2146,20 @@ impl LoopPlanner {
         }
         loop {
             self.cancel_ticks(&mut context.resources)?;
-            let interval = self
-                .resolver
-                .preview_tick(&self.failures)
-                .map_err(runtime_error)?;
+            let compact = if self.compact {
+                self.resolver
+                    .compact_tick(&self.failures)
+                    .map_err(runtime_error)?
+            } else {
+                None
+            };
+            let interval = match compact {
+                Some(interval) => interval,
+                None => self
+                    .resolver
+                    .preview_tick(&self.failures)
+                    .map_err(runtime_error)?,
+            };
             for decision in self.resolver.decisions().map_err(runtime_error)? {
                 self.views[decision.state.id.slot() as usize].decision = *decision;
             }

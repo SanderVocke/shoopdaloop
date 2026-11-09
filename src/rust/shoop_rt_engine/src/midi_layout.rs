@@ -1,8 +1,9 @@
 use crate::EngineDescription;
 use rt_runtime::{buffer::MidiCapacity, Error};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Layout {
+    pub enabled: bool,
     pub monitor: MidiCapacity,
     pub playback_merge: MidiCapacity,
     pub global: MidiCapacity,
@@ -14,6 +15,9 @@ pub(crate) struct Layout {
 }
 impl Layout {
     pub fn new(d: &EngineDescription) -> Result<Self, Error> {
+        if d.audio_bench_only {
+            return Ok(Self::default());
+        }
         let input = MidiCapacity {
             events: d.midi_events,
             bytes: d.midi_bytes,
@@ -82,6 +86,7 @@ impl Layout {
             .ok_or(Error::Capacity)?;
         let _ = total;
         Ok(Self {
+            enabled: true,
             monitor,
             playback_merge: loops,
             global,

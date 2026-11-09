@@ -86,6 +86,13 @@ impl MidiBufferSettings {
     }
 }
 
+pub struct CompactActivity<'a, L: Planner = NoPlanner> {
+    pub node: NodeId,
+    pub graph_epoch: crate::Epoch,
+    pub inputs_silent: bool,
+    pub domain: &'a L,
+}
+
 pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub node: NodeId,
     pub graph_epoch: crate::Epoch,
@@ -134,6 +141,13 @@ impl ProcessorOperation for () {
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
 pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
+    /// Opt in only when processors preserve published input owners until finish_tick.
+    fn compact_graph_supported() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
     /// Validate the actual node identity and domain before installation.
     /// Admission may run on-render and must obey the processing contract.
     fn admit(&self, _node: NodeId, _domain: &L) -> Result<(), Error> {
@@ -149,11 +163,23 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
         Ok(MidiBufferSettings::default())
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
+    /// Return false only when compact execution may leave this operation's
+    /// already-cleared outputs silent without any other render-side effect.
+    fn compact_active(&mut self, _activity: CompactActivity<'_, L>) -> Result<bool, Error> {
+        Ok(true)
+    }
     fn process_references(
         &mut self,
         _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
     ) -> Result<bool, Error> {
         Ok(false)
+    }
+    /// Replace materialized outputs with borrows of audio published by this tick.
+    fn publish_references(
+        &mut self,
+        _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+    ) -> Result<(), Error> {
+        Ok(())
     }
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
@@ -170,11 +196,20 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn compact_active(&mut self, activity: CompactActivity<'_, L>) -> Result<bool, Error> {
+        (**self).compact_active(activity)
+    }
     fn process_references(
         &mut self,
         block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
     ) -> Result<bool, Error> {
         (**self).process_references(block)
+    }
+    fn publish_references(
+        &mut self,
+        block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+    ) -> Result<(), Error> {
+        (**self).publish_references(block)
     }
     fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
         (**self).midi_buffer_settings()

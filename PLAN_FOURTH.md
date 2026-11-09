@@ -1,0 +1,486 @@
+# Plan: compact audio engine and a true audio-only comparison
+
+Status: completed on `proto/audio-compact`. Upstream is still
+`888bd8a6`; it is already an ancestor of this branch. Local placement is
+controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
+four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
+Inspected base: `proto/audio-chunks` at `61ae8539`. Follow this branch's
+[write_plan.md](.agents/prompts/write_plan.md). Preserve the completed
+[three-variant prototype](PLAN_CHUNK_PROTO.md) and its archived results.
+
+## Goals and scope
+
+Build a fourth opt-in native variant, `compact`, integrated with the normal app,
+and remove internal MIDI work from **all four** benchmark variants. Obtain a quick
+first comparison in this execution environment; Pi builds, SSH, packaging and Pi
+measurements are outside this plan.
+
+| Startup mode | Audio implementation under the common audio-only profile |
+| --- | --- |
+| `current` | Existing sample-buffer renderer. |
+| `chunks` | Existing shared chunks and reference routing. |
+| `chunks-descriptors` | Existing chunks with endpoint-composed, approximate ramps. |
+| `compact` | Flat audio storage and cursors, compact routing operations, event-driven loop state, and deferred/fused sample processing with current ramp semantics. |
+
+The hypothesis is that removing repeated planning, dependent storage lookups and
+generic node plumbing will shrink the active working set and improve callback
+cost. Existing routing is already compiled on topology changes; merely caching
+that graph again is insufficient. The [Pi profiles](docs/design/chunks/PI_PROFILING.md)
+motivate this work but do not establish a predicted speedup.
+
+### Immutable acceptance criteria
+
+These goals and criteria require explicit user approval to change.
+
+1. One native build exposes all four modes through `SHOOP_AUDIO_RENDER`.
+   `SHOOP_AUDIO_BENCH_AUDIO_ONLY=1` selects the same true audio-only policy for
+   every comparison. Ordinary startup without either override retains current
+   behavior, including MIDI. Preserve selection through native driver preparation
+   and supported restarts; reject unavailable combinations without fallback.
+2. In that profile, omit MIDI histories, indexes, capture/playback/restoration,
+   owner maintenance and meaningful per-loop/source MIDI state storage or copying.
+   Disabling device ports alone is insufficient. Protocol compatibility values
+   may remain empty; they must not reintroduce MIDI processing or reservations.
+3. `compact` supports the same basic workflow as the other variants: default sync
+   loop; track/loop creation, removal and recreation; audio routing and monitoring;
+   recording and simultaneous playback/capture; stop/start, repeated wraps,
+   clearing/replacing takes; gain, balance, mute and ramps; basic sync/delayed
+   transitions; recent-audio grabs, overlapping retained grabs and grab-and-continue.
+4. Use the existing host, app service, RT protocol and dummy/JACK/CPAL boundaries.
+   A normal local or remote frontend receives correct state, meters, completions
+   and waveform/audio readback. A standalone mixer benchmark is insufficient.
+5. `compact` matches current audio-only frame counts, capture cuts, transition
+   timing and supported sample output, initially at `atol=1e-6, rtol=1e-6`.
+   Preserve quantum buffering latency and callback partition independence.
+   Existing descriptor-mode interior-ramp approximation remains confined to that
+   mode; retain its endpoint oracle and explain any numerical differences.
+6. Published audio and retained grabs remain valid through continued capture,
+   history wrap, deletion/replacement and bulk-read leases. More sharing never
+   causes a sweep copying old audio. Grabs freeze the requested capture window;
+   asynchronous preparation must not silently shift it.
+7. All new callback work has prepared capacities and explicit bounds. No heap
+   allocation/deallocation, blocking locks, I/O, whole-take conversion, or
+   recording-length scan in one callback. Admission failures are atomic; pending
+   deletion stays charged until reclamation. Preserve `no_std + alloc` and the
+   existing unsafe-code prohibition in lower crates.
+8. On the supported compact steady path, playback/capture bypass the generic
+   node router, full resolver preview and persistent binary audio index. A fourth
+   mode label around the third renderer does not meet this criterion.
+9. Run and archive a quick local audio-only baseline and four-way comparison, then
+   exercise every existing benchmark scenario end to end. Export actual mode and
+   MIDI policy, raw callbacks, accepted setup/final state, readback validation,
+   memory reservations and timing summaries. No speedup threshold or WCET claim
+   is an acceptance condition.
+
+### Scope boundaries and comparison fairness
+
+- Keep the three existing audio algorithms unchanged except for common MIDI
+  exclusion, integration fixes and equivalent diagnostics. Compact's planner,
+  storage and execution changes are intentional comparison variables.
+- No separate per-source **payload arenas**. Compact may use per-source history
+  handle rings in one common persistent pool. This explicitly supersedes the
+  earlier plan's history-index-specialization restriction for `compact` only.
+- FX/synth hosting, composites, advanced dry/wet editing, persistence polish and
+  web/embedded feature parity are not required for compact. Explicitly refuse
+  unsupported operations/configurations. Do not weaken supported audio behavior
+  or silently route it through a different renderer.
+- Private APIs, engine-specific operations and duplicated internal code are
+  acceptable. Avoid a new generic framework, driver or transport-schema redesign.
+
+## Design rules
+
+### Common audio-only preparation
+
+Thread one prepared policy through host startup, engine preparation and storage.
+Set audio loop bindings to `midi: false`; prepare audio histories independently
+of MIDI; omit MIDI index configuration, writers, trackers, recovery and related
+staging reservations. Audit unconditional MIDI state construction/copies and
+maintenance loops as well as optional stores. Report actual MIDI reservations
+and work; test that supported audio operations never instantiate them later.
+Reject MIDI requests consistently in this profile while retaining normal MIDI
+tests outside it. Keep original archives immutable and identify these as fresh
+baselines, rather than relabeling old device-only-MIDI-disabled measurements.
+
+### Compact integration, timing and execution
+
+- Keep existing app-visible IDs, request/reply vocabulary, resource readback
+  protocol and `Cells` publication. Add private backend dispatch at engine/control
+  and render preparation as needed: concrete `LoopPlanner`/`GraphRuntime` aliases
+  currently couple those owners. Adapt these seams rather than fork the frontend.
+- Prepare compact routing operations and active-slot arrays outside rendering.
+  Activate prepared changes atomically at established boundaries. Store generation
+  checked identities; retire old plans/owners with bounded work.
+- RT loop state is authoritative. Retain the resolver's prepared pending records
+  and advance active positions/capture counters directly on eligible quanta.
+  Apply commands, synchronization dependencies, recording completion and due
+  transitions at the existing quantum boundary. Unsynchronized wraps use the lean
+  advance. Related sync wraps and pending transitions retain general settlement;
+  those boundaries can change dependent clocks even without an explicit command.
+  Design-rule refinement: reuse this existing event/transaction machinery rather
+  than add a second anchor/event-queue implementation. The heap-guarded resolver
+  oracle verifies identical states/events/cuts. This reduces steady planning but
+  leaves synchronization-boundary work as an explicit worst-case limitation.
+- Preserve command ordering, cancellation/refusal and completion semantics,
+  telemetry and disconnect/fault handling. Do not maintain a competing control-side
+  simulation that can drift from recording cuts or the render frame.
+- Fuse gains, mixing and meter calculations where observation points allow.
+  Retain required intermediate capture/meter taps and smoothing. Multiplying
+  overlapping ramps must preserve their actual per-sample product; compact does
+  not replace that product with the descriptor mode's endpoint approximation.
+  No growing lazy expression tree or new sample-processing approximation.
+
+### Flat storage and ownership
+
+- Reuse terminology (`AudioChunk`, `ChunkRef`, `AudioSequence`, `RenderArena`)
+  where accurate. Prepare a typed sample slab, indexed slots/free lists, flat
+  recording/playback handle tables and source history rings. Start with the
+  existing quantum-sized channel-group payload layout. Avoid a persistent tree
+  or searching store catalogs on each audio read; cache the current block/cursor.
+- Publish fresh payload immutable. An owner retains its audio; graph edges and
+  sample loops borrow it. Share known identical producer data by identity rather
+  than comparing sample buffers to discover equality. Materialize once at the
+  correct capture tap when the signal actually differs.
+- Reserve recording table capacity and publication/export owners before starting
+  a take. Append handles while recording; stopping publishes the existing table
+  and valid length without a full-table walk. Capacity refusal leaves the prior
+  take valid. Use bounded partial-quantum staging and preserve capture tap semantics.
+- Use fixed-depth paged flat tables: one direct directory and fixed 256-entry
+  tiles, with no binary index traversal. Retained snapshots share directory/tile
+  ownership. A history grab clips a directory and at most four boundary tiles;
+  it never scans a whole recording or copies audio. Its maximum work is the
+  configured directory width plus four tiles, independent of take duration.
+- Unique history tables and private full-quantum capture appends update directly;
+  shared metadata uses bounded directory/tile copies. Capture cancellation undoes
+  unpublished appends, and immutable sample payloads are never modified. Reserve
+  worst-case metadata/lease credits before a change, including retained readers.
+  Reclamation processes at most 512 table entries per store per host callback,
+  additionally limited by the common resource budget.
+- Design-rule revision: this fixed-depth ownership table replaces the initially
+  proposed staged flat-view copy job. Existing snapshot/capture APIs require
+  immediately retainable revisions. Paged tables preserve those semantics with
+  constant-depth reads and explicit fixed metadata bounds, avoiding a second
+  history-copy scheduler and overwrite race. Acceptance criteria are unchanged;
+  physical payload arenas remain shared. Report metadata-copy and retirement
+  costs rather than treating snapshot retention as free.
+- Clearing, cancellation and deletion detach owners quickly and enqueue bounded
+  retirement. Reserve continued-capture headroom while retained views, readers
+  and retirement jobs exist. Bulk readback streams through existing bounded APIs;
+  it cannot require conversion of a whole take in the callback. Preserve the
+  current restriction on reading an actively recording take.
+
+## Code map
+
+| Area | Work |
+| --- | --- |
+| `shoop_rt_host_native/src/lib.rs`, `rt_runtime/src/audio_mode.rs` | Fourth startup choice, typed common policy, actual-mode reporting. |
+| `shoop_rt_engine/src/{description,lib,history,midi_layout}.rs` | True audio-only preparation, reservations and validation. |
+| `shoop_rt_engine/src/{render,endpoint,graph,node,bulk,cells}.rs` and private compact modules | Backend dispatch, prepared operations, state/control integration, meter/readback adapters. |
+| `rt_runtime/src/resource/`, `audio_refs.rs` | Shared sample primitives, compact owner/table storage and bounded readback/retirement bridges; avoid requiring generic index ownership. |
+| `shoop_loops/src/runtime/`, resolver and media helpers | Common MIDI exclusion, timing oracle/helpers and compact transition/capture integration. |
+| Existing engine/native/host tests and `shoop_host/examples/chunk_benchmark.rs` | Four-mode audio workflows, real app connection, positive readback and ownership checks. |
+| `scripts/{benchmark,analyze,collect,profile}_audio_chunk*.py` as applicable | Mode subsets, four-way order rotation, actual MIDI-policy checks, compatible result handling. |
+
+Placement may change for a documented reason. Keep changes local to the shortest
+sound path; do not spread an experimental backend through public schemas.
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
+- Follow repository build/test guidance. Before Rust commits run `cargo fmt --all`
+  and a warning-denying build; when Rust tests change also run
+  `python3 scripts/check_shoop_test_usage.py`. Use focused checks during iteration,
+  broaden before behavior-changing pushes, and complete final repository gates.
+- Publish early measurements without claiming partial functionality is complete.
+  Do not merge a PR autonomously.
+
+## Implementation stages
+
+### Stage 0 — Branch and freeze the local comparison
+
+Depends on: nothing.
+
+- [x] Create `proto/audio-compact` from the current prototype branch, preserving
+  user changes and design/results. Fetch upstream `feat/backend-replacement`;
+  incorporate relevant new base changes consistently across all modes and record
+  the resulting baseline SHA. Do not overwrite the earlier evidence.
+- [x] Check toolchain/build setup and available CPUs, topology and cgroup quota.
+  Select separate allowed controller/render CPUs and, if feasible, a third load
+  CPU. Record actual scheduling and RT runtime limits; use ordinary scheduling
+  here, with no FIFO request or kernel-setting changes.
+- [x] Fix the first measurement configuration: dummy driver, stereo 48 kHz,
+  Q=32, buffer 256, four voices, four track slots, sixteen loop slots and existing
+  history/loop budgets. Preserve meter/telemetry/recorder policy across variants.
+- [x] Verify an unchanged app-connected host record/play/readback smoke. Before
+  MIDI removal, capture the same short three-mode quiet idle/play/ramps matrix
+  planned for stage 1, using the existing device-only audio profile. Retain this
+  build/ref, binary hashes and settings so MIDI-only gains have a fresh comparison
+  on this machine. Push the branch and open a draft PR targeting
+  `proto/audio-chunks`, linking this plan and prior PR #959.
+
+### Stage 1 — True audio-only and the first three-way local baseline
+
+Depends on: stage 0.
+
+- [x] Implement common MIDI exclusion throughout preparation and runtime, with
+  zero MIDI payload/index/history reservations and no MIDI state/maintenance path.
+  Preserve normal non-benchmark MIDI and supported app creation workflows.
+- [x] Add actual audio-only identity/reservation reporting and benchmark validation.
+  Add `--modes` subsets; derive rotation from selected mode count, removing `% 3`
+  assumptions. Keep old three-mode result archives/analyzers usable.
+- [x] Verify record/play, grabs, continued capture, readback and default sync startup
+  in the three modes under audio-only heap guards. Test rejected MIDI operations
+  and an ordinary MIDI-enabled regression case; check no MIDI work is recreated.
+- [x] Build the release host/launcher and run the quick command below without
+  `compact`: quiet idle/play/ramps, two repetitions, 0.5-second warmup and 384
+  selected callbacks. Save raw results as the first audio-only milestone in
+  `docs/design/chunks/FOURTH_RESULTS.md`; compare with the fresh stage-0 baseline.
+  Historical results remain contextual, with protocol differences made explicit.
+
+### Stage 2 — Compact storage, ownership and preparation
+
+Depends on: stage 1.
+
+- [x] Add `compact` preparation and its real backend identity. Decouple the legacy
+  `chunked()` predicate from selection of the new storage/executor; incomplete
+  compact configurations fail explicitly rather than using another path.
+- [x] Implement prepared sample slots, handle tables, cursors, transient space,
+  append/publication, readback leases and bounded retirement. Integrate existing
+  resource/media identities without duplicating PCM into legacy storage.
+- [x] Implement history addressing and fixed-depth retained tables; specify
+  admission/progress/overwrite bounds and continued-capture headroom numerically
+  from configuration. Complete lifecycle tests before live grab activation.
+- [x] Verify partial spans, retained ownership, ring wrap, cancelled jobs, source
+  removal, stale generations, exhausted table/payload/retirement budgets and
+  atomic refusal. Exercise callback heap guards and bounded work at full capacity.
+
+### Stage 3 — Integrated compact recording, playback and controls
+
+Depends on: stage 2. This delivers the first useful fourth-mode vertical slice.
+
+- [x] Add compact prepared routing and render execution behind the existing engine
+  endpoint. Wire normal track/loop creation, host I/O, monitoring and bus output.
+- [x] Implement recording/publication, playback cursors, stop/start/clear/replace,
+  sync and scheduled transitions, gain/balance/mute/ramps and the required smoothing.
+  Publish real state, meters and streamed media through the existing app service.
+- [x] Verify deterministic samples/capture cuts against audio-only current at
+  Q=1/32 and callback partitions 1/13/128/256, including simultaneous capture and
+  playback, pending controls and multiple loop wraps. Extend the existing oracle;
+  keep the descriptor mode's endpoint-only exception separate.
+- [x] Run actual-host idle/record/play/ramps smoke checks with positive media
+  readback. Confirm compact executes its new path and avoids steady legacy
+  planner previews, node routing and persistent audio-index traversal.
+
+### Stage 4 — Quick first four-way benchmark in this environment
+
+Depends on: stage 3; do not wait for all grab/churn integration or broad CI.
+
+- [x] Run the quick four-way command below on one release build. Keep all raw
+  callbacks, check actual mode/audio-only policy, zero drops/faults, exact selected
+  frame continuity and positive scenario state/readback. Two repetitions are
+  exploratory; do not describe their ordering as a fully balanced comparison.
+- [x] If a separate allowed CPU and adequate quota exist, add a short play-only
+  memory-interference run using the existing worker. Record placement/quota and
+  interference conditions; retain quiet results separately.
+- [x] Update `docs/design/chunks/FOURTH_RESULTS.md`; retain replayable raw artifacts
+  and a hash/build manifest under `results/fourth-local-<date>/` beside it, using
+  the existing result collector. Report p50/p95/p99, maxima, overruns, lateness,
+  RSS and prepared/live audio metadata. Give initial compact/current and compact/descriptor
+  ratios; label partial functionality, short warmup and small sample count.
+
+### Stage 5 — Complete grabbing and dynamic app workflows
+
+Depends on: stages 2–4.
+
+- [x] Wire normal grab and adopt-ringbuffer requests to compact frozen views,
+  scheduled publication and writer continuation. Share retained audio without
+  depending on the source ring's current contents.
+- [x] Complete overlapping grabs, multi-loop retention, growing recordings,
+  sync-aligned cuts and activation, bulk readers surviving replacement, removal
+  and recreation of loops/tracks, and cancellation/disconnect/fault cleanup.
+- [x] Verify repeated grabs through several history wraps, simultaneous recording
+  and playback, deletion while reading, and pool/owner saturation. Check bounded
+  per-callback preparation/reclamation and unchanged old takes after refusal.
+- [x] Pass every existing host scenario in compact, including `grab`, `shared`,
+  `continue`, `record-play` and `churn`. Validate accepted controls, active state,
+  finite/nonempty signal readback, and final published media; silence stays separate.
+
+### Stage 6 — Final end-to-end validation and local results
+
+Depends on: stage 5. This is the functional and measurement completion gate.
+
+- [x] Exercise all four variants through the normal app/service/RT stack, including
+  a normal remote frontend connection and meters/waveforms, while preserving
+  true audio-only policy through supported preparation/restarts. Smoke existing
+  JACK/CPAL devices where available and report actual coverage/unavailability.
+- [x] Run all benchmark scenarios locally at least once per mode. For the final
+  quiet idle/play/ramps comparison use four repetitions to balance four-way order;
+  add buffer 32 with equal selected audio duration. Include a default 30-second
+  history-fill/wrap shared run per mode; use accelerated/small-history deterministic
+  tests for broader wrap/capacity coverage rather than a long timing matrix.
+- [x] Retain all selected outliers and distinguish wall callback time, delivery
+  lateness and scheduler/quota effects. Original warmup/verification rows remain
+  archived but excluded from selected-window statistics. Call copy counts logical
+  work, not DDR traffic; no Pi conclusions or WCET claims from this local run.
+- [x] Run formatting, warning-denying workspace build, Rust test-attribute check,
+  affected suites and the complete native gate in `.agents/info/test.md`. Run
+  existing `no_std` compile gates for changed lower crates; use CI for other
+  platforms, without requiring new compact web/embedded functionality.
+- [x] Update launch instructions, limitations, benchmark commands, result manifest
+  and this plan. Interpret MIDI-only gains separately from compact's additional
+  gains/regressions using the new audio-only baselines. If performance disappoints,
+  report it and sample CPU separately if available; do not substitute profiling
+  measurements for unprofiled timing or expand into an unrequested redesign.
+
+### Additional requested delivery — Pi bundle before final checks
+
+The user explicitly extended scope to a new Pi 4 bundle, after local results and
+before remaining validation. This supersedes the original Pi-packaging exclusion;
+no Pi access or Pi measurement is requested here.
+
+- [x] Cross-build the same completed four-mode implementation for 64-bit Pi 4,
+  package existing host/client/scripts/runtime libraries and short instructions.
+- [x] Validate ARM64 executables, checksums and actual-app emulated smoke, upload
+  the ZIP to GitHub and post its download link on PR #960. Preserve old bundles.
+
+### Stage 7 — Publication, green CI and review
+
+Depends on: stage 6; fixes may return to the relevant earlier stage.
+
+- [x] Push completed milestones, rewrite the PR description around the delivered
+  four-mode comparison, and mark the full prototype ready for review.
+- [x] Monitor required CI until green; investigate failures, fix relevant causes,
+  rerun affected checks and record unrelated infrastructure limitations honestly.
+- [x] Check automated reviews repeatedly, address valid findings and request/recheck
+  review until approval when a reviewer is available. Record absent reviewers
+  explicitly; do not claim approval that did not occur.
+- [x] Deliver branch/PR, commands, raw evidence and the concise four-way result.
+  Leave merging to the user; no autonomous PR merge.
+
+## Quick benchmark and verification strategy
+
+After implementing `--modes`, build in the environment selected by
+`.agents/info/build.md` and choose `FOURTH_HOST_CPU`/`FOURTH_RENDER_CPU` from the
+actual allowed CPU set. The stage-1 command omits `compact`; stage 4 uses:
+
+```sh
+RUSTFLAGS="-D warnings" cargo build --locked --release -p shoop_host \
+  --features testing --bin shoop_host --example chunk_benchmark
+python3 scripts/benchmark_audio_chunks.py \
+  --host target/release/shoop_host \
+  --launcher target/release/examples/chunk_benchmark \
+  --modes current chunks chunks-descriptors compact \
+  --output work/fourth/quick-four --scenarios idle:silence play ramps \
+  --quantum 32 --buffer 256 --voices 4 --tracks 4 --loops 16 \
+  --warmup 0.5 --callbacks 384 --repeats 2 \
+  --host-cpu "$FOURTH_HOST_CPU" --render-cpu "$FOURTH_RENDER_CPU"
+```
+
+This selects about two seconds of audio per run and is intended to take minutes,
+not a multi-hour matrix, excluding build time. It deliberately does not fill
+30-second histories; final wrapped-history checks are separate. No SSH or Pi run.
+
+Use targeted runtime/storage tests for stage 2, existing engine workflow/sample
+oracles for stages 1/3/5, and actual-host smoke after each working slice. Avoid
+tests that only mirror new structs. Broaden to all scenarios, default startup/MIDI
+regressions and full native/compile gates at stage 6. This protects ownership,
+timing and integration while getting the first empirical result before polishing
+unsupported features or running broad performance matrices.
+
+## Execution notes
+
+- Stage 0: draft PR [#960](https://github.com/SanderVocke/shoopdaloop/pull/960).
+  Fresh release build and all 18 before-MIDI host runs pass app/media/callback
+  validation. Raw baseline and unchanged binaries are retained under
+  `work/fourth/before-midi` and `work/fourth/before-bin`.
+
+- Stage 1 implementation: audio-only omits MIDI history/index pools, loop MIDI
+  bindings/input state, strip MIDI state and ports; MIDI graph creation/injection
+  is refused. Existing engine tests, including default MIDI and sample/capture/
+  partition oracles, pass. Warning-denying release host/launcher build passes.
+
+- Stage 1 complete: 18 new audio-only timing runs and nine shared/continue/churn
+  host smoke runs pass. Public-protocol audio-only grab regression passes after
+  decoupling input capability advertisement from MIDI history. Results and verified
+  raw evidence are in `docs/design/chunks/FOURTH_RESULTS.md`.
+
+- Stage 2: compact fixed-depth tables, typed payloads, direct private capture
+  appends, rollback and budgeted retirement are implemented. All 96 runtime unit
+  tests pass, including retained audio through repeated history wraps, cancelled capture,
+  saturated owner admission and continued history publication under the heap guard.
+  Lower-crate/engine warning-denying builds pass. Native compact preparation
+  explicitly refuses until its execution path is installed in stage 3.
+
+- Stage 3 vertical slice: compiled wire operations execute the original engine
+  processors with stable-owner borrowing, without per-edge endpoint routing or
+  per-quantum pins. Lean clock advancement matches resolver states/events under
+  the heap guard at Q=1/32, including delayed transitions and sync dependencies.
+  Stable playback views skip settlement; actual operations and clock boundaries
+  keep the existing transactional rules. Four-mode sample/capture/partition,
+  workflow, structure and audio-only protocol tests pass; release build passes.
+
+- Native compact idle/play/ramps smoke passes through the real socket app client.
+  Preparation now handles native default external-dry/wet capability without
+  reserving unsupported compact edit storage; audio-only also omits unused global
+  MIDI state. The public-protocol regression includes that native preparation
+  shape in every mode. First four-way timing follows this corrected release.
+
+- Stage 5 complete: all ten real-host compact scenarios pass, including signal
+  grab/shared/continue, simultaneous playback/capture and track churn. Compact
+  shares producer history chunks by identity for ordinary and continued capture;
+  private appends avoid per-tick metadata snapshots and cancelled writes roll back.
+  New heap-guarded oracles match current rendered grabs and continued recordings
+  through repeated wraps at Q=1/32 and callback partitions 1/13/128/256. Retained
+  reader/removal/refusal and all-member capture tests cover both chunk stores.
+  Common audio-only preparation also omits the MIDI edit/recovery buffer and
+  source-reset state construction. CPAL's real driver mock passes all four modes
+  with no MIDI devices opened; JACK audio-only reserves no MIDI port slots.
+  Runtime/loop/engine suites pass; native passes with the documented missing-backend
+  allowance. A real local dummy JACK server is being prepared for final coverage.
+
+- Requested Pi bundle delivered before remaining validation: [PR comment](https://github.com/SanderVocke/shoopdaloop/pull/960#issuecomment-6734979574).
+  Same production Rust as the final local comparison; warning-denying Cortex-A72
+  build, checksums, all four emulated app playback/grab/continue smokes and a fresh
+  public download hash pass. Source/build/upload identity is recorded in
+  `docs/design/chunks/results/pi4-fourth-bundle-2026-11-09.json`. The initial guide
+  uses short windows and keeps full-history warmup separate. No Pi run here.
+
+- Stage 6 complete: 148 completed-build host runs / 185,856 selected callbacks
+  cover balanced 256/32-frame timing, all workflows, filled histories and memory
+  pressure. Raw archives and all hashes/statistics replay. All four actual native
+  frontends render over LAN-addressed TCP with positive waveform/meter readback;
+  compact GUI grabbing and track/loop churn pass. All four real JACK hosts attach
+  and create tracks; no physical CPAL device is available, so its four-mode driver
+  mock provides coverage. Formatting/test attributes and warning-denying workspace
+  build pass. Full native gate: 3,192 passed, 11 skipped, zero failures (517.8 s).
+  Changed no_std+alloc libraries build for thumbv7em-none-eabihf with warnings denied.
+  See `results/fourth-local-2026-11-09/final-validation.json` beneath the design docs.
+
+- Stage 7 complete: PR #960 is ready and unmerged. All validation groups pass
+  on identical production Rust `cb98366a`: the main matrix's native platforms,
+  JACK, coverage, foundation, process inspection, bare-metal, release browser,
+  and debug compile/Node/library-browser checks, plus every debug app workflow
+  replayed against the published CI artifact. Hosted-processor CI also passes.
+  [Consolidated CI verification](https://github.com/SanderVocke/shoopdaloop/actions/runs/42598241271)
+  checks source equivalence and successful job/step conclusions and preserves a
+  machine-readable report. Reviews/threads are empty and no reviewer is configured;
+  no approval is claimed.
+- Stage 7 verification refinement: dependency HTTP 504 failures passed on retry.
+  Browser debug showed intermittent session-load waits also present on unchanged
+  base `61ae8539`. Its default app workflow, composites, permission denial and
+  all three preview/rejection/pending-resume cases pass on artifact replay.
+  Reuse the already-passing debug compile/Node/library suites from the same Rust
+  source rather than require another complete run of those long suites. After
+  source/job equivalence was verified, the redundant full third retry was canceled.
+  Thus validation spans the matrix and successful artifact replays; the main run's
+  final status is canceled, not an all-green single run. The existing browser
+  flakiness remains documented and was not suppressed with code/timeout changes.
+  This changes verification orchestration only, not goals or acceptance criteria.
+  See `results/fourth-local-2026-11-09/ci.json` beneath the design docs.
+- The execution environment became unavailable after implementation, evidence,
+  the Pi delivery and full local validation had been pushed. Remaining CI and
+  documentation publication continue through GitHub; no rerun of local checks
+  is needed for these documentation-only changes.

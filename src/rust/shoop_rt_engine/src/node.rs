@@ -328,8 +328,8 @@ pub struct StripInput {
     sends: Box<[f32]>,
     injected: [Option<MidiMessage>; INJECTED],
     /// Notes sounding through the monitoring feed, released when monitoring stops.
-    monitored: Box<MidiState>,
-    live_midi: Box<MidiState>,
+    monitored: Box<[MidiState]>,
+    live_midi: Box<[MidiState]>,
     live_midi_active: bool,
     release: bool,
 }
@@ -440,8 +440,12 @@ impl StripInput {
             .store(false, core::sync::atomic::Ordering::Relaxed);
         self.gains.reset();
         self.injected = [None; INJECTED];
-        *self.monitored = MidiState::default();
-        *self.live_midi = MidiState::default();
+        for state in &mut self.monitored {
+            *state = MidiState::default();
+        }
+        for state in &mut self.live_midi {
+            *state = MidiState::default();
+        }
         self.live_midi_active = false;
         self.release = false;
         let cells = &self.cells.strips[self.slot];
@@ -485,8 +489,12 @@ impl StripInput {
             scratch: vec![0.; frames].into_boxed_slice(),
             sends: vec![0.; frames].into_boxed_slice(),
             injected: [None; INJECTED],
-            monitored: Box::default(),
-            live_midi: Box::default(),
+            monitored: (0..usize::from(settings.midi.enabled))
+                .map(|_| MidiState::default())
+                .collect(),
+            live_midi: (0..usize::from(settings.midi.enabled))
+                .map(|_| MidiState::default())
+                .collect(),
             live_midi_active: false,
             release: false,
         }
@@ -581,6 +589,9 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         use rt_runtime::processor::{MidiBufferSettings, MidiPortCapacity};
         let mut settings = MidiBufferSettings::default();
+        if !self.midi_capacity.enabled {
+            return Ok(settings);
+        }
         for (index, (input, port, capacity)) in [
             (true, 1, self.midi_capacity.playback_merge),
             (true, 2, self.midi_capacity.global),
@@ -604,8 +615,8 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
         PortCounts {
             audio_inputs: 5 * self.channels,
             audio_outputs: 5 * self.channels,
-            midi_inputs: 3,
-            midi_outputs: 4,
+            midi_inputs: if self.midi_capacity.enabled { 3 } else { 0 },
+            midi_outputs: if self.midi_capacity.enabled { 4 } else { 0 },
         }
     }
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
@@ -618,6 +629,9 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
 
 impl Processor<LoopPlanner, EngineOp> for StripOutput {
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
+        if self.midi_capacity.events == 0 {
+            return Ok(Default::default());
+        }
         Ok(rt_runtime::processor::MidiBufferSettings {
             input: Some(self.midi_capacity),
             forward_input: Some(0),
@@ -628,8 +642,8 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
         PortCounts {
             audio_inputs: 2 * self.channels,
             audio_outputs: 2 * self.channels,
-            midi_inputs: 1,
-            midi_outputs: 1,
+            midi_inputs: usize::from(self.midi_capacity.events != 0),
+            midi_outputs: usize::from(self.midi_capacity.events != 0),
         }
     }
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
@@ -738,12 +752,35 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn compact_graph_supported() -> bool {
+        true
+    }
+    fn compact_active(
+        &mut self,
+        activity: rt_runtime::processor::CompactActivity<'_, LoopPlanner>,
+    ) -> Result<bool, rt_runtime::Error> {
+        self.apply_configuration(activity.graph_epoch);
+        match self {
+            Self::Loop(node) => node.compact_active(activity),
+            Self::Fader(node)
+                if activity.inputs_silent
+                    && node.processor.is_none()
+                    && node.presence.remaining == 0
+                    && node.presence.value == 1. =>
+            {
+                Ok(false)
+            }
+            _ => Ok(true),
+        }
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
     ) -> Result<bool, Error> {
         use rt_runtime::audio_refs::GainEnvelope;
-        self.apply_configuration(block.graph_epoch);
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::Compact {
+            self.apply_configuration(block.graph_epoch);
+        }
         match self {
             Self::Loop(node) => node.process_references(block),
             Self::Fader(node) if node.processor.is_none() => {
@@ -789,6 +826,25 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Bus(node) => node.references(block),
             _ => Ok(false),
         }
+    }
+    fn publish_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        if let Self::StripInput(node) = self {
+            for channel in 0..node.channels {
+                if let Some(sequence) = block.domain.history_audio_sequence(
+                    node.slot as u32,
+                    block.frame,
+                    channel,
+                    block.resources,
+                )? {
+                    block.outputs[channel] = sequence;
+                    block.arena.work.forwarded += 1;
+                }
+            }
+        }
+        Ok(())
     }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         match self {
@@ -899,8 +955,12 @@ impl StripInput {
     ) -> Result<(), Error> {
         let result = self.render_sources(block);
         if result == Err(Error::Full) {
-            *self.monitored = MidiState::default();
-            *self.live_midi = MidiState::default();
+            for state in &mut self.monitored {
+                *state = MidiState::default();
+            }
+            for state in &mut self.live_midi {
+                *state = MidiState::default();
+            }
             self.live_midi_active = false;
             self.release = false;
         }
@@ -1046,6 +1106,9 @@ impl StripInput {
                 returned[i] = first[i] * (1. - weight) + self.sends[i] * weight;
             }
         }
+        if !self.midi_capacity.enabled {
+            return Ok(());
+        }
         let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
         let [capture, monitor, send, global] = block.midi_outputs else {
             return Err(Error::InvalidShape);
@@ -1053,12 +1116,16 @@ impl StripInput {
         if self.release {
             self.release = false;
             for channel in 0..16u8 {
-                let state = self.monitored.channel(channel).ok_or(Error::InvalidState)?;
+                let state = self.monitored[0]
+                    .channel(channel)
+                    .ok_or(Error::InvalidState)?;
                 for (key, _) in state.projected_notes() {
                     monitor.push(0, frames, &[0x80 | channel, key, 0])?;
                 }
             }
-            *self.monitored = MidiState::default();
+            for state in &mut self.monitored {
+                *state = MidiState::default();
+            }
         }
         let monitoring = self.monitor.target() > 0.;
         let mut active = false;
@@ -1068,9 +1135,8 @@ impl StripInput {
                 capture.push(0, frames, packet.as_bytes())?;
                 if monitoring {
                     monitor.push(0, frames, packet.as_bytes())?;
-                    let _ = self
-                        .monitored
-                        .apply_packet(packet.as_bytes(), packet.as_bytes().len());
+                    let _ =
+                        self.monitored[0].apply_packet(packet.as_bytes(), packet.as_bytes().len());
                 }
                 active = true;
             }
@@ -1084,14 +1150,16 @@ impl StripInput {
             for index in 0..input.len() {
                 let (offset, packet) = input.get(index).ok_or(Error::InvalidState)?;
                 monitor.push(offset, frames, packet)?;
-                let _ = self.monitored.apply_packet(packet, packet.len());
+                let _ = self.monitored[0].apply_packet(packet, packet.len());
             }
         }
         if processed {
             let live = !forced_off && (live_record || monitoring);
             if self.live_midi_active && !live {
                 for channel in 0..16u8 {
-                    let state = self.live_midi.channel(channel).ok_or(Error::InvalidState)?;
+                    let state = self.live_midi[0]
+                        .channel(channel)
+                        .ok_or(Error::InvalidState)?;
                     for (key, _) in state.projected_notes() {
                         send.insert(0, frames, &[0x80 | channel, key, 0])?;
                     }
@@ -1099,21 +1167,25 @@ impl StripInput {
                         send.insert(0, frames, &[0xb0 | channel, 64, 0])?;
                     }
                 }
-                *self.live_midi = MidiState::default();
+                for state in &mut self.live_midi {
+                    *state = MidiState::default();
+                }
             }
             self.live_midi_active = live;
             if live {
                 copy_midi(capture, send, frames)?;
                 for index in 0..capture.len() {
                     let (_, packet) = capture.get(index).ok_or(Error::InvalidState)?;
-                    self.live_midi.apply_packet(packet, packet.len())?;
+                    self.live_midi[0].apply_packet(packet, packet.len())?;
                 }
             }
             copy_midi(&block.midi_inputs[1], send, frames)?;
             copy_midi(&block.midi_inputs[2], global, frames)?;
         }
         if input.is_recovery() || block.midi_inputs[1].is_recovery() {
-            *self.live_midi = MidiState::default();
+            for state in &mut self.live_midi {
+                *state = MidiState::default();
+            }
             self.live_midi_active = false;
             return Err(Error::Full);
         }
@@ -1302,7 +1374,8 @@ impl StripOutput {
                     f32::from_bits(cells.wet_gate[i].load(core::sync::atomic::Ordering::Relaxed));
             }
         }
-        if self.mute.target() > 0. && self.presence.target() > 0. {
+        if self.midi_capacity.events != 0 && self.mute.target() > 0. && self.presence.target() > 0.
+        {
             let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
             if !input.is_empty() {
                 cells

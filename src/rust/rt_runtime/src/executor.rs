@@ -18,6 +18,8 @@ use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
+#[path = "executor_compact.rs"]
+mod compact_audio;
 #[path = "executor_audio.rs"]
 mod referenced_audio;
 
@@ -114,6 +116,7 @@ pub struct Diagnostics {
     pub epoch: Epoch,
     pub validation_steps: usize,
     pub nodes_processed: usize,
+    pub nodes_skipped: usize,
     pub connections_processed: usize,
     pub render_error: Option<Error>,
     pub scheduled_events: usize,
@@ -325,6 +328,7 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    compact: Option<compact_audio::Program>,
     audio_arena: Option<crate::audio_refs::RenderArena>,
     host_sequences: Box<[crate::audio_refs::AudioSequence]>,
     profiling: rt_profiling::Recorder,
@@ -335,6 +339,7 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     fault: Option<Error>,
     clock: RenderRuntime,
     catalog: Catalog,
+    has_midi_buffers: bool,
     slots: Vec<Option<Slot<P>>>,
     active: Option<PreparedPlan>,
     graph_stages: GraphStages,
@@ -470,6 +475,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             events: limits.midi_events_per_port,
             bytes: limits.midi_bytes_per_port,
         };
+        let has_midi_buffers = nodes
+            .iter()
+            .any(|node| node.ports.midi_inputs != 0 || node.ports.midi_outputs != 0);
         let mut midi_bytes = 0usize;
         for node in &nodes {
             midi_bytes = midi_bytes
@@ -486,6 +494,11 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 .ok_or(Error::Capacity)
         })?;
         let audio_arena = if resources.audio_render_mode().chunked() {
+            if resources.audio_render_mode() == crate::AudioRenderMode::Compact
+                && !P::compact_graph_supported()
+            {
+                return Err(Error::InvalidConfig);
+            }
             let samples = audio_ports
                 .checked_mul(4)
                 .and_then(|ports| ports.checked_add(limits.audio_inputs))
@@ -534,6 +547,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 config,
             },
             Self {
+                compact: (resources.audio_render_mode() == crate::AudioRenderMode::Compact)
+                    .then(|| compact_audio::Program::prepare(config)),
                 audio_arena,
                 host_sequences: vec![
                     crate::audio_refs::AudioSequence::default();
@@ -548,6 +563,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 fault: None,
                 clock: RenderRuntime::new(config),
                 catalog,
+                has_midi_buffers,
                 slots,
                 active: None,
                 graph_stages: GraphStages::disabled(),
@@ -742,8 +758,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             ..Diagnostics::default()
         };
         self.recovery_remaining.fill(limits.budgets.events);
-        for slot in self.slots.iter_mut().flatten() {
-            slot.buffers.begin_callback();
+        if self.has_midi_buffers {
+            for slot in self.slots.iter_mut().flatten() {
+                slot.buffers.begin_callback();
+            }
         }
         self.scheduler.begin_callback();
         self.resources.begin_callback();
@@ -1356,6 +1374,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
+        if self.compact.is_some() {
+            return self.run_graph_compact(audio, start, callback_start, quantum);
+        }
         if self.audio_arena.is_some() {
             return self.run_graph_references(audio, midi, start, callback_start, quantum);
         }

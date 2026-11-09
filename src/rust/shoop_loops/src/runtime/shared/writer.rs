@@ -821,12 +821,27 @@ impl Shared {
                             &spans[..channels],
                         )?)
                     } else {
-                        Some(io.render().stage_audio_write(
-                            resource,
-                            job.audio_revision,
-                            None,
-                            &h.audio_scratch[..q * channels],
-                        )?)
+                        let shared = h
+                            .audio_source
+                            .map(|source| {
+                                io.render().stage_audio_source_append(
+                                    resource,
+                                    job.audio_revision,
+                                    source,
+                                    frame,
+                                )
+                            })
+                            .transpose()?
+                            .flatten();
+                        Some(match shared {
+                            Some(write) => write,
+                            None => io.render().stage_audio_write(
+                                resource,
+                                job.audio_revision,
+                                None,
+                                &h.audio_scratch[..q * channels],
+                            )?,
+                        })
                     }
                 } else {
                     None

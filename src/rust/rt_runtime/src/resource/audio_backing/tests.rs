@@ -887,6 +887,17 @@ fn edit_only_pool_reserves_full_block_scratch_and_keeps_unselected_channels_and_
 
 #[shoop_test]
 fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refusal() {
+    for mode in [
+        crate::AudioRenderMode::Chunks,
+        crate::AudioRenderMode::Compact,
+    ] {
+        chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refusal_case(mode);
+    }
+}
+
+fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refusal_case(
+    mode: crate::AudioRenderMode,
+) {
     for q in [1, 32] {
         let mut store = ResourceStore::new(
             crate::Config {
@@ -905,7 +916,7 @@ fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refu
             crate::Quantum::new(q).unwrap(),
         )
         .unwrap();
-        store.set_audio_render_mode(crate::AudioRenderMode::Chunks);
+        store.set_audio_render_mode(mode);
         let pool = store
             .prepare_audio_pool(
                 shared_audio::Config {
@@ -1032,6 +1043,15 @@ fn chunks_keep_overlapping_grabs_and_inflight_reads_during_continuation_and_refu
 
 #[shoop_test]
 fn ordinary_capture_commits_shared_quantum_chunks_atomically() {
+    for mode in [
+        crate::AudioRenderMode::Chunks,
+        crate::AudioRenderMode::Compact,
+    ] {
+        ordinary_capture_commits_shared_quantum_chunks_atomically_case(mode);
+    }
+}
+
+fn ordinary_capture_commits_shared_quantum_chunks_atomically_case(mode: crate::AudioRenderMode) {
     use crate::audio_refs::RenderArena;
     for q in [1, 32] {
         let mut store = ResourceStore::with_capture_groups(
@@ -1057,7 +1077,7 @@ fn ordinary_capture_commits_shared_quantum_chunks_atomically() {
             },
         )
         .unwrap();
-        store.set_audio_render_mode(crate::AudioRenderMode::Chunks);
+        store.set_audio_render_mode(mode);
         let pool = audio(&mut store, 2, 3 * q);
         let a = store.create().unwrap();
         let b = store.create().unwrap();
@@ -1093,9 +1113,22 @@ fn ordinary_capture_commits_shared_quantum_chunks_atomically() {
                 .unwrap();
             let tick = store.reserve_capture_tick(take, Frame(0)).unwrap();
             for member in 0..2 {
-                store
-                    .stage_capture_audio(tick, member, &input[..q * 2])
-                    .unwrap();
+                if mode == crate::AudioRenderMode::Compact {
+                    let source = store.audio_history(pool, 0).unwrap();
+                    let sequences = [0, 1].map(|channel| {
+                        store
+                            .audio_history_sequence(source, Frame(q as u64), channel)
+                            .unwrap()
+                            .unwrap()
+                    });
+                    assert!(store
+                        .stage_capture_audio_sequences(tick, member, &sequences)
+                        .unwrap());
+                } else {
+                    store
+                        .stage_capture_audio(tick, member, &input[..q * 2])
+                        .unwrap();
+                }
             }
             store.commit_capture_tick(tick).unwrap();
             assert_eq!(

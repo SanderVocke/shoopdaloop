@@ -50,7 +50,7 @@ impl AudioStore {
         if page >= self.marks.len()
             || self.reserved == 0
             || self.pages.available_leases() == 0
-            || self.free_nodes.len() < self.depth + 1
+            || self.index_credit() < self.depth + 1
             || extra
                 .checked_mul(2)
                 .is_none_or(|extra| extra > self.debt_limit - self.debt)
@@ -59,7 +59,10 @@ impl AudioStore {
         }
         let payload = self.pages.reserve_samples(io.store)?;
         self.reserved -= 1;
-        view.root = Some(self.set(view.root, self.depth, page, payload));
+        let previous_root = view.root;
+        debug_assert!(self.find(previous_root, page).is_none());
+        view.root = Some(self.update_index(io.store, view.root, page, payload, true));
+        let undo_append = (self.flat.is_some() && view.root == previous_root).then_some(page);
         view.frames = frames;
         view.credit = credit;
         self.debt += 2 * extra;
@@ -69,6 +72,7 @@ impl AudioStore {
             .charge_work(WorkClass::Render, 0, 2 * (self.depth + 1))?;
         Ok(CaptureWrite {
             write: Write {
+                undo_append,
                 take,
                 expected,
                 view,
@@ -90,12 +94,13 @@ impl AudioStore {
             return Err(Error::InvalidShape);
         }
         let previous = self.last_payload.filter(|&lease| {
-            self.pages.sample_span(lease).is_ok_and(|previous| {
-                previous
-                    .iter()
-                    .zip(samples)
-                    .all(|(a, b)| a.to_bits() == b.to_bits())
-            })
+            self.flat.is_none()
+                && self.pages.sample_span(lease).is_ok_and(|previous| {
+                    previous
+                        .iter()
+                        .zip(samples)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+                })
         });
         let shared = if let Some(previous) = previous {
             self.pages
@@ -110,6 +115,21 @@ impl AudioStore {
             self.pages.fill_samples(io.store, write.payload, samples)?;
         }
         self.last_payload = Some(write.payload);
+        Ok(())
+    }
+
+    pub(in crate::resource) fn fill_capture_reference(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        write: &CaptureWrite,
+        source: LeaseId,
+    ) -> Result<(), Error> {
+        self.check(io.store)?;
+        if !self.pages.share_reserved(io.store, write.payload, source)? {
+            return Err(Error::Exhausted);
+        }
+        self.reserved += 1;
+        self.work.shared_payloads += 1;
         Ok(())
     }
 

@@ -93,13 +93,22 @@ impl CaptureNode {
     }
 }
 impl Processor<LoopPlanner> for LoopNode {
+    fn compact_active(
+        &mut self,
+        activity: rt_runtime::processor::CompactActivity<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        match self {
+            Self::Playback(node) => node.compact_active(activity),
+            Self::Capture(node) => node.compact_active(activity),
+        }
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
     ) -> Result<bool, Error> {
         match self {
             Self::Playback(node) => node.process_references(block),
-            Self::Capture(_) => Ok(false),
+            Self::Capture(node) => node.process_references(block),
         }
     }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
@@ -129,6 +138,42 @@ impl Processor<LoopPlanner> for LoopNode {
     }
 }
 impl Processor<LoopPlanner> for PlaybackNode {
+    fn compact_active(
+        &mut self,
+        activity: rt_runtime::processor::CompactActivity<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        let view = *activity
+            .domain
+            .views
+            .get(self.binding.target.slot() as usize)
+            .ok_or(Error::InvalidId)?;
+        if activity.node != self.binding.playback
+            || view.playback_node != self.binding.playback
+            || view.capture_node != self.binding.capture
+        {
+            return Err(Error::InvalidId);
+        }
+        if view.decision.state.mode != Mode::Stopped
+            || view.pre_recording
+            || view.pre_rerecording
+            || view.dry_wet
+            || view.lead
+            || view.raw_position != view.decision.state.position as i64
+            || view.audio.is_some()
+            || view.auxiliary.is_some()
+            || view.midi.is_some()
+            || self.midi.is_some()
+        {
+            return Ok(true);
+        }
+        if let Some(renderer) = &mut self.audio {
+            renderer.reference_silence();
+        }
+        if let Some(renderer) = &mut self.auxiliary {
+            renderer.reference_silence();
+        }
+        Ok(false)
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
@@ -317,6 +362,55 @@ impl Processor<LoopPlanner> for PlaybackNode {
     }
 }
 impl Processor<LoopPlanner> for CaptureNode {
+    fn compact_active(
+        &mut self,
+        activity: rt_runtime::processor::CompactActivity<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        let view = *activity
+            .domain
+            .views
+            .get(self.binding.target.slot() as usize)
+            .ok_or(Error::InvalidId)?;
+        if activity.node != self.binding.capture
+            || view.playback_node != self.binding.playback
+            || view.capture_node != self.binding.capture
+        {
+            return Err(Error::InvalidId);
+        }
+        Ok(self.binding.midi || view.dry_wet || view.replace.is_some() || view.capture.is_some())
+    }
+    fn process_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::Compact
+            || self.binding.midi
+        {
+            return Ok(false);
+        }
+        let view = *block
+            .domain
+            .views
+            .get(self.binding.target.slot() as usize)
+            .ok_or(Error::InvalidId)?;
+        if block.node != self.binding.capture
+            || view.playback_node != self.binding.playback
+            || view.capture_node != self.binding.capture
+        {
+            return Err(Error::InvalidId);
+        }
+        if view.dry_wet || view.replace.is_some() {
+            return Ok(false);
+        }
+        let Some(interval) = view.capture else {
+            return Ok(true);
+        };
+        block.resources.stage_capture_audio_sequences(
+            interval,
+            0,
+            &block.inputs[..self.binding.channels],
+        )
+    }
     fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         let row = domain
             .rows

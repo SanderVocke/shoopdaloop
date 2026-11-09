@@ -46,7 +46,12 @@ host/launcher hashes match it in all six matrices.
   disabled, default JACK/CPAL/FX/synth features plus `testing`; normal dummy host
   and socket app stack. Runtime libraries and source/build hashes are recorded.
 - Stereo 48 kHz, quantum 32, four prepared track slots / sixteen loop slots,
-  default 30-second histories, nominal 16 MiB loop budget. Effects and device MIDI
+  default 30-second histories, nominal 16 MiB loop budget. Actual non-idle
+  sessions contain the sync track/one loop and one stereo benchmark track/eight
+  created loops. Playback/ramps use four active audio loops, with four stopped;
+  recorded playback lengths are about 0.2–0.25 seconds each. Idle has only the
+  empty sync track/loop. This is a small-session/short-loop comparison, not a
+  large multi-track or long-recording playback working-set test. Effects and device MIDI
   are off in all measured modes; internal empty MIDI work remains.
 - Timing/interference runs use **31-second warmups and ten seconds of selected
   audio callbacks**: 1,875 callbacks at 256 frames or 15,000 at 32 frames. Looping

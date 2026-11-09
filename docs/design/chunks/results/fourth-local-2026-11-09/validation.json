@@ -1,0 +1,68 @@
+{
+  "before-midi": {
+    "runs": 18,
+    "selected_callbacks": 6912,
+    "overruns": 4,
+    "drops": 0
+  },
+  "audio-only-three": {
+    "runs": 18,
+    "selected_callbacks": 6912,
+    "overruns": 0,
+    "drops": 0
+  },
+  "audio-only-smoke": {
+    "runs": 9,
+    "selected_callbacks": 576,
+    "overruns": 1,
+    "drops": 0
+  },
+  "quick-four": {
+    "runs": 24,
+    "selected_callbacks": 9216,
+    "overruns": 3,
+    "drops": 0
+  },
+  "quick-memory": {
+    "runs": 8,
+    "selected_callbacks": 3072,
+    "overruns": 1,
+    "drops": 0
+  },
+  "compact-workflows": {
+    "runs": 10,
+    "selected_callbacks": 3840,
+    "overruns": 1,
+    "drops": 0
+  },
+  "final-256": {
+    "runs": 48,
+    "selected_callbacks": 18432,
+    "overruns": 3,
+    "drops": 0
+  },
+  "final-32": {
+    "runs": 48,
+    "selected_callbacks": 147456,
+    "overruns": 109,
+    "drops": 0
+  },
+  "final-workflows": {
+    "runs": 30,
+    "selected_callbacks": 11520,
+    "overruns": 6,
+    "drops": 0
+  },
+  "final-wrap": {
+    "runs": 4,
+    "selected_callbacks": 1536,
+    "overruns": 0,
+    "drops": 0
+  },
+  "final-memory": {
+    "runs": 8,
+    "selected_callbacks": 3072,
+    "overruns": 0,
+    "drops": 0
+  }
+}

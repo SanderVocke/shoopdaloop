@@ -79,6 +79,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
                 let buffers = &mut slot.buffers;
                 let handled = processor.process_references(&mut ReferenceBlock {
+                    borrow_persistent: false,
                     node: step.node,
                     frame,
                     graph_epoch: self.epoch,

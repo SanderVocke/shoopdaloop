@@ -182,7 +182,7 @@ impl LoopPlanner {
                 row.binding.gain = initial.gain;
                 row.balance = initial.balance;
                 row.reset_input |= !initial.preserve_input;
-                if row.reset_input {
+                if row.reset_input && row.binding.midi {
                     self.inputs[slot] = MidiState::default();
                 }
             } else {

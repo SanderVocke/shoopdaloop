@@ -215,8 +215,16 @@ pub(crate) fn start(
         engine.strips() * engine.strip_channels as usize,
         engine.strips() * engine.strip_channels as usize
             + engine.buses as usize * engine.bus_channels as usize,
-        engine.strips(),
-        engine.strips(),
+        if crate::audio_only(engine) {
+            0
+        } else {
+            engine.strips()
+        },
+        if crate::audio_only(engine) {
+            0
+        } else {
+            engine.strips()
+        },
     ];
     for (kind, bank) in [
         &mut ports.audio_inputs,

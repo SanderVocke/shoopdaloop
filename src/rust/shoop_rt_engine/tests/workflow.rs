@@ -24,7 +24,7 @@ fn records_and_plays_back_through_a_strip() {
         let track = strip(0, 1);
         harness.done(Request::CreateStrip {
             strip: track,
-            shape: shape(1, 1, true),
+            shape: shape(1, 1, false),
         });
         harness.done(Request::Connect {
             port: port(track, PortKind::AudioIn, 0),
