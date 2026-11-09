@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 3 on `proto/audio-compact`. Upstream is still
+Status: executing stage 4 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -266,7 +266,7 @@ Depends on: stage 2. This delivers the first useful fourth-mode vertical slice.
   Q=1/32 and callback partitions 1/13/128/256, including simultaneous capture and
   playback, pending controls and multiple loop wraps. Extend the existing oracle;
   keep the descriptor mode's endpoint-only exception separate.
-- [ ] Run actual-host idle/record/play/ramps smoke checks with positive media
+- [x] Run actual-host idle/record/play/ramps smoke checks with positive media
   readback. Confirm compact executes its new path and avoids steady legacy
   planner previews, node routing and persistent audio-index traversal.
 
@@ -406,3 +406,9 @@ unsupported features or running broad performance matrices.
   Stable playback views skip settlement; actual operations and clock boundaries
   keep the existing transactional rules. Four-mode sample/capture/partition,
   workflow, structure and audio-only protocol tests pass; release build passes.
+
+- Native compact idle/play/ramps smoke passes through the real socket app client.
+  Preparation now handles native default external-dry/wet capability without
+  reserving unsupported compact edit storage; audio-only also omits unused global
+  MIDI state. The public-protocol regression includes that native preparation
+  shape in every mode. First four-way timing follows this corrected release.

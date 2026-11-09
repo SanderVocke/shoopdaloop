@@ -12,7 +12,8 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 #[shoop_test]
 fn audio_only_refuses_midi_without_consuming_an_audio_slot_or_disabling_capture() {
     for mode in audio_modes() {
-        let d = audio_description(mode);
+        let mut d = audio_description(mode);
+        d.external_dry_wet = true;
         let capacity = d.history_capacity().unwrap();
         assert_eq!(capacity.midi_payload_bytes, 0);
         assert_eq!(capacity.midi_metadata_bytes, 0);
