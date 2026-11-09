@@ -1,0 +1,146 @@
+[
+  {
+    "buffer": 32,
+    "scenario": "idle",
+    "input": "silence",
+    "samples-on": {
+      "p50_us": 5.97225,
+      "p99_us": 38.448,
+      "max_us": 5574.797,
+      "overruns": 2
+    },
+    "samples-off": {
+      "p50_us": 5.1775,
+      "p99_us": 22.112499999999997,
+      "max_us": 2556.898,
+      "overruns": 1
+    },
+    "residual_fraction": 0.8669262003432543
+  },
+  {
+    "buffer": 32,
+    "scenario": "play",
+    "input": "signal",
+    "samples-on": {
+      "p50_us": 14.911,
+      "p99_us": 69.471,
+      "max_us": 570.056,
+      "overruns": 0
+    },
+    "samples-off": {
+      "p50_us": 12.35625,
+      "p99_us": 78.0575,
+      "max_us": 803.842,
+      "overruns": 1
+    },
+    "residual_fraction": 0.8286667560861108
+  },
+  {
+    "buffer": 32,
+    "scenario": "play",
+    "input": "silence",
+    "samples-on": {
+      "p50_us": 15.356000000000002,
+      "p99_us": 86.237,
+      "max_us": 4868.835,
+      "overruns": 6
+    },
+    "samples-off": {
+      "p50_us": 11.439499999999999,
+      "p99_us": 43.418499999999995,
+      "max_us": 708.667,
+      "overruns": 1
+    },
+    "residual_fraction": 0.7449531127897888
+  },
+  {
+    "buffer": 32,
+    "scenario": "ramps",
+    "input": "signal",
+    "samples-on": {
+      "p50_us": 17.2725,
+      "p99_us": 103.44999999999999,
+      "max_us": 2195.831,
+      "overruns": 6
+    },
+    "samples-off": {
+      "p50_us": 13.80675,
+      "p99_us": 94.402,
+      "max_us": 2886.36,
+      "overruns": 4
+    },
+    "residual_fraction": 0.7993486756404689
+  },
+  {
+    "buffer": 256,
+    "scenario": "idle",
+    "input": "silence",
+    "samples-on": {
+      "p50_us": 34.63875,
+      "p99_us": 382.5645,
+      "max_us": 1687.601,
+      "overruns": 0
+    },
+    "samples-off": {
+      "p50_us": 27.866,
+      "p99_us": 127.065,
+      "max_us": 789.984,
+      "overruns": 0
+    },
+    "residual_fraction": 0.804474757316589
+  },
+  {
+    "buffer": 256,
+    "scenario": "play",
+    "input": "signal",
+    "samples-on": {
+      "p50_us": 117.74799999999999,
+      "p99_us": 968.6790000000001,
+      "max_us": 3533.995,
+      "overruns": 0
+    },
+    "samples-off": {
+      "p50_us": 86.44475,
+      "p99_us": 389.5415,
+      "max_us": 925.334,
+      "overruns": 0
+    },
+    "residual_fraction": 0.7341504738933995
+  },
+  {
+    "buffer": 256,
+    "scenario": "play",
+    "input": "silence",
+    "samples-on": {
+      "p50_us": 116.452,
+      "p99_us": 2507.4480000000003,
+      "max_us": 121016.114,
+      "overruns": 10
+    },
+    "samples-off": {
+      "p50_us": 79.93275,
+      "p99_us": 373.87850000000003,
+      "max_us": 916.659,
+      "overruns": 0
+    },
+    "residual_fraction": 0.6864008346786659
+  },
+  {
+    "buffer": 256,
+    "scenario": "ramps",
+    "input": "signal",
+    "samples-on": {
+      "p50_us": 125.22375,
+      "p99_us": 409.28,
+      "max_us": 2258.046,
+      "overruns": 0
+    },
+    "samples-off": {
+      "p50_us": 106.24625,
+      "p99_us": 434.24850000000004,
+      "max_us": 1755.473,
+      "overruns": 0
+    },
+    "residual_fraction": 0.8484512722227214
+  }
+]

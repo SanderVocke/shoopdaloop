@@ -1,0 +1,66 @@
+{
+  "git_sha": "3bebc9d2e8d7fb54609578e1d5b412e9ec591787",
+  "dirty": false,
+  "command": [
+    "scripts/benchmark_sample_elision.py",
+    "--normal-host",
+    "work/bin/samples-on/shoop_host",
+    "--normal-launcher",
+    "work/bin/samples-on/chunk_benchmark",
+    "--elided-host",
+    "work/bin/samples-off/shoop_host",
+    "--elided-launcher",
+    "work/bin/samples-off/chunk_benchmark",
+    "--output",
+    "work/paired",
+    "--host-cpu",
+    "0",
+    "--render-cpu",
+    "1"
+  ],
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "host_cpu": 0,
+  "render_cpu": 1,
+  "scheduler": 0,
+  "cpu_quota": "400000 100000",
+  "cpu_stat_before": "usage_usec 6450383275\nuser_usec 5652622318\nsystem_usec 797760956\nnice_usec 0\nnr_periods 80082\nnr_throttled 10317\nthrottled_usec 783142093\nnr_bursts 0\nburst_usec 0\n",
+  "builds": {
+    "samples-on": {
+      "host": "/workspace/work/audio-no-samples/work/bin/samples-on/shoop_host",
+      "host_sha256": "d390024bcb8dcf20ca4264ea5c65c345bc4a660f8bd09538a8753bd63b7f9bfc",
+      "launcher": "/workspace/work/audio-no-samples/work/bin/samples-on/chunk_benchmark",
+      "launcher_sha256": "eb5e642518c56bc40207232724571dececadce43265707f53d0da2a2a15023da"
+    },
+    "samples-off": {
+      "host": "/workspace/work/audio-no-samples/work/bin/samples-off/shoop_host",
+      "host_sha256": "d7570d1aaf3a073edcbc3048f8118c33880848fc1c3a2bcd67745aab5c2e1f71",
+      "launcher": "/workspace/work/audio-no-samples/work/bin/samples-off/chunk_benchmark",
+      "launcher_sha256": "5b2f7bf7f38ffe6bd565d917093bf537bdc5bb861ec944fc111d3cbcd3dffd28"
+    }
+  },
+  "scope": "Elapsed dummy callbacks, including input generation. Sample-free builds preserve metadata but intentionally produce invalid audio.",
+  "cpu_stat_after": "usage_usec 6501283236\nuser_usec 5681386915\nsystem_usec 819896320\nnice_usec 0\nnr_periods 83170\nnr_throttled 10317\nthrottled_usec 783142093\nnr_bursts 0\nburst_usec 0\n",
+  "cpu_model": [
+    "INTEL(R) XEON(R) PLATINUM 8573C"
+  ],
+  "cpu_topology": {
+    "0": {
+      "core_id": "0",
+      "physical_package_id": "0",
+      "thread_siblings_list": "0"
+    },
+    "1": {
+      "core_id": "1",
+      "physical_package_id": "0",
+      "thread_siblings_list": "1"
+    }
+  },
+  "memory_limit": "17179869184"
+}

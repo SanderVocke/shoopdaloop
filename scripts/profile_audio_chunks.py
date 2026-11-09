@@ -72,6 +72,7 @@ def collect(args, directory, mode, scenario):
                 'host_sha256': hashlib.sha256(args.host.read_bytes()).hexdigest(),
                 'launcher_sha256': hashlib.sha256(args.launcher.read_bytes()).hexdigest(),
                 'scope': 'Render-thread on-CPU user time; profiling timings are not unprofiled benchmark results.',
+                'sample_processing': validation['sample_processing'],
                 'validation': {key: validation[key] for key in ('callbacks', 'overruns', 'dropped')},
             }
             (directory / 'sampling.json').write_text(json.dumps(metadata, indent=2) + '\n')

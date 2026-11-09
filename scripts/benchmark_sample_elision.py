@@ -31,11 +31,13 @@ def main():
     parser.add_argument('--warmup', type=float, default=.5)
     parser.add_argument('--host-cpu', required=True, type=int)
     parser.add_argument('--render-cpu', required=True, type=int)
+    parser.add_argument('--rt-priority', type=int)
     args = parser.parse_args()
     allowed = os.sched_getaffinity(0)
     assert args.host_cpu in allowed and args.render_cpu in allowed
     assert args.host_cpu != args.render_cpu
     assert args.repeats > 0 and args.seconds > 0
+    assert args.rt_priority is None or 1 <= args.rt_priority <= 99
     assert all(buffer > 0 and buffer % 32 == 0 for buffer in args.buffers)
     args.output.mkdir(parents=True, exist_ok=False)
     variants = {
@@ -46,6 +48,9 @@ def main():
         **source_info(), 'command': sys.argv, 'platform': platform.platform(),
         'allowed_cpus': sorted(allowed), 'host_cpu': args.host_cpu, 'render_cpu': args.render_cpu,
         'scheduler': os.sched_getscheduler(0),
+        'rt_priority': args.rt_priority,
+        'cpu_model': [line.split(':', 1)[1].strip() for line in Path('/proc/cpuinfo').read_text().splitlines()
+                      if line.startswith('model name')][:1],
         'cpu_quota': Path('/sys/fs/cgroup/cpu.max').read_text().strip(),
         'cpu_stat_before': Path('/sys/fs/cgroup/cpu.stat').read_text(),
         'builds': {label: {'host': str(host), 'host_sha256': digest(host),
@@ -72,7 +77,7 @@ def main():
                                '--host', str(host), '--mode', 'compact', '--scenario', scenario,
                                '--input', signal, '--callbacks', str(callbacks), '--warmup', str(args.warmup),
                                '--output', str(directory), '--buffer', str(buffer), '--quantum', '32']
-                    run_launcher(command, directory, args.render_cpu)
+                    run_launcher(command, directory, args.render_cpu, args.rt_priority)
                     result = summarize(directory)
                     assert result['sample_processing'] == (label == 'samples-on'), 'wrong diagnostic build'
                     summaries.append({**result, 'buffer': buffer, 'repeat': repeat, 'build': label})

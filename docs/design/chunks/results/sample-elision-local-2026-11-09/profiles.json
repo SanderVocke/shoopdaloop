@@ -1,0 +1,300 @@
+{
+  "on": [
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "samples": 360,
+      "sample_processing": true,
+      "lost_samples": 0,
+      "total_period_ns": 361083240,
+      "category_percent": {
+        "Loop planning and state": 4.722222222222222,
+        "Audio storage and indexing": 18.055555555555557,
+        "MIDI buffers and history": 0.0,
+        "Reference processing": 15.833333333333334,
+        "Graph nodes, mixing and meters": 15.277777777777779,
+        "Loop capture coordination": 0.8333333333333334,
+        "Runtime scheduling and dispatch": 26.11111111111111,
+        "State publication": 11.38888888888889,
+        "Host wrapper and other": 7.777777777777778,
+        "Compact graph execution (mixed)": 0.0,
+        "Unattributed": 0.0
+      },
+      "unknown_leaf_percent": 26.944444444444443,
+      "unattributed_percent": 0.0,
+      "bulk_memory_percent": 0.0,
+      "planner_bulk_memory_percent": 0.0,
+      "top_leaf_symbols": [
+        {
+          "symbol": "[unknown]",
+          "percent": 26.944444444444443
+        },
+        {
+          "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+          "percent": 7.5
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+          "percent": 5.833333333333333
+        },
+        {
+          "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+          "percent": 5.555555555555555
+        },
+        {
+          "symbol": "<shoop_rt_engine::node::StripInput>::render",
+          "percent": 5.0
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#1}>",
+          "percent": 4.444444444444445
+        },
+        {
+          "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+          "percent": 4.444444444444445
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+          "percent": 3.611111111111111
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#1}>",
+          "percent": 3.3333333333333335
+        },
+        {
+          "symbol": "<rt_runtime::executor::compact_audio::Program>::source::<rt_runtime::host_buffer::BufferedAudio>",
+          "percent": 2.7777777777777777
+        },
+        {
+          "symbol": "shoop_rt_host_native::dummy::benchmark_input",
+          "percent": 2.7777777777777777
+        },
+        {
+          "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+          "percent": 2.2222222222222223
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_pages::SharedPages>::insert_samples_render",
+          "percent": 1.6666666666666667
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::last",
+          "percent": 1.6666666666666667
+        },
+        {
+          "symbol": "<shoop_loops::resolver::Resolver>::compact_tick",
+          "percent": 1.6666666666666667
+        },
+        {
+          "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+          "percent": 1.3888888888888888
+        },
+        {
+          "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::settled",
+          "percent": 1.3888888888888888
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::chunk_sequence",
+          "percent": 1.1111111111111112
+        },
+        {
+          "symbol": "<&mut dyn core::iter::traits::iterator::Iterator<Item = &[f32]> as core::iter::traits::iterator::IteratorRefSpec>::spec_fold::<f32, <shoop_rt_engine::render::Render>::process::{closure#3}::{closure#0}>",
+          "percent": 0.8333333333333334
+        },
+        {
+          "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::begin_tick",
+          "percent": 0.8333333333333334
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+          "percent": 0.8333333333333334
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_pages::SharedPages>::sample_span",
+          "percent": 0.8333333333333334
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::audio_chunk_sequence",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "<rt_runtime::transport::RenderEndpoint<rt_runtime::executor::Command<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>, rt_runtime::executor::Retired<shoop_rt_engine::node::EngineNode>, rt_runtime::executor::Diagnostics>>::begin_cycle",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "<rt_runtime::executor::Buffers>::begin_callback",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "<rt_profiling::recorder::Recorder>::graph_start",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "<shoop_loops::audio::AudioRenderer>::render_windowed_port_range",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "std::thread::functions::sleep",
+          "percent": 0.5555555555555556
+        },
+        {
+          "symbol": "<shoop_loops::runtime::shared::Shared>::observe",
+          "percent": 0.5555555555555556
+        }
+      ]
+    }
+  ],
+  "off": [
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "samples": 300,
+      "sample_processing": false,
+      "lost_samples": 0,
+      "total_period_ns": 300902700,
+      "category_percent": {
+        "Loop planning and state": 8.0,
+        "Audio storage and indexing": 17.0,
+        "MIDI buffers and history": 0.0,
+        "Reference processing": 11.0,
+        "Graph nodes, mixing and meters": 13.0,
+        "Loop capture coordination": 1.6666666666666667,
+        "Runtime scheduling and dispatch": 34.333333333333336,
+        "State publication": 9.333333333333334,
+        "Host wrapper and other": 5.666666666666667,
+        "Compact graph execution (mixed)": 0.0,
+        "Unattributed": 0.0
+      },
+      "unknown_leaf_percent": 28.333333333333332,
+      "unattributed_percent": 0.0,
+      "bulk_memory_percent": 0.0,
+      "planner_bulk_memory_percent": 0.0,
+      "top_leaf_symbols": [
+        {
+          "symbol": "[unknown]",
+          "percent": 28.333333333333332
+        },
+        {
+          "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+          "percent": 12.0
+        },
+        {
+          "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+          "percent": 6.0
+        },
+        {
+          "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+          "percent": 5.0
+        },
+        {
+          "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+          "percent": 3.0
+        },
+        {
+          "symbol": "<shoop_loops::resolver::Resolver>::compact_tick",
+          "percent": 2.6666666666666665
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_pages::SharedPages>::insert_samples_render",
+          "percent": 2.6666666666666665
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+          "percent": 2.3333333333333335
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#1}>",
+          "percent": 2.3333333333333335
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+          "percent": 2.3333333333333335
+        },
+        {
+          "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+          "percent": 2.0
+        },
+        {
+          "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+          "percent": 1.6666666666666667
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+          "percent": 1.3333333333333333
+        },
+        {
+          "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::begin_tick",
+          "percent": 1.3333333333333333
+        },
+        {
+          "symbol": "<shoop_rt_engine::node::StripInput>::render",
+          "percent": 1.3333333333333333
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::chunk_sequence",
+          "percent": 1.3333333333333333
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::reclaim",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::audio_chunk_sequence",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::executor::compact_audio::Program>::source::<rt_runtime::host_buffer::BufferedAudio>",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::executor::Buffers>::begin_callback",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::append_history",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::last",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<shoop_rt_host_native::dummy::Loop>::step::{closure#0}",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::settled",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<shoop_loops::runtime::LoopPlanner>::prepare_program_inputs",
+          "percent": 1.0
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::begin_callback",
+          "percent": 0.6666666666666666
+        },
+        {
+          "symbol": "<shoop_loops::topology::PreparedTopology>::program",
+          "percent": 0.6666666666666666
+        },
+        {
+          "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<<rt_runtime::audio_refs::RenderArena>::last::{closure#0}>",
+          "percent": 0.6666666666666666
+        },
+        {
+          "symbol": "<rt_runtime::resource::shared_audio::flat::Tables>::new_leaf",
+          "percent": 0.6666666666666666
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "binary_source_sha": "3bebc9d2",
+  "native_gate": {
+    "passed": 3194,
+    "skipped": 11,
+    "seconds": 434.5,
+    "missing_hardware_allowance": true
+  },
+  "warning_denying_workspace_build": "pass",
+  "formatting": "pass",
+  "test_attribute_policy": "pass",
+  "sample_free_metadata_capture_and_grab_test": "pass",
+  "sample_free_heap_guarded_kernel_storage_and_validation_test": "pass",
+  "no_std": {
+    "target": "thumbv7em-none-eabihf",
+    "crates": [
+      "rt_runtime",
+      "shoop_loops"
+    ],
+    "sample_free_feature": true,
+    "result": "pass"
+  },
+  "archive_replay": {
+    "paired.zip": {
+      "runs": 64,
+      "callbacks": 55296,
+      "overruns": 31,
+      "sample_processing": [
+        false,
+        true
+      ]
+    },
+    "profile-off.zip": {
+      "runs": 1,
+      "callbacks": 4688,
+      "overruns": 1,
+      "sample_processing": [
+        false
+      ]
+    },
+    "profile-on.zip": {
+      "runs": 1,
+      "callbacks": 4688,
+      "overruns": 4,
+      "sample_processing": [
+        true
+      ]
+    },
+    "workflows-off.zip": {
+      "runs": 10,
+      "callbacks": 640,
+      "overruns": 0,
+      "sample_processing": [
+        false
+      ]
+    }
+  },
+  "log_sha256": {
+    "workspace-build.log": "fd49828613f072f91a1fc32e8cb735b89107d9aea9aa6e795ed7158097c7a002",
+    "workspace-tests.log": "23f043817bb47d670bdd181a50d6c50a6ce633a652ef3ca3e9d466317bccf6ba",
+    "no-std-flag.log": "4231d30c461f5d4892a1f107a3877c7d1ba0aed452bd52afa8576fb96f8e2830",
+    "test-no-sample-storage.log": "2290be341ed68a6caebc98e6cc973d989602013e5b12d80e37b53b5663b527df",
+    "test-flag-final.log": "b5c1f47c392be1d8224199f5b78c62f71d9a232adb26036d579a9be0b478b5a6",
+    "build-samples-on.log": "38ce02f1f638f0362680f9949b707f9b145e57d475da1fc3463bdfd647951e10",
+    "build-samples-off.log": "b656b22586424bdb6d9dfd5559f800073f703acda789bfb1a80141c6963ba427"
+  }
+}

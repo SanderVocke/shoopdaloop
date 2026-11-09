@@ -15,7 +15,7 @@ CATEGORIES = (
     'Loop planning and state', 'Audio storage and indexing', 'MIDI buffers and history',
     'Reference processing', 'Graph nodes, mixing and meters', 'Loop capture coordination',
     'Runtime scheduling and dispatch', 'State publication', 'Host wrapper and other',
-    'Unattributed',
+    'Compact graph execution (mixed)', 'Unattributed',
 )
 
 
@@ -33,6 +33,8 @@ def category(symbol):
     if owner.startswith(('rt_runtime::audio_refs::', 'rt_runtime::executor::referenced_audio::')):
         return CATEGORIES[3]
     if owner.startswith('rt_runtime::executor::'):
+        if 'run_graph_compact' in owner:
+            return CATEGORIES[9]
         if any(name in symbol for name in ('::run_graph_references', '::reference_', '::forward_')):
             return CATEGORIES[3]
         if owner.startswith(('rt_runtime::executor::mix', 'rt_runtime::executor::route_offset')):
@@ -120,8 +122,12 @@ def analyze(args, path, env):
             if any(category(symbol) == CATEGORIES[0] for symbol in frames):
                 planner_copy_weight += period
     metadata = json.loads(path.with_name('sampling.json').read_text())
+    header = path.with_name('callbacks.csv').read_text().splitlines()[0]
+    samples_enabled = 'sample_processing=0' not in header
+    assert metadata.get('sample_processing', samples_enabled) == samples_enabled
     result = {
         'mode': metadata['mode'], 'scenario': metadata['scenario'], 'samples': len(samples),
+        'sample_processing': samples_enabled,
         'lost_samples': lost, 'total_period_ns': event_count,
         'category_percent': {name: 100 * weights[name] / event_count for name in CATEGORIES},
         'unknown_leaf_percent': 100 * unknown_leaf / event_count,

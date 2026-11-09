@@ -202,3 +202,11 @@ python3 scripts/analyze_fourth_audio_results.py \
 
 This verifies archive/member hashes and recomputes state/media checks and per-run
 statistics from the raw callbacks. It leaves archived evidence unchanged.
+
+## Compile-time sample-elision experiment
+
+The optional `shoop_host` feature `benchmark-no-sample-processing` keeps compact's
+metadata/control/resource path active while suppressing basic sample kernels.
+It is a diagnostic build with intentionally meaningless audio, explicitly marked
+in benchmark headers and JSON. Other renderers/MIDI-enabled preparation are refused.
+See [build commands, paired measurements and CPU profiles](SAMPLE_ELISION.md).

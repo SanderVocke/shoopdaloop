@@ -42,14 +42,48 @@ impl<T: Copy> SampleSlice<T> for [T] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shoop_wasm_test_support::shoop_test;
+    use crate::audio_refs::RenderArena;
+    use crate::resource::ResourceStore;
+    use crate::{Config, Error, Quantum};
+    use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 
     #[shoop_test]
-    fn elision_keeps_sample_storage_unchanged() {
-        let mut output = [7.; 32];
-        output.copy_audio_samples(&[0.25; 32]);
-        assert_eq!(output, if ENABLED { [0.25; 32] } else { [7.; 32] });
-        output.fill_audio_samples(0.);
-        assert_eq!(output, if ENABLED { [0.; 32] } else { [7.; 32] });
+    fn elision_preserves_reference_validation_and_work_without_touching_samples() {
+        let resources = ResourceStore::new(
+            Config::default().prepare().unwrap(),
+            Quantum::new(32).unwrap(),
+        )
+        .unwrap();
+        let mut arena = RenderArena::prepare(64, 0);
+        assert_no_heap(|| {
+            arena.reset().unwrap();
+            let source = arena.allocate(32).unwrap();
+            arena.output(source, 32).fill(2.);
+            let reference = arena.transient(source, 32);
+            let target = arena.allocate(32).unwrap();
+            arena.accumulate(reference, target, 32, &resources).unwrap();
+            assert_eq!(
+                arena.output(target, 32),
+                if ENABLED { &[2.; 32] } else { &[0.; 32] }
+            );
+            let mut output = [7.; 32];
+            arena
+                .read_into(reference, &mut output, &resources, false)
+                .unwrap();
+            assert_eq!(output, if ENABLED { [2.; 32] } else { [7.; 32] });
+            assert_eq!(
+                arena.peak(reference, 32, &resources).unwrap(),
+                if ENABLED { 2. } else { 0. }
+            );
+            assert_eq!(arena.work.materialized, 2);
+            assert_eq!(arena.work.sample_reads, 96);
+            assert_eq!(arena.work.sample_writes, 160);
+            let mut invalid = reference;
+            invalid.spans[0].frames = 33;
+            assert_eq!(
+                arena.read_into(invalid, &mut output, &resources, false),
+                Err(Error::InvalidShape)
+            );
+        });
     }
 }
