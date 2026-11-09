@@ -179,33 +179,34 @@ for the cross-platform matrix. Do not merge autonomously.
 
 Depends on: none.
 
-- [ ] Create `perf/compact-render` from current `proto/audio-compact` head. Preserve
+- [x] Create `perf/compact-render` from current `proto/audio-compact` head. Preserve
   unrelated work, record the exact base SHA/toolchain, and commit this plan.
-- [ ] Make the dense 8x4 workload replayable without embedding product behavior in
+- [x] Make the dense 8x4 workload replayable without embedding product behavior in
   the benchmark: eight actual tracks, eight allocated cells per track, 0/32 active
   loops by scenario, 64 MiB loop arena, Q=32 and buffer 32/256. Retain helper source,
   binary hashes, machine/scheduling data and raw callbacks outside ordinary source
   history where appropriate.
-- [ ] Add and verify one laptop build command/wrapper that pins the build and every
+- [x] Add and verify one laptop build command/wrapper that pins the build and every
   child to at most two WSL CPUs at low priority, caps Cargo/CMake/Ninja/Make/Rayon
   and local test runners at two workers, and cross-builds the warning-denying
   release host/launcher for
   AArch64 Cortex-A72. Never benchmark that build locally. Transfer only checksummed
   artifacts/source metadata to the Pi and verify architecture/hash before launch.
-- [ ] Reproduce current-head Q=32 and Q=256 compact results on the Pi 4 with four
+- [x] Reproduce current-head Q=32 and Q=256 compact results on the Pi 4 with four
   matched repetitions, 256 and 32 selected callbacks per run respectively, and the
   established PREEMPT_RT CPU/FIFO setup. Verify topology, states, media, callback
   continuity, drops, faults, temperature and throttling.
-- [ ] Run separate short compact idle/play/record profiles on the Pi after at least
+- [x] Run separate short compact idle/play/record profiles on the Pi after at least
   a supported 5-second settle: capture 3–5 seconds of render-TID `perf stat`, call
-  stacks with frame pointers where reliable, and existing Perfetto phases. Add
-  narrow temporary phase counters only if needed. Measure profiler and callback-
+  stacks with frame pointers where reliable, and available tracing phases. The standalone host exposes no direct Perfetto
+  capture control; record that limitation and use narrow temporary phase counters
+  only if PMU/call-stack evidence is insufficient. Measure profiler and callback-
   recorder overhead independently.
-- [ ] Record a ranked cost model covering planner/tick work, compact graph routing,
+- [x] Record a ranked cost model covering planner/tick work, compact graph routing,
   processor/reference calls, resource recording and native callback setup. Choose
   the smallest candidate for each later stage; document unsupported PMU events or
   ambiguous samples instead of guessing.
-- [ ] Verification: focused baseline tests and both dense matrices pass unchanged;
+- [x] Verification: focused baseline tests and both dense matrices pass unchanged;
   the profile is repeatable enough to justify Stage 1–4 choices. Update later
   implementation checklists if evidence changes placement or ordering, without
   changing goals or acceptance criteria.
@@ -214,18 +215,18 @@ Depends on: none.
 
 Depends on: Stage 0.
 
-- [ ] Define a planner-owned, quantum-scoped activity result for compact playback,
+- [x] Define a planner-owned, quantum-scoped activity result for compact playback,
   capture and any associated fader/observation work. Include pending transitions,
   ramps, monitoring, history/capture, replacement, meters and publication needs.
   Research whether the safest implementation is a processor no-op result, a
   prepared operation predicate or a small combination; do not recompile topology
   on routine mode changes.
-- [ ] Teach compact execution to bypass only proven dormant built-in loop work and
+- [x] Teach compact execution to bypass only proven dormant built-in loop work and
   leave its already-reset wires silent. Preserve arbitrary processor fallback and
   execute any operation whose side effects are uncertain.
-- [ ] Expose comparable executed/skipped-operation evidence and keep node/route
+- [x] Expose comparable executed/skipped-operation evidence and keep node/route
   counters truthful. Avoid scanning all loop state a second time merely to skip it.
-- [ ] Verification: exact sample/state tests cover empty stopped loops, stopped
+- [x] Verification: exact sample/state tests cover empty stopped loops, stopped
   loops with retained media, stop/start in one quantum, delayed/synced transitions,
   smoothing, mute/monitor/meter behavior, record/replace/grab and removal/recreation.
   Heap/destructor guards pass. A short compact-only Pi idle/active A/B shows the
@@ -236,17 +237,17 @@ Depends on: Stage 0.
 
 Depends on: Stage 1.
 
-- [ ] Profile the reduced graph again. Remove only demonstrated repeated work in
+- [x] Profile the reduced graph again. Remove only demonstrated repeated work in
   input/output clearing, route setup, slot lookup or processor/reference dispatch.
   Candidate techniques include prepared typed built-in operations, narrower clear
   ranges or generation-based reuse; select the least invasive option supported by
   evidence.
-- [ ] Keep compilation on graph/topology activation, preserve generation checks and
+- [x] Keep compilation on graph/topology activation, preserve generation checks and
   use the generic processor path for uncommon or unsupported cases. Do not fuse
   observation points or alter gain/ramp products to save work.
-- [ ] Keep transient arena ownership, silent defaults and output publication
+- [x] Keep transient arena ownership, silent defaults and output publication
   explicit so stale references cannot survive a skipped clear or changed graph.
-- [ ] Verification: compact graph structure/order tests, arbitrary processor tests,
+- [x] Verification: compact graph structure/order tests, arbitrary processor tests,
   graph activation/replacement, host input/output routing, ramps and partition
   invariance pass. Compare phase counters and a short Q=32 dense idle/play Pi run
   against Stage 1 before retaining the change.
@@ -255,18 +256,18 @@ Depends on: Stage 1.
 
 Depends on: Stage 0; normally follows Stage 2 so graph cost is no longer masking it.
 
-- [ ] Split the measured Q=32 callback cost into native driver/cycle setup, runtime
+- [x] Split the measured Q=32 callback cost into native driver/cycle setup, runtime
   begin/end work, scheduler/planner work, diagnostics and benchmark publication.
   Confirm which portion exists in production with benchmarking disabled.
-- [ ] Implement at most the few material fast paths supported by that evidence—for
+- [x] Implement at most the few material fast paths supported by that evidence—for
   example omitting empty MIDI bridge work in the prepared audio-only profile,
   reusing prepared callback metadata, or reducing redundant diagnostics snapshots.
   Preserve normal MIDI mode, fault silencing, recovery, phase publication and one
   truthful benchmark record per callback.
-- [ ] If OS/IRQ wakeup cost or irreducible timing instrumentation dominates, retain
+- [x] If OS/IRQ wakeup cost or irreducible timing instrumentation dominates, retain
   no speculative code change; document the bound and move optimization effort to
   the measured engine phases.
-- [ ] Verification: native dummy plus available JACK/CPAL callback tests cover
+- [x] Verification: native dummy plus available JACK/CPAL callback tests cover
   audio-only and MIDI-enabled configurations, faults and shutdown. A/B recorder
   off/on measurements remain explainable, and Q=32 gains persist when timing
   evidence is enabled.
@@ -275,17 +276,17 @@ Depends on: Stage 0; normally follows Stage 2 so graph cost is no longer masking
 
 Depends on: Stages 1–2 and the Stage 0 recording profile.
 
-- [ ] Attribute recording's extra resource steps to capture-group bookkeeping,
+- [x] Attribute recording's extra resource steps to capture-group bookkeeping,
   shared-page writes, flat root/leaf updates, publication or reclamation. Inspect
   costs across 1, 8 and 32 simultaneous recordings to distinguish fixed and
   per-writer work.
-- [ ] Apply one bounded optimization to the dominant routine. Prefer reuse of
+- [x] Apply one bounded optimization to the dominant routine. Prefer reuse of
   exclusive prepared roots/leaves, batched group bookkeeping or deferred/coalesced
   metadata publication within existing timing semantics. Do not redesign compact
   storage or make callback work depend on recording length.
-- [ ] Preserve admission credits and rollback for partial group failure; retained
+- [x] Preserve admission credits and rollback for partial group failure; retained
   views and exports cannot observe mutable or prematurely published media.
-- [ ] Verification: recording sample/cut oracles, simultaneous members, continued
+- [x] Verification: recording sample/cut oracles, simultaneous members, continued
   recording, replacement, cancellation, exhaustion, history wrap, retained readers
   and bounded reclamation pass under heap guards. Resource-step evidence and dense
   record timing improve without shifting work into unbounded later callbacks.
@@ -298,18 +299,18 @@ Depends on: Stages 1–4.
   affected runtime/loop/engine/native suites and the complete native nextest gate
   from `.agents/info/test.md`. Compile affected lower crates for their supported
   `no_std`/Wasm targets and run applicable browser/worklet smokes through CI.
-- [ ] Exercise the normal app/service/RT/native-host path for compact record,
+- [x] Exercise the normal app/service/RT/native-host path for compact record,
   playback, grab, continued capture, ramps, routing, track churn and media readback.
   Smoke ordinary MIDI-enabled startup and the other three render variants for
   regressions; keep performance comparisons compact-focused.
-- [ ] Produce the final release binaries on the laptop under the two-CPU,
+- [x] Produce the final release binaries on the laptop under the two-CPU,
   low-priority build limit, transfer them to the Pi and verify architecture and
   hashes. Repeat the short Stage 0 profile and four-repetition Pi 4 compact-only
   dense Q=32/Q=256 matrices using 256/32 selected callbacks per run. Compare raw
   distributions, phase/work counters, overruns, memory reservations, temperatures
   and scheduler evidence. Check every immutable performance threshold and
   investigate regressions rather than removing outliers.
-- [ ] Update architecture/performance documentation and the visual/raw evidence
+- [x] Update architecture/performance documentation and the visual/raw evidence
   report with baseline/final commands, hashes, successful and rejected approaches,
   counter definitions and limitations. Make no Pi 5 or WCET claim from Pi 4 data.
 - [ ] Push milestone commits and open a PR against `proto/audio-compact`. Monitor
@@ -329,3 +330,27 @@ matched repetitions on the Pi, the broad native nextest gate, real-host workflow
 and cross-platform CI are reserved for Stage 5, avoiding repeated matrices before
 the design stabilizes. Performance thresholds are checked only with matched Pi
 release evidence, never with laptop timings or flaky unit-test timing assertions.
+
+## Execution notes
+
+- Stage 0 baseline: 32 validated compact Pi runs, four repetitions at Q=32/Q=256,
+  zero drops/faults. Render-thread 99 Hz call stacks had no lost samples; PMU IPC
+  was 0.55�0.64. The standalone host has no application Perfetto capture control.
+- Stages 1�2: compact skips inactive capture, settled stopped/no-source playback,
+  and settled silent faders after clearing outputs. Dense executed operations fell
+  from 216 to 21 idle, 85 playback/record and 87 grab. An initial stale-output
+  experiment failed exact samples and was rejected before the output-clear fix.
+- Stage 3: audio-only preparation skips the empty per-node MIDI callback sweep.
+  Native dummy/direct tests pass. CPAL/JACK contract tests pass in the full native
+  gate; the separate real-server-only JACK test is unavailable without `jackd`.
+- Stage 4: compact append removes one redundant release lookup, retaining a debug
+  invariant and passing all 96 runtime tests plus capture/cancellation/wrap tests.
+- Final Pi evidence: Q=32 p50 reductions are 41.9% idle, 22.8% playback, 20.2%
+  record and 21.1% grab. Active overruns fell 545 to 112. Every Q=256 percentile
+  improved. All 32 final runs passed with zero drops/faults. Evidence and hashes
+  are recorded in `docs/design/chunks/COMPACT_PERFORMANCE.md`.
+- Local full nextest ran 3,192 tests under the two-CPU cap: 3,191 passed and one
+  unrelated LAN-profile startup test timed out reproducibly after 15 seconds in
+  the constrained environment. CPAL, JACK, dummy, app workflow and changed-crate
+  tests passed. Wasm builds and dependency boundaries pass; the local Nix shell
+  lacks the thumb no-std target, which remains a CI gate.
