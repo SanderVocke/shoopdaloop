@@ -16,7 +16,7 @@ jobs:
           - label: prototype
             source: cb98366a70da9195951f242755cafa254e3aa720
             run: '42579519033'
-            artifact: '13659455267'
+            artifact: '13662284783'
           - label: base
             source: 61ae853926407c57fd14a2888ad4f74906b1b057
             run: '42528616310'
