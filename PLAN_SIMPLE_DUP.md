@@ -68,10 +68,10 @@ Depends on Stage 1.
 
 Depends on Stage 2.
 
-- [ ] Add one small host job for `Duplicate` and `DuplicateTo`, reusing existing operation IDs, receipts and conflict handling. Pin source metadata with the captured content; reserve the selected destination against competing commands.
-- [ ] Resolve the first empty slot or compose existing row additions. Stop a playing primitive destination and await confirmation, then load the payload and apply copied controls/metadata through existing setters.
-- [ ] Record the media-apply submission and confirmed commit boundaries. Finish each stage once; publish the actual confirmed state and stage-specific failure message. Do not clear existing media first, replay an uncertain load or implement compensating media rollback.
-- [ ] Test capture/validation refusal, row-add failure, stop failure, apply refusal/exhaustion and post-apply control failure. Assert source preservation, old media before commit, copied media after commit, allowed stopped/empty-row side effects and truthful partial/unknown results.
+- [x] Add one small host job for `Duplicate` and `DuplicateTo`, reusing existing operation IDs, receipts and conflict handling. Pin source metadata with the captured content; reserve the selected destination against competing commands.
+- [x] Resolve the first empty slot or compose existing row additions. Stop a playing primitive destination and await confirmation, then load the payload and apply copied controls/metadata through existing setters.
+- [x] Record the media-apply submission and confirmed commit boundaries. Finish each stage once; publish the actual confirmed state and stage-specific failure message. Do not clear existing media first, replay an uncertain load or implement compensating media rollback.
+- [x] Test capture/validation refusal, row-add failure, stop failure, apply refusal/exhaustion and post-apply control failure. Assert source preservation, old media before commit, copied media after commit, allowed stopped/empty-row side effects and truthful partial/unknown results.
 - [ ] Test busy admission, stale destinations, pending transitions and scheduled/composite-driven recording. Verify unrelated recording/playback continues. Exercise duplicate delivery and UI disconnect/reconnect before and after apply, proving one copy and one terminal outcome.
 
 ## Stage 4 Add P03 definition copying through the existing editor

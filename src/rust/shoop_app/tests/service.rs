@@ -17,6 +17,30 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const STEP: Duration = Duration::from_millis(16);
 
+#[derive(Clone, Copy)]
+enum CopyFailure {
+    Stop,
+    Apply,
+    Gain,
+    Disconnect,
+}
+impl CopyFailure {
+    fn matches(self, request: shoop_rt_protocol::Request) -> bool {
+        use shoop_rt_protocol::{LoopMode, Request};
+        match self {
+            Self::Stop => matches!(
+                request,
+                Request::LoopTransition {
+                    mode: LoopMode::Stopped,
+                    ..
+                }
+            ),
+            Self::Apply | Self::Disconnect => matches!(request, Request::ContentApply { .. }),
+            Self::Gain => matches!(request, Request::LoopGain { .. }),
+        }
+    }
+}
+
 struct Clock {
     render: Rc<RefCell<OfflineRender>>,
     advance: Rc<Cell<bool>>,
@@ -48,6 +72,8 @@ struct Fixture {
     refuse_next_lifecycle: Rc<Cell<bool>>,
     refuse_composite_after: Rc<Cell<Option<u32>>>,
     refuse_next_monitoring: Rc<Cell<bool>>,
+    refuse_copy: Rc<Cell<Option<CopyFailure>>>,
+    content_applies: Rc<Cell<usize>>,
 }
 fn fixture() -> Fixture {
     fixture_with_inventory(None)
@@ -114,6 +140,8 @@ fn fixture_configured(
     let refuse_next_lifecycle = Rc::new(Cell::new(false));
     let refuse_composite_after = Rc::new(Cell::new(None));
     let refuse_next_monitoring = Rc::new(Cell::new(false));
+    let refuse_copy = Rc::new(Cell::new(None));
+    let content_applies = Rc::new(Cell::new(0));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
@@ -121,6 +149,8 @@ fn fixture_configured(
         refuse_lifecycle: Rc::clone(&refuse_next_lifecycle),
         refuse_composite_after: Rc::clone(&refuse_composite_after),
         refuse_monitoring: Rc::clone(&refuse_next_monitoring),
+        refuse_copy: Rc::clone(&refuse_copy),
+        content_applies: Rc::clone(&content_applies),
         reply: None,
     });
     let mut backend = RtBackend::connect(client, clock).unwrap();
@@ -159,6 +189,8 @@ fn fixture_configured(
         refuse_next_lifecycle,
         refuse_composite_after,
         refuse_next_monitoring,
+        refuse_copy,
+        content_applies,
     }
 }
 fn wire_message(client: &mut Client, message: WireMessage) {
@@ -1801,6 +1833,8 @@ struct RefuseLoop<C> {
     refuse_lifecycle: Rc<Cell<bool>>,
     refuse_composite_after: Rc<Cell<Option<u32>>>,
     refuse_monitoring: Rc<Cell<bool>>,
+    refuse_copy: Rc<Cell<Option<CopyFailure>>>,
+    content_applies: Rc<Cell<usize>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
@@ -1810,6 +1844,45 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if matches!(
+            message,
+            shoop_rt_protocol::ClientMessage::Request {
+                request: shoop_rt_protocol::Request::ContentApply { .. },
+                ..
+            }
+        ) {
+            self.content_applies.set(self.content_applies.get() + 1);
+        }
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request,
+        } = message
+        {
+            if self
+                .refuse_copy
+                .get()
+                .is_some_and(|failure| failure.matches(request))
+            {
+                let disconnected = matches!(
+                    self.refuse_copy.replace(None),
+                    Some(CopyFailure::Disconnect)
+                );
+                assert!(self.reply.is_none());
+                self.reply = Some(if disconnected {
+                    shoop_rt_protocol::EngineMessage::Disconnected(
+                        shoop_rt_protocol::DisconnectReason::Fault,
+                    )
+                } else {
+                    shoop_rt_protocol::EngineMessage::Result {
+                        correlation,
+                        outcome: shoop_rt_protocol::Outcome::Refused(
+                            shoop_rt_protocol::Refusal::Capacity,
+                        ),
+                    }
+                });
+                return Ok(());
+            }
+        }
         if let shoop_rt_protocol::ClientMessage::Request {
             correlation,
             request:
@@ -4313,6 +4386,8 @@ fn session_replacement_retains_publications_until_unpublish_admission_and_comple
 
 #[path = "support/composite_cases.rs"]
 mod composite_cases;
+#[path = "support/duplication_cases.rs"]
+mod duplication_cases;
 #[shoop_test]
 fn timing_commands_are_atomic_while_recording_and_reconcile_once_after_ui_loss() {
     for encoded in [false, true] {

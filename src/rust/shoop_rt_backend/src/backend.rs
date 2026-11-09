@@ -365,6 +365,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
             .with(
+                BackendCapability::LoopDuplication,
+                self.is_ready() && self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
+            .with(
                 BackendCapability::Grab,
                 self.capabilities.contains(Capabilities::INPUT_BATCH),
             )
