@@ -106,9 +106,11 @@ Depends on Stages 2–5.
 Depends on Stage 6 for final readiness. A draft PR may be opened while final browser/base comparison checks run so CI and automated review can progress in parallel; final readiness still requires validation of the delivered head.
 
 - [x] Commit completed milestones, push `feat/simple-loop-duplication`, and open a separate PR targeting `feat/backend-replacement`. Link PR #953 as the alternative and explain the scope/failure-contract differences and production-versus-test diff size.
-- [ ] Work applicable CI regressions to green and verify the delivered head. Diagnose failures with logs/artifacts before rerunning; preserve existing media fixtures, watchdogs and assertions. Demonstrate and report independently blocked/base failures instead of claiming a pass or absorbing unrelated repairs.
-- [ ] Check automated review after pushes, address applicable feedback and repeat through approval. Explicitly report absent or unavailable review rather than inventing approval.
-- [ ] Update this checklist and leave a clean worktree and the new PR unmerged. Do not close or merge PR #953, or merge the new PR, autonomously.
+- [x] Work applicable CI regressions to green and verify the delivered head. Diagnose failures with logs/artifacts before rerunning; preserve existing media fixtures, watchdogs and assertions. Demonstrate and report independently blocked/base failures instead of claiming a pass or absorbing unrelated repairs.
+- [x] Check automated review after pushes, address applicable feedback and repeat through approval. Explicitly report absent or unavailable review rather than inventing approval.
+- [x] Update this checklist and leave a clean worktree and the new PR unmerged. Do not close or merge PR #953, or merge the new PR, autonomously.
+
+Scoped implementation and validation are complete. Web-debug CI remains blocked by an independently reproduced browser audio failure in the base implementation. The CI task uses its explicit reporting path for independent base failures; evidence and current check status are in [PR #961](https://github.com/SanderVocke/shoopdaloop/pull/961). Existing fixture data, assertions and watchdogs are preserved. Renderer, driver and CI repairs remain outside this feature PR.
 
 ## Testing time versus confidence
 
