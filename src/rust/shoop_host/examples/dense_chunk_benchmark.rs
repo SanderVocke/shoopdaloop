@@ -38,6 +38,8 @@ struct Args {
     loops: u32,
     #[arg(long, default_value = "4")]
     voices: usize,
+    #[arg(long, default_value = "64")]
+    loop_memory_mb: u32,
     #[arg(long)]
     callbacks: Option<u64>,
     #[arg(long, default_value = "0.5")]
@@ -192,7 +194,7 @@ fn main() -> Result<()> {
     let config = serde_json::json!({
         "driver": {"Dummy": {"sample_rate":48000,"buffer_size":args.buffer}},
         "processors": {"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
-        "pools": {"quantum":args.quantum,"tracks":args.tracks,"loops":args.loops,"channels":2,"loop_memory_mb":64},
+        "pools": {"quantum":args.quantum,"tracks":args.tracks,"loops":args.loops,"channels":2,"loop_memory_mb":args.loop_memory_mb},
         "transport":"socket"
     });
     std::fs::write(
@@ -475,7 +477,7 @@ fn main() -> Result<()> {
         serde_json::to_vec_pretty(&serde_json::json!({
             "mode":args.mode,"scenario":args.scenario,"first_frame":first_frame,"last_frame":last_frame,
             "quantum":args.quantum,"buffer":args.buffer,"seconds":args.seconds,"config":config,
-            "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"workload_tracks":WORKLOAD_TRACKS,"active_loops_per_track":args.voices,"input":args.input,"setup":setup,"control_updates":tick,"process_memory":process_memory
+            "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"workload_tracks":WORKLOAD_TRACKS,"active_loops_per_track":args.voices,"loop_memory_mb":args.loop_memory_mb,"input":args.input,"setup":setup,"control_updates":tick,"process_memory":process_memory
         }))?,
     )?;
     if args.scenario == "record" {

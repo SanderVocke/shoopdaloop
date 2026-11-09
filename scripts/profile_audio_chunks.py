@@ -30,8 +30,12 @@ def collect(args, directory, mode, scenario):
     launch = ['taskset', '-c', str(args.host_cpu), str(args.launcher),
               '--host', str(args.host), '--mode', mode, '--scenario', scenario,
               '--input', 'silence' if scenario == 'idle' else 'signal',
-              '--callbacks', str(callbacks), '--warmup', '0.5', '--output', str(directory),
-              '--buffer', str(args.buffer), '--quantum', str(args.quantum)]
+              '--callbacks', str(callbacks), '--warmup', str(args.warmup),
+              '--output', str(directory), '--buffer', str(args.buffer),
+              '--quantum', str(args.quantum), '--tracks', str(args.tracks),
+              '--loops', str(args.loops), '--voices', str(args.voices)]
+    if args.loop_memory_mb is not None:
+        launch.extend(['--loop-memory-mb', str(args.loop_memory_mb)])
     host_pid = None
     with (directory / 'launcher.log').open('w') as output:
         started = time.monotonic()
@@ -100,18 +104,28 @@ def main():
     parser.add_argument('--collector-cpu', type=int, default=0)
     parser.add_argument('--buffer', type=int, default=256)
     parser.add_argument('--quantum', type=int, default=32)
+    parser.add_argument('--tracks', type=int, default=4)
+    parser.add_argument('--loops', type=int, default=16)
+    parser.add_argument('--voices', type=int, default=4)
+    parser.add_argument('--loop-memory-mb', type=int)
+    parser.add_argument('--warmup', type=float, default=0.5)
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--settle', type=float, default=8)
     parser.add_argument('--frequency', type=int, default=997)
     parser.add_argument('--stack-bytes', type=int, default=32768)
     parser.add_argument('--modes', nargs='+', choices=MODES, default=list(MODES))
-    parser.add_argument('--scenarios', nargs='+', choices=('idle', 'play', 'ramps'),
+    parser.add_argument('--scenarios', nargs='+',
+                        choices=('idle', 'play', 'record', 'grab', 'ramps'),
                         default=['idle', 'play', 'ramps'])
     args = parser.parse_args()
     if args.duration <= 0 or args.settle < 5 or args.frequency <= 0:
         parser.error('duration/frequency must be positive and settle must be at least five seconds')
-    if args.buffer <= 0 or args.quantum <= 0:
-        parser.error('buffer and quantum must be positive')
+    if args.buffer <= 0 or args.quantum <= 0 or args.warmup < 0:
+        parser.error('buffer and quantum must be positive; warmup must be non-negative')
+    if args.tracks <= 0 or args.loops <= 0 or args.voices <= 0:
+        parser.error('tracks, loops and voices must be positive')
+    if args.loop_memory_mb is not None and args.loop_memory_mb <= 0:
+        parser.error('loop memory must be positive')
     if args.rt_priority is not None and not 1 <= args.rt_priority <= 99:
         parser.error('RT priority must be in 1..99')
     allowed = os.sched_getaffinity(0)
