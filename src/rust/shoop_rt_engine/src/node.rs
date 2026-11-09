@@ -762,6 +762,14 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         self.apply_configuration(activity.graph_epoch);
         match self {
             Self::Loop(node) => node.compact_active(activity),
+            Self::Fader(node)
+                if activity.inputs_silent
+                    && node.processor.is_none()
+                    && node.presence.remaining == 0
+                    && node.presence.value == 1. =>
+            {
+                Ok(false)
+            }
             _ => Ok(true),
         }
     }

@@ -89,6 +89,7 @@ impl MidiBufferSettings {
 pub struct CompactActivity<'a, L: Planner = NoPlanner> {
     pub node: NodeId,
     pub graph_epoch: crate::Epoch,
+    pub inputs_silent: bool,
     pub domain: &'a L,
 }
 

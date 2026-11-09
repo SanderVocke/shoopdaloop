@@ -661,7 +661,7 @@ fn only_occupied_slots_are_rendered() {
         assert_eq!(
             diagnostics.nodes_processed,
             if mode == rt_runtime::AudioRenderMode::Compact {
-                7
+                5
             } else {
                 8
             }
@@ -669,7 +669,7 @@ fn only_occupied_slots_are_rendered() {
         assert_eq!(
             diagnostics.nodes_skipped,
             if mode == rt_runtime::AudioRenderMode::Compact {
-                1
+                3
             } else {
                 0
             }

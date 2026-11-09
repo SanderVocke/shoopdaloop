@@ -185,9 +185,13 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             let mut edges = program.outputs.len();
             for index in 0..program.operations.len() {
                 let op = program.operations[index];
+                program.wires[op.output..op.output + op.outputs].fill(AudioSequence::default());
                 let slot = self.slots[op.node.slot() as usize]
                     .as_mut()
                     .ok_or(Error::InvalidId)?;
+                let inputs_silent = program.inputs[op.first..op.end]
+                    .iter()
+                    .all(|route| route.wire < program.host && program.wires[route.wire].silent());
                 let active = slot
                     .processor
                     .as_mut()
@@ -195,6 +199,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                     .compact_active(crate::processor::CompactActivity {
                         node: op.node,
                         graph_epoch: self.epoch,
+                        inputs_silent,
                         domain: &self.planner,
                     })?;
                 if !active {
@@ -206,7 +211,6 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 let buffers = &mut slot.buffers;
                 buffers.input_sequences.fill(AudioSequence::default());
                 buffers.input_mixed.fill(false);
-                program.wires[op.output..op.output + op.outputs].fill(AudioSequence::default());
                 for index in op.first..op.end {
                     let route = program.inputs[index];
                     let source = program.source(route.wire, &mut arena, audio, start, q)?;
