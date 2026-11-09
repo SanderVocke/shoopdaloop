@@ -12,8 +12,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          artifact-ids: '13662597824'
-          run-id: '42579519033'
+          artifact-ids: '13639261473'
+          run-id: '42528616310'
           github-token: ${{ github.token }}
           repository: SanderVocke/shoopdaloop
           path: evidence
