@@ -180,15 +180,37 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 }
                 self.profiling.layout_done();
             }
+            let mut nodes = 0usize;
+            let mut skipped = 0usize;
+            let mut edges = program.outputs.len();
             for index in 0..program.operations.len() {
                 let op = program.operations[index];
+                program.wires[op.output..op.output + op.outputs].fill(AudioSequence::default());
                 let slot = self.slots[op.node.slot() as usize]
                     .as_mut()
                     .ok_or(Error::InvalidId)?;
+                let inputs_silent = program.inputs[op.first..op.end]
+                    .iter()
+                    .all(|route| route.wire < program.host && program.wires[route.wire].silent());
+                let active = slot
+                    .processor
+                    .as_mut()
+                    .ok_or(Error::InvalidId)?
+                    .compact_active(crate::processor::CompactActivity {
+                        node: op.node,
+                        graph_epoch: self.epoch,
+                        inputs_silent,
+                        domain: &self.planner,
+                    })?;
+                if !active {
+                    skipped += 1;
+                    continue;
+                }
+                nodes += 1;
+                edges += op.end - op.first;
                 let buffers = &mut slot.buffers;
                 buffers.input_sequences.fill(AudioSequence::default());
                 buffers.input_mixed.fill(false);
-                program.wires[op.output..op.output + op.outputs].fill(AudioSequence::default());
                 for index in op.first..op.end {
                     let route = program.inputs[index];
                     let source = program.source(route.wire, &mut arena, audio, start, q)?;
@@ -286,13 +308,17 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                     true,
                 )?;
             }
-            let nodes = program.operations.len();
-            let edges = program.inputs.len() + program.outputs.len();
             if let Some(count) = self.diagnostics.nodes_processed.checked_add(nodes) {
                 self.diagnostics.nodes_processed = count;
             } else {
                 self.diagnostics.counter_overflow = true;
                 self.diagnostics.nodes_processed = usize::MAX;
+            }
+            if let Some(count) = self.diagnostics.nodes_skipped.checked_add(skipped) {
+                self.diagnostics.nodes_skipped = count;
+            } else {
+                self.diagnostics.counter_overflow = true;
+                self.diagnostics.nodes_skipped = usize::MAX;
             }
             if let Some(count) = self.diagnostics.connections_processed.checked_add(edges) {
                 self.diagnostics.connections_processed = count;

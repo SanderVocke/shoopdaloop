@@ -755,12 +755,32 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
     fn compact_graph_supported() -> bool {
         true
     }
+    fn compact_active(
+        &mut self,
+        activity: rt_runtime::processor::CompactActivity<'_, LoopPlanner>,
+    ) -> Result<bool, rt_runtime::Error> {
+        self.apply_configuration(activity.graph_epoch);
+        match self {
+            Self::Loop(node) => node.compact_active(activity),
+            Self::Fader(node)
+                if activity.inputs_silent
+                    && node.processor.is_none()
+                    && node.presence.remaining == 0
+                    && node.presence.value == 1. =>
+            {
+                Ok(false)
+            }
+            _ => Ok(true),
+        }
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
     ) -> Result<bool, Error> {
         use rt_runtime::audio_refs::GainEnvelope;
-        self.apply_configuration(block.graph_epoch);
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::Compact {
+            self.apply_configuration(block.graph_epoch);
+        }
         match self {
             Self::Loop(node) => node.process_references(block),
             Self::Fader(node) if node.processor.is_none() => {

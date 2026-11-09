@@ -4,6 +4,8 @@ Status: balanced final timing and all host workflow scenarios are complete.
 Default-history, memory-pressure and final native/frontend checks are complete.
 Local/native validation and CI check-group verification are complete.
 These are short exploratory local runs, not Pi measurements or WCET bounds.
+The later [compact render-path performance follow-up](COMPACT_PERFORMANCE.md)
+contains matched dense Pi 4 profiling and baseline/final measurements.
 
 ## Completed balanced comparison
 

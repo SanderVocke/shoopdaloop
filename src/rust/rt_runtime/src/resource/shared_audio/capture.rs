@@ -60,10 +60,9 @@ impl AudioStore {
         let payload = self.pages.reserve_samples(io.store)?;
         self.reserved -= 1;
         let previous_root = view.root;
-        let append = self.find(previous_root, page).is_none();
-        view.root = Some(self.update_index(io.store, view.root, page, payload, append));
-        let undo_append =
-            (append && self.flat.is_some() && view.root == previous_root).then_some(page);
+        debug_assert!(self.find(previous_root, page).is_none());
+        view.root = Some(self.update_index(io.store, view.root, page, payload, true));
+        let undo_append = (self.flat.is_some() && view.root == previous_root).then_some(page);
         view.frames = frames;
         view.credit = credit;
         self.debt += 2 * extra;
