@@ -1,4 +1,4 @@
-name: Compare PR 960 browser workflow
+name: Verify remaining PR 960 debug browser workflows
 on:
   push:
     branches: ["diag/pr960-browser-failure"]
@@ -8,19 +8,23 @@ permissions:
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: prototype
+          - label: composites
             source: cb98366a70da9195951f242755cafa254e3aa720
             run: '42579519033'
             artifact: '13662284783'
-          - label: base
-            source: 61ae853926407c57fd14a2888ad4f74906b1b057
-            run: '42528616310'
-            artifact: '13636542494'
+          - label: denied
+            source: cb98366a70da9195951f242755cafa254e3aa720
+            run: '42579519033'
+            artifact: '13662284783'
+          - label: previews
+            source: cb98366a70da9195951f242755cafa254e3aa720
+            run: '42579519033'
+            artifact: '13662284783'
     name: Browser debug ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v7
@@ -54,9 +58,18 @@ jobs:
           shutil.copytree(candidates[0].parent, "src/rust/shoopdaloop/dist")
           print("source=${{ matrix.source }} artifact=${{ matrix.artifact }}")
           PY
-      - name: Replay the failing default browser workflow
+      - name: Replay remaining debug workflow cases
         working-directory: src/rust/shoopdaloop
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           NEW_ENGINE: '1'
-        run: node --experimental-websocket browser_smoke.mjs
+        run: |
+          case '${{ matrix.label }}' in
+            composites) COMPOSITES=1 node --experimental-websocket browser_smoke.mjs ;;
+            denied) DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs ;;
+            previews)
+              PREVIEW_ONLY=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
+              PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject node --experimental-websocket browser_smoke.mjs
+              PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending node --experimental-websocket browser_smoke.mjs
+              ;;
+          esac
