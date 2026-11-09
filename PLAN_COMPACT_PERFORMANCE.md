@@ -99,6 +99,12 @@ These goals, scope and criteria require explicit user approval to change.
    automated review is addressed through approval, documentation/counters match
    the implementation, and the PR is left unmerged with a clean worktree.
 
+**Approved delivery exception (2026-11-09):** after implementation and matched Pi
+acceptance were complete, the user explicitly directed work away from repeated CI
+checking and toward remaining optimization. CI/review availability is therefore
+reported but is not a completion blocker for this follow-up. This does not relabel
+a failed or pending check as green.
+
 ## Design rules and constraints
 
 - Build all benchmark/profile binaries on the laptop with the pinned Rust toolchain
@@ -295,7 +301,7 @@ Depends on: Stages 1–2 and the Stage 0 recording profile.
 
 Depends on: Stages 1–4.
 
-- [ ] Run formatting, warning-denying workspace build, test-attribute check,
+- [x] Run formatting, warning-denying workspace build, test-attribute check,
   affected runtime/loop/engine/native suites and the complete native nextest gate
   from `.agents/info/test.md`. Compile affected lower crates for their supported
   `no_std`/Wasm targets and run applicable browser/worklet smokes through CI.
@@ -313,7 +319,7 @@ Depends on: Stages 1–4.
 - [x] Update architecture/performance documentation and the visual/raw evidence
   report with baseline/final commands, hashes, successful and rejected approaches,
   counter definitions and limitations. Make no Pi 5 or WCET claim from Pi 4 data.
-- [ ] Push milestone commits and open a PR against `proto/audio-compact`. Monitor
+- [x] Push milestone commits and open a PR against `proto/audio-compact`. Monitor
   required CI to a final green head, investigate failures, and repeatedly check
   and address available automated review feedback until approval. Report unavailable
   review honestly, map evidence to criteria 1–8, leave the PR unmerged and finish
@@ -355,5 +361,11 @@ release evidence, never with laptop timings or flaky unit-test timing assertions
 - Local full nextest ran 3,192 tests under the two-CPU cap: 3,191 passed and one
   unrelated LAN-profile startup test timed out reproducibly after 15 seconds in
   the constrained environment. CPAL, JACK, dummy, app workflow and changed-crate
-  tests passed. Wasm builds and dependency boundaries pass; the local Nix shell
-  lacks the thumb no-std target, which remains a CI gate.
+  tests passed. Final-head Wasm builds, dependency boundaries and the
+  `thumbv7em-none-eabihf` no-std core build pass.
+- PR #963 is open and unmerged. The automatic hosted-processor checks passed on
+  the implementation head; a manually dispatched broader workflow exposed an
+  unrelated coverage-only JACK revision-conflict flake after the same JACK test
+  passed in nextest, plus a macOS release failure. No automated reviewer was
+  available. Per the approved exception, these states are reported rather than
+  polled or represented as green.

@@ -1,7 +1,9 @@
 # Compact render-path performance follow-up
 
 This follow-up implements and measures the bounded optimizations planned in
-[`PLAN_COMPACT_PERFORMANCE.md`](../../../PLAN_COMPACT_PERFORMANCE.md). All timing
+[`PLAN_COMPACT_PERFORMANCE.md`](../../../PLAN_COMPACT_PERFORMANCE.md). The final
+[prompt-to-artifact audit](COMPACT_PERFORMANCE_AUDIT.md) maps every criterion to
+its evidence. All timing
 and profiling ran on the PREEMPT_RT Raspberry Pi 4; laptop builds were confined
 to two low-priority WSL CPUs. Results are observed values, not WCET bounds.
 
