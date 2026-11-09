@@ -26,7 +26,9 @@ def stop_owned_host(pid, host, output):
 
 def collect(args, directory, mode, scenario):
     directory.mkdir(parents=True, exist_ok=False)
-    callbacks = math.ceil((args.settle + args.duration + 5) * 48000 / args.buffer)
+    callbacks = args.launcher_callbacks or math.ceil(
+        (args.settle + args.duration + 5) * 48000 / args.buffer
+    )
     launch = ['taskset', '-c', str(args.host_cpu), str(args.launcher),
               '--host', str(args.host), '--mode', mode, '--scenario', scenario,
               '--input', 'silence' if scenario == 'idle' else 'signal',
@@ -109,6 +111,7 @@ def main():
     parser.add_argument('--voices', type=int, default=4)
     parser.add_argument('--loop-memory-mb', type=int)
     parser.add_argument('--warmup', type=float, default=0.5)
+    parser.add_argument('--launcher-callbacks', type=int)
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--settle', type=float, default=8)
     parser.add_argument('--frequency', type=int, default=997)
@@ -126,6 +129,8 @@ def main():
         parser.error('tracks, loops and voices must be positive')
     if args.loop_memory_mb is not None and args.loop_memory_mb <= 0:
         parser.error('loop memory must be positive')
+    if args.launcher_callbacks is not None and args.launcher_callbacks <= 0:
+        parser.error('launcher callbacks must be positive')
     if args.rt_priority is not None and not 1 <= args.rt_priority <= 99:
         parser.error('RT priority must be in 1..99')
     allowed = os.sched_getaffinity(0)
