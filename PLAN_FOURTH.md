@@ -110,12 +110,16 @@ baselines, rather than relabeling old device-only-MIDI-disabled measurements.
 - Prepare compact routing operations and active-slot arrays outside rendering.
   Activate prepared changes atomically at established boundaries. Store generation
   checked identities; retire old plans/owners with bounded work.
-- RT loop state is authoritative. Use frame anchors, lengths, cursors and a
-  prepared pending-event queue to derive positions/cycles. Apply commands,
-  synchronization dependencies, recording completion and due transitions at the
-  existing quantum boundary. A wrap with no due action advances a cursor without
-  rebuilding a full-world preview. Reuse existing timing rules/helpers where
-  practical; compare behavior against the existing resolver as the oracle.
+- RT loop state is authoritative. Retain the resolver's prepared pending records
+  and advance active positions/capture counters directly on eligible quanta.
+  Apply commands, synchronization dependencies, recording completion and due
+  transitions at the existing quantum boundary. Unsynchronized wraps use the lean
+  advance. Related sync wraps and pending transitions retain general settlement;
+  those boundaries can change dependent clocks even without an explicit command.
+  Design-rule refinement: reuse this existing event/transaction machinery rather
+  than add a second anchor/event-queue implementation. The heap-guarded resolver
+  oracle verifies identical states/events/cuts. This reduces steady planning but
+  leaves synchronization-boundary work as an explicit worst-case limitation.
 - Preserve command ordering, cancellation/refusal and completion semantics,
   telemetry and disconnect/fault handling. Do not maintain a competing control-side
   simulation that can drift from recording cuts or the render frame.
@@ -346,14 +350,14 @@ no Pi access or Pi measurement is requested here.
 
 Depends on: stage 6; fixes may return to the relevant earlier stage.
 
-- [ ] Push completed milestones, rewrite the PR description around the delivered
+- [x] Push completed milestones, rewrite the PR description around the delivered
   four-mode comparison, and mark the full prototype ready for review.
 - [ ] Monitor required CI until green; investigate failures, fix relevant causes,
   rerun affected checks and record unrelated infrastructure limitations honestly.
-- [ ] Check automated reviews repeatedly, address valid findings and request/recheck
+- [x] Check automated reviews repeatedly, address valid findings and request/recheck
   review until approval when a reviewer is available. Record absent reviewers
   explicitly; do not claim approval that did not occur.
-- [ ] Deliver branch/PR, commands, raw evidence and the concise four-way result.
+- [x] Deliver branch/PR, commands, raw evidence and the concise four-way result.
   Leave merging to the user; no autonomous PR merge.
 
 ## Quick benchmark and verification strategy
@@ -454,3 +458,16 @@ unsupported features or running broad performance matrices.
   build pass. Full native gate: 3,192 passed, 11 skipped, zero failures (517.8 s).
   Changed no_std+alloc libraries build for thumbv7em-none-eabihf with warnings denied.
   See `results/fourth-local-2026-11-09/final-validation.json` beneath the design docs.
+
+- Stage 7 publication: PR #960 is ready, with behavior, results, launch and Pi
+  links. Reviews and threads have been checked repeatedly; no automated code
+  reviewer or requested reviewer is present, so there is no review approval to
+  claim. The manually dispatched CI passed Linux debug/release, Windows
+  debug/release, macOS release, JACK, coverage, shared foundation, host inspection
+  and bare-metal builds. Three HTTP 504 dependency-download failures were retried;
+  both web builds have progressed to tests and macOS debug has progressed to its
+  native tests. Hosted-processor CI on the evidence head is green.
+- The execution environment became unavailable after implementation, evidence,
+  the Pi delivery and full local validation had been pushed. Remaining CI and
+  documentation publication continue through GitHub; no rerun of local checks
+  is needed for these documentation-only changes.

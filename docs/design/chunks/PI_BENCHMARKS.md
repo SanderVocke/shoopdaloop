@@ -16,6 +16,15 @@ chmod +x bin/shoop_host bin/chunk_benchmark benchmark.sh profile.sh
 getconf GNU_LIBC_VERSION
 ```
 
+Default sizing: four prepared track slots/sixteen loop slots. Non-idle cases
+create the sync track/one loop and one stereo benchmark track/eight loops.
+Playback/ramps use four active audio loops, each recorded for about 0.2–0.25 seconds;
+four are empty/stopped. Recording uses one recorder; record-play uses one player
+and three recorders. Shared/continue uses four grabs plus the running sync clock.
+Idle has only the empty sync loop. This is not a large multi-track or long-loop
+working-set stress test. `--voices` changes active loops on the benchmark track;
+`--tracks` changes prepared capacity without adding more benchmark tracks.
+
 ## Short tests first
 
 Examples use host/controller CPU 0, render CPU 1 and memory worker CPU 2. Adjust

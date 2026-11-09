@@ -10,6 +10,15 @@ These are short exploratory local runs, not Pi measurements or WCET bounds.
 The completed implementation is compiled from Rust source `cb98366a`; measurement
 checkout `a0802122` adds only plan, evidence and replay tooling. All four modes use
 one release binary, true audio-only policy and the same normal socket app client.
+Prepared capacity is four tracks/sixteen loops. Actual non-idle sessions have
+one sync track/loop plus one stereo benchmark track/eight created loops. Playback
+and ramps use four playing audio loops (roughly 0.2–0.25 seconds each); four remain
+empty/stopped. Record-play uses one player/three recorders, recording uses one,
+and shared/continue uses four grabs plus the running sync clock. Idle contains
+only the empty sync track/loop. These do not establish large-session or long-loop
+playback performance. `--tracks` raises capacity; `--voices` raises active loops
+on the single benchmark track.
+
 There are four repetitions per mode/scenario, rotating through every order
 position. Each run selects 2.048 seconds of audio: 384 callbacks at buffer 256 or
 3,072 at buffer 32. Other settings match the baseline below, including Q=32 and
@@ -44,6 +53,9 @@ small-buffer playback has an 8.2 ms wall-time outlier. There are 3 overruns amon
 zero drops/faults. Retain all these outliers; ordinary container scheduling and
 quota interference prevent attributing their entire duration to renderer work.
 Neither this table nor the percentile improvements establish a WCET bound.
+General settlement still runs at related synchronization wraps and pending
+transitions. Input/meter/smoothing observation paths also retain real sample work.
+The prototype reduces steady overhead; it does not eliminate all boundary costs.
 
 Playback RSS is approximately 254 MiB current, 423 MiB chunks/descriptors and
 371 MiB compact. The flat index reduces live table counts in these playback runs
@@ -134,7 +146,7 @@ are recorded separately from the timed matrix.
 
 One common release build at `9ff329a4` runs all four modes with MIDI disabled.
 Configuration and selected duration match the baseline above. These two repetitions
-are exploratory; continued-capture/churn integration is still being completed.
+were exploratory; continued-capture/churn integration was incomplete at that point.
 Compact uses direct prepared wire operations, lean loop advancement and fixed-depth
 flat audio tables. It preserves current sample arithmetic rather than applying the
 third mode's approximate ramp composition.
