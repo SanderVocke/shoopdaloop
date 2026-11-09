@@ -778,7 +778,9 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
     ) -> Result<bool, Error> {
         use rt_runtime::audio_refs::GainEnvelope;
-        self.apply_configuration(block.graph_epoch);
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::Compact {
+            self.apply_configuration(block.graph_epoch);
+        }
         match self {
             Self::Loop(node) => node.process_references(block),
             Self::Fader(node) if node.processor.is_none() => {
