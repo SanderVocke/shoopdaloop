@@ -588,7 +588,7 @@ impl TrackWidget {
                         ui,
                         BackendCapability::LoopDuplication,
                         egui::Button::new("Clone into"),
-                    )).inner.on_disabled_hover_text("Clone into supports the same loop kind, or a P03 composite into an empty primitive slot.")
+                    )).inner.on_disabled_hover_text("Clone into supports the same loop kind, or a supported composite into an empty primitive slot.")
                 });
                 let compose_end = add_with_capability(
                     ui,

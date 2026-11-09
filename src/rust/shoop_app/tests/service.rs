@@ -2375,6 +2375,7 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
                     | BackendCapability::BusManagement
                     | BackendCapability::CompositeLoops
                     | BackendCapability::LoopTimingEdits
+                    | BackendCapability::LoopDuplication
             )
         );
     }

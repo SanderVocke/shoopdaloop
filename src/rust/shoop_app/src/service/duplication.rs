@@ -62,7 +62,7 @@ impl Service {
             TrackTopology::Direct
         ) {
             return Err(CommandError::invalid(
-                "composite copying supports the Direct-track P03 core",
+                "composite copying requires Direct tracks",
             ));
         }
         if let Some(owner) = self.composites.get(&root) {
@@ -78,7 +78,7 @@ impl Service {
                     )
                 }) {
                     return Err(CommandError::invalid(
-                        "composite copying supports only P03 Play, Stop and Record events",
+                        "composite copying supports only Play, Stop and Record events",
                     ));
                 }
                 self.copy_closure(event.loop_id, seen)?;

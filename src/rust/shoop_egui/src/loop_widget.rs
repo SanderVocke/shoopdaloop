@@ -355,7 +355,7 @@ impl LoopWidget {
                 ui,
                 &[BackendCapability::LoopDuplication],
                 egui::Button::new("Clone"),
-            ).on_hover_text("Copy into a stopped slot below. Supports primitive loops and P03 composites; P17 composite modes are unavailable.");
+            ).on_hover_text("Copy into a stopped slot below. Supports primitive loops and Play/Stop/Record composites. Replacing and dry/wet composite modes cannot be copied yet.");
             #[cfg(test)]
             {
                 self.test_duplicate_rect = Some(duplicate.rect);

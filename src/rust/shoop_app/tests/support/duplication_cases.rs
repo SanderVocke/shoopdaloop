@@ -711,7 +711,7 @@ fn composite_copy_refuses_cross_kind_cycles_and_shadowed_p17_events_before_mutat
     ) else {
         panic!()
     };
-    assert!(message.contains("P03"), "{message}");
+    assert!(message.contains("Play, Stop and Record"), "{message}");
 }
 
 #[shoop_test]

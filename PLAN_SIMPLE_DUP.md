@@ -96,14 +96,14 @@ Depends on Stage 4.
 
 Depends on Stages 2–5.
 
-- [ ] Run production native host/transport workflows: raw source → empty copy → occupied overwrite → independent edit/clear → play → save/load/resave, plus P03 empty-slot conversion, nested/script definition replacement and safe cross-kind refusal. Compare persistent media, authored definitions, geometry and copied fields, stable slot identity and stopped result. Include accepted-operation reconnect without replay.
+- [x] Run production native host/transport workflows: raw source → empty copy → occupied overwrite → independent edit/clear → play → save/load/resave, plus P03 empty-slot conversion, nested/script definition replacement and safe cross-kind refusal. Compare persistent media, authored definitions, geometry and copied fields, stable slot identity and stopped result. Include accepted-operation reconnect without replay.
 - [ ] Rebuild and run the actual browser/application AudioWorklet workflow with direct and supported processed primitive media and P03 copies. Exercise public gestures/dispatch, provider independence, independent definition editing and shared-child playback, save/load and refusal/partial-failure presentation; check content/output and render-memory bounds.
 - [ ] Run formatting, the warning-denying workspace build, native nextest and the applicable policy/parity/dependency/Python checks from `VALIDATION.md`. Use CI for other supported platforms and existing firmware/JACK/ownership gates.
-- [ ] Review the final diff against the implementation base: no feature changes in `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_loops` or `rt_runtime`; no unrelated host/CI fixes or copied transaction framework. Explain any narrow backend API/helper extension.
+- [x] Review the final diff against the implementation base: no feature changes in `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_loops` or `rt_runtime`; no unrelated host/CI fixes or copied transaction framework. Explain any narrow backend API/helper extension.
 
 ## Stage 7 Deliver the new PR and verify CI/review
 
-Depends on Stage 6.
+Depends on Stage 6 for final readiness. A draft PR may be opened while final browser/base comparison checks run so CI and automated review can progress in parallel; final readiness still requires validation of the delivered head.
 
 - [ ] Commit completed milestones, push `feat/simple-loop-duplication`, and open a separate PR targeting `feat/backend-replacement`. Link PR #953 as the alternative and explain the scope/failure-contract differences and production-versus-test diff size.
 - [ ] Work applicable CI regressions to green and verify the delivered head. Diagnose failures with logs/artifacts before rerunning; preserve existing media fixtures, watchdogs and assertions. Demonstrate and report independently blocked/base failures instead of claiming a pass or absorbing unrelated repairs.
