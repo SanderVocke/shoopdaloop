@@ -11,12 +11,18 @@ enum Stage {
     Done,
 }
 
+enum Payload {
+    Media(Option<BackendLoopContent>),
+    Definition(shoop_app_protocol::composite::Versioned),
+}
+
 pub(super) struct Job {
     source: LoopId,
     target: Option<LoopId>,
     view: LoopState,
     sync: Option<BackendLoopId>,
-    content: Option<BackendLoopContent>,
+    payload: Payload,
+    version: Option<u64>,
     rows: VecDeque<TrackId>,
     added: Vec<(TrackId, LoopId)>,
     annotations: Vec<(bool, u32, Option<String>)>,
@@ -29,6 +35,10 @@ impl Service {
     fn copy_target_ready(&self, id: LoopId) -> Result<(), CommandError> {
         let entry = self.loop_entry(id)?;
         if entry.view.structural_state != StructuralState::Confirmed
+            || self
+                .composites
+                .get(&id)
+                .is_some_and(|owner| !owner.candidates.is_empty() || owner.has_retained())
             || self.capture_recording_busy(persistence::Target::Loop {
                 loop_id: id,
                 content_revision: entry.view.content_revision,
@@ -37,6 +47,86 @@ impl Service {
             return Err(CommandError {
                 reason: Refusal::Busy,
                 message: "settle affected recording and edits before copying".into(),
+            });
+        }
+        Ok(())
+    }
+
+    fn copy_closure(&self, root: LoopId, seen: &mut BTreeSet<LoopId>) -> Result<(), CommandError> {
+        if !seen.insert(root) {
+            return Ok(());
+        }
+        self.copy_target_ready(root)?;
+        if !matches!(
+            self.tracks[&self.loops[&root].track].view.topology,
+            TrackTopology::Direct
+        ) {
+            return Err(CommandError::invalid(
+                "composite copying supports the Direct-track P03 core",
+            ));
+        }
+        if let Some(owner) = self.composites.get(&root) {
+            let active = owner
+                .active
+                .as_ref()
+                .ok_or_else(|| CommandError::invalid("composite has no confirmed definition"))?;
+            for event in &active.document.instances {
+                if event.mode.is_some_and(|mode| {
+                    !matches!(
+                        mode,
+                        LoopMode::Playing | LoopMode::Stopped | LoopMode::Recording
+                    )
+                }) {
+                    return Err(CommandError::invalid(
+                        "composite copying supports only P03 Play, Stop and Record events",
+                    ));
+                }
+                self.copy_closure(event.loop_id, seen)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn copy_references(
+        &self,
+        root: LoopId,
+        targets: &BTreeSet<LoopId>,
+        seen: &mut BTreeSet<LoopId>,
+    ) -> bool {
+        seen.insert(root)
+            && self.composites.get(&root).is_some_and(|owner| {
+                owner
+                    .active
+                    .iter()
+                    .chain(owner.candidates.values())
+                    .any(|plan| {
+                        plan.document.instances.iter().any(|event| {
+                            targets.contains(&event.loop_id)
+                                || self.copy_references(event.loop_id, targets, seen)
+                        })
+                    })
+            })
+    }
+
+    fn copy_destination_ready(&self, target: LoopId) -> Result<(), CommandError> {
+        self.copy_target_ready(target)?;
+        let mut affected = BTreeSet::new();
+        if self.composites.contains_key(&target) {
+            self.copy_closure(target, &mut affected)?;
+        } else {
+            affected.insert(target);
+        }
+        if self.composites.keys().any(|id| {
+            *id != target
+                && (self.loops[id].view.mode == LoopMode::Playing
+                    || self.loops[id].view.next_mode == LoopMode::Playing)
+                && self.copy_references(*id, &affected, &mut BTreeSet::new())
+        }) {
+            return Err(CommandError {
+                reason: Refusal::Busy,
+                message:
+                    "settle composite ownership of the destination and its children before copying"
+                        .into(),
             });
         }
         Ok(())
@@ -67,7 +157,7 @@ impl Service {
         }
         self.copy_target_ready(source)?;
         let entry = self.loop_entry(source)?;
-        if entry.view.sync || self.composites.contains_key(&source) {
+        if entry.view.sync {
             return Err(CommandError::invalid("this source cannot be cloned"));
         }
         let track = entry.track;
@@ -80,18 +170,47 @@ impl Service {
                 .find(|id| self.loops[id].view.empty && !self.composites.contains_key(id))
         });
         if let Some(target) = target {
-            if target == source
-                || self.loop_entry(target)?.track != track
-                || self.composites.contains_key(&target)
-            {
+            if target == source || self.loop_entry(target)?.track != track {
                 return Err(CommandError::invalid(
                     "copy requires a compatible distinct slot on the same track",
                 ));
             }
-            self.copy_target_ready(target)?;
+            let source_composite = self.composites.contains_key(&source);
+            let target_composite = self.composites.contains_key(&target);
+            if source_composite != target_composite
+                && (!source_composite || !self.loops[&target].view.empty)
+            {
+                return Err(CommandError::invalid(
+                    "occupied primitive/composite conversion is not supported by Clone into",
+                ));
+            }
+            self.copy_destination_ready(target)?;
         }
+        let previous = order.len();
+        let payload = if let Some(active) = self
+            .composites
+            .get(&source)
+            .and_then(|owner| owner.active.clone())
+        {
+            self.copy_closure(source, &mut BTreeSet::new())?;
+            if let Some(target) = target {
+                self.validate_composite_dependencies(target, &active.document)?;
+            }
+            let mut active = active;
+            let mut ids = BTreeMap::new();
+            for event in &mut active.document.instances {
+                let id = self.next_instance()?;
+                ids.insert(event.instance_id, id);
+                event.instance_id = id;
+            }
+            for event in &mut active.prepared.instances {
+                event.instance_id = ids[&event.instance_id];
+            }
+            Payload::Definition(active)
+        } else {
+            Payload::Media(None)
+        };
         let rows: VecDeque<_> = if target.is_none() {
-            let previous = order.len();
             let max = self
                 .tracks
                 .values()
@@ -125,8 +244,14 @@ impl Service {
             source,
             target,
             view: entry.view.clone(),
-            sync: self.observed.loops[&entry.backend].sync_source,
-            content: None,
+            sync: self
+                .observed
+                .composites
+                .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+                .map(|state| state.sync_source)
+                .unwrap_or_else(|| self.observed.loops[&entry.backend].sync_source),
+            payload,
+            version: None,
             rows,
             added: Vec::new(),
             annotations: self
@@ -204,11 +329,15 @@ impl Service {
         match job.stage {
             Stage::Capture => {
                 self.copy_target_ready(job.source)?;
-                if let BackendAsyncResult::Ready(content) = self
-                    .backend
-                    .capture_loop_content_async(self.loops[&job.source].backend)?
-                {
-                    job.content = Some(content);
+                if let Payload::Media(content) = &mut job.payload {
+                    if let BackendAsyncResult::Ready(captured) = self
+                        .backend
+                        .capture_loop_content_async(self.loops[&job.source].backend)?
+                    {
+                        *content = Some(captured);
+                        job.stage = Stage::Rows;
+                    }
+                } else {
                     job.stage = Stage::Rows;
                 }
             }
@@ -230,7 +359,7 @@ impl Service {
             }
             Stage::Stop => {
                 let target = job.target.unwrap();
-                self.copy_target_ready(target)?;
+                self.copy_destination_ready(target)?;
                 self.backend.transition_loop(
                     self.loops[&target].backend,
                     BackendLoopMode::Stopped,
@@ -252,19 +381,66 @@ impl Service {
             }
             Stage::Apply => {
                 let target = job.target.unwrap();
-                self.copy_target_ready(target)?;
-                if let BackendAsyncResult::Ready(()) = self.backend.load_loop_content_async(
-                    self.loops[&target].backend,
-                    job.content.as_ref().unwrap(),
-                )? {
+                if job.version.is_none() {
+                    self.copy_target_ready(target)?;
+                }
+                let applied = match &job.payload {
+                    Payload::Media(content) => matches!(
+                        self.backend.load_loop_content_async(
+                            self.loops[&target].backend,
+                            content.as_ref().unwrap()
+                        )?,
+                        BackendAsyncResult::Ready(())
+                    ),
+                    Payload::Definition(active) => {
+                        if let Some(version) = job.version {
+                            let owner = self.composites.get(&target).ok_or_else(|| {
+                                CommandError::invalid("composite activation failed")
+                            })?;
+                            if owner
+                                .active
+                                .as_ref()
+                                .is_some_and(|active| active.version == version)
+                            {
+                                true
+                            } else if owner.candidates.contains_key(&version) {
+                                false
+                            } else {
+                                return Err(CommandError::invalid(
+                                    "composite candidate did not activate",
+                                ));
+                            }
+                        } else {
+                            let geometry = active
+                                .prepared
+                                .instances
+                                .iter()
+                                .map(|event| {
+                                    (event.instance_id, (event.start_frame, event.end_frame))
+                                })
+                                .collect();
+                            self.submit_composite_geometry(
+                                target,
+                                active.document.clone(),
+                                &geometry,
+                                Some(active.prepared.unit_frames),
+                            )?;
+                            job.version = self.composites[&target].latest;
+                            false
+                        }
+                    }
+                };
+                if applied {
                     job.committed = true;
                     job.stage = Stage::Controls;
                 }
             }
             Stage::Controls => {
                 let backend = self.loops[&job.target.unwrap()].backend;
-                self.backend.set_loop_gain(backend, job.view.gain)?;
-                self.backend.set_loop_balance(backend, job.view.balance)?;
+                if matches!(job.payload, Payload::Media(_)) {
+                    self.backend.set_loop_gain(backend, job.view.gain)?;
+                    self.backend.set_loop_balance(backend, job.view.balance)?;
+                }
                 self.backend.set_loop_sync_source(backend, job.sync)?;
                 self.backend
                     .set_loop_repeat_sync(backend, job.view.repeat_sync)?;

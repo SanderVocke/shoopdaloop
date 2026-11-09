@@ -22,6 +22,7 @@ enum CopyFailure {
     Stop,
     Apply,
     Gain,
+    Repeat,
     Disconnect,
 }
 impl CopyFailure {
@@ -37,6 +38,7 @@ impl CopyFailure {
             ),
             Self::Apply | Self::Disconnect => matches!(request, Request::ContentApply { .. }),
             Self::Gain => matches!(request, Request::LoopGain { .. }),
+            Self::Repeat => matches!(request, Request::LoopRepeatSync { .. }),
         }
     }
 }

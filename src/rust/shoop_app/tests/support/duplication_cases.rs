@@ -1,4 +1,5 @@
 use super::*;
+use shoop_app_protocol::composite::{Edit, Versioned};
 
 fn run(f: &mut Fixture, client: &mut Client, command: Command, encoded: bool) -> Outcome {
     let id = submit(&mut f.service, client, ConnectionId(1), command);
@@ -386,4 +387,393 @@ fn copy_reports_an_unknown_engine_outcome_without_retrying_the_apply() {
     assert!(message.contains("unknown"), "{message}");
     assert_eq!(f.content_applies.get(), 1);
     assert!(f.service.snapshot().pending.is_empty());
+}
+
+fn definition(f: &Fixture, id: LoopId) -> Versioned {
+    f.service
+        .snapshot()
+        .composites
+        .iter()
+        .find(|view| view.loop_id == id)
+        .unwrap()
+        .active
+        .clone()
+        .unwrap()
+}
+fn append(target: LoopId, add: Vec<LoopId>) -> Command {
+    Command::Composite(Edit::Append {
+        target,
+        add,
+        parallel: false,
+        convert_if_empty: true,
+    })
+}
+fn copied_definition(source: &Versioned, target: &Versioned) {
+    assert_eq!(source.document.kind, target.document.kind);
+    assert_eq!(source.document.basis, target.document.basis);
+    assert_eq!(source.prepared.spans, target.prepared.spans);
+    assert_eq!(source.prepared.unit_frames, target.prepared.unit_frames);
+    for (a, b) in source
+        .document
+        .instances
+        .iter()
+        .zip(&target.document.instances)
+    {
+        assert_ne!(a.instance_id, b.instance_id);
+        let mut expected = a.clone();
+        expected.instance_id = b.instance_id;
+        assert_eq!(&expected, b);
+    }
+    assert_eq!(
+        source.document.instances.len(),
+        target.document.instances.len()
+    );
+    assert_eq!(
+        source
+            .prepared
+            .instances
+            .iter()
+            .map(|i| (i.start_frame, i.end_frame))
+            .collect::<Vec<_>>(),
+        target
+            .prepared
+            .instances
+            .iter()
+            .map(|i| (i.start_frame, i.end_frame))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[shoop_test]
+fn p03_copies_empty_regular_script_and_nested_definitions_with_independent_ids() {
+    for kind in 0..4 {
+        let (mut f, mut client, track, loops) = setup(true);
+        let mut source = loops[2];
+        if kind == 0 {
+            run(
+                &mut f,
+                &mut client,
+                Command::Composite(Edit::Convert { target: source }),
+                true,
+            );
+        } else {
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    append(source, vec![loops[0], loops[1], loops[0]]),
+                    true
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        if kind == 2 {
+            run(
+                &mut f,
+                &mut client,
+                Command::Composite(Edit::Kind {
+                    target: source,
+                    kind: CompositeKind::Script,
+                }),
+                true,
+            );
+            for (event, mode) in definition(&f, source).document.instances.iter().zip([
+                LoopMode::Playing,
+                LoopMode::Stopped,
+                LoopMode::Recording,
+            ]) {
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::Composite(Edit::Mode {
+                        target: source,
+                        event: event.instance_id,
+                        mode,
+                    }),
+                    true,
+                );
+            }
+        }
+        if kind == 3 {
+            let Outcome::LoopCreated { loop_id, .. } =
+                run(&mut f, &mut client, Command::AddLoop { track }, true)
+            else {
+                panic!()
+            };
+            run(&mut f, &mut client, append(loop_id, vec![source]), true);
+            source = loop_id;
+        }
+        let pinned = definition(&f, source);
+        for _ in 0..2 {
+            let outcome = run(
+                &mut f,
+                &mut client,
+                action(track, source, LoopAction::DuplicateTo(loops[3])),
+                true,
+            );
+            assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+            copied_definition(&pinned, &definition(&f, loops[3]));
+            assert_eq!(
+                (view(&f, loops[3]).mode, view(&f, loops[3]).position),
+                (LoopMode::Stopped, 0.)
+            );
+        }
+        let copied = definition(&f, loops[3]);
+        if let Some(event) = pinned.document.instances.first() {
+            run(
+                &mut f,
+                &mut client,
+                Command::Composite(Edit::Delete {
+                    target: source,
+                    events: vec![event.instance_id],
+                }),
+                true,
+            );
+            assert_eq!(definition(&f, loops[3]), copied);
+        }
+        assert_eq!(f.content_applies.get(), 0);
+    }
+}
+
+#[shoop_test]
+fn p03_replacement_stops_children_preserves_old_definitions_on_failure_and_survives_detach() {
+    let (mut f, mut client, track, loops) = setup(true);
+    run(&mut f, &mut client, append(loops[2], vec![loops[0]]), true);
+    run(&mut f, &mut client, append(loops[3], vec![loops[1]]), true);
+    let event = definition(&f, loops[3]).document.instances[0].instance_id;
+    run(
+        &mut f,
+        &mut client,
+        Command::Composite(Edit::Duration {
+            target: loops[3],
+            event,
+            n_cycles: Some(10_000),
+        }),
+        true,
+    );
+    let old = definition(&f, loops[3]);
+    run(
+        &mut f,
+        &mut client,
+        action(track, loops[3], LoopAction::PlayClicked),
+        true,
+    );
+    assert_eq!(view(&f, loops[1]).mode, LoopMode::Playing);
+    f.refuse_composite_after.set(Some(0));
+    let outcome = run(
+        &mut f,
+        &mut client,
+        action(track, loops[2], LoopAction::DuplicateTo(loops[3])),
+        true,
+    );
+    assert!(matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
+    assert_eq!(definition(&f, loops[3]), old);
+    assert_eq!(view(&f, loops[1]).mode, LoopMode::Stopped);
+    assert_eq!(view(&f, loops[3]).mode, LoopMode::Stopped);
+    let pinned = definition(&f, loops[2]);
+    f.refuse_copy.set(Some(CopyFailure::Repeat));
+    let Outcome::Refused { message, .. } = run(
+        &mut f,
+        &mut client,
+        action(track, loops[2], LoopAction::DuplicateTo(loops[3])),
+        true,
+    ) else {
+        panic!()
+    };
+    assert!(message.contains("Content copied"), "{message}");
+    copied_definition(&pinned, &definition(&f, loops[3]));
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        action(track, loops[2], LoopAction::DuplicateTo(loops[3])),
+    );
+    f.service.detach(ConnectionId(1));
+    for _ in 0..100 {
+        f.service.tick(STEP);
+    }
+    copied_definition(&pinned, &definition(&f, loops[3]));
+    assert!(f
+        .service
+        .snapshot()
+        .results
+        .iter()
+        .any(|r| r.id == operation && matches!(r.outcome, Outcome::Confirmed { .. })));
+}
+
+#[shoop_test]
+fn composite_copy_refuses_cross_kind_cycles_and_shadowed_p17_events_before_mutation() {
+    let (mut f, mut client, track, loops) = setup(false);
+    run(&mut f, &mut client, append(loops[2], vec![loops[0]]), false);
+    let old = definition(&f, loops[2]);
+    let media = audio(&mut f, &client, loops[1]);
+    for (source, target) in [(loops[0], loops[2]), (loops[2], loops[1])] {
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                action(track, source, LoopAction::DuplicateTo(target)),
+                false
+            ),
+            Outcome::Refused { .. }
+        ));
+    }
+    assert_eq!(definition(&f, loops[2]), old);
+    assert_eq!(audio(&mut f, &client, loops[1]), media);
+    f.advance.set(false);
+    let edit = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        append(loops[2], vec![loops[1]]),
+    );
+    assert!(matches!(
+        run(
+            &mut f,
+            &mut client,
+            action(track, loops[2], LoopAction::Duplicate),
+            false
+        ),
+        Outcome::Refused {
+            reason: Refusal::Busy,
+            ..
+        }
+    ));
+    assert_eq!(definition(&f, loops[2]), old);
+    f.advance.set(true);
+    assert!(matches!(
+        complete(&mut f.service, &mut client, ConnectionId(1), edit, false),
+        Outcome::Confirmed { .. }
+    ));
+    run(&mut f, &mut client, append(loops[2], vec![loops[3]]), false);
+    assert!(matches!(
+        run(
+            &mut f,
+            &mut client,
+            action(track, loops[2], LoopAction::DuplicateTo(loops[3])),
+            false
+        ),
+        Outcome::Refused { .. }
+    ));
+    assert!(view(&f, loops[3]).empty);
+    let target = loops[2];
+    let event = definition(&f, target).document.instances[0].instance_id;
+    for edit in [
+        Edit::Kind {
+            target,
+            kind: CompositeKind::Script,
+        },
+        Edit::Mode {
+            target,
+            event,
+            mode: LoopMode::Replacing,
+        },
+        Edit::Relocate {
+            target,
+            events: vec![event],
+            start_cycle: 0,
+            duplicate: true,
+        },
+    ] {
+        assert!(matches!(
+            run(&mut f, &mut client, Command::Composite(edit), false),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    let duplicate = definition(&f, target)
+        .document
+        .instances
+        .iter()
+        .filter(|i| i.loop_id == loops[0])
+        .map(|i| i.instance_id)
+        .max()
+        .unwrap();
+    run(
+        &mut f,
+        &mut client,
+        Command::Composite(Edit::Mode {
+            target,
+            event: duplicate,
+            mode: LoopMode::Playing,
+        }),
+        false,
+    );
+    assert!(definition(&f, target)
+        .prepared
+        .spans
+        .iter()
+        .all(|span| span.mode != LoopMode::Replacing));
+    let Outcome::Refused { message, .. } = run(
+        &mut f,
+        &mut client,
+        action(track, target, LoopAction::Duplicate),
+        false,
+    ) else {
+        panic!()
+    };
+    assert!(message.contains("P03"), "{message}");
+}
+
+#[shoop_test]
+fn future_composite_recording_blocks_primitive_copy_without_stopping_the_parent() {
+    let (mut f, mut client, track, loops) = setup(false);
+    let parent = loops[2];
+    run(&mut f, &mut client, append(parent, vec![loops[0]]), false);
+    run(
+        &mut f,
+        &mut client,
+        Command::Composite(Edit::Kind {
+            target: parent,
+            kind: CompositeKind::Script,
+        }),
+        false,
+    );
+    run(
+        &mut f,
+        &mut client,
+        Command::Composite(Edit::Insert {
+            target: parent,
+            source: loops[0],
+            start_cycle: 10_000,
+        }),
+        false,
+    );
+    let event = definition(&f, parent)
+        .document
+        .instances
+        .last()
+        .unwrap()
+        .instance_id;
+    run(
+        &mut f,
+        &mut client,
+        Command::Composite(Edit::Mode {
+            target: parent,
+            event,
+            mode: LoopMode::Recording,
+        }),
+        false,
+    );
+    run(
+        &mut f,
+        &mut client,
+        action(track, parent, LoopAction::PlayClicked),
+        false,
+    );
+    assert_eq!(view(&f, parent).mode, LoopMode::Playing);
+    let before = audio(&mut f, &client, loops[1]);
+    assert!(matches!(
+        run(
+            &mut f,
+            &mut client,
+            action(track, loops[0], LoopAction::DuplicateTo(loops[1])),
+            false
+        ),
+        Outcome::Refused {
+            reason: Refusal::Busy,
+            ..
+        }
+    ));
+    assert_eq!(view(&f, parent).mode, LoopMode::Playing);
+    assert_eq!(audio(&mut f, &client, loops[1]), before);
 }
