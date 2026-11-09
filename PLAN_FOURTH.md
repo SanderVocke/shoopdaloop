@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 1 on `proto/audio-compact`. Upstream is still
+Status: executing stage 2 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -220,10 +220,10 @@ Depends on: stage 0.
 - [x] Add actual audio-only identity/reservation reporting and benchmark validation.
   Add `--modes` subsets; derive rotation from selected mode count, removing `% 3`
   assumptions. Keep old three-mode result archives/analyzers usable.
-- [ ] Verify record/play, grabs, continued capture, readback and default sync startup
+- [x] Verify record/play, grabs, continued capture, readback and default sync startup
   in the three modes under audio-only heap guards. Test rejected MIDI operations
   and an ordinary MIDI-enabled regression case; check no MIDI work is recreated.
-- [ ] Build the release host/launcher and run the quick command below without
+- [x] Build the release host/launcher and run the quick command below without
   `compact`: quiet idle/play/ramps, two repetitions, 0.5-second warmup and 384
   selected callbacks. Save raw results as the first audio-only milestone in
   `docs/design/chunks/FOURTH_RESULTS.md`; compare with the fresh stage-0 baseline.
@@ -379,3 +379,8 @@ unsupported features or running broad performance matrices.
   bindings/input state, strip MIDI state and ports; MIDI graph creation/injection
   is refused. Existing engine tests, including default MIDI and sample/capture/
   partition oracles, pass. Warning-denying release host/launcher build passes.
+
+- Stage 1 complete: 18 new audio-only timing runs and nine shared/continue/churn
+  host smoke runs pass. Public-protocol audio-only grab regression passes after
+  decoupling input capability advertisement from MIDI history. Results and verified
+  raw evidence are in `docs/design/chunks/FOURTH_RESULTS.md`.
