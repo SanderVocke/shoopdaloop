@@ -438,6 +438,7 @@ impl TrackWidget {
                                 ui,
                                 &drop_zone.response,
                                 loop_state,
+                                state,
                                 dropped.is_some(),
                                 &mut result,
                             );
@@ -552,6 +553,7 @@ impl TrackWidget {
         ui: &mut egui::Ui,
         response: &egui::Response,
         target_state: &crate::LoopState,
+        track_state: &TrackState,
         open: bool,
         result: &mut TrackWidgetResponse,
     ) {
@@ -563,6 +565,17 @@ impl TrackWidget {
         }
         let popup_id = ui.scope_id().with(("loop_drop_menu", target));
         let source_is_in_track = self.loop_widgets.contains_key(&source);
+        let compatible = track_state
+            .loops
+            .iter()
+            .find(|state| state.id == source)
+            .is_some_and(|source| {
+                let source_composite = source.composite_kind != crate::CompositeKind::None;
+                let target_composite = target_state.composite_kind != crate::CompositeKind::None;
+                !source.sync
+                    && (source_composite == target_composite
+                        || source_composite && target_state.empty)
+            });
         let mut action = None;
         let mut confirm_clone = false;
         egui::Popup::menu(response)
@@ -571,15 +584,11 @@ impl TrackWidget {
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 let clone = source_is_in_track.then(|| {
-                    add_with_capabilities(
+                    ui.add_enabled_ui(compatible, |ui| add_with_capability(
                         ui,
-                        &[
-                            BackendCapability::SessionCapture,
-                            BackendCapability::LoopContentImport,
-                            BackendCapability::LoopDuplication,
-                        ],
+                        BackendCapability::LoopDuplication,
                         egui::Button::new("Clone into"),
-                    )
+                    )).inner.on_disabled_hover_text("Clone into supports the same loop kind, or a P03 composite into an empty primitive slot.")
                 });
                 let compose_end = add_with_capability(
                     ui,

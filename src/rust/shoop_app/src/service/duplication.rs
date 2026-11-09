@@ -158,7 +158,7 @@ impl Service {
         self.copy_target_ready(source)?;
         let entry = self.loop_entry(source)?;
         if entry.view.sync {
-            return Err(CommandError::invalid("this source cannot be cloned"));
+            return Err(CommandError::invalid("the sync loop cannot be cloned"));
         }
         let track = entry.track;
         let order = &self.tracks[&track].loops;

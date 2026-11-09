@@ -87,10 +87,10 @@ Depends on Stage 3.
 
 Depends on Stage 4.
 
-- [ ] Connect existing Clone/Clone into gestures through `shoop_egui` and `shoop_app_client` to the host job. Preserve existing sync-loop eligibility; offer supported P03 actions and explain unsupported cross-kind/P17 cases consistently with service admission.
-- [ ] Advertise `LoopDuplication` only for hosts that support this contract, independently of file import/export provider availability; require existing composite capability for composite actions. Do not add a scripting API; verify existing Lua queries/control can observe and edit primitive and P03 copies.
-- [ ] Update the duplication/persistence contract and P11 coverage: primitive and P03 copying supported, occupied cross-kind conversions/P17 duplication deferred, sequential failure semantics explicit, MIDI restoration still open. Document shared child references. Do not claim full duplication parity.
-- [ ] Verify encoded command parity, UI eligibility, confirmed pending/error state, unsupported-host refusal, selection/target independence and the visible result of post-apply failure.
+- [x] Connect existing Clone/Clone into gestures through `shoop_egui` and `shoop_app_client` to the host job. Preserve existing sync-loop eligibility; offer supported P03 actions and explain unsupported cross-kind/P17 cases consistently with service admission.
+- [x] Advertise `LoopDuplication` only for hosts that support this contract, independently of file import/export provider availability; require existing composite capability for composite actions. Do not add a scripting API; verify existing Lua queries/control can observe and edit primitive and P03 copies.
+- [x] Update the duplication/persistence contract and P11 coverage: primitive and P03 copying supported, occupied cross-kind conversions/P17 duplication deferred, sequential failure semantics explicit, MIDI restoration still open. Document shared child references. Do not claim full duplication parity.
+- [x] Verify encoded command parity, UI eligibility, confirmed pending/error state, unsupported-host refusal, selection/target independence and the visible result of post-apply failure.
 
 ## Stage 6 Validate end to end
 

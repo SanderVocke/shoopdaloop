@@ -318,7 +318,7 @@ fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss(
 }
 
 #[shoop_test]
-async fn public_core_file_capabilities_keep_duplication_refused() {
+async fn public_core_file_capabilities_include_copying_but_sync_clone_stays_refused() {
     let mut fixture = Fixture::new();
     let state = fixture.runtime.snapshot();
     for capability in [
@@ -326,12 +326,10 @@ async fn public_core_file_capabilities_keep_duplication_refused() {
         BackendCapability::SessionContentLoad,
         BackendCapability::LoopContentImport,
         BackendCapability::ClickTrackInsertion,
+        BackendCapability::LoopDuplication,
     ] {
         assert!(state.capabilities.supports(capability));
     }
-    assert!(!state
-        .capabilities
-        .supports(BackendCapability::LoopDuplication));
     let track = &state.tracks[0];
     fixture.dispatch(AppIntent::Loop {
         track_id: track.id,
@@ -344,9 +342,10 @@ async fn public_core_file_capabilities_keep_duplication_refused() {
     }
     let state = fixture.runtime.snapshot();
     assert!(
-        state.notifications.iter().any(|notice| notice
-            .message
-            .contains(BackendCapability::LoopDuplication.unavailable_reason())),
+        state
+            .notifications
+            .iter()
+            .any(|notice| notice.message.contains("the sync loop cannot be cloned")),
         "{:?}",
         state.notifications
     );

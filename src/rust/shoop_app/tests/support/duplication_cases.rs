@@ -777,3 +777,44 @@ fn future_composite_recording_blocks_primitive_copy_without_stopping_the_parent(
     assert_eq!(view(&f, parent).mode, LoopMode::Playing);
     assert_eq!(audio(&mut f, &client, loops[1]), before);
 }
+
+#[shoop_test]
+fn runtime_clone_is_available_without_file_io_and_lua_can_edit_the_confirmed_copy() {
+    let (mut f, _client, track, loops) = setup(false);
+    f.service.detach(ConnectionId(1));
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(vec![]),
+    );
+    assert!(runtime
+        .snapshot()
+        .capabilities
+        .supports(BackendCapability::LoopDuplication));
+    assert!(!runtime
+        .snapshot()
+        .capabilities
+        .supports(BackendCapability::SessionCapture));
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[0],
+            action: LoopAction::DuplicateTo(loops[1]),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 100);
+    assert_eq!(
+        view(&f, loops[1]).length_frames,
+        view(&f, loops[0]).length_frames
+    );
+    assert_eq!(f.content_applies.get(), 1);
+    runtime.dispatch(AppIntent::AddScriptSource {
+        name: "copy.lua".into(), kind: ScriptKind::User, enabled: true,
+        source: Arc::from("shoop_announce_api_version(1,0); local c = require('shoop_control'); if c.loop_get_gain({0,1})[1] ~= 1 then error('copy not confirmed') end; c.loop_set_gain({0,1}, 0.5)"),
+    }).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    assert!(runtime.snapshot().scripting.scripts[0]
+        .latest_error
+        .is_none());
+    assert_eq!(view(&f, loops[1]).gain, 0.5);
+    assert_eq!(view(&f, loops[0]).gain, 1.);
+}

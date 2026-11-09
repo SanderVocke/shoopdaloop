@@ -138,9 +138,37 @@ normal service work or silently restart against newer content.
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
   mutation. They are not omitted from save or stripped during load. Session script
-  persistence and duplication remain named follow-ups. Audio/MIDI click generation
+  persistence remains a named follow-up. Audio/MIDI click generation
   and insertion use the restored bounded import path. System/Master audio preview
   is complete under P15; see the [preview contract](preview.md).
+
+## Loop copying
+
+Clone uses the first empty primitive slot below the source on the same track,
+adding an aligned row when necessary. Clone into replaces an explicit same-track
+destination. The service captures and loads complete primitive audio/MIDI role
+media and recorded processor state, then copies name, gain/balance, sync and repeat
+settings. No file provider or codec round trip is required. The result keeps its
+slot identity, selection and targeting, and starts stopped at position zero.
+
+P03 Direct-track regular and scripted Play/Stop/Record definitions, including
+nesting, use the existing prepared-composite editor. Copies have fresh event and
+prepared-version ownership and preserve timing basis, frozen geometry and child
+references. Editing either definition is independent; changing a shared child
+affects both. A composite can replace another P03 composite or an empty primitive.
+Occupied cross-kind conversion and P17 definition duplication refuse before mutation.
+Affected recording, future composite writes, unsettled edits, cycles and conflicting
+active parent/child ownership also refuse without stopping that recording.
+
+Copying is a host-owned sequence: capture/validate, add slots, Stop, apply content
+or activate the definition, then apply controls and metadata. Existing content is
+never cleared first. Failure before content/definition commit preserves it, although
+the destination may remain stopped and confirmed empty row additions may remain.
+After commit, a later failure reports that content was copied and identifies the
+remaining step; acknowledged media is not rolled back. Unknown engine outcomes
+are reported as unknown. UI reconnect reconciles the same accepted operation
+without replaying capture, row creation or application. Host/engine crash recovery
+and expanded MIDI state/preroll/seek/history support remain outside this contract.
 
 ## Engine integration boundary
 
