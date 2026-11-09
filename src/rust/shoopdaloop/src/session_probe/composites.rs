@@ -556,7 +556,23 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             .flat_map(|t| &t.loops)
             .all(|l| l.mode == LoopMode::Stopped)
     })?;
+    for (source, target) in [(0, 6), (1, 6), (3, 7)] {
+        loop_action(
+            &handle,
+            track,
+            ids[source],
+            LoopAction::DuplicateTo(ids[target]),
+        )?;
+        file_wait(&handle, |s| {
+            let loops = &s.tracks[1].loops;
+            loops[target].name == loops[source].name
+                && loops[target].length_frames == loops[source].length_frames
+                && loops[target].mode == LoopMode::Stopped
+                && loops[target].position == 0.
+        })?;
+    }
     let before = file_save(&handle, &root.path().join("composites.shoop"))?;
+    crate::copy_probe::verify(&before).map_err(anyhow::Error::msg)?;
     ensure!(before.media.values().any(|media| matches!(media, shoop_session::MediaPayload::Midi(midi) if midi.events.len() >= 2)), "public piano recording did not retain exact MIDI");
     ensure!(
         before
@@ -570,7 +586,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             .iter()
             .filter(|l| l.composite.is_some())
             .count()
-            == 3,
+            == 4,
         "capture lost composite documents"
     );
     ensure!(
@@ -601,6 +617,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         "load did not publish fresh stopped owners"
     );
     let after = file_save(&handle, &root.path().join("resaved.shoop"))?;
+    crate::copy_probe::verify(&after).map_err(anyhow::Error::msg)?;
     ensure!(
         before.media.values().collect::<Vec<_>>() == after.media.values().collect::<Vec<_>>(),
         "composite save/load changed PCM or exact MIDI"

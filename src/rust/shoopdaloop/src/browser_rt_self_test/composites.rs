@@ -16,6 +16,10 @@ enum Stage {
     Mode,
     Playing,
     Stall,
+    CopyPrimitive,
+    OverwritePrimitive,
+    CopyComposite,
+    CopiesReady,
     Saving,
     Loaded,
     Resaving,
@@ -101,8 +105,8 @@ impl Canary {
                 {
                     return Err("composite capability missing".into());
                 }
-                if track.loops.len() < 6 {
-                    return Err("composite canary requires six loop slots".into());
+                if track.loops.len() < 8 {
+                    return Err("composite canary requires eight loop slots".into());
                 }
                 self.track = Some(track.id);
                 self.loops = track.loops.iter().map(|l| l.id).collect();
@@ -224,6 +228,47 @@ impl Canary {
                     return Err("AudioWorklet did not continue through main-thread stall".into());
                 }
                 send(AppIntent::Global(GlobalControlAction::StopAll))?;
+                self.next(Stage::CopyPrimitive);
+            }
+            Stage::CopyPrimitive => {
+                if track.loops.iter().any(|l| l.mode != LoopMode::Stopped) {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[0],
+                    LoopAction::DuplicateTo(self.loops[6]),
+                ))?;
+                self.next(Stage::OverwritePrimitive);
+            }
+            Stage::OverwritePrimitive => {
+                if track.loops[6].name != track.loops[0].name {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[1],
+                    LoopAction::DuplicateTo(self.loops[6]),
+                ))?;
+                self.next(Stage::CopyComposite);
+            }
+            Stage::CopyComposite => {
+                if track.loops[6].name != track.loops[1].name {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[3],
+                    LoopAction::DuplicateTo(self.loops[7]),
+                ))?;
+                self.next(Stage::CopiesReady);
+            }
+            Stage::CopiesReady => {
+                if track.loops[7].name != track.loops[3].name {
+                    return Ok(false);
+                }
+                if [6, 7].iter().any(|i| {
+                    track.loops[*i].mode != LoopMode::Stopped || track.loops[*i].position != 0.
+                }) {
+                    return Err("copies did not finish stopped at zero".into());
+                }
                 send(AppIntent::RequestSaveSession)?;
                 self.next(Stage::Saving);
             }
@@ -234,6 +279,7 @@ impl Canary {
                 if !output_completed(snapshot)? {
                     return Ok(false);
                 }
+                crate::copy_probe::verify(before)?;
                 let child = &before
                     .document
                     .track_groups
@@ -299,6 +345,7 @@ impl Canary {
                 if !output_completed(snapshot)? {
                     return Ok(false);
                 }
+                crate::copy_probe::verify(after)?;
                 let before = self.before.as_ref().unwrap();
                 if before.media.values().collect::<Vec<_>>()
                     != after.media.values().collect::<Vec<_>>()

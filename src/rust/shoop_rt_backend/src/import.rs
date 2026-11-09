@@ -14,11 +14,26 @@ use anyhow::{anyhow, bail, Result};
 use shoop_backend::*;
 use shoop_rt_protocol::Request;
 use shoop_rt_transport::carrier::Carrier;
+
+#[derive(Clone, Copy)]
+pub(crate) enum Payload<'a> {
+    Update(&'a BackendLoopContentUpdate),
+    Captured(&'a BackendLoopContent),
+}
+
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn import_content(
         &mut self,
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_payload(loop_id, Payload::Update(update))
+    }
+
+    pub(crate) fn import_payload(
+        &mut self,
+        loop_id: BackendLoopId,
+        payload: Payload<'_>,
     ) -> Result<BackendAsyncResult<()>> {
         if let Some(replacement) = &self.replacement {
             if replacement.job.family.is_some()
@@ -49,61 +64,103 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         {
             bail!("stop affected recording and settle input edits before importing");
         }
-        if !self.canonical_content.contains_key(&loop_id) {
+        if matches!(payload, Payload::Update(_)) && !self.canonical_content.contains_key(&loop_id) {
             if let BackendAsyncResult::Pending(progress) = self.capture_core(Some(loop_id))? {
                 return Ok(BackendAsyncResult::Pending(progress));
             }
         }
-        let mut content = (*self
-            .canonical_content
-            .get(&loop_id)
-            .ok_or_else(|| anyhow!("loop capture omitted target"))?)
-        .as_ref()
-        .clone();
-        let mut audio = BTreeSet::new();
-        for channel in &update.audio {
-            if !audio.insert(channel.channel) {
-                bail!("duplicate audio channel update");
+        let mut content = match payload {
+            Payload::Captured(content) => {
+                let entry = &self.mirror.loops[&loop_id];
+                let track =
+                    &self.mirror.tracks[&entry
+                        .track
+                        .filter(|_| entry.program.is_none())
+                        .ok_or_else(|| anyhow!("composites have no media channels"))?];
+                let direct = matches!(track.topology, BackendTrackTopology::Direct { .. });
+                let dry = track.topology.dry_audio_channels() as usize;
+                let wet = track.topology.wet_audio_channels() as usize;
+                if content.length % u32::from(self.limits().quantum) != 0
+                    || content.audio.len() != if direct { wet } else { dry + wet }
+                    || content.midi.len() != usize::from(track.midi)
+                    || content.audio.iter().enumerate().any(|(index, channel)| {
+                        channel.mode
+                            != if direct {
+                                BackendChannelMode::Direct
+                            } else if index < dry {
+                                BackendChannelMode::Dry
+                            } else {
+                                BackendChannelMode::Wet
+                            }
+                    })
+                    || content.midi.iter().any(|channel| {
+                        channel.mode
+                            != if direct {
+                                BackendChannelMode::Direct
+                            } else {
+                                BackendChannelMode::Dry
+                            }
+                    })
+                {
+                    bail!("captured content does not match destination channels or format");
+                }
+                let mut content = content.clone();
+                content.source_id = loop_id.raw();
+                content
             }
-            let target = content
-                .audio
-                .get_mut(channel.channel)
-                .ok_or_else(|| anyhow!("unknown audio channel"))?;
-            target.samples.clone_from(&channel.samples);
-            if let Some(offset) = channel.start_offset {
-                target.start_offset = offset;
+            Payload::Update(_) => self
+                .canonical_content
+                .get(&loop_id)
+                .ok_or_else(|| anyhow!("loop capture omitted target"))?
+                .as_ref()
+                .clone(),
+        };
+        if let Payload::Update(update) = payload {
+            let mut audio = BTreeSet::new();
+            for channel in &update.audio {
+                if !audio.insert(channel.channel) {
+                    bail!("duplicate audio channel update");
+                }
+                let target = content
+                    .audio
+                    .get_mut(channel.channel)
+                    .ok_or_else(|| anyhow!("unknown audio channel"))?;
+                target.samples.clone_from(&channel.samples);
+                if let Some(offset) = channel.start_offset {
+                    target.start_offset = offset;
+                }
+                if let Some(alignment) = channel.capture_alignment_frames {
+                    target.capture_alignment_frames = alignment;
+                }
+                if let Some(preplay) = channel.preplay {
+                    target.preplay = preplay;
+                }
             }
-            if let Some(alignment) = channel.capture_alignment_frames {
-                target.capture_alignment_frames = alignment;
+            let mut midi = BTreeSet::new();
+            for channel in &update.midi {
+                if !midi.insert(channel.channel) {
+                    bail!("duplicate MIDI channel update");
+                }
+                let target = content
+                    .midi
+                    .get_mut(channel.channel)
+                    .ok_or_else(|| anyhow!("unknown MIDI channel"))?;
+                target.length = channel.length;
+                target.start_state.clone_from(&channel.start_state);
+                target.events.clone_from(&channel.events);
+                if let Some(offset) = channel.start_offset {
+                    target.start_offset = offset;
+                }
+                if let Some(alignment) = channel.capture_alignment_frames {
+                    target.capture_alignment_frames = alignment;
+                }
+                if let Some(preplay) = channel.preplay {
+                    target.preplay = preplay;
+                }
             }
-            if let Some(preplay) = channel.preplay {
-                target.preplay = preplay;
+            if let Some(length) = update.length {
+                content.length = length;
             }
-        }
-        let mut midi = BTreeSet::new();
-        for channel in &update.midi {
-            if !midi.insert(channel.channel) {
-                bail!("duplicate MIDI channel update");
-            }
-            let target = content
-                .midi
-                .get_mut(channel.channel)
-                .ok_or_else(|| anyhow!("unknown MIDI channel"))?;
-            target.length = channel.length;
-            target.start_state.clone_from(&channel.start_state);
-            target.events.clone_from(&channel.events);
-            if let Some(offset) = channel.start_offset {
-                target.start_offset = offset;
-            }
-            if let Some(alignment) = channel.capture_alignment_frames {
-                target.capture_alignment_frames = alignment;
-            }
-            if let Some(preplay) = channel.preplay {
-                target.preplay = preplay;
-            }
-        }
-        if let Some(length) = update.length {
-            content.length = length;
         }
         let retained = self
             .canonical_imports
@@ -223,6 +280,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             loop_target: Some(loop_id),
             published: false,
         });
-        self.import_content(loop_id, update)
+        self.import_payload(loop_id, payload)
     }
 }
