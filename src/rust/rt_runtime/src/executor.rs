@@ -116,6 +116,7 @@ pub struct Diagnostics {
     pub epoch: Epoch,
     pub validation_steps: usize,
     pub nodes_processed: usize,
+    pub nodes_skipped: usize,
     pub connections_processed: usize,
     pub render_error: Option<Error>,
     pub scheduled_events: usize,

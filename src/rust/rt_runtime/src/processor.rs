@@ -86,6 +86,12 @@ impl MidiBufferSettings {
     }
 }
 
+pub struct CompactActivity<'a, L: Planner = NoPlanner> {
+    pub node: NodeId,
+    pub graph_epoch: crate::Epoch,
+    pub domain: &'a L,
+}
+
 pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub node: NodeId,
     pub graph_epoch: crate::Epoch,
@@ -156,6 +162,11 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
         Ok(MidiBufferSettings::default())
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
+    /// Return false only when compact execution may leave this operation's
+    /// already-cleared outputs silent without any other render-side effect.
+    fn compact_active(&mut self, _activity: CompactActivity<'_, L>) -> Result<bool, Error> {
+        Ok(true)
+    }
     fn process_references(
         &mut self,
         _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
@@ -184,6 +195,9 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn compact_active(&mut self, activity: CompactActivity<'_, L>) -> Result<bool, Error> {
+        (**self).compact_active(activity)
+    }
     fn process_references(
         &mut self,
         block: &mut crate::audio_refs::ReferenceBlock<'_, L>,

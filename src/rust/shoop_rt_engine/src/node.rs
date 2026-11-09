@@ -755,6 +755,16 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
     fn compact_graph_supported() -> bool {
         true
     }
+    fn compact_active(
+        &mut self,
+        activity: rt_runtime::processor::CompactActivity<'_, LoopPlanner>,
+    ) -> Result<bool, rt_runtime::Error> {
+        self.apply_configuration(activity.graph_epoch);
+        match self {
+            Self::Loop(node) => node.compact_active(activity),
+            _ => Ok(true),
+        }
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
