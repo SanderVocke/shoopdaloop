@@ -752,6 +752,9 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn compact_graph_supported() -> bool {
+        true
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,

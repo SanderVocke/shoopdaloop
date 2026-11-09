@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-MODES = ("current", "chunks", "chunks-descriptors")
+MODES = ("current", "chunks", "chunks-descriptors", "compact")
 
 
 def source_info():

@@ -553,6 +553,18 @@ impl ControlEndpoint {
     }
     /// Validate a structural request against the staged model.
     pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
+        if self.settings.compact
+            && matches!(
+                request,
+                Request::CreateComposite { .. }
+                    | Request::ResetComposite { .. }
+                    | Request::CreateProcessedStrip { .. }
+                    | Request::CreateProcessedBus { .. }
+                    | Request::SetBusProcessor { enabled: true, .. }
+            )
+        {
+            return Staged::Refused(Refusal::Unsupported);
+        }
         let next = &self.next;
         match request {
             Request::SetBusProcessor { bus, enabled } => {

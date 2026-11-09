@@ -657,6 +657,9 @@ pub struct SourceActivity {
 }
 
 pub struct LoopPlanner {
+    compact: bool,
+    compact_views_ready: bool,
+    compact_view_tick: bool,
     shared: Option<shared::Shared>,
     wet_edits: Option<AudioStoreId>,
     observer: Box<dyn BoundaryObserver>,
@@ -1051,6 +1054,9 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
+            compact: resources.audio_render_mode() == rt_runtime::AudioRenderMode::Compact,
+            compact_views_ready: false,
+            compact_view_tick: false,
             shared: None,
             wet_edits: None,
             observer,

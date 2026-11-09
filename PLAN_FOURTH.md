@@ -257,12 +257,12 @@ Depends on: stage 1.
 
 Depends on: stage 2. This delivers the first useful fourth-mode vertical slice.
 
-- [ ] Add compact prepared routing and render execution behind the existing engine
+- [x] Add compact prepared routing and render execution behind the existing engine
   endpoint. Wire normal track/loop creation, host I/O, monitoring and bus output.
-- [ ] Implement recording/publication, playback cursors, stop/start/clear/replace,
+- [x] Implement recording/publication, playback cursors, stop/start/clear/replace,
   sync and scheduled transitions, gain/balance/mute/ramps and the required smoothing.
   Publish real state, meters and streamed media through the existing app service.
-- [ ] Verify deterministic samples/capture cuts against audio-only current at
+- [x] Verify deterministic samples/capture cuts against audio-only current at
   Q=1/32 and callback partitions 1/13/128/256, including simultaneous capture and
   playback, pending controls and multiple loop wraps. Extend the existing oracle;
   keep the descriptor mode's endpoint-only exception separate.
@@ -394,7 +394,15 @@ unsupported features or running broad performance matrices.
 
 - Stage 2: compact fixed-depth tables, typed payloads, direct private capture
   appends, rollback and budgeted retirement are implemented. All 96 runtime unit
-  tests pass, including retained audio through 15 history wraps, cancelled capture,
+  tests pass, including retained audio through repeated history wraps, cancelled capture,
   saturated owner admission and continued history publication under the heap guard.
   Lower-crate/engine warning-denying builds pass. Native compact preparation
   explicitly refuses until its execution path is installed in stage 3.
+
+- Stage 3 vertical slice: compiled wire operations execute the original engine
+  processors with stable-owner borrowing, without per-edge endpoint routing or
+  per-quantum pins. Lean clock advancement matches resolver states/events under
+  the heap guard at Q=1/32, including delayed transitions and sync dependencies.
+  Stable playback views skip settlement; actual operations and clock boundaries
+  keep the existing transactional rules. Four-mode sample/capture/partition,
+  workflow, structure and audio-only protocol tests pass; release build passes.

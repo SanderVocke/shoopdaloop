@@ -134,6 +134,13 @@ impl ProcessorOperation for () {
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
 pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
+    /// Opt in only when processors preserve published input owners until finish_tick.
+    fn compact_graph_supported() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
     /// Validate the actual node identity and domain before installation.
     /// Admission may run on-render and must obey the processing contract.
     fn admit(&self, _node: NodeId, _domain: &L) -> Result<(), Error> {

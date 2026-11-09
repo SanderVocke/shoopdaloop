@@ -370,7 +370,11 @@ fn prepare_complete(
     wet_pages: usize,
 ) -> Result<Engine, PrepareError> {
     description.validate()?;
-    if description.audio_render_mode == rt_runtime::AudioRenderMode::Compact {
+    if description.audio_render_mode == rt_runtime::AudioRenderMode::Compact
+        && (!description.audio_bench_only
+            || !processors.instances.is_empty()
+            || description.external_dry_wet)
+    {
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
     let policy = description.processors;
@@ -752,6 +756,7 @@ fn prepare_complete(
         },
         cells: cells.clone(),
         settings: Settings {
+            compact: description.audio_render_mode == rt_runtime::AudioRenderMode::Compact,
             audio_only: description.audio_bench_only,
             external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,

@@ -364,6 +364,7 @@ fn visit(
 }
 
 pub struct ReferenceBlock<'a, L> {
+    pub borrow_persistent: bool,
     pub node: NodeId,
     pub frame: Frame,
     pub graph_epoch: crate::Epoch,
@@ -404,8 +405,10 @@ impl<L> ReferenceBlock<'_, L> {
         let mut sequence =
             self.resources
                 .audio_chunk_sequence(index, position, self.quantum.frames(), channel)?;
-        if let Some(sequence) = &mut sequence {
-            self.arena.pin_sequence(sequence, self.resources)?;
+        if !self.borrow_persistent {
+            if let Some(sequence) = &mut sequence {
+                self.arena.pin_sequence(sequence, self.resources)?;
+            }
         }
         Ok(sequence)
     }

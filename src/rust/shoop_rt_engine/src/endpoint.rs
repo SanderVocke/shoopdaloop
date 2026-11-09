@@ -43,6 +43,7 @@ use shoop_rt_transport::carrier::{Endpoint, Outbox};
 pub(crate) const PLANNED: usize = 8;
 
 pub(crate) struct Settings {
+    pub compact: bool,
     pub audio_only: bool,
     pub external_dry_wet: bool,
     pub ramp: u32,
@@ -418,12 +419,15 @@ impl ControlEndpoint {
 
     pub(crate) fn capabilities(&self) -> Capabilities {
         let mut capabilities = Capabilities::PROFILING
-            .union(Capabilities::MIDI_INJECTION)
-            .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
             .union(Capabilities::WIDE_CONTENT_UPLOAD)
             .union(Capabilities::LOOP_TIMING);
+        if !self.settings.audio_only {
+            capabilities = capabilities
+                .union(Capabilities::MIDI_INJECTION)
+                .union(Capabilities::BULK_MIDI);
+        }
         if self.input.supported() {
             capabilities = capabilities.union(Capabilities::INPUT_BATCH);
         }
@@ -906,6 +910,15 @@ impl ControlEndpoint {
 
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
+        if self.settings.compact
+            && matches!(
+                request,
+                Request::Composite(_) | Request::LoopIteration { .. }
+            )
+        {
+            self.answer(correlation, Outcome::Refused(Refusal::Unsupported));
+            return Ok(());
+        }
         let result = match request {
             Request::LoopIteration {
                 loop_id,

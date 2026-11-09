@@ -18,6 +18,8 @@ use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
+#[path = "executor_compact.rs"]
+mod compact_audio;
 #[path = "executor_audio.rs"]
 mod referenced_audio;
 
@@ -325,6 +327,7 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    compact: Option<compact_audio::Program>,
     audio_arena: Option<crate::audio_refs::RenderArena>,
     host_sequences: Box<[crate::audio_refs::AudioSequence]>,
     profiling: rt_profiling::Recorder,
@@ -486,6 +489,11 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 .ok_or(Error::Capacity)
         })?;
         let audio_arena = if resources.audio_render_mode().chunked() {
+            if resources.audio_render_mode() == crate::AudioRenderMode::Compact
+                && !P::compact_graph_supported()
+            {
+                return Err(Error::InvalidConfig);
+            }
             let samples = audio_ports
                 .checked_mul(4)
                 .and_then(|ports| ports.checked_add(limits.audio_inputs))
@@ -534,6 +542,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 config,
             },
             Self {
+                compact: (resources.audio_render_mode() == crate::AudioRenderMode::Compact)
+                    .then(|| compact_audio::Program::prepare(config)),
                 audio_arena,
                 host_sequences: vec![
                     crate::audio_refs::AudioSequence::default();
@@ -1356,6 +1366,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
+        if self.compact.is_some() {
+            return self.run_graph_compact(audio, start, callback_start, quantum);
+        }
         if self.audio_arena.is_some() {
             return self.run_graph_references(audio, midi, start, callback_start, quantum);
         }

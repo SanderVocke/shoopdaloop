@@ -57,9 +57,9 @@ pub fn description() -> EngineDescription {
     }
 }
 
-pub fn audio_modes() -> [shoop_rt_engine::AudioRenderMode; 3] {
+pub fn audio_modes() -> [shoop_rt_engine::AudioRenderMode; 4] {
     use shoop_rt_engine::AudioRenderMode::*;
-    [Current, Chunks, ChunksDescriptors]
+    [Current, Chunks, ChunksDescriptors, Compact]
 }
 
 pub fn audio_description(mode: shoop_rt_engine::AudioRenderMode) -> EngineDescription {
