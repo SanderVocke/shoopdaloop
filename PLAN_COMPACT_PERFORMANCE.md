@@ -335,8 +335,8 @@ release evidence, never with laptop timings or flaky unit-test timing assertions
 
 - Stage 0 baseline: 32 validated compact Pi runs, four repetitions at Q=32/Q=256,
   zero drops/faults. Render-thread 99 Hz call stacks had no lost samples; PMU IPC
-  was 0.55–0.64. The standalone host has no application Perfetto capture control.
-- Stages 1–2: compact skips inactive capture, settled stopped/no-source playback,
+  was 0.55ï¿½0.64. The standalone host has no application Perfetto capture control.
+- Stages 1ï¿½2: compact skips inactive capture, settled stopped/no-source playback,
   and settled silent faders after clearing outputs. Dense executed operations fell
   from 216 to 21 idle, 85 playback/record and 87 grab. An initial stale-output
   experiment failed exact samples and was rejected before the output-clear fix.
@@ -345,9 +345,12 @@ release evidence, never with laptop timings or flaky unit-test timing assertions
   gate; the separate real-server-only JACK test is unavailable without `jackd`.
 - Stage 4: compact append removes one redundant release lookup, retaining a debug
   invariant and passing all 96 runtime tests plus capture/cancellation/wrap tests.
-- Final Pi evidence: Q=32 p50 reductions are 41.9% idle, 22.8% playback, 20.2%
-  record and 21.1% grab. Active overruns fell 545 to 112. Every Q=256 percentile
-  improved. All 32 final runs passed with zero drops/faults. Evidence and hashes
+- Final Pi evidence at `44241a05`: Q=32 p50 reductions are 40.9% idle, 22.3%
+  playback, 19.4% record and 21.1% grab. Active overruns fell 545 to 130. Every
+  Q=256 percentile improved. All 32 final runs passed with zero drops/faults.
+  The final low-risk change removes a second compact configuration check; its
+  standalone timing effect was noise-level, so no separate speedup is claimed.
+  Evidence and hashes
   are recorded in `docs/design/chunks/COMPACT_PERFORMANCE.md`.
 - Local full nextest ran 3,192 tests under the two-CPU cap: 3,191 passed and one
   unrelated LAN-profile startup test timed out reproducibly after 15 seconds in
