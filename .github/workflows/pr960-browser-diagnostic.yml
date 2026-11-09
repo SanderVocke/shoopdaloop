@@ -1,0 +1,28 @@
+name: Inspect PR 960 browser failure
+on:
+  push:
+    branches: ["diag/pr960-browser-failure"]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          artifact-ids: '13662597824'
+          run-id: '42579519033'
+          github-token: ${{ github.token }}
+          repository: SanderVocke/shoopdaloop
+          path: evidence
+      - name: Print saved browser workflow evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in sorted(Path("evidence").rglob("*")):
+              if path.is_file():
+                  print(str(path))
+                  print(path.read_text(errors="replace")[-65536:])
+          PY
