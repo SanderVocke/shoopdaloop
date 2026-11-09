@@ -51,11 +51,12 @@ impl Recorder {
             .map_err(|_| std::io::Error::other("audio memory layout"))?;
         let sample_rate = description.sample_rate;
         let quantum = description.quantum;
+        let midi_enabled = u8::from(!description.audio_bench_only);
         let worker = std::thread::Builder::new()
             .name("audio-benchmark-writer".into())
             .spawn(move || {
                 let mut output = BufWriter::new(file);
-                let _ = writeln!(output, "# mode={mode} sample_rate={sample_rate} quantum={quantum}");
+                let _ = writeln!(output, "# mode={mode} sample_rate={sample_rate} quantum={quantum} midi_enabled={midi_enabled}");
                 let _ = writeln!(output, "# memory={memory:?}");
                 let _ = writeln!(output, "frame,frames,elapsed_ns,late_ns,resource_copy_bytes,resource_steps,nodes_processed,render_fault,forwarded,materialized,sample_reads,sample_writes,arena_peak_samples,index_allocated,index_reclaimed,shared_payloads,payload_live,index_live");
                 loop {

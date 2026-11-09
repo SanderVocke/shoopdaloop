@@ -462,17 +462,21 @@ fn prepare_complete(
     let mut resources = ResourceStore::with_capture_groups(
         config,
         quantum,
-        Some(MidiIndexConfig {
+        (!description.audio_bench_only).then_some(MidiIndexConfig {
             versions: 6 * loops + 8,
             checkpoints_per_version: 64,
             replay_events: 64,
         }),
         CaptureGroupConfig {
             groups: (4 * loops).max(1),
-            members_per_group: 3,
+            members_per_group: if description.audio_bench_only { 2 } else { 3 },
             staging_bytes_per_group: quantum.frames() * channels * 8
-                + 12 * midi_events.max(rt_runtime::midi::ResetState::EVENTS)
-                + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
+                + if description.audio_bench_only {
+                    0
+                } else {
+                    12 * midi_events.max(rt_runtime::midi::ResetState::EVENTS)
+                        + midi_bytes.max(rt_runtime::midi::ResetState::BYTES)
+                },
         },
     )?;
     resources.set_audio_render_mode(description.audio_render_mode);
@@ -515,7 +519,7 @@ fn prepare_complete(
                 playback: pool.playback(slot),
                 capture: pool.capture(slot),
                 channels,
-                midi: true,
+                midi: !description.audio_bench_only,
                 gain: 1.,
                 smoothing,
                 midi_events,
@@ -745,6 +749,7 @@ fn prepare_complete(
         },
         cells: cells.clone(),
         settings: Settings {
+            audio_only: description.audio_bench_only,
             external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,

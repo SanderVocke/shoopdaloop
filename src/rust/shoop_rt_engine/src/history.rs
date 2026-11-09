@@ -68,8 +68,7 @@ impl Layout {
         let page_frames = d.page_bytes / frame_bytes;
         if page_frames == 0
             || d.history.audio_take_pages == 0
-            || d.history.midi_pages == 0
-            || d.history.midi_records == 0
+            || (!d.audio_bench_only && (d.history.midi_pages == 0 || d.history.midi_records == 0))
             || d.history.writers == 0
         {
             return Err(Error::InvalidConfig);
@@ -97,7 +96,11 @@ impl Layout {
         )?;
         let total_pages = add(
             add(d.resource_pages, audio_pages)?,
-            d.history.midi_pages as usize,
+            if d.audio_bench_only {
+                0
+            } else {
+                d.history.midi_pages as usize
+            },
         )?;
         Some(mul(total_pages, d.page_bytes)?)
             .filter(|&bytes| bytes <= i32::MAX as usize)
@@ -121,6 +124,20 @@ impl Layout {
         } else {
             audio.windowed_capacity(runtime, d.strips())?
         };
+        result.capacity = HistoryCapacity {
+            retention_frames: frames,
+            ordinary_payload_bytes,
+            history_audio_bytes: mul(history_pages, d.page_bytes)?,
+            shared_audio_bytes: mul(audio_pages - history_pages, d.page_bytes)?,
+            audio_metadata_bytes: audio_capacity.metadata_bytes,
+            total_resource_pages: total_pages,
+            writer_slots: writers,
+            ..HistoryCapacity::default()
+        };
+        result.audio = Some(audio);
+        if d.audio_bench_only {
+            return Ok(result);
+        }
         let records = d.history.midi_records as usize;
         let history_events = records / 2 / d.strips();
         let history_bytes = mul(d.history.midi_pages as usize, d.page_bytes)? / 2 / d.strips();
@@ -188,10 +205,10 @@ impl Layout {
         Ok(result)
     }
     pub fn settings(self) -> SharedSettings {
-        let (Some(audio), Some(midi)) = (self.audio, self.midi) else {
+        let Some(audio) = self.audio else {
             return SharedSettings::default();
         };
-        let shape = shared_midi::Config {
+        let shape = self.midi.map(|midi| shared_midi::Config {
             history_frames: midi.history_frames,
             chunks: 1,
             views: midi.views,
@@ -201,17 +218,17 @@ impl Layout {
             max_packet: midi.packets.max_packet,
             transactions: midi.writers.max(1),
             edit_steps: 64,
-        };
+        });
         SharedSettings {
             histories: (0..self.sources)
                 .map(|source| HistorySettings {
                     source: source as u32,
                     audio: Some(audio),
-                    midi: Some(shape),
+                    midi: shape,
                 })
                 .collect(),
             audio_pool: Some(audio),
-            midi_pool: Some(midi),
+            midi_pool: self.midi,
             candidates: self.capacity.writer_slots,
             edit_steps_per_callback: 64,
         }

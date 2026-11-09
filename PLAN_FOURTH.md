@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 0 on `proto/audio-compact`. Upstream is still
+Status: executing stage 1 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -214,10 +214,10 @@ Depends on: nothing.
 
 Depends on: stage 0.
 
-- [ ] Implement common MIDI exclusion throughout preparation and runtime, with
+- [x] Implement common MIDI exclusion throughout preparation and runtime, with
   zero MIDI payload/index/history reservations and no MIDI state/maintenance path.
   Preserve normal non-benchmark MIDI and supported app creation workflows.
-- [ ] Add actual audio-only identity/reservation reporting and benchmark validation.
+- [x] Add actual audio-only identity/reservation reporting and benchmark validation.
   Add `--modes` subsets; derive rotation from selected mode count, removing `% 3`
   assumptions. Keep old three-mode result archives/analyzers usable.
 - [ ] Verify record/play, grabs, continued capture, readback and default sync startup
@@ -374,3 +374,8 @@ unsupported features or running broad performance matrices.
   Fresh release build and all 18 before-MIDI host runs pass app/media/callback
   validation. Raw baseline and unchanged binaries are retained under
   `work/fourth/before-midi` and `work/fourth/before-bin`.
+
+- Stage 1 implementation: audio-only omits MIDI history/index pools, loop MIDI
+  bindings/input state, strip MIDI state and ports; MIDI graph creation/injection
+  is refused. Existing engine tests, including default MIDI and sample/capture/
+  partition oracles, pass. Warning-denying release host/launcher build passes.

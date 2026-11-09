@@ -145,6 +145,10 @@ def summarize(directory, *, write=True):
     lines = (directory / "callbacks.csv").read_text().splitlines()
     assert lines[-1] == "# dropped=0", "missing completion or dropped callback records"
     assert lines[0].startswith(f"# mode={run['mode']} "), "renderer identity mismatch"
+    if "midi_enabled=" in lines[0]:
+        assert "midi_enabled=0" in lines[0], "internal MIDI enabled in comparison"
+        for field in ("midi_payload_bytes", "midi_metadata_bytes"):
+            assert f"{field}: 0" in lines[1], "MIDI storage reserved in audio-only comparison"
     rows = list(csv.DictReader(line for line in lines if not line.startswith("#")))
     rows = [{key: int(value) for key, value in row.items()} for row in rows]
     rows = [row for row in rows if run["first_frame"] <= row["frame"] < run["last_frame"]]
@@ -172,6 +176,7 @@ def main():
     parser.add_argument("--host", type=Path)
     parser.add_argument("--launcher", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
     parser.add_argument("--callbacks", type=int, default=384)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--warmup", type=float, default=.5)
@@ -244,7 +249,7 @@ def main():
             if interference != 'none':
                 load = subprocess.Popen([sys.executable, __file__, '--worker', interference, '--load-cpu', str(args.load_cpu)])
             for repeat in range(args.repeats):
-                order = MODES[repeat % 3:] + MODES[:repeat % 3]
+                order = args.modes[repeat % len(args.modes):] + args.modes[:repeat % len(args.modes)]
                 for scenario in args.scenarios:
                     scenario, _, signal = scenario.partition(':')
                     signal = signal or 'signal'

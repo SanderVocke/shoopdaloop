@@ -797,6 +797,11 @@ impl LoopPlanner {
             settings.normal_requests,
             settings.export_slots,
         )?;
+        let midi_slots = if bindings.iter().any(|b| b.midi) {
+            slots
+        } else {
+            0
+        };
         let mut rows = vec![None; slots].into_boxed_slice();
         let mut nodes = Vec::new();
         for binding in bindings {
@@ -1027,7 +1032,7 @@ impl LoopPlanner {
             replace: None,
         };
         let mut views = vec![initial; slots].into_boxed_slice();
-        let mut inputs = vec![MidiState::default(); slots].into_boxed_slice();
+        let mut inputs = vec![MidiState::default(); midi_slots].into_boxed_slice();
         for value in &mut views {
             *core::hint::black_box(value) = initial;
         }

@@ -620,6 +620,9 @@ impl ControlEndpoint {
             },
             Request::CreateStrip { strip, shape }
             | Request::CreateProcessedStrip { strip, shape, .. } => {
+                if self.settings.audio_only && (shape.midi_input || shape.midi_output) {
+                    return Staged::Refused(Refusal::Unsupported);
+                }
                 let processor = if let Request::CreateProcessedStrip { kind, .. } = request {
                     if kind == shoop_rt_protocol::ProcessorKind::External {
                         if !self.settings.external_dry_wet {
