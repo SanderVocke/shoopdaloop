@@ -1,6 +1,7 @@
 # Fourth-variant local results
 
-Status: true audio-only baselines are complete; compact implementation is pending.
+Status: the first four-way comparison is complete; grab/continued-capture and
+final validation work is in progress.
 These are short exploratory local runs, not Pi measurements or WCET bounds.
 
 ## Removing internal MIDI from the three existing modes
@@ -66,6 +67,65 @@ history independently and covered by a public-protocol regression test. This
 capability fix changes no steady audio processing; its source and binary hashes
 are recorded separately from the timed matrix.
 
+## First compact comparison
+
+One common release build at `9ff329a4` runs all four modes with MIDI disabled.
+Configuration and selected duration match the baseline above. These two repetitions
+are exploratory; continued-capture/churn integration is still being completed.
+Compact uses direct prepared wire operations, lean loop advancement and fixed-depth
+flat audio tables. It preserves current sample arithmetic rather than applying the
+third mode's approximate ramp composition.
+
+Times below are microseconds: median run percentiles, largest selected callback,
+and total overruns. All 24 runs / 9,216 callbacks pass state/media/continuity checks,
+with zero dropped rows and render faults.
+
+| Scenario | Mode | p50 | p95 | p99 | Max | Overruns |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| idle | current | 62.63 | 128.62 | 378.78 | 1363.06 | 0 |
+| idle | chunks | 59.05 | 151.48 | 459.44 | 3126.27 | 0 |
+| idle | descriptors | 57.62 | 102.54 | 347.54 | 964.54 | 0 |
+| idle | compact | 35.23 | 66.93 | 203.16 | 1028.54 | 0 |
+| play | current | 143.12 | 257.00 | 824.66 | 12806.65 | 1 |
+| play | chunks | 177.15 | 304.94 | 593.84 | 1274.94 | 0 |
+| play | descriptors | 166.60 | 269.82 | 565.21 | 2242.43 | 0 |
+| play | compact | 125.59 | 201.15 | 359.98 | 6619.15 | 1 |
+| ramps | current | 179.84 | 494.87 | 2126.55 | 9247.75 | 1 |
+| ramps | chunks | 186.09 | 324.56 | 598.19 | 2148.22 | 0 |
+| ramps | descriptors | 203.98 | 375.06 | 571.92 | 3239.08 | 0 |
+| ramps | compact | 164.17 | 293.47 | 550.68 | 1269.29 | 0 |
+
+Compact/current p50 ratios are 0.56 idle, 0.88 play and 0.91 ramps;
+compact/descriptors ratios are 0.61, 0.75 and 0.80. This suggests the additional
+planner/router/storage work matters, beyond MIDI exclusion. It does not isolate
+which change helped or establish a worst-case improvement. Ordinary-scheduler
+outliers occur in both current and compact. Largest delivery lateness is 67.8 ms
+(current ramps) and 24.0 ms (compact play), separate from callback execution time.
+All raw lateness and unselected verification rows remain in the archives.
+
+A separate play-only memory run uses a continuous 64 MiB memcpy worker on CPU 2,
+with the same four-CPU quota and controller/render placement. All eight runs /
+3,072 callbacks pass validation, with no drops/faults. Descriptors has one overrun.
+
+| Mode | p50 | p95 | p99 | Max | Overruns |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| current | 157.10 | 242.05 | 425.04 | 819.94 | 0 |
+| chunks | 177.45 | 369.68 | 695.16 | 2685.60 | 0 |
+| descriptors | 168.97 | 317.37 | 773.90 | 6031.73 | 1 |
+| compact | 140.16 | 311.17 | 1061.71 | 2783.82 | 0 |
+
+Compact's p50 remains lower, but its p99 is worse here. This small sample provides
+**no consistent tail-latency win under pressure**. It is not a Pi or RT scheduling
+experiment. The memory worker and cgroup can affect delivery as well as processing.
+
+Playback RSS is about 254 MiB current, 423 MiB chunks/descriptors, and 371 MiB
+compact. Compact reserves 144,737,664 bytes of audio metadata, 134,250,496 shared
+audio bytes and 16,777,216 ordinary payload bytes. MIDI payload/index bytes are
+zero. This first flat-table layout has substantial metadata headroom; sharing
+avoids PCM duplication but does not make metadata free. Callback counters preserve
+live payload/table counts and retirement/copy work. They describe logical work,
+not measured DDR traffic. The final report will use the completed build.
+
 ## Evidence and verification
 
 The [manifest](results/fourth-local-2026-11-09/manifest.json) records archive and
@@ -76,6 +136,8 @@ connection profiles and authority files:
 - [Before MIDI removal](results/fourth-local-2026-11-09/before-midi.zip).
 - [True audio-only baseline](results/fourth-local-2026-11-09/audio-only-three.zip).
 - [Audio-only workflow smoke](results/fourth-local-2026-11-09/audio-only-smoke.zip).
+- [First four-way comparison](results/fourth-local-2026-11-09/quick-four.zip).
+- [First memory-pressure comparison](results/fourth-local-2026-11-09/quick-memory.zip).
 
 Replay each extracted run using `scripts/benchmark_audio_chunks.py`'s
 `summarize(directory, write=False)`. Original rows outside each selected frame

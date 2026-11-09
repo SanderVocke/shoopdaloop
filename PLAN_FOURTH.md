@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 4 on `proto/audio-compact`. Upstream is still
+Status: executing stage 5 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -274,14 +274,14 @@ Depends on: stage 2. This delivers the first useful fourth-mode vertical slice.
 
 Depends on: stage 3; do not wait for all grab/churn integration or broad CI.
 
-- [ ] Run the quick four-way command below on one release build. Keep all raw
+- [x] Run the quick four-way command below on one release build. Keep all raw
   callbacks, check actual mode/audio-only policy, zero drops/faults, exact selected
   frame continuity and positive scenario state/readback. Two repetitions are
   exploratory; do not describe their ordering as a fully balanced comparison.
-- [ ] If a separate allowed CPU and adequate quota exist, add a short play-only
+- [x] If a separate allowed CPU and adequate quota exist, add a short play-only
   memory-interference run using the existing worker. Record placement/quota and
   interference conditions; retain quiet results separately.
-- [ ] Update `docs/design/chunks/FOURTH_RESULTS.md`; retain replayable raw artifacts
+- [x] Update `docs/design/chunks/FOURTH_RESULTS.md`; retain replayable raw artifacts
   and a hash/build manifest under `results/fourth-local-<date>/` beside it, using
   the existing result collector. Report p50/p95/p99, maxima, overruns, lateness,
   RSS and prepared/live audio metadata. Give initial compact/current and compact/descriptor
