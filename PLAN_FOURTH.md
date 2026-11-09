@@ -203,7 +203,7 @@ Depends on: nothing.
 - [x] Fix the first measurement configuration: dummy driver, stereo 48 kHz,
   Q=32, buffer 256, four voices, four track slots, sixteen loop slots and existing
   history/loop budgets. Preserve meter/telemetry/recorder policy across variants.
-- [ ] Verify an unchanged app-connected host record/play/readback smoke. Before
+- [x] Verify an unchanged app-connected host record/play/readback smoke. Before
   MIDI removal, capture the same short three-mode quiet idle/play/ramps matrix
   planned for stage 1, using the existing device-only audio profile. Retain this
   build/ref, binary hashes and settings so MIDI-only gains have a fresh comparison
@@ -367,3 +367,10 @@ tests that only mirror new structs. Broaden to all scenarios, default startup/MI
 regressions and full native/compile gates at stage 6. This protects ownership,
 timing and integration while getting the first empirical result before polishing
 unsupported features or running broad performance matrices.
+
+## Execution notes
+
+- Stage 0: draft PR [#960](https://github.com/SanderVocke/shoopdaloop/pull/960).
+  Fresh release build and all 18 before-MIDI host runs pass app/media/callback
+  validation. Raw baseline and unchanged binaries are retained under
+  `work/fourth/before-midi` and `work/fourth/before-bin`.
