@@ -1,4 +1,4 @@
-name: Inspect PR 960 browser failure
+name: Compare PR 960 browser workflow
 on:
   push:
     branches: ["diag/pr960-browser-failure"]
@@ -6,23 +6,57 @@ permissions:
   contents: read
   actions: read
 jobs:
-  inspect:
+  browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: prototype
+            source: cb98366a70da9195951f242755cafa254e3aa720
+            run: '42579519033'
+            artifact: '13659455267'
+          - label: base
+            source: 61ae853926407c57fd14a2888ad4f74906b1b057
+            run: '42528616310'
+            artifact: '13636542494'
+    name: Browser debug ${{ matrix.label }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.source }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.22.2'
+      - uses: browser-actions/setup-chrome@v2
+        id: chrome
+        with:
+          chrome-version: 147.0.7727.117
       - uses: actions/download-artifact@v7
         with:
-          artifact-ids: '13639261473'
-          run-id: '42528616310'
+          artifact-ids: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
           github-token: ${{ github.token }}
           repository: SanderVocke/shoopdaloop
-          path: evidence
-      - name: Print saved browser workflow evidence
+          path: downloaded
+      - name: Stage the unchanged published web bundle
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for path in sorted(Path("evidence").rglob("*")):
-              if path.is_file():
-                  print(str(path))
-                  print(path.read_text(errors="replace")[-65536:])
+          import shutil, zipfile
+          root = Path("downloaded")
+          for path in list(root.rglob("*.zip")):
+              with zipfile.ZipFile(path) as archive:
+                  archive.extractall(root / "unpacked")
+          candidates = list(root.rglob("index.html"))
+          assert len(candidates) == 1, candidates
+          shutil.copytree(candidates[0].parent, "src/rust/shoopdaloop/dist")
+          print("source=${{ matrix.source }} artifact=${{ matrix.artifact }}")
           PY
+      - name: Replay the failing default browser workflow
+        working-directory: src/rust/shoopdaloop
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          NEW_ENGINE: '1'
+        run: node --experimental-websocket browser_smoke.mjs
