@@ -61,8 +61,8 @@ p50/p99 of **140.59/564.06 us**, versus current **170.86/825.50 us**. Continuous
 memory-pressure playback (two runs per mode) gives compact **124.25/384.90 us**,
 versus current **157.69/548.71 us**. Both follow-ups have zero overruns/drops/faults.
 They support a typical-cost improvement when history is full and under this load;
-the small-buffer playback tail remains mixed. Final matrices contain 148 runs /
-180,480 selected callbacks, plus the ten compact workflow runs (3,840 callbacks).
+the small-buffer playback tail remains mixed. Final matrices contain 138 runs /
+182,016 selected callbacks, plus the ten compact workflow runs (3,840 callbacks).
 
 ## Removing internal MIDI from the three existing modes
 
