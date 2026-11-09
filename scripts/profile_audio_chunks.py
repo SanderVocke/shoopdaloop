@@ -48,12 +48,21 @@ def collect(args, directory, mode, scenario):
             time.sleep(max(0, args.settle - (time.monotonic() - started)))
             if process.poll() is not None:
                 raise RuntimeError('benchmark ended before sampling began')
-            sample = ['taskset', '-c', str(args.collector_cpu), str(args.perf), 'record',
-                      '--per-thread', '--no-inherit', '--no-bpf-event',
-                      '--no-kernel-callchains', '--user-callchains',
-                      '-e', 'cpu-clock:u', '-F', str(args.frequency), '-T',
-                      '--call-graph', f'dwarf,{args.stack_bytes}', '-t', str(tid),
-                      '-o', str(directory / 'perf.data'), '--', 'sleep', str(args.duration)]
+            if args.stat:
+                sample = [
+                    'taskset', '-c', str(args.collector_cpu), str(args.perf), 'stat',
+                    '--no-inherit', '-e', args.stat_events, '-t', str(tid),
+                    '-o', str(directory / 'perf-stat.txt'), '--', 'sleep', str(args.duration),
+                ]
+            else:
+                sample = [
+                    'taskset', '-c', str(args.collector_cpu), str(args.perf), 'record',
+                    '--per-thread', '--no-inherit', '--no-bpf-event',
+                    '--no-kernel-callchains', '--user-callchains',
+                    '-e', 'cpu-clock:u', '-F', str(args.frequency), '-T',
+                    '--call-graph', f'dwarf,{args.stack_bytes}', '-t', str(tid),
+                    '-o', str(directory / 'perf.data'), '--', 'sleep', str(args.duration),
+                ]
             env = os.environ.copy()
             env['DEBUGINFOD_URLS'] = ''
             if args.perf_library_path:
@@ -116,6 +125,11 @@ def main():
     parser.add_argument('--settle', type=float, default=8)
     parser.add_argument('--frequency', type=int, default=997)
     parser.add_argument('--stack-bytes', type=int, default=32768)
+    parser.add_argument('--stat', action='store_true')
+    parser.add_argument(
+        '--stat-events',
+        default='cycles:u,instructions:u,branches:u,branch-misses:u,cache-references:u,cache-misses:u',
+    )
     parser.add_argument('--modes', nargs='+', choices=MODES, default=list(MODES))
     parser.add_argument('--scenarios', nargs='+',
                         choices=('idle', 'play', 'record', 'grab', 'ramps'),
