@@ -339,6 +339,7 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     fault: Option<Error>,
     clock: RenderRuntime,
     catalog: Catalog,
+    has_midi_buffers: bool,
     slots: Vec<Option<Slot<P>>>,
     active: Option<PreparedPlan>,
     graph_stages: GraphStages,
@@ -474,6 +475,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             events: limits.midi_events_per_port,
             bytes: limits.midi_bytes_per_port,
         };
+        let has_midi_buffers = nodes
+            .iter()
+            .any(|node| node.ports.midi_inputs != 0 || node.ports.midi_outputs != 0);
         let mut midi_bytes = 0usize;
         for node in &nodes {
             midi_bytes = midi_bytes
@@ -559,6 +563,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 fault: None,
                 clock: RenderRuntime::new(config),
                 catalog,
+                has_midi_buffers,
                 slots,
                 active: None,
                 graph_stages: GraphStages::disabled(),
@@ -753,8 +758,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             ..Diagnostics::default()
         };
         self.recovery_remaining.fill(limits.budgets.events);
-        for slot in self.slots.iter_mut().flatten() {
-            slot.buffers.begin_callback();
+        if self.has_midi_buffers {
+            for slot in self.slots.iter_mut().flatten() {
+                slot.buffers.begin_callback();
+            }
         }
         self.scheduler.begin_callback();
         self.resources.begin_callback();
