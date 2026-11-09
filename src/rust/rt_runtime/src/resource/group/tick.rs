@@ -266,11 +266,13 @@ impl ResourceStore {
             result?;
         } else {
             self.charge_work(WorkClass::Render, bytes, 0)?;
-            for (index, sample) in samples.iter().enumerate() {
-                let start = member.staging_start + index * 4;
-                self.capture_groups.staging[start..start + 4]
-                    .copy_from_slice(&sample.to_le_bytes());
-            }
+            crate::audio_samples::process(|| {
+                for (index, sample) in samples.iter().enumerate() {
+                    let start = member.staging_start + index * 4;
+                    self.capture_groups.staging[start..start + 4]
+                        .copy_from_slice(&sample.to_le_bytes());
+                }
+            });
         }
         reservation.ready = true;
         reservation.bytes = bytes;

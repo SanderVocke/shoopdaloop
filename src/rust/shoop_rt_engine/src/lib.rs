@@ -18,6 +18,8 @@
 
 extern crate alloc;
 
+pub use rt_runtime::audio_samples::ENABLED as AUDIO_SAMPLE_PROCESSING;
+
 #[cfg(test)]
 extern crate std;
 
@@ -370,6 +372,12 @@ fn prepare_complete(
     wet_pages: usize,
 ) -> Result<Engine, PrepareError> {
     description.validate()?;
+    if !rt_runtime::audio_samples::ENABLED
+        && (description.audio_render_mode != rt_runtime::AudioRenderMode::Compact
+            || !description.audio_bench_only)
+    {
+        return Err(rt_runtime::Error::InvalidConfig.into());
+    }
     if description.audio_render_mode == rt_runtime::AudioRenderMode::Compact
         && (!description.audio_bench_only || !processors.instances.is_empty())
     {

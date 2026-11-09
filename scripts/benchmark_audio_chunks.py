@@ -145,6 +145,11 @@ def summarize(directory, *, write=True):
     lines = (directory / "callbacks.csv").read_text().splitlines()
     assert lines[-1] == "# dropped=0", "missing completion or dropped callback records"
     assert lines[0].startswith(f"# mode={run['mode']} "), "renderer identity mismatch"
+    samples_enabled = run.get('sample_processing', True)
+    if 'sample_processing=' in lines[0]:
+        assert f"sample_processing={int(samples_enabled)}" in lines[0], "sample-processing identity mismatch"
+    else:
+        assert samples_enabled, "sample-free measurements require explicit host identity"
     if "midi_enabled=" in lines[0]:
         assert "midi_enabled=0" in lines[0], "internal MIDI enabled in comparison"
         for field in ("midi_payload_bytes", "midi_metadata_bytes"):
@@ -160,7 +165,7 @@ def summarize(directory, *, write=True):
     budget = run["buffer"] / 48000 * 1e6
     counters = {key: {"mean": statistics.mean(row[key] for row in rows), "max": max(row[key] for row in rows)}
                 for key in rows[0] if key not in ("frame", "frames", "elapsed_ns", "late_ns", "render_fault")}
-    result = {"mode": run["mode"], "scenario": run["scenario"], "input": run["input"],
+    result = {"mode": run["mode"], "sample_processing": samples_enabled, "scenario": run["scenario"], "input": run["input"],
               "callbacks": len(rows), "budget_us": budget, "p50_us": statistics.median(durations),
               "p95_us": percentile(durations, .95), "p99_us": percentile(durations, .99),
               "max_us": max(durations), "overruns": sum(value > budget for value in durations),

@@ -12,6 +12,7 @@ browser-feature = "wasm-test-browser"
 workspace = true
 
 [features]
+benchmark-no-sample-processing = ["rt_runtime/benchmark-no-sample-processing"]
 # A deterministic offline host for tests and adapters; no extra dependencies.
 testing = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]

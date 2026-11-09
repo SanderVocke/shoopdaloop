@@ -2,6 +2,7 @@
 //! the authoritative interval decision; these renderers never advance a clock.
 
 use alloc::{boxed::Box, vec};
+use rt_runtime::audio_samples::SampleSlice;
 use rt_runtime::buffer::AudioPorts;
 use rt_runtime::resource::shared_audio::{AudioStore, ReadIndex as SharedReadIndex};
 use rt_runtime::resource::{CaptureTickId, Format, ReadIndex, RenderIo};
@@ -372,7 +373,7 @@ impl AudioRenderer {
         let factors = balance_factors(self.balance_channels, playback.balance);
         let Some(source) = source else {
             for channel in 0..channels {
-                outputs.channel(channel).fill(0.0);
+                outputs.channel(channel).fill_audio_samples(0.0);
             }
             self.last.fill(0.0);
             self.anchor.fill(0.0);
@@ -404,7 +405,7 @@ impl AudioRenderer {
             if windows.len() != channels || channels > crate::windows::MAX_AUDIO_CHANNELS {
                 return Err(Error::InvalidShape);
             }
-            self.bytes[..frames * channels * 4].fill(0);
+            self.bytes[..frames * channels * 4].fill_audio_samples(0);
             for (channel, window) in windows.iter().enumerate() {
                 let span =
                     crate::windows::span(position, *window, lead, frames, description.frames);
@@ -418,16 +419,18 @@ impl AudioRenderer {
                     channels,
                     &mut self.window_bytes[..span.frames * channels * 4],
                 )?;
-                for local in 0..span.frames {
-                    let offset = (local * channels + channel) * 4;
-                    let sample = f32::from_le_bytes(
-                        self.window_bytes[offset..offset + 4]
-                            .try_into()
-                            .expect("audio sample"),
-                    ) * f32::from_bits(window.gain_bits);
-                    let byte = ((span.offset + local) * channels + channel) * 4;
-                    self.bytes[byte..byte + 4].copy_from_slice(&sample.to_le_bytes());
-                }
+                rt_runtime::audio_samples::process(|| {
+                    for local in 0..span.frames {
+                        let offset = (local * channels + channel) * 4;
+                        let sample = f32::from_le_bytes(
+                            self.window_bytes[offset..offset + 4]
+                                .try_into()
+                                .expect("audio sample"),
+                        ) * f32::from_bits(window.gain_bits);
+                        let byte = ((span.offset + local) * channels + channel) * 4;
+                        self.bytes[byte..byte + 4].copy_from_slice(&sample.to_le_bytes());
+                    }
+                });
             }
         } else {
             let end = playback
@@ -452,30 +455,40 @@ impl AudioRenderer {
         }
         let ramp_start = self.ramp_position;
         let ramping_frames = (self.ramp_frames.saturating_sub(ramp_start) as usize).min(frames);
-        for (frame, weight) in self.ramp_weights[..ramping_frames].iter_mut().enumerate() {
-            *weight = (ramp_start + frame as u32 + 1) as f32 / self.ramp_frames as f32;
-        }
+        rt_runtime::audio_samples::process(|| {
+            for (frame, weight) in self.ramp_weights[..ramping_frames].iter_mut().enumerate() {
+                *weight = (ramp_start + frame as u32 + 1) as f32 / self.ramp_frames as f32;
+            }
+        });
         for channel in 0..channels {
             let output = outputs.channel(channel);
             let factor = factors[channel.min(1)];
-            for (frame, sample) in output[..ramping_frames].iter_mut().enumerate() {
-                let byte = (frame * self.channels + channel) * 4;
-                let raw =
-                    f32::from_le_bytes(self.bytes[byte..byte + 4].try_into().expect("four bytes"))
-                        * playback.gain
+            rt_runtime::audio_samples::process(|| {
+                for (frame, sample) in output[..ramping_frames].iter_mut().enumerate() {
+                    let byte = (frame * self.channels + channel) * 4;
+                    let raw = f32::from_le_bytes(
+                        self.bytes[byte..byte + 4].try_into().expect("four bytes"),
+                    ) * playback.gain
                         * factor;
-                let weight = self.ramp_weights[frame];
-                *sample = self.anchor[channel] * (1.0 - weight) + raw * weight;
-            }
-            for (offset, sample) in output[ramping_frames..].iter_mut().enumerate() {
-                let frame = ramping_frames + offset;
-                let byte = (frame * self.channels + channel) * 4;
-                *sample =
-                    f32::from_le_bytes(self.bytes[byte..byte + 4].try_into().expect("four bytes"))
-                        * playback.gain
+                    let weight = self.ramp_weights[frame];
+                    *sample = self.anchor[channel] * (1.0 - weight) + raw * weight;
+                }
+            });
+            rt_runtime::audio_samples::process(|| {
+                for (offset, sample) in output[ramping_frames..].iter_mut().enumerate() {
+                    let frame = ramping_frames + offset;
+                    let byte = (frame * self.channels + channel) * 4;
+                    *sample = f32::from_le_bytes(
+                        self.bytes[byte..byte + 4].try_into().expect("four bytes"),
+                    ) * playback.gain
                         * factor;
-            }
-            self.last[channel] = output[frames - 1];
+                }
+            });
+            self.last[channel] = if rt_runtime::audio_samples::ENABLED {
+                output[frames - 1]
+            } else {
+                0.
+            };
         }
         self.ramp_position += ramping_frames as u32;
         Ok(())
@@ -537,11 +550,14 @@ impl AudioCapture {
             self.max_frames,
             (0..self.channels).map(|channel| inputs.channel(channel).len()),
         )?;
-        for frame in 0..frames {
-            for channel in 0..self.channels {
-                self.interleaved[frame * self.channels + channel] = inputs.channel(channel)[frame];
+        rt_runtime::audio_samples::process(|| {
+            for frame in 0..frames {
+                for channel in 0..self.channels {
+                    self.interleaved[frame * self.channels + channel] =
+                        inputs.channel(channel)[frame];
+                }
             }
-        }
+        });
         media.append(io, frame, &self.interleaved[..frames * self.channels])
     }
     /// Convert planar input into prepared scratch and stage one group member.
@@ -609,12 +625,14 @@ impl AudioCapture {
             self.max_frames,
             (0..self.channels).map(|channel| inputs.input(channel).expect("validated port").len()),
         )?;
-        for frame in 0..frames {
-            for channel in 0..self.channels {
-                self.interleaved[frame * self.channels + channel] =
-                    inputs.input(channel).expect("validated port")[frame];
+        rt_runtime::audio_samples::process(|| {
+            for frame in 0..frames {
+                for channel in 0..self.channels {
+                    self.interleaved[frame * self.channels + channel] =
+                        inputs.input(channel).expect("validated port")[frame];
+                }
             }
-        }
+        });
         io.replace_audio(
             resource,
             revision,
@@ -684,11 +702,14 @@ impl AudioCapture {
         if frames == 0 {
             return Err(Error::InvalidFrame);
         }
-        for frame in 0..frames {
-            for channel in 0..channels {
-                self.interleaved[frame * self.channels + channel] = inputs.channel(channel)[frame];
+        rt_runtime::audio_samples::process(|| {
+            for frame in 0..frames {
+                for channel in 0..channels {
+                    self.interleaved[frame * self.channels + channel] =
+                        inputs.channel(channel)[frame];
+                }
             }
-        }
+        });
         io.stage_audio(
             interval,
             member,

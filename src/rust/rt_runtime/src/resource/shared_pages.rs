@@ -3,6 +3,7 @@
 //! incremental reclamation. Copying a lease ID does not acquire another owner.
 
 use super::{get, index, release, slots, Page, ResourceStore, Slot, WorkClass};
+use crate::audio_samples::SampleSlice;
 use crate::Error;
 use alloc::{boxed::Box, vec, vec::Vec};
 
@@ -133,7 +134,7 @@ impl SharedPages {
         if samples.len() != chunks.samples {
             return Err(Error::InvalidShape);
         }
-        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_from_slice(samples);
+        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_audio_samples(samples);
         store.charge_work(WorkClass::Render, samples.len() * 4, 0)
     }
     pub(super) fn share_reserved(
@@ -170,7 +171,7 @@ impl SharedPages {
             return Err(Error::InvalidShape);
         }
         let page = chunks.free.pop().ok_or(Error::Capacity)?;
-        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_from_slice(samples);
+        chunks.data[page * chunks.samples..(page + 1) * chunks.samples].copy_audio_samples(samples);
         store.charge_work(WorkClass::Render, samples.len() * 4, 0)?;
         Ok(self.acquire(page))
     }
@@ -190,10 +191,12 @@ impl SharedPages {
             {
                 return Err(Error::InvalidOffset);
             }
-            for (offset, value) in output.iter_mut().enumerate() {
-                let byte = start + offset;
-                *value = chunks.data[page * chunks.samples + byte / 4].to_le_bytes()[byte % 4];
-            }
+            crate::audio_samples::process(|| {
+                for (offset, value) in output.iter_mut().enumerate() {
+                    let byte = start + offset;
+                    *value = chunks.data[page * chunks.samples + byte / 4].to_le_bytes()[byte % 4];
+                }
+            });
         } else {
             output.copy_from_slice(&self.bytes(store, lease)?[start..start + output.len()]);
         }
@@ -282,12 +285,15 @@ impl SharedPages {
                 return Err(Error::InvalidShape);
             }
             let page = chunks.free.pop().ok_or(Error::Capacity)?;
-            for (target, source) in chunks.data[page * chunks.samples..(page + 1) * chunks.samples]
-                .iter_mut()
-                .zip(bytes.chunks_exact(4))
-            {
-                *target = f32::from_le_bytes(source.try_into().expect("sample bytes"));
-            }
+            crate::audio_samples::process(|| {
+                for (target, source) in chunks.data
+                    [page * chunks.samples..(page + 1) * chunks.samples]
+                    .iter_mut()
+                    .zip(bytes.chunks_exact(4))
+                {
+                    *target = f32::from_le_bytes(source.try_into().expect("sample bytes"));
+                }
+            });
             store.charge_work(WorkClass::Render, bytes.len(), 0)?;
             return Ok(self.acquire(page));
         }

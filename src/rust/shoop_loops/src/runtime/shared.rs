@@ -656,9 +656,11 @@ impl Shared {
                     if input.len() != q {
                         return Err(Error::InvalidShape);
                     }
-                    for sample in 0..q {
-                        h.audio_scratch[sample * channels + channel] = input[sample];
-                    }
+                    rt_runtime::audio_samples::process(|| {
+                        for sample in 0..q {
+                            h.audio_scratch[sample * channels + channel] = input[sample];
+                        }
+                    });
                 }
                 io.render()
                     .append_audio_source(source, frame, &h.audio_scratch[..q * channels])?;
@@ -1053,10 +1055,13 @@ impl Shared {
             }
             copied += n;
         }
-        for i in 0..count {
-            self.audio_patch[i] =
-                f32::from_le_bytes(self.bytes[i * 4..i * 4 + 4].try_into().expect("four bytes"));
-        }
+        rt_runtime::audio_samples::process(|| {
+            for i in 0..count {
+                self.audio_patch[i] = f32::from_le_bytes(
+                    self.bytes[i * 4..i * 4 + 4].try_into().expect("four bytes"),
+                );
+            }
+        });
         io.render().replace_audio(
             resource,
             info.revision,

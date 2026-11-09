@@ -42,6 +42,7 @@ pub use rt_profiling as profiling;
 mod audio_mode;
 pub use audio_mode::AudioRenderMode;
 pub mod audio_refs;
+pub mod audio_samples;
 
 pub mod buffer;
 pub mod config;

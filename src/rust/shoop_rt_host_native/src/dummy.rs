@@ -149,14 +149,14 @@ impl Loop {
                 let count = (frames - base).min(cycle.max_frames());
                 for (port, samples) in cycle.inputs_mut().iter_mut().enumerate() {
                     let samples = &mut samples[..count];
-                    match input {
+                    rt_runtime::audio_samples::process(|| match input {
                         Some(input) => {
                             for (offset, sample) in samples.iter_mut().enumerate() {
                                 *sample = input(port, first + base as u64 + offset as u64);
                             }
                         }
                         None => samples.fill(0.),
-                    }
+                    });
                 }
                 cycle.render(count, shared.nanos(started), true);
             }

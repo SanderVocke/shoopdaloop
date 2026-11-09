@@ -4,6 +4,7 @@
 use alloc::boxed::Box;
 use alloc::vec;
 use core::sync::atomic::Ordering;
+use rt_runtime::audio_samples::SampleSlice;
 
 use crate::cells::{Cells, Peak};
 use crate::stream::BulkReader;
@@ -192,6 +193,10 @@ impl Ramp {
 /// Values stepping linearly from just after `from` to exactly `to`; constant when
 /// they are equal. Decided once per quantum so the per-frame loop has no branches.
 fn fill_linear(out: &mut [f32], from: f32, to: f32) {
+    if !rt_runtime::audio_samples::ENABLED {
+        core::hint::black_box((out, from, to));
+        return;
+    }
     if from == to {
         out.fill(to);
         return;
@@ -222,6 +227,10 @@ fn segment(from: f32, to: f32, frames: usize) -> GainEnvelope {
 /// bit patterns, so integer max avoids per-sample float compares, which stall
 /// the Cortex-A9 VFP pipeline. A NaN sample reads as the largest value.
 pub(crate) fn peak(samples: &[f32]) -> f32 {
+    if !rt_runtime::audio_samples::ENABLED {
+        core::hint::black_box(samples);
+        return 0.;
+    }
     f32::from_bits(
         samples
             .iter()
@@ -1001,16 +1010,20 @@ impl StripInput {
         let demand = live_record || dry_play || monitored;
         let live = !forced_off && (live_record || monitored);
         if dry_play {
-            for cell in &cells.wet_gate[..frames] {
-                cell.store(1f32.to_bits(), core::sync::atomic::Ordering::Relaxed);
-            }
+            rt_runtime::audio_samples::process(|| {
+                for cell in &cells.wet_gate[..frames] {
+                    cell.store(1f32.to_bits(), core::sync::atomic::Ordering::Relaxed);
+                }
+            });
         } else {
-            for (cell, gate) in cells.wet_gate[..frames]
-                .iter()
-                .zip(&self.monitoring[..frames])
-            {
-                cell.store(gate.to_bits(), core::sync::atomic::Ordering::Relaxed);
-            }
+            rt_runtime::audio_samples::process(|| {
+                for (cell, gate) in cells.wet_gate[..frames]
+                    .iter()
+                    .zip(&self.monitoring[..frames])
+                {
+                    cell.store(gate.to_bits(), core::sync::atomic::Ordering::Relaxed);
+                }
+            });
         }
         cells
             .processor_demand
@@ -1023,10 +1036,13 @@ impl StripInput {
                     .input(channels + channel)
                     .ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
-                for i in 0..frames {
-                    let weight = self.weights[i];
-                    self.scratch[i] = (first[i] * (1. - weight) + second[i] * weight) * gains[i];
-                }
+                rt_runtime::audio_samples::process(|| {
+                    for i in 0..frames {
+                        let weight = self.weights[i];
+                        self.scratch[i] =
+                            (first[i] * (1. - weight) + second[i] * weight) * gains[i];
+                    }
+                });
                 if channel < self.inputs {
                     cells.input.raise(channel, peak(&self.scratch[..frames]));
                 }
@@ -1035,43 +1051,51 @@ impl StripInput {
                 .audio
                 .output(channel)
                 .ok_or(Error::InvalidShape)?
-                .copy_from_slice(&self.scratch[..frames]);
+                .copy_audio_samples(&self.scratch[..frames]);
             let monitor = block
                 .audio
                 .output(channels + channel)
                 .ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                monitor[i] = self.scratch[i] * self.monitoring[i];
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    monitor[i] = self.scratch[i] * self.monitoring[i];
+                }
+            });
             {
                 let playback = block
                     .audio
                     .input(2 * channels + channel)
                     .ok_or(Error::InvalidShape)?;
                 if live {
-                    for i in 0..frames {
-                        self.sends[i] = self.scratch[i] + playback[i];
-                    }
+                    rt_runtime::audio_samples::process(|| {
+                        for i in 0..frames {
+                            self.sends[i] = self.scratch[i] + playback[i];
+                        }
+                    });
                 } else {
-                    self.sends[..frames].copy_from_slice(&playback[..frames]);
+                    self.sends[..frames].copy_audio_samples(&playback[..frames]);
                 }
             }
             let dry = block
                 .audio
                 .output(2 * channels + channel)
                 .ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                dry[i] = self.sends[i] * (1. - self.send_weights[i]);
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    dry[i] = self.sends[i] * (1. - self.send_weights[i]);
+                }
+            });
             let wet = block
                 .audio
                 .output(3 * channels + channel)
                 .ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                wet[i] = self.sends[i] * self.send_weights[i];
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    wet[i] = self.sends[i] * self.send_weights[i];
+                }
+            });
             // The return mix reads two inputs into one output; stage the second.
-            self.sends[..frames].copy_from_slice(
+            self.sends[..frames].copy_audio_samples(
                 &block
                     .audio
                     .input(4 * channels + channel)
@@ -1081,10 +1105,12 @@ impl StripInput {
                 .audio
                 .pair(3 * channels + channel, 4 * channels + channel)
                 .ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                let weight = self.return_weights[i];
-                returned[i] = first[i] * (1. - weight) + self.sends[i] * weight;
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    let weight = self.return_weights[i];
+                    returned[i] = first[i] * (1. - weight) + self.sends[i] * weight;
+                }
+            });
         }
         if !self.midi_capacity.enabled {
             return Ok(());
@@ -1301,12 +1327,14 @@ impl StripOutput {
         let gate: Option<&[f32]> = match self.processor {
             None => None,
             Some(shoop_rt_protocol::ProcessorKind::External) => {
-                for (gate, cell) in self.gate[..frames]
-                    .iter_mut()
-                    .zip(&cells.wet_gate[..frames])
-                {
-                    *gate = f32::from_bits(cell.load(core::sync::atomic::Ordering::Relaxed));
-                }
+                rt_runtime::audio_samples::process(|| {
+                    for (gate, cell) in self.gate[..frames]
+                        .iter_mut()
+                        .zip(&cells.wet_gate[..frames])
+                    {
+                        *gate = f32::from_bits(cell.load(core::sync::atomic::Ordering::Relaxed));
+                    }
+                });
                 Some(&self.gate[..frames])
             }
             Some(_) => Some(&self.wet_gate[..frames]),
@@ -1321,15 +1349,19 @@ impl StripOutput {
                 let gains = self.gains.channel(channel, stereo);
                 match gate {
                     Some(gate) => {
-                        for i in 0..frames {
-                            self.scratch[i] =
-                                (input[i] + wet[i] * gate[i]) * gains[i] * self.scales[i];
-                        }
+                        rt_runtime::audio_samples::process(|| {
+                            for i in 0..frames {
+                                self.scratch[i] =
+                                    (input[i] + wet[i] * gate[i]) * gains[i] * self.scales[i];
+                            }
+                        });
                     }
                     None => {
-                        for i in 0..frames {
-                            self.scratch[i] = input[i] * gains[i] * self.scales[i];
-                        }
+                        rt_runtime::audio_samples::process(|| {
+                            for i in 0..frames {
+                                self.scratch[i] = input[i] * gains[i] * self.scales[i];
+                            }
+                        });
                     }
                 }
                 if channel < self.outputs {
@@ -1337,22 +1369,29 @@ impl StripOutput {
                 }
             }
             let first = block.audio.output(channel).ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                first[i] = self.scratch[i] * (1. - self.weights[i]);
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    first[i] = self.scratch[i] * (1. - self.weights[i]);
+                }
+            });
             let second = block
                 .audio
                 .output(channels + channel)
                 .ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                second[i] = self.scratch[i] * self.weights[i];
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    second[i] = self.scratch[i] * self.weights[i];
+                }
+            });
         }
         if self.processor.is_some() {
-            for i in 0..frames {
-                self.wet_gate[i] =
-                    f32::from_bits(cells.wet_gate[i].load(core::sync::atomic::Ordering::Relaxed));
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    self.wet_gate[i] = f32::from_bits(
+                        cells.wet_gate[i].load(core::sync::atomic::Ordering::Relaxed),
+                    );
+                }
+            });
         }
         if self.midi_capacity.events != 0 && self.mute.target() > 0. && self.presence.target() > 0.
         {
@@ -1437,27 +1476,35 @@ impl LoopFader {
             if delayed && !auxiliary {
                 let base = channel * quantum;
                 let mut index = self.position;
-                for i in 0..frames {
-                    let sample = self.delay[base + index];
-                    self.delay[base + index] = input[i];
-                    output[i] = sample * self.levels[i];
-                    index += 1;
-                    if index == quantum {
-                        index = 0;
+                rt_runtime::audio_samples::process(|| {
+                    for i in 0..frames {
+                        let sample = self.delay[base + index];
+                        self.delay[base + index] = input[i];
+                        output[i] = sample * self.levels[i];
+                        index += 1;
+                        if index == quantum {
+                            index = 0;
+                        }
                     }
-                }
+                });
             } else {
                 match constant {
-                    Some(gain) if gain == 1. => output[..frames].copy_from_slice(&input[..frames]),
+                    Some(gain) if gain == 1. => {
+                        output[..frames].copy_audio_samples(&input[..frames])
+                    }
                     Some(gain) => {
-                        for i in 0..frames {
-                            output[i] = input[i] * gain;
-                        }
+                        rt_runtime::audio_samples::process(|| {
+                            for i in 0..frames {
+                                output[i] = input[i] * gain;
+                            }
+                        });
                     }
                     None => {
-                        for i in 0..frames {
-                            output[i] = input[i] * self.levels[i];
-                        }
+                        rt_runtime::audio_samples::process(|| {
+                            for i in 0..frames {
+                                output[i] = input[i] * self.levels[i];
+                            }
+                        });
                     }
                 }
             }
@@ -1586,11 +1633,15 @@ impl BusMixer {
             };
         }
         for channel in 0..channels {
-            for i in 0..frames {
-                let value = block.audio.input(channel).ok_or(Error::InvalidShape)?[i]
-                    + self.preview_samples[i];
-                block.audio.output(channel).ok_or(Error::InvalidShape)?[i] = value;
-            }
+            let (input, output) = block
+                .audio
+                .pair(channel, channel)
+                .ok_or(Error::InvalidShape)?;
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    output[i] = input[i] + self.preview_samples[i];
+                }
+            });
         }
         Ok(())
     }
@@ -1608,22 +1659,28 @@ impl BusMixer {
             {
                 let input = block.audio.input(channel).ok_or(Error::InvalidShape)?;
                 let gains = self.gains.channel(channel, stereo);
-                for i in 0..frames {
-                    self.scratch[i] = input[i] * gains[i] * self.presence_weights[i];
-                }
+                rt_runtime::audio_samples::process(|| {
+                    for i in 0..frames {
+                        self.scratch[i] = input[i] * gains[i] * self.presence_weights[i];
+                    }
+                });
                 self.cells.buses[self.slot].raise(channel, peak(&self.scratch[..frames]));
             }
             let first = block.audio.output(channel).ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                first[i] = self.scratch[i] * (1. - self.weights[i]);
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    first[i] = self.scratch[i] * (1. - self.weights[i]);
+                }
+            });
             let second = block
                 .audio
                 .output(channels + channel)
                 .ok_or(Error::InvalidShape)?;
-            for i in 0..frames {
-                second[i] = self.scratch[i] * self.weights[i];
-            }
+            rt_runtime::audio_samples::process(|| {
+                for i in 0..frames {
+                    second[i] = self.scratch[i] * self.weights[i];
+                }
+            });
         }
         Ok(())
     }

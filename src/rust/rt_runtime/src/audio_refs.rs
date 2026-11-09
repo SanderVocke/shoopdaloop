@@ -1,3 +1,4 @@
+use crate::audio_samples::SampleSlice;
 use crate::resource::{AudioChunkRef, ReadIndex, ResourceStore};
 use crate::{Error, Frame, NodeId, Quantum};
 use alloc::{boxed::Box, vec, vec::Vec};
@@ -158,7 +159,7 @@ impl RenderArena {
             .checked_add(samples)
             .filter(|&end| end <= self.data.len())
             .ok_or(Error::Capacity)?;
-        self.data[start..self.used].fill(0.);
+        self.data[start..self.used].fill_audio_samples(0.);
         self.work.arena_peak_samples = self.used as u64;
         self.work.materialized += 1;
         self.work.sample_writes += samples as u64;
@@ -199,7 +200,7 @@ impl RenderArena {
     ) -> Result<(), Error> {
         let frames = output.len();
         if !add {
-            output.fill(0.);
+            output.fill_audio_samples(0.);
         }
         visit(
             sequence,
@@ -271,14 +272,25 @@ impl RenderArena {
                 if epoch != self.epoch {
                     return Err(Error::InvalidState);
                 }
-                *self.data[..self.used]
-                    .get(offset + span.frames - 1)
-                    .ok_or(Error::InvalidOffset)?
+                {
+                    let sample = self.data[..self.used]
+                        .get(offset + span.frames - 1)
+                        .ok_or(Error::InvalidOffset)?;
+                    if crate::audio_samples::ENABLED {
+                        *sample
+                    } else {
+                        0.
+                    }
+                }
             }
             ChunkRef::Persistent(reference) => {
                 let mut value = 0.;
                 resources.visit_audio_chunk(reference, span.frames, |samples, first, stride| {
-                    value = samples[first + (span.frames - 1) * stride]
+                    if crate::audio_samples::ENABLED {
+                        value = samples[first + (span.frames - 1) * stride];
+                    } else {
+                        core::hint::black_box((samples, first, stride));
+                    }
                 })?;
                 value
             }
@@ -335,23 +347,27 @@ fn visit(
                     _ => before.get(offset..offset + count),
                 }
                 .ok_or(Error::InvalidState)?;
-                for (i, &sample) in samples.iter().enumerate() {
-                    if at + i + 1 == frames && frames > 1 {
-                        gain = sequence.gain.end;
-                    }
-                    consume(at + i, sample * gain);
-                    gain += step;
-                }
-            }
-            ChunkRef::Persistent(reference) => {
-                resources.visit_audio_chunk(reference, count, |samples, first, stride| {
-                    for i in 0..count {
+                crate::audio_samples::process(|| {
+                    for (i, &sample) in samples.iter().enumerate() {
                         if at + i + 1 == frames && frames > 1 {
                             gain = sequence.gain.end;
                         }
-                        consume(at + i, samples[first + i * stride] * gain);
+                        consume(at + i, sample * gain);
                         gain += step;
                     }
+                });
+            }
+            ChunkRef::Persistent(reference) => {
+                resources.visit_audio_chunk(reference, count, |samples, first, stride| {
+                    crate::audio_samples::process(|| {
+                        for i in 0..count {
+                            if at + i + 1 == frames && frames > 1 {
+                                gain = sequence.gain.end;
+                            }
+                            consume(at + i, samples[first + i * stride] * gain);
+                            gain += step;
+                        }
+                    });
                 })?;
             }
         }

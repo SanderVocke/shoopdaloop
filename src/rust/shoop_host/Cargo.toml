@@ -9,6 +9,7 @@ description = "Independent native session service and RT engine composition"
 workspace = true
 
 [features]
+benchmark-no-sample-processing = ["shoop_rt_engine/benchmark-no-sample-processing"]
 builtin-fx = ["shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_rt_host_native/oxisynth"]
 default = ["cpal", "jack", "builtin-fx", "oxisynth"]

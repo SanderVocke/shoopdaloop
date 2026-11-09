@@ -140,7 +140,8 @@ fn verify_media(
         "missing or mismatched stereo capture"
     );
     ensure!(
-        signal == "silence"
+        !shoop_rt_engine::AUDIO_SAMPLE_PROCESSING
+            || signal == "silence"
             || media
                 .audio
                 .iter()
@@ -157,6 +158,10 @@ fn verify_media(
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    ensure!(
+        shoop_rt_engine::AUDIO_SAMPLE_PROCESSING || args.mode == "compact",
+        "sample-free diagnostic builds require compact"
+    );
     ensure!(
         args.seconds > 0. && args.seconds.is_finite(),
         "invalid duration"
@@ -252,6 +257,17 @@ fn main() -> Result<()> {
         thread::sleep(Duration::from_millis(2));
     }
     pump(&mut client, &mut connection, 0.1)?;
+    let callback_header = std::fs::read_to_string(output.join("callbacks.csv"))?;
+    ensure!(
+        callback_header
+            .lines()
+            .next()
+            .is_some_and(|line| line.contains(&format!(
+                "sample_processing={}",
+                u8::from(shoop_rt_engine::AUDIO_SAMPLE_PROCESSING)
+            ))),
+        "host/launcher sample-processing build mismatch"
+    );
     ensure!(
         !client
             .snapshot()
@@ -586,7 +602,7 @@ fn main() -> Result<()> {
     std::fs::write(
         output.join("run.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
-            "mode":args.mode,"scenario":args.scenario,"first_frame":first_frame,"last_frame":last_frame,
+            "mode":args.mode,"sample_processing":shoop_rt_engine::AUDIO_SAMPLE_PROCESSING,"scenario":args.scenario,"first_frame":first_frame,"last_frame":last_frame,
             "quantum":args.quantum,"buffer":args.buffer,"seconds":args.seconds,"config":config,
             "host":args.host,"architecture":std::env::consts::ARCH,"callbacks":callbacks,"warmup_seconds":args.warmup,"voices":args.voices,"input":args.input,"setup":setup,"control_updates":tick,"process_memory":process_memory
         }))?,

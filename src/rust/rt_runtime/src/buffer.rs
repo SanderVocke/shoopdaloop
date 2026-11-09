@@ -1,6 +1,6 @@
 //! Borrowed audio blocks and caller-owned bounded event storage.
 
-use crate::{Error, Frame};
+use crate::{audio_samples::SampleSlice, Error, Frame};
 use alloc::{boxed::Box, vec, vec::Vec};
 
 /// Byte range in its containing event buffer. Construction is validated when a
@@ -718,7 +718,7 @@ impl AudioBlock<'_, '_> {
     pub(crate) fn clear_bounded(&mut self, channels: usize, frames: usize) {
         for output in self.outputs.iter_mut().take(channels) {
             let count = output.len().min(frames);
-            output[..count].fill(0.0);
+            output[..count].fill_audio_samples(0.0);
         }
     }
 }

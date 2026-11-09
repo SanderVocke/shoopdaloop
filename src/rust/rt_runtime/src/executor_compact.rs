@@ -1,5 +1,6 @@
 use super::*;
 use crate::audio_refs::{AudioSequence, ChunkRef, ReferenceBlock, RenderArena};
+use crate::audio_samples::SampleSlice;
 
 #[derive(Clone, Copy, Default)]
 struct Route {
@@ -140,7 +141,7 @@ impl Program {
             let offset = arena.allocate(frames)?;
             arena
                 .output(offset, frames)
-                .copy_from_slice(&audio.input(wire - self.host)[start..start + frames]);
+                .copy_audio_samples(&audio.input(wire - self.host)[start..start + frames]);
             arena.work.sample_reads += frames as u64;
             arena.work.sample_writes += frames as u64;
             self.wires[wire] = arena.transient(offset, frames);

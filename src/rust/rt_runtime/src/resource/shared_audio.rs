@@ -8,6 +8,7 @@ use super::{
     shared_pages::{LeaseId, SharedPages},
     slots, RenderIo, ResourceStore, Slot, WorkClass,
 };
+use crate::audio_samples::SampleSlice;
 use crate::{Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
@@ -1290,7 +1291,7 @@ impl AudioStore {
             if let Some(lease) = lease {
                 self.pages.copy_span(store, lease, 0, destination)?;
             } else {
-                destination.fill(0);
+                destination.fill_audio_samples(0);
                 if let Some(base) = base {
                     let base = self.bases[base].expect("owned base");
                     let offset = entry.page * self.page_frames * self.channels * 4;
@@ -1307,29 +1308,31 @@ impl AudioStore {
                 }
             }
         }
-        for frame in 0..count {
-            for channel in 0..self.channels {
-                if selected_channel.is_some_and(|selected| selected != channel) {
-                    continue;
+        crate::audio_samples::process(|| {
+            for frame in 0..count {
+                for channel in 0..self.channels {
+                    if selected_channel.is_some_and(|selected| selected != channel) {
+                        continue;
+                    }
+                    let Some(physical) = physical(frame, channel) else {
+                        continue;
+                    };
+                    let plan = self.marks[physical / self.page_frames].1;
+                    let destination = plan * self.page_bytes
+                        + physical % self.page_frames * self.channels * 4
+                        + channel * 4;
+                    self.scratch[destination..destination + 4].copy_from_slice(
+                        &samples[frame * stride
+                            + if selected_channel.is_some() {
+                                0
+                            } else {
+                                channel
+                            }]
+                        .to_le_bytes(),
+                    );
                 }
-                let Some(physical) = physical(frame, channel) else {
-                    continue;
-                };
-                let plan = self.marks[physical / self.page_frames].1;
-                let destination = plan * self.page_bytes
-                    + physical % self.page_frames * self.channels * 4
-                    + channel * 4;
-                self.scratch[destination..destination + 4].copy_from_slice(
-                    &samples[frame * stride
-                        + if selected_channel.is_some() {
-                            0
-                        } else {
-                            channel
-                        }]
-                    .to_le_bytes(),
-                );
             }
-        }
+        });
         store
             .charge_work(
                 WorkClass::Render,
@@ -1954,7 +1957,7 @@ impl AudioStore {
                 .zero_from
                 .is_some_and(|frame| byte >= frame * frame_bytes)
             {
-                destination.fill(0);
+                destination.fill_audio_samples(0);
             } else {
                 store.copy_linear_span(
                     base.expect("validated base").index,

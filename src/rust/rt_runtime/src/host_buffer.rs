@@ -1,3 +1,4 @@
+use crate::audio_samples::SampleSlice;
 use crate::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     Error, Frame, PreparedConfig,
@@ -130,11 +131,12 @@ impl HostBuffer {
             let count = (q - self.fill).min(audio.frames - at);
             for (ch, input) in audio.inputs.iter().enumerate() {
                 self.input[ch * q + self.fill..ch * q + self.fill + count]
-                    .copy_from_slice(&input[at..at + count]);
+                    .copy_audio_samples(&input[at..at + count]);
             }
             for (ch, output) in audio.outputs.iter_mut().enumerate() {
-                output[at..at + count]
-                    .copy_from_slice(&self.output[ch * q + self.fill..ch * q + self.fill + count]);
+                output[at..at + count].copy_audio_samples(
+                    &self.output[ch * q + self.fill..ch * q + self.fill + count],
+                );
             }
             for (source, target) in midi.inputs.iter().zip(&mut self.midi_input) {
                 merge(
@@ -151,7 +153,7 @@ impl HostBuffer {
             at += count;
             self.fill += count;
             if self.fill == q {
-                self.output.fill(0.);
+                self.output.fill_audio_samples(0.);
                 for m in &mut self.midi_output {
                     m.clear();
                 }
