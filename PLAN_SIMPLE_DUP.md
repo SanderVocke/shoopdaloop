@@ -2,7 +2,7 @@
 
 Implement primitive and P03 composite Clone and Clone into by composing existing host-owned capture, content/definition-apply and control operations. Use a fresh implementation branch and a new PR targeting `feat/backend-replacement`, as an alternative to [PR #953](https://github.com/SanderVocke/shoopdaloop/pull/953), rather than stacking on its transaction machinery.
 
-Planning base: `888bd8a66143a6a6a675883823578a7c1d7e4bee`. Follow `.agents/prompts/write_plan.md`, `.agents/rules/mandates.md` and `VALIDATION.md`. Implementation base is the same commit; work is on `feat/simple-loop-duplication`.
+Planning base: `888bd8a66143a6a6a675883823578a7c1d7e4bee`. Follow `.agents/prompts/write_plan.md`, `.agents/rules/mandates.md` and `VALIDATION.md`. Implementation base is the same commit; work is on `feat/simple-loop-duplication` in [PR #961](https://github.com/SanderVocke/shoopdaloop/pull/961).
 
 Scope includes supported Direct, dry/wet, built-in FX and synth primitive role media, plus the user-requested P03 composite core: Direct-track regular and explicit-mode definitions using Play, Stop and Record, including supported nesting. Composite copies retain child references rather than cloning children. Copying a composite into an empty primitive slot and replacing an existing P03 composite are included. Occupied cross-kind replacement is deferred because the existing operations require destructive clearing before application; refuse it before mutation. P17 dependent modes and MIDI initial-state, preroll, seek and parameter-history restoration remain outside this work. Existing supported MIDI content is copied exactly. This is a deliberate partial P11 delivery.
 
@@ -97,15 +97,15 @@ Depends on Stage 4.
 Depends on Stages 2–5.
 
 - [x] Run production native host/transport workflows: raw source → empty copy → occupied overwrite → independent edit/clear → play → save/load/resave, plus P03 empty-slot conversion, nested/script definition replacement and safe cross-kind refusal. Compare persistent media, authored definitions, geometry and copied fields, stable slot identity and stopped result. Include accepted-operation reconnect without replay.
-- [ ] Rebuild and run the actual browser/application AudioWorklet workflow with direct and supported processed primitive media and P03 copies. Exercise public gestures/dispatch, provider independence, independent definition editing and shared-child playback, save/load and refusal/partial-failure presentation; check content/output and render-memory bounds.
-- [ ] Run formatting, the warning-denying workspace build, native nextest and the applicable policy/parity/dependency/Python checks from `VALIDATION.md`. Use CI for other supported platforms and existing firmware/JACK/ownership gates.
+- [x] Rebuild and run the actual browser/application AudioWorklet workflow with direct and supported processed primitive media and P03 copies. Exercise public gestures/dispatch, provider independence, independent definition editing and shared-child playback, save/load and refusal/partial-failure presentation; check content/output and render-memory bounds.
+- [x] Run formatting, the warning-denying workspace build, native nextest and the applicable policy/parity/dependency/Python checks from `VALIDATION.md`. Use CI for other supported platforms and existing firmware/JACK/ownership gates.
 - [x] Review the final diff against the implementation base: no feature changes in `shoop_rt_protocol`, `shoop_rt_engine`, `shoop_loops` or `rt_runtime`; no unrelated host/CI fixes or copied transaction framework. Explain any narrow backend API/helper extension.
 
 ## Stage 7 Deliver the new PR and verify CI/review
 
 Depends on Stage 6 for final readiness. A draft PR may be opened while final browser/base comparison checks run so CI and automated review can progress in parallel; final readiness still requires validation of the delivered head.
 
-- [ ] Commit completed milestones, push `feat/simple-loop-duplication`, and open a separate PR targeting `feat/backend-replacement`. Link PR #953 as the alternative and explain the scope/failure-contract differences and production-versus-test diff size.
+- [x] Commit completed milestones, push `feat/simple-loop-duplication`, and open a separate PR targeting `feat/backend-replacement`. Link PR #953 as the alternative and explain the scope/failure-contract differences and production-versus-test diff size.
 - [ ] Work applicable CI regressions to green and verify the delivered head. Diagnose failures with logs/artifacts before rerunning; preserve existing media fixtures, watchdogs and assertions. Demonstrate and report independently blocked/base failures instead of claiming a pass or absorbing unrelated repairs.
 - [ ] Check automated review after pushes, address applicable feedback and repeat through approval. Explicitly report absent or unavailable review rather than inventing approval.
 - [ ] Update this checklist and leave a clean worktree and the new PR unmerged. Do not close or merge PR #953, or merge the new PR, autonomously.
