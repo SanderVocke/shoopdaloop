@@ -122,8 +122,11 @@ def analyze(args, path, env):
             if any(category(symbol) == CATEGORIES[0] for symbol in frames):
                 planner_copy_weight += period
     metadata = json.loads(path.with_name('sampling.json').read_text())
-    header = path.with_name('callbacks.csv').read_text().splitlines()[0]
-    samples_enabled = 'sample_processing=0' not in header
+    callbacks = path.with_name('callbacks.csv')
+    samples_enabled = metadata.get('sample_processing', True)
+    if callbacks.exists():
+        header = callbacks.read_text().splitlines()[0]
+        samples_enabled = 'sample_processing=0' not in header
     assert metadata.get('sample_processing', samples_enabled) == samples_enabled
     result = {
         'mode': metadata['mode'], 'scenario': metadata['scenario'], 'samples': len(samples),
