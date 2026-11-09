@@ -528,7 +528,7 @@ impl Service {
         Ok(())
     }
 
-    pub(super) fn validate_composite_dependencies(
+    fn validate_composite_dependencies(
         &self,
         target: LoopId,
         document: &Document,

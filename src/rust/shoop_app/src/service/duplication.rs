@@ -32,6 +32,79 @@ pub(super) struct Job {
 }
 
 impl Service {
+    fn copy_sync(&self, id: LoopId) -> Option<BackendLoopId> {
+        let backend = self.loops[&id].backend;
+        self.observed
+            .composites
+            .get(&BackendCompositeId::from_raw(backend.raw()))
+            .map(|state| state.sync_source)
+            .unwrap_or_else(|| {
+                self.observed
+                    .loops
+                    .get(&backend)
+                    .and_then(|state| state.sync_source)
+            })
+    }
+
+    fn validate_copy_dependencies(
+        &self,
+        source: LoopId,
+        target: LoopId,
+    ) -> Result<(), CommandError> {
+        let ids: BTreeMap<_, _> = self
+            .loops
+            .iter()
+            .map(|(id, entry)| (entry.backend, *id))
+            .collect();
+        let mut edges: BTreeMap<LoopId, BTreeSet<LoopId>> = BTreeMap::new();
+        let mut incoming: BTreeMap<_, usize> = self.loops.keys().map(|id| (*id, 0)).collect();
+        for id in self.loops.keys().copied() {
+            let owner = if id == target { source } else { id };
+            if let Some(sync) = self.copy_sync(owner) {
+                let sync = ids
+                    .get(&sync)
+                    .ok_or_else(|| CommandError::invalid("stale synchronization source"))?;
+                edges.entry(*sync).or_default().insert(id);
+            }
+            if let Some(owner) = self.composites.get(&owner) {
+                for plan in owner.active.iter().chain(owner.candidates.values()) {
+                    edges
+                        .entry(id)
+                        .or_default()
+                        .extend(plan.document.instances.iter().map(|event| event.loop_id));
+                }
+            }
+        }
+        for targets in edges.values() {
+            for target in targets {
+                *incoming
+                    .get_mut(target)
+                    .ok_or_else(|| CommandError::invalid("stale composite child"))? += 1;
+            }
+        }
+        let mut ready: Vec<_> = incoming
+            .iter()
+            .filter_map(|(id, count)| (*count == 0).then_some(*id))
+            .collect();
+        let mut visited = 0;
+        while let Some(id) = ready.pop() {
+            visited += 1;
+            for child in edges.get(&id).into_iter().flatten() {
+                let count = incoming.get_mut(child).unwrap();
+                *count -= 1;
+                if *count == 0 {
+                    ready.push(*child);
+                }
+            }
+        }
+        if visited != self.loops.len() {
+            return Err(CommandError::invalid(
+                "copy would create a synchronization or composite dependency cycle",
+            ));
+        }
+        Ok(())
+    }
+
     fn copy_target_ready(&self, id: LoopId) -> Result<(), CommandError> {
         let entry = self.loop_entry(id)?;
         if entry.view.structural_state != StructuralState::Confirmed
@@ -156,6 +229,9 @@ impl Service {
             });
         }
         self.copy_target_ready(source)?;
+        if self.composites.contains_key(&source) {
+            self.copy_closure(source, &mut BTreeSet::new())?;
+        }
         let entry = self.loop_entry(source)?;
         if entry.view.sync {
             return Err(CommandError::invalid("the sync loop cannot be cloned"));
@@ -185,6 +261,7 @@ impl Service {
                 ));
             }
             self.copy_destination_ready(target)?;
+            self.validate_copy_dependencies(source, target)?;
         }
         let previous = order.len();
         let payload = if let Some(active) = self
@@ -192,10 +269,6 @@ impl Service {
             .get(&source)
             .and_then(|owner| owner.active.clone())
         {
-            self.copy_closure(source, &mut BTreeSet::new())?;
-            if let Some(target) = target {
-                self.validate_composite_dependencies(target, &active.document)?;
-            }
             let mut active = active;
             let mut ids = BTreeMap::new();
             for event in &mut active.document.instances {
@@ -244,12 +317,7 @@ impl Service {
             source,
             target,
             view: entry.view.clone(),
-            sync: self
-                .observed
-                .composites
-                .get(&BackendCompositeId::from_raw(entry.backend.raw()))
-                .map(|state| state.sync_source)
-                .unwrap_or_else(|| self.observed.loops[&entry.backend].sync_source),
+            sync: self.copy_sync(source),
             payload,
             version: None,
             rows,

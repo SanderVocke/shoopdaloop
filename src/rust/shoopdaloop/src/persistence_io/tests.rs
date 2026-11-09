@@ -528,11 +528,76 @@ async fn primitive_and_nested_definition_copies_survive_the_public_session_round
         .all(|l| l.mode == LoopMode::Stopped));
     f.dispatch(AppIntent::RequestSaveSession);
     let resaved = f.output().await;
-    let after = shoop_session::decode_session(&resaved.bytes).unwrap();
+    let mut after = shoop_session::decode_session(&resaved.bytes).unwrap();
     crate::copy_probe::verify(&after).unwrap();
     assert_eq!(
         before.media.values().collect::<Vec<_>>(),
         after.media.values().collect::<Vec<_>>()
+    );
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: resaved.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    f.until(|s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|task| task.status == IoTaskStatus::Completed)
+    })
+    .await;
+    let saved_track = after
+        .document
+        .track_groups
+        .iter_mut()
+        .flat_map(|group| &mut group.tracks)
+        .nth(1)
+        .unwrap();
+    saved_track.loops[1].execution = Some(shoop_session::LoopExecutionDocument {
+        sync_source: Some(saved_track.loops[6].id),
+        repeat_sync: false,
+    });
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "copy-clock.shoop".into(),
+        bytes: shoop_session::encode_session(&after, "copy-clock-test")
+            .unwrap()
+            .into(),
+    });
+    let clocks = f
+        .until(|s| {
+            s.tracks[1].id != restored.tracks[1].id
+                && s.io_task
+                    .as_ref()
+                    .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        })
+        .await;
+    let track = &clocks.tracks[1];
+    f.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: track.loops[6].id,
+        action: LoopAction::PlayClicked,
+    });
+    let playing = f
+        .until(|s| s.tracks[1].loops[6].mode == LoopMode::Playing)
+        .await;
+    f.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: track.loops[1].id,
+        action: LoopAction::DuplicateTo(track.loops[6].id),
+    });
+    for _ in 0..20 {
+        f.step();
+    }
+    let unchanged = f.service.snapshot();
+    assert!(matches!(
+        unchanged.results.last().unwrap().outcome,
+        Outcome::Refused {
+            reason: Refusal::Invalid,
+            ..
+        }
+    ));
+    assert_eq!(unchanged.tracks[1].loops[6].mode, LoopMode::Playing);
+    assert_eq!(
+        unchanged.tracks[1].loops[6].content_revision,
+        playing.tracks[1].loops[6].content_revision
     );
 }
 
