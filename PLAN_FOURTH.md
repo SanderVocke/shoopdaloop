@@ -331,6 +331,17 @@ Depends on: stage 5. This is the functional and measurement completion gate.
   report it and sample CPU separately if available; do not substitute profiling
   measurements for unprofiled timing or expand into an unrequested redesign.
 
+### Additional requested delivery — Pi bundle before final checks
+
+The user explicitly extended scope to a new Pi 4 bundle, after local results and
+before remaining validation. This supersedes the original Pi-packaging exclusion;
+no Pi access or Pi measurement is requested here.
+
+- [ ] Cross-build the same completed four-mode implementation for 64-bit Pi 4,
+  package existing host/client/scripts/runtime libraries and short instructions.
+- [ ] Validate ARM64 executables, checksums and actual-app emulated smoke, upload
+  the ZIP to GitHub and post its download link on PR #960. Preserve old bundles.
+
 ### Stage 7 — Publication, green CI and review
 
 Depends on: stage 6; fixes may return to the relevant earlier stage.

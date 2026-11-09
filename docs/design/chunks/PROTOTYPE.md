@@ -1,35 +1,38 @@
 # Native chunk prototype
 
 See [the measured native results](RESULTS.md), [CPU sampling follow-up](PROFILING.md),
-[Pi hardware results](PI_RESULTS.md), and [raw-data manifest](results/manifest.json).
+[Pi hardware results](PI_RESULTS.md), [the fourth-variant audio-only follow-up](FOURTH_RESULTS.md),
+and [raw-data manifest](results/manifest.json).
 
-`SHOOP_AUDIO_RENDER=current|chunks|chunks-descriptors` selects a renderer at
+`SHOOP_AUDIO_RENDER=current|chunks|chunks-descriptors|compact` selects a renderer at
 native host preparation. Experimental modes also require
 `SHOOP_AUDIO_BENCH_AUDIO_ONLY=1`; use the same audio-only profile for comparisons.
 Unset selection preserves the normal renderer. There is no runtime mode switch.
 
 ```sh
 cargo build --release -p shoop_host --features testing --bin shoop_host --example chunk_benchmark
-SHOOP_AUDIO_RENDER=chunks SHOOP_AUDIO_BENCH_AUDIO_ONLY=1 \
-  target/release/shoop_host --config host.json --export-profile profile.json
+SHOOP_AUDIO_RENDER=compact SHOOP_AUDIO_BENCH_AUDIO_ONLY=1 \
+  target/release/shoop_host --config docs/design/chunks/audio-only-host.json --export-profile profile.json
 # Connect the normal native app, locally or remotely, using this host's profile.
 target/release/shoopdaloop --host-profile profile.json --ui-only
 ```
 
-Use the existing host configuration and dummy/JACK/CPAL settings. MIDI is excluded
-from experimental acceptance; native preparation clears device MIDI ports.
-Empty internal MIDI compatibility objects and their existing reservations remain.
-Effects and advanced editing use existing materialized adapters; they are not the
-benchmark target. Driver changes preserve the startup environment. An active
+Use the existing host configuration and dummy/JACK/CPAL settings. The common audio-only profile omits device MIDI ports, MIDI histories/indexes,
+capture/playback/restoration, loop/source state buffers and maintenance. Ordinary
+startup without the profile keeps MIDI. Empty protocol compatibility values remain.
+Compact supports basic audio loops, controls, sync/delays, grabs, continued capture,
+readback and track churn. Disable hosted FX/synths as in the supplied configuration;
+compact refuses them, composites and advanced dry/wet editing. The other three
+modes retain their existing materialized adapters. Driver changes preserve the startup environment. An active
 callback recorder rejects driver changes at preflight; restart that host instead.
 
 ## Storage and materialization
 
 One persistent pool replaces its reserved byte payload with a typed `f32` slab.
 Each physical chunk holds exactly one quantum of interleaved channel-group audio.
-The existing binary persistent index provides snapshot/edit ownership. History
-addresses wrap logically within this common pool; separate per-source history
-arenas and index specializations have not been added.
+The two original chunk variants use the existing binary persistent index for
+snapshot/edit ownership. History
+addresses wrap logically within this common pool; separate per-source payload arenas have not been added.
 
 The pool slab lives until engine teardown. Logical chunks and index nodes recycle
 without render-time heap operations. Generic resource-page usage excludes the
@@ -76,13 +79,43 @@ endpoints in the original quantum domain. First/last gains match the ideal stack
 interior gains can differ. Slope evaluation happens only while consuming samples.
 Neither span fragmentation nor host callback partitioning changes this domain.
 
+## Compact execution and ownership
+
+Compact lowers prepared routing into direct wire operations and uses a lean clock
+advance for eligible steady loops. Pending commands, synchronization boundaries
+and transactional capture still use the established settlement rules. Playback
+borrows published owners through `finish_tick`, avoiding per-quantum pin churn.
+
+Its flat audio index has a direct directory and 256-entry tiles. Private history
+updates and full-quantum recording appends mutate uniquely owned metadata.
+Snapshots share table ownership; a grab clips a directory and at most four boundary
+tiles. A write can copy one configured-width directory and one tile of handles,
+never old PCM. Reclamation processes at most 512 entries per store per host callback,
+also subject to the common resource budget. Capacity refusal leaves old takes valid;
+pending retirement stays charged. Prepared metadata is substantial and reported.
+
+For the benchmark's stereo Q=32 default pool, the physical chunk is 256 bytes and
+the address directory has 4,096 columns (1,048,576 addressable quantum slots).
+A grab visits at most 4,096 directory entries plus 1,024 boundary-tile entries.
+A shared write visits at most 4,096 directory entries plus 256 tile entries. These
+are fixed configuration bounds, not WCET measurements. Unique appends need no
+such copy; retained ownership can increase metadata work within those bounds.
+
+The source capture tap materializes once for history. Ordinary recorders and
+aligned growing writers share that freshly published chunk by identity. Partial
+spans, channel-window edits and signals that differ at the tap use bounded staging.
+Compact preserves current gain/ramp sample math; it does not introduce the third
+mode's endpoint approximation. Mixes and meters still read samples, and existing
+input/smoothing processors retain materialized paths where needed.
+
 ## Reproducing measurements
 
 ```sh
 python3 scripts/benchmark_audio_chunks.py \
   --host target/release/shoop_host \
   --launcher target/release/examples/chunk_benchmark \
-  --output work/chunk-bench --callbacks 384 --repeats 3 \
+  --modes current chunks chunks-descriptors compact \
+  --output work/chunk-bench --callbacks 384 --repeats 4 \
   --scenarios idle:silence record:silence record play record-play shared continue churn ramps
 # Explicitly select two allowed cores, retaining your own RT/IRQ/isolation setup.
 python3 scripts/benchmark_audio_chunks.py \
@@ -158,3 +191,14 @@ surviving resource/snapshot deletion under heap guards.
 The full native suite remains the repository gate. Native device smoke evidence,
 empirical results and any unavailable external checks are recorded alongside the
 final measurement report.
+
+The short local four-way evidence has its own replay entry point:
+
+```sh
+python3 scripts/analyze_fourth_audio_results.py \
+  --manifest docs/design/chunks/results/fourth-local-2026-11-09/manifest.json \
+  --output work/fourth-replayed
+```
+
+This verifies archive/member hashes and recomputes state/media checks and per-run
+statistics from the raw callbacks. It leaves archived evidence unchanged.

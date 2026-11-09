@@ -1,0 +1,6 @@
+{
+  "driver": {"Dummy": {"sample_rate": 48000, "buffer_size": 256}},
+  "processors": {"builtin_fx": "off", "oxisynth": "off", "fx_instances": 0, "synth_instances": 0, "memory_mb": 16},
+  "pools": {"quantum": 32, "tracks": 4, "loops": 16, "channels": 2, "loop_memory_mb": 16},
+  "transport": "socket"
+}

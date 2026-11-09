@@ -1,8 +1,68 @@
 # Fourth-variant local results
 
-Status: the first four-way comparison is complete; grab/continued-capture and
-final validation work is in progress.
+Status: balanced final timing and all host workflow scenarios are complete.
+Default-history and memory-pressure follow-ups are complete; final checks follow.
 These are short exploratory local runs, not Pi measurements or WCET bounds.
+
+## Completed balanced comparison
+
+The completed implementation is compiled from Rust source `cb98366a`; measurement
+checkout `a0802122` adds only plan, evidence and replay tooling. All four modes use
+one release binary, true audio-only policy and the same normal socket app client.
+There are four repetitions per mode/scenario, rotating through every order
+position. Each run selects 2.048 seconds of audio: 384 callbacks at buffer 256 or
+3,072 at buffer 32. Other settings match the baseline below, including Q=32 and
+0.5-second warmup. These short runs do not fill the default 30-second history.
+
+| Buffer | Scenario | Current p50 | Chunks p50 | Descriptors p50 | Compact p50 | Compact/current |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 256 | idle | 68.81 | 54.24 | 55.74 | 35.58 | 0.52 |
+| 256 | play | 148.36 | 179.68 | 168.16 | 111.86 | 0.75 |
+| 256 | ramps | 163.13 | 190.69 | 188.05 | 127.76 | 0.78 |
+| 32 | idle | 10.50 | 9.30 | 8.84 | 6.94 | 0.66 |
+| 32 | play | 19.81 | 23.20 | 24.90 | 17.22 | 0.87 |
+| 32 | ramps | 23.14 | 31.09 | 26.81 | 18.34 | 0.79 |
+
+Times are microseconds, medians of the four run p50 values. Compact/descriptors
+ratios are 0.64/0.67/0.68 at buffer 256 and 0.79/0.69/0.68 at buffer 32
+(idle/play/ramps). Compact is the first chunk prototype here to consistently beat
+current's typical callback cost in these scenarios. MIDI-only gains are separate:
+the before/after section below measures that common change before compact.
+
+At buffer 256, compact and descriptors both report about 4.3 KB of resource copies
+per playback callback, but compact's median is 33% lower. Graph sample reads fall
+from 11,776 to 7,424 per playback callback. This supports reducing the combined
+planning, routing, ownership and redundant sample-materialization work; copy bytes
+alone did not predict CPU cost. This experiment does not isolate each change's
+individual contribution. Counts describe logical work, not measured DDR traffic.
+
+For the worst-case objective the evidence is mixed. Playback p99 improves from
+733 to 344 us at buffer 256 but worsens from 103 to 129 us at buffer 32. Compact's
+small-buffer playback has an 8.2 ms wall-time outlier. There are 3 overruns among
+18,432 selected callbacks at buffer 256 and 109 among 147,456 at buffer 32, with
+zero drops/faults. Retain all these outliers; ordinary container scheduling and
+quota interference prevent attributing their entire duration to renderer work.
+Neither this table nor the percentile improvements establish a WCET bound.
+
+Playback RSS is approximately 254 MiB current, 423 MiB chunks/descriptors and
+371 MiB compact. The flat index reduces live table counts in these playback runs
+to 55, versus about 23,500 binary nodes in the original chunk variants, but its
+prepared metadata still reserves about 138 MiB. Working metadata and reserved
+metadata are different measures; compact has not solved the startup-memory cost.
+
+All ten host workflow scenarios pass in each mode, including signal grabbing,
+shared retention, continued capture, record/play and track churn. Compact has
+sample/capture-cut oracles against current through repeated wraps at Q=1/32 and
+callback partitions 1/13/128/256. Final native/CI/frontend checks follow the timing
+report; their status will be recorded separately from these measurement results.
+
+Full-history shared playback (31-second warmup, one run per mode) gives compact
+p50/p99 of **140.59/564.06 us**, versus current **170.86/825.50 us**. Continuous
+memory-pressure playback (two runs per mode) gives compact **124.25/384.90 us**,
+versus current **157.69/548.71 us**. Both follow-ups have zero overruns/drops/faults.
+They support a typical-cost improvement when history is full and under this load;
+the small-buffer playback tail remains mixed. Final matrices contain 148 runs /
+180,480 selected callbacks, plus the ten compact workflow runs (3,840 callbacks).
 
 ## Removing internal MIDI from the three existing modes
 
@@ -138,6 +198,12 @@ connection profiles and authority files:
 - [Audio-only workflow smoke](results/fourth-local-2026-11-09/audio-only-smoke.zip).
 - [First four-way comparison](results/fourth-local-2026-11-09/quick-four.zip).
 - [First memory-pressure comparison](results/fourth-local-2026-11-09/quick-memory.zip).
+- [Completed compact workflows](results/fourth-local-2026-11-09/compact-workflows.zip).
+- [Balanced buffer 256](results/fourth-local-2026-11-09/final-256.zip).
+- [Balanced buffer 32](results/fourth-local-2026-11-09/final-32.zip).
+- [Other three modes, complete workflows](results/fourth-local-2026-11-09/final-workflows.zip).
+- [Full-history follow-up](results/fourth-local-2026-11-09/final-wrap.zip).
+- [Completed memory-pressure follow-up](results/fourth-local-2026-11-09/final-memory.zip).
 
 Replay each extracted run using `scripts/benchmark_audio_chunks.py`'s
 `summarize(directory, write=False)`. Original rows outside each selected frame
