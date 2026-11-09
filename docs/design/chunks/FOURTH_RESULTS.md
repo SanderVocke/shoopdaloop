@@ -247,3 +247,15 @@ The requested [Pi 4 bundle](https://github.com/SanderVocke/shoopdaloop/pull/960#
 is delivered with all four modes and short test instructions. Its ARM64 build,
 12 emulated actual-app workflows and public download checksum pass. No Pi hardware
 timing was performed here.
+
+## CI follow-up
+
+Native platform, JACK, coverage, bare-metal, hosted-processor and release-browser
+checks are green. Browser debug's Node and lower-crate browser suites pass, but
+the app smoke intermittently times out on session-load commits. The unchanged
+base also fails at the third hosted-session load. The same prototype debug
+artifact passes that default workflow on isolated replay, and all three preview
+permission/rejection/pending-resume cases pass; another debug composites replay
+hits a load timeout. No Rust changes or timeout suppression were made. The full
+debug-job retry remains in progress at 2026-11-09 09:56:11 UTC; overall CI is not
+claimed green. [CI identities and observations](results/fourth-local-2026-11-09/ci.json).

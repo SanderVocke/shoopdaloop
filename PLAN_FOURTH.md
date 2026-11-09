@@ -459,14 +459,26 @@ unsupported features or running broad performance matrices.
   Changed no_std+alloc libraries build for thumbv7em-none-eabihf with warnings denied.
   See `results/fourth-local-2026-11-09/final-validation.json` beneath the design docs.
 
-- Stage 7 publication: PR #960 is ready, with behavior, results, launch and Pi
-  links. Reviews and threads have been checked repeatedly; no automated code
-  reviewer or requested reviewer is present, so there is no review approval to
-  claim. The manually dispatched CI passed Linux debug/release, Windows
-  debug/release, macOS release, JACK, coverage, shared foundation, host inspection
-  and bare-metal builds. Three HTTP 504 dependency-download failures were retried;
-  both web builds have progressed to tests and macOS debug has progressed to its
-  native tests. Hosted-processor CI on the evidence head is green.
+- Stage 7 publication: PR #960 is ready and unmerged, with the Pi bundle,
+  measurements and all local/native validation delivered. Reviews/threads remain
+  empty and no reviewer is configured; no approval is claimed. Hosted-processor
+  CI on `cadfa874` is green. Main [CI run 42579519033](https://github.com/SanderVocke/shoopdaloop/actions/runs/42579519033)
+  has passed all native platforms, JACK, coverage, shared foundation, process
+  inspection, bare-metal and release-browser jobs. Dependency-download HTTP 504
+  failures passed on retry.
+- Remaining CI investigation: browser debug's Node and lower-crate browser
+  suites passed, but its app workflow timed out awaiting a hosted-session load
+  commit. The unchanged base `61ae8539` [also failed at the third hosted load](https://github.com/SanderVocke/shoopdaloop/actions/runs/42528616310);
+  a fresh base-artifact replay reproduced that wait, and another hit an input
+  timing timeout. The prototype's unchanged published debug artifact
+  [passed the full default workflow on isolated replay](https://github.com/SanderVocke/shoopdaloop/actions/runs/42595812801/job/129088030142).
+  Three preview/rejection/pending-resume cases pass; the debug composites case
+  hit another session-commit timeout. These observations establish an existing
+  intermittent debug-browser problem, not an all-green matrix. A full debug-job
+  retry and remaining diagnostic case are still running at 2026-11-09 09:56:11 UTC.
+  The CI checkbox remains open; no prototype Rust or Pi binaries were changed
+  to suppress these failures. See `results/fourth-local-2026-11-09/ci.json` in
+  the design evidence for source/run identities.
 - The execution environment became unavailable after implementation, evidence,
   the Pi delivery and full local validation had been pushed. Remaining CI and
   documentation publication continue through GitHub; no rerun of local checks

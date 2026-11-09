@@ -1,0 +1,168 @@
+{
+  "observed_at": "2026-11-09 09:56:11 UTC",
+  "source_rust": "cb98366a70da9195951f242755cafa254e3aa720",
+  "evidence_head_before_this_record": "cadfa8748d85d4a3fc9e652f830df0579cf8ea44",
+  "production_rust_unchanged": true,
+  "main": {
+    "run_id": 42579519033,
+    "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/42579519033",
+    "attempt": 3,
+    "status": "in_progress",
+    "jobs": [
+      {
+        "id": 129083894844,
+        "name": "web wasm32 debug",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 129083895880,
+        "name": "Fixed shared media foundation",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083896296,
+        "name": "Bare-metal runtime and session service",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083896325,
+        "name": "macos arm64 debug",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083896326,
+        "name": "linux x86_64 release",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083896572,
+        "name": "Host process inspection (macos-15)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083896662,
+        "name": "windows x86_64 release",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083939583,
+        "name": "Native JACK audio and MIDI acceptance",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083945826,
+        "name": "macos arm64 release",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083947158,
+        "name": "Nightly without CPAL (${{ matrix.flavor }})",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 129083953115,
+        "name": "Host process inspection (windows-2025)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083961772,
+        "name": "linux x86_64 debug",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083963158,
+        "name": "Host process inspection (ubuntu-24.04)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083966206,
+        "name": "web wasm32 release",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083968935,
+        "name": "windows x86_64 debug",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 129083972223,
+        "name": "Rust coverage (Linux)",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "earlier_attempts": {
+    "attempt_1": "Three HTTP 504 dependency download failures; affected downloads passed on retry.",
+    "attempt_2": {
+      "web_debug_job": 129051509142,
+      "passed": [
+        "Required Node Wasm suite",
+        "Runtime, loop, engine and codec browser suites"
+      ],
+      "failure": "HostedLoaded: timed out waiting for host-owned session commit",
+      "artifact_id": 13662597824
+    }
+  },
+  "hosted_processors": {
+    "run_id": 42589622180,
+    "source": "cadfa8748d85d4a3fc9e652f830df0579cf8ea44",
+    "conclusion": "success"
+  },
+  "base_failure": {
+    "source": "61ae853926407c57fd14a2888ad4f74906b1b057",
+    "run_id": 42528616310,
+    "job_id": 128877709512,
+    "artifact_id": 13639261473,
+    "observation": "Default debug browser workflow stops at third HostedLoaded; saved artifact inspected via diagnostic run 42595066351."
+  },
+  "isolated_replays": {
+    "default": {
+      "run_id": 42595812801,
+      "prototype_job_id": 129088030142,
+      "prototype_conclusion": "success",
+      "prototype_source": "cb98366a70da9195951f242755cafa254e3aa720",
+      "prototype_artifact": 13662284783,
+      "base_job_id": 129088030933,
+      "base_conclusion": "failure",
+      "base_observation": "Again stops at HostedLoaded."
+    },
+    "extra": {
+      "run_id": 42596476843,
+      "preview_job_id": 129090234955,
+      "previews": "Three permission/rejection/pending-resume cases passed.",
+      "composites_job_id": 129090235414,
+      "composites": "LoadSession host-owned commit timeout.",
+      "denied_job_id": 129090235425,
+      "denied_status": "in_progress"
+    },
+    "earlier_base_replay": {
+      "run_id": 42595632338,
+      "job_id": 129087450504,
+      "conclusion": "failure",
+      "observation": "Input Prefix timed out"
+    }
+  },
+  "review": {
+    "reviews": [],
+    "threads": [],
+    "configured_reviewer": false,
+    "approval_claimed": false
+  },
+  "conclusion": "Native validation is complete. Overall CI is not yet green; browser debug has pre-existing intermittent timing/session-commit failures and a full retry is running. No source or timeout suppression was applied."
+}
