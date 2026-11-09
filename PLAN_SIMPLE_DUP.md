@@ -59,10 +59,10 @@ Stage 1 design decision: use a narrow complete-payload entry point sharing the s
 
 Depends on Stage 1.
 
-- [ ] Map a captured primitive to a complete destination payload, preserving every supported raw field and explicitly replacing/clearing all audio, MIDI and recorded-state fields. Validate roles, format and capacities before destination mutation.
-- [ ] If required, expose a thin backend operation accepting captured payloads or refactor the existing import helper so both routes use the same validation/upload/`ContentApply`/cleanup code. Keep ordinary partial-import behavior intact.
-- [ ] Verify exact samples, packet bytes/order and channel timing for empty, timing-only, audio/MIDI/mixed and processed cases. Include copying empty/opposite-media sources over occupied content and recorded-state replacement/clearing.
-- [ ] Verify retained readers, edit independence, existing importer regressions, exhaustion before apply and copying into an existing destination when runtime loop slots are full. No temporary loop-owner allocation is allowed.
+- [x] Map a captured primitive to a complete destination payload, preserving every supported raw field and explicitly replacing/clearing all audio, MIDI and recorded-state fields. Validate roles, format and capacities before destination mutation.
+- [x] If required, expose a thin backend operation accepting captured payloads or refactor the existing import helper so both routes use the same validation/upload/`ContentApply`/cleanup code. Keep ordinary partial-import behavior intact.
+- [x] Verify exact samples, packet bytes/order and channel timing for empty, timing-only, audio/MIDI/mixed and processed cases. Include copying empty/opposite-media sources over occupied content and recorded-state replacement/clearing.
+- [x] Verify retained readers, edit independence, existing importer regressions, exhaustion before apply and copying into an existing destination when runtime loop slots are full. No temporary loop-owner allocation is allowed.
 
 ## Stage 3 Compose the service-owned copy sequence
 

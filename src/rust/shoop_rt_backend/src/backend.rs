@@ -1049,6 +1049,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_content(loop_id, update)
     }
 
+    fn load_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        content: &shoop_backend::BackendLoopContent,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_payload(loop_id, crate::import::Payload::Captured(content))
+    }
+
     fn replace_loop_family_async(
         &mut self,
         update: &shoop_backend::BackendLoopFamilyUpdate,
