@@ -1,0 +1,33 @@
+{
+  "source_rust": "cb98366a70da9195951f242755cafa254e3aa720",
+  "validation_checkout": "604ce67b1e56c815595d4c4f572708a3c91f470e",
+  "formatting": "pass",
+  "rust_test_attribute_policy": "pass",
+  "workspace_warning_denying_build": "pass",
+  "native_gate": {
+    "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci",
+    "passed": 3192,
+    "skipped": 11,
+    "failed": 0,
+    "seconds": 517.787
+  },
+  "no_std": {
+    "target": "thumbv7em-none-eabihf",
+    "crates": [
+      "rt_runtime",
+      "rt_buffered",
+      "shoop_loops",
+      "shoop_port_graph"
+    ],
+    "warnings_denied": true,
+    "result": "pass"
+  },
+  "frontend": "all four modes: native LAN TCP recording/playback/meters/waveforms; compact additionally grab and churn",
+  "jack": "all four opt-in modes start a real JACK service-backed host and attach/create tracks; full native JACK acceptance passes",
+  "cpal": "no physical audio device; existing real-driver mock passes all four modes, including MIDI exclusion",
+  "log_sha256": {
+    "workspace-build.log": "83e69d7b83061358a7f0634e716d922bed07fc86118d4e34ffe24b3932836320",
+    "workspace-tests.log": "8120ec2010a5fa7602036f1fb5b15661d5b746bcef6c1547d371c09a907884c9",
+    "no-std-build.log": "74c5c43ae624a50a74704563305b090a06e06c11e0bd1699fc502852cf035c82"
+  }
+}

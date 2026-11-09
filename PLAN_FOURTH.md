@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 6 on `proto/audio-compact`. Upstream is still
+Status: executing stage 7 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -308,24 +308,24 @@ Depends on: stages 2–4.
 
 Depends on: stage 5. This is the functional and measurement completion gate.
 
-- [ ] Exercise all four variants through the normal app/service/RT stack, including
+- [x] Exercise all four variants through the normal app/service/RT stack, including
   a normal remote frontend connection and meters/waveforms, while preserving
   true audio-only policy through supported preparation/restarts. Smoke existing
   JACK/CPAL devices where available and report actual coverage/unavailability.
-- [ ] Run all benchmark scenarios locally at least once per mode. For the final
+- [x] Run all benchmark scenarios locally at least once per mode. For the final
   quiet idle/play/ramps comparison use four repetitions to balance four-way order;
   add buffer 32 with equal selected audio duration. Include a default 30-second
   history-fill/wrap shared run per mode; use accelerated/small-history deterministic
   tests for broader wrap/capacity coverage rather than a long timing matrix.
-- [ ] Retain all selected outliers and distinguish wall callback time, delivery
+- [x] Retain all selected outliers and distinguish wall callback time, delivery
   lateness and scheduler/quota effects. Original warmup/verification rows remain
   archived but excluded from selected-window statistics. Call copy counts logical
   work, not DDR traffic; no Pi conclusions or WCET claims from this local run.
-- [ ] Run formatting, warning-denying workspace build, Rust test-attribute check,
+- [x] Run formatting, warning-denying workspace build, Rust test-attribute check,
   affected suites and the complete native gate in `.agents/info/test.md`. Run
   existing `no_std` compile gates for changed lower crates; use CI for other
   platforms, without requiring new compact web/embedded functionality.
-- [ ] Update launch instructions, limitations, benchmark commands, result manifest
+- [x] Update launch instructions, limitations, benchmark commands, result manifest
   and this plan. Interpret MIDI-only gains separately from compact's additional
   gains/regressions using the new audio-only baselines. If performance disappoints,
   report it and sample CPU separately if available; do not substitute profiling
@@ -337,9 +337,9 @@ The user explicitly extended scope to a new Pi 4 bundle, after local results and
 before remaining validation. This supersedes the original Pi-packaging exclusion;
 no Pi access or Pi measurement is requested here.
 
-- [ ] Cross-build the same completed four-mode implementation for 64-bit Pi 4,
+- [x] Cross-build the same completed four-mode implementation for 64-bit Pi 4,
   package existing host/client/scripts/runtime libraries and short instructions.
-- [ ] Validate ARM64 executables, checksums and actual-app emulated smoke, upload
+- [x] Validate ARM64 executables, checksums and actual-app emulated smoke, upload
   the ZIP to GitHub and post its download link on PR #960. Preserve old bundles.
 
 ### Stage 7 — Publication, green CI and review
@@ -436,3 +436,21 @@ unsupported features or running broad performance matrices.
   with no MIDI devices opened; JACK audio-only reserves no MIDI port slots.
   Runtime/loop/engine suites pass; native passes with the documented missing-backend
   allowance. A real local dummy JACK server is being prepared for final coverage.
+
+- Requested Pi bundle delivered before remaining validation: [PR comment](https://github.com/SanderVocke/shoopdaloop/pull/960#issuecomment-6734979574).
+  Same production Rust as the final local comparison; warning-denying Cortex-A72
+  build, checksums, all four emulated app playback/grab/continue smokes and a fresh
+  public download hash pass. Source/build/upload identity is recorded in
+  `docs/design/chunks/results/pi4-fourth-bundle-2026-11-09.json`. The initial guide
+  uses short windows and keeps full-history warmup separate. No Pi run here.
+
+- Stage 6 complete: 148 completed-build host runs / 185,856 selected callbacks
+  cover balanced 256/32-frame timing, all workflows, filled histories and memory
+  pressure. Raw archives and all hashes/statistics replay. All four actual native
+  frontends render over LAN-addressed TCP with positive waveform/meter readback;
+  compact GUI grabbing and track/loop churn pass. All four real JACK hosts attach
+  and create tracks; no physical CPAL device is available, so its four-mode driver
+  mock provides coverage. Formatting/test attributes and warning-denying workspace
+  build pass. Full native gate: 3,192 passed, 11 skipped, zero failures (517.8 s).
+  Changed no_std+alloc libraries build for thumbv7em-none-eabihf with warnings denied.
+  See `results/fourth-local-2026-11-09/final-validation.json` beneath the design docs.

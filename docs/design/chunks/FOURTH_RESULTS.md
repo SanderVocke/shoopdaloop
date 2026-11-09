@@ -1,7 +1,8 @@
 # Fourth-variant local results
 
 Status: balanced final timing and all host workflow scenarios are complete.
-Default-history and memory-pressure follow-ups are complete; final checks follow.
+Default-history, memory-pressure and final native/frontend checks are complete.
+CI/review publication is in progress.
 These are short exploratory local runs, not Pi measurements or WCET bounds.
 
 ## Completed balanced comparison
@@ -53,8 +54,10 @@ metadata are different measures; compact has not solved the startup-memory cost.
 All ten host workflow scenarios pass in each mode, including signal grabbing,
 shared retention, continued capture, record/play and track churn. Compact has
 sample/capture-cut oracles against current through repeated wraps at Q=1/32 and
-callback partitions 1/13/128/256. Final native/CI/frontend checks follow the timing
-report; their status will be recorded separately from these measurement results.
+callback partitions 1/13/128/256. Final validation status is recorded separately from these measurement results.
+All four native frontends now pass LAN-addressed TCP recording/playback with
+meters and waveform readback; [UI evidence](results/fourth-ui/README.md) includes
+compact grabbing and track/loop churn.
 
 Full-history shared playback (31-second warmup, one run per mode) gives compact
 p50/p99 of **140.59/564.06 us**, versus current **170.86/825.50 us**. Continuous
@@ -188,6 +191,9 @@ not measured DDR traffic. The final report will use the completed build.
 
 ## Evidence and verification
 
+The [complete group tables](results/fourth-local-2026-11-09/groups.csv) include
+p50/p95/p99, maxima, overruns, lateness, RSS and logical work for every dataset.
+[Replay totals](results/fourth-local-2026-11-09/validation.json) are machine-readable.
 The [manifest](results/fourth-local-2026-11-09/manifest.json) records archive and
 member hashes, build/source identity, replay validation and reservation headers.
 Archives preserve the safe callback/config/state/media evidence, excluding
@@ -212,3 +218,20 @@ MIDI regressions, and sample/capture/control/partition comparisons across the
 audio-only modes. The public-protocol regression verifies MIDI refusal, audio
 capture and retained audio grabs without MIDI history/index reservation. Release
 host/launcher builds deny warnings; formatting and test-attribute checks pass.
+
+## Final local validation
+
+The warning-denying workspace build, formatting and Rust test-attribute policy
+pass. The complete native gate passes **3,192 tests**, with 11 skipped and no
+failures, in 517.8 seconds. `rt_runtime`, `rt_buffered`, `shoop_loops` and
+`shoop_port_graph` also build for `thumbv7em-none-eabihf` with warnings denied.
+All four modes start through a real local JACK service backed by dummy hardware
+and a normal frontend can attach/create audio tracks. Native JACK acceptance
+passes. Physical CPAL hardware is unavailable; the existing real-driver mock
+covers all four modes, buffer timing, callback heap guards and MIDI exclusion.
+[Validation identity and log hashes](results/fourth-local-2026-11-09/final-validation.json).
+
+The requested [Pi 4 bundle](https://github.com/SanderVocke/shoopdaloop/pull/960#issuecomment-6734979574)
+is delivered with all four modes and short test instructions. Its ARM64 build,
+12 emulated actual-app workflows and public download checksum pass. No Pi hardware
+timing was performed here.

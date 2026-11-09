@@ -1,0 +1,97 @@
+{
+  "artifact_commit": "b5dab1b4a2dfe2ab6ba02d85002db84ff168e807",
+  "download_url": "https://raw.githubusercontent.com/SanderVocke/shoopdaloop/b5dab1b4a2dfe2ab6ba02d85002db84ff168e807/shoop-pi4-fourth-arm64-cc954978.zip",
+  "comment_url": "https://github.com/SanderVocke/shoopdaloop/pull/960#issuecomment-6734979574",
+  "archive_sha256": "5bcd6d39d40b34c25a6cdc92d1d44c47c39cfffb8660fa139f8687c8a804b3a6",
+  "archive_bytes": 15925839,
+  "build_info": {
+    "binary_source_sha": "cc9549786746999bfdfbf2cbee6a020a16b03ef1",
+    "helper_source_sha": "604ce67b1e56c815595d4c4f572708a3c91f470e",
+    "source_url": "https://github.com/SanderVocke/shoopdaloop/tree/cc9549786746999bfdfbf2cbee6a020a16b03ef1",
+    "upstream_sha": "888bd8a66143a6a6a675883823578a7c1d7e4bee",
+    "target": "aarch64-unknown-linux-gnu",
+    "cpu": "cortex-a72",
+    "disabled_target_features": [
+      "aes",
+      "sha2"
+    ],
+    "cflags": "-mcpu=cortex-a72+nocrypto",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "native_toolchain": "Debian Bookworm GCC 12.2.0; glibc 2.36 sysroot",
+    "build": "cargo build --locked --release -p shoop_host --features testing --bin shoop_host --example chunk_benchmark --target aarch64-unknown-linux-gnu",
+    "rustflags": "-D warnings -C target-cpu=cortex-a72 -C target-feature=-aes,-sha2 -C force-unwind-tables=yes -C link-arg=-Wl,-rpath,$ORIGIN/lib",
+    "linker": "aarch64-linux-gnu-gcc --sysroot=<Debian Bookworm cross-toolchain root>",
+    "features": [
+      "testing",
+      "cpal",
+      "jack",
+      "builtin-fx",
+      "oxisynth"
+    ],
+    "requires": "64-bit Linux ARM64, glibc >= 2.36, Python 3, taskset; optional perf/c++filt",
+    "binary_validation": "ARM64 ELF checks; build warnings denied; emulated actual-app smoke tested separately",
+    "modes": [
+      "current",
+      "chunks",
+      "chunks-descriptors",
+      "compact"
+    ],
+    "benchmark_audio_only": "MIDI device ports, history/index storage, loop/source state buffers and processing omitted in every mode",
+    "files_sha256": {
+      "README.md": "11bc92c2a1a256c693403b31272d56c25ccdf6cda3944c06ede7378eb40c9d76",
+      "audio-only-host.json": "5119326a0901903a7a9120f8c7e31e003dacdb52d2938e13511f43548ae38b80",
+      "benchmark.sh": "b37fa253ff428a975ed425b60200f8ab6bc59a03996b98b7bd24670a19c76916",
+      "bin/chunk_benchmark": "1b769613e6a5431aa8b1e00914a5096381691e05c078ddc577d898e750563e94",
+      "bin/lib/libasound.so.2": "9fade6b3aedf1ba944e6795b52b74378f2f89166b92ee542582171416a76572d",
+      "bin/lib/libdb-5.3.so": "d2350d17e88d6693eff10fd95ad01581728609ac3017aead4d8c3952bf9f3232",
+      "bin/lib/libgcc_s.so.1": "046856f95f4636f1fc7c3a12bf4f3cd5634c2fc5145c3fdf7395d4f349fa69c7",
+      "bin/lib/libjack.so.0": "56b154cb1e775c90399b555064a8c836f3cb173d0a8cd70291759e14c4b7658b",
+      "bin/lib/libstdc++.so.6": "532f3a12d7b8fef6cc7a064ea106b6c4ab2365674b73e743e4a385d4ffb6c8ab",
+      "bin/shoop_host": "546b6b630a70f8901a9078c3b9acf907013e58cb20e18056df2ac40b4d0ae6e7",
+      "docs/FOURTH_RESULTS.md": "bd06f0fba7728cfe922e2c50ddd202c2b6d5d70a9a5e4a2d6e48fec514bcc00a",
+      "docs/PROFILING.md": "88172c5ae7a5434c2f0aa4afbb88aa5614b9ff4c460273fd88fa21d8a64a185f",
+      "docs/PROTOTYPE.md": "e3c04e9e7deaf4d923d31020a0d0bc49131fd63e8ddc3c8d3ee6768c9267b3f2",
+      "docs/RESULTS.md": "bfec1c6a0d8a70e80f08c7e8b9dfbd1ac959cb4363ee83a0b368333dd6d5c7bd",
+      "licenses/GPL-3": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "licenses/LGPL-2.1": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+      "licenses/LGPL-3": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+      "licenses/egui_graph-LICENSE-MIT": "983ace14e8b5771a7afcf29390d79ace4351fa95e496ed30b0abe6009c41d46a",
+      "licenses/fundsp-LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+      "licenses/fundsp-LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "licenses/libasound2-copyright": "1e389062b3d44557d569d488e6075b162efd946e4bced56d20cbf62f9f53d7f6",
+      "licenses/libdb5.3-copyright": "8b53da37d73289d9df7317b3a2dbe16491f1fa9fec8b77b86d69704b40ce2c26",
+      "licenses/libgcc-s1-copyright": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3",
+      "licenses/libjack-jackd2-0-copyright": "b185503c9cc3a3adf6cc59cf78232f96bc69058ec2cb58055b46418e720dff03",
+      "licenses/libstdc++6-copyright": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3",
+      "licenses/oxisynth-LICENSE": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331",
+      "licenses/oxisynth-chorus-LICENSE": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331",
+      "licenses/oxisynth-reverb-LICENSE": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331",
+      "licenses/shoopdaloop-LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "profile.sh": "fa006e8bb9d40e0873480c790a3a3e5abc0f2b1de561738cf4c84f9b618a1c7a",
+      "scripts/analyze_audio_chunk_profiles.py": "7580d2ed829daf7f64606c75b96e551055d566fcba76d943abc265e7e39a52ec",
+      "scripts/benchmark_audio_chunks.py": "1d6ee6cc4209116c29465ce8a81607fd39ce331dc3fb2bde08dff3defd277311",
+      "scripts/collect_audio_chunk_results.py": "f13d077fc561337db828ef2a3a1352ec5e74c9cdc0a8303f6a5a9754dd4f01a4",
+      "scripts/profile_audio_chunks.py": "98f9f51388e2c8d7250e56a9d9c812a0595a686dbe919f462f1ce3927ba3a7c2"
+    }
+  },
+  "validation": {
+    "release_build": "warnings denied",
+    "archive_checksums": true,
+    "public_download_sha256_verified": true,
+    "emulated_cpu": "cortex-a72",
+    "emulated_app_runs": 12,
+    "modes": [
+      "chunks",
+      "chunks-descriptors",
+      "compact",
+      "current"
+    ],
+    "scenarios": [
+      "continue",
+      "grab",
+      "play"
+    ],
+    "recorder_drops": 0,
+    "timing_claim": "none; emulation smoke only"
+  }
+}
