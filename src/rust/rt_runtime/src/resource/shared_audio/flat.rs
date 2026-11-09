@@ -427,6 +427,50 @@ mod tests {
                     .frames,
                 32
             );
+            let growing = audio.fork(take).unwrap();
+            audio.reserve_growth(growing, 1024).unwrap();
+            for step in 0..60 {
+                resources.begin_callback();
+                audio.reset_work();
+                let live = audio.work().payload_live;
+                let write = audio
+                    .stage_write(
+                        &mut resources.render_io(),
+                        growing,
+                        None,
+                        &[step as f32; 32],
+                    )
+                    .unwrap();
+                audio
+                    .cancel_write(&mut resources.render_io(), write)
+                    .unwrap();
+                if step > 0 {
+                    assert_eq!(audio.work().payload_live, live);
+                }
+                let write = audio
+                    .stage_write(
+                        &mut resources.render_io(),
+                        growing,
+                        None,
+                        &[step as f32; 32],
+                    )
+                    .unwrap();
+                audio
+                    .commit_write(&mut resources.render_io(), write)
+                    .unwrap();
+                audio.maintain(&mut resources).unwrap();
+            }
+            audio.finish_growth(growing).unwrap();
+            audio
+                .read_bytes(
+                    &mut resources.render_io(),
+                    audio.export_index(export).unwrap(),
+                    0,
+                    &mut bytes[..128],
+                )
+                .unwrap();
+            assert_eq!(f32::from_le_bytes(bytes[..4].try_into().unwrap()), 32.);
+            audio.release_take(growing).unwrap();
             for _ in 0..16 {
                 let live = audio.work().payload_live;
                 let tables = audio.work().index_live;

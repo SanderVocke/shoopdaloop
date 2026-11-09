@@ -21,7 +21,7 @@ fn transition(loop_id: LoopSlotId, mode: LoopMode) -> Request {
 fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], Vec<f32>) {
     let mut d = audio_description(mode);
     d.quantum = q;
-    d.max_frames = 128;
+    d.max_frames = 256;
     d.history.seconds = 1;
     d.ramp_frames = (q * 3) as u32;
     let mut h = Harness::new(&d);
@@ -123,7 +123,7 @@ fn close(actual: f32, expected: f32) -> bool {
 fn reference_graph_preserves_samples_capture_controls_wrap_and_callback_partitioning() {
     for q in [1, 32] {
         let reference = render(AudioRenderMode::Current, q, 13);
-        for partition in [1, 13, 128] {
+        for partition in [1, 13, 128, 256] {
             for mode in audio_modes() {
                 let (actual, media) = render(mode, q, partition);
                 assert_eq!(media, reference.1, "recording {mode:?}, Q={q}");
@@ -137,6 +137,128 @@ fn reference_graph_preserves_samples_capture_controls_wrap_and_callback_partitio
                             assert!(close(sample,expected),"{mode:?}, Q={q}, partition={partition}, sample={i}: {sample} != {expected}");
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+fn grab_workflow(mode: AudioRenderMode, q: usize, partition: usize) -> Vec<Vec<f32>> {
+    let mut d = audio_description(mode);
+    d.quantum = q;
+    d.max_frames = 256;
+    d.history.seconds = 1;
+    d.ramp_frames = q as u32;
+    let mut h = Harness::new(&d);
+    let track = strip(0, 1);
+    h.input = Box::new(|port, frame| ((frame * 7 + port as u64 * 11) % 101) as f32 / 200. - 0.2);
+    h.done(Request::CreateStrip {
+        strip: track,
+        shape: shape(2, 2, false),
+    });
+    for channel in 0..2 {
+        h.done(Request::Connect {
+            port: port(track, PortKind::AudioIn, channel),
+            host: audio_in(channel as u32),
+            connected: true,
+        });
+        h.done(route(track, channel, channel, true));
+    }
+    for index in 0..3 {
+        h.done(Request::CreateLoop {
+            loop_id: loop_id(index, 1),
+            strip: track,
+        });
+    }
+    let sync = loop_id(0, 1);
+    h.done(transition(sync, LoopMode::Recording));
+    h.run(6 * q, partition);
+    h.done(transition(sync, LoopMode::Playing));
+    let mut result = Vec::new();
+    for round in 0..3 {
+        h.run(2048, partition);
+        for index in 1..3 {
+            let id = (round * 2 + index) as u64;
+            for request in [
+                Request::InputBegin { id, count: 1 },
+                Request::InputAppend {
+                    id,
+                    edit: InputEdit {
+                        loop_id: loop_id(index, 1),
+                        intent: InputIntent::Grab {
+                            sync: Some(sync),
+                            reverse_start_cycle: Some(1),
+                            cycles_length: Some(1),
+                            go_to_cycle: Some(0),
+                            mode: LoopMode::Playing,
+                            maximum_frames: 0,
+                        },
+                    },
+                },
+                Request::InputPrepare { id },
+                Request::InputCommit { id, delay: None },
+            ] {
+                assert!(
+                    matches!(h.apply(request), Outcome::Input(_)),
+                    "{mode:?} {request:?}"
+                );
+            }
+        }
+        let frozen = h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 }).1;
+        assert!(frozen.iter().any(|v| v.abs() > 0.01));
+        h.run(2048, partition);
+        assert_eq!(
+            h.read(loop_id(1, 1), BulkSelector::Audio { channel: 0 }).1,
+            frozen
+        );
+        result.push(frozen);
+        let start = h.outputs[0].len();
+        h.run(8 * q, partition);
+        result.push(h.outputs[0][start..].to_vec());
+    }
+    // Reuse a grabbed prefix and append live input for longer than one tile.
+    let id = 10;
+    for request in [
+        Request::InputBegin { id, count: 1 },
+        Request::InputAppend {
+            id,
+            edit: InputEdit {
+                loop_id: loop_id(2, 1),
+                intent: InputIntent::Grab {
+                    sync: Some(sync),
+                    reverse_start_cycle: Some(1),
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(1),
+                    mode: LoopMode::Recording,
+                    maximum_frames: 2048,
+                },
+            },
+        },
+        Request::InputPrepare { id },
+        Request::InputCommit { id, delay: None },
+    ] {
+        assert!(
+            matches!(h.apply(request), Outcome::Input(_)),
+            "{mode:?} {request:?}"
+        );
+    }
+    h.run(512, partition);
+    h.done(transition(loop_id(2, 1), LoopMode::Playing));
+    result.push(h.read(loop_id(2, 1), BulkSelector::Audio { channel: 0 }).1);
+    result
+}
+
+#[shoop_test]
+fn retained_grabs_render_and_continue_identically_after_repeated_history_wraps() {
+    for q in [1, 32] {
+        let expected = grab_workflow(AudioRenderMode::Current, q, 13);
+        for partition in [1, 13, 128, 256] {
+            let actual = grab_workflow(AudioRenderMode::Compact, q, partition);
+            assert_eq!(actual.len(), expected.len());
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert_eq!(actual.len(), expected.len(), "Q={q}, partition={partition}");
+                for (&a, &b) in actual.iter().zip(expected) {
+                    assert!(close(a, b), "Q={q}, partition={partition}: {a} != {b}");
                 }
             }
         }

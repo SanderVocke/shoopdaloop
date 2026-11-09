@@ -99,7 +99,7 @@ impl Processor<LoopPlanner> for LoopNode {
     ) -> Result<bool, Error> {
         match self {
             Self::Playback(node) => node.process_references(block),
-            Self::Capture(_) => Ok(false),
+            Self::Capture(node) => node.process_references(block),
         }
     }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
@@ -317,6 +317,38 @@ impl Processor<LoopPlanner> for PlaybackNode {
     }
 }
 impl Processor<LoopPlanner> for CaptureNode {
+    fn process_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<bool, Error> {
+        if block.resources.audio_render_mode() != rt_runtime::AudioRenderMode::Compact
+            || self.binding.midi
+        {
+            return Ok(false);
+        }
+        let view = *block
+            .domain
+            .views
+            .get(self.binding.target.slot() as usize)
+            .ok_or(Error::InvalidId)?;
+        if block.node != self.binding.capture
+            || view.playback_node != self.binding.playback
+            || view.capture_node != self.binding.capture
+        {
+            return Err(Error::InvalidId);
+        }
+        if view.dry_wet || view.replace.is_some() {
+            return Ok(false);
+        }
+        let Some(interval) = view.capture else {
+            return Ok(true);
+        };
+        block.resources.stage_capture_audio_sequences(
+            interval,
+            0,
+            &block.inputs[..self.binding.channels],
+        )
+    }
     fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         let row = domain
             .rows

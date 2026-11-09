@@ -95,12 +95,13 @@ impl AudioStore {
             return Err(Error::InvalidShape);
         }
         let previous = self.last_payload.filter(|&lease| {
-            self.pages.sample_span(lease).is_ok_and(|previous| {
-                previous
-                    .iter()
-                    .zip(samples)
-                    .all(|(a, b)| a.to_bits() == b.to_bits())
-            })
+            self.flat.is_none()
+                && self.pages.sample_span(lease).is_ok_and(|previous| {
+                    previous
+                        .iter()
+                        .zip(samples)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+                })
         });
         let shared = if let Some(previous) = previous {
             self.pages
@@ -115,6 +116,21 @@ impl AudioStore {
             self.pages.fill_samples(io.store, write.payload, samples)?;
         }
         self.last_payload = Some(write.payload);
+        Ok(())
+    }
+
+    pub(in crate::resource) fn fill_capture_reference(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        write: &CaptureWrite,
+        source: LeaseId,
+    ) -> Result<(), Error> {
+        self.check(io.store)?;
+        if !self.pages.share_reserved(io.store, write.payload, source)? {
+            return Err(Error::Exhausted);
+        }
+        self.reserved += 1;
+        self.work.shared_payloads += 1;
         Ok(())
     }
 

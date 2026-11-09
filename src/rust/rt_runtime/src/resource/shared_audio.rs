@@ -266,6 +266,88 @@ impl AudioStore {
         }
         Ok(())
     }
+    pub(super) fn history_sequence(
+        &self,
+        store: super::AudioStoreId,
+        id: HistoryId,
+        frame: Frame,
+        channel: usize,
+    ) -> Result<Option<crate::audio_refs::AudioSequence>, Error> {
+        use crate::audio_refs::{AudioSequence, ChunkRef, ChunkSpan};
+        if self.flat.is_none() || channel >= self.channels || frame.0 % self.page_frames as u64 != 0
+        {
+            return Ok(None);
+        }
+        let history = self.history(id)?;
+        let coverage = self.history_coverage(id)?;
+        if frame < coverage.start || frame.checked_add(self.page_frames)? > coverage.end {
+            return Ok(None);
+        }
+        let page = (frame.0 % self.ring_frames() as u64) as usize / self.page_frames;
+        let Some(lease) = self.find(history.root, page) else {
+            return Ok(None);
+        };
+        Ok(Some(AudioSequence {
+            spans: [
+                ChunkSpan {
+                    chunk: ChunkRef::Persistent(super::AudioChunkRef {
+                        store,
+                        lease,
+                        first: channel,
+                        stride: self.channels,
+                    }),
+                    frames: self.page_frames,
+                },
+                ChunkSpan::default(),
+            ],
+            len: 1,
+            ..AudioSequence::default()
+        }))
+    }
+
+    pub(super) fn stage_reference_append(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        take: TakeId,
+        lease: LeaseId,
+    ) -> Result<Option<Write>, Error> {
+        let mut view = self.view(take.0)?;
+        if self.flat.is_none()
+            || !view.writable
+            || view.base.is_some()
+            || view.frames % self.page_frames != 0
+            || view.mapping.physical(view.frames) % self.page_frames != 0
+        {
+            return Ok(None);
+        }
+        let frames = view
+            .frames
+            .checked_add(self.page_frames)
+            .ok_or(Error::Capacity)?;
+        if frames > view.growing.ok_or(Error::InvalidState)? || self.index_credit() < self.depth + 1
+        {
+            return Err(Error::Capacity);
+        }
+        let expected = view.revision;
+        view.revision = expected.checked_next()?;
+        let previous = view.root;
+        let page = view.mapping.physical(view.frames) / self.page_frames;
+        let append = self.find(previous, page).is_none();
+        let payload = self.pages.retain(lease)?;
+        view.root = Some(self.update_index(io.store, previous, page, payload, append));
+        view.frames = frames;
+        self.work.shared_payloads += 1;
+        io.store.note_operation(WorkClass::Render);
+        io.store
+            .charge_work(WorkClass::Render, 0, 2 * (self.depth + 1))?;
+        Ok(Some(Write {
+            undo_append: (append && view.root == previous).then_some(page),
+            take,
+            expected,
+            view,
+        }))
+    }
+
     pub(super) fn chunk_sequence(
         &self,
         store: super::AudioStoreId,
@@ -1097,13 +1179,14 @@ impl AudioStore {
             && (!wrapping || frames % self.page_frames == 0)
             && mapping.physical(position) % self.page_frames == 0
         {
+            let page = mapping.physical(position) / self.page_frames;
             return self.stage_chunk(
                 store,
                 root,
-                mapping.physical(position) / self.page_frames,
+                page,
                 samples,
                 true,
-                false,
+                !wrapping && self.find(root, page).is_none(),
             );
         }
         self.stage_map(store, root, samples, base, selected_channel, |frame, _| {
@@ -1134,6 +1217,7 @@ impl AudioStore {
         }
         let shared = self.last_payload.filter(|&lease| {
             reuse
+                && self.flat.is_none()
                 && self.pages.sample_span(lease).is_ok_and(|previous| {
                     previous
                         .iter()
@@ -1382,6 +1466,7 @@ impl AudioStore {
         if !samples.is_empty() {
             view.revision = view.revision.checked_next()?;
         }
+        let previous = view.root;
         view.root = self.stage(
             io.store,
             view.root,
@@ -1395,7 +1480,8 @@ impl AudioStore {
         )?;
         view.frames = frames;
         Ok(Write {
-            undo_append: None,
+            undo_append: (self.flat.is_some() && view.root == previous && !samples.is_empty())
+                .then_some(view.mapping.physical(position) / self.page_frames),
             take,
             expected,
             view,

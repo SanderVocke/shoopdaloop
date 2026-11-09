@@ -388,6 +388,11 @@ pub(crate) struct Prepared {
     pub layout: HostLayout,
 }
 
+pub(crate) fn audio_only(description: &EngineDescription) -> bool {
+    description.audio_bench_only
+        || std::env::var("SHOOP_AUDIO_BENCH_AUDIO_ONLY").as_deref() == Ok("1")
+}
+
 impl Prepared {
     /// `buffer` is the driver's requested callback size, if it has one.
     pub fn new(
@@ -430,8 +435,7 @@ impl Prepared {
             description.audio_render_mode = shoop_rt_engine::AudioRenderMode::parse(&value)
                 .map_err(|_| StartError::InvalidConfig("invalid SHOOP_AUDIO_RENDER mode"))?;
         }
-        description.audio_bench_only |=
-            std::env::var("SHOOP_AUDIO_BENCH_AUDIO_ONLY").as_deref() == Ok("1");
+        description.audio_bench_only = audio_only(&description);
         if description.audio_render_mode.chunked() && !description.audio_bench_only {
             return Err(StartError::InvalidConfig(
                 "experimental render modes require SHOOP_AUDIO_BENCH_AUDIO_ONLY=1",

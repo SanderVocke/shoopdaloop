@@ -262,6 +262,18 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                         *output = arena.transient(offset + port * q, q);
                     }
                 }
+                processor.publish_references(&mut ReferenceBlock {
+                    borrow_persistent: true,
+                    node: op.node,
+                    frame,
+                    graph_epoch: self.epoch,
+                    quantum,
+                    inputs: &buffers.input_sequences,
+                    outputs: &mut program.wires[op.output..op.output + op.outputs],
+                    arena: &mut arena,
+                    resources: &mut self.resources,
+                    domain: &mut self.planner,
+                })?;
                 self.profiling.node_ready(u64::from(op.node.slot()));
             }
             for index in 0..program.outputs.len() {

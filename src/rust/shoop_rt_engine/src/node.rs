@@ -807,6 +807,25 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             _ => Ok(false),
         }
     }
+    fn publish_references(
+        &mut self,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        if let Self::StripInput(node) = self {
+            for channel in 0..node.channels {
+                if let Some(sequence) = block.domain.history_audio_sequence(
+                    node.slot as u32,
+                    block.frame,
+                    channel,
+                    block.resources,
+                )? {
+                    block.outputs[channel] = sequence;
+                    block.arena.work.forwarded += 1;
+                }
+            }
+        }
+        Ok(())
+    }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         match self {
             Self::Loop(node) => node.midi_buffer_settings(),

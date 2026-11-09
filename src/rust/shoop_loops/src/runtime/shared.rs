@@ -158,7 +158,7 @@ pub(super) struct Shared {
     remaining: usize,
     audio_patch: Box<[f32]>,
     bytes: Box<[u8]>,
-    midi_patch: MidiBuffer,
+    midi_patch: Option<MidiBuffer>,
     work: SharedWork,
     closed: bool,
     capacity: SharedCapacity,
@@ -248,9 +248,9 @@ impl Shared {
         let mut histories = Vec::with_capacity(settings.histories.len());
         let mut lookup = vec![None; c.max_nodes].into_boxed_slice();
         let mut channels = 0;
-        let mut events = 1;
-        let mut bytes = 3;
-        let mut packet = 3;
+        let mut events = 0;
+        let mut bytes = 0;
+        let mut packet = 0;
         for setting in settings.histories {
             if setting.source as usize >= lookup.len() {
                 return Err(Error::InvalidConfig);
@@ -371,7 +371,9 @@ impl Shared {
             remaining: 0,
             audio_patch: vec![0.; samples].into_boxed_slice(),
             bytes: vec![0; (samples * 4).max(packet)].into_boxed_slice(),
-            midi_patch: MidiBuffer::new(events, bytes)?,
+            midi_patch: (events != 0)
+                .then(|| MidiBuffer::new(events, bytes))
+                .transpose()?,
             work: SharedWork::default(),
             closed: false,
             capacity: SharedCapacity::default(),
@@ -404,7 +406,13 @@ impl Shared {
             ),
             (result.audio_patch.len(), size_of::<f32>()),
             (result.bytes.len(), 1),
-            (result.midi_patch.prepared_bytes(), 1),
+            (
+                result
+                    .midi_patch
+                    .as_ref()
+                    .map_or(0, MidiBuffer::prepared_bytes),
+                1,
+            ),
         ] {
             add(&mut capacity.coordinator_bytes, count, bytes)?;
         }
@@ -711,16 +719,18 @@ impl Shared {
                     if let Some(source) = h.audio_source {
                         io.render().audio_source_discontinuity(source, end)?;
                     }
-                    let initial = MidiState::default();
-                    if let Some(store) = h.midi {
-                        io.render()
-                            .midi_history_discontinuity(store, end, &initial)?;
-                    }
-                    if let Some(source) = h.indexed_midi {
-                        h.indexed_midi = Some(
+                    if h.midi.is_some() || h.indexed_midi.is_some() {
+                        let initial = MidiState::default();
+                        if let Some(store) = h.midi {
                             io.render()
-                                .reset_indexed_midi_source(source, end, &initial)?,
-                        );
+                                .midi_history_discontinuity(store, end, &initial)?;
+                        }
+                        if let Some(source) = h.indexed_midi {
+                            h.indexed_midi = Some(
+                                io.render()
+                                    .reset_indexed_midi_source(source, end, &initial)?,
+                            );
+                        }
                     }
                     Ok(())
                 })();
@@ -1084,7 +1094,8 @@ impl Shared {
         }
         let initial = io.render().midi_seek(index, 0)?;
         let mut cursor = initial.cursor;
-        self.midi_patch.clear();
+        let patch = self.midi_patch.as_mut().ok_or(Error::InvalidShape)?;
+        patch.clear();
         while let Some(event) = io.render().midi_next(&mut cursor)? {
             if event.byte_len() > job.packet_bytes || event.byte_len() > self.bytes.len() {
                 return Err(Error::Capacity);
@@ -1093,7 +1104,7 @@ impl Shared {
                 .render()
                 .midi_read(event, &mut self.bytes[..event.byte_len()])?;
             let offset = u32::try_from(event.frame()).map_err(|_| Error::InvalidFrame)?;
-            self.midi_patch.push(
+            patch.push(
                 offset,
                 usize::try_from(snap.description.frames).map_err(|_| Error::Capacity)?,
                 &self.bytes[..count],
@@ -1105,7 +1116,7 @@ impl Shared {
             revision,
             position,
             usize::try_from(snap.description.frames).map_err(|_| Error::Capacity)?,
-            &self.midi_patch,
+            patch,
             &initial.state,
         )?);
         job.dirty = true;
@@ -1863,6 +1874,22 @@ impl LoopPlanner {
             .ok_or(Error::InvalidState)?
             .status(source, self.graph_epoch, io)
     }
+    pub fn history_audio_sequence(
+        &self,
+        source: u32,
+        frame: Frame,
+        channel: usize,
+        resources: &rt_runtime::resource::ResourceStore,
+    ) -> Result<Option<rt_runtime::audio_refs::AudioSequence>, Error> {
+        let Some(shared) = &self.shared else {
+            return Ok(None);
+        };
+        let Some(id) = shared.source(source)?.audio_source else {
+            return Ok(None);
+        };
+        resources.audio_history_sequence(id, frame, channel)
+    }
+
     /// Observe the prepared processor's capture-feed outputs once per whole tick.
     pub fn observe_history(
         &mut self,

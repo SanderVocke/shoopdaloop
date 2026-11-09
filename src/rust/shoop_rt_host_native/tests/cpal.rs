@@ -279,6 +279,7 @@ fn captured_audio_reaches_the_output_one_prefill_later_at_absolute_frames() {
         shoop_rt_engine::AudioRenderMode::Current,
         shoop_rt_engine::AudioRenderMode::Chunks,
         shoop_rt_engine::AudioRenderMode::ChunksDescriptors,
+        shoop_rt_engine::AudioRenderMode::Compact,
     ] {
         let mut description = description();
         description.audio_render_mode = mode;
@@ -317,6 +318,10 @@ fn captured_audio_reaches_the_output_one_prefill_later_at_absolute_frames() {
         let status = rig.host().status();
         assert_eq!(status.next_frame, left.len() as u64);
         assert_eq!(status.stats.xruns(), 0);
+        let shoop_rt_host_native::DriverConfig::Cpal(opened) = rig.host().driver_config() else {
+            panic!("CPAL configuration")
+        };
+        assert!(opened.midi_inputs.is_empty() && opened.midi_outputs.is_empty());
         rig.assert_no_heap_in_callbacks();
     }
 }

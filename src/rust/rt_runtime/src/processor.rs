@@ -162,6 +162,13 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     ) -> Result<bool, Error> {
         Ok(false)
     }
+    /// Replace materialized outputs with borrows of audio published by this tick.
+    fn publish_references(
+        &mut self,
+        _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
         &mut self,
@@ -182,6 +189,12 @@ impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L
         block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
     ) -> Result<bool, Error> {
         (**self).process_references(block)
+    }
+    fn publish_references(
+        &mut self,
+        block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+    ) -> Result<(), Error> {
+        (**self).publish_references(block)
     }
     fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
         (**self).midi_buffer_settings()
