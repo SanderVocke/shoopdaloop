@@ -2,6 +2,7 @@ use super::*;
 use crate::PreparedConfig;
 
 pub(super) struct Layout {
+    pub(super) flat: Option<flat::Layout>,
     pub(super) chunked: bool,
     pub(super) payload_pages: usize,
     pub(super) channels: usize,
@@ -20,6 +21,14 @@ pub(super) struct Layout {
 }
 
 impl Config {
+    pub fn compact_capacity(
+        self,
+        runtime: PreparedConfig,
+        histories: usize,
+        frames: usize,
+    ) -> Result<Capacity, Error> {
+        Layout::compact(runtime, self, histories, frames, true).map(|layout| layout.capacity)
+    }
     /// Size a shared source pool without allocating or reserving arena pages.
     pub fn capacity(self, runtime: PreparedConfig, histories: usize) -> Result<Capacity, Error> {
         Layout::new(runtime, self, histories).map(|layout| layout.capacity)
@@ -42,6 +51,43 @@ impl Config {
 }
 
 impl Layout {
+    pub(super) fn compact(
+        runtime: PreparedConfig,
+        config: Config,
+        histories: usize,
+        frames: usize,
+        windowed: bool,
+    ) -> Result<Self, Error> {
+        let mut result = Self::chunks(runtime, config, histories, frames, windowed)?;
+        let flat = flat::Layout::new(
+            result.index_pages,
+            result.capacity.history_pages,
+            result.debt_limit,
+            config.views + histories,
+            result.transaction_pages,
+        )?;
+        let leases = flat.leases()?;
+        let binary = result.node_limit * (size_of::<Option<Node>>() + size_of::<usize>() * 4);
+        result.capacity.metadata_bytes = result
+            .capacity
+            .metadata_bytes
+            .checked_sub(binary)
+            .and_then(|n| n.checked_add(flat.bytes().ok()?))
+            .and_then(|n| {
+                n.checked_add(leases.checked_mul(size_of::<Slot<usize>>() + size_of::<usize>())?)
+            })
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)?;
+        result.lease_limit = result
+            .lease_limit
+            .checked_add(leases)
+            .ok_or(Error::Capacity)?;
+        result.node_limit = 0;
+        result.depth = 1;
+        result.capacity.index_nodes = flat.nodes();
+        result.flat = Some(flat);
+        Ok(result)
+    }
     pub(super) fn new(
         runtime: PreparedConfig,
         config: Config,
@@ -239,6 +285,7 @@ impl Layout {
             .filter(|&n| n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
         Ok(Self {
+            flat: None,
             chunked: chunk_frames.is_some(),
             payload_pages: config.pages,
             channels,

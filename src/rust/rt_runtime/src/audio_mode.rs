@@ -6,6 +6,7 @@ pub enum AudioRenderMode {
     Current,
     Chunks,
     ChunksDescriptors,
+    Compact,
 }
 
 impl AudioRenderMode {
@@ -14,6 +15,7 @@ impl AudioRenderMode {
             "current" => Ok(Self::Current),
             "chunks" => Ok(Self::Chunks),
             "chunks-descriptors" => Ok(Self::ChunksDescriptors),
+            "compact" => Ok(Self::Compact),
             _ => Err(Error::InvalidConfig),
         }
     }
@@ -23,6 +25,7 @@ impl AudioRenderMode {
             Self::Current => "current",
             Self::Chunks => "chunks",
             Self::ChunksDescriptors => "chunks-descriptors",
+            Self::Compact => "compact",
         }
     }
 

@@ -13,6 +13,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
 
 mod capture;
+mod flat;
 mod layout;
 pub(in crate::resource) use capture::CaptureWrite;
 
@@ -143,6 +144,7 @@ impl Mapping {
 /// A private root awaiting explicit commit or cancellation.
 #[must_use]
 pub(in crate::resource) struct Write {
+    undo_append: Option<usize>,
     take: TakeId,
     expected: Revision,
     view: View,
@@ -183,6 +185,7 @@ struct History {
 }
 
 pub struct AudioStore {
+    flat: Option<flat::Tables>,
     work: AudioPoolWork,
     last_payload: Option<LeaseId>,
     scope: u32,
@@ -220,6 +223,9 @@ pub struct AudioStore {
 impl AudioStore {
     pub(super) fn reset_work(&mut self) {
         self.work = AudioPoolWork::default();
+        if let Some(flat) = &mut self.flat {
+            flat.reset_work();
+        }
     }
     pub(super) fn work(&self) -> AudioPoolWork {
         AudioPoolWork {
@@ -228,7 +234,15 @@ impl AudioStore {
             } else {
                 self.pages.live_payloads() as u64
             },
-            index_live: (self.nodes.len() - self.free_nodes.len()) as u64,
+            index_live: self
+                .flat
+                .as_ref()
+                .map_or(self.nodes.len() - self.free_nodes.len(), |f| f.live())
+                as u64,
+            index_allocated: self.work.index_allocated
+                + self.flat.as_ref().map_or(0, |f| f.allocated),
+            index_reclaimed: self.work.index_reclaimed
+                + self.flat.as_ref().map_or(0, |f| f.reclaimed),
             ..self.work
         }
     }
@@ -317,7 +331,15 @@ impl AudioStore {
         origin: Frame,
         histories: usize,
     ) -> Result<Self, Error> {
-        let layout = if store.audio_render_mode().chunked() {
+        let layout = if store.audio_render_mode() == crate::AudioRenderMode::Compact {
+            layout::Layout::compact(
+                store.config,
+                config,
+                histories,
+                store.quantum.frames(),
+                false,
+            )?
+        } else if store.audio_render_mode().chunked() {
             layout::Layout::chunks(
                 store.config,
                 config,
@@ -336,7 +358,15 @@ impl AudioStore {
         origin: Frame,
         histories: usize,
     ) -> Result<Self, Error> {
-        let layout = if store.audio_render_mode().chunked() {
+        let layout = if store.audio_render_mode() == crate::AudioRenderMode::Compact {
+            layout::Layout::compact(
+                store.config,
+                config,
+                histories,
+                store.quantum.frames(),
+                true,
+            )?
+        } else if store.audio_render_mode().chunked() {
             layout::Layout::chunks(
                 store.config,
                 config,
@@ -360,6 +390,7 @@ impl AudioStore {
             return Err(Error::Capacity);
         }
         let layout::Layout {
+            flat,
             chunked,
             payload_pages,
             channels,
@@ -381,8 +412,9 @@ impl AudioStore {
         let mut marks = vec![(0, 0); index_pages].into_boxed_slice();
         let mut views = slots(config.views);
         let mut plans = vec![Plan::default(); transaction_pages];
-        let mut retired = vec![(0, 0); node_limit];
-        let mut pending = vec![0; config.views + histories].into_boxed_slice();
+        let mut retired = vec![(0, 0); flat.map_or(node_limit, |f| f.nodes())];
+        let mut pending =
+            vec![0; config.views + histories + usize::from(flat.is_some())].into_boxed_slice();
         for byte in &mut scratch {
             *core::hint::black_box(byte) = 0;
         }
@@ -429,6 +461,7 @@ impl AudioStore {
             *core::hint::black_box(base) = None;
         }
         Ok(Self {
+            flat: flat.map(flat::Tables::prepare).transpose()?,
             work: AudioPoolWork::default(),
             last_payload: None,
             scope,
@@ -565,6 +598,9 @@ impl AudioStore {
     }
 
     fn retain_root(&mut self, root: Option<usize>) -> Result<(), Error> {
+        if let Some(flat) = &mut self.flat {
+            return root.map_or(Ok(()), |r| flat.retain(r));
+        }
         if let Some(index) = root {
             let node = self.nodes[index].as_mut().expect("live root");
             node.references = node.references.checked_add(1).ok_or(Error::Exhausted)?;
@@ -632,7 +668,7 @@ impl AudioStore {
         let credit = ranges.iter().map(|range| range.end - range.start).sum();
         if self.free_views.is_empty()
             || credit > self.debt_limit - self.debt
-            || self.free_nodes.len() < 4 * (self.depth + 1)
+            || self.index_credit() < 4 * (self.depth + 1)
         {
             return Err(Error::Capacity);
         }
@@ -891,7 +927,33 @@ impl AudioStore {
         self.ring_pages * self.page_frames
     }
 
+    fn index_credit(&self) -> usize {
+        self.flat.as_ref().map_or(self.free_nodes.len(), |f| {
+            f.credit(self.pages.available_leases())
+        })
+    }
+
+    fn update_index(
+        &mut self,
+        store: &mut ResourceStore,
+        root: Option<usize>,
+        page: usize,
+        lease: LeaseId,
+        exclusive: bool,
+    ) -> usize {
+        if let Some(flat) = &mut self.flat {
+            let result = flat.set(root, page, lease, exclusive, &mut self.pages, store);
+            self.reserved += core::mem::take(&mut flat.released_payloads);
+            result
+        } else {
+            self.set(root, self.depth, page, lease)
+        }
+    }
+
     fn find(&self, root: Option<usize>, page: usize) -> Option<LeaseId> {
+        if let Some(flat) = &self.flat {
+            return flat.find(root, page);
+        }
         let mut root = root;
         for bit in (0..self.depth).rev() {
             let node = self.nodes[root?].expect("live index node");
@@ -923,6 +985,9 @@ impl AudioStore {
         high: usize,
         ranges: &[Range<usize>; 2],
     ) -> Option<usize> {
+        if let Some(flat) = &mut self.flat {
+            return flat.clip(root, ranges, &mut self.pages);
+        }
         let root = root?;
         if ranges
             .iter()
@@ -948,6 +1013,10 @@ impl AudioStore {
     }
 
     fn set(&mut self, root: Option<usize>, depth: usize, page: usize, lease: LeaseId) -> usize {
+        assert!(
+            self.flat.is_none(),
+            "flat updates require their storage owner"
+        );
         if depth == 0 {
             return self.allocate(Kind::Leaf(lease));
         }
@@ -965,6 +1034,9 @@ impl AudioStore {
     }
 
     fn unreference(&mut self, root: Option<usize>) -> Option<usize> {
+        if let Some(flat) = &mut self.flat {
+            return root.filter(|&r| flat.unreference(r));
+        }
         root.filter(|&index| {
             let node = self.nodes[index].as_mut().expect("live index owner");
             node.references -= 1;
@@ -973,6 +1045,10 @@ impl AudioStore {
     }
 
     fn release_immediate(&mut self, store: &mut ResourceStore, root: Option<usize>) {
+        if self.flat.is_some() {
+            self.queue(root, self.pending.len() - 1);
+            return;
+        }
         if let Some(root) = self.unreference(root) {
             self.immediate.push(root);
         }
@@ -1027,6 +1103,7 @@ impl AudioStore {
                 mapping.physical(position) / self.page_frames,
                 samples,
                 true,
+                false,
             );
         }
         self.stage_map(store, root, samples, base, selected_channel, |frame, _| {
@@ -1046,11 +1123,12 @@ impl AudioStore {
         page: usize,
         samples: &[f32],
         reuse: bool,
+        exclusive: bool,
     ) -> Result<Option<usize>, Error> {
         if page >= self.marks.len()
             || self.reserved == 0
             || self.pages.available_leases() == 0
-            || self.free_nodes.len() < self.depth + 1
+            || self.index_credit() < self.depth + 1
         {
             return Err(Error::Capacity);
         }
@@ -1070,7 +1148,7 @@ impl AudioStore {
             self.reserved -= 1;
             self.pages.insert_samples_render(store, samples)?
         };
-        let updated = self.set(root, self.depth, page, lease);
+        let updated = self.update_index(store, root, page, lease, exclusive);
         self.last_payload = Some(lease);
         store.note_operation(WorkClass::Render);
         store.charge_work(WorkClass::Render, 0, 2 * (self.depth + 1))?;
@@ -1116,7 +1194,7 @@ impl AudioStore {
         let required_nodes = self.plans.len() * (self.depth + 1);
         if self.reserved < self.plans.len()
             || self.pages.available_leases() < self.plans.len()
-            || self.free_nodes.len() < required_nodes
+            || self.index_credit() < required_nodes
         {
             return Err(Error::Capacity);
         }
@@ -1189,7 +1267,7 @@ impl AudioStore {
                     &self.scratch[plan * self.page_bytes..(plan + 1) * self.page_bytes],
                 )
                 .expect("preflighted page credit");
-            let changed = self.set(staged, self.depth, self.plans[plan].page, lease);
+            let changed = self.update_index(store, staged, self.plans[plan].page, lease, false);
             self.release_immediate(store, staged);
             staged = Some(changed);
         }
@@ -1238,6 +1316,7 @@ impl AudioStore {
                 (frame.0 as usize % self.ring_frames()) / self.page_frames,
                 samples,
                 false,
+                true,
             )?
         } else {
             self.stage(
@@ -1316,6 +1395,7 @@ impl AudioStore {
         )?;
         view.frames = frames;
         Ok(Write {
+            undo_append: None,
             take,
             expected,
             view,
@@ -1377,6 +1457,7 @@ impl AudioStore {
             },
         )?;
         Ok(Write {
+            undo_append: None,
             take,
             expected,
             view,
@@ -1388,6 +1469,16 @@ impl AudioStore {
         write: Write,
     ) -> Result<(), Error> {
         self.check(io.store)?;
+        if let Some(page) = write.undo_append {
+            let flat = self.flat.as_mut().expect("staged flat append");
+            flat.undo_append(
+                write.view.root.expect("staged directory"),
+                page,
+                &mut self.pages,
+                io.store,
+            );
+            self.reserved += core::mem::take(&mut flat.released_payloads);
+        }
         self.release_immediate(io.store, write.view.root);
         Ok(())
     }
@@ -1854,6 +1945,35 @@ impl AudioStore {
             let Some(&(index, owner)) = self.retired.last() else {
                 break;
             };
+            if let Some(flat) = &mut self.flat {
+                if flat.retirement_remaining == 0 {
+                    break;
+                }
+                flat.retirement_remaining -= 1;
+                let action = flat.retire_step(index);
+                match action {
+                    flat::Retired::Payload(lease) => {
+                        if self.pages.reclaim_lease(store, lease)? {
+                            self.reserved += 1;
+                        }
+                    }
+                    flat::Retired::Child(child) => {
+                        store.charge_external(0, 1)?;
+                        self.queue(Some(child), owner);
+                    }
+                    flat::Retired::Done => {
+                        store.charge_external(0, 1)?;
+                        self.retired.pop();
+                        self.pending[owner] -= 1;
+                        self.finish_owner(owner);
+                    }
+                    flat::Retired::Progress => {
+                        store.charge_external(0, 1)?;
+                    }
+                }
+                steps += 1;
+                continue;
+            }
             let node = self.nodes[index].expect("retired index node");
             self.base_turn = true;
             match node.kind {

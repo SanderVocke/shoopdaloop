@@ -1,6 +1,6 @@
 # Plan: compact audio engine and a true audio-only comparison
 
-Status: executing stage 2 on `proto/audio-compact`. Upstream is still
+Status: executing stage 3 on `proto/audio-compact`. Upstream is still
 `888bd8a6`; it is already an ancestor of this branch. Local placement is
 controller CPU 0, render CPU 1, optional load CPU 2; allowed CPUs 0–4,
 four-CPU quota, ordinary scheduling, unchanged 950/1,000 ms RT limits.
@@ -140,17 +140,24 @@ baselines, rather than relabeling old device-only-MIDI-disabled measurements.
   a take. Append handles while recording; stopping publishes the existing table
   and valid length without a full-table walk. Capacity refusal leaves the prior
   take valid. Use bounded partial-quantum staging and preserve capture tap semantics.
-- A history grab freezes a logical frame range and prepares a retained flat view
-  in budgeted steps. Copy/pin metadata oldest first, **before** history can
-  overwrite each unprocessed entry; keep the source generation alive while this
-  job is pending. Admission must reserve table space and enough per-quantum
-  progress for all admitted jobs to stay ahead of overwrite, or refuse atomically.
-  Publish only a complete owner; respect the existing activation timing contract.
-  A timing deadline that cannot be met is refused, not silently delayed.
-- Record and verify those overwrite/progress bounds before accepting this
-  mechanism. Pinning the entire history synchronously, postponing progress until
-  after wrap, or retaining payload without retaining its lookup information are
-  invalid implementations. Shared requests for an identical cut may reuse a view.
+- Use fixed-depth paged flat tables: one direct directory and fixed 256-entry
+  tiles, with no binary index traversal. Retained snapshots share directory/tile
+  ownership. A history grab clips a directory and at most four boundary tiles;
+  it never scans a whole recording or copies audio. Its maximum work is the
+  configured directory width plus four tiles, independent of take duration.
+- Unique history tables and private full-quantum capture appends update directly;
+  shared metadata uses bounded directory/tile copies. Capture cancellation undoes
+  unpublished appends, and immutable sample payloads are never modified. Reserve
+  worst-case metadata/lease credits before a change, including retained readers.
+  Reclamation processes at most 512 table entries per store per host callback,
+  additionally limited by the common resource budget.
+- Design-rule revision: this fixed-depth ownership table replaces the initially
+  proposed staged flat-view copy job. Existing snapshot/capture APIs require
+  immediately retainable revisions. Paged tables preserve those semantics with
+  constant-depth reads and explicit fixed metadata bounds, avoiding a second
+  history-copy scheduler and overwrite race. Acceptance criteria are unchanged;
+  physical payload arenas remain shared. Report metadata-copy and retirement
+  costs rather than treating snapshot retention as free.
 - Clearing, cancellation and deletion detach owners quickly and enqueue bounded
   retirement. Reserve continued-capture headroom while retained views, readers
   and retirement jobs exist. Bulk readback streams through existing bounded APIs;
@@ -233,16 +240,16 @@ Depends on: stage 0.
 
 Depends on: stage 1.
 
-- [ ] Add `compact` preparation and its real backend identity. Decouple the legacy
+- [x] Add `compact` preparation and its real backend identity. Decouple the legacy
   `chunked()` predicate from selection of the new storage/executor; incomplete
   compact configurations fail explicitly rather than using another path.
-- [ ] Implement prepared sample slots, handle tables, cursors, transient space,
+- [x] Implement prepared sample slots, handle tables, cursors, transient space,
   append/publication, readback leases and bounded retirement. Integrate existing
   resource/media identities without duplicating PCM into legacy storage.
-- [ ] Implement history rings and the frozen-range preparation mechanism; specify
+- [x] Implement history addressing and fixed-depth retained tables; specify
   admission/progress/overwrite bounds and continued-capture headroom numerically
   from configuration. Complete lifecycle tests before live grab activation.
-- [ ] Verify partial spans, retained ownership, ring wrap, cancelled jobs, source
+- [x] Verify partial spans, retained ownership, ring wrap, cancelled jobs, source
   removal, stale generations, exhausted table/payload/retirement budgets and
   atomic refusal. Exercise callback heap guards and bounded work at full capacity.
 
@@ -384,3 +391,10 @@ unsupported features or running broad performance matrices.
   host smoke runs pass. Public-protocol audio-only grab regression passes after
   decoupling input capability advertisement from MIDI history. Results and verified
   raw evidence are in `docs/design/chunks/FOURTH_RESULTS.md`.
+
+- Stage 2: compact fixed-depth tables, typed payloads, direct private capture
+  appends, rollback and budgeted retirement are implemented. All 96 runtime unit
+  tests pass, including retained audio through 15 history wraps, cancelled capture,
+  saturated owner admission and continued history publication under the heap guard.
+  Lower-crate/engine warning-denying builds pass. Native compact preparation
+  explicitly refuses until its execution path is installed in stage 3.

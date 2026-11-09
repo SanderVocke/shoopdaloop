@@ -50,7 +50,7 @@ impl AudioStore {
         if page >= self.marks.len()
             || self.reserved == 0
             || self.pages.available_leases() == 0
-            || self.free_nodes.len() < self.depth + 1
+            || self.index_credit() < self.depth + 1
             || extra
                 .checked_mul(2)
                 .is_none_or(|extra| extra > self.debt_limit - self.debt)
@@ -59,7 +59,11 @@ impl AudioStore {
         }
         let payload = self.pages.reserve_samples(io.store)?;
         self.reserved -= 1;
-        view.root = Some(self.set(view.root, self.depth, page, payload));
+        let previous_root = view.root;
+        let append = self.find(previous_root, page).is_none();
+        view.root = Some(self.update_index(io.store, view.root, page, payload, append));
+        let undo_append =
+            (append && self.flat.is_some() && view.root == previous_root).then_some(page);
         view.frames = frames;
         view.credit = credit;
         self.debt += 2 * extra;
@@ -69,6 +73,7 @@ impl AudioStore {
             .charge_work(WorkClass::Render, 0, 2 * (self.depth + 1))?;
         Ok(CaptureWrite {
             write: Write {
+                undo_append,
                 take,
                 expected,
                 view,

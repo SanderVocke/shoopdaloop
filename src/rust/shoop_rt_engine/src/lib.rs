@@ -370,6 +370,9 @@ fn prepare_complete(
     wet_pages: usize,
 ) -> Result<Engine, PrepareError> {
     description.validate()?;
+    if description.audio_render_mode == rt_runtime::AudioRenderMode::Compact {
+        return Err(rt_runtime::Error::InvalidConfig.into());
+    }
     let policy = description.processors;
     let effective = processors.effective;
     if effective.memory_bytes != u64::from(policy.memory_mb) * (1 << 20)

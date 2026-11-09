@@ -119,7 +119,9 @@ impl Layout {
             views,
             pages: audio_pages,
         };
-        let audio_capacity = if d.audio_render_mode.chunked() {
+        let audio_capacity = if d.audio_render_mode == rt_runtime::AudioRenderMode::Compact {
+            audio.compact_capacity(runtime, d.strips(), d.quantum)?
+        } else if d.audio_render_mode.chunked() {
             audio.chunk_capacity(runtime, d.strips(), d.quantum)?
         } else {
             audio.windowed_capacity(runtime, d.strips())?

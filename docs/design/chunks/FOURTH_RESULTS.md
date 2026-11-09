@@ -28,6 +28,23 @@ Rows report the median of the two run p50 values, in microseconds.
 | ramps | chunks | 233.17 | 201.87 | -13.4% |
 | ramps | descriptors | 215.76 | 199.72 | -7.4% |
 
+The following columns are median run p99 / largest selected callback / overrun
+count; times are microseconds and the budget is 5,333.3 us. Maxima include every
+selected outlier. The container uses ordinary scheduling, so they include
+scheduling delays as well as render work.
+
+| Scenario | Mode | Before | Audio-only |
+| --- | --- | ---: | ---: |
+| idle/silence | current | 325.9 / 3672.0 / 0 | 286.9 / 3124.6 / 0 |
+| idle/silence | chunks | 328.7 / 8526.8 / 1 | 268.4 / 1187.1 / 0 |
+| idle/silence | descriptors | 231.8 / 1364.8 / 0 | 325.0 / 1188.6 / 0 |
+| play | current | 553.9 / 6788.7 / 1 | 441.4 / 1894.0 / 0 |
+| play | chunks | 581.9 / 4631.6 / 0 | 564.9 / 1364.0 / 0 |
+| play | descriptors | 736.3 / 4247.9 / 0 | 643.1 / 1102.5 / 0 |
+| ramps | current | 709.6 / 5962.2 / 1 | 660.9 / 2231.8 / 0 |
+| ramps | chunks | 663.9 / 1765.3 / 0 | 645.5 / 1901.3 / 0 |
+| ramps | descriptors | 737.9 / 5886.8 / 1 | 678.4 / 1924.0 / 0 |
+
 Idle RSS falls from approximately 419 to 252 MiB for current and 588 to 421 MiB
 for the chunk modes. Removing MIDI makes a meaningful difference, but these
 ordinary playback medians still favor current. Compact's additional architectural
