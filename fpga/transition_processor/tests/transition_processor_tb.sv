@@ -19,6 +19,12 @@ module transition_processor_tb #(
 );
     initial clk=0;
     always #5 clk<=~clk;
+    wire unused_loop_read_ready, unused_loop_response_valid, unused_loop_response_error;
+    wire [162:0] unused_loop_response_data;
+    wire [31:0] unused_configured_quantum;
     transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH),
-                           .EVENT_DEPTH(EVENT_DEPTH)) core (.*);
+                           .EVENT_DEPTH(EVENT_DEPTH)) core (
+        .loop_read_valid(1'b0), .loop_read_slot(32'b0), .loop_read_ready(unused_loop_read_ready),
+        .loop_response_valid(unused_loop_response_valid), .loop_response_error(unused_loop_response_error),
+        .loop_response_data(unused_loop_response_data), .configured_quantum(unused_configured_quantum), .*);
 endmodule

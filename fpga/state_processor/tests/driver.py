@@ -54,7 +54,8 @@ class Driver:
     async def reset(self):
         self.set(clk=0, reset=1, run_valid=0, run_instruction_count=0, run_state_count=0,
                  run_quantum=0, run_job_budget=0, cfg_valid=0, cfg_state=0,
-                 cfg_write=0, cfg_address=0, cfg_write_data=0, job_ready=0)
+                 cfg_write=0, cfg_address=0, cfg_write_data=0, job_ready=0,
+                 loop_read_ready=0, loop_response_valid=0, loop_response_error=0, loop_response_data=0)
         await self.tick()
         _, after = await self.tick()
         assert not after["busy"] and after["queued_jobs"] == 0

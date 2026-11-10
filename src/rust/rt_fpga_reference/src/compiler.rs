@@ -7,6 +7,7 @@ use crate::{
     jobs::BufferId,
     state::{Address, Instruction, Value},
     storage::ViewId,
+    transitions::LoopId,
     Error,
 };
 
@@ -28,6 +29,15 @@ pub struct NodeId(
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Node {
+    LogicalPlayback {
+        loop_id: LoopId,
+        view: ViewId,
+    },
+    LogicalCapture {
+        loop_id: LoopId,
+        input: NodeId,
+        view: ViewId,
+    },
     Input {
         #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
         #[cfg_attr(feature = "schema", schemars(with = "u32"))]
@@ -84,6 +94,10 @@ pub struct Graph {
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Binding {
+    LoopView {
+        loop_id: LoopId,
+        view: Address,
+    },
     None,
     Playback {
         position: Address,
@@ -112,7 +126,10 @@ pub struct Compiled {
 
 fn inputs(node: &Node) -> Vec<NodeId> {
     match *node {
-        Node::Gain { input, .. } | Node::Capture { input, .. } | Node::Output { input, .. } => {
+        Node::Gain { input, .. }
+        | Node::Capture { input, .. }
+        | Node::LogicalCapture { input, .. }
+        | Node::Output { input, .. } => {
             vec![input]
         }
         Node::Mix { left, right } => vec![left, right],
@@ -149,7 +166,7 @@ pub fn compile(graph: &Graph) -> Result<Compiled, Error> {
         for source in inputs(node) {
             if matches!(
                 graph.nodes[source.0],
-                Node::Capture { .. } | Node::Output { .. }
+                Node::Capture { .. } | Node::LogicalCapture { .. } | Node::Output { .. }
             ) {
                 return Err(Error::InvalidGraph);
             }
@@ -174,6 +191,34 @@ fn lower(index: usize, node: &Node, compiled: &mut Compiled) -> Result<(), Error
         address
     };
     let instruction = match *node {
+        Node::LogicalPlayback { loop_id, view } => {
+            if loop_id.generation == 0 {
+                return Err(Error::InvalidGraph);
+            }
+            let view = state(Value::Word(view.0 as u64));
+            compiled.bindings[index] = Binding::LoopView { loop_id, view };
+            Instruction::ProcessLogicalPlayback {
+                loop_id,
+                view,
+                destination,
+            }
+        }
+        Node::LogicalCapture {
+            loop_id,
+            input,
+            view,
+        } => {
+            if loop_id.generation == 0 {
+                return Err(Error::InvalidGraph);
+            }
+            let view = state(Value::Word(view.0 as u64));
+            compiled.bindings[index] = Binding::LoopView { loop_id, view };
+            Instruction::ProcessLogicalCapture {
+                loop_id,
+                view,
+                source: BufferId(input.0),
+            }
+        }
         Node::Input { port } => Instruction::ProcessInput { port, destination },
         Node::Playback {
             view,

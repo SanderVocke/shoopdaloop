@@ -4,6 +4,7 @@ use crate::{
     fixed::Ramp,
     jobs::{BufferId, Job, JobQueue},
     storage::ViewId,
+    transitions::{CommittedLoops, LoopId, Mode},
     Error,
 };
 use alloc::vec::Vec;
@@ -70,6 +71,16 @@ impl Value {
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Instruction {
+    ProcessLogicalPlayback {
+        loop_id: LoopId,
+        view: Address,
+        destination: BufferId,
+    },
+    ProcessLogicalCapture {
+        loop_id: LoopId,
+        view: Address,
+        source: BufferId,
+    },
     ProcessInput {
         #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
         #[cfg_attr(feature = "schema", schemars(with = "u32"))]
@@ -132,11 +143,63 @@ impl StateProcessor {
         ))
     }
     pub fn run(&mut self, program: &Program, queue: &mut JobQueue) -> Result<(), Error> {
+        self.run_inner(program, queue, None)
+    }
+    pub fn run_with_loops(
+        &mut self,
+        program: &Program,
+        queue: &mut JobQueue,
+        loops: CommittedLoops<'_>,
+    ) -> Result<(), Error> {
+        self.run_inner(program, queue, Some(loops))
+    }
+    fn run_inner(
+        &mut self,
+        program: &Program,
+        queue: &mut JobQueue,
+        loops: Option<CommittedLoops<'_>>,
+    ) -> Result<(), Error> {
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
             return Err(Error::QueueFull);
         }
         for &instruction in &program.instructions {
             match instruction {
+                Instruction::ProcessLogicalPlayback {
+                    loop_id,
+                    view,
+                    destination,
+                } => {
+                    let state = loops
+                        .ok_or(Error::InvalidState)?
+                        .read(loop_id)
+                        .map_err(|_| Error::InvalidState)?;
+                    queue.push(if state.plays() {
+                        Job::ReadView {
+                            view: self.view(view)?,
+                            position: state.position,
+                            length: state.content_length,
+                            destination,
+                        }
+                    } else {
+                        Job::Silence { destination }
+                    })?;
+                }
+                Instruction::ProcessLogicalCapture {
+                    loop_id,
+                    view,
+                    source,
+                } => {
+                    let state = loops
+                        .ok_or(Error::InvalidState)?
+                        .read(loop_id)
+                        .map_err(|_| Error::InvalidState)?;
+                    if state.mode == Mode::Recording {
+                        queue.push(Job::Capture {
+                            source,
+                            view: self.view(view)?,
+                        })?;
+                    }
+                }
                 Instruction::ProcessInput { port, destination } => {
                     queue.push(Job::Input { port, destination })?
                 }

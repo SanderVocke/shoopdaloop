@@ -52,7 +52,9 @@ class AudioDriver(Driver):
                  run_quantum=0, run_job_budget=0, run_buffers=0, run_inputs=0, run_outputs=0,
                  cfg_valid=0, cfg_state=0, cfg_write=0, cfg_address=0, cfg_write_data=0,
                  audio_cfg_valid=0, audio_cfg_space=0, audio_cfg_write=0, audio_cfg_address=0,
-                 audio_cfg_write_data=0, job_enable=1, drain_ready=0)
+                 audio_cfg_write_data=0, job_enable=1, drain_ready=0,
+                 loop_read_ready=0,loop_response_valid=0,loop_response_error=0,loop_response_data=0,
+                 run_external_jobs=0,external_job_ready=0,external_done_valid=0,external_error=0)
         await self.tick()
         _, after = await self.tick()
         assert not after["busy"] and not after["queued_jobs"] and not after["buffer_ready"]

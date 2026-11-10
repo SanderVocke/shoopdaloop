@@ -32,7 +32,13 @@ module state_processor #(
     output wire                                job_valid,
     input  wire                                job_ready,
     output wire [`SHOOP_SP_JOB_BITS-1:0]         job_data,
-    output wire [31:0]                         queued_jobs
+    output wire [31:0]                         queued_jobs,
+    output wire loop_read_valid,
+    input wire loop_read_ready,
+    output wire [31:0] loop_read_slot,
+    input wire loop_response_valid,
+    input wire loop_response_error,
+    input wire [162:0] loop_response_data
 );
     initial begin
         if ((PROGRAM_DEPTH < 1) || (PROGRAM_DEPTH > 65536)
@@ -136,7 +142,9 @@ module state_processor #(
         .state_read_enable(state_read_enable), .state_read_address(state_read_address),
         .state_read_data(state_read_data), .state_write_enable(state_write_enable),
         .state_write_address(state_write_address), .state_write_data(state_write_data),
-        .job_valid(engine_job_valid), .job_ready(engine_job_ready), .job_data(engine_job_data)
+        .job_valid(engine_job_valid), .job_ready(engine_job_ready), .job_data(engine_job_data),
+        .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
+        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
     );
 
     sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS(JOB_COUNT_BITS)) jobs (

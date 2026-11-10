@@ -19,7 +19,14 @@ module transition_processor #(
     input wire response_ready,
     output reg [3:0] response_error,
     output reg [831:0] response_data,
-    output wire busy
+    output wire busy,
+    input wire loop_read_valid,
+    output wire loop_read_ready,
+    input wire [31:0] loop_read_slot,
+    output reg loop_response_valid,
+    output reg loop_response_error,
+    output wire [162:0] loop_response_data,
+    output wire [31:0] configured_quantum
 );
     localparam [3:0] OK=0, INVALID_CONFIG=1, CAPACITY=2, INVALID_ID=3,
         DUPLICATE_ID=4, INVALID_STATE=5, INVALID_FRAME=6, MISSING_SYNC=7,
@@ -159,8 +166,12 @@ module transition_processor #(
     wire [63:0] mr_data;
     wire [127:0] or_data;
     wire [255:0] er_data;
+    wire loop_accept = loop_read_valid && loop_read_ready;
+    wire loop_in_range = loop_read_slot < loop_slots;
+    wire [LA-1:0] shared_address = LA'(loop_read_slot + (active_bank ? LOOP_DEPTH : 0));
     tp_ram #(.WIDTH(832), .DEPTH(2*LOOP_DEPTH), .ADDR_BITS(LA)) loops (
-        clk, lr_en, lr_address, lr_data, lw_en, lw_address, lw_data);
+        clk, lr_en || (loop_accept && loop_in_range), loop_accept ? shared_address : lr_address,
+        lr_data, lw_en, lw_address, lw_data);
     tp_ram #(.WIDTH(RW), .DEPTH(2*REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
         clk, rr_en, rr_address, rr_data, rw_en, rw_address, rw_data);
     tp_ram #(.WIDTH(256), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
@@ -173,7 +184,21 @@ module transition_processor #(
         clk, er_en, er_address, er_data, ew_en, ew_address, ew_data);
 
     assign busy = state != S_IDLE;
-    assign command_ready = !reset && state == S_IDLE && !response_valid;
+    assign command_ready = !reset && state == S_IDLE && !response_valid && !loop_response_valid;
+    assign loop_read_ready = !reset && state == S_IDLE && phase == COMMITTED
+        && !response_valid && !loop_response_valid && !command_valid;
+    assign loop_response_data = loop_response_error ? 163'b0 :
+        {lr_data[POSITION+:64], lr_data[LENGTH+:64], lr_data[MODE+:2], lr_data[GENERATION+:32], lr_data[VALID]};
+    assign configured_quantum = configured ? quantum : 0;
+    always @(posedge clk) begin
+        if (reset) begin
+            loop_response_valid <= 0;
+            loop_response_error <= 0;
+        end else begin
+            loop_response_valid <= loop_accept;
+            if (loop_accept) loop_response_error <= !loop_in_range;
+        end
+    end
 
     function automatic [LA-1:0] loop_address(input [31:0] slot, input bank);
         loop_address = LA'(slot + (bank ? LOOP_DEPTH : 0));

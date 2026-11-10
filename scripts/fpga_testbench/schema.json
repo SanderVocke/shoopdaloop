@@ -199,6 +199,36 @@
           "properties": {
             "kind": {
               "type": "string",
+              "const": "loop_view"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "loop_id": {
+                  "$ref": "#/$defs/LoopId"
+                },
+                "view": {
+                  "$ref": "#/$defs/Address"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "loop_id",
+                "view"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
               "const": "none"
             }
           },
@@ -612,6 +642,56 @@
     "Instruction": {
       "description": "Operands reference live state, never values specialized to the current mode.",
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "process_logical_playback"
+            },
+            "loop_id": {
+              "$ref": "#/$defs/LoopId"
+            },
+            "view": {
+              "$ref": "#/$defs/Address"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "loop_id",
+            "view",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "process_logical_capture"
+            },
+            "loop_id": {
+              "$ref": "#/$defs/LoopId"
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "view": {
+              "$ref": "#/$defs/Address"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "loop_id",
+            "view",
+            "source"
+          ]
+        },
         {
           "type": "object",
           "properties": {
@@ -1198,6 +1278,52 @@
     },
     "Node": {
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "logical_playback"
+            },
+            "loop_id": {
+              "$ref": "#/$defs/LoopId"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "loop_id",
+            "view"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "input": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "logical_capture"
+            },
+            "loop_id": {
+              "$ref": "#/$defs/LoopId"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "loop_id",
+            "input",
+            "view"
+          ]
+        },
         {
           "type": "object",
           "properties": {
@@ -1916,6 +2042,298 @@
             },
             "value": {
               "$ref": "#/$defs/TransitionTrace"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pipeline_case"
+            },
+            "value": {
+              "$ref": "#/$defs/PipelineCase"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pipeline_trace"
+            },
+            "value": {
+              "$ref": "#/$defs/PipelineTrace"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "PipelineCase": {
+      "type": "object",
+      "properties": {
+        "buffers": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "initial_state": {
+          "$ref": "#/$defs/StateSnapshot"
+        },
+        "media": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "output_ports": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/TransitionPlanInput"
+        },
+        "program": {
+          "$ref": "#/$defs/Program"
+        },
+        "queue_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PipelineStep"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "plan",
+        "program",
+        "initial_state",
+        "queue_capacity",
+        "buffers",
+        "output_ports",
+        "steps"
+      ]
+    },
+    "PipelineError": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/TransitionError"
+            },
+            "stage": {
+              "type": "string",
+              "const": "transition"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "error"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/Error"
+            },
+            "stage": {
+              "type": "string",
+              "const": "state"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "error"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/Error"
+            },
+            "stage": {
+              "type": "string",
+              "const": "jobs"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "error"
+          ]
+        }
+      ]
+    },
+    "PipelineResult": {
+      "type": "object",
+      "properties": {
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PipelineError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          }
+        },
+        "state": {
+          "$ref": "#/$defs/StateSnapshot"
+        },
+        "transition": {
+          "$ref": "#/$defs/TransitionResult"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "transition",
+        "jobs",
+        "state"
+      ]
+    },
+    "PipelineStep": {
+      "type": "object",
+      "properties": {
+        "transition": {
+          "$ref": "#/$defs/TransitionStep"
+        },
+        "work": {
+          "$ref": "#/$defs/PipelineWork"
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateWrite"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "transition",
+        "writes",
+        "work"
+      ]
+    },
+    "PipelineTrace": {
+      "type": "object",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/PipelineCase"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PipelineResult"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "case",
+        "results"
+      ]
+    },
+    "PipelineWork": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "external"
+            },
+            "value": {
+              "$ref": "#/$defs/ExecutionStatus"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "audio"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "inputs": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "int32",
+                      "maximum": 2147483647,
+                      "minimum": -2147483648
+                    }
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "inputs"
+              ]
             }
           },
           "additionalProperties": false,

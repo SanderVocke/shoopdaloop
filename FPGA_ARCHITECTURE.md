@@ -56,8 +56,8 @@ The Rust traversal compiles follower lists and uses per-loop pending-request
 indexes and a ready-pulse priority mask. This keeps pulse processing tied to
 actual edges and pending requests while preserving canonical settlement order.
 Preflight feedback can replace a candidate without publishing state or consuming
-source delays twice. Signal bindings export settled decisions to the state
-processor; the transition processor alone advances logical clocks. Composite
+source delays twice. Logical playback/capture instructions read committed loop
+records directly; the transition processor alone advances logical clocks. Composite
 kinds/timeline references are reserved but explicitly unsupported in this first
 primitive-only version. Serialized boundary traces are checked against the native
 resolver. `fpga/transition_processor` implements this primitive profile as a
@@ -67,14 +67,20 @@ selection replace repeated table/member searches. Indexes share the candidate
 transaction. Preview writes a candidate bank; commit switches banks atomically; finish
 advances committed clocks. Its README defines the command/response interface,
 packed rows, Rust/native/RTL comparison bench and synthesis/cycle measurements.
-Connecting the three RTL processors into a coordinated pipeline remains a later
-integration step.
+`fpga/loop_pipeline` connects the three processors under one coordinator. Preview
+pauses for resource preparation/retry, commit publishes the selected loop bank,
+and state execution reads that bank through a multiplexed RAM port. Finish follows
+successful job completion. Node state retains view handles and ramps without
+duplicating logical loop clocks or modes. The BRAM job subset executes in RTL;
+media jobs can use an external executor/completion interface while their sample
+hardware remains deferred. Rust provides the same coordinated flow and serialized
+combined traces. State/job failures retain partial effects and freeze clocks.
 
 ## State processor
 
 The state processor consumes settled loop decisions and executes operations on
 node state and metadata: gains, ramps, media-view handles, and frame ranges. It
-uses logical playback positions supplied by the transition processor and emits
+reads logical playback positions from the committed loop table and emits
 jobs describing work for the job processor. It owns physical capture preparation
 and publication, with feedback to transition processing when needed.
 

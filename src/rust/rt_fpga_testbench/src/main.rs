@@ -1,3 +1,4 @@
+use rt_fpga_testbench::pipeline::run_pipeline_case;
 use rt_fpga_testbench::transitions::{run_transition_case, run_transition_oracle};
 use rt_fpga_testbench::{run_audio_case, run_case, schema, Document, Payload};
 use std::io::{self, Read};
@@ -23,6 +24,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|error| format!("compile failed: {error:?}"))?,
         ),
         ("trace", Payload::Case(case)) => Payload::Trace(run_case(case)),
+        ("trace", Payload::PipelineCase(case)) => Payload::PipelineTrace(
+            run_pipeline_case(case)
+                .map_err(|error| format!("pipeline initialization failed: {error:?}"))?,
+        ),
+        ("check", Payload::PipelineTrace(trace)) => {
+            if run_pipeline_case(trace.case.clone())
+                .map_err(|error| format!("pipeline initialization failed: {error:?}"))?
+                != trace
+            {
+                return Err("trace differs from shared-loop pipeline results".into());
+            }
+            Payload::PipelineTrace(trace)
+        }
         ("trace", Payload::AudioCase(case)) => Payload::AudioTrace(
             run_audio_case(case)
                 .map_err(|error| format!("audio initialization failed: {error:?}"))?,

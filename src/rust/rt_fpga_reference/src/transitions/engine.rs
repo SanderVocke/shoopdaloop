@@ -53,6 +53,21 @@ pub struct TransitionProcessor {
     phase: Phase,
 }
 
+#[derive(Clone, Copy)]
+pub struct CommittedLoops<'a> {
+    states: &'a [Option<LoopState>],
+}
+impl CommittedLoops<'_> {
+    pub fn read(self, id: LoopId) -> Result<LoopState, TransitionError> {
+        self.states
+            .get(id.slot as usize)
+            .copied()
+            .flatten()
+            .filter(|state| state.id == id)
+            .ok_or(TransitionError::InvalidId)
+    }
+}
+
 impl TransitionProcessor {
     pub fn prepare(plan: TransitionPlan) -> Self {
         let states = plan.initial_states();
@@ -96,6 +111,14 @@ impl TransitionProcessor {
     }
     pub fn frame(&self) -> u64 {
         self.frame
+    }
+    pub fn committed(&self, boundary: BoundaryId) -> Result<CommittedLoops<'_>, TransitionError> {
+        if self.phase != Phase::Committed(boundary) {
+            return Err(TransitionError::InvalidState);
+        }
+        Ok(CommittedLoops {
+            states: &self.states,
+        })
     }
     pub fn states(&self) -> impl Iterator<Item = LoopState> + '_ {
         self.states.iter().flatten().copied()

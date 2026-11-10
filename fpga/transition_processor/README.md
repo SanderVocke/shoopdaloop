@@ -3,7 +3,8 @@
 A synthesizable, single-issue SystemVerilog implementation of the primitive-loop
 `rt_fpga_reference::transitions::TransitionProcessor`. It owns logical loop clocks,
 request arbitration and sync propagation. The existing state/job RTL executes
-signal programs independently; wiring the processors together is a later step.
+signal programs independently. `fpga/loop_pipeline` coordinates them through
+preflight, commit, shared loop reads, job completion and finish.
 
 The control owner compiles a `transition_plan` using `fpga-reference compile`,
 loads the resulting loop specifications/component membership, and prepares the
@@ -82,6 +83,20 @@ the candidate; the committed tables remain readable. Reset aborts work and
 invalidates the configuration; reload a complete plan afterward.
 
 ## Command interface
+
+The shared loop read port transfers `loop_read_valid && loop_read_ready` with a
+32-bit slot. It borrows the existing RAM port while the engine is idle in the
+committed phase, with no outstanding command/response. Commands have priority.
+The following cycle pulses `loop_response_valid`; `loop_response_error` reports
+an out-of-range logical slot without accessing a truncated address. Successful
+data packs valid at bit 0, generation u32 at 1, mode at 33, length u64 at 35 and
+position u64 at 99. The state consumer checks presence and full generation.
+No response backpressure is required for this synchronous read port.
+
+The coordinator prevents transition commands and Finish during state/job
+execution, so every node reads the same committed loop bank. `configured_quantum`
+reports the prepared quantum, or zero before configuration. The standalone
+comparison wrapper ties the shared request port inactive.
 
 One request/response may be outstanding. A command transfers when
 `command_valid && command_ready`. Capture all inputs at that edge. While the FSM
@@ -255,11 +270,14 @@ The corresponding Rust tests (50) and Python tests (14) passed.
 
 ## Measurements
 
-With Yosys 0.52, the default 64/64/192 ECP5 mapping uses 15,648 LUT4,
+Before the shared read port, Yosys 0.52 mapped the indexed default 64/64/192
+prototype to 15,648 LUT4,
 7,745 flip-flops, 1,161 CCU2C carry cells, 60 DP16KD block RAMs, 8 distributed
 RAM cells and zero DSPs. The scan-based mapping used 13,873 LUT4, 7,308
 flip-flops, 1,073 carry cells and 59 block RAMs. LUT4 counts exclude carry
 logic; these are mapped cells rather than placed utilization.
+The connected shared-loop top's current mapping is recorded in
+`fpga/loop_pipeline/README.md` at its own documented capacities.
 
 Measurements below use the same programs and 32-frame quanta as the scan-based
 prototype. At an assumed 150 MHz, preview + commit + finish measured:

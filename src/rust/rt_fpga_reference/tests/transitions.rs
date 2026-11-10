@@ -1,8 +1,8 @@
 use rt_fpga_reference::{
-    compiler::{compile, Binding, Graph, Node, NodeId},
-    fixed::{Fixed, Ramp},
-    jobs::{JobProcessor, JobQueue},
-    state::{Address, StateProcessor, Value},
+    fixed::Fixed,
+    jobs::{BufferId, Job, JobProcessor, JobQueue},
+    pipeline::{Pipeline, PipelineError},
+    state::{Address, Instruction, Program, StateProcessor, Value},
     storage::MediaStore,
     transitions::*,
 };
@@ -177,26 +177,23 @@ fn terminal_slots_stay_retained_until_collected_then_advance_generation() {
 }
 
 #[shoop_test]
-fn prepared_execution_and_bindings_do_not_touch_heap() {
+fn prepared_shared_loop_execution_does_not_touch_heap() {
     let n = 130;
     let loops = (0..n).map(|i| spec(i, 32, Some((i + 1) % n))).collect();
     let mut processor = TransitionProcessor::prepare(plan(loops, n, n));
-    let mut state = StateProcessor::new(vec![Value::Word(0); n as usize * 4]);
-    let bindings = StateBindings::prepare(
-        (0..n)
-            .map(|i| LoopBinding {
-                id: id(i),
-                playback: Some(PlaybackBinding {
-                    enabled: Address(i as usize * 4),
-                    position: Address(i as usize * 4 + 1),
-                    length: Address(i as usize * 4 + 2),
-                }),
-                capture_enabled: Some(Address(i as usize * 4 + 3)),
+    let mut state = StateProcessor::new(vec![Value::Word(0); n as usize]);
+    let program = Program {
+        quantum: 16,
+        jobs_per_quantum: n as usize,
+        instructions: (0..n)
+            .map(|i| Instruction::ProcessLogicalPlayback {
+                loop_id: id(i),
+                view: Address(i as usize),
+                destination: BufferId(i as usize),
             })
             .collect(),
-        &state,
-    )
-    .unwrap();
+    };
+    let mut queue = JobQueue::new(n as usize);
     assert_no_heap(|| {
         for i in 0..n {
             processor.submit(command(i, u64::from(i), play())).unwrap();
@@ -206,9 +203,10 @@ fn prepared_execution_and_bindings_do_not_touch_heap() {
             let retry = processor.preview(&[]).unwrap();
             assert_eq!(processor.commit(first), Err(TransitionError::InvalidState));
             processor.commit(retry).unwrap();
-            bindings
-                .export(processor.decisions(retry).unwrap(), &mut state)
+            state
+                .run_with_loops(&program, &mut queue, processor.committed(retry).unwrap())
                 .unwrap();
+            while queue.pop().is_some() {}
             processor.finish_quantum(retry).unwrap();
             if frame == 0 {
                 for i in 0..n {
@@ -221,156 +219,207 @@ fn prepared_execution_and_bindings_do_not_touch_heap() {
                 }
             }
         }
-        let request = processor
-            .submit(command(0, 1000, Operation::Record))
-            .unwrap();
-        processor.cancel(request).unwrap();
-        processor.take_completion(request).unwrap();
     });
+    assert!(state.values().iter().all(|v| *v == Value::Word(0)));
 }
 
 #[shoop_test]
-fn state_export_validates_all_operands_before_writing() {
-    let mut state = StateProcessor::new(vec![Value::Word(0); 4]);
-    let binding = LoopBinding {
-        id: id(0),
-        playback: Some(PlaybackBinding {
-            enabled: Address(0),
-            position: Address(1),
-            length: Address(2),
-        }),
-        capture_enabled: Some(Address(3)),
-    };
-    let bindings = StateBindings::prepare(vec![binding], &state).unwrap();
+fn shared_reads_require_committed_token_and_match_generation() {
     let mut processor = TransitionProcessor::prepare(plan(vec![spec(0, 32, None)], 1, 1));
     processor.submit(command(0, 1, play())).unwrap();
     let boundary = processor.preview(&[]).unwrap();
-    processor.commit(boundary).unwrap();
     assert_eq!(
-        bindings.export(&[], &mut state),
+        processor.committed(boundary).err(),
+        Some(TransitionError::InvalidState)
+    );
+    processor.commit(boundary).unwrap();
+    let loops = processor.committed(boundary).unwrap();
+    assert_eq!(loops.read(id(0)).unwrap().position, 0);
+    assert_eq!(
+        loops.read(LoopId {
+            slot: 0,
+            generation: 8
+        }),
         Err(TransitionError::InvalidId)
     );
-    state
-        .write(
-            Address(3),
-            Value::Ramp(Ramp::new(Fixed::ZERO, Fixed::ZERO, 0)),
-        )
-        .unwrap();
-    assert_eq!(
-        bindings.export(processor.decisions(boundary).unwrap(), &mut state),
-        Err(TransitionError::InvalidState)
-    );
-    assert_eq!(state.read(Address(0)), Ok(Value::Word(0)));
-    assert_eq!(state.read(Address(2)), Ok(Value::Word(0)));
-    assert!(matches!(
-        StateBindings::prepare(vec![binding, binding], &state),
-        Err(TransitionError::InvalidState)
-    ));
-    state.write(Address(3), Value::Word(0)).unwrap();
-    assert!(matches!(
-        StateBindings::prepare(vec![binding, binding], &state),
-        Err(TransitionError::DuplicateId)
-    ));
-    let alias = LoopBinding {
-        capture_enabled: Some(Address(0)),
-        ..binding
+    let mut state = StateProcessor::new(vec![Value::Word(0)]);
+    let mut program = Program {
+        quantum: 16,
+        jobs_per_quantum: 1,
+        instructions: vec![Instruction::ProcessLogicalPlayback {
+            loop_id: id(0),
+            view: Address(0),
+            destination: BufferId(0),
+        }],
     };
+    let mut queue = JobQueue::new(1);
+    assert_eq!(
+        state.run(&program, &mut queue),
+        Err(rt_fpga_reference::Error::InvalidState)
+    );
+    state.run_with_loops(&program, &mut queue, loops).unwrap();
     assert!(matches!(
-        StateBindings::prepare(vec![alias], &state),
-        Err(TransitionError::DuplicateId)
+        queue.pop(),
+        Some(Job::ReadView {
+            position: 0,
+            length: 32,
+            ..
+        })
     ));
+    program.instructions[0] = Instruction::ProcessLogicalPlayback {
+        loop_id: LoopId {
+            slot: 0,
+            generation: 8,
+        },
+        view: Address(0),
+        destination: BufferId(0),
+    };
+    assert_eq!(
+        state.run_with_loops(&program, &mut queue, loops),
+        Err(rt_fpga_reference::Error::InvalidState)
+    );
+    processor.finish_quantum(boundary).unwrap();
+    assert_eq!(
+        processor.committed(boundary).err(),
+        Some(TransitionError::InvalidState)
+    );
+}
+
+fn loop_program() -> Program {
+    Program {
+        quantum: 16,
+        jobs_per_quantum: 4,
+        instructions: vec![
+            Instruction::ProcessLogicalPlayback {
+                loop_id: id(0),
+                view: Address(0),
+                destination: BufferId(0),
+            },
+            Instruction::ProcessOutput {
+                source: BufferId(0),
+                port: 0,
+            },
+            Instruction::ProcessInput {
+                port: 0,
+                destination: BufferId(1),
+            },
+            Instruction::ProcessLogicalCapture {
+                loop_id: id(0),
+                view: Address(0),
+                source: BufferId(1),
+            },
+        ],
+    }
 }
 
 #[shoop_test]
-fn logical_record_play_exports_to_one_persistent_signal_program() {
+fn logical_record_play_uses_shared_records_in_one_pipeline() {
     let mut media = MediaStore::new(7).unwrap();
     let view = media.create_recording().unwrap();
-    // Playback precedes capture in signal order; both refer to one logical loop.
-    let compiled = compile(&Graph {
-        quantum: 16,
-        nodes: vec![
-            Node::Playback {
-                view,
-                length: 16,
-                position: 0,
-                playing: false,
-            },
-            Node::Output {
-                input: NodeId(0),
-                port: 0,
-            },
-            Node::Input { port: 0 },
-            Node::Capture {
-                input: NodeId(2),
-                view,
-                recording: false,
-            },
-        ],
-    })
-    .unwrap();
-    let Binding::Playback {
-        enabled,
-        position,
-        length,
-    } = compiled.bindings[0]
-    else {
-        panic!("playback binding")
-    };
-    let Binding::Capture {
-        enabled: capture_enabled,
-    } = compiled.bindings[3]
-    else {
-        panic!("capture binding")
-    };
-    let mut state = StateProcessor::new(compiled.initial_state);
-    let bindings = StateBindings::prepare(
-        vec![LoopBinding {
-            id: id(0),
-            playback: Some(PlaybackBinding {
-                enabled,
-                position,
-                length,
-            }),
-            capture_enabled: Some(capture_enabled),
-        }],
-        &state,
+    let mut pipeline = Pipeline::prepare(
+        plan(vec![spec(0, 0, None)], 1, 2),
+        loop_program(),
+        vec![Value::Word(view.0 as u64)],
+        4,
     )
     .unwrap();
-    let mut transitions = TransitionProcessor::prepare(plan(vec![spec(0, 0, None)], 1, 2));
-    let mut queue = JobQueue::new(compiled.program.jobs_per_quantum);
-    let mut jobs = JobProcessor::new(16, 4);
-    let input = [Fixed(12345); 16];
+    let saved_program = pipeline.program().clone();
+    let mut jobs = JobProcessor::new(16, 2);
     let mut output = [Fixed::ZERO; 16];
     for quantum in 0..7 {
         if quantum == 0 {
-            transitions
-                .submit(command(0, 1, Operation::Record))
-                .unwrap();
+            pipeline.submit(command(0, 1, Operation::Record)).unwrap();
         }
         if quantum == 2 {
-            transitions.submit(command(0, 2, play())).unwrap();
+            pipeline.submit(command(0, 2, play())).unwrap();
         }
-        let boundary = transitions.preview(&[]).unwrap();
-        transitions.commit(boundary).unwrap();
-        bindings
-            .export(transitions.decisions(boundary).unwrap(), &mut state)
+        let input = [Fixed(12345 + quantum); 16];
+        pipeline
+            .run(&[], &mut jobs, &mut media, &[&input], &mut [&mut output])
             .unwrap();
-        state.run(&compiled.program, &mut queue).unwrap();
-        jobs.run(&mut queue, &mut media, &[&input], &mut [&mut output])
-            .unwrap();
-        transitions.finish_quantum(boundary).unwrap();
         assert_eq!(
             output,
             if quantum < 2 {
                 [Fixed::ZERO; 16]
             } else {
-                input
+                [Fixed(12345 + (quantum - 2) % 2); 16]
             }
         );
+        assert_eq!(pipeline.state().values(), &[Value::Word(view.0 as u64)]);
+        assert_eq!(pipeline.program(), &saved_program);
     }
     assert_eq!(media.frames(view), Ok(32));
-    assert_eq!(transitions.state(id(0)).unwrap().content_length, 32);
-    assert_eq!(transitions.state(id(0)).unwrap().content_revision, 1);
+    assert_eq!(
+        pipeline.transitions().state(id(0)).unwrap().content_length,
+        32
+    );
+    assert_eq!(pipeline.transitions().frame(), 112);
+}
+
+#[shoop_test]
+fn pipeline_retries_and_job_completion_guard_clock_advancement() {
+    let mut p = Pipeline::prepare(
+        plan(vec![spec(0, 32, None)], 1, 2),
+        loop_program(),
+        vec![Value::Word(0)],
+        4,
+    )
+    .unwrap();
+    p.submit(command(0, 1, play())).unwrap();
+    let first = p.preview(&[]).unwrap();
+    let boundary = p.preview(&[]).unwrap();
+    assert_eq!(
+        p.run_state(first),
+        Err(PipelineError::Transition(TransitionError::InvalidState))
+    );
+    assert_eq!(p.transitions().state(id(0)).unwrap().mode, Mode::Stopped);
+    p.run_state(boundary).unwrap();
+    assert!(p.finish_jobs(boundary, Ok(())).is_err());
+    assert_eq!(p.transitions().frame(), 0);
+    assert!(p.preview(&[]).is_err());
+    while p.pop_job().is_some() {}
+    p.finish_jobs(boundary, Ok(())).unwrap();
+    assert_eq!(p.transitions().frame(), 16);
+    assert!(p.finish_jobs(boundary, Ok(())).is_err());
+    let boundary = p.preview(&[]).unwrap();
+    p.run_state(boundary).unwrap();
+    while p.pop_job().is_some() {}
+    assert_eq!(
+        p.finish_jobs(boundary, Err(rt_fpga_reference::Error::InvalidView)),
+        Err(PipelineError::Jobs(rt_fpga_reference::Error::InvalidView))
+    );
+    assert_eq!(p.transitions().frame(), 16);
+    assert!(p.preview(&[]).is_err());
+}
+
+#[shoop_test]
+fn pipeline_rejects_a_job_processor_with_a_different_quantum() {
+    let mut pipeline = Pipeline::prepare(
+        plan(vec![spec(0, 32, None)], 1, 2),
+        loop_program(),
+        vec![Value::Word(0)],
+        4,
+    )
+    .unwrap();
+    let boundary = pipeline.preview(&[]).unwrap();
+    pipeline.run_state(boundary).unwrap();
+    let queued: Vec<_> = pipeline.queued_jobs().copied().collect();
+    let mut jobs = JobProcessor::new(32, 2);
+    let mut media = MediaStore::new(7).unwrap();
+    let mut output = [Fixed(99); 32];
+    assert_eq!(
+        pipeline.run_jobs(
+            boundary,
+            &mut jobs,
+            &mut media,
+            &[&[Fixed(1); 32]],
+            &mut [&mut output]
+        ),
+        Err(PipelineError::Jobs(rt_fpga_reference::Error::InvalidShape))
+    );
+    assert_eq!(pipeline.transitions().frame(), 0);
+    assert_eq!(output, [Fixed(99); 32]);
+    assert_eq!(pipeline.queued_jobs().copied().collect::<Vec<_>>(), queued);
 }
 
 #[shoop_test]

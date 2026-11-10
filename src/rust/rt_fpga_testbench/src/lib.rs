@@ -14,6 +14,7 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+pub mod pipeline;
 pub mod transitions;
 
 pub const FORMAT_VERSION: u32 = 1;
@@ -102,6 +103,8 @@ pub enum Payload {
     TransitionPlanImage(rt_fpga_reference::transitions::TransitionPlanImage),
     TransitionCase(transitions::TransitionCase),
     TransitionTrace(transitions::TransitionTrace),
+    PipelineCase(pipeline::PipelineCase),
+    PipelineTrace(pipeline::PipelineTrace),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]

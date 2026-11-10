@@ -31,10 +31,16 @@ module sp_engine #(
     output reg  [`SHOOP_SP_STATE_BITS-1:0]       state_write_data,
     output wire                                job_valid,
     input  wire                                job_ready,
-    output reg  [`SHOOP_SP_JOB_BITS-1:0]         job_data
+    output reg  [`SHOOP_SP_JOB_BITS-1:0]         job_data,
+    output wire loop_read_valid,
+    input wire loop_read_ready,
+    output wire [31:0] loop_read_slot,
+    input wire loop_response_valid,
+    input wire loop_response_error,
+    input wire [162:0] loop_response_data
 );
     typedef enum logic [3:0] {
-        IDLE, FETCH, DECODE, READ_REQUEST, READ_RESULT, EMIT, NEXT
+        IDLE, FETCH, DECODE, READ_REQUEST, READ_RESULT, EMIT, NEXT, LOOP_REQUEST, LOOP_RESULT
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP
@@ -47,7 +53,7 @@ module sp_engine #(
     reg [31:0] run_state_count;
     reg [31:0] run_quantum;
     reg [7:0] opcode;
-    reg [15:0] arg0, arg1, arg2, arg4;
+    reg [15:0] arg0, arg1, arg2, arg3, arg4;
     reg [15:0] operand_address;
     reg [63:0] position;
     reg [63:0] length;
@@ -89,6 +95,8 @@ module sp_engine #(
     assign job_valid = (phase == EMIT) && (queue_remaining != 0) && !reset;
     assign state_write_enable = job_valid && job_ready && writeback;
     assign state_write_address = STATE_ADDR_BITS'(arg0);
+    assign loop_read_valid = phase == LOOP_REQUEST && !reset;
+    assign loop_read_slot = {16'b0, arg0};
 
     always @(posedge clk) begin
         if (reset) begin
@@ -102,6 +110,7 @@ module sp_engine #(
             arg0 <= 0;
             arg1 <= 0;
             arg2 <= 0;
+            arg3 <= 0;
             arg4 <= 0;
             operand_address <= 0;
             position <= 0;
@@ -141,9 +150,11 @@ module sp_engine #(
                     arg0 <= program_read_data[23:8];
                     arg1 <= program_read_data[39:24];
                     arg2 <= program_read_data[55:40];
+                    arg3 <= program_read_data[71:56];
                     arg4 <= program_read_data[87:72];
                     writeback <= 0;
                     case (program_read_data[7:0])
+                        `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE: phase <= LOOP_REQUEST;
                         `SHOOP_SP_PROCESS_INPUT: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_INPUT,
                                 program_read_data[23:8], program_read_data[39:24], 0, 0, 0);
@@ -181,6 +192,28 @@ module sp_engine #(
                             phase <= IDLE;
                         end
                     endcase
+                end
+                LOOP_REQUEST: if (loop_read_ready) phase <= LOOP_RESULT;
+                LOOP_RESULT: if (loop_response_valid) begin
+                    if (loop_response_error || !loop_response_data[0]
+                        || loop_response_data[1+:32] != {arg2,arg1}
+                        || loop_response_data[33+:2] == 3) begin
+                        error_code <= `SHOOP_SP_INVALID_STATE;
+                        done <= 1;
+                        phase <= IDLE;
+                    end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
+                        if (loop_response_data[33+:2] == 1 && loop_response_data[35+:64] != 0
+                            && loop_response_data[99+:64] < loop_response_data[35+:64]) begin
+                            position <= loop_response_data[99+:64];
+                            length <= loop_response_data[35+:64];
+                            operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
+                        end else begin
+                            job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
+                            phase <= EMIT;
+                        end
+                    end else if (loop_response_data[33+:2] == 2) begin
+                        operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
+                    end else phase <= NEXT;
                 end
                 READ_REQUEST: begin
                     if (!operand_in_range) begin
@@ -231,10 +264,11 @@ module sp_engine #(
                                 end
                             end
                             VIEW: begin
-                                if (opcode == `SHOOP_SP_PROCESS_PLAYBACK)
+                                if (opcode == `SHOOP_SP_PROCESS_PLAYBACK || opcode == `SHOOP_SP_LOGICAL_PLAYBACK)
                                     job_data <= pack_job(`SHOOP_SP_JOB_READ, arg4, 0, word_value, position, length);
                                 else
-                                    job_data <= pack_job(`SHOOP_SP_JOB_CAPTURE, arg2, 0, word_value, 0, 0);
+                                    job_data <= pack_job(`SHOOP_SP_JOB_CAPTURE,
+                                        opcode == `SHOOP_SP_LOGICAL_CAPTURE ? arg4 : arg2, 0, word_value, 0, 0);
                                 phase <= EMIT;
                             end
                             RAMP: begin

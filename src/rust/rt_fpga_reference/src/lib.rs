@@ -10,6 +10,7 @@ use alloc::vec::Vec;
 pub mod compiler;
 pub mod fixed;
 pub mod jobs;
+pub mod pipeline;
 pub mod state;
 pub mod storage;
 pub mod transitions;

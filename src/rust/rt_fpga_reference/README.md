@@ -96,13 +96,14 @@ The runtime protocol is:
    frame. Every retry starts from committed state and retained inputs; it cannot
    consume a delayed pulse twice. Preview does not publish state or completions.
 3. `commit(boundary)` publishes the candidate exactly once. Only the latest
-   successful boundary token is valid. `StateBindings::export` maps committed
-   decisions to validated playback enable/position/length and capture-enable
-   words before running the existing state/job processors.
+   successful boundary token is valid. `committed(boundary)` returns a borrowed,
+   read-only view of the active loop records. `StateProcessor::run_with_loops`
+   reads those records by slot and full generation through logical playback and
+   capture instructions. It does not copy mode/position/length into node state.
 4. After successful quantum execution, `finish_quantum(boundary)` advances logical
    clocks exactly once. A playback endpoint remains `position == content_length`;
    the next preview resolves wrap/repeat waiting against the source's pulse.
-   Signal-state position operands are exports, not a second clock.
+   State execution reads a quantum's committed position without advancing it.
 5. Collect terminal requests with `take_completion`. Until collected, terminal
    requests retain their slot and sequence. Reuse increments the generation;
    exhausted generations retire the slot. A successful stop cancels older pending
@@ -115,7 +116,7 @@ logical state; counters use checked arithmetic. State/job execution failures aft
 commit require stopping the pipeline, rather than replaying that quantum.
 
 Preparation may allocate. Submission, cancellation, preview/retry, commit, finish,
-collection and binding export use prepared storage without heap operations.
+collection and shared-loop state execution use prepared storage without heap operations.
 Loop/request capacities are explicit; event storage reserves at least two events
 per loop plus one per request, covering pulse, wrap and transition events without
 silent truncation. Preparation currently bounds loop/request slots to 65,536 each
@@ -124,16 +125,43 @@ promise that every configuration meets a hardware deadline.
 
 Composite execution, trigger actions, request batches, playback monitoring during
 recording, media ownership/admission and live topology replacement are deferred.
-The model exports logical capture enable and published length/revision; a media
-adapter remains responsible for choosing recording views and reserving storage.
-`StateBindings` validates the entire export before writing any operand. It does
-not perform media preparation or enforce playback/capture exclusion in sample jobs.
+The model exposes logical mode and published length/revision; a media adapter
+remains responsible for choosing recording views and reserving storage. Committed
+reads require the current committed token and validate slot/generation. The
+state processor reads the logical record once for each playback/capture node and
+keeps view handles in node state. It does not perform media preparation or enforce
+playback/capture exclusion in sample jobs.
 
 The testbench compares decisions, retained requests/completions, ordered events,
 and post-quantum state against `shoop_loops::Resolver` for this primitive subset.
 See `scripts/fpga_testbench/README.md` for replayable transition traces.
 The standalone RTL and Rust/native/RTL comparison bench live in
 `fpga/transition_processor`; the native app retains its existing resolver.
+
+## Connected shared-loop pipeline
+
+`pipeline::Pipeline` connects transition resolution, node state execution and
+job completion. Compile `Node::LogicalPlayback` / `LogicalCapture` for the new
+flow. Their instructions contain a logical `LoopId`, view-state address and
+buffer ID. Gain ramps retain independent node state. Timing-only loops need no
+signal nodes. The raw-state instructions and `SignalTransitions` remain available
+for isolated standalone fixtures.
+
+Use `preview` for a candidate, perform physical media preparation and retry if
+necessary, then `run_state` to commit and generate jobs from shared records.
+`run_jobs` executes the actual Rust job processor and finishes logical time only
+after success. `run` combines those phases when no external preparation callback
+is needed. External executors can drain with `pop_job` and report completion
+through `finish_jobs`. Emptying the FIFO alone cannot advance clocks. A stale
+token, duplicate completion or undrained FIFO is refused. State/job failure
+faults the coordinator and preserves partial effects with committed time frozen.
+
+`fpga/loop_pipeline` implements this flow in RTL. It multiplexes the existing
+transition loop RAM read port into state execution, retaining the bank selector
+for atomic publication. Its BRAM job processor executes the supported sample
+subset; external media work uses a separate descriptor/completion handshake.
+Combined `pipeline_case` / `pipeline_trace` documents compare both implementations.
+The native app renderer continues to use its existing resolver and ownership path.
 
 ## Serialization and RTL comparison
 

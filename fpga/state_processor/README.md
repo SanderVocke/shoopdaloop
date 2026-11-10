@@ -1,10 +1,16 @@
 # FPGA state processor
 
 A synthesizable SystemVerilog prototype of `rt_fpga_reference::state::StateProcessor`.
-It uses the existing six node instructions, a multicycle single-issue engine,
+It supports the six raw-state node instructions plus shared-loop playback/capture,
+a multicycle single-issue engine,
 synchronous program/state RAMs, and a finite job FIFO. It implements state execution
 only. Transitions, logical clocks, sample processing, view storage, and the host
 transport are outside this block.
+
+`fpga/loop_pipeline` connects it to transition processing and sample/job execution.
+Its logical instructions read the committed loop RAM directly while view handles
+and ramps remain in node-state RAM. The raw-state instruction ABI remains usable
+for isolated fixtures.
 
 Status: lint, synthesis, and behavioral comparison against the actual Rust state
 executor pass for the configurations and cases documented below. These checks
@@ -147,6 +153,25 @@ Gain emits the original ramp and updates state to
 to Rust's saturating addition followed by clamping, even for extreme counters and
 zero duration. The other ramp fields are preserved. No multiplier or divider is
 required by the engine.
+
+### Shared-loop instructions and read port
+
+Opcodes `0x06` (logical playback) and `0x07` (logical capture) use the same
+96-bit instruction layout: arg0 is loop slot, arg1/arg2 are the low/high halves
+of its 32-bit generation, arg3 is the view-state address, and arg4 is destination
+or source buffer respectively. The bounded slot/address/buffer fields remain
+16 bits. Rust's `LogicalPlayback` / `LogicalCapture` compiler nodes emit these
+instructions without allocating mode, position or length words in node state.
+
+The `loop_read_valid/ready/slot` port requests one record. A transferred request
+gets one `loop_response_valid` pulse with `loop_response_error` and 163-bit data:
+valid at bit 0, generation u32 at 1, mode at 33, length u64 at 35 and position u64
+at 99. The RAM owner admits these requests only in its committed phase. The
+engine checks presence and generation, then reads the view operand when needed.
+Playback uses the same `plays()` predicate as Rust, including silence at a held
+repeat endpoint. Capture emits only in recording mode. The state processor never
+writes this port or advances the loop clock. A standalone shared-memory client
+must supply responses; backpressure pauses the engine.
 
 ### Jobs: 256 bits
 

@@ -120,6 +120,9 @@ pub struct JobProcessor {
 }
 
 impl JobProcessor {
+    pub fn quantum(&self) -> usize {
+        self.quantum
+    }
     pub fn new(quantum: usize, buffers: usize) -> Self {
         Self {
             quantum,

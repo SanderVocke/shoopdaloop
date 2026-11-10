@@ -8,6 +8,15 @@ through the actual Rust state and job processors.
 ReadView, Capture, and external sample memory are deferred. Those jobs are
 explicitly refused. BRAM holds scratch and I/O buffers, not loop recordings.
 
+`fpga/loop_pipeline` connects transition processing through this wrapper's shared
+loop read port. Logical playback/capture instructions use committed loop records
+directly. The wrapper also supports `run_external_jobs`: descriptors then transfer
+with `external_job_valid && external_job_ready` through `monitor_data`. After the
+FIFO empties, `external_done_valid && external_done_ready` reports completion or
+`external_error`. The wrapper stays busy until that acknowledgement. Its internal
+BRAM job processor remains the default path. The connected pipeline's README
+defines external error encoding and clock/transaction ownership.
+
 ## Structure
 
 - `rtl/job_processor.sv`: serial job execution, buffer readiness, sample work.
@@ -230,3 +239,7 @@ At these small capacities, combined state/program/FIFO storage uses distributed
 RAM; sample banks use block RAM. Counts are synthesis estimates. LUT RAM,
 multiplexers, and packing need separate consideration when sizing a device.
 No board I/O mapping or routed timing result is claimed.
+
+These initial mapping counts precede the shared-loop/external-execution ports.
+See `fpga/loop_pipeline/README.md` for the connected top's current mapping and
+capacities.

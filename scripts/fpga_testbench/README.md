@@ -45,7 +45,7 @@ Every document has `format_version: 1` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
 `bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
 `audio_trace`, `media`, `transition_plan`, `transition_plan_image`,
-`transition_case`, and `transition_trace`.
+`transition_case`, `transition_trace`, `pipeline_case`, and `pipeline_trace`.
 
 - IDs, addresses, ports, capacities, and instruction counts are unsigned 32-bit
   integers on the wire. Existing host `usize` fields use checked conversions.
@@ -193,6 +193,33 @@ reuses slots, plays new content, and removes the view. Supplying a resulting sta
 and media snapshot as another case's initial state/media resumes the same logical
 memory state. The BRAM job-processor RTL still refuses media jobs; external-memory
 RTL implementation and its cycle behavior remain future work.
+
+## Connected shared-loop traces
+
+`pipeline_case` / `pipeline_trace` connect the transition, state and job phases.
+A case contains a transition plan, signal program, node state, queue/buffer/I/O
+capacities, optional initial media (explicit null when absent), and steps. Each
+step supplies the existing `transition` step, node-state `writes` and `work`:
+`external` carries a completion status, while `audio` carries per-port input
+samples. The result includes the full transition result, ordered jobs, node
+state, an optional staged pipeline error and optional audio results.
+
+The runner invokes `pipeline::Pipeline`. Logical playback/capture instructions
+read its committed transition records by ID, with no copied control operands.
+External steps drain descriptors and report a modeled completion. Audio steps
+run the actual Rust sample processor and media store. State/job failures stop
+the trace with partial effects retained and logical time unadvanced. A failed
+preview remains replaceable at the same frame. The additive variants retain
+format version 1 and the existing subsystem document shapes.
+
+```sh
+target/debug/fpga-reference trace \
+  < fpga/loop_pipeline/examples/record_play.json > work/pipeline.trace.json
+target/debug/fpga-reference check < work/pipeline.trace.json > /dev/null
+```
+
+`fpga/loop_pipeline/README.md` describes the shared RAM interface, coordinator,
+external job acknowledgement, combined Rust/RTL comparison and limitations.
 
 ## Logical transition boundary traces
 

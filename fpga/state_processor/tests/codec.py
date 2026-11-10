@@ -19,6 +19,12 @@ def unsigned(value, bits):
 
 
 def encode_instruction(instruction):
+    if instruction["kind"] in ("process_logical_playback", "process_logical_capture"):
+        loop = instruction["loop_id"]
+        generation = unsigned(loop["generation"], 32)
+        fields = [unsigned(loop["slot"], 16), generation & 65535, generation >> 16,
+                  unsigned(instruction["view"], 16), unsigned(instruction.get("destination", instruction.get("source")), 16)]
+        return (6 if instruction["kind"] == "process_logical_playback" else 7) | sum(v << (8+16*i) for i,v in enumerate(fields))
     opcode, fields = INSTRUCTIONS[instruction["kind"]]
     return opcode | sum(unsigned(instruction[field], 16) << (8 + 16 * index)
                         for index, field in enumerate(fields))
