@@ -43,6 +43,7 @@ use shoop_rt_transport::carrier::{Endpoint, Outbox};
 pub(crate) const PLANNED: usize = 8;
 
 pub(crate) struct Settings {
+    pub fpga_reference: bool,
     pub external_dry_wet: bool,
     pub ramp: u32,
     pub lead: u32,

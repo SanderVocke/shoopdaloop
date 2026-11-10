@@ -18,6 +18,8 @@ use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
+#[path = "executor_fpga.rs"]
+mod fpga_audio;
 #[path = "executor_audio.rs"]
 mod referenced_audio;
 
@@ -325,6 +327,7 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    fpga: Option<crate::fpga::Machine>,
     audio_arena: Option<crate::audio_refs::RenderArena>,
     host_sequences: Box<[crate::audio_refs::AudioSequence]>,
     profiling: rt_profiling::Recorder,
@@ -534,6 +537,11 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 config,
             },
             Self {
+                fpga: if resources.audio_render_mode() == crate::AudioRenderMode::FpgaReference {
+                    Some(crate::fpga::Machine::prepare(config, quantum, &specs)?)
+                } else {
+                    None
+                },
                 audio_arena,
                 host_sequences: vec![
                     crate::audio_refs::AudioSequence::default();
@@ -1356,6 +1364,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
+        if self.fpga.is_some() {
+            return self.run_graph_fpga(audio, midi, start, callback_start, quantum);
+        }
         if self.audio_arena.is_some() {
             return self.run_graph_references(audio, midi, start, callback_start, quantum);
         }

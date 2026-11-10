@@ -158,3 +158,12 @@ surviving resource/snapshot deletion under heap guards.
 The full native suite remains the repository gate. Native device smoke evidence,
 empirical results and any unavailable external checks are recorded alongside the
 final measurement report.
+
+## FPGA architecture reference
+
+A fourth, audio-only renderer, `SHOOP_AUDIO_RENDER=fpga-reference`, executes a
+readable Rust compiler/state/job model. It requires
+`SHOOP_AUDIO_BENCH_AUDIO_ONLY=1`. Unlike the chunk experiments, it disables
+history and smoothing and does not support effects, MIDI, or grab scenarios.
+See [the reference guide](../../../src/rust/rt_fpga_reference/README.md) for the
+architecture boundaries, numerical semantics, and comparison commands.

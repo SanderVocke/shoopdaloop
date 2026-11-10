@@ -4539,6 +4539,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_fpga_reference"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
@@ -4555,6 +4562,7 @@ name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
  "loom",
+ "rt_fpga_reference",
  "rt_profiling",
  "rtrb",
  "shoop_wasm_test_support",

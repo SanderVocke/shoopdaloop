@@ -15,6 +15,7 @@ import sys
 import time
 
 MODES = ("current", "chunks", "chunks-descriptors")
+AVAILABLE_MODES = MODES + ("fpga-reference",)
 
 
 def source_info():
@@ -187,10 +188,13 @@ def main():
     parser.add_argument("--load-cpu", type=int)
     parser.add_argument("--interference", nargs="+", choices=["none", "periodic", "memory"], default=["none"])
     parser.add_argument("--worker", choices=["periodic", "memory"], help=argparse.SUPPRESS)
+    parser.add_argument("--modes", nargs="+", choices=AVAILABLE_MODES, default=list(MODES))
     args = parser.parse_args()
     if args.worker:
         worker(args.worker, args.load_cpu)
         return
+    if "fpga-reference" in args.modes and any(s.split(":")[0] in ("grab", "shared", "continue") for s in args.scenarios):
+        parser.error("fpga-reference requires explicit --scenarios without grab/shared/continue")
     assert args.host and args.launcher and args.output
     assert args.callbacks > 0 and args.repeats > 0
     allowed = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else []
@@ -244,7 +248,8 @@ def main():
             if interference != 'none':
                 load = subprocess.Popen([sys.executable, __file__, '--worker', interference, '--load-cpu', str(args.load_cpu)])
             for repeat in range(args.repeats):
-                order = MODES[repeat % 3:] + MODES[:repeat % 3]
+                offset = repeat % len(args.modes)
+                order = args.modes[offset:] + args.modes[:offset]
                 for scenario in args.scenarios:
                     scenario, _, signal = scenario.partition(':')
                     signal = signal or 'signal'

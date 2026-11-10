@@ -515,7 +515,7 @@ fn prepare_complete(
                 playback: pool.playback(slot),
                 capture: pool.capture(slot),
                 channels,
-                midi: true,
+                midi: description.audio_render_mode != AudioRenderMode::FpgaReference,
                 gain: 1.,
                 smoothing,
                 midi_events,
@@ -745,6 +745,7 @@ fn prepare_complete(
         },
         cells: cells.clone(),
         settings: Settings {
+            fpga_reference: description.audio_render_mode == AudioRenderMode::FpgaReference,
             external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,

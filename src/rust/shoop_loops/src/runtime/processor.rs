@@ -93,6 +93,66 @@ impl CaptureNode {
     }
 }
 impl Processor<LoopPlanner> for LoopNode {
+    fn compile_fpga(
+        &mut self,
+        block: &mut rt_runtime::fpga::CompileBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        match self {
+            Self::Playback(node) => {
+                let view = block.domain.views[node.binding.target.slot() as usize];
+                if view.dry_wet
+                    || view.lead
+                    || view.raw_position != view.decision.state.position as i64
+                    || view.smoothing != audio::Smoothing::None
+                {
+                    return Err(Error::InvalidConfig);
+                }
+                if let Some(index) = view.audio {
+                    for channel in 0..node.binding.channels {
+                        let window = view.windows.audio[channel];
+                        if window.origin() != 0 || window.preplay != 0 {
+                            return Err(Error::InvalidConfig);
+                        }
+                        let balance = if view.audio_widths[0] == 2 {
+                            if channel == 0 {
+                                1. - view.balance.max(0.)
+                            } else {
+                                1. + view.balance.min(0.)
+                            }
+                        } else {
+                            1.
+                        };
+                        let source = block.compiler.read(
+                            index,
+                            channel,
+                            node.binding.channels,
+                            view.decision.state.position,
+                            view.decision.state.content_length,
+                        )?;
+                        block.outputs[channel] = block.compiler.gain(
+                            source,
+                            rt_runtime::audio_refs::GainEnvelope::constant(
+                                view.gain * balance * f32::from_bits(window.gain_bits),
+                            ),
+                        )?;
+                    }
+                }
+                Ok(())
+            }
+            Self::Capture(node) => {
+                let view = block.domain.views[node.binding.target.slot() as usize];
+                if view.dry_wet || view.replace.is_some() {
+                    return Err(Error::InvalidConfig);
+                }
+                if let Some(interval) = view.capture {
+                    block
+                        .compiler
+                        .capture(interval, &block.inputs[..node.binding.channels])?;
+                }
+                Ok(())
+            }
+        }
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,

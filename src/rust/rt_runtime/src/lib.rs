@@ -47,6 +47,7 @@ pub mod buffer;
 pub mod config;
 pub mod error;
 pub mod executor;
+pub mod fpga;
 pub mod graph;
 mod host_buffer;
 pub mod ids;

@@ -158,6 +158,11 @@ fn verify_media(
 fn main() -> Result<()> {
     let args = Args::parse();
     ensure!(
+        args.mode != "fpga-reference"
+            || !matches!(args.scenario.as_str(), "grab" | "shared" | "continue"),
+        "fpga-reference does not support history/grab scenarios"
+    );
+    ensure!(
         args.seconds > 0. && args.seconds.is_finite(),
         "invalid duration"
     );

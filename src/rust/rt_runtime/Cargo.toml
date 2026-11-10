@@ -15,6 +15,7 @@ workspace = true
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_fpga_reference = { path = "../rt_fpga_reference" }
 rt_profiling = { path = "../rt_profiling" }
 rtrb = { workspace = true }
 

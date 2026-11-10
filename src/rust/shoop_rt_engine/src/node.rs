@@ -738,6 +738,132 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn compile_fpga(
+        &mut self,
+        block: &mut rt_runtime::fpga::CompileBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        use rt_runtime::audio_refs::GainEnvelope;
+        self.apply_configuration(block.graph_epoch);
+        let frames = block.quantum.frames();
+        let inverse = |gain: GainEnvelope| GainEnvelope {
+            start: 1. - gain.start,
+            end: 1. - gain.end,
+        };
+        match self {
+            Self::Loop(node) => node.compile_fpga(block),
+            Self::StripInput(node) if node.processor.is_none() => {
+                let cells = &node.cells.strips[node.slot];
+                let automatic = cells.policy_enabled(node.generation)
+                    && cells.automatic_demand.load(Ordering::Relaxed);
+                cells
+                    .automatic_monitoring
+                    .store(automatic, Ordering::Relaxed);
+                let target = f32::from(u8::from(node.manual_monitoring || automatic));
+                if node.monitor.target() != target {
+                    node.monitor.set(target, node.ramp);
+                }
+                let monitor = node.monitor.envelope(frames);
+                let bank = node.bank.envelope(frames);
+                let gains = node.gains.envelopes(frames, &mut node.unity);
+                for channel in 0..node.channels {
+                    let first = block.compiler.gain(block.inputs[channel], inverse(bank))?;
+                    let second = block
+                        .compiler
+                        .gain(block.inputs[node.channels + channel], bank)?;
+                    let source = block.compiler.mix(first, second)?;
+                    let gain = gains[if node.inputs == 2 && channel < 2 {
+                        channel + 1
+                    } else {
+                        0
+                    }];
+                    let source = block.compiler.gain(source, gain)?;
+                    block.outputs[channel] = source;
+                    block.outputs[node.channels + channel] =
+                        block.compiler.gain(source, monitor)?;
+                }
+                Ok(())
+            }
+            Self::Fader(node) if node.processor.is_none() => {
+                let gain = node.presence.envelope(frames);
+                for (output, &input) in block.outputs.iter_mut().zip(block.inputs) {
+                    *output = block.compiler.gain(input, gain)?;
+                }
+                Ok(())
+            }
+            Self::StripOutput(node) if node.processor.is_none() => {
+                let gains = node.gains.envelopes(frames, &mut node.presence);
+                let mute = node.mute.envelope(frames);
+                let bank = node.bank.envelope(frames);
+                for channel in 0..node.channels {
+                    let gain = gains[if node.outputs == 2 && channel < 2 {
+                        channel + 1
+                    } else {
+                        0
+                    }];
+                    let source = block.compiler.gain(block.inputs[channel], gain)?;
+                    let source = block.compiler.gain(source, mute)?;
+                    block.outputs[channel] = block.compiler.gain(source, inverse(bank))?;
+                    block.outputs[node.channels + channel] = block.compiler.gain(source, bank)?;
+                }
+                Ok(())
+            }
+            Self::BusInput(node) if node.preview.is_none() => {
+                block.outputs[..node.channels].copy_from_slice(&block.inputs[..node.channels]);
+                Ok(())
+            }
+            Self::Bus(node) if node.preview.is_none() => {
+                let gains = node.gains.envelopes(frames, &mut node.mute);
+                let presence = node.presence.envelope(frames);
+                let bank = node.bank.envelope(frames);
+                for channel in 0..node.channels {
+                    let gain = gains[if node.active_channels == 2 && channel < 2 {
+                        channel + 1
+                    } else {
+                        0
+                    }];
+                    let source = block.compiler.gain(block.inputs[channel], gain)?;
+                    let source = block.compiler.gain(source, presence)?;
+                    block.outputs[channel] = block.compiler.gain(source, inverse(bank))?;
+                    block.outputs[node.channels + channel] = block.compiler.gain(source, bank)?;
+                }
+                Ok(())
+            }
+            Self::Reader(_) => Ok(()),
+            _ => Err(Error::InvalidConfig),
+        }
+    }
+
+    fn finish_fpga(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        match self {
+            Self::Reader(node) => node.process(block),
+            Self::StripInput(node) => {
+                for channel in 0..node.inputs as usize {
+                    node.cells.strips[node.slot].input.raise(
+                        channel,
+                        peak(block.audio.output(channel).ok_or(Error::InvalidShape)?),
+                    );
+                }
+                Ok(())
+            }
+            Self::StripOutput(node) => {
+                for channel in 0..node.outputs as usize {
+                    let value = peak(block.audio.output(channel).ok_or(Error::InvalidShape)?);
+                    node.cells.strips[node.slot].output.raise(channel, value);
+                }
+                Ok(())
+            }
+            Self::Bus(node) => {
+                for channel in 0..node.channels {
+                    node.cells.buses[node.slot].raise(
+                        channel,
+                        peak(block.audio.input(channel).ok_or(Error::InvalidShape)?),
+                    );
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
     fn process_references(
         &mut self,
         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,

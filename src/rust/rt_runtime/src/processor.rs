@@ -149,6 +149,12 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
         Ok(MidiBufferSettings::default())
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
+    fn compile_fpga(&mut self, _block: &mut crate::fpga::CompileBlock<'_, L>) -> Result<(), Error> {
+        Err(Error::InvalidConfig)
+    }
+    fn finish_fpga(&mut self, _block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
+        Ok(())
+    }
     fn process_references(
         &mut self,
         _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
@@ -170,6 +176,12 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn compile_fpga(&mut self, _block: &mut crate::fpga::CompileBlock<'_, L>) -> Result<(), Error> {
+        Err(Error::InvalidConfig)
+    }
+    fn finish_fpga(&mut self, _block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
+        Ok(())
+    }
     fn process_references(
         &mut self,
         block: &mut crate::audio_refs::ReferenceBlock<'_, L>,

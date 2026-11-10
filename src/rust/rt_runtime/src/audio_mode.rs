@@ -6,6 +6,7 @@ pub enum AudioRenderMode {
     Current,
     Chunks,
     ChunksDescriptors,
+    FpgaReference,
 }
 
 impl AudioRenderMode {
@@ -14,6 +15,7 @@ impl AudioRenderMode {
             "current" => Ok(Self::Current),
             "chunks" => Ok(Self::Chunks),
             "chunks-descriptors" => Ok(Self::ChunksDescriptors),
+            "fpga-reference" => Ok(Self::FpgaReference),
             _ => Err(Error::InvalidConfig),
         }
     }
@@ -23,10 +25,11 @@ impl AudioRenderMode {
             Self::Current => "current",
             Self::Chunks => "chunks",
             Self::ChunksDescriptors => "chunks-descriptors",
+            Self::FpgaReference => "fpga-reference",
         }
     }
 
     pub fn chunked(self) -> bool {
-        self != Self::Current
+        matches!(self, Self::Chunks | Self::ChunksDescriptors)
     }
 }

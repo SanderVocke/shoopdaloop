@@ -1,0 +1,12 @@
+[package]
+name = "rt_fpga_reference"
+version.workspace = true
+edition = "2021"
+description = "Readable audio-only compiler/state/job reference for FPGA exploration"
+publish = false
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
