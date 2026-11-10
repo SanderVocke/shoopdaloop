@@ -1133,6 +1133,37 @@
             "kind",
             "view"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "frames": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "slice"
+            },
+            "source": {
+              "$ref": "#/$defs/ViewId"
+            },
+            "start": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "start",
+            "frames"
+          ]
         }
       ]
     },
@@ -2014,6 +2045,21 @@
         "elapsed"
       ]
     },
+    "ReadOnlyRange": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "offset"
+      ]
+    },
     "RequestId": {
       "type": "object",
       "properties": {
@@ -2725,6 +2771,10 @@
           "format": "uint64",
           "maximum": 18446744073709551615,
           "minimum": 0
+        },
+        "range": {
+          "description": "Present for a read-only view; its offset is within the first chunk.",
+          "$ref": "#/$defs/ReadOnlyRange"
         }
       },
       "additionalProperties": false,

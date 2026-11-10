@@ -151,7 +151,9 @@ layout or cycle counts. See `scripts/fpga_testbench/README.md`.
 The Rust reference uses an elastic contiguous sample-slot arena, dynamic per-view
 chunk-ID tables, and deterministic reuse of released slots. It has optional chunk
 limits for hardware comparisons and capacity hints for host preparation, with no
-BRAM-cache simulation. Media snapshots and control actions extend the audio trace
+BRAM-cache simulation. Read-only range views share recorded chunks, including
+partial boundary chunks; each slot is reusable after its last view releases it.
+Media snapshots and control actions extend the audio trace
 boundary to capture, playback, reclamation, and allocation failure. The app's
 reference backend uses this store behind native resource revisions and snapshot
 leases, with fixed-point capture/playback and float conversion for persistence.

@@ -47,6 +47,87 @@ fn bytes(store: &mut ResourceStore, snapshot: Snapshot) -> Vec<u8> {
 }
 
 #[shoop_test]
+fn media_ranges_outlive_native_take_reclamation_until_their_own_release() {
+    let mut store = resources();
+    let resource = store.create().unwrap();
+    let capture = store
+        .begin_capture(
+            resource,
+            Revision(0),
+            Format::Audio { channels: 1 },
+            Frame(0),
+        )
+        .unwrap();
+    for frame in [0, 16, 32] {
+        store.begin_callback();
+        store
+            .render_io()
+            .capture_audio(capture, Frame(frame), &[0.25; 16])
+            .unwrap();
+    }
+    let take = store.versions[capture.slot as usize]
+        .value
+        .unwrap()
+        .elastic
+        .unwrap();
+    let range = store
+        .elastic_audio
+        .as_mut()
+        .unwrap()
+        .media
+        .slice(take.first, 15, 2)
+        .unwrap();
+    store.stop_capture(capture).unwrap();
+    store.remove(resource).unwrap();
+    for _ in 0..20 {
+        store.begin_callback();
+        assert!(store.reclaim() <= 1);
+    }
+    assert_eq!(store.elastic_audio_work().slots, 3);
+    assert_eq!(store.elastic_audio_work().free_slots, 1);
+    let mut output = [Fixed::ZERO; 2];
+    store
+        .elastic_audio
+        .as_mut()
+        .unwrap()
+        .media
+        .read_loop(range, 0, 2, &mut output)
+        .unwrap();
+    assert_eq!(output, [Fixed::from_f32(0.25); 2]);
+    let resource = store.create().unwrap();
+    let capture = store
+        .begin_capture(
+            resource,
+            Revision(0),
+            Format::Audio { channels: 1 },
+            Frame(48),
+        )
+        .unwrap();
+    store
+        .render_io()
+        .capture_audio(capture, Frame(48), &[-0.5; 16])
+        .unwrap();
+    assert_eq!(store.elastic_audio_work().slots, 3);
+    store
+        .elastic_audio
+        .as_mut()
+        .unwrap()
+        .media
+        .clear(range)
+        .unwrap();
+    assert_eq!(store.elastic_audio_work().free_slots, 2);
+    for frame in [64, 80] {
+        store.begin_callback();
+        store
+            .render_io()
+            .capture_audio(capture, Frame(frame), &[0.5; 16])
+            .unwrap();
+    }
+    assert_eq!(store.elastic_audio_work().slots, 3);
+    assert_eq!(store.elastic_audio_work().free_slots, 0);
+}
+
+#[shoop_test]
 fn freed_slots_supply_capacity_without_growing_the_arena_again() {
     let mut audio = ElasticAudio::new(Quantum::new(16).unwrap(), 16);
     let mut old = audio.create(1).unwrap();

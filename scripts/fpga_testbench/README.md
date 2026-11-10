@@ -161,17 +161,36 @@ hardware interfaces, simulation commands, and measured results.
 An optional `media` field on `audio_case` initializes the slot arena and view
 tables. A standalone `media` payload can also round-trip that snapshot. Its fields
 are `chunk_frames`, `samples` (flat raw i32 values), `free_chunks` (in stack order),
-and `views` (an array of `{chunks, frames}` or null for removed view IDs). Optional
-`chunk_limit` bounds the number of slots for FPGA comparisons; omit it for normal
-elastic growth. `samples.len()` must be a multiple of `chunk_frames`. Each slot
-must belong to exactly one view or appear exactly once in the free stack. The
-Rust store validates these invariants when a case starts.
+and `views` (an array of `{chunks, frames}` or null for removed view IDs). A
+read-only view additionally has `"range":{"offset":3}`, where the unsigned
+32-bit offset is within its first chunk. Its `frames` is the range's logical
+length; reads wrap within that length. Aligned and empty read-only ranges use
+offset zero. Empty ranges own no chunks. Writable views omit `range` entirely;
+explicit null is rejected. This optional field is additive in format version 1,
+preserving existing writable-view documents.
 
-An optional per-step `media_actions` array accepts `{"kind":"clear","view":0}`
-or `{"kind":"remove","view":0}`. Actions run before state writes at the drained
-quantum boundary, outside the signal program. Clear retains the view ID; remove
-invalidates it. Both release IDs in table order, and subsequent captures pop free
-IDs before extending the arena. There is no sharing or BRAM-cache model.
+Optional `chunk_limit` bounds the number of slots for FPGA comparisons; omit it
+for normal elastic growth. `samples.len()` must be a multiple of `chunk_frames`.
+Each slot must have at least one view reference or appear exactly once in the
+free stack. At most one writable view may reference a slot. Duplicate IDs within
+a view, free/live overlap, orphaned slots, invalid range geometry and read-only
+ranges exposing a writable chunk's unpublished tail are rejected on restore.
+Reference counts are derived from the tables rather than duplicated on the wire.
+
+An optional per-step `media_actions` array accepts `{"kind":"clear","view":0}`,
+`{"kind":"remove","view":0}`, or
+`{"kind":"slice","source":0,"start":3,"frames":5}`. Slice coordinates are
+unsigned 64-bit frame counts relative to the source view. Creation returns the
+next monotonically assigned view ID, visible as the new entry in the result's
+view table. Slices can reference slices and remain valid after their source is
+cleared or removed. Slice creation copies no sample payloads.
+
+Actions run before state writes at the drained quantum boundary, outside the
+signal program. Clear retains the view ID and its writable/read-only kind; remove
+invalidates it. Both release references in table order. Only a slot's last release
+adds its ID to the free stack; subsequent captures pop free IDs before extending
+the arena. Capturing into a read-only view reports `invalid_state`. BRAM-cache
+behavior is not modeled.
 
 Media-enabled results include the full resulting `media` snapshot, so Python's
 audio comparator checks slot contents, ownership, and reuse order as well as
@@ -193,6 +212,13 @@ reuses slots, plays new content, and removes the view. Supplying a resulting sta
 and media snapshot as another case's initial state/media resumes the same logical
 memory state. The BRAM job-processor RTL still refuses media jobs; external-memory
 RTL implementation and its cycle behavior remain future work.
+
+`examples/shared_ranges.json` creates an unaligned slice, clears the source and
+captures into its reusable slot while playing the slice bit-exactly. It then
+clears the slice and captures into the remaining released slots without growing
+the arena. The trace can be replayed from intermediate state/media snapshots;
+the Python audio scoreboard compares range metadata, ownership and reuse order
+as well as samples.
 
 ## Logical transition boundary traces
 

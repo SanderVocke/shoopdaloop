@@ -97,6 +97,109 @@ fn case(limit: usize) -> AudioCase {
     }
 }
 
+fn shared_case() -> AudioCase {
+    let document = Document::from_json(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../scripts/fpga_testbench/examples/shared_ranges.json"
+    )))
+    .unwrap();
+    let Payload::AudioCase(case) = document.payload else {
+        panic!("audio case")
+    };
+    case
+}
+
+#[shoop_test]
+fn shared_range_traces_preserve_samples_through_source_clear_and_reuse() {
+    let trace = run_audio_case(shared_case()).unwrap();
+    assert_eq!(trace.results.len(), 4);
+    assert!(trace
+        .results
+        .iter()
+        .all(|result| result.status == ExecutionStatus::Completed));
+    assert_eq!(
+        trace.results[0].outputs[0],
+        [Fixed(4), Fixed(5), Fixed(6), Fixed(7)]
+    );
+    assert_eq!(
+        trace.results[1].outputs[0],
+        [Fixed(8), Fixed(4), Fixed(5), Fixed(6)]
+    );
+    let first = trace.results[0].media.as_ref().unwrap();
+    let slice = first.views[1].as_ref().unwrap();
+    assert_eq!(slice.chunks, [ChunkId(0), ChunkId(1)]);
+    assert_eq!(slice.range.unwrap().offset, 3);
+    let reused = trace.results[1].media.as_ref().unwrap();
+    assert_eq!(reused.views[0].as_ref().unwrap().chunks, [ChunkId(2)]);
+    assert_eq!(reused.samples.len(), first.samples.len());
+    let released = trace.results[2].media.as_ref().unwrap();
+    assert_eq!(released.free_chunks, [ChunkId(0)]);
+    assert!(released.views[1].as_ref().unwrap().chunks.is_empty());
+    let final_media = trace.results[3].media.as_ref().unwrap();
+    assert_eq!(
+        final_media.views[0].as_ref().unwrap().chunks,
+        [ChunkId(2), ChunkId(1), ChunkId(0)]
+    );
+    assert!(final_media.free_chunks.is_empty());
+    for result in &trace.results {
+        let media = result.media.as_ref().unwrap();
+        assert_eq!(
+            MediaStore::from_snapshot(media.clone()).unwrap().snapshot(),
+            *media
+        );
+    }
+    let document = Document::new(Payload::AudioTrace(trace));
+    assert_eq!(
+        Document::from_json(&document.to_json().unwrap()).unwrap(),
+        document
+    );
+}
+
+#[shoop_test]
+fn shared_range_control_and_capture_failures_preserve_media() {
+    let mut input = shared_case();
+    input.steps[0].media_actions = Some(vec![MediaAction::Slice {
+        source: ViewId(0),
+        start: 13,
+        frames: 0,
+    }]);
+    let initial = input.media.clone().unwrap();
+    let trace = run_audio_case(input).unwrap();
+    assert_eq!(trace.results.len(), 1);
+    assert_eq!(trace.results[0].stage, ExecutionStage::Media);
+    assert_eq!(
+        trace.results[0].status,
+        ExecutionStatus::Failed {
+            error: Error::InvalidView
+        }
+    );
+    assert_eq!(trace.results[0].media.as_ref(), Some(&initial));
+    let mut input = shared_case();
+    // The capture instruction uses state word zero for its destination view.
+    input.steps[0].writes.extend([
+        StateWrite {
+            address: rt_fpga_reference::state::Address(0),
+            value: Value::Word(1),
+        },
+        StateWrite {
+            address: rt_fpga_reference::state::Address(1),
+            value: Value::Word(1),
+        },
+    ]);
+    let mut expected = MediaStore::from_snapshot(input.media.clone().unwrap()).unwrap();
+    expected.slice(ViewId(0), 3, 5).unwrap();
+    let trace = run_audio_case(input).unwrap();
+    assert_eq!(trace.results.len(), 1);
+    assert_eq!(trace.results[0].stage, ExecutionStage::Jobs);
+    assert_eq!(
+        trace.results[0].status,
+        ExecutionStatus::Failed {
+            error: Error::InvalidState
+        }
+    );
+    assert_eq!(trace.results[0].media, Some(expected.snapshot()));
+}
+
 #[shoop_test]
 fn audio_traces_capture_recycled_slots_and_restore_allocator_state_exactly() {
     let trace = run_audio_case(case(2)).unwrap();

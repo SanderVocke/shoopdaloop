@@ -249,6 +249,63 @@ class CrossLanguageContract(unittest.TestCase):
         replay = self.reference("trace", resumed)["payload"]["value"]["results"][0]
         self.assertEqual(replay, results[4])
 
+    def test_shared_ranges_survive_source_clear_and_match_sample_and_ownership_traces(self):
+        case = wire.load(ROOT / "scripts/fpga_testbench/examples/shared_ranges.json")
+        self.assertEqual(self.reference("roundtrip", case), case)
+        trace = self.reference("trace", case)
+        results = trace["payload"]["value"]["results"]
+        self.assertEqual(len(results), 4)
+        self.assertTrue(all(result["status"]["kind"] == "completed" for result in results))
+        self.assertEqual(results[0]["outputs"], [[4, 5, 6, 7]])
+        self.assertEqual(results[1]["outputs"], [[8, 4, 5, 6]])
+        first = results[0]["media"]
+        self.assertEqual(first["samples"], case["payload"]["value"]["media"]["samples"])
+        self.assertEqual(first["views"][1], {"chunks": [0, 1], "frames": 5, "range": {"offset": 3}})
+        self.assertEqual(results[1]["media"]["views"][0]["chunks"], [2])
+        self.assertEqual(results[2]["media"]["free_chunks"], [0])
+        self.assertEqual(results[3]["media"]["views"][0]["chunks"], [2, 1, 0])
+        self.assertEqual(results[3]["media"]["free_chunks"], [])
+        self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
+        media = document("media", results[1]["media"])
+        self.assertEqual(self.reference("roundtrip", media), media)
+        resumed = deepcopy(case)
+        resumed["payload"]["value"]["initial_state"] = results[1]["state"]
+        resumed["payload"]["value"]["media"] = results[1]["media"]
+        resumed["payload"]["value"]["steps"] = resumed["payload"]["value"]["steps"][2:]
+        self.assertEqual(self.reference("trace", resumed)["payload"]["value"]["results"], results[2:])
+        for field in ("offset", "writable", "free"):
+            observed = deepcopy(results[0])
+            if field == "offset":
+                observed["media"]["views"][1]["range"]["offset"] = 2
+            elif field == "writable":
+                del observed["media"]["views"][1]["range"]
+            else:
+                observed["media"]["free_chunks"].append(0)
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                wire.assert_audio_result_matches(results[0], observed)
+
+    def test_shared_range_wire_bounds_and_failed_creation_preserve_media(self):
+        case = wire.load(ROOT / "scripts/fpga_testbench/examples/shared_ranges.json")
+        for invalid in (None, {"offset": -1}, {"offset": 1.0}, {"offset": U32_MAX + 1}, {}):
+            bad = deepcopy(case)
+            bad["payload"]["value"]["media"]["views"][0]["range"] = invalid
+            self.assert_rejected_by_both(bad)
+        aligned = deepcopy(case)
+        aligned["payload"]["value"]["media"]["views"][0]["range"] = {"offset": 0}
+        self.assertEqual(self.reference("roundtrip", aligned), aligned)
+        for field, value in (("start", -1), ("start", 1.0), ("frames", True), ("frames", U64_MAX + 1)):
+            bad = deepcopy(case)
+            bad["payload"]["value"]["steps"][0]["media_actions"][0][field] = value
+            self.assert_rejected_by_both(bad)
+        bad = deepcopy(case)
+        bad["payload"]["value"]["steps"][0]["media_actions"][0].update(start=U64_MAX, frames=U64_MAX)
+        self.assertEqual(self.reference("roundtrip", bad), bad)
+        failed = self.reference("trace", bad)["payload"]["value"]["results"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["stage"], "media")
+        self.assertEqual(failed[0]["status"], {"kind": "failed", "value": {"error": "invalid_view"}})
+        self.assertEqual(failed[0]["media"], bad["payload"]["value"]["media"])
+
     def test_media_wire_shapes_and_snapshot_invariants_are_checked(self):
         case = wire.load(ROOT / "scripts/fpga_testbench/examples/elastic_record_play.json")
         for field, invalid in [("chunk_frames", 1.0), ("chunk_limit", None),
