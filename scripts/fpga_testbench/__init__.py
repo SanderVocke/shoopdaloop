@@ -95,3 +95,17 @@ def assert_result_matches(expected, observed):
             f"expected: {json.dumps(expected, sort_keys=True)}\n"
             f"observed: {json.dumps(observed, sort_keys=True)}"
         )
+
+
+def assert_audio_result_matches(expected, observed):
+    """Compare samples, buffer readiness, state, FIFO effects, and result exactly."""
+    definition = {"$ref": "#/$defs/AudioResult", "$defs": schema()["$defs"]}
+    validator = _validator_class()(definition)
+    validator.validate(expected)
+    validator.validate(observed)
+    if expected != observed:
+        raise AssertionError(
+            "audio pipeline quantum differs\n"
+            f"expected: {json.dumps(expected, sort_keys=True)}\n"
+            f"observed: {json.dumps(observed, sort_keys=True)}"
+        )

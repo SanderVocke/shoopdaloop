@@ -3,8 +3,10 @@
 
 use rt_fpga_reference::{
     compiler::{Binding, Compiled, Graph},
-    jobs::{Job, JobQueue},
+    fixed::Fixed,
+    jobs::{BufferId, Job, JobProcessor, JobQueue},
     state::{Address, Instruction, Program, StateProcessor, Value},
+    storage::MediaStore,
     transitions::OnWrap,
     Error,
 };
@@ -91,6 +93,8 @@ pub enum Payload {
     Status(ExecutionStatus),
     Case(StateCase),
     Trace(StateTrace),
+    AudioCase(AudioCase),
+    AudioTrace(AudioTrace),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -183,6 +187,101 @@ pub fn run_case(case: StateCase) -> StateTrace {
         }
     }
     StateTrace { case, results }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AudioCase {
+    pub name: String,
+    pub program: Program,
+    pub initial_state: StateSnapshot,
+    pub queue_capacity: u32,
+    pub buffers: u32,
+    pub output_ports: u32,
+    pub steps: Vec<AudioStep>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AudioStep {
+    pub writes: Vec<StateWrite>,
+    pub inputs: Vec<Vec<Fixed>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStage {
+    State,
+    Jobs,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AudioResult {
+    pub jobs: Vec<Job>,
+    pub remaining_jobs: Vec<Job>,
+    pub state: StateSnapshot,
+    pub buffers: Vec<Option<Vec<Fixed>>>,
+    pub outputs: Vec<Vec<Fixed>>,
+    pub stage: ExecutionStage,
+    pub status: ExecutionStatus,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AudioTrace {
+    pub case: AudioCase,
+    pub results: Vec<AudioResult>,
+}
+
+/// Execute both processors with persistent state and scratch buffers. Media is
+/// empty; these traces primarily exercise the sample-processing job subset.
+pub fn run_audio_case(case: AudioCase) -> AudioTrace {
+    let quantum = case.program.quantum as usize;
+    let mut state = StateProcessor::new(case.initial_state.memory.clone());
+    let mut queue = JobQueue::new(case.queue_capacity as usize);
+    let mut processor = JobProcessor::new(quantum, case.buffers as usize);
+    let mut outputs = vec![vec![Fixed::ZERO; quantum]; case.output_ports as usize];
+    let mut memory = MediaStore::new(1).expect("positive chunk size");
+    let mut results = Vec::with_capacity(case.steps.len());
+    for step in &case.steps {
+        let mut stage = ExecutionStage::State;
+        let mut outcome = step
+            .writes
+            .iter()
+            .try_for_each(|write| state.write(write.address, write.value))
+            .and_then(|()| state.run(&case.program, &mut queue));
+        let jobs = queue.iter().copied().collect();
+        if outcome.is_ok() {
+            stage = ExecutionStage::Jobs;
+            let inputs: Vec<_> = step.inputs.iter().map(Vec::as_slice).collect();
+            let mut output_slices: Vec<_> = outputs.iter_mut().map(Vec::as_mut_slice).collect();
+            outcome = processor.run(&mut queue, &mut memory, &inputs, &mut output_slices);
+        }
+        results.push(AudioResult {
+            jobs,
+            remaining_jobs: queue.iter().copied().collect(),
+            state: StateSnapshot::from(&state),
+            buffers: (0..case.buffers)
+                .map(|index| {
+                    processor
+                        .buffer(BufferId(index as usize))
+                        .ok()
+                        .map(<[Fixed]>::to_vec)
+                })
+                .collect(),
+            outputs: outputs.clone(),
+            stage,
+            status: match outcome {
+                Ok(()) => ExecutionStatus::Completed,
+                Err(error) => ExecutionStatus::Failed { error },
+            },
+        });
+        if outcome.is_err() {
+            break;
+        }
+    }
+    AudioTrace { case, results }
 }
 
 pub fn schema() -> Schema {

@@ -22,6 +22,164 @@
       "maximum": 4294967295,
       "minimum": 0
     },
+    "AudioCase": {
+      "type": "object",
+      "properties": {
+        "buffers": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "initial_state": {
+          "$ref": "#/$defs/StateSnapshot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "output_ports": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "program": {
+          "$ref": "#/$defs/Program"
+        },
+        "queue_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AudioStep"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "program",
+        "initial_state",
+        "queue_capacity",
+        "buffers",
+        "output_ports",
+        "steps"
+      ]
+    },
+    "AudioResult": {
+      "type": "object",
+      "properties": {
+        "buffers": {
+          "type": "array",
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 2147483647,
+              "minimum": -2147483648
+            }
+          }
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 2147483647,
+              "minimum": -2147483648
+            }
+          }
+        },
+        "remaining_jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          }
+        },
+        "stage": {
+          "$ref": "#/$defs/ExecutionStage"
+        },
+        "state": {
+          "$ref": "#/$defs/StateSnapshot"
+        },
+        "status": {
+          "$ref": "#/$defs/ExecutionStatus"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "jobs",
+        "remaining_jobs",
+        "state",
+        "buffers",
+        "outputs",
+        "stage",
+        "status"
+      ]
+    },
+    "AudioStep": {
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 2147483647,
+              "minimum": -2147483648
+            }
+          }
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateWrite"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "writes",
+        "inputs"
+      ]
+    },
+    "AudioTrace": {
+      "type": "object",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/AudioCase"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AudioResult"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "case",
+        "results"
+      ]
+    },
     "Binding": {
       "oneOf": [
         {
@@ -166,6 +324,13 @@
         "invalid_view",
         "invalid_shape",
         "queue_full"
+      ]
+    },
+    "ExecutionStage": {
+      "type": "string",
+      "enum": [
+        "state",
+        "jobs"
       ]
     },
     "ExecutionStatus": {
@@ -962,6 +1127,40 @@
             },
             "value": {
               "$ref": "#/$defs/StateTrace"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "audio_case"
+            },
+            "value": {
+              "$ref": "#/$defs/AudioCase"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "audio_trace"
+            },
+            "value": {
+              "$ref": "#/$defs/AudioTrace"
             }
           },
           "additionalProperties": false,

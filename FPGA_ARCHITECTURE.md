@@ -144,3 +144,14 @@ Lint, synthesis checks, and a cocotb/Verilator behavioral comparison against
 versioned Rust traces are available. The bench compares ordered jobs, complete
 state, and status per quantum, with separate hardware protocol checks. Transition
 and job processors are outside this RTL prototype.
+
+## BRAM job processor milestone
+
+`fpga/job_processor` adds synthesizable Input/Silence/Gain/Mix/Output execution
+and an `audio_pipeline` wrapper connected to the state processor's FIFO. BRAM
+holds reusable quantum scratch and I/O buffers. A shared multiplier and iterative
+ramp initialization preserve the Rust fixed-point semantics. The cocotb bench
+compares full state, buffer readiness, intermediate/output samples, and FIFO
+effects against traces from both actual Rust processors. See that directory's
+README for interface, coverage, cycle counts, and ECP5 synthesis results. Media
+playback/capture and external-memory access remain deferred.

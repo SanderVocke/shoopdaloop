@@ -8,8 +8,8 @@ use rt_fpga_reference::{
     Error,
 };
 use rt_fpga_testbench::{
-    run_case, schema, Document, ExecutionStatus, Payload, StateCase, StateSnapshot, StateStep,
-    StateWrite,
+    run_audio_case, run_case, schema, AudioCase, AudioStep, Document, ExecutionStage,
+    ExecutionStatus, Payload, StateCase, StateSnapshot, StateStep, StateWrite,
 };
 use shoop_wasm_test_support::shoop_test;
 
@@ -90,6 +90,53 @@ fn case() -> StateCase {
                     },
                 ],
             },
+        ],
+    }
+}
+
+fn audio_case() -> AudioCase {
+    AudioCase {
+        name: "sample processing and persistent state".into(),
+        program: Program {
+            quantum: 3,
+            jobs_per_quantum: 5,
+            instructions: vec![
+                Instruction::ProcessInput {
+                    port: 0,
+                    destination: BufferId(0),
+                },
+                Instruction::ProcessGain {
+                    ramp: Address(0),
+                    source: BufferId(0),
+                    destination: BufferId(1),
+                },
+                Instruction::ProcessInput {
+                    port: 1,
+                    destination: BufferId(2),
+                },
+                Instruction::ProcessMix {
+                    left: BufferId(1),
+                    right: BufferId(2),
+                    destination: BufferId(3),
+                },
+                Instruction::ProcessOutput {
+                    source: BufferId(3),
+                    port: 0,
+                },
+            ],
+        },
+        initial_state: StateSnapshot {
+            memory: vec![Value::Ramp(Ramp::constant(Fixed(1 << 23)))],
+        },
+        queue_capacity: 8,
+        buffers: 4,
+        output_ports: 2,
+        steps: vec![
+            AudioStep {
+                writes: vec![],
+                inputs: vec![vec![Fixed(1), Fixed(-3), Fixed(i32::MAX)]; 2],
+            };
+            2
         ],
     }
 }
@@ -182,6 +229,8 @@ fn all_subsystem_values_roundtrip_with_exact_integer_bits() {
         Payload::Status(ExecutionStatus::Completed),
         Payload::Case(case()),
         Payload::Trace(run_case(case())),
+        Payload::AudioCase(audio_case()),
+        Payload::AudioTrace(run_audio_case(audio_case())),
     ];
     for error in [
         Error::InvalidGraph,
@@ -213,6 +262,66 @@ fn all_subsystem_values_roundtrip_with_exact_integer_bits() {
         serde_json::to_value(Binding::None).unwrap(),
         serde_json::json!({"kind":"none"})
     );
+}
+
+#[shoop_test]
+fn audio_traces_run_real_jobs_with_rounding_saturation_and_buffer_reuse() {
+    let trace = run_audio_case(audio_case());
+    assert_eq!(trace.results.len(), 2);
+    for result in &trace.results {
+        assert_eq!(result.stage, ExecutionStage::Jobs);
+        assert_eq!(result.status, ExecutionStatus::Completed);
+        assert_eq!(
+            result.outputs[0],
+            vec![Fixed(1), Fixed(-4), Fixed(i32::MAX)]
+        );
+        assert_eq!(result.outputs[1], vec![Fixed::ZERO; 3]);
+        assert!(result.buffers.iter().all(Option::is_some));
+        assert_eq!(
+            result.buffers[1],
+            Some(vec![Fixed(0), Fixed(-1), Fixed(1073741823)])
+        );
+        assert_eq!(result.jobs.len(), 5);
+        assert!(result.remaining_jobs.is_empty());
+    }
+}
+
+#[shoop_test]
+fn audio_failure_preserves_state_and_remaining_jobs_and_shape_checks_run_first() {
+    let mut input = audio_case();
+    input.initial_state.memory[0] = Value::Ramp(Ramp::new(Fixed::ZERO, Fixed::ONE, 11));
+    input.program.instructions[1] = Instruction::ProcessGain {
+        ramp: Address(0),
+        source: BufferId(0),
+        destination: BufferId(0),
+    };
+    let trace = run_audio_case(input);
+    assert_eq!(trace.results.len(), 1);
+    let result = &trace.results[0];
+    assert_eq!(
+        result.status,
+        ExecutionStatus::Failed {
+            error: Error::InvalidBuffer
+        }
+    );
+    assert_eq!(result.state.memory[0].ramp().unwrap().elapsed, 3);
+    assert_eq!(result.remaining_jobs.len(), 3);
+    assert!(result.buffers[0].is_some());
+    assert!(result.buffers[1..].iter().all(Option::is_none));
+    assert_eq!(result.outputs, vec![vec![Fixed::ZERO; 3]; 2]);
+
+    let mut input = audio_case();
+    input.steps[0].inputs[0].pop();
+    let trace = run_audio_case(input);
+    let result = &trace.results[0];
+    assert_eq!(
+        result.status,
+        ExecutionStatus::Failed {
+            error: Error::InvalidShape
+        }
+    );
+    assert_eq!(result.remaining_jobs.len(), 5);
+    assert!(result.buffers.iter().all(Option::is_none));
 }
 
 #[shoop_test]

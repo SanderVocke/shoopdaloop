@@ -43,7 +43,8 @@ schema; saved documents with other versions are rejected.
 
 Every document has `format_version: 1` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
-`bindings`, `state_writes`, `on_wrap`, `status`, `case`, and `trace`.
+`bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`, and
+`audio_trace`.
 
 - IDs, addresses, ports, capacities, and instruction counts are unsigned 32-bit
   integers on the wire. Existing host `usize` fields use checked conversions.
@@ -80,6 +81,8 @@ The executable reads one document from stdin and writes one document to stdout:
 | `compile` | `graph` | `compiled` program, initial state, and bindings |
 | `trace` | `case` | `trace` containing the case and reference results |
 | `check` | `trace` | Same trace, after recomputing and comparing its results |
+| `trace` | `audio_case` | `audio_trace` from actual state and job execution |
+| `check` | `audio_trace` | Same trace, after recomputing both processors |
 
 Malformed input, a mismatched command/payload, or a failed trace comparison exits
 nonzero. A processor execution error is instead recorded in the trace's status.
@@ -131,3 +134,18 @@ check completion, extra output, FIFO handshakes, and bounded stalls independentl
 The RTL-specific cocotb/Verilator driver lives in `fpga/state_processor`; see its
 README for the packed ABI, supported bounds, simulation commands, and regression
 coverage. Its cocotb dependencies are separate from these serialization helpers.
+
+`fpga/job_processor` adds a BRAM sample-processing pipeline and comparison bench.
+An `audio_case` supplies program/initial state, queue capacity, logical `buffers`
+and `output_ports`, and steps containing ordered state writes and raw sample
+arrays per input port. `audio_trace` results include the emitted jobs, unconsumed
+jobs, state, output arrays, and nullable sample arrays for each scratch buffer
+(null means unready), plus `stage` (`state` or `jobs`) and status. The actual Rust
+state and job processors execute; no transition clock runs, and the media store
+is empty. Output and scratch state persist between steps. Shape and execution
+errors preserve partial effects and stop the trace.
+
+Use `assert_audio_result_matches` for complete bit-exact comparison. The new
+payload variants are additive in format version 1; existing state traces are
+unchanged. See `fpga/job_processor/README.md` for the supported job subset,
+hardware interfaces, simulation commands, and measured results.

@@ -1,4 +1,4 @@
-use rt_fpga_testbench::{run_case, schema, Document, Payload};
+use rt_fpga_testbench::{run_audio_case, run_case, schema, Document, Payload};
 use std::io::{self, Read};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +22,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|error| format!("compile failed: {error:?}"))?,
         ),
         ("trace", Payload::Case(case)) => Payload::Trace(run_case(case)),
+        ("trace", Payload::AudioCase(case)) => Payload::AudioTrace(run_audio_case(case)),
+        ("check", Payload::AudioTrace(trace)) => {
+            if run_audio_case(trace.case.clone()) != trace {
+                return Err("trace differs from Rust state/job processor results".into());
+            }
+            Payload::AudioTrace(trace)
+        }
         ("check", Payload::Trace(trace)) => {
             if run_case(trace.case.clone()) != trace {
                 return Err("trace differs from Rust state processor results".into());

@@ -131,6 +131,38 @@ class CrossLanguageContract(unittest.TestCase):
         )
         self.assertEqual(json.loads(result.stdout), wire.schema())
 
+    def test_audio_traces_preserve_samples_readiness_and_reject_sample_mismatches(self):
+        compiled = self.reference("compile", document("graph", {
+            "quantum": 3,
+            "nodes": [{"kind": "input", "port": 0},
+                      {"kind": "gain", "input": 0, "gain": 8388608},
+                      {"kind": "output", "input": 1, "port": 0}],
+        }))["payload"]["value"]
+        case = document("audio_case", {
+            "name": "exact samples", "program": compiled["program"],
+            "initial_state": {"memory": compiled["initial_state"]},
+            "queue_capacity": 3, "buffers": 3, "output_ports": 1,
+            "steps": [{"writes": [], "inputs": [[I32_MIN, I32_MAX, -3]]}],
+        })
+        trace = self.reference("trace", case)
+        self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
+        result = trace["payload"]["value"]["results"][0]
+        self.assertEqual(result["outputs"], [[-1073741824, 1073741823, -1]])
+        self.assertIsNone(result["buffers"][2])
+        wire.assert_audio_result_matches(result, deepcopy(result))
+        for field in ["outputs", "buffers"]:
+            bad = deepcopy(result)
+            if field == "outputs":
+                bad["outputs"][0][0] += 1
+            else:
+                bad["buffers"][0] = None
+            with self.assertRaises(AssertionError):
+                wire.assert_audio_result_matches(result, bad)
+        for invalid in [True, 1.0, I32_MAX + 1]:
+            bad = deepcopy(case)
+            bad["payload"]["value"]["steps"][0]["inputs"][0][0] = invalid
+            self.assert_rejected_by_both(bad)
+
     def test_checked_in_example_generates_a_replayable_trace(self):
         case = wire.load(ROOT / "scripts/fpga_testbench/examples/record_play.json")
         trace = self.reference("trace", case)

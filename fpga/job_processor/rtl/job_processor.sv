@@ -1,0 +1,423 @@
+`include "state_processor_defs.svh"
+
+module job_processor #(
+    parameter integer MAX_FRAMES = 32,
+    parameter integer BUFFERS = 16,
+    parameter integer INPUT_PORTS = 2,
+    parameter integer OUTPUT_PORTS = 2,
+    parameter integer BUFFER_BITS = (BUFFERS > 1) ? $clog2(BUFFERS) : 1,
+    parameter integer SCRATCH_BITS = (BUFFERS * MAX_FRAMES > 1) ? $clog2(BUFFERS * MAX_FRAMES) : 1,
+    parameter integer INPUT_BITS = (INPUT_PORTS * MAX_FRAMES > 1) ? $clog2(INPUT_PORTS * MAX_FRAMES) : 1,
+    parameter integer OUTPUT_BITS = (OUTPUT_PORTS * MAX_FRAMES > 1) ? $clog2(OUTPUT_PORTS * MAX_FRAMES) : 1
+) (
+    input wire clk,
+    input wire reset,
+    input wire run_valid,
+    output wire run_ready,
+    input wire [31:0] run_quantum,
+    input wire [31:0] run_buffers,
+    input wire [31:0] run_inputs,
+    input wire [31:0] run_outputs,
+    input wire [31:0] run_jobs,
+    output wire busy,
+    output reg done,
+    output reg [7:0] error_code,
+    output reg [BUFFERS-1:0] buffer_ready,
+    input wire job_valid,
+    output wire job_ready,
+    input wire job_enable,
+    input wire [`SHOOP_SP_JOB_BITS-1:0] job_data,
+    input wire cfg_valid,
+    output wire cfg_ready,
+    input wire [1:0] cfg_space,
+    input wire cfg_write,
+    input wire [31:0] cfg_address,
+    input wire [31:0] cfg_write_data,
+    output wire cfg_response_valid,
+    output wire cfg_response_error,
+    output wire [31:0] cfg_read_data
+);
+    localparam [7:0] OK = 0, INVALID_BUFFER = 1, INVALID_SHAPE = 2, UNSUPPORTED = 3, INVALID_JOB = 4;
+    typedef enum logic [4:0] {
+        IDLE, CLEAR_OUTPUT, FETCH, DECODE, READ_REQUEST, READ_RESULT,
+        MIX_REQUEST, MIX_RESULT, RAMP_PREPARE, RAMP_MULTIPLY,
+        INITIAL_DIVIDE, INITIAL_WAIT, STEP_DIVIDE, STEP_WAIT,
+        SAMPLE_MULTIPLY, SAMPLE_RESULT, STORE
+    } phase_t;
+    phase_t phase;
+    reg [31:0] quantum, logical_buffers, input_count, output_count, remaining_jobs;
+    reg [31:0] frame, clear_port;
+    reg [`SHOOP_SP_JOB_BITS-1:0] packet;
+    wire [7:0] opcode = packet[7:0];
+    wire [15:0] id0 = packet[23:8], id1 = packet[39:24];
+    wire unused_packet = &{1'b0, packet[63:40], packet[255:192]};
+    reg [15:0] source_a, source_b, destination, port_index;
+    reg [31:0] sample_a, result_sample;
+    reg [31:0] current_gain, ramp_start, ramp_target, duration, elapsed;
+    reg [31:0] magnitude, fraction, step_quotient, step_remainder, delta_magnitude;
+    reg ramp_negative, constant_gain;
+    wire signed [32:0] delta = $signed({packet[127], packet[127:96]})
+        - $signed({packet[95], packet[95:64]});
+    wire [32:0] fraction_sum = {1'b0, fraction} + {1'b0, step_remainder};
+    wire carry_fraction = fraction_sum >= {1'b0, duration};
+    wire [31:0] next_magnitude = magnitude + step_quotient + 32'(carry_fraction);
+    reg [63:0] product;
+    reg product_negative;
+    wire [31:0] multiply_a = (phase == RAMP_MULTIPLY) ? delta_magnitude
+        : (sample_a[31] ? -sample_a : sample_a);
+    wire [31:0] multiply_b = (phase == RAMP_MULTIPLY) ? elapsed
+        : (current_gain[31] ? -current_gain : current_gain);
+    wire [63:0] multiplied = multiply_a * multiply_b;
+    wire divide_done;
+    wire [63:0] divide_quotient;
+    wire [31:0] divide_remainder;
+    wire unused_divide_high = &{1'b0, divide_quotient[63:32]};
+    reg cfg_pending, cfg_error, cfg_was_write;
+    reg [1:0] cfg_response_space;
+    wire cfg_accept = cfg_valid && cfg_ready;
+    wire cfg_in_range = (cfg_space == 0) ? cfg_address < 32'(INPUT_PORTS * MAX_FRAMES)
+        : (cfg_space == 1) ? cfg_address < 32'(OUTPUT_PORTS * MAX_FRAMES)
+        : (cfg_space == 2) && (cfg_address < 32'(BUFFERS * MAX_FRAMES));
+    wire [31:0] input_data, output_data, scratch_data;
+    wire input_access = cfg_accept && cfg_in_range && (cfg_space == 0);
+    wire output_access = cfg_accept && cfg_in_range && (cfg_space == 1);
+    wire scratch_access = cfg_accept && cfg_in_range && (cfg_space == 2);
+    wire input_read = (phase == READ_REQUEST) && (opcode == `SHOOP_SP_JOB_INPUT);
+    wire scratch_read = ((phase == READ_REQUEST) && (opcode != `SHOOP_SP_JOB_INPUT))
+        || (phase == MIX_REQUEST);
+    wire scratch_write = (phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT);
+    wire output_write = (phase == CLEAR_OUTPUT) || ((phase == STORE) && (opcode == `SHOOP_SP_JOB_OUTPUT));
+    wire [INPUT_BITS-1:0] input_address = INPUT_BITS'(32'(port_index) * 32'(MAX_FRAMES) + frame);
+    wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'((phase == MIX_REQUEST) ? source_b : source_a)
+        * 32'(MAX_FRAMES) + frame);
+    wire [SCRATCH_BITS-1:0] scratch_write_address = SCRATCH_BITS'(32'(destination) * 32'(MAX_FRAMES) + frame);
+    wire [OUTPUT_BITS-1:0] output_address = OUTPUT_BITS'(((phase == CLEAR_OUTPUT) ? clear_port : 32'(port_index))
+        * 32'(MAX_FRAMES) + frame);
+    wire [INPUT_BITS-1:0] input_ram_read_address = busy ? INPUT_BITS'(input_address) : INPUT_BITS'(cfg_address);
+    wire [OUTPUT_BITS-1:0] output_ram_write_address = busy ? OUTPUT_BITS'(output_address) : OUTPUT_BITS'(cfg_address);
+    wire [SCRATCH_BITS-1:0] scratch_ram_read_address = busy ? SCRATCH_BITS'(scratch_read_address) : SCRATCH_BITS'(cfg_address);
+    wire [SCRATCH_BITS-1:0] scratch_ram_write_address = busy ? SCRATCH_BITS'(scratch_write_address) : SCRATCH_BITS'(cfg_address);
+
+    function automatic source_valid(input [15:0] index);
+        source_valid = (32'(index) < logical_buffers) && buffer_ready[BUFFER_BITS'(index)];
+    endfunction
+    function automatic destination_valid(input [15:0] index);
+        destination_valid = (32'(index) < logical_buffers) && !buffer_ready[BUFFER_BITS'(index)];
+    endfunction
+    function automatic [31:0] ramp_value(input [31:0] start_value, input negative, input [31:0] change);
+        reg signed [33:0] value;
+        begin
+            value = $signed({{2{start_value[31]}}, start_value});
+            value = negative ? value - $signed({2'b0, change}) : value + $signed({2'b0, change});
+            ramp_value = value[31:0];
+        end
+    endfunction
+    function automatic [31:0] saturating_mix(input [31:0] left, input [31:0] right);
+        reg signed [32:0] sum;
+        begin
+            sum = $signed({left[31], left}) + $signed({right[31], right});
+            saturating_mix = (sum > 33'sh07fffffff) ? 32'h7fffffff
+                : (sum < -33'sh080000000) ? 32'h80000000 : sum[31:0];
+        end
+    endfunction
+    function automatic [31:0] scaled_product(input [39:0] scaled, input negative);
+        begin
+            if (negative)
+                scaled_product = (scaled >= 40'h0080000000) ? 32'h80000000 : -scaled[31:0];
+            else
+                scaled_product = (scaled > 40'h007fffffff) ? 32'h7fffffff : scaled[31:0];
+        end
+    endfunction
+
+    initial begin
+        if ((MAX_FRAMES < 1) || (MAX_FRAMES > 65536) || (BUFFERS < 1) || (BUFFERS > 65536)
+            || (INPUT_PORTS < 1) || (OUTPUT_PORTS < 1))
+            $fatal(1, "Invalid job processor capacities");
+    end
+    assign busy = phase != IDLE;
+    assign cfg_ready = !busy && !cfg_pending && !reset;
+    assign run_ready = !busy && !cfg_pending && !cfg_valid && !reset;
+    assign job_ready = (phase == FETCH) && (remaining_jobs != 0) && job_enable && !reset;
+    assign cfg_response_valid = cfg_pending && !reset;
+    assign cfg_response_error = cfg_error;
+    assign cfg_read_data = (cfg_error || cfg_was_write) ? 32'b0
+        : (cfg_response_space == 0) ? input_data : (cfg_response_space == 1) ? output_data : scratch_data;
+
+    jp_divider divide (
+        .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE)),
+        .numerator((phase == STEP_DIVIDE) ? {32'b0, delta_magnitude} : product),
+        .denominator(duration), .done(divide_done), .quotient(divide_quotient), .remainder(divide_remainder)
+    );
+    jp_sample_ram #(.DEPTH(INPUT_PORTS * MAX_FRAMES), .ADDR_BITS(INPUT_BITS)) inputs_memory (
+        .clk(clk), .read_enable(!reset && (input_read || (input_access && !cfg_write))),
+        .read_address(input_ram_read_address), .read_data(input_data),
+        .write_enable(input_access && cfg_write), .write_address(INPUT_BITS'(cfg_address)), .write_data(cfg_write_data)
+    );
+    jp_sample_ram #(.DEPTH(OUTPUT_PORTS * MAX_FRAMES), .ADDR_BITS(OUTPUT_BITS)) outputs_memory (
+        .clk(clk), .read_enable(output_access && !cfg_write),
+        .read_address(OUTPUT_BITS'(cfg_address)), .read_data(output_data),
+        .write_enable(!reset && (output_write || (output_access && cfg_write))),
+        .write_address(output_ram_write_address),
+        .write_data(busy ? ((phase == CLEAR_OUTPUT) ? 32'b0 : result_sample) : cfg_write_data)
+    );
+    jp_sample_ram #(.DEPTH(BUFFERS * MAX_FRAMES), .ADDR_BITS(SCRATCH_BITS)) scratch_memory (
+        .clk(clk), .read_enable(!reset && (scratch_read || (scratch_access && !cfg_write))),
+        .read_address(scratch_ram_read_address), .read_data(scratch_data),
+        .write_enable(!reset && (scratch_write || (scratch_access && cfg_write))),
+        .write_address(scratch_ram_write_address), .write_data(busy ? result_sample : cfg_write_data)
+    );
+
+    always @(posedge clk) begin
+        if (reset) begin
+            cfg_pending <= 0;
+            cfg_error <= 0;
+            cfg_was_write <= 0;
+            cfg_response_space <= 0;
+        end else begin
+            cfg_pending <= cfg_accept;
+            if (cfg_accept) begin
+                cfg_error <= !cfg_in_range;
+                cfg_was_write <= cfg_write;
+                cfg_response_space <= cfg_space;
+            end
+        end
+    end
+
+    always @(posedge clk) begin
+        if (reset) begin
+            phase <= IDLE;
+            done <= 0;
+            error_code <= OK;
+            buffer_ready <= 0;
+            quantum <= 0;
+            logical_buffers <= 0;
+            input_count <= 0;
+            output_count <= 0;
+            remaining_jobs <= 0;
+            frame <= 0;
+            clear_port <= 0;
+            packet <= 0;
+            source_a <= 0;
+            source_b <= 0;
+            destination <= 0;
+            port_index <= 0;
+            sample_a <= 0;
+            result_sample <= 0;
+            current_gain <= 0;
+            ramp_start <= 0;
+            ramp_target <= 0;
+            duration <= 0;
+            elapsed <= 0;
+            magnitude <= 0;
+            fraction <= 0;
+            step_quotient <= 0;
+            step_remainder <= 0;
+            delta_magnitude <= 0;
+            ramp_negative <= 0;
+            constant_gain <= 0;
+            product <= 0;
+            product_negative <= 0;
+        end else begin
+            done <= 0;
+            case (phase)
+                IDLE: if (run_valid && run_ready) begin
+                    error_code <= OK;
+                    if ((run_quantum == 0) || (run_quantum > 32'(MAX_FRAMES))
+                        || (run_buffers > 32'(BUFFERS)) || (run_inputs > 32'(INPUT_PORTS))
+                        || (run_outputs > 32'(OUTPUT_PORTS))) begin
+                        error_code <= INVALID_SHAPE;
+                        done <= 1;
+                    end else begin
+                        quantum <= run_quantum;
+                        logical_buffers <= run_buffers;
+                        input_count <= run_inputs;
+                        output_count <= run_outputs;
+                        remaining_jobs <= run_jobs;
+                        buffer_ready <= 0;
+                        frame <= 0;
+                        clear_port <= 0;
+                        phase <= (run_outputs == 0) ? FETCH : CLEAR_OUTPUT;
+                    end
+                end
+                CLEAR_OUTPUT: begin
+                    if (frame + 1 == quantum) begin
+                        frame <= 0;
+                        if (clear_port + 1 == output_count)
+                            phase <= FETCH;
+                        else
+                            clear_port <= clear_port + 1;
+                    end else
+                        frame <= frame + 1;
+                end
+                FETCH: begin
+                    if (remaining_jobs == 0) begin
+                        done <= 1;
+                        phase <= IDLE;
+                    end else if (job_valid && job_ready) begin
+                        packet <= job_data;
+                        remaining_jobs <= remaining_jobs - 1;
+                        phase <= DECODE;
+                    end
+                end
+                DECODE: begin
+                    frame <= 0;
+                    case (opcode)
+                        `SHOOP_SP_JOB_INPUT: begin
+                            if (!destination_valid(id1) || (32'(id0) >= input_count)) begin
+                                error_code <= INVALID_BUFFER;
+                                done <= 1;
+                                phase <= IDLE;
+                            end else begin
+                                port_index <= id0;
+                                destination <= id1;
+                                phase <= READ_REQUEST;
+                            end
+                        end
+                        `SHOOP_SP_JOB_SILENCE: begin
+                            if (!destination_valid(id0)) begin
+                                error_code <= INVALID_BUFFER;
+                                done <= 1;
+                                phase <= IDLE;
+                            end else begin
+                                destination <= id0;
+                                result_sample <= 0;
+                                phase <= STORE;
+                            end
+                        end
+                        `SHOOP_SP_JOB_GAIN: begin
+                            if (!source_valid(id0) || !destination_valid(id1)) begin
+                                error_code <= INVALID_BUFFER;
+                                done <= 1;
+                                phase <= IDLE;
+                            end else begin
+                                source_a <= id0;
+                                destination <= id1;
+                                phase <= RAMP_PREPARE;
+                            end
+                        end
+                        `SHOOP_SP_JOB_MIX: begin
+                            if (!source_valid(id0) || !source_valid(id1) || !destination_valid(packet[79:64])) begin
+                                error_code <= INVALID_BUFFER;
+                                done <= 1;
+                                phase <= IDLE;
+                            end else begin
+                                source_a <= id0;
+                                source_b <= id1;
+                                destination <= packet[79:64];
+                                phase <= READ_REQUEST;
+                            end
+                        end
+                        `SHOOP_SP_JOB_OUTPUT: begin
+                            if (!source_valid(id0) || (32'(id1) >= output_count)) begin
+                                error_code <= INVALID_BUFFER;
+                                done <= 1;
+                                phase <= IDLE;
+                            end else begin
+                                source_a <= id0;
+                                port_index <= id1;
+                                phase <= READ_REQUEST;
+                            end
+                        end
+                        `SHOOP_SP_JOB_READ, `SHOOP_SP_JOB_CAPTURE: begin
+                            error_code <= UNSUPPORTED;
+                            done <= 1;
+                            phase <= IDLE;
+                        end
+                        default: begin
+                            error_code <= INVALID_JOB;
+                            done <= 1;
+                            phase <= IDLE;
+                        end
+                    endcase
+                end
+                READ_REQUEST: phase <= READ_RESULT;
+                READ_RESULT: begin
+                    if (opcode == `SHOOP_SP_JOB_GAIN) begin
+                        sample_a <= scratch_data;
+                        phase <= SAMPLE_MULTIPLY;
+                    end else if (opcode == `SHOOP_SP_JOB_MIX) begin
+                        sample_a <= scratch_data;
+                        phase <= MIX_REQUEST;
+                    end else begin
+                        result_sample <= (opcode == `SHOOP_SP_JOB_INPUT) ? input_data : scratch_data;
+                        phase <= STORE;
+                    end
+                end
+                MIX_REQUEST: phase <= MIX_RESULT;
+                MIX_RESULT: begin
+                    result_sample <= saturating_mix(sample_a, scratch_data);
+                    phase <= STORE;
+                end
+                RAMP_PREPARE: begin
+                    ramp_start <= packet[95:64];
+                    ramp_target <= packet[127:96];
+                    duration <= packet[159:128];
+                    elapsed <= packet[191:160];
+                    ramp_negative <= delta[32];
+                    delta_magnitude <= delta[32] ? 32'(-delta) : delta[31:0];
+                    if ((packet[159:128] == 0) || (packet[191:160] >= packet[159:128]) || (delta == 0)) begin
+                        current_gain <= packet[127:96];
+                        constant_gain <= 1;
+                        phase <= READ_REQUEST;
+                    end else begin
+                        constant_gain <= 0;
+                        phase <= RAMP_MULTIPLY;
+                    end
+                end
+                RAMP_MULTIPLY: begin
+                    product <= multiplied;
+                    phase <= INITIAL_DIVIDE;
+                end
+                INITIAL_DIVIDE: phase <= INITIAL_WAIT;
+                INITIAL_WAIT: if (divide_done) begin
+                    magnitude <= divide_quotient[31:0];
+                    fraction <= divide_remainder;
+                    current_gain <= ramp_value(ramp_start, ramp_negative, divide_quotient[31:0]);
+                    phase <= STEP_DIVIDE;
+                end
+                STEP_DIVIDE: phase <= STEP_WAIT;
+                STEP_WAIT: if (divide_done) begin
+                    step_quotient <= divide_quotient[31:0];
+                    step_remainder <= divide_remainder;
+                    phase <= READ_REQUEST;
+                end
+                SAMPLE_MULTIPLY: begin
+                    product <= multiplied;
+                    product_negative <= sample_a[31] ^ current_gain[31];
+                    phase <= SAMPLE_RESULT;
+                end
+                SAMPLE_RESULT: begin
+                    result_sample <= scaled_product(product[63:24], product_negative);
+                    phase <= STORE;
+                end
+                STORE: begin
+                    if (frame + 1 == quantum) begin
+                        if (opcode != `SHOOP_SP_JOB_OUTPUT)
+                            buffer_ready[BUFFER_BITS'(destination)] <= 1;
+                        frame <= 0;
+                        phase <= FETCH;
+                    end else begin
+                        frame <= frame + 1;
+                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE : READ_REQUEST;
+                        if ((opcode == `SHOOP_SP_JOB_GAIN) && !constant_gain) begin
+                            elapsed <= elapsed + 1;
+                            if ({1'b0, elapsed} + 1 >= {1'b0, duration}) begin
+                                current_gain <= ramp_target;
+                                constant_gain <= 1;
+                            end else begin
+                                magnitude <= next_magnitude;
+                                fraction <= carry_fraction ? 32'(fraction_sum - {1'b0, duration}) : fraction_sum[31:0];
+                                current_gain <= ramp_value(ramp_start, ramp_negative, next_magnitude);
+                            end
+                        end
+                    end
+                end
+                default: begin
+                    error_code <= INVALID_JOB;
+                    done <= 1;
+                    phase <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule
