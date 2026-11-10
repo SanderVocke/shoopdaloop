@@ -57,7 +57,13 @@ source delays twice. Signal bindings export settled decisions to the state
 processor; the transition processor alone advances logical clocks. Composite
 kinds/timeline references are reserved but explicitly unsupported in this first
 primitive-only version. Serialized boundary traces are checked against the native
-resolver. RTL and packed memory/interface layouts remain to be implemented.
+resolver. `fpga/transition_processor` implements this primitive profile as a
+multicycle RTL FSM with double-bank synchronous loop/request/journal memories.
+Preview writes a candidate bank; commit switches banks atomically; finish
+advances committed clocks. Its README defines the command/response interface,
+packed rows, Rust/native/RTL comparison bench and synthesis/cycle measurements.
+Connecting the three RTL processors into a coordinated pipeline remains a later
+integration step.
 
 ## State processor
 

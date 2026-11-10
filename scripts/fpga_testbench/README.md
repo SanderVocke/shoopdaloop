@@ -248,6 +248,8 @@ are outside this profile; the standalone processor has no native resolver
 dependency. Rust regression tests add 100 seeded graphs over 8,000 quanta.
 
 Python/cocotb drivers can use `assert_transition_result_matches(expected,
-observed)` to compare complete boundary results. No transition RTL or packed ABI
-is defined by this milestone. Boundary tokens are local runtime guards and are
-not serialized; internal settlement cycles remain implementation-dependent.
+observed)` to compare complete boundary results. The RTL and packed command/table ABI
+are described in `fpga/transition_processor/README.md`. Boundary tokens are local
+runtime guards and are not serialized in JSON; internal settlement cycles remain
+implementation-dependent. The native oracle adapter applies the hardware
+profile's input-freeze and observation-capacity rules before calling the resolver.

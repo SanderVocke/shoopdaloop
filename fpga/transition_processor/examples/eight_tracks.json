@@ -1,0 +1,3331 @@
+{
+  "format_version": 1,
+  "payload": {
+    "kind": "transition_case",
+    "value": {
+      "name": "8x8-tracks-record-play-and-repeat-sync",
+      "plan": {
+        "description": {
+          "quantum": 32,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 3,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 4,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 5,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 6,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 7,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 8,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 9,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 10,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 11,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 12,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 13,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 14,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 15,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 8,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 16,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 17,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 18,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 19,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 20,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 21,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 22,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 23,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 16,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 24,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 25,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 26,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 27,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 28,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 29,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 30,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 31,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 24,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 32,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 33,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 34,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 35,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 36,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 37,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 38,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 39,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 32,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 40,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 41,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 42,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 43,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 44,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 45,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 46,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 47,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 40,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 48,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 49,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 50,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 51,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 52,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 53,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 54,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 55,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 48,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 56,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 57,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 58,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 59,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 60,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 61,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 62,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 96,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 63,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": {
+                "slot": 56,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 64,
+          "pending_requests": 64,
+          "events": 192
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 3,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 4,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 5,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 6,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 7,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 8,
+                "generation": 3
+              },
+              "sequence": 9,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 9,
+                "generation": 3
+              },
+              "sequence": 10,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 10,
+                "generation": 3
+              },
+              "sequence": 11,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 11,
+                "generation": 3
+              },
+              "sequence": 12,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 12,
+                "generation": 3
+              },
+              "sequence": 13,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 13,
+                "generation": 3
+              },
+              "sequence": 14,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 14,
+                "generation": 3
+              },
+              "sequence": 15,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 15,
+                "generation": 3
+              },
+              "sequence": 16,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 16,
+                "generation": 3
+              },
+              "sequence": 17,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 17,
+                "generation": 3
+              },
+              "sequence": 18,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 18,
+                "generation": 3
+              },
+              "sequence": 19,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 19,
+                "generation": 3
+              },
+              "sequence": 20,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 20,
+                "generation": 3
+              },
+              "sequence": 21,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 21,
+                "generation": 3
+              },
+              "sequence": 22,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 22,
+                "generation": 3
+              },
+              "sequence": 23,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 23,
+                "generation": 3
+              },
+              "sequence": 24,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 24,
+                "generation": 3
+              },
+              "sequence": 25,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 25,
+                "generation": 3
+              },
+              "sequence": 26,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 26,
+                "generation": 3
+              },
+              "sequence": 27,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 27,
+                "generation": 3
+              },
+              "sequence": 28,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 28,
+                "generation": 3
+              },
+              "sequence": 29,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 29,
+                "generation": 3
+              },
+              "sequence": 30,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 30,
+                "generation": 3
+              },
+              "sequence": 31,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 31,
+                "generation": 3
+              },
+              "sequence": 32,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 32,
+                "generation": 3
+              },
+              "sequence": 33,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 33,
+                "generation": 3
+              },
+              "sequence": 34,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 34,
+                "generation": 3
+              },
+              "sequence": 35,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 35,
+                "generation": 3
+              },
+              "sequence": 36,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 36,
+                "generation": 3
+              },
+              "sequence": 37,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 37,
+                "generation": 3
+              },
+              "sequence": 38,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 38,
+                "generation": 3
+              },
+              "sequence": 39,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 39,
+                "generation": 3
+              },
+              "sequence": 40,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 40,
+                "generation": 3
+              },
+              "sequence": 41,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 41,
+                "generation": 3
+              },
+              "sequence": 42,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 42,
+                "generation": 3
+              },
+              "sequence": 43,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 43,
+                "generation": 3
+              },
+              "sequence": 44,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 44,
+                "generation": 3
+              },
+              "sequence": 45,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 45,
+                "generation": 3
+              },
+              "sequence": 46,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 46,
+                "generation": 3
+              },
+              "sequence": 47,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 47,
+                "generation": 3
+              },
+              "sequence": 48,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 48,
+                "generation": 3
+              },
+              "sequence": 49,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 49,
+                "generation": 3
+              },
+              "sequence": 50,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 50,
+                "generation": 3
+              },
+              "sequence": 51,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 51,
+                "generation": 3
+              },
+              "sequence": 52,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 52,
+                "generation": 3
+              },
+              "sequence": 53,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 53,
+                "generation": 3
+              },
+              "sequence": 54,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 54,
+                "generation": 3
+              },
+              "sequence": 55,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 55,
+                "generation": 3
+              },
+              "sequence": 56,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 56,
+                "generation": 3
+              },
+              "sequence": 57,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 57,
+                "generation": 3
+              },
+              "sequence": 58,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 58,
+                "generation": 3
+              },
+              "sequence": 59,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 59,
+                "generation": 3
+              },
+              "sequence": 60,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 60,
+                "generation": 3
+              },
+              "sequence": 61,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 61,
+                "generation": 3
+              },
+              "sequence": 62,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 62,
+                "generation": 3
+              },
+              "sequence": 63,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 63,
+                "generation": 3
+              },
+              "sequence": 64,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 65,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 66,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 67,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 3,
+                "generation": 3
+              },
+              "sequence": 68,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 4,
+                "generation": 3
+              },
+              "sequence": 69,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 5,
+                "generation": 3
+              },
+              "sequence": 70,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 6,
+                "generation": 3
+              },
+              "sequence": 71,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 7,
+                "generation": 3
+              },
+              "sequence": 72,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 8,
+                "generation": 3
+              },
+              "sequence": 73,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 9,
+                "generation": 3
+              },
+              "sequence": 74,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 10,
+                "generation": 3
+              },
+              "sequence": 75,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 11,
+                "generation": 3
+              },
+              "sequence": 76,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 12,
+                "generation": 3
+              },
+              "sequence": 77,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 13,
+                "generation": 3
+              },
+              "sequence": 78,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 14,
+                "generation": 3
+              },
+              "sequence": 79,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 15,
+                "generation": 3
+              },
+              "sequence": 80,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 8,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 16,
+                "generation": 3
+              },
+              "sequence": 81,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 17,
+                "generation": 3
+              },
+              "sequence": 82,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 18,
+                "generation": 3
+              },
+              "sequence": 83,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 19,
+                "generation": 3
+              },
+              "sequence": 84,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 20,
+                "generation": 3
+              },
+              "sequence": 85,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 21,
+                "generation": 3
+              },
+              "sequence": 86,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 22,
+                "generation": 3
+              },
+              "sequence": 87,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 23,
+                "generation": 3
+              },
+              "sequence": 88,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 16,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 24,
+                "generation": 3
+              },
+              "sequence": 89,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 25,
+                "generation": 3
+              },
+              "sequence": 90,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 26,
+                "generation": 3
+              },
+              "sequence": 91,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 27,
+                "generation": 3
+              },
+              "sequence": 92,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 28,
+                "generation": 3
+              },
+              "sequence": 93,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 29,
+                "generation": 3
+              },
+              "sequence": 94,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 30,
+                "generation": 3
+              },
+              "sequence": 95,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 31,
+                "generation": 3
+              },
+              "sequence": 96,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 24,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 32,
+                "generation": 3
+              },
+              "sequence": 97,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 33,
+                "generation": 3
+              },
+              "sequence": 98,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 34,
+                "generation": 3
+              },
+              "sequence": 99,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 35,
+                "generation": 3
+              },
+              "sequence": 100,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 36,
+                "generation": 3
+              },
+              "sequence": 101,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 37,
+                "generation": 3
+              },
+              "sequence": 102,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 38,
+                "generation": 3
+              },
+              "sequence": 103,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 39,
+                "generation": 3
+              },
+              "sequence": 104,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 32,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 40,
+                "generation": 3
+              },
+              "sequence": 105,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 41,
+                "generation": 3
+              },
+              "sequence": 106,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 42,
+                "generation": 3
+              },
+              "sequence": 107,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 43,
+                "generation": 3
+              },
+              "sequence": 108,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 44,
+                "generation": 3
+              },
+              "sequence": 109,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 45,
+                "generation": 3
+              },
+              "sequence": 110,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 46,
+                "generation": 3
+              },
+              "sequence": 111,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 47,
+                "generation": 3
+              },
+              "sequence": 112,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 40,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 48,
+                "generation": 3
+              },
+              "sequence": 113,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 49,
+                "generation": 3
+              },
+              "sequence": 114,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 50,
+                "generation": 3
+              },
+              "sequence": 115,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 51,
+                "generation": 3
+              },
+              "sequence": 116,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 52,
+                "generation": 3
+              },
+              "sequence": 117,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 53,
+                "generation": 3
+              },
+              "sequence": 118,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 54,
+                "generation": 3
+              },
+              "sequence": 119,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 55,
+                "generation": 3
+              },
+              "sequence": 120,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 48,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 56,
+                "generation": 3
+              },
+              "sequence": 121,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 57,
+                "generation": 3
+              },
+              "sequence": 122,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 58,
+                "generation": 3
+              },
+              "sequence": 123,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 59,
+                "generation": 3
+              },
+              "sequence": 124,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 60,
+                "generation": 3
+              },
+              "sequence": 125,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 61,
+                "generation": 3
+              },
+              "sequence": 126,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 62,
+                "generation": 3
+              },
+              "sequence": 127,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 63,
+                "generation": 3
+              },
+              "sequence": 128,
+              "at": 32,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 56,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [],
+          "previews": [
+            []
+          ]
+        }
+      ]
+    }
+  }
+}

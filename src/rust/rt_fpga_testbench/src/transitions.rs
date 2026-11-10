@@ -356,6 +356,7 @@ struct Oracle {
     ids: Vec<native::LoopId>,
     retained: Vec<Option<(RequestId, Command, u64)>>,
     preparing: bool,
+    observation_limit: usize,
 }
 impl Engine for Oracle {
     fn frame(&self) -> u64 {
@@ -466,6 +467,9 @@ impl Engine for Oracle {
     fn preview(&mut self, observations: &[Observation]) -> Result<Vec<Decision>, TransitionError> {
         // The hardware transport freezes control input across preflight retries.
         self.preparing = true;
+        if observations.len() > self.observation_limit {
+            return Err(TransitionError::Capacity);
+        }
         let observations: Result<Vec<_>, _> = observations
             .iter()
             .map(|o| {
@@ -569,6 +573,7 @@ pub fn run_transition_oracle(case: TransitionCase) -> Result<TransitionTrace, Tr
             ids,
             retained: vec![None; limits.pending_requests as usize],
             preparing: false,
+            observation_limit: limits.loop_slots as usize + limits.pending_requests as usize,
         },
     )
 }

@@ -312,6 +312,27 @@ fn wide_integers_roundtrip_and_timing_rounds_up() {
     assert_eq!(trace.results[2].states[0].position, 0);
 }
 
+#[shoop_test]
+fn oracle_adapter_enforces_the_hardware_observation_limit() {
+    let mut first = step(vec![command(0, 1, 0, play())]);
+    first.previews = vec![
+        vec![
+            Observation::CaptureUnavailable {
+                target: id(0),
+                reason: TransitionError::Capacity,
+            };
+            45
+        ],
+        vec![],
+    ];
+    let trace = compare(case(16, vec![spec(0, 32, None, false)], vec![first]));
+    assert_eq!(
+        trace.results[0].previews[0],
+        Response::Rejected(TransitionError::Capacity)
+    );
+    assert_eq!(trace.results[0].states[0].mode, Mode::Playing);
+}
+
 struct Random(u64);
 impl Random {
     fn next(&mut self) -> u64 {

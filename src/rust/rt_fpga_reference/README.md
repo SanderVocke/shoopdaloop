@@ -99,6 +99,8 @@ not perform media preparation or enforce playback/capture exclusion in sample jo
 The testbench compares decisions, retained requests/completions, ordered events,
 and post-quantum state against `shoop_loops::Resolver` for this primitive subset.
 See `scripts/fpga_testbench/README.md` for replayable transition traces.
+The standalone RTL and Rust/native/RTL comparison bench live in
+`fpga/transition_processor`; the native app retains its existing resolver.
 
 ## Serialization and RTL comparison
 
