@@ -64,7 +64,6 @@ pub enum Instruction {
     },
     ProcessLoopCapture {
         view: Address,
-        active: Address,
         enabled: Address,
         source: BufferId,
     },
@@ -99,23 +98,6 @@ impl StateProcessor {
     pub fn run(&mut self, program: &Program, queue: &mut JobQueue) -> Result<(), Error> {
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
             return Err(Error::QueueFull);
-        }
-        // Finalize ended captures before playback can read the same view this quantum.
-        for &instruction in &program.instructions {
-            if let Instruction::ProcessLoopCapture {
-                view,
-                enabled,
-                active,
-                ..
-            } = instruction
-            {
-                if self.read(enabled)?.word()? == 0 && self.read(active)?.word()? != 0 {
-                    queue.push(Job::Seal {
-                        view: self.view(view)?,
-                    })?;
-                    self.write(active, Value::Word(0))?;
-                }
-            }
         }
         for &instruction in &program.instructions {
             match instruction {
@@ -170,7 +152,6 @@ impl StateProcessor {
                 })?,
                 Instruction::ProcessLoopCapture {
                     view,
-                    active,
                     enabled,
                     source,
                 } => {
@@ -179,7 +160,6 @@ impl StateProcessor {
                             view: self.view(view)?,
                             source,
                         })?;
-                        self.write(active, Value::Word(1))?;
                     }
                 }
                 Instruction::ProcessOutput { source, port } => {

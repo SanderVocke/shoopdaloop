@@ -15,10 +15,10 @@ sample jobs. A hardware-like instruction set and VLIW lowering are deferred.
 The standalone compiler emits `ProcessLoopPlayback`, `ProcessLoopCapture`,
 `ProcessGain`, `ProcessMix`, input and output instructions. Operands identify
 persistent state addresses and temporary buffers. The state processor owns
-mode-dependent job selection, ramp progression, and capture finalization. It reads
+mode-dependent job selection and ramp progression. It reads
 settled loop modes and positions without resolving transitions or advancing loop
-clocks. It has no graph or sample-store access. Capture finalization emits seal
-jobs before playback may consume a completed take in that quantum.
+clocks. It has no graph or sample-store access and executes the instruction list
+once per quantum.
 
 The separate `TransitionProcessor` owns immediate loop controls, logical clocks,
 and one-shot enable/disable actions at a source loop's next wrap. It applies
@@ -99,9 +99,10 @@ semantics. Native and standalone ramp conventions can differ.
 - Fresh temporary sample buffers per producer per quantum; fan-out shares a buffer.
 - `Memory` separates jobs from storage. `MediaStore` uses mono chunks and external
   chunk tables; extra channels use separate views. Chunk size and quantum are independent.
-- Private recording destinations seal for immutable playback. IDs never recycle;
-  editing, reclamation and finite external-memory admission are deferred. Reusing
-  a sealed standalone capture destination requires preparing a new view/state.
+- Views support append and reads within their recorded frame count. Capture and
+  playback may run in the same quantum; FIFO order determines which samples have
+  been written when a read executes. IDs never recycle; editing, reclamation and
+  finite external-memory admission are deferred.
 - Provisional signed Q8.24 samples and gains. Multiplication uses `i64`, truncates
   toward zero and saturates; binary mixes saturate per job. Ramp interpolation
   preserves its time domain. This is a functional model, not a hardware layout.
@@ -128,7 +129,8 @@ python3 scripts/benchmark_audio_chunks.py \
 
 Tests compare output and captured audio at Q=1/32 and callback partitions 1/13/128,
 and assert that program contents and allocation identity remain unchanged across
-mode and parameter changes. Standalone coverage includes automatic take sealing,
+mode and parameter changes. Standalone coverage includes bounded view reads,
+playback while appending to the same view in either signal order,
 record/play/stop/seek/ramp changes through one program, FIFO refusal and fixed-point
 saturation. Standalone and app timing tests also reverse signal order relative to
 sync dependencies and check that sync edits and transitions preserve the signal

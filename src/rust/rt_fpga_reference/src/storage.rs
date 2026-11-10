@@ -13,11 +13,10 @@ pub struct ViewId(pub usize);
 struct View {
     chunks: Vec<ChunkId>,
     frames: usize,
-    sealed: bool,
 }
 
 /// Mono chunks; represent additional channels using separate views/graph paths.
-/// IDs never recycle in this first model, and sealed payloads are immutable.
+/// IDs never recycle in this first model. Views support append and bounded reads.
 pub struct MediaStore {
     chunk_frames: usize,
     chunks: Vec<Vec<Fixed>>,
@@ -41,7 +40,6 @@ impl MediaStore {
         self.views.push(View {
             chunks: Vec::new(),
             frames: 0,
-            sealed: false,
         });
         id
     }
@@ -49,7 +47,6 @@ impl MediaStore {
     pub fn insert(&mut self, samples: &[Fixed]) -> Result<ViewId, Error> {
         let id = self.create_recording();
         self.append(id, samples)?;
-        self.seal(id)?;
         Ok(id)
     }
 
@@ -57,16 +54,8 @@ impl MediaStore {
         Ok(self.views.get(id.0).ok_or(Error::InvalidView)?.frames)
     }
 
-    pub fn seal(&mut self, id: ViewId) -> Result<(), Error> {
-        self.views.get_mut(id.0).ok_or(Error::InvalidView)?.sealed = true;
-        Ok(())
-    }
-
     pub fn append(&mut self, id: ViewId, samples: &[Fixed]) -> Result<(), Error> {
         let view = self.views.get_mut(id.0).ok_or(Error::InvalidView)?;
-        if view.sealed {
-            return Err(Error::InvalidView);
-        }
         for &sample in samples {
             if view.frames % self.chunk_frames == 0 {
                 view.chunks.push(ChunkId(self.chunks.len()));
@@ -87,7 +76,7 @@ impl MediaStore {
         output: &mut [Fixed],
     ) -> Result<(), Error> {
         let view = self.views.get(id.0).ok_or(Error::InvalidView)?;
-        if !view.sealed || length == 0 || length > view.frames as u64 || position >= length {
+        if length == 0 || length > view.frames as u64 || position >= length {
             return Err(Error::InvalidView);
         }
         let mut frame = position;
@@ -102,9 +91,6 @@ impl MediaStore {
 }
 
 impl crate::jobs::Memory for MediaStore {
-    fn seal(&mut self, view: ViewId) -> Result<(), Error> {
-        MediaStore::seal(self, view)
-    }
     fn read(
         &mut self,
         view: ViewId,

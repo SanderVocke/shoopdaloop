@@ -184,11 +184,9 @@ fn lower(index: usize, node: &Node, compiled: &mut Compiled) -> Result<(), Error
         } => {
             let view = state(Value::Word(view.0 as u64));
             let enabled = state(Value::Word(u64::from(recording)));
-            let active = state(Value::Word(0));
             compiled.bindings[index] = Binding::Capture { enabled };
             Instruction::ProcessLoopCapture {
                 view,
-                active,
                 enabled,
                 source: BufferId(input.0),
             }
