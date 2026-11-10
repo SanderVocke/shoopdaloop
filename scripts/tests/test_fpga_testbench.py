@@ -131,6 +131,50 @@ class CrossLanguageContract(unittest.TestCase):
         )
         self.assertEqual(json.loads(result.stdout), wire.schema())
 
+    def test_transition_traces_compare_model_native_resolver_and_exact_boundary_results(self):
+        case = wire.load(ROOT / "scripts/fpga_testbench/examples/transition_record_play_sync.json")
+        self.assertEqual(self.reference("roundtrip", case), case)
+        plan = document("transition_plan", case["payload"]["value"]["plan"])
+        image = self.reference("compile", plan)
+        self.assertEqual(image["payload"]["kind"], "transition_plan_image")
+        self.assertEqual(self.reference("roundtrip", image), image)
+        trace = self.reference("trace", case)
+        self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
+        results = trace["payload"]["value"]["results"]
+        self.assertEqual(results[4]["states"][1]["mode"], "playing")
+        self.assertEqual(results[4]["states"][1]["content_length"], 64)
+        self.assertEqual(results[4]["states"][2]["last_pulse"], 64)
+        self.assertEqual(results[0]["previews"][0]["value"][1]["state"]["mode"], "stopped")
+        self.assertEqual(results[0]["states"][1]["mode"], "recording")
+        for result in results:
+            wire.assert_transition_result_matches(result, deepcopy(result))
+        changed = deepcopy(trace)
+        changed["payload"]["value"]["results"][4]["states"][1]["position"] += 1
+        with self.assertRaises(AssertionError):
+            wire.assert_transition_result_matches(results[4], changed["payload"]["value"]["results"][4])
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.reference("check", changed)
+
+    def test_transition_values_preserve_wide_counters_and_validate_identity_fields(self):
+        case = wire.load(ROOT / "scripts/fpga_testbench/examples/transition_record_play_sync.json")
+        command = case["payload"]["value"]["steps"][0]["commands"][0]
+        command["sequence"] = U64_MAX
+        command["at"] = U64_MAX
+        command["operation"]["position"] = U64_MAX
+        self.assertEqual(self.reference("roundtrip", case), case)
+        for field, invalid in [("sequence", U64_MAX + 1), ("at", True)]:
+            bad = deepcopy(case)
+            bad["payload"]["value"]["steps"][0]["commands"][0][field] = invalid
+            self.assert_rejected_by_both(bad)
+        bad = deepcopy(case)
+        bad["payload"]["value"]["steps"][0]["commands"][0]["target"]["generation"] = U32_MAX + 1
+        self.assert_rejected_by_both(bad)
+        unsupported = deepcopy(case)
+        unsupported["payload"]["value"]["plan"]["description"]["loops"][0]["kind"] = "composite"
+        self.assertEqual(self.reference("roundtrip", unsupported), unsupported)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.reference("trace", unsupported)
+
     def test_audio_traces_preserve_samples_readiness_and_reject_sample_mismatches(self):
         compiled = self.reference("compile", document("graph", {
             "quantum": 3,

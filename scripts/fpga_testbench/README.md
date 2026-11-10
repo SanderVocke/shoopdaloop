@@ -44,7 +44,8 @@ schema; saved documents with other versions are rejected.
 Every document has `format_version: 1` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
 `bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
-`audio_trace`, and `media`.
+`audio_trace`, `media`, `transition_plan`, `transition_plan_image`,
+`transition_case`, and `transition_trace`.
 
 - IDs, addresses, ports, capacities, and instruction counts are unsigned 32-bit
   integers on the wire. Existing host `usize` fields use checked conversions.
@@ -84,6 +85,9 @@ The executable reads one document from stdin and writes one document to stdout:
 | `check` | `trace` | Same trace, after recomputing and comparing its results |
 | `trace` | `audio_case` | `audio_trace` from actual state and job execution |
 | `check` | `audio_trace` | Same trace, after recomputing both processors |
+| `compile` | `transition_plan` | Canonical `transition_plan_image` |
+| `trace` | `transition_case` | `transition_trace` from the logical hardware model |
+| `check` | `transition_trace` | Same trace, checked against both model and native resolver |
 
 Malformed input, a mismatched command/payload, or a failed trace comparison exits
 nonzero. A processor execution error is instead recorded in the trace's status.
@@ -189,3 +193,61 @@ reuses slots, plays new content, and removes the view. Supplying a resulting sta
 and media snapshot as another case's initial state/media resumes the same logical
 memory state. The BRAM job-processor RTL still refuses media jobs; external-memory
 RTL implementation and its cycle behavior remain future work.
+
+## Logical transition boundary traces
+
+`transition_case` supplies a name, a plan (`description` and `limits`) and steps.
+The description contains a quantum and logical loop specifications: stable
+slot/generation IDs, initial content length, sync source and repeat-sync flag.
+The compiler emits canonical dependency components independently of declaration
+or signal order. Composite kind/timeline fields are reserved and rejected by the
+current compiler. See `src/rust/rt_fpga_reference/README.md` for the supported
+musical subset and runtime protocol. No sample jobs execute in these traces.
+
+Each step executes these actions in order:
+
+1. If `collect_completed` is true, collect all previously terminal requests in
+   slot order, followed by the explicit `collect` request IDs.
+2. Process explicit `cancel` IDs, then submit `commands` in list order.
+3. Run each observation list in `previews` against the same committed frame.
+   This list must contain at least one preview. A retry replaces the candidate
+   and recomputes source delays from the retained inputs.
+4. If the final preview succeeds, commit it and finish one quantum. Earlier
+   previews are never published. After a failed final preview, retry at the same
+   frame with corrected observations; new control mutations remain backpressured
+   in the hardware model.
+
+Commands contain `target`, `sequence`, `at`, `timing` and `operation`. Timing is
+`at` or `after_ticks` with `source` and `skip`. Operations are `stop`, `record`,
+`play` or `seek`; the latter two include `position` and `retrigger`. Observations
+are `capture_unavailable` for a loop or `refused` for a request, with a reason.
+Control/preview replies use `accepted` or `rejected` with a `value`.
+
+Each result records the starting frame, collection/cancellation/submission
+replies, decisions for every preview, whether commit occurred, committed loop
+states, retained request slots, ordered events, states after finish, and next
+frame. Terminal requests keep their slots until collected. `remaining_ticks` is
+null for terminal or absolute-time requests. Decisions include playback
+discontinuity, request origin, and `waiting_repeat`; a waiting primitive remains
+at its content endpoint without advancing until a source pulse releases it.
+
+```sh
+target/debug/fpga-reference trace \
+  < scripts/fpga_testbench/examples/transition_record_play_sync.json \
+  > work/transition.trace.json
+target/debug/fpga-reference check < work/transition.trace.json > /dev/null
+```
+
+The example uses three logical loops: a 64-frame master, a take initially being
+recorded, and a 16-frame follower. At frame 64 the master's second pulse changes
+the take from recording to playback and starts the follower at that same boundary.
+It also exercises discarded preflight refusals, seek and stop. The `check` command
+independently executes `shoop_loops::Resolver` for the supported primitive subset
+and compares every architectural result. Native-only fields and media operations
+are outside this profile; the standalone processor has no native resolver
+dependency. Rust regression tests add 100 seeded graphs over 8,000 quanta.
+
+Python/cocotb drivers can use `assert_transition_result_matches(expected,
+observed)` to compare complete boundary results. No transition RTL or packed ABI
+is defined by this milestone. Boundary tokens are local runtime guards and are
+not serialized; internal settlement cycles remain implementation-dependent.

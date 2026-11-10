@@ -47,9 +47,17 @@ loop handling belongs here; it is not part of the initial prototype.
 
 At a processing boundary it resolves commands and timing events into settled
 loop decisions for the state processor. It advances logical clocks and produces
-wrap events once the quantum completes. Preparing a recording can fail, so state
+wrap events at the following boundary. Preparing a recording can fail, so state
 preparation must be able to return feedback before a transition is committed.
-The exact protocol and hardware representation remain open.
+
+The Rust hardware model now uses prepared logical loop state, generation-checked
+request slots, canonical timing components, and preview/commit/finish transactions.
+Preflight feedback can replace a candidate without publishing state or consuming
+source delays twice. Signal bindings export settled decisions to the state
+processor; the transition processor alone advances logical clocks. Composite
+kinds/timeline references are reserved but explicitly unsupported in this first
+primitive-only version. Serialized boundary traces are checked against the native
+resolver. RTL and packed memory/interface layouts remain to be implemented.
 
 ## State processor
 

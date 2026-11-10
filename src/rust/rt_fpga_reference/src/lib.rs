@@ -22,7 +22,7 @@ use fixed::{Fixed, Ramp};
 use jobs::{JobProcessor, JobQueue};
 use state::{StateProcessor, Value};
 use storage::MediaStore;
-use transitions::TransitionProcessor;
+use transitions::SignalTransitions;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -42,7 +42,7 @@ pub enum Error {
 pub struct Backend {
     pub program: Program,
     pub state: StateProcessor,
-    pub transitions: TransitionProcessor,
+    pub transitions: SignalTransitions,
     pub jobs: JobProcessor,
     pub media: MediaStore,
     pub queue: JobQueue,
@@ -54,7 +54,7 @@ impl Backend {
         let compiled = compiler::compile(graph)?;
         Ok(Self {
             queue: JobQueue::new(compiled.program.jobs_per_quantum),
-            transitions: TransitionProcessor::new(&compiled.bindings),
+            transitions: SignalTransitions::new(&compiled.bindings),
             state: StateProcessor::new(compiled.initial_state),
             jobs: JobProcessor::new(graph.quantum, graph.nodes.len()),
             media,
