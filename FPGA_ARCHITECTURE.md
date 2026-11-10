@@ -138,8 +138,12 @@ The Rust reference uses an elastic contiguous sample-slot arena, dynamic per-vie
 chunk-ID tables, and deterministic reuse of released slots. It has optional chunk
 limits for hardware comparisons and capacity hints for host preparation, with no
 BRAM-cache simulation. Media snapshots and control actions extend the audio trace
-boundary to capture, playback, reclamation, and allocation failure. Native app
-media storage remains behind its existing resource adapter.
+boundary to capture, playback, reclamation, and allocation failure. The app's
+reference backend uses this store behind native resource revisions and snapshot
+leases, with fixed-point capture/playback and float conversion for persistence.
+It permits callback-time growth; warmed playback uses prepared storage. Retired
+recordings reclaim chunks incrementally, while pinned snapshots retain their
+published prefixes.
 
 ## State processor RTL prototype
 

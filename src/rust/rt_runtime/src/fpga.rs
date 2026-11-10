@@ -283,7 +283,6 @@ pub(crate) struct Machine {
     pub(crate) host_outputs: Box<[Box<[Fixed]>]>,
     pub(crate) host_ids: Box<[Option<BufferId>]>,
     pub(crate) output_ids: Box<[BufferId]>,
-    staging: Box<[f32]>,
 }
 impl Machine {
     pub(crate) fn prepare(
@@ -323,11 +322,6 @@ impl Machine {
                 .map(|_| vec![Fixed::ZERO; quantum.frames()].into_boxed_slice())
                 .collect()
         };
-        let channels = specs
-            .iter()
-            .map(|spec| spec.ports.audio_inputs.max(spec.ports.audio_outputs))
-            .max()
-            .unwrap_or(1);
         Ok(Self {
             writer: JobWriter::new(quantum, capacity),
             jobs: JobProcessor::new(quantum.frames(), capacity),
@@ -337,7 +331,6 @@ impl Machine {
             host_outputs: buffers(limits.audio_outputs),
             host_ids: vec![None; limits.audio_inputs].into_boxed_slice(),
             output_ids: vec![BufferId(0); limits.audio_outputs].into_boxed_slice(),
-            staging: vec![0.; channels * quantum.frames()].into_boxed_slice(),
         })
     }
     pub(crate) fn reset(&mut self) -> Result<(), Error> {
@@ -349,7 +342,6 @@ impl Machine {
         let mut memory = ExternalMemory {
             resources,
             views: &self.writer.views,
-            staging: &mut self.staging,
         };
         self.jobs.begin();
         // Port limits are enforced by runtime preparation.
@@ -387,7 +379,6 @@ fn map_error(error: rt_fpga_reference::Error) -> Error {
 struct ExternalMemory<'a> {
     resources: &'a mut ResourceStore,
     views: &'a [View],
-    staging: &'a mut [f32],
 }
 impl Memory for ExternalMemory<'_> {
     fn read(
@@ -409,35 +400,9 @@ impl Memory for ExternalMemory<'_> {
         if length == 0 || position >= length || channel >= channels {
             return Err(fail());
         }
-        let mut io = self.resources.render_io();
-        let snapshot = io.snapshot(index).map_err(|_| fail())?;
-        if snapshot.description.frames < length {
-            return Err(fail());
-        }
-        let mut frame = position;
-        for sample in output {
-            let offset = usize::try_from(frame)
-                .ok()
-                .and_then(|n| n.checked_mul(channels))
-                .and_then(|n| n.checked_add(channel))
-                .and_then(|n| n.checked_mul(4))
-                .ok_or_else(|| fail())?;
-            let mut cursor = io.cursor_at(index, offset).map_err(|_| fail())?;
-            let mut bytes = [0; 4];
-            let mut copied = 0;
-            while copied < 4 {
-                let count = io
-                    .read(&mut cursor, &mut bytes[copied..])
-                    .map_err(|_| fail())?;
-                if count == 0 {
-                    return Err(fail());
-                }
-                copied += count;
-            }
-            *sample = Fixed::from_f32(f32::from_le_bytes(bytes));
-            frame = if frame + 1 == length { 0 } else { frame + 1 };
-        }
-        Ok(())
+        self.resources
+            .read_elastic_audio(index, channel, position, length, output)
+            .map_err(|_| fail())
     }
     fn write(&mut self, view: ViewId, samples: &[Fixed]) -> Result<(), rt_fpga_reference::Error> {
         let fail = || rt_fpga_reference::Error::InvalidView;
@@ -449,18 +414,8 @@ impl Memory for ExternalMemory<'_> {
         else {
             return Err(fail());
         };
-        if samples.len() * channels > self.staging.len() {
-            return Err(fail());
-        }
-        for (frame, sample) in samples.iter().enumerate() {
-            self.staging[frame * channels + channel] = sample.to_f32();
-        }
-        if channel + 1 == channels {
-            self.resources
-                .render_io()
-                .stage_audio(interval, 0, &self.staging[..samples.len() * channels])
-                .map_err(|_| fail())?;
-        }
-        Ok(())
+        self.resources
+            .stage_elastic_audio(interval, 0, channel, channels, samples)
+            .map_err(|_| fail())
     }
 }

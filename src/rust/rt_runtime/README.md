@@ -35,6 +35,10 @@ flowchart LR
 
 **The real-time contract is conditional:** runtime callback paths use prepared storage and finite application-dependent rendering work without heap allocation, freeing, locks, waits, or external I/O. Your processors and host callback must satisfy the same contract. This is not a hard-real-time deadline guarantee.
 
+The experimental `fpga-reference` audio renderer permits elastic media growth and
+table retirement on callbacks. Its warmed playback uses prepared storage; capture
+and reclamation are measured separately. See `../rt_fpga_reference/README.md`.
+
 ## Documentation
 
 The [nineteen-chapter book](docs/README.md) is the primary guide. Its tasks use small independent public-API examples rather than a growing application.

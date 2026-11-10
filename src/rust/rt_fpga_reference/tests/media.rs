@@ -22,6 +22,32 @@ fn read(store: &MediaStore, view: ViewId) -> Vec<Fixed> {
 }
 
 #[shoop_test]
+fn consecutive_views_and_incremental_retirement_preserve_other_recordings() {
+    let mut store = MediaStore::new(3).unwrap();
+    let before = store.snapshot();
+    assert_eq!(store.create_recordings(0), Err(Error::InvalidShape));
+    assert_eq!(store.snapshot(), before);
+    let first = store.create_recordings(2).unwrap();
+    let second = ViewId(first.0 + 1);
+    store.append(first, &samples(&[1, 2, 3, 4])).unwrap();
+    store.append(second, &samples(&[5, 6])).unwrap();
+    assert!(!store.reclaim_chunk(first).unwrap());
+    assert_eq!(read(&store, first), samples(&[1, 2, 3]));
+    assert_eq!(read(&store, second), samples(&[5, 6]));
+    assert_eq!(store.free_chunk_count(), 1);
+    assert!(store.reclaim_chunk(first).unwrap());
+    assert!(store.reclaim_chunk(first).unwrap());
+    assert_eq!(store.free_chunk_count(), 2);
+    store.remove(first).unwrap();
+    assert_eq!(store.reclaim_chunk(first), Err(Error::InvalidView));
+    let next = store.create_recordings(2).unwrap();
+    assert_eq!(next, ViewId(second.0 + 1));
+    store.append(next, &samples(&[7, 8, 9, 10])).unwrap();
+    assert_eq!(store.chunk_ids(next).unwrap(), [ChunkId(0), ChunkId(1)]);
+    assert_eq!(store.slot_count(), 3);
+}
+
+#[shoop_test]
 fn arena_and_tables_grow_without_moving_ids_or_changing_existing_audio() {
     let mut store = MediaStore::new(3).unwrap();
     store.reserve_chunk_capacity(100).unwrap();

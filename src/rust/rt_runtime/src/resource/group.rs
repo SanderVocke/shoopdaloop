@@ -392,6 +392,19 @@ impl ResourceStore {
         if self.free_versions.len() < group.members || self.free_snapshots.len() < group.members {
             return Err(Error::Capacity);
         }
+        if let Some(audio) = &mut self.elastic_audio {
+            let channels = (0..group.members).try_fold(0usize, |total, index| {
+                let count = match self.capture_groups.member(id, index).spec.format {
+                    Format::Audio { channels } => channels as usize,
+                    Format::Midi => 0,
+                };
+                total.checked_add(count).ok_or(Error::Capacity)
+            })?;
+            audio
+                .media
+                .reserve_recordings(channels)
+                .map_err(|_| Error::Capacity)?;
+        }
         if midi != 0 {
             self.midi_indexes.prepare()?;
             if self.midi_indexes.usage().free_versions < midi {

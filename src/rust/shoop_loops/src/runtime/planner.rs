@@ -644,6 +644,14 @@ impl LoopPlanner {
                                     let row = self.rows[slot].as_mut().expect("validated row");
                                     row.windows = Windows::default();
                                     row.length_override = None;
+                                    let groups = row.groups;
+                                    if io.audio_render_mode()
+                                        == rt_runtime::AudioRenderMode::FpgaReference
+                                    {
+                                        for group in groups.into_iter().flatten().flatten() {
+                                            io.capture().clear_idle_group(group)?;
+                                        }
+                                    }
                                 }
                             }
                         }

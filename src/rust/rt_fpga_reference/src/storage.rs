@@ -90,6 +90,10 @@ impl MediaStore {
         self.samples.len() / self.chunk_frames
     }
 
+    pub fn slot_capacity(&self) -> usize {
+        self.samples.capacity() / self.chunk_frames
+    }
+
     pub fn free_chunk_count(&self) -> usize {
         self.free_chunks.len()
     }
@@ -125,13 +129,29 @@ impl MediaStore {
     }
 
     pub fn create_recording(&mut self) -> Result<ViewId, Error> {
-        self.views.try_reserve(1).map_err(|_| Error::MemoryFull)?;
+        self.create_recordings(1)
+    }
+
+    /// Consecutive IDs let a multichannel adapter keep a compact channel range.
+    pub fn create_recordings(&mut self, count: usize) -> Result<ViewId, Error> {
+        if count == 0 {
+            return Err(Error::InvalidShape);
+        }
+        self.reserve_recordings(count)?;
         let id = ViewId(self.views.len());
-        self.views.push(Some(ViewSnapshot {
-            chunks: Vec::new(),
-            frames: 0,
-        }));
+        for _ in 0..count {
+            self.views.push(Some(ViewSnapshot {
+                chunks: Vec::new(),
+                frames: 0,
+            }));
+        }
         Ok(id)
+    }
+
+    pub fn reserve_recordings(&mut self, additional: usize) -> Result<(), Error> {
+        self.views
+            .try_reserve(additional)
+            .map_err(|_| Error::MemoryFull)
     }
 
     pub fn insert(&mut self, samples: &[Fixed]) -> Result<ViewId, Error> {
@@ -184,6 +204,22 @@ impl MediaStore {
             .ok_or(Error::InvalidView)?;
         self.free_chunks.extend(view.chunks);
         Ok(())
+    }
+
+    /// Release at most one tail slot from a quiescent view; report whether empty.
+    pub fn reclaim_chunk(&mut self, id: ViewId) -> Result<bool, Error> {
+        let view = self
+            .views
+            .get_mut(id.0)
+            .and_then(Option::as_mut)
+            .ok_or(Error::InvalidView)?;
+        if let Some(chunk) = view.chunks.pop() {
+            self.free_chunks.push(chunk);
+            view.frames = view
+                .frames
+                .min((view.chunks.len() * self.chunk_frames) as u64);
+        }
+        Ok(view.chunks.is_empty())
     }
 
     pub fn append(&mut self, id: ViewId, samples: &[Fixed]) -> Result<(), Error> {
