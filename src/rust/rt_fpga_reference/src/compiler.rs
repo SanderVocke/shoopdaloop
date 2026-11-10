@@ -11,11 +11,26 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NodeId(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct NodeId(
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
+    pub usize,
+);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Node {
     Input {
+        #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+        #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
     },
     Playback {
@@ -39,16 +54,35 @@ pub enum Node {
     },
     Output {
         input: NodeId,
+        #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+        #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
     },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Graph {
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
     pub quantum: usize,
     pub nodes: Vec<Node>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        tag = "kind",
+        content = "value",
+        rename_all = "snake_case",
+        deny_unknown_fields
+    )
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Binding {
     None,
     Playback {
@@ -66,6 +100,10 @@ pub enum Binding {
 
 pub use crate::state::Program;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Compiled {
     pub program: Program,
     pub initial_state: Vec<Value>,

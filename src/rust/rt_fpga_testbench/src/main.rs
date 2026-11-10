@@ -1,0 +1,35 @@
+use rt_fpga_testbench::{run_case, schema, Document, Payload};
+use std::io::{self, Read};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args == ["schema"] {
+        println!("{}", serde_json::to_string_pretty(&schema())?);
+        return Ok(());
+    }
+    if args.len() != 1 || !["roundtrip", "compile", "trace", "check"].contains(&args[0].as_str()) {
+        return Err(
+            "usage: fpga-reference {schema|roundtrip|compile|trace|check}; JSON on stdin".into(),
+        );
+    }
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let document = Document::from_json(&input)?;
+    let payload = match (args[0].as_str(), document.payload) {
+        ("roundtrip", payload) => payload,
+        ("compile", Payload::Graph(graph)) => Payload::Compiled(
+            rt_fpga_reference::compiler::compile(&graph)
+                .map_err(|error| format!("compile failed: {error:?}"))?,
+        ),
+        ("trace", Payload::Case(case)) => Payload::Trace(run_case(case)),
+        ("check", Payload::Trace(trace)) => {
+            if run_case(trace.case.clone()) != trace {
+                return Err("trace differs from Rust state processor results".into());
+            }
+            Payload::Trace(trace)
+        }
+        _ => return Err("payload kind does not match command".into()),
+    };
+    println!("{}", Document::new(payload).to_json()?);
+    Ok(())
+}

@@ -1,0 +1,1211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Document",
+  "type": "object",
+  "properties": {
+    "format_version": {
+      "$ref": "#/$defs/FormatVersion"
+    },
+    "payload": {
+      "$ref": "#/$defs/Payload"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "format_version",
+    "payload"
+  ],
+  "$defs": {
+    "Address": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 4294967295,
+      "minimum": 0
+    },
+    "Binding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "playback"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "$ref": "#/$defs/Address"
+                },
+                "length": {
+                  "$ref": "#/$defs/Address"
+                },
+                "position": {
+                  "$ref": "#/$defs/Address"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "position",
+                "length",
+                "enabled"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "gain"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "ramp": {
+                  "$ref": "#/$defs/Address"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "ramp"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "capture"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "$ref": "#/$defs/Address"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "enabled"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "BufferId": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 4294967295,
+      "minimum": 0
+    },
+    "Compiled": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          }
+        },
+        "initial_state": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
+          }
+        },
+        "program": {
+          "$ref": "#/$defs/Program"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "program",
+        "initial_state",
+        "bindings"
+      ]
+    },
+    "Error": {
+      "type": "string",
+      "enum": [
+        "invalid_graph",
+        "invalid_state",
+        "invalid_buffer",
+        "invalid_view",
+        "invalid_shape",
+        "queue_full"
+      ]
+    },
+    "ExecutionStatus": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "completed"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "$ref": "#/$defs/Error"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "error"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "FormatVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "Graph": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        },
+        "quantum": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "quantum",
+        "nodes"
+      ]
+    },
+    "Instruction": {
+      "description": "Operands reference live state, never values specialized to the current mode.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "process_input"
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "port",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "enabled": {
+              "$ref": "#/$defs/Address"
+            },
+            "kind": {
+              "type": "string",
+              "const": "process_loop_playback"
+            },
+            "length": {
+              "$ref": "#/$defs/Address"
+            },
+            "position": {
+              "$ref": "#/$defs/Address"
+            },
+            "view": {
+              "$ref": "#/$defs/Address"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view",
+            "position",
+            "length",
+            "enabled",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "process_gain"
+            },
+            "ramp": {
+              "$ref": "#/$defs/Address"
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "ramp",
+            "source",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "process_mix"
+            },
+            "left": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "right": {
+              "$ref": "#/$defs/BufferId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "left",
+            "right",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "$ref": "#/$defs/Address"
+            },
+            "kind": {
+              "type": "string",
+              "const": "process_loop_capture"
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "view": {
+              "$ref": "#/$defs/Address"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view",
+            "enabled",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "process_output"
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "port"
+          ]
+        }
+      ]
+    },
+    "Job": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "input"
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "port",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "silence"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "read_view"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "position": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view",
+            "position",
+            "length",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "gain"
+            },
+            "ramp": {
+              "$ref": "#/$defs/Ramp"
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "destination",
+            "ramp"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "mix"
+            },
+            "left": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "right": {
+              "$ref": "#/$defs/BufferId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "left",
+            "right",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "capture"
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "view"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "output"
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            },
+            "source": {
+              "$ref": "#/$defs/BufferId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "port"
+          ]
+        }
+      ]
+    },
+    "Node": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "input"
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "port"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "playback"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "playing": {
+              "type": "boolean"
+            },
+            "position": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view",
+            "length",
+            "position",
+            "playing"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "gain": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 2147483647,
+              "minimum": -2147483648
+            },
+            "input": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "gain"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "input",
+            "gain"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mix"
+            },
+            "left": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "right": {
+              "$ref": "#/$defs/NodeId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "left",
+            "right"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "input": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "capture"
+            },
+            "recording": {
+              "type": "boolean"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "input",
+            "view",
+            "recording"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "input": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "output"
+            },
+            "port": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "input",
+            "port"
+          ]
+        }
+      ]
+    },
+    "NodeId": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 4294967295,
+      "minimum": 0
+    },
+    "OnWrap": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/NodeId"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "enabled"
+      ]
+    },
+    "Payload": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "graph"
+            },
+            "value": {
+              "$ref": "#/$defs/Graph"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "compiled"
+            },
+            "value": {
+              "$ref": "#/$defs/Compiled"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "program"
+            },
+            "value": {
+              "$ref": "#/$defs/Program"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "instructions"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Instruction"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "state"
+            },
+            "value": {
+              "$ref": "#/$defs/StateSnapshot"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "jobs"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Job"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bindings"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Binding"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "state_writes"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/StateWrite"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "on_wrap"
+            },
+            "value": {
+              "$ref": "#/$defs/OnWrap"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "status"
+            },
+            "value": {
+              "$ref": "#/$defs/ExecutionStatus"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "case"
+            },
+            "value": {
+              "$ref": "#/$defs/StateCase"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "trace"
+            },
+            "value": {
+              "$ref": "#/$defs/StateTrace"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "Program": {
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Instruction"
+          }
+        },
+        "jobs_per_quantum": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "quantum": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "instructions",
+        "quantum",
+        "jobs_per_quantum"
+      ]
+    },
+    "Ramp": {
+      "description": "The first affected sample has `start`; sample `duration` and later have `target`.\nPreserve the original domain across quantum boundaries and interrupted ramps.",
+      "type": "object",
+      "properties": {
+        "duration": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "elapsed": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "start": {
+          "type": "integer",
+          "format": "int32",
+          "maximum": 2147483647,
+          "minimum": -2147483648
+        },
+        "target": {
+          "type": "integer",
+          "format": "int32",
+          "maximum": 2147483647,
+          "minimum": -2147483648
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "target",
+        "duration",
+        "elapsed"
+      ]
+    },
+    "StateCase": {
+      "type": "object",
+      "properties": {
+        "initial_state": {
+          "$ref": "#/$defs/StateSnapshot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "program": {
+          "$ref": "#/$defs/Program"
+        },
+        "queue_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateStep"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "program",
+        "initial_state",
+        "queue_capacity",
+        "steps"
+      ]
+    },
+    "StateResult": {
+      "type": "object",
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          }
+        },
+        "state": {
+          "$ref": "#/$defs/StateSnapshot"
+        },
+        "status": {
+          "$ref": "#/$defs/ExecutionStatus"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "jobs",
+        "state",
+        "status"
+      ]
+    },
+    "StateSnapshot": {
+      "type": "object",
+      "properties": {
+        "memory": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "memory"
+      ]
+    },
+    "StateStep": {
+      "type": "object",
+      "properties": {
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateWrite"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "writes"
+      ]
+    },
+    "StateTrace": {
+      "type": "object",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/StateCase"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateResult"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "case",
+        "results"
+      ]
+    },
+    "StateWrite": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/Address"
+        },
+        "value": {
+          "$ref": "#/$defs/Value"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "address",
+        "value"
+      ]
+    },
+    "Value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "word"
+            },
+            "value": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ramp"
+            },
+            "value": {
+              "$ref": "#/$defs/Ramp"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "ViewId": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 4294967295,
+      "minimum": 0
+    }
+  }
+}

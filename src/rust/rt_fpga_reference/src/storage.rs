@@ -5,10 +5,24 @@ use alloc::{vec, vec::Vec};
 use crate::{fixed::Fixed, Error};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ChunkId(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct ChunkId(
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
+    pub usize,
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ViewId(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct ViewId(
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
+    pub usize,
+);
 
 struct View {
     chunks: Vec<ChunkId>,

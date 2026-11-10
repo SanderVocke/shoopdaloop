@@ -127,3 +127,9 @@ The `rt_fpga_reference` crate provides a readable single-issue software model of
 this decomposition. It also has an experimental `fpga-reference` native renderer
 for app-connected comparisons. See `src/rust/rt_fpga_reference/README.md` for the
 supported subset, execution example, and boundaries of the existing app adapter.
+
+The `rt_fpga_testbench` tool and Python helpers exchange versioned JSON values
+validated against a schema generated from Rust. Reference traces record ordered
+jobs and architectural state after each quantum, providing a comparison boundary
+for a future cocotb/SystemVerilog testbench without fixing internal hardware
+layout or cycle counts. See `scripts/fpga_testbench/README.md`.

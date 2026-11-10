@@ -40,6 +40,16 @@ cargo test -p rt_fpga_reference
 `record_play` prints one compiled node program and two different job streams,
 then verifies exact recorded playback without changing the program.
 
+## Serialization and RTL comparison
+
+Optional `serde` and `schema` features describe the standalone subsystem boundary
+values without adding serialization dependencies to default renderer builds.
+The `rt_fpga_testbench` tool publishes a versioned JSON Schema and can compile
+graphs, generate reference quantum traces, round-trip values, and verify saved
+traces. A Python module validates the same format and compares job/state results
+for a future cocotb driver. See `scripts/fpga_testbench/README.md` for commands,
+the example case, exact integer representations, and the comparison boundary.
+
 ## Normal app / host selection
 
 ```sh

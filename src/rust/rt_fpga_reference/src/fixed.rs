@@ -1,6 +1,9 @@
 //! Provisional Q8.24 arithmetic: signed 32-bit values, saturation, truncation toward zero.
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Fixed(pub i32);
 
 impl Fixed {
@@ -32,6 +35,9 @@ impl Fixed {
 /// The first affected sample has `start`; sample `duration` and later have `target`.
 /// Preserve the original domain across quantum boundaries and interrupted ramps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Ramp {
     pub start: Fixed,
     pub target: Fixed,

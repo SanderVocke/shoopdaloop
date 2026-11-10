@@ -9,11 +9,26 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct BufferId(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct BufferId(
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
+    pub usize,
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Job {
     Input {
+        #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+        #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
         destination: BufferId,
     },
@@ -42,6 +57,8 @@ pub enum Job {
     },
     Output {
         source: BufferId,
+        #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+        #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
     },
 }

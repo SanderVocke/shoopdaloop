@@ -14,6 +14,9 @@ pub mod state;
 pub mod storage;
 pub mod transitions;
 
+#[cfg(feature = "serde")]
+mod serde_index;
+
 use compiler::{Binding, Graph, NodeId, Program};
 use fixed::{Fixed, Ramp};
 use jobs::{JobProcessor, JobQueue};
@@ -22,6 +25,9 @@ use storage::MediaStore;
 use transitions::TransitionProcessor;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Error {
     InvalidGraph,
     InvalidState,

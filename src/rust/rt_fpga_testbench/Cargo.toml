@@ -1,0 +1,22 @@
+[package]
+name = "rt_fpga_testbench"
+version.workspace = true
+edition = "2021"
+description = "Versioned Rust/Python traces for FPGA state processor verification"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rt_fpga_reference = { path = "../rt_fpga_reference", features = ["schema"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json.workspace = true
+schemars = "1"
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[[bin]]
+name = "fpga-reference"
+path = "src/main.rs"

@@ -9,16 +9,39 @@ use crate::{
 use alloc::vec::Vec;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Program {
     pub instructions: Vec<Instruction>,
     pub quantum: u32,
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
     pub jobs_per_quantum: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Address(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Address(
+    #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+    #[cfg_attr(feature = "schema", schemars(with = "u32"))]
+    pub usize,
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        tag = "kind",
+        content = "value",
+        rename_all = "snake_case",
+        deny_unknown_fields
+    )
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Value {
     Word(u64),
     Ramp(Ramp),
@@ -40,8 +63,16 @@ impl Value {
 
 /// Operands reference live state, never values specialized to the current mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Instruction {
     ProcessInput {
+        #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+        #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
         destination: BufferId,
     },
@@ -69,6 +100,8 @@ pub enum Instruction {
     },
     ProcessOutput {
         source: BufferId,
+        #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
+        #[cfg_attr(feature = "schema", schemars(with = "u32"))]
         port: usize,
     },
 }
@@ -79,6 +112,9 @@ pub struct StateProcessor {
 impl StateProcessor {
     pub fn new(memory: Vec<Value>) -> Self {
         Self { memory }
+    }
+    pub fn values(&self) -> &[Value] {
+        &self.memory
     }
     pub fn read(&self, address: Address) -> Result<Value, Error> {
         self.memory

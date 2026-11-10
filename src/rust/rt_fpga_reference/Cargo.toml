@@ -5,6 +5,14 @@ edition = "2021"
 description = "Readable audio-only compiler/state/job reference for FPGA exploration"
 publish = false
 
+[features]
+serde = ["dep:serde"]
+schema = ["serde", "dep:schemars"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"], optional = true }
+schemars = { version = "1", optional = true }
+
 [lints]
 workspace = true
 

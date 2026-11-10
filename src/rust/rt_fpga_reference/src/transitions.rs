@@ -13,6 +13,9 @@ struct LoopBinding {
     clock: Option<(Address, Address)>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct OnWrap {
     pub source: NodeId,
     pub target: NodeId,
