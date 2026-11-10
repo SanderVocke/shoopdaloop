@@ -35,6 +35,7 @@ pub enum Error {
     InvalidView,
     InvalidShape,
     QueueFull,
+    MemoryFull,
 }
 
 /// Convenience host adapter. The two processors themselves have no graph access.

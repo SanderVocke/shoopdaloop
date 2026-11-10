@@ -22,9 +22,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|error| format!("compile failed: {error:?}"))?,
         ),
         ("trace", Payload::Case(case)) => Payload::Trace(run_case(case)),
-        ("trace", Payload::AudioCase(case)) => Payload::AudioTrace(run_audio_case(case)),
+        ("trace", Payload::AudioCase(case)) => Payload::AudioTrace(
+            run_audio_case(case)
+                .map_err(|error| format!("audio initialization failed: {error:?}"))?,
+        ),
         ("check", Payload::AudioTrace(trace)) => {
-            if run_audio_case(trace.case.clone()) != trace {
+            if run_audio_case(trace.case.clone())
+                .map_err(|error| format!("audio initialization failed: {error:?}"))?
+                != trace
+            {
                 return Err("trace differs from Rust state/job processor results".into());
             }
             Payload::AudioTrace(trace)

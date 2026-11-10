@@ -1,0 +1,277 @@
+{
+  "format_version": 1,
+  "payload": {
+    "kind": "audio_case",
+    "value": {
+      "buffers": 4,
+      "initial_state": {
+        "memory": [
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 1
+          },
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 8
+          },
+          {
+            "kind": "word",
+            "value": 0
+          }
+        ]
+      },
+      "media": {
+        "chunk_frames": 3,
+        "free_chunks": [],
+        "samples": [],
+        "views": [
+          {
+            "chunks": [],
+            "frames": 0
+          }
+        ]
+      },
+      "name": "elastic arena growth, wrapped playback, clear, reuse, remove",
+      "output_ports": 1,
+      "program": {
+        "instructions": [
+          {
+            "destination": 0,
+            "kind": "process_input",
+            "port": 0
+          },
+          {
+            "enabled": 1,
+            "kind": "process_loop_capture",
+            "source": 0,
+            "view": 0
+          },
+          {
+            "destination": 2,
+            "enabled": 5,
+            "kind": "process_loop_playback",
+            "length": 4,
+            "position": 3,
+            "view": 2
+          },
+          {
+            "kind": "process_output",
+            "port": 0,
+            "source": 2
+          }
+        ],
+        "jobs_per_quantum": 4,
+        "quantum": 4
+      },
+      "queue_capacity": 4,
+      "steps": [
+        {
+          "inputs": [
+            [
+              1,
+              2,
+              3,
+              4
+            ]
+          ],
+          "writes": []
+        },
+        {
+          "inputs": [
+            [
+              5,
+              6,
+              7,
+              8
+            ]
+          ],
+          "writes": []
+        },
+        {
+          "inputs": [
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "writes": [
+            {
+              "address": 1,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 5,
+              "value": {
+                "kind": "word",
+                "value": 1
+              }
+            },
+            {
+              "address": 3,
+              "value": {
+                "kind": "word",
+                "value": 6
+              }
+            },
+            {
+              "address": 4,
+              "value": {
+                "kind": "word",
+                "value": 8
+              }
+            }
+          ]
+        },
+        {
+          "inputs": [
+            [
+              -2147483648,
+              2147483647,
+              -3,
+              3
+            ]
+          ],
+          "media_actions": [
+            {
+              "kind": "clear",
+              "view": 0
+            }
+          ],
+          "writes": [
+            {
+              "address": 1,
+              "value": {
+                "kind": "word",
+                "value": 1
+              }
+            },
+            {
+              "address": 5,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 3,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 4,
+              "value": {
+                "kind": "word",
+                "value": 4
+              }
+            }
+          ]
+        },
+        {
+          "inputs": [
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "writes": [
+            {
+              "address": 1,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 5,
+              "value": {
+                "kind": "word",
+                "value": 1
+              }
+            },
+            {
+              "address": 3,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 4,
+              "value": {
+                "kind": "word",
+                "value": 4
+              }
+            }
+          ]
+        },
+        {
+          "inputs": [
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "media_actions": [
+            {
+              "kind": "remove",
+              "view": 0
+            }
+          ],
+          "writes": [
+            {
+              "address": 1,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 5,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 3,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            },
+            {
+              "address": 4,
+              "value": {
+                "kind": "word",
+                "value": 4
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

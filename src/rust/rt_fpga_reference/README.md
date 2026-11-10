@@ -107,21 +107,54 @@ semantics. Native and standalone ramp conventions can differ.
 - Finite FIFO, filled for a whole quantum before job execution. The standalone
   model refuses insufficient queue capacity before changing state.
 - Fresh temporary sample buffers per producer per quantum; fan-out shares a buffer.
-- `Memory` separates jobs from storage. `MediaStore` uses mono chunks and external
-  chunk tables; extra channels use separate views. Chunk size and quantum are independent.
+- `Memory` separates jobs from storage. `MediaStore` uses a growing contiguous
+  mono sample-slot arena and growing per-view chunk tables; extra channels use
+  separate views. Chunk size and quantum are independent.
 - Views support append and reads within their recorded frame count. Capture and
   playback may run in the same quantum; FIFO order determines which samples have
-  been written when a read executes. IDs never recycle; editing, reclamation and
-  finite external-memory admission are deferred.
+  been written when a read executes. Clear/remove return chunk IDs to a LIFO free
+  stack, and allocation reuses those slots before growing the arena. View IDs
+  never recycle. Sharing and editing remain deferred.
 - Provisional signed Q8.24 samples and gains. Multiplication uses `i64`, truncates
   toward zero and saturates; binary mixes saturate per job. Ramp interpolation
   preserves its time domain. This is a functional model, not a hardware layout.
 - A standalone ramp starts at its current value and reaches its target at offset
   `duration`; zero duration changes immediately.
-- Standalone compilation/capture may allocate. The native adapter retains the
+- Standalone compilation/capture may allocate. Capacity hints can prepare storage
+  and tables before execution. The native adapter retains the
   existing callback/control heap guards using prepared storage.
 - Execution errors can leave partial work: stop rather than retry that quantum.
 - No MIDI, effects, smoothing, history/grab or advanced loop editing.
+
+## Elastic media storage
+
+`MediaStore::new(chunk_frames)` grows as needed without a configured slot limit.
+`with_chunk_limit(chunk_frames, slots)` enables bounded-memory comparison tests;
+it does not allocate the pool up front. `reserve_chunk_capacity(slots)` and
+`reserve_view_capacity(view, frames)` are optional preparation hints, not exclusive
+allocation reservations. IDs remain stable when the arena or tables relocate.
+
+`create_recording` is fallible. Creation and append use checked arithmetic and
+fallible reservations, returning `MemoryFull` on capacity or allocation refusal.
+An append reserves everything before changing samples, chunk IDs, or frame count.
+Earlier jobs in a failed quantum still retain their existing partial effects.
+Reads and appends copy spans bounded by chunk edges and logical loop wrap.
+
+`clear(view)` retains its ID/table capacity for another recording; `remove(view)`
+invalidates its ID permanently. Both release chunk IDs in table order, so the last
+released ID is allocated first. Call them only after jobs using the view have
+drained. They are linear control operations; no asynchronous reclamation, sharing,
+or reference counting is modeled. Reused slots may retain samples outside the
+new recording's published frame count, which reads cannot access. Arena capacity
+is retained for reuse rather than returned to the OS on each clear.
+
+`snapshot` and checked `from_snapshot` preserve samples, view tables, removed-view
+holes, optional limits, and free-stack order. They omit host capacity hints and
+cache/timing behavior. The audio trace tool accepts initial media, boundary
+clear/remove actions, and resulting snapshots. See its README and the
+`elastic_record_play.json` example. The standalone `Backend` uses this store
+through the existing job memory interface. The app adapter continues to use its
+native media resource bridge; this change does not replace native persistence.
 
 ## Comparison
 

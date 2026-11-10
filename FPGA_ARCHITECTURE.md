@@ -134,6 +134,13 @@ jobs and architectural state after each quantum, providing a comparison boundary
 for a future cocotb/SystemVerilog testbench without fixing internal hardware
 layout or cycle counts. See `scripts/fpga_testbench/README.md`.
 
+The Rust reference uses an elastic contiguous sample-slot arena, dynamic per-view
+chunk-ID tables, and deterministic reuse of released slots. It has optional chunk
+limits for hardware comparisons and capacity hints for host preparation, with no
+BRAM-cache simulation. Media snapshots and control actions extend the audio trace
+boundary to capture, playback, reclamation, and allocation failure. Native app
+media storage remains behind its existing resource adapter.
+
 ## State processor RTL prototype
 
 `fpga/state_processor` contains a multicycle SystemVerilog state processor with

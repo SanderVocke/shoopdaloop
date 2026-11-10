@@ -34,6 +34,9 @@
         "initial_state": {
           "$ref": "#/$defs/StateSnapshot"
         },
+        "media": {
+          "$ref": "#/$defs/MediaSnapshot"
+        },
         "name": {
           "type": "string"
         },
@@ -94,6 +97,9 @@
             "$ref": "#/$defs/Job"
           }
         },
+        "media": {
+          "$ref": "#/$defs/MediaSnapshot"
+        },
         "outputs": {
           "type": "array",
           "items": {
@@ -146,6 +152,12 @@
               "maximum": 2147483647,
               "minimum": -2147483648
             }
+          }
+        },
+        "media_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MediaAction"
           }
         },
         "writes": {
@@ -289,6 +301,12 @@
       "maximum": 4294967295,
       "minimum": 0
     },
+    "ChunkId": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 4294967295,
+      "minimum": 0
+    },
     "Compiled": {
       "type": "object",
       "properties": {
@@ -323,12 +341,14 @@
         "invalid_buffer",
         "invalid_view",
         "invalid_shape",
-        "queue_full"
+        "queue_full",
+        "memory_full"
       ]
     },
     "ExecutionStage": {
       "type": "string",
       "enum": [
+        "media",
         "state",
         "jobs"
       ]
@@ -736,6 +756,96 @@
             "port"
           ]
         }
+      ]
+    },
+    "MediaAction": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "clear"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "remove"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view"
+          ]
+        }
+      ]
+    },
+    "MediaSnapshot": {
+      "type": "object",
+      "properties": {
+        "chunk_frames": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "chunk_limit": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "free_chunks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChunkId"
+          }
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648
+          }
+        },
+        "views": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ViewSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "chunk_frames",
+        "samples",
+        "free_chunks",
+        "views"
       ]
     },
     "Node": {
@@ -1168,6 +1278,23 @@
             "kind",
             "value"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "media"
+            },
+            "value": {
+              "$ref": "#/$defs/MediaSnapshot"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
         }
       ]
     },
@@ -1405,6 +1532,28 @@
       "format": "uint32",
       "maximum": 4294967295,
       "minimum": 0
+    },
+    "ViewSnapshot": {
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChunkId"
+          }
+        },
+        "frames": {
+          "type": "integer",
+          "format": "uint64",
+          "maximum": 18446744073709551615,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "chunks",
+        "frames"
+      ]
     }
   }
 }

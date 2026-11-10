@@ -8,7 +8,7 @@ use rt_fpga_reference::{
 
 fn main() {
     let mut media = MediaStore::new(32).unwrap();
-    let take = media.create_recording();
+    let take = media.create_recording().unwrap();
     let graph = Graph {
         quantum: 32,
         nodes: vec![

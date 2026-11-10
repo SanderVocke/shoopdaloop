@@ -61,7 +61,7 @@ fn state_execution_emits_jobs_without_accessing_or_resolving_samples() {
 fn recording_preserves_partial_chunks_and_playback_wraps_independently_of_chunk_size() {
     for chunk_frames in [1, 32, 128] {
         let mut media = MediaStore::new(chunk_frames).unwrap();
-        let take = media.create_recording();
+        let take = media.create_recording().unwrap();
         let graph = Graph {
             quantum: 3,
             nodes: vec![
@@ -119,7 +119,7 @@ fn playback_and_capture_share_a_view_in_either_signal_order() {
     for quantum in [1, 4] {
         for capture_first in [false, true] {
             let mut media = MediaStore::new(3).unwrap();
-            let view = media.create_recording();
+            let view = media.create_recording().unwrap();
             let capture_node = Node::Capture {
                 input: NodeId(0),
                 view,
@@ -186,7 +186,7 @@ fn playback_and_capture_share_a_view_in_either_signal_order() {
 #[shoop_test]
 fn view_reads_require_existing_recorded_ranges() {
     let mut media = MediaStore::new(2).unwrap();
-    let view = media.create_recording();
+    let view = media.create_recording().unwrap();
     let mut output = [Fixed::ZERO; 4];
     assert_eq!(
         media.read_loop(view, 0, 1, &mut output),
@@ -346,7 +346,7 @@ fn fixed_point_saturates_and_extreme_ramps_do_not_overflow() {
 #[shoop_test]
 fn one_node_program_handles_record_stop_play_seek_and_ramps_without_recompilation() {
     let mut media = MediaStore::new(32).unwrap();
-    let view = media.create_recording();
+    let view = media.create_recording().unwrap();
     let graph = Graph {
         quantum: 4,
         nodes: vec![

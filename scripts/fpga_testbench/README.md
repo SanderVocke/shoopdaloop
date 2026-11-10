@@ -43,8 +43,8 @@ schema; saved documents with other versions are rejected.
 
 Every document has `format_version: 1` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
-`bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`, and
-`audio_trace`.
+`bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
+`audio_trace`, and `media`.
 
 - IDs, addresses, ports, capacities, and instruction counts are unsigned 32-bit
   integers on the wire. Existing host `usize` fields use checked conversions.
@@ -67,8 +67,9 @@ contain an invalid state address or value for a negative execution test. Interpr
 IDs and produced jobs must also fit the wire's 32-bit ID range.
 
 `rt_fpga_reference` exposes optional `serde` and `schema` features; default native
-renderer builds acquire neither dependency. Private sample storage, FIFO storage,
-transition-processor internals, and native app objects are outside this format.
+renderer builds acquire neither dependency. FIFO storage, transition-processor
+internals, and native app objects are outside this format. Explicit media snapshots
+include the standalone arena and its allocation metadata.
 
 ## Commands and traces
 
@@ -140,12 +141,51 @@ An `audio_case` supplies program/initial state, queue capacity, logical `buffers
 and `output_ports`, and steps containing ordered state writes and raw sample
 arrays per input port. `audio_trace` results include the emitted jobs, unconsumed
 jobs, state, output arrays, and nullable sample arrays for each scratch buffer
-(null means unready), plus `stage` (`state` or `jobs`) and status. The actual Rust
-state and job processors execute; no transition clock runs, and the media store
-is empty. Output and scratch state persist between steps. Shape and execution
-errors preserve partial effects and stop the trace.
+(null means unready), plus `stage` (`media`, `state`, or `jobs`) and status. The
+actual Rust state and job processors execute; no transition clock runs. Omitted
+media starts an empty store and keeps media fields absent from results. Output
+and scratch state persist between steps. Shape and execution errors preserve
+partial effects and stop the trace.
 
 Use `assert_audio_result_matches` for complete bit-exact comparison. The new
 payload variants are additive in format version 1; existing state traces are
 unchanged. See `fpga/job_processor/README.md` for the supported job subset,
 hardware interfaces, simulation commands, and measured results.
+
+## Elastic media traces
+
+An optional `media` field on `audio_case` initializes the slot arena and view
+tables. A standalone `media` payload can also round-trip that snapshot. Its fields
+are `chunk_frames`, `samples` (flat raw i32 values), `free_chunks` (in stack order),
+and `views` (an array of `{chunks, frames}` or null for removed view IDs). Optional
+`chunk_limit` bounds the number of slots for FPGA comparisons; omit it for normal
+elastic growth. `samples.len()` must be a multiple of `chunk_frames`. Each slot
+must belong to exactly one view or appear exactly once in the free stack. The
+Rust store validates these invariants when a case starts.
+
+An optional per-step `media_actions` array accepts `{"kind":"clear","view":0}`
+or `{"kind":"remove","view":0}`. Actions run before state writes at the drained
+quantum boundary, outside the signal program. Clear retains the view ID; remove
+invalidates it. Both release IDs in table order, and subsequent captures pop free
+IDs before extending the arena. There is no sharing or BRAM-cache model.
+
+Media-enabled results include the full resulting `media` snapshot, so Python's
+audio comparator checks slot contents, ownership, and reuse order as well as
+samples and processor state. Host `Vec` capacity is excluded. Storage exhaustion
+reports `memory_full` in the jobs stage, with the refused capture unchanged and
+later jobs left in the FIFO. A media-control error reports the media stage; bad
+initial snapshot geometry/ownership instead rejects initialization with a nonzero
+tool exit. All failures retain previously completed effects. Old audio cases and
+BRAM-only RTL comparisons continue to omit media fields.
+
+```sh
+target/debug/fpga-reference trace \
+  < scripts/fpga_testbench/examples/elastic_record_play.json > work/elastic.trace.json
+target/debug/fpga-reference check < work/elastic.trace.json > /dev/null
+```
+
+This six-quantum example grows a recording, plays a wrapped range, clears and
+reuses slots, plays new content, and removes the view. Supplying a resulting state
+and media snapshot as another case's initial state/media resumes the same logical
+memory state. The BRAM job-processor RTL still refuses media jobs; external-memory
+RTL implementation and its cycle behavior remain future work.

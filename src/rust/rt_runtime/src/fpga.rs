@@ -378,7 +378,9 @@ impl Machine {
 }
 fn map_error(error: rt_fpga_reference::Error) -> Error {
     match error {
-        rt_fpga_reference::Error::QueueFull => Error::Capacity,
+        rt_fpga_reference::Error::QueueFull | rt_fpga_reference::Error::MemoryFull => {
+            Error::Capacity
+        }
         _ => Error::InvalidState,
     }
 }

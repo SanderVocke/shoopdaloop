@@ -131,10 +131,12 @@ fn audio_case() -> AudioCase {
         queue_capacity: 8,
         buffers: 4,
         output_ports: 2,
+        media: None,
         steps: vec![
             AudioStep {
                 writes: vec![],
                 inputs: vec![vec![Fixed(1), Fixed(-3), Fixed(i32::MAX)]; 2],
+                media_actions: None,
             };
             2
         ],
@@ -230,7 +232,7 @@ fn all_subsystem_values_roundtrip_with_exact_integer_bits() {
         Payload::Case(case()),
         Payload::Trace(run_case(case())),
         Payload::AudioCase(audio_case()),
-        Payload::AudioTrace(run_audio_case(audio_case())),
+        Payload::AudioTrace(run_audio_case(audio_case()).unwrap()),
     ];
     for error in [
         Error::InvalidGraph,
@@ -239,6 +241,7 @@ fn all_subsystem_values_roundtrip_with_exact_integer_bits() {
         Error::InvalidView,
         Error::InvalidShape,
         Error::QueueFull,
+        Error::MemoryFull,
     ] {
         payloads.push(Payload::Status(ExecutionStatus::Failed { error }));
     }
@@ -266,7 +269,7 @@ fn all_subsystem_values_roundtrip_with_exact_integer_bits() {
 
 #[shoop_test]
 fn audio_traces_run_real_jobs_with_rounding_saturation_and_buffer_reuse() {
-    let trace = run_audio_case(audio_case());
+    let trace = run_audio_case(audio_case()).unwrap();
     assert_eq!(trace.results.len(), 2);
     for result in &trace.results {
         assert_eq!(result.stage, ExecutionStage::Jobs);
@@ -295,7 +298,7 @@ fn audio_failure_preserves_state_and_remaining_jobs_and_shape_checks_run_first()
         source: BufferId(0),
         destination: BufferId(0),
     };
-    let trace = run_audio_case(input);
+    let trace = run_audio_case(input).unwrap();
     assert_eq!(trace.results.len(), 1);
     let result = &trace.results[0];
     assert_eq!(
@@ -312,7 +315,7 @@ fn audio_failure_preserves_state_and_remaining_jobs_and_shape_checks_run_first()
 
     let mut input = audio_case();
     input.steps[0].inputs[0].pop();
-    let trace = run_audio_case(input);
+    let trace = run_audio_case(input).unwrap();
     let result = &trace.results[0];
     assert_eq!(
         result.status,

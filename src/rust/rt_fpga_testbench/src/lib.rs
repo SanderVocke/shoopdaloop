@@ -6,7 +6,7 @@ use rt_fpga_reference::{
     fixed::Fixed,
     jobs::{BufferId, Job, JobProcessor, JobQueue},
     state::{Address, Instruction, Program, StateProcessor, Value},
-    storage::MediaStore,
+    storage::{MediaSnapshot, MediaStore, ViewId},
     transitions::OnWrap,
     Error,
 };
@@ -95,6 +95,7 @@ pub enum Payload {
     Trace(StateTrace),
     AudioCase(AudioCase),
     AudioTrace(AudioTrace),
+    Media(MediaSnapshot),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -198,6 +199,9 @@ pub struct AudioCase {
     pub queue_capacity: u32,
     pub buffers: u32,
     pub output_ports: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "MediaSnapshot")]
+    pub media: Option<MediaSnapshot>,
     pub steps: Vec<AudioStep>,
 }
 
@@ -206,11 +210,22 @@ pub struct AudioCase {
 pub struct AudioStep {
     pub writes: Vec<StateWrite>,
     pub inputs: Vec<Vec<Fixed>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Vec<MediaAction>")]
+    pub media_actions: Option<Vec<MediaAction>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MediaAction {
+    Clear { view: ViewId },
+    Remove { view: ViewId },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionStage {
+    Media,
     State,
     Jobs,
 }
@@ -225,6 +240,9 @@ pub struct AudioResult {
     pub outputs: Vec<Vec<Fixed>>,
     pub stage: ExecutionStage,
     pub status: ExecutionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "MediaSnapshot")]
+    pub media: Option<MediaSnapshot>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -234,23 +252,40 @@ pub struct AudioTrace {
     pub results: Vec<AudioResult>,
 }
 
-/// Execute both processors with persistent state and scratch buffers. Media is
-/// empty; these traces primarily exercise the sample-processing job subset.
-pub fn run_audio_case(case: AudioCase) -> AudioTrace {
+/// Execute both processors against elastic media. Media controls run at drained
+/// quantum boundaries. Omitted media preserves the empty-store trace format.
+pub fn run_audio_case(case: AudioCase) -> Result<AudioTrace, Error> {
     let quantum = case.program.quantum as usize;
     let mut state = StateProcessor::new(case.initial_state.memory.clone());
     let mut queue = JobQueue::new(case.queue_capacity as usize);
     let mut processor = JobProcessor::new(quantum, case.buffers as usize);
     let mut outputs = vec![vec![Fixed::ZERO; quantum]; case.output_ports as usize];
-    let mut memory = MediaStore::new(1).expect("positive chunk size");
+    let mut memory = match &case.media {
+        Some(snapshot) => MediaStore::from_snapshot(snapshot.clone())?,
+        None => MediaStore::new(1)?,
+    };
+    let include_media =
+        case.media.is_some() || case.steps.iter().any(|step| step.media_actions.is_some());
     let mut results = Vec::with_capacity(case.steps.len());
     for step in &case.steps {
-        let mut stage = ExecutionStage::State;
+        let mut stage = ExecutionStage::Media;
         let mut outcome = step
-            .writes
+            .media_actions
+            .as_deref()
+            .unwrap_or(&[])
             .iter()
-            .try_for_each(|write| state.write(write.address, write.value))
-            .and_then(|()| state.run(&case.program, &mut queue));
+            .try_for_each(|action| match *action {
+                MediaAction::Clear { view } => memory.clear(view),
+                MediaAction::Remove { view } => memory.remove(view),
+            });
+        if outcome.is_ok() {
+            stage = ExecutionStage::State;
+            outcome = step
+                .writes
+                .iter()
+                .try_for_each(|write| state.write(write.address, write.value))
+                .and_then(|()| state.run(&case.program, &mut queue));
+        }
         let jobs = queue.iter().copied().collect();
         if outcome.is_ok() {
             stage = ExecutionStage::Jobs;
@@ -276,12 +311,13 @@ pub fn run_audio_case(case: AudioCase) -> AudioTrace {
                 Ok(()) => ExecutionStatus::Completed,
                 Err(error) => ExecutionStatus::Failed { error },
             },
+            media: include_media.then(|| memory.snapshot()),
         });
         if outcome.is_err() {
             break;
         }
     }
-    AudioTrace { case, results }
+    Ok(AudioTrace { case, results })
 }
 
 pub fn schema() -> Schema {

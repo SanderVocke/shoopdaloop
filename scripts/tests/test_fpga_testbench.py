@@ -116,7 +116,7 @@ class CrossLanguageContract(unittest.TestCase):
             document("status", {"kind": "completed"}),
             self.case(), self.reference("trace", self.case()),
         ]
-        for error in ["invalid_graph", "invalid_state", "invalid_buffer", "invalid_view", "invalid_shape", "queue_full"]:
+        for error in ["invalid_graph", "invalid_state", "invalid_buffer", "invalid_view", "invalid_shape", "queue_full", "memory_full"]:
             values.append(document("status", {"kind": "failed", "value": {"error": error}}))
         for value in values:
             with self.subTest(kind=value["payload"]["kind"]):
@@ -168,6 +168,62 @@ class CrossLanguageContract(unittest.TestCase):
         trace = self.reference("trace", case)
         self.assertEqual(len(trace["payload"]["value"]["results"]), 5)
         self.assertEqual(self.reference("check", trace), trace)
+
+    def test_elastic_media_growth_reuse_snapshots_and_bounded_capture_failure(self):
+        case = wire.load(ROOT / "scripts/fpga_testbench/examples/elastic_record_play.json")
+        trace = self.reference("trace", case)
+        results = trace["payload"]["value"]["results"]
+        self.assertEqual(len(results), 6)
+        self.assertEqual(results[2]["outputs"], [[7, 8, 1, 2]])
+        self.assertEqual(results[4]["outputs"], [[I32_MIN, I32_MAX, -3, 3]])
+        self.assertEqual(results[0]["media"]["views"][0]["chunks"], [0, 1])
+        self.assertEqual(results[1]["media"]["views"][0]["chunks"], [0, 1, 2])
+        self.assertEqual(results[3]["media"]["views"][0]["chunks"], [2, 1])
+        self.assertEqual(results[-1]["media"]["views"], [None])
+        self.assertEqual(results[-1]["media"]["free_chunks"], [0, 2, 1])
+        self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
+        media = document("media", results[-1]["media"])
+        self.assertEqual(self.reference("roundtrip", media), media)
+        changed = deepcopy(results[3])
+        changed["media"]["views"][0]["chunks"].reverse()
+        with self.assertRaises(AssertionError):
+            wire.assert_audio_result_matches(results[3], changed)
+
+        bounded = deepcopy(case)
+        bounded["payload"]["value"]["media"]["chunk_limit"] = 1
+        failed = self.reference("trace", bounded)["payload"]["value"]["results"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["status"], {"kind": "failed", "value": {"error": "memory_full"}})
+        self.assertEqual(failed[0]["media"], bounded["payload"]["value"]["media"])
+
+        # Resume from a published state/media pair, preserving physical IDs.
+        resumed = deepcopy(case)
+        value = resumed["payload"]["value"]
+        value["initial_state"] = results[3]["state"]
+        value["media"] = results[3]["media"]
+        value["steps"] = [value["steps"][4]]
+        replay = self.reference("trace", resumed)["payload"]["value"]["results"][0]
+        self.assertEqual(replay, results[4])
+
+    def test_media_wire_shapes_and_snapshot_invariants_are_checked(self):
+        case = wire.load(ROOT / "scripts/fpga_testbench/examples/elastic_record_play.json")
+        for field, invalid in [("chunk_frames", 1.0), ("chunk_limit", None),
+                               ("chunk_limit", U32_MAX + 1)]:
+            bad = deepcopy(case)
+            bad["payload"]["value"]["media"][field] = invalid
+            self.assert_rejected_by_both(bad)
+        empty_actions = deepcopy(case)
+        empty_actions["payload"]["value"]["steps"][0]["media_actions"] = []
+        self.assertEqual(self.reference("roundtrip", empty_actions), empty_actions)
+        bad = deepcopy(case)
+        bad["payload"]["value"]["steps"][0]["media_actions"] = None
+        self.assert_rejected_by_both(bad)
+        bad = deepcopy(case)
+        bad["payload"]["value"]["media"]["samples"] = [0]
+        # Numerically valid JSON, but not a whole number of physical slots.
+        wire.validate(bad)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.reference("trace", bad)
 
     def test_trace_runs_the_rust_processor_and_can_be_replayed_after_python_io(self):
         trace = self.reference("trace", self.case())
