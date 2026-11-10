@@ -6,7 +6,7 @@ state writes, and execution results. `rt_fpga_testbench` generates the schema an
 runs the actual standalone Rust state processor. Python validates and transports
 these values without implementing the processor again.
 
-This is the data layer for a future cocotb driver. It defines architectural
+This is the data layer for RTL comparison drivers. It defines architectural
 values, not a packed instruction encoding, physical RAM layout, or cycle model.
 
 ## Build and check
@@ -103,7 +103,7 @@ FIFO capacity refusal happens before instruction execution; it does not roll bac
 the step's preceding control writes. Queue capacity is reserved for a whole
 quantum, as in the standalone model.
 
-## Python and future cocotb use
+## Python and cocotb use
 
 Put `scripts` on `PYTHONPATH`, then use dictionaries validated by the generated
 schema. `load`/`dump` handle files; `loads`/`dumps` handle JSON strings.
@@ -128,4 +128,6 @@ async def compare(driver):
 result. The comparator checks schema validity and exact values, including job
 order. Internal registers and cycle counts are free to differ. Drivers must also
 check completion, extra output, FIFO handshakes, and bounded stalls independently.
-There is no RTL adapter or cocotb dependency yet.
+The RTL-specific cocotb/Verilator driver lives in `fpga/state_processor`; see its
+README for the packed ABI, supported bounds, simulation commands, and regression
+coverage. Its cocotb dependencies are separate from these serialization helpers.

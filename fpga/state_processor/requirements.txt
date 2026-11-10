@@ -1,0 +1,2 @@
+cocotb==1.9.2
+jsonschema>=4.18,<5

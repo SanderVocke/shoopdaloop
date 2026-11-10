@@ -133,3 +133,14 @@ validated against a schema generated from Rust. Reference traces record ordered
 jobs and architectural state after each quantum, providing a comparison boundary
 for a future cocotb/SystemVerilog testbench without fixing internal hardware
 layout or cycle counts. See `scripts/fpga_testbench/README.md`.
+
+## State processor RTL prototype
+
+`fpga/state_processor` contains a multicycle SystemVerilog state processor with
+synchronous program/state memories and a finite job FIFO. It implements the
+standalone reference's six node instructions. Its README specifies the packed
+instruction/state/job ABI, configuration protocol, and synthesis commands.
+Lint, synthesis checks, and a cocotb/Verilator behavioral comparison against
+versioned Rust traces are available. The bench compares ordered jobs, complete
+state, and status per quantum, with separate hardware protocol checks. Transition
+and job processors are outside this RTL prototype.
