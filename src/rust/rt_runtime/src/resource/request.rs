@@ -277,6 +277,9 @@ impl ResourceStore {
     }
 }
 impl ResourceIo<'_> {
+    pub fn audio_render_mode(&self) -> crate::AudioRenderMode {
+        self.store.audio_render_mode()
+    }
     pub fn remove(&mut self, resource: ResourceId) -> Result<(), Error> {
         self.store.remove(resource)
     }

@@ -1,5 +1,5 @@
-//! Single-owner fixed-page resource storage. All allocation and final destruction
-//! happen at preparation/host teardown; rendering uses fixed pools and bounded copies.
+//! Single-owner resource storage. Ordinary modes use prepared fixed-page pools;
+//! FPGA reference audio uses an elastic fixed-point arena and may grow on callback.
 //! Raw resource/snapshot IDs require same-store caller discipline. Scoped indexes
 //! additionally check instance and lease generation; copying either acquires no lease.
 
@@ -24,6 +24,8 @@ pub use midi_index::{MidiIndexConfig, MidiIndexInfo, MidiIndexUsage, MidiIndexWo
 use midi_index::{MidiOwner, MidiPool};
 pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod audio_backing;
+mod elastic_audio;
+pub use elastic_audio::ElasticAudioWork;
 pub mod indexed_midi;
 mod midi_backing;
 pub use midi_backing::{MidiEditId, MidiImportId, MidiStoreId};
@@ -130,6 +132,7 @@ struct Version {
     index: VersionIndex,
     midi: Option<MidiOwner>,
     audio: Option<audio_backing::Take>,
+    elastic: Option<elastic_audio::Take>,
     shared_midi: Option<midi_backing::Take>,
     indexed_midi: Option<indexed_midi::Take>,
 }
@@ -170,6 +173,7 @@ pub struct SnapshotReservation(SnapshotId);
 pub struct ResourceStore {
     audio_graph_work: crate::audio_refs::AudioGraphWork,
     audio_render_mode: crate::AudioRenderMode,
+    elastic_audio: Option<elastic_audio::ElasticAudio>,
     quantum: Quantum,
     scope: u32,
     config: PreparedConfig,
@@ -263,6 +267,7 @@ impl ResourceStore {
         Ok(Self {
             audio_graph_work: Default::default(),
             audio_render_mode: crate::AudioRenderMode::Current,
+            elastic_audio: None,
             scope,
             config,
             quantum,
@@ -300,6 +305,9 @@ impl ResourceStore {
     /// Host boundary only; call once per callback, not per command or processor.
     pub fn begin_callback(&mut self) {
         self.audio_graph_work = Default::default();
+        if let Some(audio) = &mut self.elastic_audio {
+            audio.reset_work();
+        }
         for audio in self.audio_stores.iter_mut().flatten() {
             audio.reset_work();
         }
@@ -315,6 +323,12 @@ impl ResourceStore {
         self.quantum
     }
     pub fn set_audio_render_mode(&mut self, mode: crate::AudioRenderMode) {
+        if mode == crate::AudioRenderMode::FpgaReference && self.elastic_audio.is_none() {
+            self.elastic_audio = Some(elastic_audio::ElasticAudio::new(
+                self.quantum,
+                self.config.limits().max_frames,
+            ));
+        }
         self.audio_render_mode = mode;
     }
 
@@ -484,12 +498,36 @@ impl ResourceStore {
         if self.check_writer(resource, claim)?.revision != expected_revision {
             return Err(Error::StaleRevision);
         }
-        description.validate(self.config.resource_bytes())?;
-        let needed = description.bytes.div_ceil(self.config.limits().page_bytes);
+        let elastic = self.audio_render_mode == crate::AudioRenderMode::FpgaReference
+            && matches!(description.format, Format::Audio { .. });
+        description.validate(if elastic {
+            usize::MAX
+        } else {
+            self.config.resource_bytes()
+        })?;
+        let needed = if elastic {
+            0
+        } else {
+            description.bytes.div_ceil(self.config.limits().page_bytes)
+        };
         if needed > self.free_pages.len() - self.reserved_pages {
             return Err(Error::Capacity);
         }
-        let index = self.free_versions.pop().ok_or(Error::Capacity)?;
+        let index = *self.free_versions.last().ok_or(Error::Capacity)?;
+        let take = if elastic {
+            let Format::Audio { channels } = description.format else {
+                unreachable!()
+            };
+            Some(
+                self.elastic_audio
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .create(channels as usize)?,
+            )
+        } else {
+            None
+        };
+        self.free_versions.pop();
         self.reserved_pages += needed;
         let slot = &mut self.versions[index];
         slot.value = Some(Version {
@@ -508,6 +546,7 @@ impl ResourceStore {
             index: VersionIndex::default(),
             midi: None,
             audio: None,
+            elastic: take,
             shared_midi: None,
             indexed_midi: None,
         });
@@ -541,6 +580,15 @@ impl ResourceStore {
         };
         if bytes.len() > self.copy_remaining() || validation > self.steps_remaining() {
             return Err(Error::Budget);
+        }
+        if let Some(take) = version.elastic {
+            let frames = (offset + bytes.len()).div_ceil(take.channels * 4);
+            let audio = self.elastic_audio.as_mut().ok_or(Error::InvalidState)?;
+            audio.prepare(take, frames, 0)?;
+            audio.append_bytes(&mut version, bytes, false);
+            self.versions[id.slot as usize].value = Some(version);
+            self.charge_work(WorkClass::Background, bytes.len(), 0)?;
+            return Ok(());
         }
         self.steps_remaining -= validation;
         self.work.validation_steps += validation;
@@ -926,6 +974,20 @@ impl ResourceStore {
             cursor.position += count;
             return Ok(count);
         }
+        let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
+        if let Some(take) = version.elastic {
+            let count = output
+                .len()
+                .min(self.config.limits().page_bytes)
+                .min(lease.snapshot.description.bytes - cursor.position);
+            self.charge_work(class, count, 0)?;
+            self.elastic_audio
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .read_bytes(take, cursor.position, &mut output[..count])?;
+            cursor.position += count;
+            return Ok(count);
+        }
         let page_bytes = self.config.limits().page_bytes;
         let private_tail = lease
             .private_tail
@@ -1018,6 +1080,11 @@ impl ResourceStore {
                 self.pages[page] = Page::default();
                 self.free_pages.push(page);
                 self.work.reclaimed_pages += 1;
+                self.versions[index].value = Some(version);
+            } else if let Some(mut take) = version.elastic {
+                let audio = self.elastic_audio.as_mut().expect("elastic store");
+                audio.reclaim(&mut take).expect("retired elastic view");
+                version.elastic = (take.channels > 0).then_some(take);
                 self.versions[index].value = Some(version);
             } else {
                 self.reserved_pages -= version.reserved;

@@ -150,7 +150,7 @@ The app executes explicit transition, state, and job phases:
 
 `rt_runtime` has separate FPGA transition and state executors. The native loop
 adapter separates resolver/timing logic from physical capture state preparation
-and publication. It retains shared native storage and transaction semantics;
+and publication. It retains native resource ownership and transaction semantics;
 preparation and transition settlement rendezvous before the transition commits. This is
 a functional boundary, not a hardware implementation or a hardware protocol.
 The state program never contains transition propagation instructions. Its job
@@ -158,8 +158,9 @@ writer only constructs sample jobs and transient operands.
 
 Node feedback, meters and bulk readback also execute under the app state
 processor's feedback phase. Sample jobs still execute separately in the job
-processor. Native I/O and retained media use `f32`; `ExternalMemory` converts at
-that boundary, while the standalone media store uses fixed-point chunks.
+processor. Native device I/O uses `f32`; retained reference audio uses the elastic
+fixed-point chunk store. Capture staging and playback pass raw fixed-point words.
+Bulk import/export converts to/from interleaved `f32` at the persistence boundary.
 Native control/ramp metadata retains its existing representation and endpoint
 semantics. Native and standalone ramp conventions can differ.
 
@@ -182,9 +183,11 @@ semantics. Native and standalone ramp conventions can differ.
   preserves its time domain. This is a functional model, not a hardware layout.
 - A standalone ramp starts at its current value and reaches its target at offset
   `duration`; zero duration changes immediately.
-- Standalone compilation/capture may allocate. Capacity hints can prepare storage
-  and tables before execution. The native adapter retains the
-  existing callback/control heap guards using prepared storage.
+- Compilation/capture may allocate. Capacity hints can prepare storage and tables
+  before execution. Elastic growth and table retirement can allocate/deallocate
+  during reference callbacks. Ordinary renderers retain their heap guards;
+  reference callbacks measure heap operations, and warmed playback is checked to
+  perform none.
 - Execution errors can leave partial work: stop rather than retry that quantum.
 - No MIDI, effects, smoothing, history/grab or advanced loop editing.
 
@@ -215,8 +218,21 @@ holes, optional limits, and free-stack order. They omit host capacity hints and
 cache/timing behavior. The audio trace tool accepts initial media, boundary
 clear/remove actions, and resulting snapshots. See its README and the
 `elastic_record_play.json` example. The standalone `Backend` uses this store
-through the existing job memory interface. The app adapter continues to use its
-native media resource bridge; this change does not replace native persistence.
+through the existing job memory interface.
+
+The app-selected reference renderer uses the same store for recording, playback,
+bulk readback, and import/export. Resource revisions and snapshot leases still
+own each take. A snapshot bounds reads to its published prefix even while the
+recording grows. Clear releases capture-bank owners; pinned snapshots keep their
+audio until their last lease ends. Retired takes release at most one chunk per
+resource reclamation step. This bounds reclamation work by the existing step
+budget instead of walking an entire recording on clear. Reusable arena capacity
+stays allocated; no BRAM cache is modeled.
+
+Audio payloads can outgrow the configured native page pool. Resource/version/
+snapshot counts, queues, and other engine metadata still have their prepared
+limits. The native page pool is still prepared for other resource facilities but
+does not hold a duplicate of reference audio.
 
 ## Comparison
 
@@ -241,3 +257,19 @@ saturation. Standalone and app timing tests also reverse signal order relative t
 sync dependencies and check that sync edits and transitions preserve the signal
 program. The historical three-renderer script default is unchanged.
 Timing results describe software, not predicted FPGA timing.
+
+For release callback timings and actual allocator counts through the offline
+engine endpoint:
+
+```sh
+cargo build --release -p shoop_rt_engine --example elastic_cpu_benchmark
+python3 scripts/benchmark_elastic_cpu.py --voices 1 4 8 --callbacks 1024 --repeats 3
+```
+
+This measures stereo playback, one recording alongside playback, all recording,
+and clear/reclamation at 48 kHz, quantum 32 and callback 128. It alternates renderer
+order and records per-callback CPU/heap counters, growth events and slot usage.
+The host benchmark CSV also reports elastic growth, sample access and reclamation
+counters. These shared-machine measurements do not establish a worst-case bound.
+Measured results and reproduction commands are recorded in
+`docs/design/chunks/ELASTIC_REFERENCE_RESULTS.md`.

@@ -246,6 +246,7 @@ impl ResourceStore {
             index: VersionIndex::default(),
             midi: None,
             audio: Some(audio),
+            elastic: None,
             shared_midi: None,
             indexed_midi: None,
         });
@@ -479,7 +480,13 @@ impl ResourceStore {
         class: WorkClass,
     ) -> Result<(), Error> {
         let lease = self.index_lease(index)?;
-        if lease.audio.is_some() || lease.shared_midi.is_some() || lease.indexed_midi.is_some() {
+        if lease.audio.is_some()
+            || lease.shared_midi.is_some()
+            || lease.indexed_midi.is_some()
+            || get(&self.versions, lease.version.slot, lease.version.generation)?
+                .elastic
+                .is_some()
+        {
             return Err(Error::InvalidShape);
         }
         if offset

@@ -154,6 +154,7 @@ impl ResourceStore {
             index: VersionIndex::default(),
             midi: None,
             audio: None,
+            elastic: None,
             shared_midi: Some(take),
             indexed_midi: None,
         });

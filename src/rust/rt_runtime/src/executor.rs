@@ -688,6 +688,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn resource_work(&self) -> resource::Work {
         self.resources.work()
     }
+    pub fn elastic_audio_work(&self) -> resource::ElasticAudioWork {
+        self.resources.elastic_audio_work()
+    }
     pub fn render_work(&self) -> resource::RenderWork {
         self.resources.render_work()
     }

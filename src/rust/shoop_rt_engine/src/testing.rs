@@ -6,8 +6,8 @@
 //! an unconnected client, for an adapter that owns the client. [`OfflineHost`] keeps
 //! both together.
 //!
-//! [`OfflineRender::process`], [`OfflineHost::request`] and [`OfflineHost::receive`]
-//! do not allocate, so callers can guard them with an allocator check.
+//! The standard renderer's callbacks and the control endpoint do not allocate.
+//! The experimental FPGA reference can allocate when its elastic media grows.
 
 use alloc::boxed::Box;
 use alloc::vec;
