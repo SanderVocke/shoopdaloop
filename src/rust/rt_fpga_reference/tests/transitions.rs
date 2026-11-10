@@ -178,7 +178,7 @@ fn terminal_slots_stay_retained_until_collected_then_advance_generation() {
 
 #[shoop_test]
 fn prepared_execution_and_bindings_do_not_touch_heap() {
-    let n = 64;
+    let n = 130;
     let loops = (0..n).map(|i| spec(i, 32, Some((i + 1) % n))).collect();
     let mut processor = TransitionProcessor::prepare(plan(loops, n, n));
     let mut state = StateProcessor::new(vec![Value::Word(0); n as usize * 4]);
@@ -467,5 +467,34 @@ fn compiler_rejects_unimplemented_features_bad_grids_ids_and_limits() {
             limits(1, 1)
         ),
         TransitionError::InvalidId
+    );
+}
+
+#[shoop_test]
+fn compiled_followers_are_canonical_sparse_and_generation_checked() {
+    let loops = vec![
+        spec(129, 32, Some(0)),
+        spec(0, 32, Some(64)),
+        spec(64, 32, Some(0)),
+        spec(63, 32, Some(0)),
+    ];
+    let forward = plan(loops.clone(), 130, 4);
+    let reverse = plan(loops.into_iter().rev().collect(), 130, 4);
+    for id in [id(0), id(63), id(64), id(129)] {
+        assert_eq!(forward.followers(id), reverse.followers(id));
+    }
+    assert_eq!(
+        forward.followers(id(0)),
+        Ok([id(63), id(64), id(129)].as_slice())
+    );
+    assert_eq!(forward.followers(id(63)), Ok([].as_slice()));
+    assert_eq!(forward.followers(id(64)), Ok([id(0)].as_slice()));
+    assert_eq!(forward.followers(id(1)), Err(TransitionError::InvalidId));
+    assert_eq!(
+        forward.followers(LoopId {
+            slot: 0,
+            generation: 8
+        }),
+        Err(TransitionError::InvalidId)
     );
 }

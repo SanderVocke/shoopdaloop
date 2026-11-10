@@ -1,3 +1,4 @@
+use super::index::{PendingRequests, SlotMask};
 use super::types::Record;
 use super::*;
 use alloc::{vec, vec::Vec};
@@ -17,18 +18,33 @@ struct Scratch {
     protected: Vec<Option<u64>>,
     origins: Vec<Option<RequestId>>,
     discontinuities: Vec<bool>,
-    pulses: Vec<bool>,
+    ready: SlotMask,
+    pending: PendingRequests,
+    absolute_to_visit: SlotMask,
     delivered: Vec<bool>,
     masked: Vec<bool>,
     eligible: Vec<bool>,
+    capture_refused: Vec<Option<TransitionError>>,
+    request_refused: Vec<Option<TransitionError>>,
     decisions: Vec<Decision>,
     events: Vec<Event>,
+    #[cfg(test)]
+    work: Work,
+}
+
+#[cfg(test)]
+#[derive(Debug, Default, Eq, PartialEq)]
+struct Work {
+    requests: usize,
+    followers: usize,
+    pulses: usize,
 }
 
 pub struct TransitionProcessor {
     plan: TransitionPlan,
     states: Vec<Option<LoopState>>,
     records: Vec<Option<Record>>,
+    pending: PendingRequests,
     generations: Vec<u32>,
     events: Vec<Event>,
     scratch: Scratch,
@@ -51,16 +67,23 @@ impl TransitionProcessor {
                 protected: vec![None; n],
                 origins: vec![None; n],
                 discontinuities: vec![false; n],
-                pulses: vec![false; n],
+                ready: SlotMask::new(n),
+                pending: PendingRequests::new(n, p),
+                absolute_to_visit: SlotMask::new(p),
                 delivered: vec![false; n],
                 masked: vec![false; n],
                 eligible: vec![false; p],
+                capture_refused: vec![None; n],
+                request_refused: vec![None; p],
                 decisions: Vec::with_capacity(plan.image.description.loops.len()),
                 events: Vec::with_capacity(limits.events as usize),
+                #[cfg(test)]
+                work: Work::default(),
             },
             plan,
             states,
             records: vec![None; p],
+            pending: PendingRequests::new(n, p),
             generations: vec![1; p],
             events: Vec::with_capacity(limits.events as usize),
             frame: 0,
@@ -122,13 +145,19 @@ impl TransitionProcessor {
     }
     pub fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError> {
         self.idle()?;
-        if self.record(id)?.outcome.is_some() {
+        let record = self.record(id)?;
+        if record.outcome.is_some() {
             return Ok(false);
         }
         self.records[id.slot as usize]
             .as_mut()
             .ok_or(TransitionError::InvalidId)?
             .outcome = Some(Outcome::Cancelled { frame: self.frame });
+        self.pending.remove(
+            record.command.target.slot as usize,
+            id.slot as usize,
+            record.command.timing == Timing::At,
+        );
         Ok(true)
     }
     fn idle(&self) -> Result<(), TransitionError> {
@@ -188,6 +217,11 @@ impl TransitionProcessor {
             },
             outcome: None,
         });
+        self.pending.insert(
+            command.target.slot as usize,
+            slot,
+            command.timing == Timing::At,
+        );
         Ok(id)
     }
     fn check_boundary(&self, id: BoundaryId) -> Result<(), TransitionError> {
@@ -228,50 +262,60 @@ impl TransitionProcessor {
         if observations.len() > self.states.len() + self.records.len() {
             return Err(TransitionError::Capacity);
         }
-        for (i, observation) in observations.iter().enumerate() {
+        self.scratch.capture_refused.fill(None);
+        self.scratch.request_refused.fill(None);
+        for observation in observations {
             match *observation {
-                Observation::CaptureUnavailable { target, .. } => {
+                Observation::CaptureUnavailable { target, reason } => {
                     self.spec(target)?;
+                    if self.scratch.capture_refused[target.slot as usize]
+                        .replace(reason)
+                        .is_some()
+                    {
+                        return Err(TransitionError::DuplicateId);
+                    }
                 }
-                Observation::Refused { request, .. } => {
+                Observation::Refused { request, reason } => {
                     if self.record(request)?.outcome.is_some() {
                         return Err(TransitionError::InvalidState);
                     }
+                    if self.scratch.request_refused[request.slot as usize]
+                        .replace(reason)
+                        .is_some()
+                    {
+                        return Err(TransitionError::DuplicateId);
+                    }
                 }
-            }
-            if observations[..i]
-                .iter()
-                .any(|old| match (*old, *observation) {
-                    (
-                        Observation::CaptureUnavailable { target: a, .. },
-                        Observation::CaptureUnavailable { target: b, .. },
-                    ) => a == b,
-                    (
-                        Observation::Refused { request: a, .. },
-                        Observation::Refused { request: b, .. },
-                    ) => a == b,
-                    _ => false,
-                })
-            {
-                return Err(TransitionError::DuplicateId);
             }
         }
         self.scratch.states.copy_from_slice(&self.states);
         self.scratch.records.copy_from_slice(&self.records);
+        self.scratch.pending.copy_from(&self.pending);
+        self.scratch
+            .absolute_to_visit
+            .copy_from(&self.pending.absolute);
         self.scratch.intents.fill(None);
         self.scratch.protected.fill(None);
         self.scratch.origins.fill(None);
         self.scratch.discontinuities.fill(false);
-        self.scratch.pulses.fill(false);
+        self.scratch.ready.clear();
         self.scratch.delivered.fill(false);
         self.scratch.masked.fill(false);
         self.scratch.eligible.fill(false);
         self.scratch.events.clear();
         self.scratch.decisions.clear();
-        for i in 0..self.records.len() {
-            if self.records[i].is_some_and(|r| {
-                r.outcome.is_none() && r.effective <= self.frame && r.command.timing == Timing::At
-            }) {
+        #[cfg(test)]
+        {
+            self.scratch.work = Work::default();
+        }
+        while let Some(i) = self.scratch.absolute_to_visit.pop_first() {
+            #[cfg(test)]
+            {
+                self.scratch.work.requests += 1;
+            }
+            if self.scratch.records[i]
+                .is_some_and(|r| r.outcome.is_none() && r.effective <= self.frame)
+            {
                 self.offer(i);
             }
         }
@@ -279,7 +323,7 @@ impl TransitionProcessor {
             let len = self.plan.image.components[c].len();
             for i in 0..len {
                 let id = self.plan.image.components[c][i];
-                self.apply_pending(id, observations)?;
+                self.apply_pending(id)?;
                 self.natural_boundary(id)?;
                 if self
                     .spec(id)?
@@ -287,7 +331,7 @@ impl TransitionProcessor {
                     .is_some_and(|source| self.scratch.delivered[source.slot as usize])
                     && !self.scratch.masked[id.slot as usize]
                 {
-                    self.scratch.pulses[id.slot as usize] = true;
+                    self.queue_pulse(id);
                 }
             }
             for i in 0..len {
@@ -297,28 +341,35 @@ impl TransitionProcessor {
                     .sync_source
                     .filter(|s| self.scratch.delivered[s.slot as usize])
                 {
-                    self.react(id, source, observations)?;
+                    self.react(id, source)?;
                 }
             }
-            loop {
-                let next = self.plan.image.components[c].iter().copied().find(|id| {
-                    self.scratch.pulses[id.slot as usize]
-                        && !self.scratch.delivered[id.slot as usize]
-                });
-                let Some(id) = next else { break };
-                self.scratch.delivered[id.slot as usize] = true;
-                self.scratch.states[id.slot as usize]
+            while let Some(slot) = self.scratch.ready.pop_first() {
+                debug_assert_eq!(self.plan.component_of[slot], c);
+                let id = self.scratch.states[slot]
+                    .ok_or(TransitionError::InvalidId)?
+                    .id;
+                self.scratch.delivered[slot] = true;
+                #[cfg(test)]
+                {
+                    self.scratch.work.pulses += 1;
+                }
+                self.scratch.states[slot]
                     .as_mut()
                     .ok_or(TransitionError::InvalidId)?
                     .last_pulse = Some(self.frame);
                 self.event(id, EventKind::Pulse)?;
-                for i in 0..len {
-                    let follower = self.plan.image.components[c][i];
-                    if self.spec(follower)?.sync_source == Some(id) {
+                for i in self.plan.follower_ranges[slot].clone() {
+                    let follower = self.plan.followers[i];
+                    #[cfg(test)]
+                    {
+                        self.scratch.work.followers += 1;
+                    }
+                    if self.plan.component_of[follower.slot as usize] == c {
                         if !self.scratch.masked[follower.slot as usize] {
-                            self.scratch.pulses[follower.slot as usize] = true;
+                            self.queue_pulse(follower);
                         }
-                        self.react(follower, id, observations)?;
+                        self.react(follower, id)?;
                     }
                 }
             }
@@ -367,6 +418,26 @@ impl TransitionProcessor {
         });
         Ok(())
     }
+    fn queue_pulse(&mut self, id: LoopId) {
+        let slot = id.slot as usize;
+        if !self.scratch.delivered[slot] {
+            self.scratch.ready.insert(slot);
+        }
+    }
+    fn terminal(&mut self, request: usize, outcome: Outcome) {
+        let record = self.scratch.records[request]
+            .as_mut()
+            .expect("retained request");
+        debug_assert!(record.outcome.is_none());
+        record.outcome = Some(outcome);
+        let absolute = record.command.timing == Timing::At;
+        self.scratch
+            .pending
+            .remove(record.command.target.slot as usize, request, absolute);
+        if absolute {
+            self.scratch.absolute_to_visit.remove(request);
+        }
+    }
     fn offer(&mut self, request: usize) {
         let record = self.scratch.records[request].expect("retained request");
         let target = record.command.target.slot as usize;
@@ -377,52 +448,29 @@ impl TransitionProcessor {
             } else {
                 request
             };
-            self.scratch.records[loser]
-                .as_mut()
-                .expect("retained loser")
-                .outcome = Some(Outcome::Superseded { frame: self.frame });
+            self.terminal(loser, Outcome::Superseded { frame: self.frame });
             if loser == request {
                 return;
             }
         }
         self.scratch.intents[target] = Some(request);
     }
-    fn apply_pending(
-        &mut self,
-        id: LoopId,
-        observations: &[Observation],
-    ) -> Result<(), TransitionError> {
+    fn apply_pending(&mut self, id: LoopId) -> Result<(), TransitionError> {
         let slot = id.slot as usize;
         let Some(request) = self.scratch.intents[slot].take() else {
             return Ok(());
         };
         let record = self.scratch.records[request].expect("retained request");
         if self.scratch.protected[slot].is_some_and(|seq| record.command.sequence <= seq) {
-            self.scratch.records[request]
-                .as_mut()
-                .expect("retained request")
-                .outcome = Some(Outcome::Superseded { frame: self.frame });
+            self.terminal(request, Outcome::Superseded { frame: self.frame });
             return Ok(());
         }
         self.scratch.protected[slot] = Some(record.command.sequence);
-        let refused = observations
-            .iter()
-            .find_map(|observation| match *observation {
-                Observation::Refused { request, reason } if request == record.id => Some(reason),
-                _ => None,
-            })
-            .or_else(|| {
-                observations
-                    .iter()
-                    .find_map(|observation| match *observation {
-                        Observation::CaptureUnavailable { target, reason }
-                            if target == id && record.command.operation == Operation::Record =>
-                        {
-                            Some(reason)
-                        }
-                        _ => None,
-                    })
-            });
+        let refused = self.scratch.request_refused[request].or_else(|| {
+            (record.command.operation == Operation::Record)
+                .then_some(self.scratch.capture_refused[slot])
+                .flatten()
+        });
         let before = self.scratch.states[slot].ok_or(TransitionError::InvalidId)?;
         let mut state = before;
         let result = if let Some(reason) = refused {
@@ -432,13 +480,13 @@ impl TransitionProcessor {
         };
         match result {
             Err(reason) => {
-                self.scratch.records[request]
-                    .as_mut()
-                    .expect("retained request")
-                    .outcome = Some(Outcome::Failed {
-                    frame: self.frame,
-                    reason,
-                })
+                self.terminal(
+                    request,
+                    Outcome::Failed {
+                        frame: self.frame,
+                        reason,
+                    },
+                );
             }
             Ok(pulse) => {
                 self.scratch.discontinuities[slot] |= state.plays()
@@ -450,27 +498,30 @@ impl TransitionProcessor {
                         });
                 self.scratch.states[slot] = Some(state);
                 self.scratch.origins[slot] = Some(record.id);
-                self.scratch.records[request]
-                    .as_mut()
-                    .expect("retained request")
-                    .outcome = Some(Outcome::Applied { frame: self.frame });
+                self.terminal(request, Outcome::Applied { frame: self.frame });
                 if before != state {
                     self.event(id, EventKind::Transition(record.command.operation))?;
                 }
                 if record.command.operation == Operation::Stop {
                     self.scratch.masked[slot] = true;
-                    self.scratch.pulses[slot] = false;
-                    for old in self.scratch.records.iter_mut().flatten() {
-                        if old.outcome.is_none()
-                            && old.command.target == id
-                            && old.command.sequence < record.command.sequence
-                        {
-                            old.outcome = Some(Outcome::Cancelled { frame: self.frame });
+                    self.scratch.ready.remove(slot);
+                    for absolute in [true, false] {
+                        let mut next = self.scratch.pending.first(slot, absolute);
+                        while let Some(i) = next {
+                            next = self.scratch.pending.next(i);
+                            #[cfg(test)]
+                            {
+                                self.scratch.work.requests += 1;
+                            }
+                            let old = self.scratch.records[i].expect("indexed pending request");
+                            if old.command.sequence < record.command.sequence {
+                                self.terminal(i, Outcome::Cancelled { frame: self.frame });
+                            }
                         }
                     }
                 } else if pulse {
                     self.scratch.masked[slot] = false;
-                    self.scratch.pulses[slot] = true;
+                    self.queue_pulse(id);
                 }
             }
         }
@@ -501,19 +552,18 @@ impl TransitionProcessor {
             .ok_or(TransitionError::Exhausted)?;
         state.position = 0;
         self.scratch.discontinuities[slot] = true;
-        self.scratch.pulses[slot] = true;
+        self.queue_pulse(id);
         self.event(id, EventKind::Wrap)
     }
-    fn react(
-        &mut self,
-        target: LoopId,
-        source: LoopId,
-        observations: &[Observation],
-    ) -> Result<(), TransitionError> {
-        for i in 0..self.scratch.records.len() {
-            let Some(record) = self.scratch.records[i] else {
-                continue;
-            };
+    fn react(&mut self, target: LoopId, source: LoopId) -> Result<(), TransitionError> {
+        let mut next = self.scratch.pending.first(target.slot as usize, false);
+        while let Some(i) = next {
+            next = self.scratch.pending.next(i);
+            #[cfg(test)]
+            {
+                self.scratch.work.requests += 1;
+            }
+            let record = self.scratch.records[i].expect("indexed pending request");
             if record.outcome.is_some()
                 || record.effective > self.frame
                 || record.command.target != target
@@ -538,7 +588,7 @@ impl TransitionProcessor {
                 }
             }
         }
-        self.apply_pending(target, observations)?;
+        self.apply_pending(target)?;
         self.natural_boundary(target)
     }
     pub fn commit(&mut self, id: BoundaryId) -> Result<(), TransitionError> {
@@ -547,6 +597,7 @@ impl TransitionProcessor {
         }
         core::mem::swap(&mut self.states, &mut self.scratch.states);
         core::mem::swap(&mut self.records, &mut self.scratch.records);
+        core::mem::swap(&mut self.pending, &mut self.scratch.pending);
         core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.phase = Phase::Committed(id);
         Ok(())
@@ -733,5 +784,83 @@ mod tests {
             processor.submit(command(id, Operation::Record)),
             Err(TransitionError::Capacity)
         );
+    }
+
+    #[shoop_test]
+    fn empty_request_tables_and_sync_cycles_do_work_proportional_to_edges() {
+        let n = 64;
+        for requests in [64, 1024] {
+            let plan = TransitionPlan::compile(
+                PlanDescription {
+                    quantum: 16,
+                    loops: (0..n)
+                        .map(|slot| LoopSpec {
+                            id: LoopId {
+                                slot,
+                                generation: 1,
+                            },
+                            kind: LoopKind::Primitive,
+                            length: 16,
+                            sync_source: Some(LoopId {
+                                slot: (slot + 1) % n,
+                                generation: 1,
+                            }),
+                            repeat_sync: false,
+                            timeline: None,
+                        })
+                        .collect(),
+                },
+                TransitionLimits {
+                    loop_slots: n,
+                    pending_requests: requests,
+                    events: 2 * n + requests,
+                },
+            )
+            .unwrap();
+            let mut processor = TransitionProcessor::prepare(plan);
+            for slot in 0..n {
+                processor
+                    .submit(Command {
+                        sequence: u64::from(slot),
+                        ..command(
+                            LoopId {
+                                slot,
+                                generation: 1,
+                            },
+                            Operation::Play {
+                                position: 0,
+                                retrigger: true,
+                            },
+                        )
+                    })
+                    .unwrap();
+            }
+            let boundary = processor.preview(&[]).unwrap();
+            assert_eq!(
+                processor.scratch.work,
+                Work {
+                    requests: 64,
+                    followers: 64,
+                    pulses: 64
+                }
+            );
+            processor.commit(boundary).unwrap();
+            processor.finish_quantum(boundary).unwrap();
+            // Retained terminal records and spare slots must add no request searches.
+            let boundary = processor.preview(&[]).unwrap();
+            assert_eq!(
+                processor.scratch.work,
+                Work {
+                    requests: 0,
+                    followers: 64,
+                    pulses: 64
+                }
+            );
+            assert!(processor
+                .decisions(boundary)
+                .unwrap()
+                .iter()
+                .all(|d| d.state.cycles == 1));
+        }
     }
 }

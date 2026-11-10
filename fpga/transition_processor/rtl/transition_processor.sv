@@ -46,6 +46,11 @@ module transition_processor #(
     localparam integer SPEC_SOURCE_VALID=33, SPEC_SOURCE=34, SPEC_REPEAT=98,
         SPEC_KIND=99, SPEC_TIMELINE=101, SPEC_LENGTH=128;
     localparam integer PA=(REQUEST_DEPTH > 1) ? $clog2(REQUEST_DEPTH) : 1;
+    localparam integer H=PA+1, LH=SA+1, RW=640+2*H;
+    localparam [H-1:0] NO_REQUEST={H{1'b1}};
+    localparam [LH-1:0] NO_FOLLOWER={LH{1'b1}};
+    localparam integer HEAD_AT=37, HEAD_SYNC=804, R_NEXT=640, R_PREV=640+H,
+        FOLLOW_HEAD=192, FOLLOW_NEXT=192+LH, COMPONENT_ID=192+2*LH;
     localparam integer OBS_DEPTH=LOOP_DEPTH+REQUEST_DEPTH+1;
 
     typedef enum reg [7:0] {
@@ -54,26 +59,33 @@ module transition_processor #(
         S_M_WAIT, S_M_GET, S_O_WAIT, S_O_GET, S_E_WAIT, S_E_GET,
         S_PREP_LOOP, S_PREP_SPEC, S_PREP_SOURCE, S_PREP_WRITE,
         S_PREP_MEMBER, S_PREP_MEMBER_CHECK, S_PREP_MEMBER_LOOP,
+        S_PREP_INIT_META_WRITE, S_PREP_COMPONENT_TAG,
+        S_PREP_LINK, S_PREP_LINK_MEMBER, S_PREP_LINK_TARGET, S_PREP_LINK_SOURCE,
+        S_PREP_LINK_WRITE, S_PREP_LINK_WRITE_NEXT, S_PREP_LINK_NEXT,
         S_PREP_REQUEST, S_PREP_COMPLETE,
         S_SUBMIT_TARGET, S_SUBMIT_SOURCE, S_SUBMIT_SCAN, S_SUBMIT_CHECK, S_SUBMIT_WRITE,
-        S_CANCEL_COLLECT,
+        S_CANCEL_COLLECT, S_CANCEL_REPLY,
+        S_INSERT_HEAD, S_INSERT_FIND, S_INSERT_READ, S_INSERT_PLACE,
+        S_INSERT_PREV, S_INSERT_NEXT, S_INSERT_NEXT_WRITE, S_INSERT_DONE,
+        S_UNLINK_BEGIN, S_UNLINK_HEAD, S_UNLINK_PREV, S_UNLINK_NEXT, S_UNLINK_NEXT_WRITE, S_UNLINK_DONE,
+        S_APPLY_UNLINK_DONE,
         S_PREVIEW_OBS, S_OBS_CHECK, S_OBS_TARGET, S_OBS_REQUEST,
-        S_OBS_DUP, S_OBS_DUP_CHECK, S_OBS_NEXT,
+        S_OBS_NEXT,
         S_COPY_LOOP, S_COPY_LOOP_WRITE, S_COPY_REQUEST, S_COPY_REQUEST_WRITE,
         S_DIRECT_SCAN, S_DIRECT_CHECK,
         S_OFFER_LOOP, S_OFFER_CHECK, S_OFFER_LOSER,
         S_COMPONENT, S_COMPONENT_END, S_COMPONENT_END_CHECK,
         S_FIRST, S_FIRST_MEMBER, S_FIRST_APPLY, S_FIRST_NATURAL, S_FIRST_INHERIT,
         S_SECOND, S_SECOND_MEMBER, S_SECOND_REACT, S_SECOND_NEXT,
-        S_FIND_PULSE, S_FIND_PULSE_CHECK, S_PULSE_LOAD, S_PULSE_EMIT,
-        S_FOLLOW, S_FOLLOW_MEMBER, S_FOLLOW_REACT, S_FOLLOW_NEXT,
+        S_FIND_PULSE, S_PULSE_EMIT, S_SINGLE_REACT_DONE,
+        S_FOLLOW, S_FOLLOW_REACT, S_FOLLOW_NEXT,
         S_REACT, S_REACT_CHECK, S_REACT_OFFER_DONE, S_REACT_APPLY, S_REACT_NATURAL,
-        S_APPLY, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK,
+        S_APPLY, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK, S_CANCEL_OLDER_NEXT,
         S_NATURAL, S_NATURAL_SOURCE, S_NATURAL_WRAP,
         S_FINAL, S_FINAL_CHECK, S_FINISH_LOOP, S_FINISH_WRITE,
         S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY
     } state_t;
-    state_t state, read_return, offer_return, apply_return, natural_return, react_return;
+    state_t state, read_return, offer_return, apply_return, natural_return, react_return, list_return;
     reg configured, active_bank, candidate_valid;
     reg [1:0] phase;
     reg [63:0] frame, serial;
@@ -82,7 +94,17 @@ module transition_processor #(
     wire [31:0] active_events = active_bank ? event_count_1 : event_count_0;
     wire [31:0] scratch_events = active_bank ? event_count_0 : event_count_1;
     reg [LOOP_DEPTH-1:0] spec_written, member_written, valid_loops, seen_members;
-    reg [LOOP_DEPTH-1:0] pulses, delivered, masked, capture_refused;
+    reg [LOOP_DEPTH-1:0] ready_pulses, delivered, masked, capture_refused;
+    reg [REQUEST_DEPTH-1:0] absolute_0, absolute_1, absolute_to_visit;
+    wire [REQUEST_DEPTH-1:0] active_absolute = active_bank ? absolute_1 : absolute_0;
+    wire ready_valid, absolute_valid;
+    wire [SA-1:0] ready_index;
+    wire [PA-1:0] absolute_index;
+    tp_priority #(.SLOTS(LOOP_DEPTH), .INDEX_BITS(SA)) pulse_priority (
+        ready_pulses, ready_valid, ready_index);
+    tp_priority #(.SLOTS(REQUEST_DEPTH), .INDEX_BITS(PA)) request_priority (
+        absolute_to_visit, absolute_valid, absolute_index);
+    reg [31:0] request_checks, follower_visits, pulse_deliveries;
     reg [REQUEST_DEPTH-1:0] eligible, request_refused;
     reg [3:0] capture_reason [0:LOOP_DEPTH-1];
     reg [3:0] request_reason [0:REQUEST_DEPTH-1];
@@ -92,17 +114,25 @@ module transition_processor #(
     reg [31:0] index;
     reg [639:0] payload;
     reg [831:0] loop_row;
-    reg [639:0] request_row;
-    reg [191:0] spec_row;
+    reg [RW-1:0] request_row;
+    reg [255:0] spec_row;
+    reg [SA-1:0] prepared_component;
+    reg [LH-1:0] prepared_next;
     reg [63:0] member_row;
     reg [127:0] observation_row;
     reg [255:0] event_row;
     reg [1:0] source_mode;
     reg loop_source_read, loop_with_spec;
-    reg [31:0] cursor, observation_cursor, duplicate_cursor, request_cursor;
+    reg [31:0] cursor, observation_cursor, request_cursor;
     reg [64:0] observation_key;
     reg [3:0] observation_reason;
-    reg [31:0] component_start, component_end, member_cursor, pulse_cursor, follow_cursor;
+    reg [31:0] component_start, component_end, member_cursor;
+    reg [SA-1:0] prepare_component;
+    reg [LH-1:0] follow_cursor, follow_next;
+    reg [63:0] submitted_effective;
+    reg [H-1:0] list_previous, list_next, walk_next;
+    reg [31:0] list_slot, list_target;
+    reg list_ticks, list_bank, stopping, cancel_sync;
     reg [31:0] target_slot, pulse_slot, react_source, apply_slot;
     reg [31:0] offer_slot, offer_target, loser_slot;
     reg [63:0] offer_sequence, stop_sequence;
@@ -118,22 +148,22 @@ module transition_processor #(
     reg [OA-1:0] or_address, ow_address;
     reg [EA-1:0] er_address, ew_address;
     reg [831:0] lw_data;
-    reg [639:0] rw_data;
-    reg [191:0] sw_data;
+    reg [RW-1:0] rw_data;
+    reg [255:0] sw_data;
     reg [63:0] mw_data;
     reg [127:0] ow_data;
     reg [255:0] ew_data;
     wire [831:0] lr_data;
-    wire [639:0] rr_data;
-    wire [191:0] sr_data;
+    wire [RW-1:0] rr_data;
+    wire [255:0] sr_data;
     wire [63:0] mr_data;
     wire [127:0] or_data;
     wire [255:0] er_data;
     tp_ram #(.WIDTH(832), .DEPTH(2*LOOP_DEPTH), .ADDR_BITS(LA)) loops (
         clk, lr_en, lr_address, lr_data, lw_en, lw_address, lw_data);
-    tp_ram #(.WIDTH(640), .DEPTH(2*REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
+    tp_ram #(.WIDTH(RW), .DEPTH(2*REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
         clk, rr_en, rr_address, rr_data, rw_en, rw_address, rw_data);
-    tp_ram #(.WIDTH(192), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
+    tp_ram #(.WIDTH(256), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
         clk, sr_en, sr_address, sr_data, sw_en, sw_address, sw_data);
     tp_ram #(.WIDTH(64), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) members (
         clk, mr_en, mr_address, mr_data, mw_en, mw_address, mw_data);
@@ -162,9 +192,9 @@ module transition_processor #(
         at_end = unused_row[MODE+:2] == PLAYING && unused_row[LENGTH+:64] != 0
             && unused_row[POSITION+:64] == unused_row[LENGTH+:64];
     endfunction
-    function automatic [639:0] terminal(input [639:0] row, input [2:0] result,
+    function automatic [RW-1:0] terminal(input [RW-1:0] row, input [2:0] result,
                                        input [3:0] reason, input [63:0] now_frame);
-        reg [639:0] value;
+        reg [RW-1:0] value;
         begin
             value = row;
             value[R_OUTCOME+:3] = result;
@@ -225,9 +255,9 @@ module transition_processor #(
         end
     endfunction
 
-    wire [836:0] op_result = operation(loop_row, request_row);
+    wire [836:0] op_result = operation(loop_row, request_row[639:0]);
     reg [831:0] apply_loop;
-    reg [639:0] apply_request;
+    reg [RW-1:0] apply_request;
     reg apply_event, apply_stop, apply_pulse;
     reg [3:0] refusal;
     always @* begin
@@ -294,7 +324,7 @@ module transition_processor #(
             read_return <= destination; state <= S_R_WAIT;
         end
     endtask
-    task automatic write_request(input [31:0] slot, input bank, input [639:0] data);
+    task automatic write_request(input [31:0] slot, input bank, input [RW-1:0] data);
         begin rw_en <= 1; rw_address <= request_address(slot, bank); rw_data <= data; end
     endtask
     task automatic read_spec(input [31:0] unused_slot, input state_t destination);
@@ -328,9 +358,24 @@ module transition_processor #(
         end
     endtask
 
+    task automatic unlink(input [31:0] slot, input [RW-1:0] row, input bank,
+                          input state_t destination);
+        begin
+            list_slot <= slot; list_target <= row[R_TARGET+:32];
+            list_previous <= row[R_PREV+:H]; list_next <= row[R_NEXT+:H];
+            list_ticks <= row[R_TICKS]; list_bank <= bank; list_return <= destination;
+            if (!row[R_TICKS]) begin
+                if (bank) absolute_1[PA'(slot)] <= 0; else absolute_0[PA'(slot)] <= 0;
+                absolute_to_visit[PA'(slot)] <= 0;
+            end
+            state <= S_UNLINK_BEGIN;
+        end
+    endtask
+
     always @(posedge clk) begin : control
         reg [831:0] temporary_loop;
-        reg [639:0] temporary_request;
+        reg [RW-1:0] temporary_request;
+        reg [255:0] temporary_spec;
         reg [64:0] addition;
         reg [63:0] rounded_frame;
         lr_en <= 0; lw_en <= 0; rr_en <= 0; rw_en <= 0;
@@ -344,7 +389,9 @@ module transition_processor #(
             loop_slots <= 0; request_slots <= 0; event_limit <= 0; member_count <= 0; quantum <= 0;
             event_count_0 <= 0; event_count_1 <= 0;
             spec_written <= 0; member_written <= 0; valid_loops <= 0; seen_members <= 0;
-            pulses <= 0; delivered <= 0; masked <= 0; eligible <= 0;
+            ready_pulses <= 0; delivered <= 0; masked <= 0; eligible <= 0;
+            absolute_0 <= 0; absolute_1 <= 0; absolute_to_visit <= 0;
+            request_checks <= 0; follower_visits <= 0; pulse_deliveries <= 0;
             capture_refused <= 0; request_refused <= 0;
             observation_count <= 0; observation_overflow <= 0;
             response_valid <= 0; response_error <= OK; response_data <= 0;
@@ -369,12 +416,15 @@ module transition_processor #(
                         temporary_loop[320+:32] = event_limit;
                         temporary_loop[352+:32] = member_count;
                         temporary_loop[384+:32] = quantum;
+                        temporary_loop[416+:32] = request_checks;
+                        temporary_loop[448+:32] = follower_visits;
+                        temporary_loop[480+:32] = pulse_deliveries;
                         reply(OK, temporary_loop);
                     end else if (opcode == WRITE_SPEC || opcode == WRITE_MEMBER) begin
                         if (configured) reply(INVALID_STATE, 0);
                         else if (index >= LOOP_DEPTH) reply(CAPACITY, 0);
                         else if (opcode == WRITE_SPEC) begin
-                            sw_en <= 1; sw_address <= SA'(index); sw_data <= payload[191:0];
+                            sw_en <= 1; sw_address <= SA'(index); sw_data <= {64'b0,payload[191:0]};
                             spec_written[index[SA-1:0]] <= 1;
                             reply(OK, 0);
                         end else begin
@@ -398,6 +448,7 @@ module transition_processor #(
                             cursor <= 0; valid_loops <= 0; seen_members <= 0;
                             active_bank <= 0; frame <= 0; serial <= 0;
                             event_count_0 <= 0; event_count_1 <= 0;
+                            absolute_0 <= 0; absolute_1 <= 0; prepare_component <= 0;
                             state <= S_PREP_LOOP;
                         end
                     end else if (!configured) reply(INVALID_STATE, 0);
@@ -430,7 +481,10 @@ module transition_processor #(
                             if (phase == COMMITTED) reply(INVALID_STATE, 0);
                             else begin
                                 phase <= PREPARING; candidate_valid <= 0;
-                                pulses <= 0; delivered <= 0; masked <= 0; eligible <= 0;
+                                ready_pulses <= 0; delivered <= 0; masked <= 0; eligible <= 0;
+                                absolute_to_visit <= active_absolute;
+                                if (active_bank) absolute_0 <= active_absolute; else absolute_1 <= active_absolute;
+                                request_checks <= 0; follower_visits <= 0; pulse_deliveries <= 0;
                                 capture_refused <= 0; request_refused <= 0;
                                 if (active_bank) event_count_0 <= 0; else event_count_1 <= 0;
                                 addition = {1'b0, frame}+{33'b0, quantum};
@@ -508,6 +562,8 @@ module transition_processor #(
                         reply(INVALID_FRAME, 0);
                     else begin
                         temporary_loop = 0;
+                        temporary_loop[HEAD_AT+:H] = NO_REQUEST;
+                        temporary_loop[HEAD_SYNC+:H] = NO_REQUEST;
                         if (spec_row[VALID]) begin
                             temporary_loop[VALID] = 1;
                             temporary_loop[GENERATION+:32] = spec_row[GENERATION+:32];
@@ -528,11 +584,19 @@ module transition_processor #(
                     if (!spec_row[VALID] || spec_row[GENERATION+:32] != target_source[63:32]) reply(INVALID_ID, 0);
                     else state <= S_PREP_WRITE;
                 end
-                S_PREP_WRITE: begin cursor <= cursor+1'b1; state <= S_PREP_LOOP; end
+                S_PREP_WRITE: read_spec(cursor, S_PREP_INIT_META_WRITE);
+                S_PREP_INIT_META_WRITE: begin
+                    temporary_spec = spec_row;
+                    temporary_spec[255:192] = 0;
+                    temporary_spec[FOLLOW_HEAD+:LH] = NO_FOLLOWER;
+                    temporary_spec[FOLLOW_NEXT+:LH] = NO_FOLLOWER;
+                    sw_en <= 1; sw_address <= SA'(cursor); sw_data <= temporary_spec;
+                    cursor <= cursor+1'b1; state <= S_PREP_LOOP;
+                end
                 S_PREP_MEMBER: begin
                     if (cursor == member_count) begin
                         if (seen_members != valid_loops) reply(INVALID_CONFIG, 0);
-                        else begin cursor <= 0; state <= S_PREP_REQUEST; end
+                        else begin cursor <= member_count; state <= S_PREP_LINK; end
                     end else if (!member_written[cursor[SA-1:0]]) reply(INVALID_CONFIG, 0);
                     else read_member(cursor, S_PREP_MEMBER_CHECK);
                 end
@@ -544,10 +608,56 @@ module transition_processor #(
                 end
                 S_PREP_MEMBER_LOOP: begin
                     if (!loop_row[VALID]) reply(INVALID_ID, 0);
-                    else begin seen_members[member_row[SA-1:0]] <= 1; cursor <= cursor+1'b1; state <= S_PREP_MEMBER; end
+                    else begin
+                        seen_members[member_row[SA-1:0]] <= 1;
+                        read_spec(member_row[31:0], S_PREP_COMPONENT_TAG);
+                    end
                 end
+                S_PREP_COMPONENT_TAG: begin
+                    temporary_spec = spec_row;
+                    temporary_spec[COMPONENT_ID+:SA] = prepare_component;
+                    sw_en <= 1; sw_address <= SA'(member_row[31:0]); sw_data <= temporary_spec;
+                    if (member_row[32]) prepare_component <= prepare_component+1'b1;
+                    cursor <= cursor+1'b1; state <= S_PREP_MEMBER;
+                end
+                S_PREP_LINK: begin
+                    if (cursor == 0) state <= S_PREP_REQUEST;
+                    else read_member(cursor-1'b1, S_PREP_LINK_MEMBER);
+                end
+                S_PREP_LINK_MEMBER: read_spec(member_row[31:0], S_PREP_LINK_TARGET);
+                S_PREP_LINK_TARGET: begin
+                    if (!spec_row[SPEC_SOURCE_VALID]) state <= S_PREP_LINK_NEXT;
+                    else begin
+                        prepared_component <= spec_row[COMPONENT_ID+:SA];
+                        target_source <= spec_row[SPEC_SOURCE+:64];
+                        read_spec(spec_row[SPEC_SOURCE+:32], S_PREP_LINK_SOURCE);
+                    end
+                end
+                S_PREP_LINK_SOURCE: begin
+                    if (prepared_component != spec_row[COMPONENT_ID+:SA]) state <= S_PREP_LINK_NEXT;
+                    else begin
+                        temporary_spec = spec_row;
+                        temporary_spec[FOLLOW_HEAD+:LH] = LH'(member_row[31:0]);
+                        if (target_source[31:0] == member_row[31:0]) begin
+                            temporary_spec[FOLLOW_NEXT+:LH] = spec_row[FOLLOW_HEAD+:LH];
+                            state <= S_PREP_LINK_NEXT;
+                        end else begin
+                            prepared_next <= spec_row[FOLLOW_HEAD+:LH];
+                            state <= S_PREP_LINK_WRITE;
+                        end
+                        sw_en <= 1; sw_address <= SA'(target_source[31:0]); sw_data <= temporary_spec;
+                    end
+                end
+                S_PREP_LINK_WRITE: read_spec(member_row[31:0], S_PREP_LINK_WRITE_NEXT);
+                S_PREP_LINK_WRITE_NEXT: begin
+                    temporary_spec = spec_row; temporary_spec[FOLLOW_NEXT+:LH] = prepared_next;
+                    sw_en <= 1; sw_address <= SA'(member_row[31:0]); sw_data <= temporary_spec;
+                    state <= S_PREP_LINK_NEXT;
+                end
+                S_PREP_LINK_NEXT: begin cursor <= cursor-1'b1; state <= S_PREP_LINK; end
                 S_PREP_REQUEST: begin
                     temporary_request = 0; temporary_request[R_GEN+:32] = 1;
+                    temporary_request[R_NEXT+:H] = NO_REQUEST; temporary_request[R_PREV+:H] = NO_REQUEST;
                     write_request(cursor, 0, temporary_request);
                     if (cursor+1'b1 == request_slots) state <= S_PREP_COMPLETE;
                     else cursor <= cursor+1'b1;
@@ -590,18 +700,10 @@ module transition_processor #(
                     if (!free_found) reply(CAPACITY, 0);
                     else if (addition[64]) reply(INVALID_FRAME, 0);
                     else begin
-                        temporary_request = payload;
-                        temporary_request[63:0] = 0;
-                        temporary_request[R_VALID] = 1;
-                        temporary_request[R_GEN+:32] = free_generation;
-                        temporary_request[R_TICKS] = payload[R_TICKS];
-                        temporary_request[R_OP+:2] = payload[R_OP+:2];
-                        temporary_request[R_RETRIGGER] = payload[R_RETRIGGER];
-                        temporary_request[R_EFFECTIVE+:64] = addition[63:0] & ~(64'(quantum)-1'b1);
-                        temporary_request[R_REMAINING+:64] = payload[R_TICKS] ? payload[R_SKIP+:64] : 0;
-                        temporary_request[R_FRAME+:64] = 0;
-                        write_request(free_slot, active_bank, temporary_request);
-                        reply(OK, {768'b0, free_generation, free_slot});
+                        submitted_effective <= addition[63:0] & ~(64'(quantum)-1'b1);
+                        list_slot <= free_slot;
+                        list_target <= payload[R_TARGET+:32]; list_ticks <= payload[R_TICKS]; list_bank <= active_bank;
+                        read_loop(payload[R_TARGET+:32], active_bank, 0, 0, S_INSERT_HEAD);
                     end
                 end
                 S_CANCEL_COLLECT: begin
@@ -610,16 +712,93 @@ module transition_processor #(
                         if (request_row[R_OUTCOME+:3] != 0) reply(OK, 0);
                         else begin
                             write_request(index, active_bank, terminal(request_row, CANCELLED, OK, frame));
-                            reply(OK, 832'd1);
+                            unlink(index, request_row, active_bank, S_CANCEL_REPLY);
                         end
                     end else if (request_row[R_OUTCOME+:3] == 0) reply(OK, 0);
                     else begin
                         temporary_request = 0;
                         temporary_request[R_GEN+:32] = request_row[R_GEN+:32]+1'b1;
                         write_request(index, active_bank, temporary_request);
-                        reply(OK, {192'b0,request_row});
+                        reply(OK, {192'b0,request_row[639:0]});
                     end
                 end
+                S_CANCEL_REPLY: reply(OK, 832'd1);
+                S_INSERT_HEAD: begin
+                    list_previous <= NO_REQUEST;
+                    list_next <= list_ticks ? loop_row[HEAD_SYNC+:H] : loop_row[HEAD_AT+:H];
+                    state <= S_INSERT_FIND;
+                end
+                S_INSERT_FIND: begin
+                    if (list_next == NO_REQUEST || 32'(list_next) > list_slot) state <= S_INSERT_PLACE;
+                    else read_request(32'(list_next), list_bank, S_INSERT_READ);
+                end
+                S_INSERT_READ: begin
+                    list_previous <= list_next; list_next <= request_row[R_NEXT+:H]; state <= S_INSERT_FIND;
+                end
+                S_INSERT_PLACE: begin
+                        temporary_request = {{(RW-640){1'b0}},payload};
+                        temporary_request[63:0] = 0;
+                        temporary_request[R_VALID] = 1;
+                        temporary_request[R_GEN+:32] = free_generation;
+                        temporary_request[R_TICKS] = payload[R_TICKS];
+                        temporary_request[R_OP+:2] = payload[R_OP+:2];
+                        temporary_request[R_RETRIGGER] = payload[R_RETRIGGER];
+                        temporary_request[R_EFFECTIVE+:64] = submitted_effective;
+                        temporary_request[R_REMAINING+:64] = payload[R_TICKS] ? payload[R_SKIP+:64] : 0;
+                        temporary_request[R_FRAME+:64] = 0;
+                        temporary_request[R_NEXT+:H] = NO_REQUEST; temporary_request[R_PREV+:H] = NO_REQUEST;
+                    temporary_request[R_PREV+:H] = list_previous; temporary_request[R_NEXT+:H] = list_next;
+                    write_request(list_slot, list_bank, temporary_request);
+                    if (list_previous == NO_REQUEST) begin
+                        temporary_loop = loop_row;
+                        if (list_ticks) temporary_loop[HEAD_SYNC+:H] = H'(list_slot);
+                        else temporary_loop[HEAD_AT+:H] = H'(list_slot);
+                        write_loop(list_target, list_bank, temporary_loop);
+                        state <= S_INSERT_NEXT;
+                    end else read_request(32'(list_previous), list_bank, S_INSERT_PREV);
+                end
+                S_INSERT_PREV: begin
+                    temporary_request = request_row; temporary_request[R_NEXT+:H] = H'(list_slot);
+                    write_request(32'(list_previous), list_bank, temporary_request); state <= S_INSERT_NEXT;
+                end
+                S_INSERT_NEXT: begin
+                    if (list_next == NO_REQUEST) state <= S_INSERT_DONE;
+                    else read_request(32'(list_next), list_bank, S_INSERT_NEXT_WRITE);
+                end
+                S_INSERT_NEXT_WRITE: begin
+                    temporary_request = request_row; temporary_request[R_PREV+:H] = H'(list_slot);
+                    write_request(32'(list_next), list_bank, temporary_request); state <= S_INSERT_DONE;
+                end
+                S_INSERT_DONE: begin
+                    if (!list_ticks) begin
+                        if (list_bank) absolute_1[PA'(list_slot)] <= 1; else absolute_0[PA'(list_slot)] <= 1;
+                    end
+                    reply(OK, {768'b0, free_generation, free_slot});
+                end
+                S_UNLINK_BEGIN: begin
+                    if (list_previous == NO_REQUEST) read_loop(list_target, list_bank, 0, 0, S_UNLINK_HEAD);
+                    else read_request(32'(list_previous), list_bank, S_UNLINK_PREV);
+                end
+                S_UNLINK_HEAD: begin
+                    temporary_loop = loop_row;
+                    if (list_ticks) temporary_loop[HEAD_SYNC+:H] = list_next;
+                    else temporary_loop[HEAD_AT+:H] = list_next;
+                    loop_row <= temporary_loop; write_loop(list_target, list_bank, temporary_loop);
+                    state <= S_UNLINK_NEXT;
+                end
+                S_UNLINK_PREV: begin
+                    temporary_request = request_row; temporary_request[R_NEXT+:H] = list_next;
+                    write_request(32'(list_previous), list_bank, temporary_request); state <= S_UNLINK_NEXT;
+                end
+                S_UNLINK_NEXT: begin
+                    if (list_next == NO_REQUEST) state <= S_UNLINK_DONE;
+                    else read_request(32'(list_next), list_bank, S_UNLINK_NEXT_WRITE);
+                end
+                S_UNLINK_NEXT_WRITE: begin
+                    temporary_request = request_row; temporary_request[R_PREV+:H] = list_previous;
+                    write_request(32'(list_next), list_bank, temporary_request); state <= S_UNLINK_DONE;
+                end
+                S_UNLINK_DONE: state <= list_return;
                 S_PREVIEW_OBS: begin
                     if (observation_cursor == observation_count) begin cursor <= 0; state <= S_COPY_LOOP; end
                     else read_observation(observation_cursor, S_OBS_CHECK);
@@ -627,7 +806,6 @@ module transition_processor #(
                 S_OBS_CHECK: begin
                     observation_key <= observation_row[64:0];
                     observation_reason <= observation_row[65+:4];
-                    duplicate_cursor <= 0;
                     if (observation_row[65+:4] == 0 || observation_row[65+:4] > UNSUPPORTED) reply(UNSUPPORTED, 0);
                     else if (observation_row[0]) begin
                         if (observation_row[1+:32] >= request_slots) reply(INVALID_ID, 0);
@@ -639,20 +817,14 @@ module transition_processor #(
                 end
                 S_OBS_TARGET: begin
                     if (!spec_row[VALID] || spec_row[GENERATION+:32] != observation_key[64:33]) reply(INVALID_ID, 0);
-                    else state <= S_OBS_DUP;
+                    else if (capture_refused[observation_key[1+:SA]]) reply(DUPLICATE_ID, 0);
+                    else state <= S_OBS_NEXT;
                 end
                 S_OBS_REQUEST: begin
                     if (!request_row[R_VALID] || request_row[R_GEN+:32] != observation_key[64:33]) reply(INVALID_ID, 0);
                     else if (request_row[R_OUTCOME+:3] != 0) reply(INVALID_STATE, 0);
-                    else state <= S_OBS_DUP;
-                end
-                S_OBS_DUP: begin
-                    if (duplicate_cursor == observation_cursor) state <= S_OBS_NEXT;
-                    else read_observation(duplicate_cursor, S_OBS_DUP_CHECK);
-                end
-                S_OBS_DUP_CHECK: begin
-                    if (observation_row[64:0] == observation_key) reply(DUPLICATE_ID, 0);
-                    else begin duplicate_cursor <= duplicate_cursor+1'b1; state <= S_OBS_DUP; end
+                    else if (request_refused[observation_key[1+:PA]]) reply(DUPLICATE_ID, 0);
+                    else state <= S_OBS_NEXT;
                 end
                 S_OBS_NEXT: begin
                     if (observation_key[0]) begin
@@ -669,7 +841,8 @@ module transition_processor #(
                     else read_loop(cursor, active_bank, 0, 0, S_COPY_LOOP_WRITE);
                 end
                 S_COPY_LOOP_WRITE: begin
-                    write_loop(cursor, !active_bank, {256'b0,loop_row[575:0]});
+                    temporary_loop = loop_row; temporary_loop[576+:228] = 0;
+                    write_loop(cursor, !active_bank, temporary_loop);
                     cursor <= cursor+1'b1; state <= S_COPY_LOOP;
                 end
                 S_COPY_REQUEST: begin
@@ -681,16 +854,20 @@ module transition_processor #(
                     cursor <= cursor+1'b1; state <= S_COPY_REQUEST;
                 end
                 S_DIRECT_SCAN: begin
-                    if (request_cursor == request_slots) begin component_start <= 0; state <= S_COMPONENT; end
-                    else read_request(request_cursor, !active_bank, S_DIRECT_CHECK);
+                    if (!absolute_valid) begin component_start <= 0; state <= S_COMPONENT; end
+                    else begin
+                        request_cursor <= 32'(absolute_index); absolute_to_visit[absolute_index] <= 0;
+                        read_request(32'(absolute_index), !active_bank, S_DIRECT_CHECK);
+                    end
                 end
                 S_DIRECT_CHECK: begin
+                    request_checks <= request_checks+1'b1;
                     if (request_row[R_VALID] && request_row[R_OUTCOME+:3] == 0
                         && request_row[R_EFFECTIVE+:64] <= frame && !request_row[R_TICKS])
                         offer(request_cursor, S_OFFER_LOOP);
-                    else begin request_cursor <= request_cursor+1'b1; state <= S_DIRECT_SCAN; end
+                    else state <= S_DIRECT_SCAN;
                 end
-                S_OFFER_LOOP: begin request_cursor <= request_cursor+1'b1; state <= S_DIRECT_SCAN; end
+                S_OFFER_LOOP: state <= S_DIRECT_SCAN;
                 S_OFFER_CHECK: begin
                     temporary_loop = loop_row;
                     if (!loop_row[INTENT_VALID]) begin
@@ -698,13 +875,14 @@ module transition_processor #(
                         temporary_loop[INTENT_SLOT+:32] = offer_slot;
                         temporary_loop[INTENT_SEQ+:64] = offer_sequence;
                         write_loop(offer_target, !active_bank, temporary_loop);
-                        state <= offer_return;
+                        loop_row <= temporary_loop; state <= offer_return;
                     end else begin
                         if (offer_sequence > loop_row[INTENT_SEQ+:64]) begin
                             loser_slot <= loop_row[INTENT_SLOT+:32];
                             temporary_loop[INTENT_SLOT+:32] = offer_slot;
                             temporary_loop[INTENT_SEQ+:64] = offer_sequence;
                             write_loop(offer_target, !active_bank, temporary_loop);
+                            loop_row <= temporary_loop;
                             read_request(loop_row[INTENT_SLOT+:32], !active_bank, S_OFFER_LOSER);
                         end else begin
                             loser_slot <= offer_slot;
@@ -714,7 +892,7 @@ module transition_processor #(
                 end
                 S_OFFER_LOSER: begin
                     write_request(loser_slot, !active_bank, terminal(request_row, SUPERSEDED, OK, frame));
-                    state <= offer_return;
+                    unlink(loser_slot, request_row, !active_bank, offer_return);
                 end
                 S_COMPONENT: begin
                     if (component_start == member_count) begin cursor <= 0; state <= S_FINAL; end
@@ -738,12 +916,21 @@ module transition_processor #(
                 S_FIRST_APPLY: begin apply_return <= S_FIRST_NATURAL; state <= S_APPLY; end
                 S_FIRST_NATURAL: begin natural_return <= S_FIRST_INHERIT; state <= S_NATURAL; end
                 S_FIRST_INHERIT: begin
-                    if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]] && !masked[target_slot[SA-1:0]])
-                        pulses[target_slot[SA-1:0]] <= 1;
-                    member_cursor <= member_cursor+1'b1; state <= S_FIRST;
+                    if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]
+                        && !masked[target_slot[SA-1:0]] && !delivered[target_slot[SA-1:0]])
+                        ready_pulses[target_slot[SA-1:0]] <= 1;
+                    if (component_end == component_start+1'b1) begin
+                        if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]
+                            && loop_row[HEAD_SYNC+:H] != NO_REQUEST) begin
+                            react_source <= spec_row[SPEC_SOURCE+:32];
+                            request_cursor <= 32'(loop_row[HEAD_SYNC+:H]);
+                            react_return <= S_SINGLE_REACT_DONE; state <= S_REACT;
+                        end else state <= S_FIND_PULSE;
+                    end else begin member_cursor <= member_cursor+1'b1; state <= S_FIRST; end
                 end
+                S_SINGLE_REACT_DONE: state <= S_FIND_PULSE;
                 S_SECOND: begin
-                    if (member_cursor == component_end) begin pulse_cursor <= component_start; state <= S_FIND_PULSE; end
+                    if (member_cursor == component_end) state <= S_FIND_PULSE;
                     else read_member(member_cursor, S_SECOND_MEMBER);
                 end
                 S_SECOND_MEMBER: begin
@@ -753,20 +940,19 @@ module transition_processor #(
                 S_SECOND_REACT: begin
                     if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]) begin
                         react_source <= spec_row[SPEC_SOURCE+:32];
-                        react_return <= S_SECOND_NEXT; request_cursor <= 0; state <= S_REACT;
+                        if (loop_row[HEAD_SYNC+:H] == NO_REQUEST) begin natural_return <= S_SECOND_NEXT; state <= S_NATURAL; end
+                        else begin react_return <= S_SECOND_NEXT; request_cursor <= 32'(loop_row[HEAD_SYNC+:H]); state <= S_REACT; end
                     end else state <= S_SECOND_NEXT;
                 end
                 S_SECOND_NEXT: begin member_cursor <= member_cursor+1'b1; state <= S_SECOND; end
                 S_FIND_PULSE: begin
-                    if (pulse_cursor == component_end) begin component_start <= component_end; state <= S_COMPONENT; end
-                    else read_member(pulse_cursor, S_FIND_PULSE_CHECK);
-                end
-                S_FIND_PULSE_CHECK: begin
-                    if (pulses[member_row[SA-1:0]] && !delivered[member_row[SA-1:0]]) begin
-                        target_slot <= member_row[31:0]; pulse_slot <= member_row[31:0];
-                        delivered[member_row[SA-1:0]] <= 1;
-                        read_loop(member_row[31:0], !active_bank, 0, 0, S_PULSE_EMIT);
-                    end else begin pulse_cursor <= pulse_cursor+1'b1; state <= S_FIND_PULSE; end
+                    if (!ready_valid) begin component_start <= component_end; state <= S_COMPONENT; end
+                    else begin
+                        target_slot <= 32'(ready_index); pulse_slot <= 32'(ready_index);
+                        ready_pulses[ready_index] <= 0; delivered[ready_index] <= 1;
+                        pulse_deliveries <= pulse_deliveries+1'b1;
+                        read_loop(32'(ready_index), !active_bank, 0, 1, S_PULSE_EMIT);
+                    end
                 end
                 S_PULSE_EMIT: begin
                     if (scratch_events == event_limit) reply(CAPACITY, 0);
@@ -775,30 +961,35 @@ module transition_processor #(
                         temporary_loop[LAST_VALID] = 1; temporary_loop[LAST_PULSE+:64] = frame;
                         write_loop(target_slot, !active_bank, temporary_loop);
                         emit_event(2, OP_STOP, 0, 0);
-                        follow_cursor <= component_start; state <= S_FOLLOW;
+                        follow_cursor <= spec_row[FOLLOW_HEAD+:LH]; state <= S_FOLLOW;
                     end
                 end
                 S_FOLLOW: begin
-                    if (follow_cursor == component_end) begin pulse_cursor <= component_start; state <= S_FIND_PULSE; end
-                    else read_member(follow_cursor, S_FOLLOW_MEMBER);
-                end
-                S_FOLLOW_MEMBER: begin
-                    target_slot <= member_row[31:0];
-                    read_loop(member_row[31:0], !active_bank, 0, 1, S_FOLLOW_REACT);
+                    if (follow_cursor == NO_FOLLOWER) state <= S_FIND_PULSE;
+                    else begin
+                        target_slot <= 32'(follow_cursor);
+                        read_loop(32'(follow_cursor), !active_bank, 0, 1, S_FOLLOW_REACT);
+                    end
                 end
                 S_FOLLOW_REACT: begin
-                    if (spec_row[SPEC_SOURCE_VALID] && spec_row[SPEC_SOURCE+:32] == pulse_slot) begin
-                        if (!masked[target_slot[SA-1:0]]) pulses[target_slot[SA-1:0]] <= 1;
-                        react_source <= pulse_slot;
-                        react_return <= S_FOLLOW_NEXT; request_cursor <= 0; state <= S_REACT;
-                    end else state <= S_FOLLOW_NEXT;
+                    follower_visits <= follower_visits+1'b1;
+                    follow_next <= spec_row[FOLLOW_NEXT+:LH];
+                    if (!masked[target_slot[SA-1:0]] && !delivered[target_slot[SA-1:0]])
+                        ready_pulses[target_slot[SA-1:0]] <= 1;
+                    react_source <= pulse_slot;
+                    if (loop_row[HEAD_SYNC+:H] == NO_REQUEST) begin natural_return <= S_FOLLOW_NEXT; state <= S_NATURAL; end
+                    else begin
+                        react_return <= S_FOLLOW_NEXT; request_cursor <= 32'(loop_row[HEAD_SYNC+:H]); state <= S_REACT;
+                    end
                 end
-                S_FOLLOW_NEXT: begin follow_cursor <= follow_cursor+1'b1; state <= S_FOLLOW; end
+                S_FOLLOW_NEXT: begin follow_cursor <= follow_next; state <= S_FOLLOW; end
                 S_REACT: begin
-                    if (request_cursor == request_slots) read_loop(target_slot, !active_bank, 0, 1, S_REACT_APPLY);
+                    if (request_cursor == 32'(NO_REQUEST)) state <= S_REACT_APPLY;
                     else read_request(request_cursor, !active_bank, S_REACT_CHECK);
                 end
                 S_REACT_CHECK: begin
+                    request_checks <= request_checks+1'b1;
+                    walk_next <= request_row[R_NEXT+:H];
                     if (request_row[R_VALID] && request_row[R_OUTCOME+:3] == 0
                         && request_row[R_EFFECTIVE+:64] <= frame
                         && request_row[R_TARGET+:32] == target_slot
@@ -809,11 +1000,11 @@ module transition_processor #(
                             temporary_request = request_row;
                             temporary_request[R_REMAINING+:64] = request_row[R_REMAINING+:64]-1'b1;
                             write_request(request_cursor, !active_bank, temporary_request);
-                            request_cursor <= request_cursor+1'b1; state <= S_REACT;
+                            request_cursor <= 32'(request_row[R_NEXT+:H]); state <= S_REACT;
                         end else offer(request_cursor, S_REACT_OFFER_DONE);
-                    end else begin request_cursor <= request_cursor+1'b1; state <= S_REACT; end
+                    end else begin request_cursor <= 32'(request_row[R_NEXT+:H]); state <= S_REACT; end
                 end
-                S_REACT_OFFER_DONE: begin request_cursor <= request_cursor+1'b1; state <= S_REACT; end
+                S_REACT_OFFER_DONE: begin request_cursor <= 32'(walk_next); state <= S_REACT; end
                 S_REACT_APPLY: begin apply_return <= S_REACT_NATURAL; state <= S_APPLY; end
                 S_REACT_NATURAL: begin natural_return <= react_return; state <= S_NATURAL; end
                 S_APPLY: begin
@@ -830,25 +1021,38 @@ module transition_processor #(
                         write_loop(target_slot, !active_bank, apply_loop);
                         write_request(apply_slot, !active_bank, apply_request);
                         if (apply_event) emit_event(0, request_row[R_OP+:2], request_row[R_RETRIGGER], request_row[R_POSITION+:64]);
+                        stopping <= apply_stop;
                         if (apply_stop) begin
-                            masked[target_slot[SA-1:0]] <= 1; pulses[target_slot[SA-1:0]] <= 0;
-                            stop_sequence <= request_row[R_SEQUENCE+:64]; request_cursor <= 0; state <= S_CANCEL_OLDER;
-                        end else begin
-                            if (apply_pulse) begin masked[target_slot[SA-1:0]] <= 0; pulses[target_slot[SA-1:0]] <= 1; end
-                            state <= apply_return;
+                            masked[target_slot[SA-1:0]] <= 1; ready_pulses[target_slot[SA-1:0]] <= 0;
+                            stop_sequence <= request_row[R_SEQUENCE+:64];
+                        end else if (apply_pulse) begin
+                            masked[target_slot[SA-1:0]] <= 0;
+                            if (!delivered[target_slot[SA-1:0]]) ready_pulses[target_slot[SA-1:0]] <= 1;
                         end
+                        unlink(apply_slot, request_row, !active_bank, S_APPLY_UNLINK_DONE);
+                    end
+                end
+                S_APPLY_UNLINK_DONE: begin
+                    if (!stopping) state <= apply_return;
+                    else begin
+                        cancel_sync <= 0; request_cursor <= 32'(loop_row[HEAD_AT+:H]); state <= S_CANCEL_OLDER;
                     end
                 end
                 S_CANCEL_OLDER: begin
-                    if (request_cursor == request_slots) state <= apply_return;
-                    else read_request(request_cursor, !active_bank, S_CANCEL_OLDER_CHECK);
+                    if (request_cursor == 32'(NO_REQUEST)) begin
+                        if (cancel_sync) state <= apply_return;
+                        else begin cancel_sync <= 1; request_cursor <= 32'(loop_row[HEAD_SYNC+:H]); end
+                    end else read_request(request_cursor, !active_bank, S_CANCEL_OLDER_CHECK);
                 end
                 S_CANCEL_OLDER_CHECK: begin
-                    if (request_row[R_VALID] && request_row[R_OUTCOME+:3] == 0
-                        && request_row[R_TARGET+:32] == target_slot && request_row[R_SEQUENCE+:64] < stop_sequence)
+                    request_checks <= request_checks+1'b1;
+                    walk_next <= request_row[R_NEXT+:H];
+                    if (request_row[R_SEQUENCE+:64] < stop_sequence) begin
                         write_request(request_cursor, !active_bank, terminal(request_row, CANCELLED, OK, frame));
-                    request_cursor <= request_cursor+1'b1; state <= S_CANCEL_OLDER;
+                        unlink(request_cursor, request_row, !active_bank, S_CANCEL_OLDER_NEXT);
+                    end else state <= S_CANCEL_OLDER_NEXT;
                 end
+                S_CANCEL_OLDER_NEXT: begin request_cursor <= 32'(walk_next); state <= S_CANCEL_OLDER; end
                 S_NATURAL: begin
                     if (!at_end(loop_row)) state <= natural_return;
                     else if (loop_row[REPEAT] && spec_row[SPEC_SOURCE_VALID] && spec_row[SPEC_SOURCE+:32] != target_slot)
@@ -865,7 +1069,8 @@ module transition_processor #(
                     else begin
                         temporary_loop = loop_row;
                         temporary_loop[POSITION+:64] = 0; temporary_loop[CYCLES+:64] = loop_row[CYCLES+:64]+1'b1;
-                        temporary_loop[DISCONT] = 1; pulses[target_slot[SA-1:0]] <= 1;
+                        temporary_loop[DISCONT] = 1;
+                        if (!delivered[target_slot[SA-1:0]]) ready_pulses[target_slot[SA-1:0]] <= 1;
                         loop_row <= temporary_loop; write_loop(target_slot, !active_bank, temporary_loop);
                         emit_event(1, OP_STOP, 0, 0); state <= natural_return;
                     end
@@ -896,7 +1101,7 @@ module transition_processor #(
                     write_loop(cursor, active_bank, temporary_loop); cursor <= cursor+1'b1; state <= S_FINISH_LOOP;
                 end
                 S_READ_LOOP_REPLY: reply(OK, loop_row);
-                S_READ_REQUEST_REPLY: reply(OK, {192'b0,request_row});
+                S_READ_REQUEST_REPLY: reply(OK, {192'b0,request_row[639:0]});
                 S_READ_EVENT_REPLY: reply(OK, {576'b0,event_row});
                 default: reply(INVALID_STATE, 0);
             endcase
@@ -904,5 +1109,5 @@ module transition_processor #(
     end
 
     wire unused_reserved_bits = &{1'b0, payload, observation_row, member_row, spec_row,
-        loop_row, request_row};
+        loop_row, request_row, observation_key};
 endmodule

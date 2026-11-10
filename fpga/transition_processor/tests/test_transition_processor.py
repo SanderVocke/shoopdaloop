@@ -1,5 +1,6 @@
 """Architectural comparisons against Rust and native resolver plus bus checks."""
 import json
+from copy import deepcopy
 import os
 from pathlib import Path
 import cocotb
@@ -182,11 +183,21 @@ async def transport_and_negative_cases(dut):
 @cocotb.test()
 async def sixty_four_loop_workload(dut):
     summary = {"depths": DEPTHS, "cases": {}, "outside_physical_capacity": 0}
-    for value in workloads():
+    values = list(workloads())
+    if DEPTHS[1] >= 130:
+        spare = deepcopy(values[1])
+        spare["name"] = "64-member-cycle-with-130-request-slots"
+        spare["plan"]["limits"]["pending_requests"] = 130
+        spare["plan"]["limits"]["events"] = 258
+        values.append(spare)
+    for value in values:
         if DEPTHS[0] < 64 or DEPTHS[1] < 64 or DEPTHS[2] < 192:
             summary["outside_physical_capacity"] += 1
             continue
         cycles = await compare(dut, value)
+        if "cycle" in value["name"]:
+            for row in cycles[2:]:
+                assert row["preview_work"][-1] == {"request_checks": 0, "follower_visits": 64, "pulse_deliveries": 64}
         data = {"quantum_frames": 32, "clock_hz": 150_000_000, "quanta": cycles}
         totals = [row["preview"][-1] + row["commit"] + row["finish"] for row in cycles]
         data["quantum_cycles"] = totals

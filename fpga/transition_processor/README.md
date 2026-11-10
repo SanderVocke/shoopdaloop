@@ -31,28 +31,48 @@ capture monitoring and live topology replacement remain outside the profile.
 
 ## Structure
 
-Loop state and request records each have two banks. Preview copies committed
-records into the candidate bank and clears boundary scratch. The FSM offers due
-absolute requests, then visits each compiled component in three phases:
+Loop state and request records each have two banks. Their pending-request
+indexes share those banks: per-loop heads and per-request next/previous links
+are copied with the musical state. A pair of pending-absolute masks is published
+with the shared bank selector. Terminal requests are unlinked immediately while
+retaining their record slots for completion collection. Reused slots are inserted
+in slot order under their new target and timing kind.
 
-1. Apply pending intents and natural boundaries in member order.
-2. React to already delivered source pulses.
-3. Deliver the lowest pending member pulse, react to its component followers,
-   and repeat until no undelivered pulse remains.
+Prepare tags component membership and builds canonical, component-local follower
+chains from the uploaded specs and member order. These immutable links remove
+follower discovery from quantum execution. Cross-component source pulses are
+observed when visiting the later component.
 
-It preflights clock advancement before declaring the candidate valid. A retry
-starts again from the committed bank, so discarded candidates cannot consume
-pulse delays, publish capture revisions or produce visible completions/events.
-Commit switches the shared loop/request/journal bank selector atomically. Finish
-advances committed positions/capture lengths once. It retains playback endpoints
-as `position == length`; the next preview resolves wrap/repeat waiting.
+Preview copies committed records into the candidate bank and clears boundary
+scratch. It then:
 
-Wide synchronous RAM rows favor a simple first implementation. The active and
-candidate banks share each table's read/write ports. Reads and writes to the same
-address never overlap; simulation asserts that property. The RAM's `no_rw_check`
-attribute avoids synthesis emulation for a collision that the FSM does not use.
-Small pulse/delivery/eligibility masks and refusal reasons remain prepared scratch.
-No arithmetic divider, multiplier or DSP block is required.
+1. Pops pending absolute requests from a priority mask and offers those due now.
+2. Applies intents and natural boundaries in canonical component/member order,
+   then reacts to source pulses already delivered by earlier components.
+3. Selects the lowest ready loop ID with a balanced priority encoder, delivers
+   its pulse and walks its prepared follower chain. Each follower visits only
+   its own pending source-timed request list.
+
+The pending lists use storage linear in loop/request capacity; there is no
+loop-by-request matrix. Stop cancellation walks the target's two lists. Indexed
+refusal maps handle both feedback lookup and duplicate detection. Empty lists
+bypass request matching, and singleton components reuse their loaded state for
+source reaction. Newly ready lower IDs retain canonical priority; each loop can
+deliver only one pulse per boundary.
+
+The FSM preflights clock advancement before declaring the candidate valid. A
+retry restores the committed indexes and musical state. Commit switches banks
+atomically. Finish advances committed positions/capture lengths once and retains
+playback endpoints as `position == length`; the next preview resolves wrap/repeat
+waiting. The full linear copy/preflight/finish passes remain. Admission still
+checks retained sequence IDs and finds a free request slot.
+
+Wide synchronous RAM rows favor a simple implementation. The active and candidate
+banks share each table's read/write ports. Reads and writes to the same address
+never overlap; simulation asserts that property. The RAM's `no_rw_check` attribute
+avoids collision emulation. A separate dispatch edge flushes state writes before
+list-head read/modify/write. Small pulse/delivery/eligibility masks and refusal
+reasons remain prepared scratch. No divider, multiplier or DSP block is required.
 
 Defaults are 64 loop slots, 64 request slots and 192 events per journal bank.
 Logical capacities can be smaller, including holes in the loop slot table.
@@ -135,7 +155,8 @@ revision, revision watermark, last-pulse frame. Boundary metadata starts at bit
 576: intent-present, intent slot u32 at 577, intent sequence u64 at 609,
 protected-present at 673, protected sequence u64 at 674, origin-present at 738,
 origin slot/generation u32 at 739/771, and discontinuity at 803. Other bits are
-reserved. A decision's playback-discontinuity is that bit AND active playback;
+reserved except for private pending-list heads described below. A decision's
+playback-discontinuity is that bit AND active playback;
 waiting-repeat means playing with nonzero content and position equal to length.
 
 A request row has valid at bit 0, generation u32 at bit 1, after-ticks at bit 33,
@@ -147,6 +168,21 @@ position, effective frame, remaining ticks, outcome frame. An ID packs slot low
 and generation high. Empty slots retain their next generation; zero generation
 retires the slot. Terminal/absolute requests export null remaining ticks in JSON.
 
+The architectural request response remains 640 bits. Internal records append
+next/previous pointers at offsets `640` and `640 + H`, where
+`H = max(1, ceil(log2(REQUEST_DEPTH))) + 1`. Each pointer uses H bits; all ones means
+no entry. Per-loop absolute/source-timed heads use H bits at offsets 37/804 in the
+existing 832-bit loop row. Those heads survive preview's transient-field clearing.
+They are private metadata, like the intent/protected fields, and do not appear in
+JSON snapshots.
+
+The uploaded spec remains 192 bits; internal spec RAM is 256 bits. Prepare places
+follower-head/next pointers at offsets `192` and `192 + L`, using
+`L = max(1, ceil(log2(LOOP_DEPTH))) + 1` bits each, with an all-ones sentinel.
+Component ID follows at `192 + 2*L`, using `max(1, ceil(log2(LOOP_DEPTH)))` bits.
+These links are derived at preparation, so the upload protocol and compiled-plan
+JSON image remain unchanged.
+
 An observation row has kind at bit 0 (0 capture-unavailable, 1 request-refused),
 ID at bit 1 and error code at bit 65. An event row has frame u64 at bit 0, loop ID
 at bit 64, operation position u64 at bit 128, operation at bits 192–193, retrigger
@@ -157,7 +193,11 @@ Status has frame/serial at bits 0/64, phase at bits 128–129 (0 idle, 1 prepari
 event counts u32 at 192/224, and loop/request/event/member/quantum counts u32 at
 256/288/320/352/384. Candidate count is meaningful only in preview/committed phase;
 it equals committed count after commit.
-`tests/codec.py` translates these rows into the existing JSON boundary types.
+Three u32 diagnostic counts at offsets 416/448/480 report request-matching
+checks, component-local follower visits and delivered pulses for the latest
+preview. Request matching excludes bulk copying and command admission. These
+counts remain separate from musical state and JSON comparison values.
+`tests/codec.py` translates architectural rows into the existing JSON types.
 
 ## Reproduce checks
 
@@ -169,6 +209,7 @@ cargo build --locked -p rt_fpga_testbench
 python fpga/transition_processor/simulate.py --config default --random-cases 100
 python fpga/transition_processor/simulate.py --config small --random-cases 10
 python fpga/transition_processor/simulate.py --config minimum --random-cases 10
+python fpga/transition_processor/simulate.py --config wide --random-cases 10
 python fpga/transition_processor/simulate.py --config default \
   --case fpga/transition_processor/examples/wide_ids.json
 bash fpga/transition_processor/check.sh
@@ -196,36 +237,48 @@ exhaustion. Exhaustion uses simulation-only hierarchical fault injection; no
 production test-write interface exists.
 
 The default seeded generator uses the same 100 graphs × 80 quanta as the Rust
-regression. Small (7/11/25) and minimum (1/1/3) configurations additionally exercise
-non-power-of-two RAM depths and the single-slot address case. The workload test
+regression. Small (7/11/25), minimum (1/1/3), and wide (130/130/390) configurations
+additionally exercise non-power-of-two depths, the single-slot case, high
+request-slot reuse, and sparse ready IDs across priority-word boundaries. The workload test
 runs only where 64 loop/request slots fit and reports omissions explicitly.
+The wide profile also runs the 64-loop cycle with 130 logical request slots;
+empty queues must still report zero matching checks and 64 follower visits.
+Linked-list head/middle removal, slot reuse, arbitration and discarded retries
+have explicit directed cases.
 `check.sh` runs warning-clean lint and generic no-latch/no-multiply/no-divide checks
-for all three configurations, plus default ECP5 mapping and a resource JSON file.
+for all four configurations, plus default ECP5 mapping and a resource JSON file.
+
+The commands above passed with Verilator 5.032 and cocotb 1.9.2: 216 cases and
+11,081 quantum boundaries across the four configurations and wide-ID replay,
+including 130 seeded graphs × 80 quanta. Transport/negative tests also passed.
+The corresponding Rust tests (50) and Python tests (14) passed.
 
 ## Measurements
 
-Recorded validation with Verilator 5.032, cocotb 1.9.2 and Yosys 0.52 passed
-177 cases across the three configurations and the wide-ID replay, totaling
-10,047 compared boundary steps. This includes 9,600 seeded steps and both
-64-loop workloads. The targeted Rust and Python suites passed 44 and 14 tests,
-respectively, including the oracle adapter's observation-limit regression.
+With Yosys 0.52, the default 64/64/192 ECP5 mapping uses 15,648 LUT4,
+7,745 flip-flops, 1,161 CCU2C carry cells, 60 DP16KD block RAMs, 8 distributed
+RAM cells and zero DSPs. The scan-based mapping used 13,873 LUT4, 7,308
+flip-flops, 1,073 carry cells and 59 block RAMs. LUT4 counts exclude carry
+logic; these are mapped cells rather than placed utilization.
 
-The default 64/64/192 ECP5 mapping uses 13,873 LUT4, 7,308 flip-flops, 1,073 CCU2C
-carry cells, 59 DP16KD block RAMs and 8 distributed RAM cells, with no DSP blocks.
-LUT4 excludes carry-cell logic; these are synthesis mapping counts, not placed
-utilization or timing closure. The wide-row implementation favors clear control
-and parallel row access over dense packing of short tables into BRAM.
+Measurements below use the same programs and 32-frame quanta as the scan-based
+prototype. At an assumed 150 MHz, preview + commit + finish measured:
 
-At an assumed 150 MHz, preview + commit + finish measured:
-
-| Workload | Quanta compared | Cycles per quantum | Estimated time |
+| Workload | Scan-based cycles | Indexed cycles | Indexed estimated time |
 | --- | --- | --- | --- |
-| 8 tracks × 8 loops, record/play, source-delayed changes, repeat sync | 16 | 3,289–19,622 | 21.93–130.81 µs |
-| One 64-member sync cycle, all active, wraps/retriggered seeks | 8 | 61,262–61,710 | 408.41–411.40 µs |
+| 8 tracks × 8 loops, record/play, source-delayed changes, repeat sync | 3,289–19,622 | 2,137–4,078 | 14.25–27.19 µs |
+| One 64-member sync cycle, all active, wraps/retriggered seeks | 61,262–61,710 | 3,278–4,686 | 21.85–31.24 µs |
 
-Both use 32-frame quanta. These counts include candidate copies, request scans,
-settlement, preflight and logical advancement. They exclude loading a plan,
-command/observation admission, completion collection, decision/journal readback,
-response stalls and the state/job processors. The trace driver records individual
-phase counts in `workload-summary.json`. No FPGA clock-frequency guarantee or
-whole-pipeline deadline is established.
+The peaks improve by about 4.8× and 13.2×, respectively. On steady empty-queue
+cycle boundaries, request matching performs zero record checks and visits 64
+actual follower edges. With 130 logical request slots, the same cycle takes
+3,542–4,950 cycles: the increase is the linear copy of 66 additional rows,
+without additional request matching. Diagnostic counts are in each preview's
+`preview_work` entry in the cycle summaries.
+
+Counts include candidate copies, indexed matching/settlement, preflight and
+logical advancement. They exclude plan loading, command/observation admission,
+completion collection, decision/journal readback, response stalls and the
+state/job processors. No FPGA clock-frequency guarantee or whole-pipeline
+deadline is established; ECP5 mapping counts are separate from placement and
+timing closure.
