@@ -10,7 +10,7 @@ from cocotb.runner import get_runner
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-CONFIGS = {"default": (64, 64, 192), "small": (7, 11, 25), "minimum": (1, 1, 3)}
+CONFIGS = {"default": (64, 64, 192), "small": (7, 11, 25), "minimum": (1, 1, 3), "wide": (130, 130, 390)}
 
 
 def main():
@@ -34,7 +34,7 @@ def main():
         output = args.output.resolve() / name
         output.mkdir(parents=True, exist_ok=True)
         runner = get_runner("verilator")
-        runner.build(verilog_sources=[HERE / "rtl/tp_ram.sv", HERE / "rtl/transition_processor.sv",
+        runner.build(verilog_sources=[HERE / "rtl/tp_ram.sv", HERE / "rtl/tp_priority.sv", HERE / "rtl/transition_processor.sv",
                                      HERE / "tests/transition_processor_tb.sv"],
                      hdl_toplevel="transition_processor_tb",
                      parameters=dict(zip(("LOOP_DEPTH", "REQUEST_DEPTH", "EVENT_DEPTH"), depths)),

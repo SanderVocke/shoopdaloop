@@ -51,6 +51,39 @@ and legal sync cycles settle in stable ID order. Each loop can deliver at most
 one pulse per boundary. `LoopKind::Composite` and a timeline reference reserve
 the extension point; this version returns `Unsupported` for either.
 
+Compilation also prepares flat source-to-follower lists with per-source ranges
+and component membership. `TransitionPlan::followers` exposes the canonical
+outgoing sync edges. Pulse propagation walks those edges and filters by the
+current component. A hierarchical ready mask selects the lowest ready loop ID,
+including when a newly activated lower ID follows a higher ID's pulse.
+
+Pending requests use separate per-loop lists for absolute and source-timed
+requests, sorted by stable request slot. A global pending-absolute mask handles
+the initial due-request pass. Sync reactions visit only that target's pending
+source-timed requests; stop cancellation visits only that target's two lists.
+Terminal records leave the indexes immediately and retain their record slots
+until collected. Slot reuse relinks the new request under its target and timing.
+Refusal observations populate indexed scratch lookups during validation.
+
+All indexes are prepared with storage linear in loop/request capacity. They are
+copied with the candidate state, changed only in preview scratch, and published
+at commit. Preview retries restore the committed indexes as well as the musical
+state. The full linear state/request copy remains; repeated full request-table,
+component-member and ready-pulse searches are removed. Command admission still
+checks retained sequence IDs and searches for a free record slot.
+
+Work-count regressions check a 64-member sync cycle with both 64 and 1,024 request
+slots: after the startup requests finish, a wrap boundary visits zero request
+records and 64 actual follower edges, including while completions remain retained.
+The allocation guard also covers 130 loop/request slots across mask-word
+boundaries. These are Rust algorithm checks, not predicted RTL cycles.
+
+The public transaction API, compiled-plan JSON image and boundary trace format
+are unchanged. The RTL uses the same indexed traversal, representing follower
+lists and pending requests as prepared links and selecting ready pulses with a
+balanced priority encoder. Hardware preparation derives its private topology
+indexes from the unchanged upload format.
+
 The runtime protocol is:
 
 1. `submit(Command)` retains a request in a fixed slot with a generation-checked

@@ -52,6 +52,9 @@ preparation must be able to return feedback before a transition is committed.
 
 The Rust hardware model now uses prepared logical loop state, generation-checked
 request slots, canonical timing components, and preview/commit/finish transactions.
+The Rust traversal compiles follower lists and uses per-loop pending-request
+indexes and a ready-pulse priority mask. This keeps pulse processing tied to
+actual edges and pending requests while preserving canonical settlement order.
 Preflight feedback can replace a candidate without publishing state or consuming
 source delays twice. Signal bindings export settled decisions to the state
 processor; the transition processor alone advances logical clocks. Composite
@@ -59,7 +62,9 @@ kinds/timeline references are reserved but explicitly unsupported in this first
 primitive-only version. Serialized boundary traces are checked against the native
 resolver. `fpga/transition_processor` implements this primitive profile as a
 multicycle RTL FSM with double-bank synchronous loop/request/journal memories.
-Preview writes a candidate bank; commit switches banks atomically; finish
+Prepared follower links, per-loop pending-request lists, and ready-pulse priority
+selection replace repeated table/member searches. Indexes share the candidate
+transaction. Preview writes a candidate bank; commit switches banks atomically; finish
 advances committed clocks. Its README defines the command/response interface,
 packed rows, Rust/native/RTL comparison bench and synthesis/cycle measurements.
 Connecting the three RTL processors into a coordinated pipeline remains a later

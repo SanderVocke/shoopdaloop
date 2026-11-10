@@ -125,6 +125,27 @@ def directed(depths):
     yield case("legal-sync-cycle-self-sync", loops, deepcopy(steps), requests=p)
     yield case("reversed-declarations", list(reversed(loops)), steps, requests=p)
 
+    if p >= 7:
+        sync = lambda target, sequence, operation, skip: command(target, sequence, operation, source=0, skip=skip)
+        first = step([command(0, 1), sync(1, 2, play(), 3), sync(2, 3, play(), 4),
+                      sync(1, 4, {"kind": "record"}, 1), command(1, 5, {"kind": "stop"}, at=48),
+                      sync(1, 6, seek(0, True), 1)], previews=[[], [], []])
+        second = step([sync(2, 7, play(), 0), sync(1, 8, play(), 2)], cancel=[rid(1)])
+        third = step([sync(1, 9, play(), 0), command(1, 10, {"kind": "record"}, at=32), command(2, 12, {"kind": "stop"}, at=32)],
+                     previews=[[{"kind": "refused", "request": rid(1, 2), "reason": "capacity"}], []])
+        yield case("pending-list-head-middle-removal-reuse-and-retry", [spec(0, 16), spec(1, 16, 0), spec(2, 16, 0)],
+                   [first, second, third, step(), step(), step()], requests=p)
+    if depths[0] >= 130:
+        first = step([command(129, 1), command(0, 2, source=129), command(63, 3, source=0),
+                      command(64, 4, {"kind": "record"}, source=129), command(64, 5, at=64)],
+                     previews=[[{"kind": "capture_unavailable", "target": lid(64), "reason": "capacity"}], [], []])
+        yield case("ready-priority-sparse-slots-across-word-boundary", [spec(129, 16, 0), spec(64, 16, 129),
+                   spec(0, 32, 129), spec(63, 16, 0, True)], [first]+[step() for _ in range(12)], loops_limit=130, requests=8)
+    if depths[1] >= 130:
+        yield case("absolute-priority-high-request-slot-reuse", [spec(0, 16, 0)],
+                   [step([command(0, i+1, at=(130-i)*16) for i in range(130)]), step(),
+                    step([command(0, 131, at=32)]), step(), step(), step()], requests=130)
+
 
 class Random:
     def __init__(self, seed):

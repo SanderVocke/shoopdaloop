@@ -333,6 +333,144 @@ fn oracle_adapter_enforces_the_hardware_observation_limit() {
     assert_eq!(trace.results[0].states[0].mode, Mode::Playing);
 }
 
+#[shoop_test]
+fn sparse_cross_word_pulses_preserve_priority_when_lower_ids_become_ready_later() {
+    let mut first = step(vec![
+        command(129, 1, 0, play()),
+        Command {
+            timing: Timing::AfterTicks {
+                source: id(129),
+                skip: 0,
+            },
+            ..command(0, 2, 0, play())
+        },
+        Command {
+            timing: Timing::AfterTicks {
+                source: id(0),
+                skip: 0,
+            },
+            ..command(63, 3, 0, play())
+        },
+        Command {
+            timing: Timing::AfterTicks {
+                source: id(129),
+                skip: 0,
+            },
+            ..command(64, 4, 0, Operation::Record)
+        },
+        command(64, 5, 64, play()),
+    ]);
+    first.previews = vec![
+        vec![Observation::CaptureUnavailable {
+            target: id(64),
+            reason: TransitionError::Capacity,
+        }],
+        vec![],
+        vec![],
+    ];
+    let mut input = case(
+        16,
+        vec![
+            spec(129, 16, Some(0), false),
+            spec(64, 16, Some(129), false),
+            spec(0, 32, Some(129), false),
+            spec(63, 16, Some(0), true),
+        ],
+        std::iter::once(first)
+            .chain((0..12).map(|_| step(vec![])))
+            .collect(),
+    );
+    input.plan.limits = TransitionLimits {
+        loop_slots: 130,
+        pending_requests: 8,
+        events: 268,
+    };
+    let trace = compare(input);
+    let pulses: Vec<_> = trace.results[0]
+        .events
+        .iter()
+        .filter(|e| e.kind == EventKind::Pulse)
+        .map(|e| e.target)
+        .collect();
+    assert_eq!(pulses, vec![id(129), id(0), id(63), id(64)]);
+}
+
+#[shoop_test]
+fn pending_indexes_survive_head_removal_slot_reuse_arbitration_and_retry() {
+    let sync = |target, sequence, operation, skip| Command {
+        timing: Timing::AfterTicks {
+            source: id(0),
+            skip,
+        },
+        ..command(target, sequence, 0, operation)
+    };
+    let mut first = step(vec![
+        command(0, 1, 0, play()),
+        sync(1, 2, play(), 3),
+        sync(2, 3, play(), 4),
+        sync(1, 4, Operation::Record, 1),
+        command(1, 5, 48, Operation::Stop),
+        sync(
+            1,
+            6,
+            Operation::Seek {
+                position: 0,
+                retrigger: true,
+            },
+            1,
+        ),
+    ]);
+    first.previews = vec![vec![], vec![], vec![]];
+    let mut second = step(vec![sync(2, 7, play(), 0), sync(1, 8, play(), 2)]);
+    second.cancel = vec![RequestId {
+        slot: 1,
+        generation: 1,
+    }];
+    let mut third = step(vec![
+        sync(1, 9, play(), 0),
+        command(1, 10, 32, Operation::Record),
+        command(2, 12, 32, Operation::Stop),
+    ]);
+    third.previews = vec![
+        vec![Observation::Refused {
+            request: RequestId {
+                slot: 1,
+                generation: 2,
+            },
+            reason: TransitionError::Capacity,
+        }],
+        vec![],
+    ];
+    let trace = compare(case(
+        16,
+        vec![
+            spec(0, 16, None, false),
+            spec(1, 16, Some(0), false),
+            spec(2, 16, Some(0), false),
+        ],
+        vec![
+            first,
+            second,
+            third,
+            step(vec![]),
+            step(vec![]),
+            step(vec![]),
+        ],
+    ));
+    assert_eq!(
+        trace.results[1].submitted[0],
+        Response::Accepted(RequestId {
+            slot: 0,
+            generation: 2
+        })
+    );
+    assert_eq!(
+        trace.results[2].requests[2].unwrap().outcome,
+        Some(Outcome::Cancelled { frame: 32 })
+    );
+    assert_eq!(trace.results[3].states[1].mode, Mode::Playing);
+}
+
 struct Random(u64);
 impl Random {
     fn next(&mut self) -> u64 {

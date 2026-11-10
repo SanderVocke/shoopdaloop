@@ -1,6 +1,7 @@
 //! Bounded logical-loop settlement, independent of signal execution and storage.
 mod bindings;
 mod engine;
+mod index;
 mod plan;
 mod signal;
 mod types;

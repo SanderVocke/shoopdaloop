@@ -1,6 +1,7 @@
 //! Control-side timing compilation. The execution side consumes fixed components.
 use super::{LoopId, LoopState, Mode, TransitionError as Error};
 use alloc::{collections::BTreeSet, vec, vec::Vec};
+use core::ops::Range;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -65,6 +66,9 @@ pub struct TransitionPlanImage {
 pub struct TransitionPlan {
     pub(crate) image: TransitionPlanImage,
     pub(crate) specs: Vec<Option<LoopSpec>>,
+    pub(crate) followers: Vec<LoopId>,
+    pub(crate) follower_ranges: Vec<Range<usize>>,
+    pub(crate) component_of: Vec<usize>,
 }
 impl TransitionPlan {
     pub fn compile(
@@ -192,7 +196,7 @@ impl TransitionPlan {
                 ready.insert((description.loops[members[0]].id, group));
             }
         }
-        let mut components = Vec::with_capacity(groups.len());
+        let mut components: Vec<Vec<LoopId>> = Vec::with_capacity(groups.len());
         while let Some((_, group)) = ready.pop_first() {
             components.push(
                 groups[group]
@@ -207,6 +211,19 @@ impl TransitionPlan {
                 }
             }
         }
+        let mut component_of = vec![usize::MAX; limits.loop_slots as usize];
+        for (component, members) in components.iter().enumerate() {
+            for id in members {
+                component_of[id.slot as usize] = component;
+            }
+        }
+        let mut followers = Vec::with_capacity(count);
+        let mut follower_ranges = vec![0..0; limits.loop_slots as usize];
+        for (source, targets) in forward.iter().enumerate() {
+            let start = followers.len();
+            followers.extend(targets.iter().map(|&target| description.loops[target].id));
+            follower_ranges[description.loops[source].id.slot as usize] = start..followers.len();
+        }
         Ok(Self {
             image: TransitionPlanImage {
                 description,
@@ -214,10 +231,26 @@ impl TransitionPlan {
                 components,
             },
             specs,
+            followers,
+            follower_ranges,
+            component_of,
         })
     }
     pub fn image(&self) -> &TransitionPlanImage {
         &self.image
+    }
+    pub fn followers(&self, id: LoopId) -> Result<&[LoopId], Error> {
+        if self
+            .specs
+            .get(id.slot as usize)
+            .copied()
+            .flatten()
+            .map(|s| s.id)
+            != Some(id)
+        {
+            return Err(Error::InvalidId);
+        }
+        Ok(&self.followers[self.follower_ranges[id.slot as usize].clone()])
     }
     pub(crate) fn initial_states(&self) -> Vec<Option<LoopState>> {
         self.specs

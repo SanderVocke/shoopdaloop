@@ -99,7 +99,10 @@ class Driver:
         raw = await self.ok(abi.STATUS)
         return {"frame": abi.bits(raw, 0, 64), "serial": abi.bits(raw, 64, 64),
                 "phase": abi.bits(raw, 128, 2), "configured": bool(abi.bits(raw, 136, 1)),
-                "events": abi.bits(raw, 192, 32), "candidate_events": abi.bits(raw, 224, 32)}
+                "events": abi.bits(raw, 192, 32), "candidate_events": abi.bits(raw, 224, 32),
+                "request_checks": abi.bits(raw, 416, 32),
+                "follower_visits": abi.bits(raw, 448, 32),
+                "pulse_deliveries": abi.bits(raw, 480, 32)}
 
     async def states(self):
         return [abi.decode_state(await self.ok(abi.READ_STATE, i["slot"]), i["slot"]) for i in self.ids]
@@ -136,6 +139,7 @@ class Driver:
             submitted.append(abi.response(error, abi.decode_identity(value)))
         previews = []
         preview_cycles = []
+        preview_work = []
         token = None
         # Each replacement must leave the entire committed state untouched.
         before_states, before_requests, before_events = await self.states(), await self.requests(), await self.events()
@@ -146,6 +150,11 @@ class Driver:
             error, value = await self.command(abi.PREVIEW)
             preview_cycles.append(self.last_cycles)
             token = value if not error else None
+            work = await self.status()
+            preview_work.append({key: work[key] for key in ("request_checks", "follower_visits", "pulse_deliveries")})
+            assert work["request_checks"] <= 3*self.limits["pending_requests"], "request matching revisited unrelated slots"
+            assert work["follower_visits"] <= len(self.ids), "pulse delivery searched unrelated members"
+            assert work["pulse_deliveries"] <= len(self.ids), "loop pulse delivered twice"
             decisions = None
             if not error:
                 decisions = [abi.decode_decision(await self.ok(abi.READ_DECISION, i["slot"], token), i["slot"])
@@ -165,7 +174,8 @@ class Driver:
             finish_cycles = self.last_cycles
         after_finish = await self.states()
         next_frame = (await self.status())["frame"]
-        self.phase_cycles.append({"preview": preview_cycles, "commit": commit_cycles, "finish": finish_cycles})
+        self.phase_cycles.append({"preview": preview_cycles, "commit": commit_cycles, "finish": finish_cycles,
+                                  "preview_work": preview_work})
         return dict(frame=frame, collected=collected, cancelled=cancelled, submitted=submitted,
                     previews=previews, committed=committed, states=states, requests=requests,
                     events=events, after_finish=after_finish, next_frame=next_frame)
