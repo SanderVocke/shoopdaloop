@@ -1,0 +1,53 @@
+--- a/src/rust/rt_runtime/src/audio_refs.rs
++++ b/src/rust/rt_runtime/src/audio_refs.rs
+@@ -149,7 +149,7 @@
+     pub fn transient(&self, offset: usize, frames: usize) -> AudioSequence {
+         AudioSequence::transient(offset, frames, self.epoch)
+     }
+-    pub fn allocate(&mut self, samples: usize) -> Result<usize, Error> {
++    fn reserve(&mut self, samples: usize) -> Result<usize, Error> {
+         let start = self.used;
+         if samples == 0 {
+             return Ok(start);
+@@ -158,11 +158,22 @@
+             .checked_add(samples)
+             .filter(|&end| end <= self.data.len())
+             .ok_or(Error::Capacity)?;
+-        self.data[start..self.used].fill(0.);
+         self.work.arena_peak_samples = self.used as u64;
+         self.work.materialized += 1;
++        Ok(start)
++    }
++    pub fn allocate(&mut self, samples: usize) -> Result<usize, Error> {
++        let start = self.reserve(samples)?;
++        self.data[start..self.used].fill(0.);
+         self.work.sample_writes += samples as u64;
+         Ok(start)
++    }
++    pub(crate) fn copy_input(&mut self, samples: &[f32]) -> Result<AudioSequence, Error> {
++        let start = self.reserve(samples.len())?;
++        self.data[start..self.used].copy_from_slice(samples);
++        self.work.sample_reads += samples.len() as u64;
++        self.work.sample_writes += samples.len() as u64;
++        Ok(self.transient(start, samples.len()))
+     }
+     pub fn output(&mut self, offset: usize, samples: usize) -> &mut [f32] {
+         &mut self.data[offset..offset + samples]
+--- a/src/rust/rt_runtime/src/executor_compact.rs
++++ b/src/rust/rt_runtime/src/executor_compact.rs
+@@ -137,13 +137,8 @@
+         frames: usize,
+     ) -> Result<AudioSequence, Error> {
+         if wire >= self.host && self.wires[wire].silent() {
+-            let offset = arena.allocate(frames)?;
+-            arena
+-                .output(offset, frames)
+-                .copy_from_slice(&audio.input(wire - self.host)[start..start + frames]);
+-            arena.work.sample_reads += frames as u64;
+-            arena.work.sample_writes += frames as u64;
+-            self.wires[wire] = arena.transient(offset, frames);
++            self.wires[wire] =
++                arena.copy_input(&audio.input(wire - self.host)[start..start + frames])?;
+         }
+         Ok(self.wires[wire])
+     }

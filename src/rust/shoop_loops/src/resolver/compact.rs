@@ -97,7 +97,6 @@ impl Resolver {
                 .capture_frames
                 .checked_add(if state.mode.records() { q } else { 0 })
                 .ok_or(Error::Exhausted)?;
-            self.scratch.states[slot] = Some(state);
             self.scratch.decisions.push(Decision {
                 state,
                 playback_discontinuity: wrap && state.plays(),

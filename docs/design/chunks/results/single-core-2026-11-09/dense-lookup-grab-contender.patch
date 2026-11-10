@@ -1,0 +1,16 @@
+--- a/src/rust/shoop_loops/src/topology.rs
++++ b/src/rust/shoop_loops/src/topology.rs
+@@ -69,6 +69,13 @@
+         &self.nodes
+     }
+     pub fn node(&self, id: LoopId) -> Result<LoopSpec, Error> {
++        if let Some(node) = self
++            .nodes
++            .get(id.slot() as usize)
++            .filter(|node| node.id == id)
++        {
++            return Ok(*node);
++        }
+         self.nodes
+             .binary_search_by_key(&id, |node| node.id)
+             .ok()

@@ -340,6 +340,7 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     clock: RenderRuntime,
     catalog: Catalog,
     has_midi_buffers: bool,
+    materialized_silent: Box<[bool]>,
     slots: Vec<Option<Slot<P>>>,
     active: Option<PreparedPlan>,
     graph_stages: GraphStages,
@@ -478,6 +479,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let has_midi_buffers = nodes
             .iter()
             .any(|node| node.ports.midi_inputs != 0 || node.ports.midi_outputs != 0);
+        let mut materialized_silent = vec![false; limits.max_nodes].into_boxed_slice();
+        for silent in &mut materialized_silent {
+            *core::hint::black_box(silent) = false;
+        }
         let mut midi_bytes = 0usize;
         for node in &nodes {
             midi_bytes = midi_bytes
@@ -564,6 +569,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 clock: RenderRuntime::new(config),
                 catalog,
                 has_midi_buffers,
+                materialized_silent,
                 slots,
                 active: None,
                 graph_stages: GraphStages::disabled(),
@@ -1398,6 +1404,37 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 .ok_or(Error::InvalidId)?
                 .buffers
                 .clear(q, 0, q);
+            if !self.has_midi_buffers && P::compact_graph_supported() {
+                let inputs_silent = plan.descriptor().connections[first..step.input_end]
+                    .iter()
+                    .all(|edge| {
+                        edge.source
+                            .node
+                            .is_some_and(|node| self.materialized_silent[node.slot() as usize])
+                    });
+                let slot = self.slots[step.node.slot() as usize]
+                    .as_mut()
+                    .ok_or(Error::InvalidId)?;
+                let active = slot
+                    .processor
+                    .as_mut()
+                    .ok_or(Error::InvalidId)?
+                    .compact_active(crate::processor::CompactActivity {
+                        node: step.node,
+                        graph_epoch: self.epoch,
+                        inputs_silent,
+                        domain: &self.planner,
+                    })?;
+                self.materialized_silent[step.node.slot() as usize] = !active;
+                if !active {
+                    increment(
+                        &mut self.diagnostics.nodes_skipped,
+                        &mut self.diagnostics.counter_overflow,
+                    );
+                    first = step.input_end;
+                    continue;
+                }
+            }
             for edge in &plan.descriptor().connections[first..step.input_end] {
                 record_midi_overflow(
                     route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0),

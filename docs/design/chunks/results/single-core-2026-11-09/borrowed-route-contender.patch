@@ -1,0 +1,103 @@
+diff --git a/src/rust/rt_runtime/src/executor_compact.rs b/src/rust/rt_runtime/src/executor_compact.rs
+index 11f0e8e8..2ec9032d 100644
+--- a/src/rust/rt_runtime/src/executor_compact.rs
++++ b/src/rust/rt_runtime/src/executor_compact.rs
+@@ -128,24 +128,25 @@ impl Program {
+         Ok(())
+     }
+ 
+-    fn source(
+-        &mut self,
++    fn source<'a>(
++        wires: &'a mut [AudioSequence],
++        host: usize,
+         wire: usize,
+         arena: &mut RenderArena,
+         audio: &impl crate::host_buffer::AudioIo,
+         start: usize,
+         frames: usize,
+-    ) -> Result<AudioSequence, Error> {
+-        if wire >= self.host && self.wires[wire].silent() {
++    ) -> Result<&'a AudioSequence, Error> {
++        if wire >= host && wires[wire].silent() {
+             let offset = arena.allocate(frames)?;
+             arena
+                 .output(offset, frames)
+-                .copy_from_slice(&audio.input(wire - self.host)[start..start + frames]);
++                .copy_from_slice(&audio.input(wire - host)[start..start + frames]);
+             arena.work.sample_reads += frames as u64;
+             arena.work.sample_writes += frames as u64;
+-            self.wires[wire] = arena.transient(offset, frames);
++            wires[wire] = arena.transient(offset, frames);
+         }
+-        Ok(self.wires[wire])
++        Ok(&wires[wire])
+     }
+ }
+ 
+@@ -183,8 +184,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
+             let mut nodes = 0usize;
+             let mut skipped = 0usize;
+             let mut edges = program.outputs.len();
+-            for index in 0..program.operations.len() {
+-                let op = program.operations[index];
++            for op in &program.operations {
+                 program.wires[op.output..op.output + op.outputs].fill(AudioSequence::default());
+                 let slot = self.slots[op.node.slot() as usize]
+                     .as_mut()
+@@ -211,12 +211,19 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
+                 let buffers = &mut slot.buffers;
+                 buffers.input_sequences.fill(AudioSequence::default());
+                 buffers.input_mixed.fill(false);
+-                for index in op.first..op.end {
+-                    let route = program.inputs[index];
+-                    let source = program.source(route.wire, &mut arena, audio, start, q)?;
++                for route in &program.inputs[op.first..op.end] {
++                    let source = Program::source(
++                        &mut program.wires,
++                        program.host,
++                        route.wire,
++                        &mut arena,
++                        audio,
++                        start,
++                        q,
++                    )?;
+                     let input = &mut buffers.input_sequences[route.port];
+                     if input.silent() {
+-                        *input = source;
++                        *input = *source;
+                         arena.work.forwarded += 1;
+                     } else if !source.silent() {
+                         let offset = if buffers.input_mixed[route.port] {
+@@ -231,7 +238,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
+                             buffers.input_mixed[route.port] = true;
+                             offset
+                         };
+-                        arena.accumulate(source, offset, q, &self.resources)?;
++                        arena.accumulate(*source, offset, q, &self.resources)?;
+                     }
+                 }
+                 let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
+@@ -298,11 +305,18 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
+                 })?;
+                 self.profiling.node_ready(u64::from(op.node.slot()));
+             }
+-            for index in 0..program.outputs.len() {
+-                let route = program.outputs[index];
+-                let source = program.source(route.wire, &mut arena, audio, start, q)?;
++            for route in &program.outputs {
++                let source = Program::source(
++                    &mut program.wires,
++                    program.host,
++                    route.wire,
++                    &mut arena,
++                    audio,
++                    start,
++                    q,
++                )?;
+                 arena.read_into(
+-                    source,
++                    *source,
+                     &mut audio.output(route.port)[start..start + q],
+                     &self.resources,
+                     true,

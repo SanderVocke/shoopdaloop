@@ -1,0 +1,10 @@
+--- a/src/rust/shoop_rt_engine/src/node.rs
++++ b/src/rust/shoop_rt_engine/src/node.rs
+@@ -827,6 +827,7 @@
+             _ => Ok(false),
+         }
+     }
++    #[inline(always)]
+     fn publish_references(
+         &mut self,
+         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,

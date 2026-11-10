@@ -1,0 +1,14 @@
+--- a/src/rust/shoop_rt_engine/src/cells.rs
++++ b/src/rust/shoop_rt_engine/src/cells.rs
+@@ -20,7 +20,10 @@
+     pub(crate) fn raise(&self, channel: usize, value: f32) {
+         if value.is_finite() && value > 0. {
+             if let Some(cell) = self.0.get(channel) {
+-                cell.fetch_max(value.to_bits(), Ordering::Relaxed);
++                let bits = value.to_bits();
++                if cell.load(Ordering::Relaxed) < bits {
++                    cell.fetch_max(bits, Ordering::Relaxed);
++                }
+             }
+         }
+     }

@@ -1,0 +1,182 @@
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+   Compiling shoop_loops v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops)
+   Compiling shoop_loops_test_support v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops_test_support)
+    Finished `release` profile [optimized] target(s) in 46.22s
+     Running unittests src/lib.rs (target/release/deps/shoop_loops-34e6a63669c62337)
+
+running 25 tests
+test grab::tests::gesture_policy_clamps_apply_cycles_and_requires_sync_even_when_unsynced ... ok
+test grab::tests::gesture_policy_resolves_target_cycle_and_unsynced_finish_at_the_authoritative_cut ... ok
+test grab::tests::gesture_policy_rounds_target_periods_and_refuses_unrepresentable_cycle_intent ... ok
+test grab::tests::invalid_ranges_phase_and_arithmetic_refuse_without_saturation ... ok
+test grab::tests::partial_cycle_and_explicit_padding_never_invent_source_frames ... ok
+test grab::tests::raw_adoption_and_time_above_u32_keep_exact_source_coordinates ... ok
+test grab::tests::target_cycles_and_current_phase_select_the_reference_lookback ... ok
+test grab::tests::unsynced_grab_continues_from_the_live_input_cut ... ok
+test media::tests::exhausted_media_and_export_generations_retire_instead_of_retargeting ... ok
+test media::tests::two_audio_roles_require_independent_leases_and_release_each_exactly_once ... ok
+test resolver::clock_tests::final_tick_and_exhausted_clocks_do_not_wrap_or_reexecute ... ok
+test resolver::compact::tests::compact_ticks_match_transactional_clock_states_events_and_pending_transitions ... ok
+test resolver::retime::tests::family_retime_preserves_wraps_cycles_pending_counts_and_unrelated_playback ... ok
+test resolver::retime::tests::manual_period_edits_preserve_absolute_position_and_refuse_misalignment_atomically ... ok
+test resolver::retime::tests::primitive_family_retime_preserves_composite_state_and_refuses_composite_members_atomically ... ok
+test resolver::retime::tests::same_length_revision_waits_for_a_finished_tick_and_preserves_the_playhead ... ok
+test resolver::retime::tests::stale_or_recording_member_refuses_every_change_before_publication ... ok
+test resolver::tests::batches_preserve_existing_plans_until_every_member_can_apply ... ok
+test resolver::tests::batches_settle_all_targets_or_refuse_all_with_no_state_or_pulse_leak ... ok
+test resolver::tests::delayed_batches_apply_or_refuse_every_member_at_the_same_sync_cut ... ok
+test resolver::tests::program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work ... ok
+test resolver::tests::replacing_preserves_playing_phase_wraps_sync_and_commits_one_content_revision_at_exit ... ok
+test runtime::input_batch::tests::input_records_require_canonical_tags_options_padding_and_exact_size ... ok
+test runtime::node_pairs::tests::node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned_snapshot ... ok
+test topology::staging::tests::stage_generation_and_scope_exhaustion_never_wrap ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/composites.rs (target/release/deps/composites-4209a349c821d429)
+
+running 17 tests
+test autonomous_actions_do_not_claim_an_unrelated_request_as_transaction_origin ... ok
+test composite_primitive_composite_chain_has_no_hop_delay ... ok
+test deep_nested_programs_execute_all_dense_ticks_without_wave_or_subrange_caps ... ok
+test empty_children_reserve_time_and_empty_program_is_a_stopped_success ... ok
+test explicit_actions_outrank_inherited_actions_then_source_identity_wins ... ok
+test explicit_program_records_then_plays_and_finishes_one_pass ... ok
+test generated_regular_and_explicit_programs_match_dense_scalar_execution ... ok
+test maximum_sparse_iteration_seek_is_indexed_and_wraps_without_overflow ... ok
+test nested_program_journals_match_across_partitions_and_declarations ... ok
+test nested_start_seek_and_stop_are_authoritative_at_the_same_sample ... ok
+test prepared_units_advance_independently_of_source_edges_and_source_activity ... ok
+test pure_sync_component_may_contain_a_composite_but_not_action_feedback ... ok
+test refused_authoritative_preview_preserves_every_descendant ... ok
+test regular_program_uses_prepared_frames_and_preserves_contiguous_playback ... ok
+test running_program_replacement_is_refused_without_dropping_owners ... ok
+test stopped_relay_does_not_own_a_running_programs_frame_clock ... ok
+test trigger_ordinals_are_disjoint_from_program_ordinals ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/program_boundaries.rs (target/release/deps/program_boundaries-45dceb3b271c4c8c)
+
+running 3 tests
+test nested_request_refusal_invalid_inputs_and_committed_phase_keep_probe_state_unpublished ... ok
+test prospective_zero_cut_obeys_same_frame_control_priority_and_actual_source_pulses ... ok
+test unpublished_program_cuts_match_scalar_clocks_across_partitions_orders_and_unread_results ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/program_changes.rs (target/release/deps/program_changes-eb076a3fb3368190)
+
+running 12 tests
+test a_paired_program_source_update_waits_for_a_real_restart_without_changing_pass_timing ... ok
+test candidate_capture_preflight_failure_preserves_old_configuration_and_retries_without_revision_gaps ... ok
+test fixed_program_replacement_preserves_phase_and_exact_boundary_journals ... ok
+test invalid_candidate_shapes_epochs_and_raw_program_tags_return_owners_without_mutation ... ok
+test old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_apply_on_refusal ... ok
+test permanent_quiescence_recovers_pending_speculative_and_committed_owners_without_advancing_time ... ok
+test removed_nested_program_stops_descendants_before_new_graph_order_unless_direct_control_wins ... ok
+test retained_change_and_full_request_slots_allow_all_128_one_sample_boundaries ... ok
+test running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_exact_journals ... ok
+test same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut ... ok
+test source_stop_cancellation_staleness_and_owner_backpressure_preserve_frame_publication ... ok
+test stopped_empty_and_explicit_end_changes_do_not_manufacture_playback_or_clock_edges ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/resolver.rs (target/release/deps/resolver-4cb419c93a3b870e)
+
+running 17 tests
+test deep_cascade_executes_beyond_old_wave_limits_under_heap_guard ... ok
+test dense_wraps_and_callback_end_are_partition_invariant ... ok
+test discarded_preview_has_no_visible_pulses_results_or_state_changes ... ok
+test duplicate_failure_observations_are_refused_without_losing_monitored_playback ... ok
+test higher_reactive_start_can_lift_a_stop_mask_but_lower_priority_cannot ... ok
+test invalid_phase_and_late_delivery_are_explicit ... ok
+test invalid_seek_and_revision_exhaustion_leave_previous_state_usable ... ok
+test maximum_countdown_and_empty_finish_do_not_overflow_or_invent_content ... ok
+test mutual_sync_needs_a_seed_and_delivers_each_clock_edge_once ... ok
+test optional_journal_exhaustion_does_not_change_musical_state ... ok
+test pending_receipts_survive_stalls_and_stale_ids_cannot_cancel_reused_slots ... ok
+test pre_clock_stop_suppresses_wrap_and_losing_request_has_terminal_outcome ... ok
+test reactive_stop_does_not_retract_a_clock_that_activated_it ... ok
+test record_to_play_and_monitored_capture_failure_use_exact_common_boundaries ... ok
+test replacement_returns_owners_and_prevents_generation_resurrection ... ok
+test same_frame_cascade_and_full_journals_ignore_declaration_and_host_cuts ... ok
+test seeded_primitive_execution_matches_scalar_reference_across_partitions ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/runtime.rs (target/release/deps/runtime-1a784e3cf6d3a3b7)
+
+running 19 tests
+test coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles ... ok
+test scenarios::capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes ... ok
+test scenarios::clear_stops_playback_selects_empty_content_and_releases_references ... ok
+test scenarios::dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results ... ok
+test scenarios::facade_node_pair_validation_invalid_operations_and_imported_revision_exhaustion_are_checked ... ok
+test scenarios::family_selection_fences_stale_content_and_publishes_audio_midi_and_period_together ... ok
+test scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts ... ok
+test scenarios::prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent ... ok
+test scenarios::recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits ... ok
+test scenarios::running_capture_exhaustion_preserves_independently_predicted_common_prefix_and_live_audio ... ok
+test scenarios::smoothing_operations_apply_from_the_next_restart_and_are_reported ... ok
+test scenarios::stereo_balance_follows_decisions_and_is_reported_in_the_cut ... ok
+test scenarios::stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners ... ok
+test scenarios::stopped_input_initial_state_and_half_open_prefix_export_survive_immediate_play ... ok
+test timing_scenarios::cancelled_superseded_and_invalidated_pickups_release_notes_without_starting ... ok
+test timing_scenarios::channel_batch_refusal_and_armed_recording_length_refusal_do_not_partially_apply ... ok
+test timing_scenarios::indexed_window_validation_fits_a_native_callback_stack ... ok
+test timing_scenarios::manual_timing_keeps_absolute_position_raw_media_and_independent_channel_windows ... ok
+test timing_scenarios::preplay_is_audible_while_stopped_and_pickup_notes_continue_across_start ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/runtime_topology.rs (target/release/deps/runtime_topology-3a64dab844d8e6f7)
+
+running 34 tests
+test configuration_scenarios::active_recording_refuses_complete_replacement_without_resetting_or_stopping_it ... ok
+test configuration_scenarios::complete_replacement_and_old_exports_accept_cow_loaded_audio_and_grabbed_history ... ok
+test configuration_scenarios::complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_validated_cut ... ok
+test configuration_scenarios::generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_reference ... ok
+test configuration_scenarios::inactive_prepared_consumers_support_kind_change_removal_and_readd_without_retargeting_old_requests ... ok
+test configuration_scenarios::input::input_projection_is_explicitly_preserved_or_reset_once_before_the_first_new_capture ... ok
+test configuration_scenarios::rejections::batch_capacity_is_preflighted_without_reusing_retirement_credits_or_publishing_a_prefix ... ok
+test configuration_scenarios::rejections::configuration_refusals_and_final_resolver_failure_leave_all_three_owners_ready ... ok
+test configuration_scenarios::sources::full_loop_adopt_select_and_export_use_immutable_shared_snapshots ... ok
+test configuration_scenarios::sources::source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under_saturation ... ok
+test configuration_scenarios::teardown::disconnect_and_fault_cleanup_recover_source_receivers_partial_batches_and_published_capture_claims ... ok
+test full_domain_slots_unread_graph_results_and_retirement_do_not_gate_clock_or_recovery ... ok
+test full_normal_domain_slots_and_unread_program_results_allow_clock_progress_and_recovery ... ok
+test graph_and_stopped_topology_publish_together_with_independent_media_and_journals ... ok
+test graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_without_partial_publication ... ok
+test intervening_live_graph_change_refuses_pending_program_without_publishing_its_zero_actions ... ok
+test live_route_cut_keeps_recording_prefix_and_midi_continuity_without_restarting_the_take ... ok
+test paired_graph_topology_owners_survive_disconnect_and_post_publication_render_fault ... ok
+test pending_program_cancellation_disconnect_and_fault_extraction_return_every_bank_owner ... ok
+test program_capture_preflight_uses_real_banks_and_preserves_old_media_on_family_refusal ... ok
+test program_delivery_validation_and_queued_cancellation_preserve_ready_bank_generations ... ok
+test program_graph_scenarios::capture::paired_program_capture_preflight_publishes_both_or_neither_and_records_real_fx_media ... ok
+test program_graph_scenarios::lifecycle::paired_cancellation_released_generations_and_intervening_graphs_never_publish_the_program ... ok
+test program_graph_scenarios::lifecycle::paired_retirement_unread_results_recovery_disconnect_and_render_fault_preserve_ownership ... ok
+test program_graph_scenarios::running_program_and_routes_publish_at_one_zero_cut_with_full_independent_reference ... ok
+test program_graph_scenarios::unchanged_program_cannot_publish_changed_routes_before_the_real_restart ... ok
+test repeat_alignment::real_audio_and_midi_finish_their_pass_then_wait_and_resume_under_the_shared_policy ... ok
+test running_program_bank_activation_matches_independent_media_states_and_ordered_journals ... ok
+test staged_fixed_graph_activation_preserves_media_and_matches_independent_timeline ... ok
+test staging_work_shares_the_callback_budget_and_recovery_ignores_normal_receipt_stalls ... ok
+test stale_scope_generation_node_pair_and_malformed_candidates_preserve_the_working_timeline ... ok
+test stopped_extraction_recovers_receiving_validating_ready_failed_and_retired_banks ... ok
+test timing_activation_during_capture_keeps_the_take_prefix_and_recorded_fx_media_coherent ... ok
+test topology_revalidation_completes_countdown_receipts_and_cancelled_delivery_keeps_the_candidate ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/topology_views.rs (target/release/deps/topology_views-3c7c4209f91330f8)
+
+running 3 tests
+test borrowed_views_match_independent_sparse_segments_and_component_order ... ok
+test flat_storage_scales_with_total_metadata_not_program_products_or_duration ... ok
+test unrelated_table_relocation_preserves_running_program_identity_and_owning_returns ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

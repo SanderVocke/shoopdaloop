@@ -1,0 +1,169 @@
+--- a/src/rust/rt_runtime/src/audio_refs.rs
++++ b/src/rust/rt_runtime/src/audio_refs.rs
+@@ -198,21 +198,47 @@
+         add: bool,
+     ) -> Result<(), Error> {
+         let frames = output.len();
+-        if !add {
+-            output.fill(0.);
+-        }
+-        visit(
+-            &sequence,
+-            frames,
+-            self.epoch,
+-            &self.data[..self.used],
+-            None,
+-            &[],
+-            resources,
+-            |offset, sample| {
+-                output[offset] += sample;
+-            },
+-        )?;
++        // A complete non-silent span replaces every sample; keep the +0.0
++        // operation so signed-zero and nonfinite behavior follows the clear/add path.
++        let overwrite = !add
++            && sequence.len == 1
++            && sequence.spans[0].frames == frames
++            && sequence.spans[0].chunk != ChunkRef::Silence;
++        if overwrite {
++            let result = visit(
++                &sequence,
++                frames,
++                self.epoch,
++                &self.data[..self.used],
++                None,
++                &[],
++                resources,
++                |offset, sample| {
++                    output[offset] = 0.0 + sample;
++                },
++            );
++            if let Err(error) = result {
++                // Single-span sources are validated before their first sample write.
++                output.fill(0.0);
++                return Err(error);
++            }
++        } else {
++            if !add {
++                output.fill(0.);
++            }
++            visit(
++                &sequence,
++                frames,
++                self.epoch,
++                &self.data[..self.used],
++                None,
++                &[],
++                resources,
++                |offset, sample| {
++                    output[offset] += sample;
++                },
++            )?;
++        }
+         self.work.sample_reads += sequence.source_frames();
+         self.work.sample_writes += sequence.source_frames() + if add { 0 } else { frames as u64 };
+         Ok(())
+@@ -440,6 +466,103 @@
+ mod tests {
+     use super::*;
+     use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
++
++    #[shoop_test]
++    fn complete_reads_preserve_zero_nonfinite_and_error_clearing_semantics() {
++        let resources = ResourceStore::new(
++            crate::Config::default().prepare().unwrap(),
++            Quantum::new(32).unwrap(),
++        )
++        .unwrap();
++        let mut arena = RenderArena::prepare(4, 0);
++        let offset = arena.allocate(4).unwrap();
++        let input = [-0.0, 0.25, -0.75, f32::INFINITY];
++        arena.output(offset, 4).copy_from_slice(&input);
++        let sequence = arena.transient(offset, 4);
++        assert_no_heap(|| {
++            for envelope in [
++                GainEnvelope::constant(1.0),
++                GainEnvelope::constant(-1.0),
++                GainEnvelope::constant(0.0),
++                GainEnvelope::constant(-0.0),
++                GainEnvelope::constant(0.7),
++                GainEnvelope::constant(f32::INFINITY),
++                GainEnvelope::constant(f32::NAN),
++                GainEnvelope {
++                    start: 0.3,
++                    end: 0.9,
++                },
++            ] {
++                let mut actual = [3.0; 4];
++                arena
++                    .read_into(sequence.scaled(envelope), &mut actual, &resources, false)
++                    .unwrap();
++                let step = (envelope.end - envelope.start) / 3.0;
++                let mut gain = envelope.start;
++                for i in 0..4 {
++                    if i == 3 {
++                        gain = envelope.end;
++                    }
++                    let expected = 0.0 + input[i] * gain;
++                    assert!(
++                        actual[i].to_bits() == expected.to_bits()
++                            || (actual[i].is_nan() && expected.is_nan())
++                    );
++                    gain += step;
++                }
++            }
++            let mut output = [3.0; 4];
++            let mut silence = sequence;
++            silence.spans[0].chunk = ChunkRef::Silence;
++            arena
++                .read_into(silence, &mut output, &resources, false)
++                .unwrap();
++            assert_eq!(output, [0.0; 4]);
++            output = [-0.0, 1.0, 1.0, 1.0];
++            arena
++                .read_into(sequence, &mut output, &resources, true)
++                .unwrap();
++            assert_eq!(output[0].to_bits(), (-0.0_f32).to_bits());
++            assert_eq!(&output[1..], &[1.25, 0.25, f32::INFINITY]);
++            let mut partial = sequence;
++            partial.spans[0].frames = 2;
++            output = [3.0; 4];
++            assert!(arena
++                .read_into(partial, &mut output, &resources, false)
++                .is_err());
++            assert_eq!(output, [0.0, 0.25, 0.0, 0.0]);
++            let mut split = partial;
++            split.len = 2;
++            split.spans[1] = ChunkSpan {
++                chunk: ChunkRef::Transient {
++                    offset: usize::MAX,
++                    epoch: 0,
++                },
++                frames: 2,
++            };
++            output = [3.0; 4];
++            assert!(arena
++                .read_into(split, &mut output, &resources, false)
++                .is_err());
++            assert_eq!(output, [0.0, 0.25, 0.0, 0.0]);
++            output = [3.0; 4];
++            assert!(arena
++                .read_into(
++                    arena.transient(usize::MAX, 4),
++                    &mut output,
++                    &resources,
++                    false
++                )
++                .is_err());
++            assert_eq!(output, [0.0; 4]);
++            arena.reset().unwrap();
++            output = [3.0; 4];
++            assert!(arena
++                .read_into(sequence, &mut output, &resources, false)
++                .is_err());
++            assert_eq!(output, [0.0; 4]);
++        });
++    }
+ 
+     #[shoop_test]
+     fn constant_peak_preserves_zero_negative_and_nonfinite_samples() {

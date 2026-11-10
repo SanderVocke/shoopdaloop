@@ -1,0 +1,7 @@
+{
+  "target": "aarch64-unknown-linux-gnu",
+  "cpu": "cortex-a76",
+  "command": "cargo rustc --locked --release -j 1 -p rt_runtime --lib --target aarch64-unknown-linux-gnu -- -C target-cpu=cortex-a76 --emit=asm -D warnings",
+  "full_assembly_sha256": "6dde6bb7b93891eb2f751d3a01a20905c0fbefef526b850831db3970d7ad5526",
+  "source": "constant gain plus overwrite-specific import (patches preserved); compile only, no ARM timing"
+}

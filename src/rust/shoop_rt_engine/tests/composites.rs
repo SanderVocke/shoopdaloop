@@ -299,6 +299,34 @@ fn malformed_or_stale_programs_refuse_without_changing_the_working_arrangement()
 }
 
 #[shoop_test]
+fn stopped_composite_telemetry_keeps_its_frame_current() {
+    let mut h = setup();
+    let d = plan(1, 1);
+    stage(&mut h, d, &spans());
+    h.done(Request::Composite(CompositeCommand::Commit { id: 1 }));
+    let origin = h.frame();
+    h.run(32, 1);
+    let frames: Vec<_> = h
+        .telemetry
+        .iter()
+        .filter_map(|(observed, telemetry)| match telemetry {
+            Telemetry::Composite {
+                loop_id,
+                frame,
+                mode,
+                ..
+            } if *loop_id == d.loop_id && *observed > origin => {
+                assert_eq!(*mode, LoopMode::Stopped);
+                assert_eq!(*frame + 1, *observed);
+                Some(*frame)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(frames, (origin..origin + 32).collect::<Vec<_>>());
+}
+
+#[shoop_test]
 fn a_live_plan_update_publishes_its_own_length_and_media_at_one_eligible_boundary() {
     let mut h = setup();
     stage(&mut h, plan(1, 1), &spans());

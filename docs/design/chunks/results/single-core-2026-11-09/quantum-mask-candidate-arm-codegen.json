@@ -1,0 +1,11 @@
+{
+  "binary": "work/bin/arm-quantum-mask",
+  "binary_sha256": "56a8234a78d185c228a19cb022072782413b4a06f7091b2a3f2219e8863aa471",
+  "command": [
+    "/workspace/shoopdaloop/work/rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objdump",
+    "--no-show-raw-insn",
+    "--disassemble-symbols=_RNvMNtNtCsetTf0lGzr35_11shoop_loops8resolver7compactNtB4_8Resolver12compact_tick",
+    "work/bin/arm-quantum-mask"
+  ],
+  "udiv_instructions": 0
+}

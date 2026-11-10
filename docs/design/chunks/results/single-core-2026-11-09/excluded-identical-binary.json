@@ -1,0 +1,9 @@
+{
+  "reason": "source timestamps preserved during restore; Cargo reused candidate for control; exclude as optimization evidence",
+  "sha256": "d9f5465c97ed95a64f40a8ea386d402c01282b85592cb71419697e82701fafc3",
+  "binaries": [
+    "offline-after-control",
+    "offline-after-activity"
+  ],
+  "interpretation": "identical-binary run-to-run variability only; median differences up to about 3%"
+}

@@ -656,11 +656,14 @@ fn only_occupied_slots_are_rendered() {
         });
         harness.run(1, 1);
         // Master input/output, the bulk reader, the strip stages and loop playback,
-        // capture and fader. Compact skips the silent loop pair.
+        // capture and fader. Current and compact prune the silent loop stages.
         let diagnostics = harness.host.render.diagnostics();
         assert_eq!(
             diagnostics.nodes_processed,
-            if mode == rt_runtime::AudioRenderMode::Compact {
+            if matches!(
+                mode,
+                rt_runtime::AudioRenderMode::Current | rt_runtime::AudioRenderMode::Compact
+            ) {
                 5
             } else {
                 8
@@ -668,7 +671,10 @@ fn only_occupied_slots_are_rendered() {
         );
         assert_eq!(
             diagnostics.nodes_skipped,
-            if mode == rt_runtime::AudioRenderMode::Compact {
+            if matches!(
+                mode,
+                rt_runtime::AudioRenderMode::Current | rt_runtime::AudioRenderMode::Compact
+            ) {
                 3
             } else {
                 0

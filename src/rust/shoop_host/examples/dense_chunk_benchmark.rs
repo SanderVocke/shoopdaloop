@@ -177,8 +177,8 @@ fn main() -> Result<()> {
     );
     const WORKLOAD_TRACKS: usize = 8;
     ensure!(
-        args.voices == 4,
-        "this dense workload requires four active loops per track"
+        args.voices <= 8,
+        "dense voices exceed the eight-cell track grid"
     );
     ensure!(
         args.tracks as usize >= WORKLOAD_TRACKS,

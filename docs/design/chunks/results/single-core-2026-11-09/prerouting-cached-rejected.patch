@@ -1,0 +1,40 @@
+--- a/src/rust/shoop_loops/src/resolver.rs
++++ b/src/rust/shoop_loops/src/resolver.rs
+@@ -348,7 +348,8 @@
+     /// cancellation have settled. The reference routing window has skip count one.
+     pub fn prerouting_transition(&self, target: LoopId) -> Result<Option<Transition>, Error> {
+         self.topology.node(target)?;
+-        if self.compact_preview {
++        // Cached eligibility also proves there are no live requests between previews.
++        if self.compact_preview || self.compact_ready {
+             return Ok(None);
+         }
+         let records = if self.preview.is_some() && !self.committed {
+--- a/src/rust/shoop_loops/src/resolver/compact.rs
++++ b/src/rust/shoop_loops/src/resolver/compact.rs
+@@ -206,6 +206,13 @@
+                                 ));
+                             }
+                         }
++                        for i in 0..3 {
++                            assert_eq!(
++                                reference.prerouting_transition(id(i)),
++                                compact.prerouting_transition(id(i)),
++                                "before preview: q={q}, sync={sync}, tick={tick}, loop={i}"
++                            );
++                        }
+                         reference.preview_tick(&[]).unwrap();
+                         if compact.compact_tick(&[]).unwrap().is_some() {
+                             fast += 1;
+@@ -240,6 +247,11 @@
+                         }
+                         for i in 0..3 {
+                             assert_eq!(reference.state(id(i)), compact.state(id(i)));
++                            assert_eq!(
++                                reference.prerouting_transition(id(i)),
++                                compact.prerouting_transition(id(i)),
++                                "after finish: q={q}, sync={sync}, tick={tick}, loop={i}"
++                            );
+                         }
+                     }
+                     assert!(fast > 100, "fast ticks={fast}");

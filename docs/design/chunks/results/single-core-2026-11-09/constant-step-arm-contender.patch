@@ -1,0 +1,19 @@
+--- a/src/rust/rt_runtime/src/audio_refs.rs
++++ b/src/rust/rt_runtime/src/audio_refs.rs
+@@ -305,13 +305,13 @@
+         return Ok(());
+     }
+     let mut at = 0;
+-    let step = if frames > 1 {
++    let mut gain = sequence.gain.start;
++    let constant = gain.is_finite() && gain != 0. && gain == sequence.gain.end;
++    let step = if !constant && frames > 1 {
+         (sequence.gain.end - sequence.gain.start) / (frames - 1) as f32
+     } else {
+         0.
+     };
+-    let mut gain = sequence.gain.start;
+-    let constant = gain.is_finite() && gain != 0. && gain == sequence.gain.end;
+     for span in &sequence.spans[..sequence.len] {
+         let count = span.frames;
+         if count > frames - at {

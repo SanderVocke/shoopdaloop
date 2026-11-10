@@ -1,0 +1,9 @@
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+    Finished `release` profile [optimized] target(s) in 11.84s
+     Running tests/compact_routing.rs (target/release/deps/compact_routing-39749d1f966d12e4)
+
+running 1 test
+test compact_routes_preserve_samples_and_publication_across_slot_orders_and_sample_fallback ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

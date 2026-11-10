@@ -1,0 +1,61 @@
+--- a/src/rust/shoop_rt_engine/src/monitoring.rs
++++ b/src/rust/shoop_rt_engine/src/monitoring.rs
+@@ -17,6 +17,7 @@
+     head: usize,
+     tail: usize,
+     direct: Box<[Option<PendingTransition>]>,
++    direct_dirty: bool,
+ }
+ impl Demand {
+     pub(crate) fn new(loops: usize) -> Self {
+@@ -27,6 +28,7 @@
+             head: 0,
+             tail: 0,
+             direct: prepared(loops, None),
++            direct_dirty: false,
+         }
+     }
+     pub(crate) fn recording(&self, slot: usize) -> bool {
+@@ -75,10 +77,15 @@
+     }
+     pub(crate) fn update(&mut self, resolver: &Resolver) {
+         self.recording.fill(false);
+-        self.future.fill(None);
++        for id in self.queue[..self.tail].iter().flatten() {
++            self.future[id.slot() as usize] = None;
++        }
+         self.head = 0;
+         self.tail = 0;
+-        self.direct.fill(None);
++        if self.direct_dirty {
++            self.direct.fill(None);
++            self.direct_dirty = false;
++        }
+         for pending in resolver.pending_transitions() {
+             let ready = match pending.remaining_ticks {
+                 Some(remaining) => remaining == 0 && pending.effective <= resolver.frame(),
+@@ -96,6 +103,7 @@
+             let slot = pending.request.target.slot() as usize;
+             if self.direct[slot].is_none_or(|old| old.request.sequence < pending.request.sequence) {
+                 self.direct[slot] = Some(pending);
++                self.direct_dirty = true;
+             }
+         }
+         for node in resolver.topology().nodes() {
+@@ -124,13 +132,13 @@
+                     _ => {}
+                 }
+             }
+-            let Some(program) = resolver.topology().program(node.id) else {
+-                continue;
+-            };
+             let Some(cursor) = state
+                 .composite
+                 .filter(|cursor| state.mode == Mode::Playing && !cursor.waiting_repeat)
+             else {
++                continue;
++            };
++            let Some(program) = resolver.topology().program(node.id) else {
+                 continue;
+             };
+             if self.intended(node.id, Mode::Playing) != Mode::Playing {

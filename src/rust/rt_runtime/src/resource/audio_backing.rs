@@ -6,7 +6,7 @@ use core::ops::Range;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AudioStoreId {
     scope: u32,
-    slot: usize,
+    slot: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -15,12 +15,13 @@ pub struct AudioHistoryId {
     history: shared_audio::HistoryId,
 }
 
+/// Page-local indexes fit the prepared storage ceiling.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AudioChunkRef {
     pub(super) store: AudioStoreId,
     pub(super) lease: super::shared_pages::LeaseId,
-    pub(super) first: usize,
-    pub(super) stride: usize,
+    pub(super) first: u32,
+    pub(super) stride: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -63,7 +64,7 @@ impl ResourceStore {
             .map(|(slot, _)| {
                 Some(AudioStoreId {
                     scope: self.scope,
-                    slot,
+                    slot: slot as u32,
                 })
             })
             .ok_or(Error::InvalidState)
@@ -102,15 +103,16 @@ impl ResourceStore {
         let samples = self
             .audio(reference.store)?
             .chunk_samples(reference.lease)?;
+        let first = reference.first as usize;
+        let stride = reference.stride as usize;
         if frames > 0
-            && reference
-                .first
-                .checked_add((frames - 1) * reference.stride)
+            && first
+                .checked_add((frames - 1) * stride)
                 .is_none_or(|last| last >= samples.len())
         {
             return Err(Error::InvalidOffset);
         }
-        consume(samples, reference.first, reference.stride);
+        consume(samples, first, stride);
         Ok(())
     }
 
@@ -159,7 +161,7 @@ impl ResourceStore {
         self.audio_stores.push(Some(Box::new(audio)));
         Ok(AudioStoreId {
             scope: self.scope,
-            slot,
+            slot: slot as u32,
         })
     }
 
@@ -178,7 +180,7 @@ impl ResourceStore {
         self.audio_stores.push(Some(Box::new(audio)));
         Ok(AudioStoreId {
             scope: self.scope,
-            slot,
+            slot: slot as u32,
         })
     }
     pub(super) fn with_audio<T>(
@@ -191,11 +193,11 @@ impl ResourceStore {
         }
         let mut audio = self
             .audio_stores
-            .get_mut(id.slot)
+            .get_mut(id.slot as usize)
             .and_then(Option::take)
             .ok_or(Error::InvalidId)?;
         let result = operation(self, &mut audio);
-        self.audio_stores[id.slot] = Some(audio);
+        self.audio_stores[id.slot as usize] = Some(audio);
         result
     }
 
@@ -207,7 +209,7 @@ impl ResourceStore {
             return Err(Error::InvalidId);
         }
         self.audio_stores
-            .get(id.slot)
+            .get(id.slot as usize)
             .and_then(Option::as_ref)
             .map(Box::as_ref)
             .ok_or(Error::InvalidId)
@@ -405,7 +407,7 @@ impl ResourceStore {
                     .with_audio(
                         AudioStoreId {
                             scope: self.scope,
-                            slot,
+                            slot: slot as u32,
                         },
                         |store, audio| audio.maintain_limit(store, 1),
                     )

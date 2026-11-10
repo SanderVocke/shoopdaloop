@@ -1,0 +1,61 @@
+{
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "affinity": [
+    0
+  ],
+  "command": [
+    "work/compare-native-v2.py",
+    "--candidates",
+    "retained=work/bin/host-verified-retained",
+    "packed=work/bin/host-packed-bundle",
+    "--launcher",
+    "work/bin/packed-dense_chunk_benchmark",
+    "--output",
+    "work/packed-native-compact",
+    "--mode",
+    "compact",
+    "--callbacks",
+    "256",
+    "--buffer",
+    "32",
+    "--repeats",
+    "4",
+    "--dense",
+    "--scenarios",
+    "idle",
+    "play",
+    "record",
+    "grab"
+  ],
+  "hosts": {
+    "retained": {
+      "path": "/workspace/shoopdaloop/work/bin/host-verified-retained",
+      "sha256": "000d572dc9c09a53a8674aca6efdce21b71c5ddadd9f1a91f0c91e72c99a6680"
+    },
+    "packed": {
+      "path": "/workspace/shoopdaloop/work/bin/host-packed-bundle",
+      "sha256": "606c8eeab6d7a66f2369409f8015dbd4395ec20aa45901833f914f80aead5c86"
+    }
+  },
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "launcher": {
+    "path": "/workspace/shoopdaloop/work/bin/packed-dense_chunk_benchmark",
+    "sha256": "2d29eabc2a7906396d328f9ec400f0c66ddae1022afe2a66ba7b28d12ca7bd39"
+  },
+  "case": {
+    "mode": "compact",
+    "buffer": 32,
+    "callbacks": 256,
+    "repeats": 4,
+    "scenarios": [
+      "idle",
+      "play",
+      "record",
+      "grab"
+    ],
+    "dense": true,
+    "voices": 4,
+    "warmup": 0.1
+  }
+}

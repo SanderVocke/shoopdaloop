@@ -1,0 +1,181 @@
+--- a/src/rust/rt_runtime/src/executor_compact.rs
++++ b/src/rust/rt_runtime/src/executor_compact.rs
+@@ -1,19 +1,20 @@
+ use super::*;
+ use crate::audio_refs::{AudioSequence, ChunkRef, ReferenceBlock, RenderArena};
+ 
++// Prepared edge/wire counts are bounded by Config's portable i32::MAX limits.
+ #[derive(Clone, Copy, Default)]
+ struct Route {
+-    wire: usize,
+-    port: usize,
++    wire: u32,
++    port: u32,
+ }
+ 
+ #[derive(Clone, Copy)]
+ struct Operation {
+     node: NodeId,
+-    first: usize,
+-    end: usize,
+-    output: usize,
+-    outputs: usize,
++    first: u32,
++    end: u32,
++    output: u32,
++    outputs: u32,
+ }
+ 
+ pub(super) struct Program {
+@@ -102,16 +103,16 @@
+                     return Err(Error::InvalidGraph);
+                 }
+                 self.inputs.push(Route {
+-                    wire: wire(edge, &self.bases),
+-                    port: edge.destination.port as usize,
++                    wire: wire(edge, &self.bases) as u32,
++                    port: edge.destination.port as u32,
+                 });
+             }
+             self.operations.push(Operation {
+                 node: step.node,
+-                first: begin,
+-                end: self.inputs.len(),
+-                output: self.bases[step.node.slot() as usize],
+-                outputs: slot.ports.audio_outputs,
++                first: begin as u32,
++                end: self.inputs.len() as u32,
++                output: self.bases[step.node.slot() as usize] as u32,
++                outputs: slot.ports.audio_outputs as u32,
+             });
+             first = step.input_end;
+         }
+@@ -120,8 +121,8 @@
+                 return Err(Error::InvalidGraph);
+             }
+             self.outputs.push(Route {
+-                wire: wire(edge, &self.bases),
+-                port: edge.destination.port as usize,
++                wire: wire(edge, &self.bases) as u32,
++                port: edge.destination.port as u32,
+             });
+         }
+         self.epoch = Some(epoch);
+@@ -185,13 +186,20 @@
+             let mut edges = program.outputs.len();
+             for index in 0..program.operations.len() {
+                 let op = program.operations[index];
+-                program.wires[op.output..op.output + op.outputs].fill(AudioSequence::default());
++                let (first, end, output, outputs) = (
++                    op.first as usize,
++                    op.end as usize,
++                    op.output as usize,
++                    op.outputs as usize,
++                );
++                program.wires[output..output + outputs].fill(AudioSequence::default());
+                 let slot = self.slots[op.node.slot() as usize]
+                     .as_mut()
+                     .ok_or(Error::InvalidId)?;
+-                let inputs_silent = program.inputs[op.first..op.end]
+-                    .iter()
+-                    .all(|route| route.wire < program.host && program.wires[route.wire].silent());
++                let inputs_silent = program.inputs[first..end].iter().all(|route| {
++                    (route.wire as usize) < program.host
++                        && program.wires[route.wire as usize].silent()
++                });
+                 let active = slot
+                     .processor
+                     .as_mut()
+@@ -207,19 +215,20 @@
+                     continue;
+                 }
+                 nodes += 1;
+-                edges += op.end - op.first;
++                edges += end - first;
+                 let buffers = &mut slot.buffers;
+                 buffers.input_sequences.fill(AudioSequence::default());
+                 buffers.input_mixed.fill(false);
+-                for index in op.first..op.end {
++                for index in first..end {
+                     let route = program.inputs[index];
+-                    let source = program.source(route.wire, &mut arena, audio, start, q)?;
+-                    let input = &mut buffers.input_sequences[route.port];
++                    let source =
++                        program.source(route.wire as usize, &mut arena, audio, start, q)?;
++                    let input = &mut buffers.input_sequences[route.port as usize];
+                     if input.silent() {
+                         *input = source;
+                         arena.work.forwarded += 1;
+                     } else if !source.silent() {
+-                        let offset = if buffers.input_mixed[route.port] {
++                        let offset = if buffers.input_mixed[route.port as usize] {
+                             let ChunkRef::Transient { offset, .. } = input.spans[0].chunk else {
+                                 return Err(Error::InvalidState);
+                             };
+@@ -228,7 +237,7 @@
+                             let offset = arena.allocate(q)?;
+                             arena.accumulate(*input, offset, q, &self.resources)?;
+                             *input = arena.transient(offset, q);
+-                            buffers.input_mixed[route.port] = true;
++                            buffers.input_mixed[route.port as usize] = true;
+                             offset
+                         };
+                         arena.accumulate(source, offset, q, &self.resources)?;
+@@ -242,7 +251,7 @@
+                     graph_epoch: self.epoch,
+                     quantum,
+                     inputs: &buffers.input_sequences,
+-                    outputs: &mut program.wires[op.output..op.output + op.outputs],
++                    outputs: &mut program.wires[output..output + outputs],
+                     arena: &mut arena,
+                     resources: &mut self.resources,
+                     domain: &mut self.planner,
+@@ -256,7 +265,7 @@
+                             false,
+                         )?;
+                     }
+-                    let offset = arena.allocate(op.outputs * q)?;
++                    let offset = arena.allocate(outputs * q)?;
+                     processor.process(&mut ProcessBlock {
+                         node: op.node,
+                         graph_epoch: self.epoch,
+@@ -266,7 +275,7 @@
+                         quantum,
+                         audio: AudioPorts::new(
+                             &buffers.input,
+-                            arena.output(offset, op.outputs * q),
++                            arena.output(offset, outputs * q),
+                             q,
+                             0,
+                             q,
+@@ -277,7 +286,7 @@
+                         resources: self.resources.io(),
+                         domain: &mut self.planner,
+                     })?;
+-                    for (port, output) in program.wires[op.output..op.output + op.outputs]
++                    for (port, output) in program.wires[output..output + outputs]
+                         .iter_mut()
+                         .enumerate()
+                     {
+@@ -291,7 +300,7 @@
+                     graph_epoch: self.epoch,
+                     quantum,
+                     inputs: &buffers.input_sequences,
+-                    outputs: &mut program.wires[op.output..op.output + op.outputs],
++                    outputs: &mut program.wires[output..output + outputs],
+                     arena: &mut arena,
+                     resources: &mut self.resources,
+                     domain: &mut self.planner,
+@@ -300,10 +309,10 @@
+             }
+             for index in 0..program.outputs.len() {
+                 let route = program.outputs[index];
+-                let source = program.source(route.wire, &mut arena, audio, start, q)?;
++                let source = program.source(route.wire as usize, &mut arena, audio, start, q)?;
+                 arena.read_into(
+                     source,
+-                    &mut audio.output(route.port)[start..start + q],
++                    &mut audio.output(route.port as usize)[start..start + q],
+                     &self.resources,
+                     true,
+                 )?;

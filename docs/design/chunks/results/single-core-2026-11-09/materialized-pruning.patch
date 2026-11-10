@@ -1,0 +1,98 @@
+--- a/src/rust/rt_runtime/src/executor.rs
++++ b/src/rust/rt_runtime/src/executor.rs
+@@ -340,6 +340,7 @@
+     clock: RenderRuntime,
+     catalog: Catalog,
+     has_midi_buffers: bool,
++    materialized_silent: Box<[bool]>,
+     slots: Vec<Option<Slot<P>>>,
+     active: Option<PreparedPlan>,
+     graph_stages: GraphStages,
+@@ -478,6 +479,10 @@
+         let has_midi_buffers = nodes
+             .iter()
+             .any(|node| node.ports.midi_inputs != 0 || node.ports.midi_outputs != 0);
++        let mut materialized_silent = vec![false; limits.max_nodes].into_boxed_slice();
++        for silent in &mut materialized_silent {
++            *core::hint::black_box(silent) = false;
++        }
+         let mut midi_bytes = 0usize;
+         for node in &nodes {
+             midi_bytes = midi_bytes
+@@ -564,6 +569,7 @@
+                 clock: RenderRuntime::new(config),
+                 catalog,
+                 has_midi_buffers,
++                materialized_silent,
+                 slots,
+                 active: None,
+                 graph_stages: GraphStages::disabled(),
+@@ -1398,6 +1404,37 @@
+                 .ok_or(Error::InvalidId)?
+                 .buffers
+                 .clear(q, 0, q);
++            if !self.has_midi_buffers && P::compact_graph_supported() {
++                let inputs_silent = plan.descriptor().connections[first..step.input_end]
++                    .iter()
++                    .all(|edge| {
++                        edge.source
++                            .node
++                            .is_some_and(|node| self.materialized_silent[node.slot() as usize])
++                    });
++                let slot = self.slots[step.node.slot() as usize]
++                    .as_mut()
++                    .ok_or(Error::InvalidId)?;
++                let active = slot
++                    .processor
++                    .as_mut()
++                    .ok_or(Error::InvalidId)?
++                    .compact_active(crate::processor::CompactActivity {
++                        node: step.node,
++                        graph_epoch: self.epoch,
++                        inputs_silent,
++                        domain: &self.planner,
++                    })?;
++                self.materialized_silent[step.node.slot() as usize] = !active;
++                if !active {
++                    increment(
++                        &mut self.diagnostics.nodes_skipped,
++                        &mut self.diagnostics.counter_overflow,
++                    );
++                    first = step.input_end;
++                    continue;
++                }
++            }
+             for edge in &plan.descriptor().connections[first..step.input_end] {
+                 record_midi_overflow(
+                     route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0),
+--- a/src/rust/shoop_rt_engine/tests/structure.rs
++++ b/src/rust/shoop_rt_engine/tests/structure.rs
+@@ -656,11 +656,14 @@
+         });
+         harness.run(1, 1);
+         // Master input/output, the bulk reader, the strip stages and loop playback,
+-        // capture and fader. Compact skips the silent loop pair.
++        // capture and fader. Current and compact prune the silent loop stages.
+         let diagnostics = harness.host.render.diagnostics();
+         assert_eq!(
+             diagnostics.nodes_processed,
+-            if mode == rt_runtime::AudioRenderMode::Compact {
++            if matches!(
++                mode,
++                rt_runtime::AudioRenderMode::Current | rt_runtime::AudioRenderMode::Compact
++            ) {
+                 5
+             } else {
+                 8
+@@ -668,7 +671,10 @@
+         );
+         assert_eq!(
+             diagnostics.nodes_skipped,
+-            if mode == rt_runtime::AudioRenderMode::Compact {
++            if matches!(
++                mode,
++                rt_runtime::AudioRenderMode::Current | rt_runtime::AudioRenderMode::Compact
++            ) {
+                 3
+             } else {
+                 0

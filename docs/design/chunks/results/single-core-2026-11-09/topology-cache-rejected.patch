@@ -1,0 +1,37 @@
+--- a/src/rust/shoop_loops/src/resolver.rs
++++ b/src/rust/shoop_loops/src/resolver.rs
+@@ -115,6 +115,7 @@
+ 
+ pub struct Resolver {
+     compact_ready: bool,
++    compact_related: bool,
+     compact_preview: bool,
+     quantum: rt_runtime::Quantum,
+     topology: PreparedTopology,
+@@ -202,6 +203,7 @@
+         }
+         Ok(Self {
+             compact_ready: false,
++            compact_related: false,
+             compact_preview: false,
+             quantum,
+             topology,
+--- a/src/rust/shoop_loops/src/resolver/compact.rs
++++ b/src/rust/shoop_loops/src/resolver/compact.rs
+@@ -33,14 +33,10 @@
+             {
+                 return Ok(None);
+             }
++            self.compact_related = self.topology.nodes().iter().any(|n| n.sync_source.is_some());
+             self.compact_ready = true;
+         }
+-        let related = self
+-            .topology
+-            .nodes()
+-            .iter()
+-            .any(|n| n.sync_source.is_some());
+-        if related
++        if self.compact_related
+             && self.topology.nodes().iter().any(|n| {
+                 let state = self.states[n.id.slot() as usize].expect("active state");
+                 state.content_length != 0

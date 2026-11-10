@@ -238,7 +238,7 @@ def main():
                 "rt_configuration": "Explicit child render affinity/FIFO options only; global IRQ/kernel settings are external."
                     if args.render_cpu is not None or args.rt_priority is not None else
                     "External; this script does not change scheduling, IRQs or kernel configuration.",
-                "counter_scope": "Software work, not measured DDR/PMU traffic. Graph counters describe the reference evaluator only; zeros in current are uninstrumented."}
+                "counter_scope": "Software work, not measured DDR/PMU traffic. Audio reference-work counters cover reference execution only; generic fixed-buffer execution is uninstrumented. Node/edge counts cover both paths."}
     (args.output / 'machine.json').write_text(json.dumps(metadata, indent=2) + '\n')
     if args.render_cpu is not None:
         os.sched_setaffinity(0, {args.host_cpu})

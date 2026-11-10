@@ -1,0 +1,40 @@
+{
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "affinity": [
+    0
+  ],
+  "command": [
+    "work/compare.py",
+    "--candidates",
+    "retained=work/bin/host-verified-retained",
+    "stopped-small=work/bin/host-verified-stopped-small",
+    "--launcher",
+    "work/bin/publication-dense_chunk_benchmark",
+    "--output",
+    "work/publication-native-compact",
+    "--callbacks",
+    "256",
+    "--buffer",
+    "32",
+    "--repeats",
+    "4",
+    "--dense",
+    "--scenarios",
+    "idle",
+    "play",
+    "record",
+    "grab"
+  ],
+  "hosts": {
+    "retained": {
+      "path": "/workspace/shoopdaloop/work/bin/host-verified-retained",
+      "sha256": "000d572dc9c09a53a8674aca6efdce21b71c5ddadd9f1a91f0c91e72c99a6680"
+    },
+    "stopped-small": {
+      "path": "/workspace/shoopdaloop/work/bin/host-verified-stopped-small",
+      "sha256": "81b5d030f0a76dd8661312d0b58ff519d382b40f59a76b36ef4a6b11e812ecf0"
+    }
+  },
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+}

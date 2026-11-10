@@ -1,0 +1,24 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.9
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling unty v0.0.4
+   Compiling bincode v2.0.1
+   Compiling profiling_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/profiling_protocol)
+   Compiling libm v0.2.16
+   Compiling rtrb v0.4.0
+   Compiling rt_profiling v0.3.0 (/workspace/shoopdaloop/src/rust/rt_profiling)
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+   Compiling shoop_processor_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_processor_protocol)
+   Compiling shoop_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_transport)
+   Compiling shoop_rt_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_protocol)
+   Compiling shoop_loop_plan v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loop_plan)
+   Compiling shoop_loops v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops)
+   Compiling shoop_rt_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_transport)
+   Compiling rt_buffered v0.3.0 (/workspace/shoopdaloop/src/rust/rt_buffered)
+   Compiling shoop_rt_engine v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_engine)
+   Compiling pi5_audio_benchmark v0.0.0 (/workspace/shoopdaloop/work/pi5-harness)
+    Finished `release` profile [optimized] target(s) in 46.26s

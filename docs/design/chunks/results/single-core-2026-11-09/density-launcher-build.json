@@ -1,0 +1,5 @@
+{
+  "binary_sha256": "c7d155f46879e0a1f706d6b362531a24697726022deb19cec5e7285de2415e76",
+  "source_sha256": "d23cbd853278a2e0e8ae1c63ba3bfa0806b7e85fc499b1a9538a10194a80f1de",
+  "change": "allow 1..8 active voices; all per-voice loops and validations already parameterized"
+}

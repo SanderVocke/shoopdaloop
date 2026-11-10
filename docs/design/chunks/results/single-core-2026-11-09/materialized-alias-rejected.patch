@@ -1,0 +1,167 @@
+--- a/src/rust/rt_runtime/src/executor.rs
++++ b/src/rust/rt_runtime/src/executor.rs
+@@ -201,6 +201,7 @@
+     input_sequences: Box<[crate::audio_refs::AudioSequence]>,
+     output_sequences: Box<[crate::audio_refs::AudioSequence]>,
+     input_mixed: Box<[bool]>,
++    audio_forwarded: bool,
+     input: Box<[f32]>,
+     output: Box<[f32]>,
+     midi_input: Vec<MidiBuffer>,
+@@ -245,6 +246,7 @@
+             ]
+             .into_boxed_slice(),
+             input_mixed: vec![false; ports.audio_inputs].into_boxed_slice(),
++            audio_forwarded: false,
+             input: vec![0.0; ports.audio_inputs * frames].into_boxed_slice(),
+             output: vec![0.0; ports.audio_outputs * frames].into_boxed_slice(),
+             midi_input: midi(ports.midi_inputs, true, true)?,
+@@ -260,6 +262,13 @@
+         }
+         Ok(buffers)
+     }
++    fn audio_source(&self) -> &[f32] {
++        if self.audio_forwarded {
++            &self.input
++        } else {
++            &self.output
++        }
++    }
+     fn midi_source(&self, port: usize) -> Result<&MidiBuffer, Error> {
+         if self.midi_forwarded.get(port).copied().unwrap_or(false) {
+             self.midi_input
+@@ -274,6 +283,7 @@
+         }
+     }
+     fn clear(&mut self, stride: usize, start: usize, frames: usize) {
++        self.audio_forwarded = false;
+         self.midi_forwarded.fill(false);
+         for channel in self.input.chunks_exact_mut(stride) {
+             channel[start..start + frames].fill(0.0);
+@@ -1463,7 +1473,7 @@
+                 }
+             }
+             let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
+-            let result = processor.process(&mut ProcessBlock {
++            let mut block = ProcessBlock {
+                 node: step.node,
+                 graph_epoch: self.epoch,
+                 callback_start,
+@@ -1476,7 +1486,23 @@
+                 midi_forwarded: &mut buffers.midi_forwarded,
+                 resources: self.resources.io(),
+                 domain: &mut self.planner,
+-            });
++            };
++            let result = if !self.has_midi_buffers
++                && P::compact_graph_supported()
++                && slot.ports.audio_inputs > 0
++                && slot.ports.audio_inputs == slot.ports.audio_outputs
++            {
++                match processor.process_passthrough(&mut block) {
++                    Ok(true) => {
++                        buffers.audio_forwarded = true;
++                        Ok(())
++                    }
++                    Ok(false) => processor.process(&mut block),
++                    Err(error) => Err(error),
++                }
++            } else {
++                processor.process(&mut block)
++            };
+             if result == Err(Error::Full) {
+                 buffers.midi_forwarded.fill(false);
+                 for out in &mut buffers.midi_output {
+@@ -1638,7 +1664,13 @@
+             let target = &mut target.ok_or(Error::InvalidId)?.buffers;
+             match edge.source.kind {
+                 PortType::Audio => mix(
+-                    channel(&source.output, edge.source, stride, buffer_start, frames),
++                    channel(
++                        source.audio_source(),
++                        edge.source,
++                        stride,
++                        buffer_start,
++                        frames,
++                    ),
+                     channel_mut(
+                         &mut target.input,
+                         edge.destination,
+@@ -1683,7 +1715,13 @@
+                 .buffers;
+             match edge.source.kind {
+                 PortType::Audio => mix(
+-                    channel(&source.output, edge.source, stride, buffer_start, frames),
++                    channel(
++                        source.audio_source(),
++                        edge.source,
++                        stride,
++                        buffer_start,
++                        frames,
++                    ),
+                     &mut audio.output(edge.destination.port as usize)[start..start + frames],
+                 ),
+                 PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(
+--- a/src/rust/rt_runtime/src/processor.rs
++++ b/src/rust/rt_runtime/src/processor.rs
+@@ -163,6 +163,11 @@
+         Ok(MidiBufferSettings::default())
+     }
+     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
++    /// Return true only after all effects are complete and each output may alias
++    /// its corresponding input for the rest of this graph interval.
++    fn process_passthrough(&mut self, _block: &mut ProcessBlock<'_, L>) -> Result<bool, Error> {
++        Ok(false)
++    }
+     /// Return false only when compact execution may leave this operation's
+     /// already-cleared outputs silent without any other render-side effect.
+     fn compact_active(&mut self, _activity: CompactActivity<'_, L>) -> Result<bool, Error> {
+@@ -199,6 +204,9 @@
+     fn compact_active(&mut self, activity: CompactActivity<'_, L>) -> Result<bool, Error> {
+         (**self).compact_active(activity)
+     }
++    fn process_passthrough(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<bool, Error> {
++        (**self).process_passthrough(block)
++    }
+     fn process_references(
+         &mut self,
+         block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+--- a/src/rust/shoop_rt_engine/src/node.rs
++++ b/src/rust/shoop_rt_engine/src/node.rs
+@@ -773,6 +773,36 @@
+             _ => Ok(true),
+         }
+     }
++    fn process_passthrough(
++        &mut self,
++        block: &mut ProcessBlock<'_, LoopPlanner>,
++    ) -> Result<bool, Error> {
++        self.apply_configuration(block.graph_epoch);
++        let Self::Fader(node) = self else {
++            return Ok(false);
++        };
++        if node.processor.is_some() || node.presence.remaining != 0 || node.presence.value != 1. {
++            return Ok(false);
++        }
++        let dry =
++            crate::cells::mode_from_code(node.cells.loops[node.slot].mode.load(Ordering::Relaxed))
++                .dry_playback();
++        for port in 0..2 * node.channels {
++            if (port >= node.channels) == dry {
++                let channel = if port >= node.channels {
++                    port - node.channels
++                } else {
++                    port
++                };
++                let input = block.audio.input(port).ok_or(Error::InvalidShape)?;
++                node.cells.loops[node.slot]
++                    .peaks
++                    .raise(channel, peak(input));
++            }
++        }
++        node.position = (node.position + block.frames) % block.quantum.frames();
++        Ok(true)
++    }
+     fn process_references(
+         &mut self,
+         block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,

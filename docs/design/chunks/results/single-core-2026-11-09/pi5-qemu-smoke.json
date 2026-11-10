@@ -1,0 +1,230 @@
+{
+  "purpose": "ARM functional smoke only; emulator timings discarded",
+  "cpu": "cortex-a76",
+  "cases": [
+    {
+      "variant": "original",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "retained",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "original",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "retained",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "original",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "retained",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "checksum": "17.030748657"
+    },
+    {
+      "variant": "original",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "retained",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "original",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "retained",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "original",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "retained",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "original",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "retained",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "checksum": "136.244289025"
+    },
+    {
+      "variant": "original",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "retained",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-descriptors",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    },
+    {
+      "variant": "packed-thin-one",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "checksum": "0.000000000"
+    }
+  ]
+}

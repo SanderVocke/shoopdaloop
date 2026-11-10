@@ -1,0 +1,29 @@
+--- a/src/rust/rt_runtime/src/executor.rs
++++ b/src/rust/rt_runtime/src/executor.rs
+@@ -498,6 +498,7 @@
+                 .checked_add(node.ports.audio_inputs + node.ports.audio_outputs)
+                 .ok_or(Error::Capacity)
+         })?;
++        const MATERIALIZED_COMPACT_PROBE: bool = true;
+         let audio_arena = if resources.audio_render_mode().chunked() {
+             if resources.audio_render_mode() == crate::AudioRenderMode::Compact
+                 && !P::compact_graph_supported()
+@@ -552,9 +553,16 @@
+                 config,
+             },
+             Self {
+-                compact: (resources.audio_render_mode() == crate::AudioRenderMode::Compact)
++                compact: (!MATERIALIZED_COMPACT_PROBE
++                    && resources.audio_render_mode() == crate::AudioRenderMode::Compact)
+                     .then(|| compact_audio::Program::prepare(config)),
+-                audio_arena,
++                audio_arena: if MATERIALIZED_COMPACT_PROBE
++                    && resources.audio_render_mode() == crate::AudioRenderMode::Compact
++                {
++                    None
++                } else {
++                    audio_arena
++                },
+                 host_sequences: vec![
+                     crate::audio_refs::AudioSequence::default();
+                     limits.audio_inputs

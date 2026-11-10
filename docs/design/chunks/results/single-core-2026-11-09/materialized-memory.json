@@ -1,0 +1,56 @@
+[
+  {
+    "candidate": "current",
+    "repeat": 0,
+    "max_rss_kib": 144940,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "pruned",
+    "repeat": 0,
+    "max_rss_kib": 144908,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "compact",
+    "repeat": 0,
+    "max_rss_kib": 190336,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "current",
+    "repeat": 1,
+    "max_rss_kib": 144748,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "pruned",
+    "repeat": 1,
+    "max_rss_kib": 144876,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "compact",
+    "repeat": 1,
+    "max_rss_kib": 190460,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "current",
+    "repeat": 2,
+    "max_rss_kib": 144936,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "pruned",
+    "repeat": 2,
+    "max_rss_kib": 144876,
+    "checksum": "10642.065221039"
+  },
+  {
+    "candidate": "compact",
+    "repeat": 2,
+    "max_rss_kib": 190396,
+    "checksum": "10642.065221039"
+  }
+]

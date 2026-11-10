@@ -1,0 +1,3958 @@
+{
+  "clock-host-workflows": [
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 44.556,
+      "p95_us": 63.594,
+      "p99_us": 122.04,
+      "max_us": 122.04,
+      "overruns": 0,
+      "late_p99_us": 109.29,
+      "late_max_us": 109.29,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 67584,
+          "max": 67584
+        },
+        "resource_steps": {
+          "mean": 407.015625,
+          "max": 408
+        },
+        "nodes_processed": {
+          "mean": 40,
+          "max": 40
+        },
+        "nodes_skipped": {
+          "mean": 24,
+          "max": 24
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 136,
+          "max": 136
+        },
+        "index_reclaimed": {
+          "mean": 135.015625,
+          "max": 136
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 43,
+          "max": 59
+        },
+        "index_live": {
+          "mean": 98.609375,
+          "max": 130
+        }
+      },
+      "directory": "work/clock-host-workflows/none/idle-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 31.972,
+      "p95_us": 47.78,
+      "p99_us": 68.401,
+      "max_us": 68.401,
+      "overruns": 0,
+      "late_p99_us": 342.214,
+      "late_max_us": 342.214,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2048,
+          "max": 2048
+        },
+        "resource_steps": {
+          "mean": 32,
+          "max": 32
+        },
+        "nodes_processed": {
+          "mean": 40,
+          "max": 40
+        },
+        "nodes_skipped": {
+          "mean": 24,
+          "max": 24
+        },
+        "forwarded": {
+          "mean": 264,
+          "max": 264
+        },
+        "materialized": {
+          "mean": 8,
+          "max": 8
+        },
+        "sample_reads": {
+          "mean": 256,
+          "max": 256
+        },
+        "sample_writes": {
+          "mean": 5120,
+          "max": 5120
+        },
+        "arena_peak_samples": {
+          "mean": 320,
+          "max": 320
+        },
+        "index_allocated": {
+          "mean": 0.03125,
+          "max": 1
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 668,
+          "max": 920
+        },
+        "index_live": {
+          "mean": 4.25,
+          "max": 5
+        }
+      },
+      "directory": "work/clock-host-workflows/none/idle-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "silence",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 99.4915,
+      "p95_us": 155.899,
+      "p99_us": 398.958,
+      "max_us": 398.958,
+      "overruns": 0,
+      "late_p99_us": 161.099,
+      "late_max_us": 161.099,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 141312,
+          "max": 141312
+        },
+        "resource_steps": {
+          "mean": 814,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 80,
+          "max": 80
+        },
+        "nodes_skipped": {
+          "mean": 192,
+          "max": 192
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 130,
+          "max": 162
+        },
+        "index_live": {
+          "mean": 287,
+          "max": 350
+        }
+      },
+      "directory": "work/clock-host-workflows/none/record-silence/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "silence",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 75.7065,
+      "p95_us": 105.095,
+      "p99_us": 151.493,
+      "max_us": 151.493,
+      "overruns": 0,
+      "late_p99_us": 147.632,
+      "late_max_us": 147.632,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4096,
+          "max": 4096
+        },
+        "resource_steps": {
+          "mean": 96,
+          "max": 96
+        },
+        "nodes_processed": {
+          "mean": 72,
+          "max": 72
+        },
+        "nodes_skipped": {
+          "mean": 200,
+          "max": 200
+        },
+        "forwarded": {
+          "mean": 392,
+          "max": 392
+        },
+        "materialized": {
+          "mean": 32,
+          "max": 32
+        },
+        "sample_reads": {
+          "mean": 2816,
+          "max": 2816
+        },
+        "sample_writes": {
+          "mean": 12288,
+          "max": 12288
+        },
+        "arena_peak_samples": {
+          "mean": 704,
+          "max": 704
+        },
+        "index_allocated": {
+          "mean": 0.09375,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 8,
+          "max": 8
+        },
+        "payload_live": {
+          "mean": 2104,
+          "max": 2608
+        },
+        "index_live": {
+          "mean": 15.96875,
+          "max": 18
+        }
+      },
+      "directory": "work/clock-host-workflows/none/record-silence/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 95.7765,
+      "p95_us": 159.454,
+      "p99_us": 241.356,
+      "max_us": 241.356,
+      "overruns": 0,
+      "late_p99_us": 1839.258,
+      "late_max_us": 1839.258,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 141312,
+          "max": 141312
+        },
+        "resource_steps": {
+          "mean": 814,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 80,
+          "max": 80
+        },
+        "nodes_skipped": {
+          "mean": 192,
+          "max": 192
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 133,
+          "max": 164
+        },
+        "index_live": {
+          "mean": 293,
+          "max": 352
+        }
+      },
+      "directory": "work/clock-host-workflows/none/record-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 88.06,
+      "p95_us": 224.321,
+      "p99_us": 441.089,
+      "max_us": 441.089,
+      "overruns": 0,
+      "late_p99_us": 1600.93,
+      "late_max_us": 1600.93,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4096,
+          "max": 4096
+        },
+        "resource_steps": {
+          "mean": 96,
+          "max": 96
+        },
+        "nodes_processed": {
+          "mean": 72,
+          "max": 72
+        },
+        "nodes_skipped": {
+          "mean": 200,
+          "max": 200
+        },
+        "forwarded": {
+          "mean": 392,
+          "max": 392
+        },
+        "materialized": {
+          "mean": 32,
+          "max": 32
+        },
+        "sample_reads": {
+          "mean": 2816,
+          "max": 2816
+        },
+        "sample_writes": {
+          "mean": 12288,
+          "max": 12288
+        },
+        "arena_peak_samples": {
+          "mean": 704,
+          "max": 704
+        },
+        "index_allocated": {
+          "mean": 0.09375,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 8,
+          "max": 8
+        },
+        "payload_live": {
+          "mean": 2048,
+          "max": 2552
+        },
+        "index_live": {
+          "mean": 15.65625,
+          "max": 18
+        }
+      },
+      "directory": "work/clock-host-workflows/none/record-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 98.12950000000001,
+      "p95_us": 165.033,
+      "p99_us": 217.37,
+      "max_us": 217.37,
+      "overruns": 0,
+      "late_p99_us": 92.12,
+      "late_max_us": 92.12,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 151552,
+          "max": 151552
+        },
+        "resource_steps": {
+          "mean": 813.96875,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 216,
+          "max": 247
+        },
+        "index_live": {
+          "mean": 458.5,
+          "max": 521
+        }
+      },
+      "directory": "work/clock-host-workflows/none/play-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 89.4565,
+      "p95_us": 171.753,
+      "p99_us": 238.391,
+      "max_us": 238.391,
+      "overruns": 0,
+      "late_p99_us": 109.646,
+      "late_max_us": 109.646,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4296,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 67.125,
+          "max": 104
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 679.21875,
+          "max": 680
+        },
+        "materialized": {
+          "mean": 48.390625,
+          "max": 53
+        },
+        "sample_reads": {
+          "mean": 7424,
+          "max": 7424
+        },
+        "sample_writes": {
+          "mean": 15410,
+          "max": 16000
+        },
+        "arena_peak_samples": {
+          "mean": 778,
+          "max": 896
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 3464,
+          "max": 3968
+        },
+        "index_live": {
+          "mean": 29.0625,
+          "max": 31
+        }
+      },
+      "directory": "work/clock-host-workflows/none/play-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "record-play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 123.93700000000001,
+      "p95_us": 192.504,
+      "p99_us": 271.39,
+      "max_us": 271.39,
+      "overruns": 0,
+      "late_p99_us": 1580.678,
+      "late_max_us": 1580.678,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 157696,
+          "max": 157696
+        },
+        "resource_steps": {
+          "mean": 813.96875,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 144,
+          "max": 144
+        },
+        "nodes_skipped": {
+          "mean": 128,
+          "max": 128
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 213,
+          "max": 245
+        },
+        "index_live": {
+          "mean": 452.40625,
+          "max": 519
+        }
+      },
+      "directory": "work/clock-host-workflows/none/record-play-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record-play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 91.64500000000001,
+      "p95_us": 146.406,
+      "p99_us": 164.873,
+      "max_us": 164.873,
+      "overruns": 0,
+      "late_p99_us": 770.814,
+      "late_max_us": 770.814,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4136,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 160.625,
+          "max": 200
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 535.84375,
+          "max": 536
+        },
+        "materialized": {
+          "mean": 48.078125,
+          "max": 53
+        },
+        "sample_reads": {
+          "mean": 4352,
+          "max": 4352
+        },
+        "sample_writes": {
+          "mean": 13834,
+          "max": 14464
+        },
+        "arena_peak_samples": {
+          "mean": 770,
+          "max": 896
+        },
+        "index_allocated": {
+          "mean": 0.15625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 24,
+          "max": 24
+        },
+        "payload_live": {
+          "mean": 3336,
+          "max": 3840
+        },
+        "index_live": {
+          "mean": 32.4375,
+          "max": 37
+        }
+      },
+      "directory": "work/clock-host-workflows/none/record-play-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "shared",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 109.6265,
+      "p95_us": 173.035,
+      "p99_us": 242.677,
+      "max_us": 242.677,
+      "overruns": 0,
+      "late_p99_us": 129.257,
+      "late_max_us": 129.257,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 155648,
+          "max": 155648
+        },
+        "resource_steps": {
+          "mean": 2990.03125,
+          "max": 2992
+        },
+        "nodes_processed": {
+          "mean": 136,
+          "max": 136
+        },
+        "nodes_skipped": {
+          "mean": 136,
+          "max": 136
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270.03125,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 310,
+          "max": 342
+        },
+        "index_live": {
+          "mean": 751.71875,
+          "max": 817
+        }
+      },
+      "directory": "work/clock-host-workflows/none/shared-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "shared",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 88.75550000000001,
+      "p95_us": 126.026,
+      "p99_us": 134.698,
+      "max_us": 134.698,
+      "overruns": 0,
+      "late_p99_us": 91.052,
+      "late_max_us": 91.052,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4696,
+          "max": 16896
+        },
+        "resource_steps": {
+          "mean": 73.375,
+          "max": 264
+        },
+        "nodes_processed": {
+          "mean": 136,
+          "max": 136
+        },
+        "nodes_skipped": {
+          "mean": 136,
+          "max": 136
+        },
+        "forwarded": {
+          "mean": 757.65625,
+          "max": 760
+        },
+        "materialized": {
+          "mean": 57.171875,
+          "max": 81
+        },
+        "sample_reads": {
+          "mean": 8448,
+          "max": 8448
+        },
+        "sample_writes": {
+          "mean": 16278,
+          "max": 19328
+        },
+        "arena_peak_samples": {
+          "mean": 830,
+          "max": 1440
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0.015625,
+          "max": 1
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 4456,
+          "max": 4960
+        },
+        "index_live": {
+          "mean": 41.34375,
+          "max": 44
+        }
+      },
+      "directory": "work/clock-host-workflows/none/shared-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "continue",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 151.8485,
+      "p95_us": 261.956,
+      "p99_us": 296.246,
+      "max_us": 296.246,
+      "overruns": 0,
+      "late_p99_us": 93.903,
+      "late_max_us": 93.903,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 409600,
+          "max": 409600
+        },
+        "resource_steps": {
+          "mean": 2442.03125,
+          "max": 2446
+        },
+        "nodes_processed": {
+          "mean": 136,
+          "max": 136
+        },
+        "nodes_skipped": {
+          "mean": 136,
+          "max": 136
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 816,
+          "max": 816
+        },
+        "index_reclaimed": {
+          "mean": 810.03125,
+          "max": 814
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 361,
+          "max": 456
+        },
+        "index_live": {
+          "mean": 881.8125,
+          "max": 1071
+        }
+      },
+      "directory": "work/clock-host-workflows/none/continue-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "continue",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 105.6055,
+      "p95_us": 194.947,
+      "p99_us": 309.305,
+      "max_us": 309.305,
+      "overruns": 0,
+      "late_p99_us": 212.158,
+      "late_max_us": 212.158,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4216,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 193.875,
+          "max": 232
+        },
+        "nodes_processed": {
+          "mean": 104,
+          "max": 104
+        },
+        "nodes_skipped": {
+          "mean": 168,
+          "max": 168
+        },
+        "forwarded": {
+          "mean": 503.53125,
+          "max": 504
+        },
+        "materialized": {
+          "mean": 40.234375,
+          "max": 45
+        },
+        "sample_reads": {
+          "mean": 3840,
+          "max": 3840
+        },
+        "sample_writes": {
+          "mean": 13086,
+          "max": 13696
+        },
+        "arena_peak_samples": {
+          "mean": 742,
+          "max": 864
+        },
+        "index_allocated": {
+          "mean": 0.1875,
+          "max": 4
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 4144,
+          "max": 4648
+        },
+        "index_live": {
+          "mean": 53.1875,
+          "max": 58
+        }
+      },
+      "directory": "work/clock-host-workflows/none/continue-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 110.117,
+      "p95_us": 154.367,
+      "p99_us": 213.604,
+      "max_us": 213.604,
+      "overruns": 0,
+      "late_p99_us": 139.827,
+      "late_max_us": 139.827,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 147456,
+          "max": 147456
+        },
+        "resource_steps": {
+          "mean": 1357.96875,
+          "max": 1360
+        },
+        "nodes_processed": {
+          "mean": 104,
+          "max": 104
+        },
+        "nodes_skipped": {
+          "mean": 168,
+          "max": 168
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 246,
+          "max": 277
+        },
+        "index_live": {
+          "mean": 550.375,
+          "max": 612
+        }
+      },
+      "directory": "work/clock-host-workflows/none/grab-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 86.67750000000001,
+      "p95_us": 120.578,
+      "p99_us": 178.373,
+      "max_us": 178.373,
+      "overruns": 0,
+      "late_p99_us": 88.122,
+      "late_max_us": 88.122,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4416,
+          "max": 11776
+        },
+        "resource_steps": {
+          "mean": 69,
+          "max": 184
+        },
+        "nodes_processed": {
+          "mean": 104,
+          "max": 104
+        },
+        "nodes_skipped": {
+          "mean": 168,
+          "max": 168
+        },
+        "forwarded": {
+          "mean": 598.75,
+          "max": 600
+        },
+        "materialized": {
+          "mean": 56.625,
+          "max": 71
+        },
+        "sample_reads": {
+          "mean": 6400,
+          "max": 6400
+        },
+        "sample_writes": {
+          "mean": 15184,
+          "max": 17024
+        },
+        "arena_peak_samples": {
+          "mean": 816,
+          "max": 1184
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 4376,
+          "max": 4880
+        },
+        "index_live": {
+          "mean": 29,
+          "max": 30
+        }
+      },
+      "directory": "work/clock-host-workflows/none/grab-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "churn",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 99.482,
+      "p95_us": 137.533,
+      "p99_us": 260.694,
+      "max_us": 260.694,
+      "overruns": 0,
+      "late_p99_us": 123.796,
+      "late_max_us": 123.796,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 124328,
+          "max": 141312
+        },
+        "resource_steps": {
+          "mean": 738.5625,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 59.1875,
+          "max": 80
+        },
+        "nodes_skipped": {
+          "mean": 174.625,
+          "max": 216
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 247.03125,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 247.65625,
+          "max": 290
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 106.171875,
+          "max": 143
+        },
+        "index_live": {
+          "mean": 236.609375,
+          "max": 313
+        }
+      },
+      "directory": "work/clock-host-workflows/none/churn-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "churn",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 84.935,
+      "p95_us": 145.595,
+      "p99_us": 263.208,
+      "max_us": 263.208,
+      "overruns": 0,
+      "late_p99_us": 163.083,
+      "late_max_us": 163.083,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 3720,
+          "max": 4096
+        },
+        "resource_steps": {
+          "mean": 64.125,
+          "max": 96
+        },
+        "nodes_processed": {
+          "mean": 56.8125,
+          "max": 72
+        },
+        "nodes_skipped": {
+          "mean": 177,
+          "max": 216
+        },
+        "forwarded": {
+          "mean": 343,
+          "max": 440
+        },
+        "materialized": {
+          "mean": 25.375,
+          "max": 48
+        },
+        "sample_reads": {
+          "mean": 1970,
+          "max": 4352
+        },
+        "sample_writes": {
+          "mean": 10766,
+          "max": 14848
+        },
+        "arena_peak_samples": {
+          "mean": 645,
+          "max": 832
+        },
+        "index_allocated": {
+          "mean": 0.21875,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0.1875,
+          "max": 2
+        },
+        "shared_payloads": {
+          "mean": 1.5,
+          "max": 8
+        },
+        "payload_live": {
+          "mean": 1965.15625,
+          "max": 2248
+        },
+        "index_live": {
+          "mean": 14.390625,
+          "max": 16
+        }
+      },
+      "directory": "work/clock-host-workflows/none/churn-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "ramps",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 103.307,
+      "p95_us": 187.666,
+      "p99_us": 376.344,
+      "max_us": 376.344,
+      "overruns": 0,
+      "late_p99_us": 432.135,
+      "late_max_us": 432.135,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 151552,
+          "max": 151552
+        },
+        "resource_steps": {
+          "mean": 813.96875,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 216,
+          "max": 247
+        },
+        "index_live": {
+          "mean": 458.5,
+          "max": 521
+        }
+      },
+      "directory": "work/clock-host-workflows/none/ramps-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "ramps",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 97.32849999999999,
+      "p95_us": 135.048,
+      "p99_us": 155.128,
+      "max_us": 155.128,
+      "overruns": 0,
+      "late_p99_us": 491.551,
+      "late_max_us": 491.551,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4256,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 66.5,
+          "max": 104
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 649.875,
+          "max": 680
+        },
+        "materialized": {
+          "mean": 55.6875,
+          "max": 61
+        },
+        "sample_reads": {
+          "mean": 7424,
+          "max": 7424
+        },
+        "sample_writes": {
+          "mean": 17760,
+          "max": 18560
+        },
+        "arena_peak_samples": {
+          "mean": 894,
+          "max": 1024
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 3448,
+          "max": 3952
+        },
+        "index_live": {
+          "mean": 29.0625,
+          "max": 31
+        }
+      },
+      "directory": "work/clock-host-workflows/none/ramps-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    }
+  ],
+  "dense-clock-32": [
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 67.16900000000001,
+      "p95_us": 145.134,
+      "p99_us": 320.692,
+      "max_us": 2069.777,
+      "overruns": 1,
+      "late_p99_us": 297.82,
+      "late_max_us": 1931.991,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 435.3125,
+          "max": 509
+        },
+        "index_live": {
+          "mean": 1011.67578125,
+          "max": 1151
+        }
+      },
+      "directory": "work/dense-clock-32/0-idle-pruned",
+      "candidate": "pruned",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 44.290499999999994,
+      "p95_us": 86.387,
+      "p99_us": 121.85,
+      "max_us": 179.144,
+      "overruns": 0,
+      "late_p99_us": 216.28,
+      "late_max_us": 668.152,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 416.1875,
+          "max": 491
+        },
+        "index_live": {
+          "mean": 966.66796875,
+          "max": 1110
+        }
+      },
+      "directory": "work/dense-clock-32/0-idle-steady",
+      "candidate": "steady",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 88.89099999999999,
+      "p95_us": 155.259,
+      "p99_us": 236.509,
+      "max_us": 510.021,
+      "overruns": 0,
+      "late_p99_us": 304.685,
+      "late_max_us": 2812.348,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1221.25,
+          "max": 1291
+        },
+        "index_live": {
+          "mean": 2571.5,
+          "max": 2720
+        }
+      },
+      "directory": "work/dense-clock-32/0-play-pruned",
+      "candidate": "pruned",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 58.511,
+      "p95_us": 90.282,
+      "p99_us": 144.804,
+      "max_us": 157.852,
+      "overruns": 0,
+      "late_p99_us": 389.266,
+      "late_max_us": 1140.858,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1223.1875,
+          "max": 1298
+        },
+        "index_live": {
+          "mean": 2577.375,
+          "max": 2727
+        }
+      },
+      "directory": "work/dense-clock-32/0-play-steady",
+      "candidate": "steady",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 92.581,
+      "p95_us": 160.216,
+      "p99_us": 236.608,
+      "max_us": 404.666,
+      "overruns": 0,
+      "late_p99_us": 188.977,
+      "late_max_us": 412.8,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 772.6875,
+          "max": 843
+        },
+        "index_live": {
+          "mean": 1670.86328125,
+          "max": 1813
+        }
+      },
+      "directory": "work/dense-clock-32/0-record-pruned",
+      "candidate": "pruned",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 76.27199999999999,
+      "p95_us": 108.199,
+      "p99_us": 158.373,
+      "max_us": 314.914,
+      "overruns": 0,
+      "late_p99_us": 185.215,
+      "late_max_us": 318.859,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 775.25,
+          "max": 845
+        },
+        "index_live": {
+          "mean": 1674.953125,
+          "max": 1816
+        }
+      },
+      "directory": "work/dense-clock-32/0-record-steady",
+      "candidate": "steady",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 97.464,
+      "p95_us": 164.512,
+      "p99_us": 224.681,
+      "max_us": 303.938,
+      "overruns": 0,
+      "late_p99_us": 173.142,
+      "late_max_us": 238.052,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.875,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2081,
+          "max": 2153
+        },
+        "index_live": {
+          "mean": 5213,
+          "max": 5375
+        }
+      },
+      "directory": "work/dense-clock-32/0-grab-pruned",
+      "candidate": "pruned",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 72.682,
+      "p95_us": 149.791,
+      "p99_us": 242.176,
+      "max_us": 797.594,
+      "overruns": 1,
+      "late_p99_us": 248.741,
+      "late_max_us": 336.197,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.875,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2074.625,
+          "max": 2150
+        },
+        "index_live": {
+          "mean": 5201.25,
+          "max": 5361
+        }
+      },
+      "directory": "work/dense-clock-32/0-grab-steady",
+      "candidate": "steady",
+      "repeat": 0
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 44.28,
+      "p95_us": 112.566,
+      "p99_us": 145.915,
+      "max_us": 207.826,
+      "overruns": 0,
+      "late_p99_us": 205.752,
+      "late_max_us": 469.02,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 419.1875,
+          "max": 494
+        },
+        "index_live": {
+          "mean": 970.66796875,
+          "max": 1114
+        }
+      },
+      "directory": "work/dense-clock-32/1-idle-steady",
+      "candidate": "steady",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 65.6465,
+      "p95_us": 110.513,
+      "p99_us": 143.081,
+      "max_us": 197.501,
+      "overruns": 0,
+      "late_p99_us": 218.047,
+      "late_max_us": 346.428,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 418.875,
+          "max": 492
+        },
+        "index_live": {
+          "mean": 971.1484375,
+          "max": 1111
+        }
+      },
+      "directory": "work/dense-clock-32/1-idle-pruned",
+      "candidate": "pruned",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 62.025999999999996,
+      "p95_us": 103.432,
+      "p99_us": 136.852,
+      "max_us": 294.855,
+      "overruns": 0,
+      "late_p99_us": 220.579,
+      "late_max_us": 367.622,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1221,
+          "max": 1293
+        },
+        "index_live": {
+          "mean": 2569,
+          "max": 2722
+        }
+      },
+      "directory": "work/dense-clock-32/1-play-steady",
+      "candidate": "steady",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 86.297,
+      "p95_us": 122.681,
+      "p99_us": 144.093,
+      "max_us": 2203.865,
+      "overruns": 1,
+      "late_p99_us": 200.145,
+      "late_max_us": 1791.243,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1208.0625,
+          "max": 1284
+        },
+        "index_live": {
+          "mean": 2543.125,
+          "max": 2695
+        }
+      },
+      "directory": "work/dense-clock-32/1-play-pruned",
+      "candidate": "pruned",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 77.429,
+      "p95_us": 124.133,
+      "p99_us": 184.092,
+      "max_us": 307.293,
+      "overruns": 0,
+      "late_p99_us": 159.637,
+      "late_max_us": 535.23,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 771.8125,
+          "max": 841
+        },
+        "index_live": {
+          "mean": 1671.04296875,
+          "max": 1811
+        }
+      },
+      "directory": "work/dense-clock-32/1-record-steady",
+      "candidate": "steady",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 103.5925,
+      "p95_us": 164.322,
+      "p99_us": 248.275,
+      "max_us": 350.817,
+      "overruns": 0,
+      "late_p99_us": 278.698,
+      "late_max_us": 709.265,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 782.3125,
+          "max": 856
+        },
+        "index_live": {
+          "mean": 1693.19921875,
+          "max": 1843
+        }
+      },
+      "directory": "work/dense-clock-32/1-record-pruned",
+      "candidate": "pruned",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 72.207,
+      "p95_us": 104.604,
+      "p99_us": 307.173,
+      "max_us": 472.807,
+      "overruns": 0,
+      "late_p99_us": 273.04,
+      "late_max_us": 423.615,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.91015625,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2104.875,
+          "max": 2178
+        },
+        "index_live": {
+          "mean": 5209.1015625,
+          "max": 5337
+        }
+      },
+      "directory": "work/dense-clock-32/1-grab-steady",
+      "candidate": "steady",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 111.594,
+      "p95_us": 219.933,
+      "p99_us": 408.879,
+      "max_us": 603.464,
+      "overruns": 0,
+      "late_p99_us": 332.064,
+      "late_max_us": 773.309,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.875,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2067.625,
+          "max": 2143
+        },
+        "index_live": {
+          "mean": 5150.25,
+          "max": 5310
+        }
+      },
+      "directory": "work/dense-clock-32/1-grab-pruned",
+      "candidate": "pruned",
+      "repeat": 1
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 67.27950000000001,
+      "p95_us": 115.42,
+      "p99_us": 164.222,
+      "max_us": 210.36,
+      "overruns": 0,
+      "late_p99_us": 210.818,
+      "late_max_us": 775.143,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 417.1875,
+          "max": 492
+        },
+        "index_live": {
+          "mean": 967.66796875,
+          "max": 1111
+        }
+      },
+      "directory": "work/dense-clock-32/2-idle-pruned",
+      "candidate": "pruned",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 43.89,
+      "p95_us": 100.628,
+      "p99_us": 199.373,
+      "max_us": 213.394,
+      "overruns": 0,
+      "late_p99_us": 210.305,
+      "late_max_us": 1835.742,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 427.8125,
+          "max": 497
+        },
+        "index_live": {
+          "mean": 993.83203125,
+          "max": 1134
+        }
+      },
+      "directory": "work/dense-clock-32/2-idle-steady",
+      "candidate": "steady",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 85.6115,
+      "p95_us": 179.394,
+      "p99_us": 303.157,
+      "max_us": 441.43,
+      "overruns": 0,
+      "late_p99_us": 216.009,
+      "late_max_us": 744.113,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1221,
+          "max": 1293
+        },
+        "index_live": {
+          "mean": 2569,
+          "max": 2722
+        }
+      },
+      "directory": "work/dense-clock-32/2-play-pruned",
+      "candidate": "pruned",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 62.647,
+      "p95_us": 113.777,
+      "p99_us": 152.084,
+      "max_us": 239.512,
+      "overruns": 0,
+      "late_p99_us": 225.032,
+      "late_max_us": 1279.26,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1215.375,
+          "max": 1284
+        },
+        "index_live": {
+          "mean": 2557.75,
+          "max": 2695
+        }
+      },
+      "directory": "work/dense-clock-32/2-play-steady",
+      "candidate": "steady",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 97.0025,
+      "p95_us": 204.301,
+      "p99_us": 438.796,
+      "max_us": 908.418,
+      "overruns": 1,
+      "late_p99_us": 315.013,
+      "late_max_us": 827.138,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 774.0625,
+          "max": 850
+        },
+        "index_live": {
+          "mean": 1675.40234375,
+          "max": 1820
+        }
+      },
+      "directory": "work/dense-clock-32/2-record-pruned",
+      "candidate": "pruned",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 75.301,
+      "p95_us": 107.699,
+      "p99_us": 157.793,
+      "max_us": 189.96,
+      "overruns": 0,
+      "late_p99_us": 267.901,
+      "late_max_us": 402.447,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 774.125,
+          "max": 845
+        },
+        "index_live": {
+          "mean": 1672.7734375,
+          "max": 1816
+        }
+      },
+      "directory": "work/dense-clock-32/2-record-steady",
+      "candidate": "steady",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 96.85249999999999,
+      "p95_us": 191.271,
+      "p99_us": 265.201,
+      "max_us": 308.494,
+      "overruns": 0,
+      "late_p99_us": 153.155,
+      "late_max_us": 253.807,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.875,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2063,
+          "max": 2135
+        },
+        "index_live": {
+          "mean": 5133,
+          "max": 5295
+        }
+      },
+      "directory": "work/dense-clock-32/2-grab-pruned",
+      "candidate": "pruned",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 75.82650000000001,
+      "p95_us": 126.416,
+      "p99_us": 167.447,
+      "max_us": 245.962,
+      "overruns": 0,
+      "late_p99_us": 290.573,
+      "late_max_us": 540.413,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.875,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2074.6875,
+          "max": 2145
+        },
+        "index_live": {
+          "mean": 5205.375,
+          "max": 5355
+        }
+      },
+      "directory": "work/dense-clock-32/2-grab-steady",
+      "candidate": "steady",
+      "repeat": 2
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 42.332,
+      "p95_us": 96.912,
+      "p99_us": 136.661,
+      "max_us": 207.065,
+      "overruns": 0,
+      "late_p99_us": 285.997,
+      "late_max_us": 457.705,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 426.6875,
+          "max": 497
+        },
+        "index_live": {
+          "mean": 991.51171875,
+          "max": 1134
+        }
+      },
+      "directory": "work/dense-clock-32/3-idle-steady",
+      "candidate": "steady",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 66.964,
+      "p95_us": 116.712,
+      "p99_us": 177.251,
+      "max_us": 211.01,
+      "overruns": 0,
+      "late_p99_us": 326.044,
+      "late_max_us": 544.949,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 76032,
+          "max": 76032
+        },
+        "resource_steps": {
+          "mean": 484.83984375,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.83984375,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 415.625,
+          "max": 491
+        },
+        "index_live": {
+          "mean": 965.5078125,
+          "max": 1110
+        }
+      },
+      "directory": "work/dense-clock-32/3-idle-pruned",
+      "candidate": "pruned",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.488,
+      "p95_us": 111.153,
+      "p99_us": 257.689,
+      "max_us": 332.369,
+      "overruns": 0,
+      "late_p99_us": 238.129,
+      "late_max_us": 305.372,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1224.0625,
+          "max": 1300
+        },
+        "index_live": {
+          "mean": 2577.125,
+          "max": 2729
+        }
+      },
+      "directory": "work/dense-clock-32/3-play-steady",
+      "candidate": "steady",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 85.346,
+      "p95_us": 135.259,
+      "p99_us": 184.892,
+      "max_us": 660.342,
+      "overruns": 0,
+      "late_p99_us": 194.546,
+      "late_max_us": 296.265,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92416,
+          "max": 92416
+        },
+        "resource_steps": {
+          "mean": 484.875,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.875,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 1212.25,
+          "max": 1282
+        },
+        "index_live": {
+          "mean": 2553.5,
+          "max": 2693
+        }
+      },
+      "directory": "work/dense-clock-32/3-play-pruned",
+      "candidate": "pruned",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 91.68,
+      "p95_us": 188.467,
+      "p99_us": 449.381,
+      "max_us": 746.564,
+      "overruns": 1,
+      "late_p99_us": 390.948,
+      "late_max_us": 1893.092,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 772.25,
+          "max": 842
+        },
+        "index_live": {
+          "mean": 1670.953125,
+          "max": 1812
+        }
+      },
+      "directory": "work/dense-clock-32/3-record-steady",
+      "candidate": "steady",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 120.5875,
+      "p95_us": 347.121,
+      "p99_us": 681.153,
+      "max_us": 1476.464,
+      "overruns": 3,
+      "late_p99_us": 864.756,
+      "late_max_us": 1797.751,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 100608,
+          "max": 100608
+        },
+        "resource_steps": {
+          "mean": 484.91015625,
+          "max": 486
+        },
+        "nodes_processed": {
+          "mean": 117,
+          "max": 117
+        },
+        "nodes_skipped": {
+          "mean": 99,
+          "max": 99
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 782.3125,
+          "max": 856
+        },
+        "index_live": {
+          "mean": 1687.76171875,
+          "max": 1828
+        }
+      },
+      "directory": "work/dense-clock-32/3-record-pruned",
+      "candidate": "pruned",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 76.4525,
+      "p95_us": 124.424,
+      "p99_us": 162.749,
+      "max_us": 2690.05,
+      "overruns": 1,
+      "late_p99_us": 237.98,
+      "late_max_us": 342.295,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.91015625,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2110.6875,
+          "max": 2181
+        },
+        "index_live": {
+          "mean": 5222.55078125,
+          "max": 5345
+        }
+      },
+      "directory": "work/dense-clock-32/3-grab-steady",
+      "candidate": "steady",
+      "repeat": 3
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 110.432,
+      "p95_us": 228.756,
+      "p99_us": 385.988,
+      "max_us": 458.134,
+      "overruns": 0,
+      "late_p99_us": 306.149,
+      "late_max_us": 2695.439,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 92928,
+          "max": 92928
+        },
+        "resource_steps": {
+          "mean": 2788.91015625,
+          "max": 2790
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 162,
+          "max": 162
+        },
+        "index_reclaimed": {
+          "mean": 160.91015625,
+          "max": 162
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 2112.4375,
+          "max": 2185
+        },
+        "index_live": {
+          "mean": 5236.19140625,
+          "max": 5363
+        }
+      },
+      "directory": "work/dense-clock-32/3-grab-pruned",
+      "candidate": "pruned",
+      "repeat": 3
+    }
+  ]
+}

@@ -1,0 +1,684 @@
+{
+  "ir": "target/aarch64-unknown-linux-gnu/release/deps/shoop_rt_engine-0e8e271a7d63b1f3.ll",
+  "ir_sha256": "18b212c8df3d2557815e6cd383c75b56605d8c25329c63aa4369bb6993dd8bef",
+  "types": [
+    {
+      "name": "Slot<shoop_rt_engine::node::EngineNode>",
+      "bytes": 1624,
+      "fields": [
+        {
+          "name": "id",
+          "offset": 1576,
+          "bytes": 8,
+          "type": "NodeId"
+        },
+        {
+          "name": "ports",
+          "offset": 1584,
+          "bytes": 32,
+          "type": "PortCounts"
+        },
+        {
+          "name": "operation_bytes",
+          "offset": 1616,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "processor",
+          "offset": 544,
+          "bytes": 1032,
+          "type": "Option<shoop_rt_engine::node::EngineNode>"
+        },
+        {
+          "name": "buffers",
+          "offset": 0,
+          "bytes": 544,
+          "type": "Buffers"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"Slot<shoop_rt_engine::node::EngineNode>\", scope: !48, file: !33, size: 12992, align: 64, flags: DIFlagPrivate, elements: !108, templateParams: !1613, identifier: \"a1a5d857a0cc4d3fba8bbe717cea4361\")"
+    },
+    {
+      "name": "EngineNode",
+      "bytes": 1032,
+      "fields": [],
+      "tags": [
+        {
+          "offset": 1027,
+          "bytes": 1,
+          "metadata": "!DIDerivedType(tag: DW_TAG_member, scope: !143, file: !33, baseType: !76, size: 8, align: 8, offset: 8216, flags: DIFlagArtificial)"
+        }
+      ],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"EngineNode\", scope: !144, file: !33, size: 8256, align: 64, flags: DIFlagPublic, elements: !146, templateParams: !82, identifier: \"25127e5c59186febb635232061568542\")"
+    },
+    {
+      "name": "HostedProcessor",
+      "bytes": 600,
+      "fields": [
+        {
+          "name": "buffered",
+          "offset": 256,
+          "bytes": 240,
+          "type": "BufferedProcessor<alloc::boxed::Box<dyn rt_buffered::backend::Backend, alloc::alloc::Global>>"
+        },
+        {
+          "name": "cells",
+          "offset": 496,
+          "bytes": 8,
+          "type": "Arc<shoop_rt_engine::processors::ProcessorCells, alloc::alloc::Global>"
+        },
+        {
+          "name": "generation",
+          "offset": 592,
+          "bytes": 4,
+          "type": "u32"
+        },
+        {
+          "name": "phase",
+          "offset": 596,
+          "bytes": 1,
+          "type": "Phase"
+        },
+        {
+          "name": "cleanup",
+          "offset": 512,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "slot",
+          "offset": 520,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "slots",
+          "offset": 528,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "quantum",
+          "offset": 536,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "signal",
+          "offset": 544,
+          "bytes": 8,
+          "type": "Option<alloc::sync::Arc<shoop_rt_engine::cells::Cells, alloc::alloc::Global>>"
+        },
+        {
+          "name": "binding",
+          "offset": 0,
+          "bytes": 16,
+          "type": "Option<shoop_rt_engine::processors::ProcessorTarget>"
+        },
+        {
+          "name": "pending_binding",
+          "offset": 16,
+          "bytes": 24,
+          "type": "Option<(rt_runtime::ids::Epoch, shoop_rt_engine::processors::ProcessorTarget)>"
+        },
+        {
+          "name": "parameters",
+          "offset": 504,
+          "bytes": 8,
+          "type": "alloc::boxed::Box<[(rt_runtime::ids::Frame, u32, f32); 64], alloc::alloc::Global>"
+        },
+        {
+          "name": "parameter_count",
+          "offset": 552,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "manual_active",
+          "offset": 248,
+          "bytes": 8,
+          "type": "Option<(u32, bool)>"
+        },
+        {
+          "name": "global",
+          "offset": 40,
+          "bytes": 208,
+          "type": "GlobalMidi"
+        },
+        {
+          "name": "midi_capacity",
+          "offset": 560,
+          "bytes": 16,
+          "type": "MidiCapacity"
+        },
+        {
+          "name": "global_capacity",
+          "offset": 576,
+          "bytes": 16,
+          "type": "MidiCapacity"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"HostedProcessor\", scope: !154, file: !33, size: 4800, align: 64, flags: DIFlagPublic, elements: !155, templateParams: !82, identifier: \"83d9b19e53f33763c0340254b5306422\")"
+    },
+    {
+      "name": "LoopNode",
+      "bytes": 536,
+      "fields": [],
+      "tags": [
+        {
+          "offset": 0,
+          "bytes": 8,
+          "metadata": "!DIDerivedType(tag: DW_TAG_member, scope: !790, file: !33, baseType: !209, size: 64, align: 64, flags: DIFlagArtificial)"
+        }
+      ],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"LoopNode\", scope: !791, file: !33, size: 4288, align: 64, flags: DIFlagPublic, elements: !794, templateParams: !82, identifier: \"6f94f908731122a7bca5e4e4fd752181\")"
+    },
+    {
+      "name": "StripInput",
+      "bytes": 1032,
+      "fields": [
+        {
+          "name": "__0",
+          "offset": 0,
+          "bytes": 1032,
+          "type": "StripInput"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"StripInput\", scope: !143, file: !33, size: 8256, align: 64, flags: DIFlagPublic, elements: !1139, templateParams: !82, identifier: \"55bee426dcb5353716b8988bb2d6b1ee\")"
+    },
+    {
+      "name": "StripInput",
+      "bytes": 1032,
+      "fields": [
+        {
+          "name": "midi_capacity",
+          "offset": 880,
+          "bytes": 136,
+          "type": "Layout"
+        },
+        {
+          "name": "global",
+          "offset": 304,
+          "bytes": 208,
+          "type": "Option<shoop_rt_engine::global_midi::GlobalMidi>"
+        },
+        {
+          "name": "processor",
+          "offset": 1024,
+          "bytes": 1,
+          "type": "Option<shoop_processor_protocol::Kind>"
+        },
+        {
+          "name": "generation",
+          "offset": 1016,
+          "bytes": 4,
+          "type": "u32"
+        },
+        {
+          "name": "pending_history",
+          "offset": 288,
+          "bytes": 16,
+          "type": "Option<(rt_runtime::ids::Epoch, bool)>"
+        },
+        {
+          "name": "history_token",
+          "offset": 512,
+          "bytes": 8,
+          "type": "u64"
+        },
+        {
+          "name": "midi_history_token",
+          "offset": 520,
+          "bytes": 8,
+          "type": "u64"
+        },
+        {
+          "name": "configuration",
+          "offset": 568,
+          "bytes": 312,
+          "type": "Option<shoop_rt_engine::node::NodeConfiguration>"
+        },
+        {
+          "name": "slot",
+          "offset": 528,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "cells",
+          "offset": 552,
+          "bytes": 8,
+          "type": "Arc<shoop_rt_engine::cells::Cells, alloc::alloc::Global>"
+        },
+        {
+          "name": "channels",
+          "offset": 536,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "ramp",
+          "offset": 1020,
+          "bytes": 4,
+          "type": "u32"
+        },
+        {
+          "name": "inputs",
+          "offset": 544,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "bank",
+          "offset": 0,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "send_bank",
+          "offset": 16,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "return_bank",
+          "offset": 32,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "send_weights",
+          "offset": 160,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "return_weights",
+          "offset": 176,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "monitor",
+          "offset": 48,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "manual_monitoring",
+          "offset": 1025,
+          "bytes": 1,
+          "type": "bool"
+        },
+        {
+          "name": "unity",
+          "offset": 64,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "gains",
+          "offset": 80,
+          "bytes": 80,
+          "type": "Gains"
+        },
+        {
+          "name": "weights",
+          "offset": 192,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "monitoring",
+          "offset": 208,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "scratch",
+          "offset": 224,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "sends",
+          "offset": 240,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "injected",
+          "offset": 560,
+          "bytes": 8,
+          "type": "alloc::boxed::Box<[core::option::Option<shoop_rt_protocol::schema::MidiMessage>; 16], alloc::alloc::Global>"
+        },
+        {
+          "name": "monitored",
+          "offset": 256,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[rt_runtime::midi_state::MidiState], alloc::alloc::Global>"
+        },
+        {
+          "name": "live_midi",
+          "offset": 272,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[rt_runtime::midi_state::MidiState], alloc::alloc::Global>"
+        },
+        {
+          "name": "live_midi_active",
+          "offset": 1026,
+          "bytes": 1,
+          "type": "bool"
+        },
+        {
+          "name": "release",
+          "offset": 1027,
+          "bytes": 1,
+          "type": "bool"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"StripInput\", scope: !144, file: !33, size: 8256, align: 64, flags: DIFlagPublic, elements: !1142, templateParams: !82, identifier: \"ddc2746d2a1ff5d6baad8b2d2736cd67\")"
+    },
+    {
+      "name": "StripOutput",
+      "bytes": 1032,
+      "fields": [
+        {
+          "name": "__0",
+          "offset": 0,
+          "bytes": 576,
+          "type": "StripOutput"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"StripOutput\", scope: !143, file: !33, size: 8256, align: 64, flags: DIFlagPublic, elements: !1318, templateParams: !82, identifier: \"6b3d58db9ba3c67092690ac5a2608dda\")"
+    },
+    {
+      "name": "StripOutput",
+      "bytes": 576,
+      "fields": [
+        {
+          "name": "midi_capacity",
+          "offset": 0,
+          "bytes": 16,
+          "type": "MidiCapacity"
+        },
+        {
+          "name": "processor",
+          "offset": 572,
+          "bytes": 1,
+          "type": "Option<shoop_processor_protocol::Kind>"
+        },
+        {
+          "name": "wet_gate",
+          "offset": 144,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "configuration",
+          "offset": 256,
+          "bytes": 312,
+          "type": "Option<shoop_rt_engine::node::NodeConfiguration>"
+        },
+        {
+          "name": "slot",
+          "offset": 224,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "cells",
+          "offset": 248,
+          "bytes": 8,
+          "type": "Arc<shoop_rt_engine::cells::Cells, alloc::alloc::Global>"
+        },
+        {
+          "name": "channels",
+          "offset": 232,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "ramp",
+          "offset": 568,
+          "bytes": 4,
+          "type": "u32"
+        },
+        {
+          "name": "outputs",
+          "offset": 240,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "bank",
+          "offset": 16,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "mute",
+          "offset": 32,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "presence",
+          "offset": 48,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "gains",
+          "offset": 64,
+          "bytes": 80,
+          "type": "Gains"
+        },
+        {
+          "name": "weights",
+          "offset": 160,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "scales",
+          "offset": 176,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "scratch",
+          "offset": 192,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "gate",
+          "offset": 208,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"StripOutput\", scope: !144, file: !33, size: 4608, align: 64, flags: DIFlagPublic, elements: !1321, templateParams: !82, identifier: \"e85b06070ba1dbfaed5a2ad28812b86a\")"
+    },
+    {
+      "name": "LoopFader",
+      "bytes": 400,
+      "fields": [
+        {
+          "name": "processor",
+          "offset": 396,
+          "bytes": 1,
+          "type": "Option<shoop_processor_protocol::Kind>"
+        },
+        {
+          "name": "delay",
+          "offset": 16,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "position",
+          "offset": 48,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "configuration",
+          "offset": 80,
+          "bytes": 312,
+          "type": "Option<shoop_rt_engine::node::NodeConfiguration>"
+        },
+        {
+          "name": "slot",
+          "offset": 56,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "cells",
+          "offset": 72,
+          "bytes": 8,
+          "type": "Arc<shoop_rt_engine::cells::Cells, alloc::alloc::Global>"
+        },
+        {
+          "name": "channels",
+          "offset": 64,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "ramp",
+          "offset": 392,
+          "bytes": 4,
+          "type": "u32"
+        },
+        {
+          "name": "presence",
+          "offset": 0,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "levels",
+          "offset": 32,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"LoopFader\", scope: !144, file: !33, size: 3200, align: 64, flags: DIFlagPublic, elements: !1344, templateParams: !82, identifier: \"db04c6829f058af84585b5b3b82743c1\")"
+    },
+    {
+      "name": "BusMixer",
+      "bytes": 616,
+      "fields": [
+        {
+          "name": "preview",
+          "offset": 0,
+          "bytes": 64,
+          "type": "Option<(rt_runtime::resource::Cursor, u64, u64, usize)>"
+        },
+        {
+          "name": "preview_bytes",
+          "offset": 376,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[u8], alloc::alloc::Global>"
+        },
+        {
+          "name": "preview_samples",
+          "offset": 392,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "slot",
+          "offset": 544,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "active_channels",
+          "offset": 612,
+          "bytes": 1,
+          "type": "u8"
+        },
+        {
+          "name": "presence",
+          "offset": 552,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "presence_weights",
+          "offset": 408,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "configuration",
+          "offset": 64,
+          "bytes": 312,
+          "type": "Option<shoop_rt_engine::node::NodeConfiguration>"
+        },
+        {
+          "name": "cells",
+          "offset": 424,
+          "bytes": 8,
+          "type": "Arc<shoop_rt_engine::cells::Cells, alloc::alloc::Global>"
+        },
+        {
+          "name": "channels",
+          "offset": 568,
+          "bytes": 8,
+          "type": "usize"
+        },
+        {
+          "name": "ramp",
+          "offset": 608,
+          "bytes": 4,
+          "type": "u32"
+        },
+        {
+          "name": "bank",
+          "offset": 576,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "mute",
+          "offset": 592,
+          "bytes": 16,
+          "type": "Ramp"
+        },
+        {
+          "name": "gains",
+          "offset": 432,
+          "bytes": 80,
+          "type": "Gains"
+        },
+        {
+          "name": "weights",
+          "offset": 512,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        },
+        {
+          "name": "scratch",
+          "offset": 528,
+          "bytes": 16,
+          "type": "alloc::boxed::Box<[f32], alloc::alloc::Global>"
+        }
+      ],
+      "tags": [],
+      "metadata": "!DICompositeType(tag: DW_TAG_structure_type, name: \"BusMixer\", scope: !144, file: !33, size: 4928, align: 64, flags: DIFlagPublic, elements: !1360, templateParams: !82, identifier: \"e7ea8d7d8c5235a0544907393022e506\")"
+    }
+  ]
+}

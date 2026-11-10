@@ -1,0 +1,3958 @@
+{
+  "hybrid-host-workflows": [
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 43.309,
+      "p95_us": 53.669,
+      "p99_us": 136.05,
+      "max_us": 136.05,
+      "overruns": 0,
+      "late_p99_us": 107.892,
+      "late_max_us": 107.892,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 67584,
+          "max": 67584
+        },
+        "resource_steps": {
+          "mean": 407.015625,
+          "max": 408
+        },
+        "nodes_processed": {
+          "mean": 40,
+          "max": 40
+        },
+        "nodes_skipped": {
+          "mean": 24,
+          "max": 24
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 136,
+          "max": 136
+        },
+        "index_reclaimed": {
+          "mean": 135.015625,
+          "max": 136
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 40.5,
+          "max": 56
+        },
+        "index_live": {
+          "mean": 93.6875,
+          "max": 124
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/idle-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 38.451499999999996,
+      "p95_us": 66.288,
+      "p99_us": 191.803,
+      "max_us": 191.803,
+      "overruns": 0,
+      "late_p99_us": 86.316,
+      "late_max_us": 86.316,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2048,
+          "max": 2048
+        },
+        "resource_steps": {
+          "mean": 32,
+          "max": 32
+        },
+        "nodes_processed": {
+          "mean": 40,
+          "max": 40
+        },
+        "nodes_skipped": {
+          "mean": 24,
+          "max": 24
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 0.03125,
+          "max": 1
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 612,
+          "max": 864
+        },
+        "index_live": {
+          "mean": 4.03125,
+          "max": 5
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/idle-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "silence",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 127.50800000000001,
+      "p95_us": 594.687,
+      "p99_us": 6994.723,
+      "max_us": 6994.723,
+      "overruns": 1,
+      "late_p99_us": 2746.876,
+      "late_max_us": 2746.876,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 141312,
+          "max": 141312
+        },
+        "resource_steps": {
+          "mean": 814,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 80,
+          "max": 80
+        },
+        "nodes_skipped": {
+          "mean": 192,
+          "max": 192
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 130,
+          "max": 162
+        },
+        "index_live": {
+          "mean": 287,
+          "max": 350
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/record-silence/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "silence",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 80.0495,
+      "p95_us": 133.839,
+      "p99_us": 204.716,
+      "max_us": 204.716,
+      "overruns": 0,
+      "late_p99_us": 1921.697,
+      "late_max_us": 1921.697,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4096,
+          "max": 4096
+        },
+        "resource_steps": {
+          "mean": 96,
+          "max": 96
+        },
+        "nodes_processed": {
+          "mean": 72,
+          "max": 72
+        },
+        "nodes_skipped": {
+          "mean": 200,
+          "max": 200
+        },
+        "forwarded": {
+          "mean": 392,
+          "max": 392
+        },
+        "materialized": {
+          "mean": 32,
+          "max": 32
+        },
+        "sample_reads": {
+          "mean": 2816,
+          "max": 2816
+        },
+        "sample_writes": {
+          "mean": 12288,
+          "max": 12288
+        },
+        "arena_peak_samples": {
+          "mean": 704,
+          "max": 704
+        },
+        "index_allocated": {
+          "mean": 0.09375,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 8,
+          "max": 8
+        },
+        "payload_live": {
+          "mean": 2088,
+          "max": 2592
+        },
+        "index_live": {
+          "mean": 15.9375,
+          "max": 18
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/record-silence/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 98.8955,
+      "p95_us": 156.35,
+      "p99_us": 229.508,
+      "max_us": 229.508,
+      "overruns": 0,
+      "late_p99_us": 134.349,
+      "late_max_us": 134.349,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 141312,
+          "max": 141312
+        },
+        "resource_steps": {
+          "mean": 814,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 80,
+          "max": 80
+        },
+        "nodes_skipped": {
+          "mean": 192,
+          "max": 192
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 133,
+          "max": 165
+        },
+        "index_live": {
+          "mean": 294,
+          "max": 355
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/record-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 75.17099999999999,
+      "p95_us": 105.436,
+      "p99_us": 205.403,
+      "max_us": 205.403,
+      "overruns": 0,
+      "late_p99_us": 146.566,
+      "late_max_us": 146.566,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4096,
+          "max": 4096
+        },
+        "resource_steps": {
+          "mean": 96,
+          "max": 96
+        },
+        "nodes_processed": {
+          "mean": 72,
+          "max": 72
+        },
+        "nodes_skipped": {
+          "mean": 200,
+          "max": 200
+        },
+        "forwarded": {
+          "mean": 392,
+          "max": 392
+        },
+        "materialized": {
+          "mean": 32,
+          "max": 32
+        },
+        "sample_reads": {
+          "mean": 2816,
+          "max": 2816
+        },
+        "sample_writes": {
+          "mean": 12288,
+          "max": 12288
+        },
+        "arena_peak_samples": {
+          "mean": 704,
+          "max": 704
+        },
+        "index_allocated": {
+          "mean": 0.09375,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 8,
+          "max": 8
+        },
+        "payload_live": {
+          "mean": 2112,
+          "max": 2616
+        },
+        "index_live": {
+          "mean": 16,
+          "max": 18
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/record-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 102.626,
+      "p95_us": 144.713,
+      "p99_us": 422.443,
+      "max_us": 422.443,
+      "overruns": 0,
+      "late_p99_us": 2477.417,
+      "late_max_us": 2477.417,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 151552,
+          "max": 151552
+        },
+        "resource_steps": {
+          "mean": 813.96875,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 213,
+          "max": 244
+        },
+        "index_live": {
+          "mean": 451.375,
+          "max": 516
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/play-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 87.5995,
+      "p95_us": 123.291,
+      "p99_us": 181.888,
+      "max_us": 181.888,
+      "overruns": 0,
+      "late_p99_us": 110.872,
+      "late_max_us": 110.872,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4376,
+          "max": 9216
+        },
+        "resource_steps": {
+          "mean": 68.375,
+          "max": 144
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 678.90625,
+          "max": 680
+        },
+        "materialized": {
+          "mean": 48.546875,
+          "max": 58
+        },
+        "sample_reads": {
+          "mean": 7424,
+          "max": 7424
+        },
+        "sample_writes": {
+          "mean": 15430,
+          "max": 16640
+        },
+        "arena_peak_samples": {
+          "mean": 782,
+          "max": 1024
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 3520,
+          "max": 4024
+        },
+        "index_live": {
+          "mean": 29.3125,
+          "max": 31
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/play-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "record-play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 115.971,
+      "p95_us": 174.397,
+      "p99_us": 191.662,
+      "max_us": 191.662,
+      "overruns": 0,
+      "late_p99_us": 94.077,
+      "late_max_us": 94.077,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 157696,
+          "max": 157696
+        },
+        "resource_steps": {
+          "mean": 813.96875,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 144,
+          "max": 144
+        },
+        "nodes_skipped": {
+          "mean": 128,
+          "max": 128
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 209,
+          "max": 240
+        },
+        "index_live": {
+          "mean": 443.25,
+          "max": 508
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/record-play-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record-play",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 92.852,
+      "p95_us": 150.051,
+      "p99_us": 410.034,
+      "max_us": 410.034,
+      "overruns": 0,
+      "late_p99_us": 438.365,
+      "late_max_us": 438.365,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4136,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 160.625,
+          "max": 200
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 535.84375,
+          "max": 536
+        },
+        "materialized": {
+          "mean": 48.078125,
+          "max": 53
+        },
+        "sample_reads": {
+          "mean": 4352,
+          "max": 4352
+        },
+        "sample_writes": {
+          "mean": 13834,
+          "max": 14464
+        },
+        "arena_peak_samples": {
+          "mean": 770,
+          "max": 896
+        },
+        "index_allocated": {
+          "mean": 0.15625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 24,
+          "max": 24
+        },
+        "payload_live": {
+          "mean": 3328,
+          "max": 3832
+        },
+        "index_live": {
+          "mean": 32.46875,
+          "max": 37
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/record-play-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "shared",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 131.5985,
+      "p95_us": 277.849,
+      "p99_us": 337.337,
+      "max_us": 337.337,
+      "overruns": 0,
+      "late_p99_us": 137.775,
+      "late_max_us": 137.775,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 155648,
+          "max": 155648
+        },
+        "resource_steps": {
+          "mean": 2990.03125,
+          "max": 2992
+        },
+        "nodes_processed": {
+          "mean": 136,
+          "max": 136
+        },
+        "nodes_skipped": {
+          "mean": 136,
+          "max": 136
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270.03125,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 303,
+          "max": 335
+        },
+        "index_live": {
+          "mean": 732.84375,
+          "max": 798
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/shared-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "shared",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 101.113,
+      "p95_us": 164.912,
+      "p99_us": 241.755,
+      "max_us": 241.755,
+      "overruns": 0,
+      "late_p99_us": 715.65,
+      "late_max_us": 715.65,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4696,
+          "max": 16896
+        },
+        "resource_steps": {
+          "mean": 73.375,
+          "max": 264
+        },
+        "nodes_processed": {
+          "mean": 136,
+          "max": 136
+        },
+        "nodes_skipped": {
+          "mean": 136,
+          "max": 136
+        },
+        "forwarded": {
+          "mean": 757.65625,
+          "max": 760
+        },
+        "materialized": {
+          "mean": 57.171875,
+          "max": 81
+        },
+        "sample_reads": {
+          "mean": 8448,
+          "max": 8448
+        },
+        "sample_writes": {
+          "mean": 16278,
+          "max": 19328
+        },
+        "arena_peak_samples": {
+          "mean": 830,
+          "max": 1440
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0.015625,
+          "max": 1
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 4464,
+          "max": 4968
+        },
+        "index_live": {
+          "mean": 41.328125,
+          "max": 44
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/shared-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "continue",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 146.2855,
+      "p95_us": 236.188,
+      "p99_us": 317.528,
+      "max_us": 317.528,
+      "overruns": 0,
+      "late_p99_us": 272.765,
+      "late_max_us": 272.765,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 409600,
+          "max": 409600
+        },
+        "resource_steps": {
+          "mean": 2442.03125,
+          "max": 2448
+        },
+        "nodes_processed": {
+          "mean": 136,
+          "max": 136
+        },
+        "nodes_skipped": {
+          "mean": 136,
+          "max": 136
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 816,
+          "max": 816
+        },
+        "index_reclaimed": {
+          "mean": 810.03125,
+          "max": 816
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 353,
+          "max": 449
+        },
+        "index_live": {
+          "mean": 869.84375,
+          "max": 1059
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/continue-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "continue",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 91.7205,
+      "p95_us": 141.559,
+      "p99_us": 220.224,
+      "max_us": 220.224,
+      "overruns": 0,
+      "late_p99_us": 190.453,
+      "late_max_us": 190.453,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4216,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 193.875,
+          "max": 232
+        },
+        "nodes_processed": {
+          "mean": 104,
+          "max": 104
+        },
+        "nodes_skipped": {
+          "mean": 168,
+          "max": 168
+        },
+        "forwarded": {
+          "mean": 503.53125,
+          "max": 504
+        },
+        "materialized": {
+          "mean": 40.234375,
+          "max": 45
+        },
+        "sample_reads": {
+          "mean": 3840,
+          "max": 3840
+        },
+        "sample_writes": {
+          "mean": 13086,
+          "max": 13696
+        },
+        "arena_peak_samples": {
+          "mean": 742,
+          "max": 864
+        },
+        "index_allocated": {
+          "mean": 0.1875,
+          "max": 4
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 4064,
+          "max": 4568
+        },
+        "index_live": {
+          "mean": 52.0625,
+          "max": 58
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/continue-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 115.0595,
+      "p95_us": 197.982,
+      "p99_us": 309.335,
+      "max_us": 309.335,
+      "overruns": 0,
+      "late_p99_us": 753.636,
+      "late_max_us": 753.636,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 147456,
+          "max": 147456
+        },
+        "resource_steps": {
+          "mean": 1358.03125,
+          "max": 1360
+        },
+        "nodes_processed": {
+          "mean": 104,
+          "max": 104
+        },
+        "nodes_skipped": {
+          "mean": 168,
+          "max": 168
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 270.03125,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 276,
+          "max": 308
+        },
+        "index_live": {
+          "mean": 592.96875,
+          "max": 660
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/grab-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 84.369,
+      "p95_us": 137.913,
+      "p99_us": 170.551,
+      "max_us": 170.551,
+      "overruns": 0,
+      "late_p99_us": 273.821,
+      "late_max_us": 273.821,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4416,
+          "max": 11776
+        },
+        "resource_steps": {
+          "mean": 69,
+          "max": 184
+        },
+        "nodes_processed": {
+          "mean": 104,
+          "max": 104
+        },
+        "nodes_skipped": {
+          "mean": 168,
+          "max": 168
+        },
+        "forwarded": {
+          "mean": 598.75,
+          "max": 600
+        },
+        "materialized": {
+          "mean": 56.625,
+          "max": 71
+        },
+        "sample_reads": {
+          "mean": 6400,
+          "max": 6400
+        },
+        "sample_writes": {
+          "mean": 15184,
+          "max": 17024
+        },
+        "arena_peak_samples": {
+          "mean": 816,
+          "max": 1184
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 4328,
+          "max": 4832
+        },
+        "index_live": {
+          "mean": 28.75,
+          "max": 30
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/grab-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "churn",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 105.32,
+      "p95_us": 316.146,
+      "p99_us": 593.534,
+      "max_us": 593.534,
+      "overruns": 0,
+      "late_p99_us": 198.531,
+      "late_max_us": 198.531,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 124232,
+          "max": 141312
+        },
+        "resource_steps": {
+          "mean": 738.265625,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 58.8125,
+          "max": 80
+        },
+        "nodes_skipped": {
+          "mean": 175,
+          "max": 216
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 247.03125,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 247.734375,
+          "max": 287
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 106.421875,
+          "max": 143
+        },
+        "index_live": {
+          "mean": 237.21875,
+          "max": 313
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/churn-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "churn",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 95.987,
+      "p95_us": 144.002,
+      "p99_us": 297.368,
+      "max_us": 297.368,
+      "overruns": 0,
+      "late_p99_us": 257.087,
+      "late_max_us": 257.087,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 3720,
+          "max": 4096
+        },
+        "resource_steps": {
+          "mean": 64.125,
+          "max": 96
+        },
+        "nodes_processed": {
+          "mean": 57.3125,
+          "max": 72
+        },
+        "nodes_skipped": {
+          "mean": 176.5,
+          "max": 216
+        },
+        "forwarded": {
+          "mean": 126.34375,
+          "max": 440
+        },
+        "materialized": {
+          "mean": 10.96875,
+          "max": 48
+        },
+        "sample_reads": {
+          "mean": 951,
+          "max": 4352
+        },
+        "sample_writes": {
+          "mean": 3952,
+          "max": 13824
+        },
+        "arena_peak_samples": {
+          "mean": 452,
+          "max": 832
+        },
+        "index_allocated": {
+          "mean": 0.21875,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0.1875,
+          "max": 2
+        },
+        "shared_payloads": {
+          "mean": 1.5,
+          "max": 8
+        },
+        "payload_live": {
+          "mean": 1988.78125,
+          "max": 2280
+        },
+        "index_live": {
+          "mean": 14.390625,
+          "max": 16
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/churn-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "current",
+      "scenario": "ramps",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 101.88499999999999,
+      "p95_us": 138.244,
+      "p99_us": 298.87,
+      "max_us": 298.87,
+      "overruns": 0,
+      "late_p99_us": 88.897,
+      "late_max_us": 88.897,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 151552,
+          "max": 151552
+        },
+        "resource_steps": {
+          "mean": 813.96875,
+          "max": 816
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 272,
+          "max": 272
+        },
+        "index_reclaimed": {
+          "mean": 269.96875,
+          "max": 272
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 217,
+          "max": 249
+        },
+        "index_live": {
+          "mean": 460.53125,
+          "max": 529
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/ramps-signal/0-current",
+      "repeat": 0,
+      "interference": "none"
+    },
+    {
+      "mode": "compact",
+      "scenario": "ramps",
+      "input": "signal",
+      "callbacks": 64,
+      "budget_us": 5333.333333333333,
+      "p50_us": 96.4525,
+      "p95_us": 125.535,
+      "p99_us": 206.374,
+      "max_us": 206.374,
+      "overruns": 0,
+      "late_p99_us": 139.08,
+      "late_max_us": 139.08,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 4256,
+          "max": 6656
+        },
+        "resource_steps": {
+          "mean": 66.5,
+          "max": 104
+        },
+        "nodes_processed": {
+          "mean": 120,
+          "max": 120
+        },
+        "nodes_skipped": {
+          "mean": 152,
+          "max": 152
+        },
+        "forwarded": {
+          "mean": 649.375,
+          "max": 680
+        },
+        "materialized": {
+          "mean": 55.8125,
+          "max": 61
+        },
+        "sample_reads": {
+          "mean": 7424,
+          "max": 7424
+        },
+        "sample_writes": {
+          "mean": 17800,
+          "max": 18560
+        },
+        "arena_peak_samples": {
+          "mean": 896,
+          "max": 1024
+        },
+        "index_allocated": {
+          "mean": 0.0625,
+          "max": 2
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 3464,
+          "max": 3968
+        },
+        "index_live": {
+          "mean": 29.0625,
+          "max": 31
+        }
+      },
+      "directory": "work/hybrid-host-workflows/none/ramps-signal/0-compact",
+      "repeat": 0,
+      "interference": "none"
+    }
+  ],
+  "dense-hybrid-32": [
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 32.522999999999996,
+      "p95_us": 55.211,
+      "p99_us": 95.11,
+      "max_us": 172.944,
+      "overruns": 0,
+      "late_p99_us": 170.661,
+      "late_max_us": 546.96,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 115,
+          "max": 115
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6502.5,
+          "max": 7650
+        },
+        "index_live": {
+          "mean": 42.046875,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-idle-pure",
+      "candidate": "pure",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 36.108000000000004,
+      "p95_us": 72.336,
+      "p99_us": 106.037,
+      "max_us": 641.134,
+      "overruns": 0,
+      "late_p99_us": 433.517,
+      "late_max_us": 455.352,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6556.5,
+          "max": 7704
+        },
+        "index_live": {
+          "mean": 42.29296875,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-idle-hybrid",
+      "candidate": "hybrid",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 58.161,
+      "p95_us": 100.448,
+      "p99_us": 191.182,
+      "max_us": 200.235,
+      "overruns": 0,
+      "late_p99_us": 259.27,
+      "late_max_us": 1923.75,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2364,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 36.9375,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.765625,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.1171875,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10127,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3535,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19303.5,
+          "max": 20451
+        },
+        "index_live": {
+          "mean": 220.25,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-play-pure",
+      "candidate": "pure",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.703,
+      "p95_us": 95.29,
+      "p99_us": 190.1,
+      "max_us": 340.251,
+      "overruns": 0,
+      "late_p99_us": 270.493,
+      "late_max_us": 642.452,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2364,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 36.9375,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.765625,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.1171875,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10127,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3535,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19401.5,
+          "max": 20549
+        },
+        "index_live": {
+          "mean": 220.42578125,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-play-hybrid",
+      "candidate": "hybrid",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.8635,
+      "p95_us": 109.05,
+      "p99_us": 176.52,
+      "max_us": 442.011,
+      "overruns": 0,
+      "late_p99_us": 291.702,
+      "late_max_us": 330.393,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12441.5,
+          "max": 13589
+        },
+        "index_live": {
+          "mean": 202.65625,
+          "max": 223
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-record-pure",
+      "candidate": "pure",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.122,
+      "p95_us": 100.528,
+      "p99_us": 141.018,
+      "max_us": 164.282,
+      "overruns": 0,
+      "late_p99_us": 315.992,
+      "late_max_us": 555.468,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12397.5,
+          "max": 13545
+        },
+        "index_live": {
+          "mean": 202.2578125,
+          "max": 223
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-record-hybrid",
+      "candidate": "hybrid",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 60.754000000000005,
+      "p95_us": 78.676,
+      "p99_us": 142.61,
+      "max_us": 180.425,
+      "overruns": 0,
+      "late_p99_us": 164.985,
+      "late_max_us": 529.945,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2634,
+          "max": 19200
+        },
+        "resource_steps": {
+          "mean": 41.15625,
+          "max": 300
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 443.7109375,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30.64453125,
+          "max": 63
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10290.5,
+          "max": 14432
+        },
+        "arena_peak_samples": {
+          "mean": 3634.5,
+          "max": 7776
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28237.5,
+          "max": 29385
+        },
+        "index_live": {
+          "mean": 272.9296875,
+          "max": 273
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-grab-pure",
+      "candidate": "pure",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 64.99549999999999,
+      "p95_us": 129.942,
+      "p99_us": 289.756,
+      "max_us": 449.602,
+      "overruns": 0,
+      "late_p99_us": 375.08,
+      "late_max_us": 657.842,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 445,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10208,
+          "max": 10208
+        },
+        "arena_peak_samples": {
+          "mean": 3552,
+          "max": 3552
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28516.5,
+          "max": 29664
+        },
+        "index_live": {
+          "mean": 270.01953125,
+          "max": 278
+        }
+      },
+      "directory": "work/dense-hybrid-32/0-grab-hybrid",
+      "candidate": "hybrid",
+      "repeat": 0
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 32.703,
+      "p95_us": 64.265,
+      "p99_us": 88.11,
+      "max_us": 163.17,
+      "overruns": 0,
+      "late_p99_us": 270.369,
+      "late_max_us": 2372.5,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6492.5,
+          "max": 7640
+        },
+        "index_live": {
+          "mean": 42.5390625,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-idle-hybrid",
+      "candidate": "hybrid",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 33.4495,
+      "p95_us": 90.934,
+      "p99_us": 435.091,
+      "max_us": 934.907,
+      "overruns": 1,
+      "late_p99_us": 416.5,
+      "late_max_us": 1026.262,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 115,
+          "max": 115
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6657.5,
+          "max": 7805
+        },
+        "index_live": {
+          "mean": 42.9609375,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-idle-pure",
+      "candidate": "pure",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 62.501999999999995,
+      "p95_us": 103.983,
+      "p99_us": 134.268,
+      "max_us": 156.029,
+      "overruns": 0,
+      "late_p99_us": 180.923,
+      "late_max_us": 218.55,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2364,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 36.9375,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.765625,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.1171875,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10127,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3535,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19436.5,
+          "max": 20584
+        },
+        "index_live": {
+          "mean": 220.63671875,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-play-hybrid",
+      "candidate": "hybrid",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.903,
+      "p95_us": 142.19,
+      "p99_us": 272.942,
+      "max_us": 314.944,
+      "overruns": 0,
+      "late_p99_us": 201.964,
+      "late_max_us": 275.841,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2380,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 37.1875,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.703125,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.1484375,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10131,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3539,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19268.5,
+          "max": 20416
+        },
+        "index_live": {
+          "mean": 219.8984375,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-play-pure",
+      "candidate": "pure",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 65.92699999999999,
+      "p95_us": 170.15,
+      "p99_us": 274.785,
+      "max_us": 376.485,
+      "overruns": 0,
+      "late_p99_us": 555.424,
+      "late_max_us": 802.317,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12300.5,
+          "max": 13448
+        },
+        "index_live": {
+          "mean": 199.546875,
+          "max": 221
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-record-hybrid",
+      "candidate": "hybrid",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 60.499,
+      "p95_us": 98.716,
+      "p99_us": 114.318,
+      "max_us": 156.681,
+      "overruns": 0,
+      "late_p99_us": 179.985,
+      "late_max_us": 363.812,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12272.5,
+          "max": 13420
+        },
+        "index_live": {
+          "mean": 199.296875,
+          "max": 221
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-record-pure",
+      "candidate": "pure",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 63.053,
+      "p95_us": 96.021,
+      "p99_us": 144.613,
+      "max_us": 218.012,
+      "overruns": 0,
+      "late_p99_us": 313.255,
+      "late_max_us": 373.357,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2634,
+          "max": 19200
+        },
+        "resource_steps": {
+          "mean": 41.15625,
+          "max": 300
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 443.7109375,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30.64453125,
+          "max": 63
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10290.5,
+          "max": 14432
+        },
+        "arena_peak_samples": {
+          "mean": 3634.5,
+          "max": 7776
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28300.5,
+          "max": 29448
+        },
+        "index_live": {
+          "mean": 272.96484375,
+          "max": 273
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-grab-hybrid",
+      "candidate": "hybrid",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 65.23599999999999,
+      "p95_us": 161.788,
+      "p99_us": 253.483,
+      "max_us": 643.257,
+      "overruns": 0,
+      "late_p99_us": 569.24,
+      "late_max_us": 1149.309,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 445,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10208,
+          "max": 10208
+        },
+        "arena_peak_samples": {
+          "mean": 3552,
+          "max": 3552
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28775.5,
+          "max": 29923
+        },
+        "index_live": {
+          "mean": 271.25,
+          "max": 278
+        }
+      },
+      "directory": "work/dense-hybrid-32/1-grab-pure",
+      "candidate": "pure",
+      "repeat": 1
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 34.04,
+      "p95_us": 62.672,
+      "p99_us": 142.52,
+      "max_us": 237.62,
+      "overruns": 0,
+      "late_p99_us": 215.585,
+      "late_max_us": 310.49,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 115,
+          "max": 115
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6688.5,
+          "max": 7836
+        },
+        "index_live": {
+          "mean": 43.171875,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-idle-pure",
+      "candidate": "pure",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 32.79900000000001,
+      "p95_us": 78.005,
+      "p99_us": 163.01,
+      "max_us": 179.114,
+      "overruns": 0,
+      "late_p99_us": 254.2,
+      "late_max_us": 601.341,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6527.5,
+          "max": 7675
+        },
+        "index_live": {
+          "mean": 42.15234375,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-idle-hybrid",
+      "candidate": "hybrid",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 61.460499999999996,
+      "p95_us": 128.009,
+      "p99_us": 257.409,
+      "max_us": 322.936,
+      "overruns": 0,
+      "late_p99_us": 276.459,
+      "late_max_us": 2323.495,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2364,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 36.9375,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.765625,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.1171875,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10127,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3535,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19316.5,
+          "max": 20464
+        },
+        "index_live": {
+          "mean": 220.390625,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-play-pure",
+      "candidate": "pure",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.367000000000004,
+      "p95_us": 100.438,
+      "p99_us": 152.094,
+      "max_us": 172.925,
+      "overruns": 0,
+      "late_p99_us": 175.864,
+      "late_max_us": 620.367,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2384,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 37.25,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.6875,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.15625,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10132,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3540,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19196.5,
+          "max": 20344
+        },
+        "index_live": {
+          "mean": 219.51171875,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-play-hybrid",
+      "candidate": "hybrid",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 59.542500000000004,
+      "p95_us": 82.542,
+      "p99_us": 151.473,
+      "max_us": 397.886,
+      "overruns": 0,
+      "late_p99_us": 538.295,
+      "late_max_us": 1133.558,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12254.5,
+          "max": 13402
+        },
+        "index_live": {
+          "mean": 199.78125,
+          "max": 222
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-record-pure",
+      "candidate": "pure",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 60.3985,
+      "p95_us": 133.266,
+      "p99_us": 216.799,
+      "max_us": 691.127,
+      "overruns": 1,
+      "late_p99_us": 206.248,
+      "late_max_us": 238.001,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12255.5,
+          "max": 13403
+        },
+        "index_live": {
+          "mean": 199.58984375,
+          "max": 221
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-record-hybrid",
+      "candidate": "hybrid",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 62.226,
+      "p95_us": 128.759,
+      "p99_us": 181.798,
+      "max_us": 215.307,
+      "overruns": 0,
+      "late_p99_us": 223.467,
+      "late_max_us": 301.619,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2634,
+          "max": 19200
+        },
+        "resource_steps": {
+          "mean": 41.15625,
+          "max": 300
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 443.7109375,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30.64453125,
+          "max": 63
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10290.5,
+          "max": 14432
+        },
+        "arena_peak_samples": {
+          "mean": 3634.5,
+          "max": 7776
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28405.5,
+          "max": 29553
+        },
+        "index_live": {
+          "mean": 269.45703125,
+          "max": 278
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-grab-pure",
+      "candidate": "pure",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 64.9205,
+      "p95_us": 142.72,
+      "p99_us": 249.408,
+      "max_us": 309.676,
+      "overruns": 0,
+      "late_p99_us": 376.446,
+      "late_max_us": 552.006,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 445,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10208,
+          "max": 10208
+        },
+        "arena_peak_samples": {
+          "mean": 3552,
+          "max": 3552
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28353.5,
+          "max": 29501
+        },
+        "index_live": {
+          "mean": 277.4921875,
+          "max": 286
+        }
+      },
+      "directory": "work/dense-hybrid-32/2-grab-hybrid",
+      "candidate": "hybrid",
+      "repeat": 2
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 32.813500000000005,
+      "p95_us": 56.854,
+      "p99_us": 108.52,
+      "max_us": 261.475,
+      "overruns": 0,
+      "late_p99_us": 163.205,
+      "late_max_us": 226.76,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 0,
+          "max": 0
+        },
+        "materialized": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_reads": {
+          "mean": 0,
+          "max": 0
+        },
+        "sample_writes": {
+          "mean": 0,
+          "max": 0
+        },
+        "arena_peak_samples": {
+          "mean": 0,
+          "max": 0
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6571.5,
+          "max": 7719
+        },
+        "index_live": {
+          "mean": 42.2578125,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-idle-hybrid",
+      "candidate": "hybrid",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 31.546,
+      "p95_us": 40.29,
+      "p99_us": 91.054,
+      "max_us": 129.31,
+      "overruns": 0,
+      "late_p99_us": 191.733,
+      "late_max_us": 516.719,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 36,
+          "max": 36
+        },
+        "nodes_processed": {
+          "mean": 21,
+          "max": 21
+        },
+        "nodes_skipped": {
+          "mean": 195,
+          "max": 195
+        },
+        "forwarded": {
+          "mean": 115,
+          "max": 115
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 6526.5,
+          "max": 7674
+        },
+        "index_live": {
+          "mean": 42.1171875,
+          "max": 45
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-idle-pure",
+      "candidate": "pure",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 60.829499999999996,
+      "p95_us": 130.953,
+      "p99_us": 197.521,
+      "max_us": 391.767,
+      "overruns": 0,
+      "late_p99_us": 197.617,
+      "late_max_us": 607.171,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2374,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 37.09375,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.7265625,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.13671875,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10129.5,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3537.5,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19139.5,
+          "max": 20287
+        },
+        "index_live": {
+          "mean": 219.44140625,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-play-hybrid",
+      "candidate": "hybrid",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 63.333,
+      "p95_us": 130.923,
+      "p99_us": 285.791,
+      "max_us": 2274.561,
+      "overruns": 2,
+      "late_p99_us": 229.765,
+      "late_max_us": 338.417,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2372,
+          "max": 2816
+        },
+        "resource_steps": {
+          "mean": 37.0625,
+          "max": 44
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 434.734375,
+          "max": 435
+        },
+        "materialized": {
+          "mean": 29.1328125,
+          "max": 30
+        },
+        "sample_reads": {
+          "mean": 6368,
+          "max": 6368
+        },
+        "sample_writes": {
+          "mean": 10129,
+          "max": 10240
+        },
+        "arena_peak_samples": {
+          "mean": 3537,
+          "max": 3648
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 19319.5,
+          "max": 20467
+        },
+        "index_live": {
+          "mean": 220.28515625,
+          "max": 227
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-play-pure",
+      "candidate": "pure",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 66.65299999999999,
+      "p95_us": 218.922,
+      "p99_us": 410.665,
+      "max_us": 493.907,
+      "overruns": 0,
+      "late_p99_us": 326.245,
+      "late_max_us": 2452.678,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 10
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12352.5,
+          "max": 13500
+        },
+        "index_live": {
+          "mean": 201.09765625,
+          "max": 223
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-record-hybrid",
+      "candidate": "hybrid",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 58.376000000000005,
+      "p95_us": 109.041,
+      "p99_us": 185.152,
+      "max_us": 324.919,
+      "overruns": 0,
+      "late_p99_us": 189.571,
+      "late_max_us": 604.673,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2304,
+          "max": 2304
+        },
+        "resource_steps": {
+          "mean": 164,
+          "max": 164
+        },
+        "nodes_processed": {
+          "mean": 85,
+          "max": 85
+        },
+        "nodes_skipped": {
+          "mean": 131,
+          "max": 131
+        },
+        "forwarded": {
+          "mean": 243,
+          "max": 243
+        },
+        "materialized": {
+          "mean": 13,
+          "max": 13
+        },
+        "sample_reads": {
+          "mean": 1760,
+          "max": 1760
+        },
+        "sample_writes": {
+          "mean": 7040,
+          "max": 7040
+        },
+        "arena_peak_samples": {
+          "mean": 3008,
+          "max": 3008
+        },
+        "index_allocated": {
+          "mean": 0.16015625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 32,
+          "max": 32
+        },
+        "payload_live": {
+          "mean": 12252.5,
+          "max": 13400
+        },
+        "index_live": {
+          "mean": 198.86328125,
+          "max": 221
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-record-pure",
+      "candidate": "pure",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 63.073,
+      "p95_us": 107.198,
+      "p99_us": 176.079,
+      "max_us": 353.43,
+      "overruns": 0,
+      "late_p99_us": 156.802,
+      "late_max_us": 280.014,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2634,
+          "max": 19200
+        },
+        "resource_steps": {
+          "mean": 41.15625,
+          "max": 300
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 443.7109375,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30.64453125,
+          "max": 63
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10290.5,
+          "max": 14432
+        },
+        "arena_peak_samples": {
+          "mean": 3634.5,
+          "max": 7776
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28412.5,
+          "max": 29560
+        },
+        "index_live": {
+          "mean": 273.59765625,
+          "max": 282
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-grab-hybrid",
+      "candidate": "hybrid",
+      "repeat": 3
+    },
+    {
+      "mode": "compact",
+      "scenario": "grab",
+      "input": "signal",
+      "callbacks": 256,
+      "budget_us": 666.6666666666666,
+      "p50_us": 61.900999999999996,
+      "p95_us": 123.933,
+      "p99_us": 251.831,
+      "max_us": 315.785,
+      "overruns": 0,
+      "late_p99_us": 240.673,
+      "late_max_us": 289.872,
+      "dropped": 0,
+      "counters": {
+        "resource_copy_bytes": {
+          "mean": 2634,
+          "max": 19200
+        },
+        "resource_steps": {
+          "mean": 41.15625,
+          "max": 300
+        },
+        "nodes_processed": {
+          "mean": 87,
+          "max": 87
+        },
+        "nodes_skipped": {
+          "mean": 129,
+          "max": 129
+        },
+        "forwarded": {
+          "mean": 443.7109375,
+          "max": 445
+        },
+        "materialized": {
+          "mean": 30.64453125,
+          "max": 63
+        },
+        "sample_reads": {
+          "mean": 6496,
+          "max": 6496
+        },
+        "sample_writes": {
+          "mean": 10290.5,
+          "max": 14432
+        },
+        "arena_peak_samples": {
+          "mean": 3634.5,
+          "max": 7776
+        },
+        "index_allocated": {
+          "mean": 0.03515625,
+          "max": 9
+        },
+        "index_reclaimed": {
+          "mean": 0,
+          "max": 0
+        },
+        "shared_payloads": {
+          "mean": 0,
+          "max": 0
+        },
+        "payload_live": {
+          "mean": 28308.5,
+          "max": 29456
+        },
+        "index_live": {
+          "mean": 269,
+          "max": 269
+        }
+      },
+      "directory": "work/dense-hybrid-32/3-grab-pure",
+      "candidate": "pure",
+      "repeat": 3
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "status": "Published at user request with full native suite interrupted",
+  "base_revision": "69b52609b377e6ad558b7b2782da88d74a02c032",
+  "retained_source": "Exact measured packed-descriptors Rust baseline; final borrowed-route experiment reverted",
+  "format": "passed",
+  "test_attribute_policy": "passed",
+  "warning_denied_workspace_build": "passed",
+  "native_gate": {
+    "status": "interrupted at user request",
+    "passed": 592,
+    "active_test_interrupted": 1,
+    "unrun": 2601,
+    "skipped": 11,
+    "earlier_run_passed": 2223,
+    "earlier_run": "stopped after readiness fixture hang with RUST_TEST_THREADS=1; same fixture passed with default8"
+  },
+  "native_command": "SHOOP_ALLOW_MISSING_BACKENDS=1 RUST_TEST_THREADS=8 RUSTFLAGS=\"-D warnings\" CARGO_PROFILE_TEST_DEBUG=0 taskset -c 0 cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci --test-threads 1 --build-jobs 1",
+  "physical_pi5_timings": false,
+  "files": {
+    "work/final-pr-fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "work/final-pr-test-policy.log": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975",
+    "work/final-pr-build.log": "1f130f5847e0728ca52700881a0d9edb7d660e1d33bfec8db61acbd58185554f",
+    "work/final-pr-build-missing-alsa.log": "1f4c4e22053dbe12cfdca47be8a10ae810f73f397c76dfde47e390e246af932c",
+    "work/final-pr-nextest.log": "6b4f831e18ff035bccde336721acf8f7d291a2afd38e5b6905eda905b93c4aef",
+    "work/final-pr-nextest-aborted-single-libtest-thread.log": "51bd52044416a7307cc370146af3001204793e750138bad139a46a92844a3741",
+    "work/final-pr-nextest-cli-error.log": "9d3b897e8b959ba8448962ae85e424f5ce5d53630f19b7306b8565ebe2f30c42",
+    "work/final-pr-nextest-missing-jack-link.log": "92fdacb03312c203878159b7e0ba46d714ccf93dcd4c071b59fec710ed6bab7a",
+    "work/discovery-harness-eight.log": "afe9810a31e0e00fd615e0ed8879c5ca1ce2cdbc42e89a31b7e116ede3dc6996",
+    "work/final-warning-flags.json": "3b93ee1ea43ab8525ba01bcb118bed8a625f1d5ef27e935975463ac166a5848f",
+    "work/final-source-baseline.json": "972bd3c23d116e23df40593588750d4133d14572549efa6d9c2b31ac38716be6",
+    "work/nextest/provenance.json": "8cca4fd126a3bf3dccc21c4b9c43a0d9de50f23b26a7ef365505f0be0b744c73",
+    "work/native-deps/env.sh": "cba9f210d074285ee897b3d3f7c0a7270937a667ce8795283729494d4141cb6a",
+    "work/native-deps/libjack-jackd2-0.json": "0c720ca31d972e3e81821d8149c5a7b977186d3fb937e32e23f57f499a960606",
+    "work/native-deps/libasound2t64.json": "428591cf8a2f3ce705032bfcbe569ae524111c96147319ae1ffd00c3bd2c136c",
+    "work/native-deps/libasound2-dev.json": "32b7a85688f0f56c8f8140e84b40f61b3a1064fd2399fa8d43dd0d2ac42f9778",
+    "work/native-deps/libjack-jackd2-dev.json": "75795d8176c5c82ca63fa62944f1ffeffedf74cba3817efc848cf6d056dcc93e"
+  }
+}

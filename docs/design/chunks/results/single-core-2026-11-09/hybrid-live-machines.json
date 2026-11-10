@@ -1,0 +1,149 @@
+{
+  "hybrid-host-workflows": {
+    "command": [
+      "scripts/benchmark_audio_chunks.py",
+      "--host",
+      "work/bin/host-hybrid",
+      "--launcher",
+      "work/bin/chunk_benchmark",
+      "--output",
+      "work/hybrid-host-workflows",
+      "--modes",
+      "current",
+      "compact",
+      "--callbacks",
+      "64",
+      "--repeats",
+      "1",
+      "--warmup",
+      ".1",
+      "--host-cpu",
+      "0",
+      "--scenarios",
+      "idle",
+      "record:silence",
+      "record",
+      "play",
+      "record-play",
+      "shared",
+      "continue",
+      "grab",
+      "churn",
+      "ramps"
+    ],
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "cpu_model": [
+      "model name\t: AMD EPYC 9V74 80-Core Processor",
+      "model name\t: AMD EPYC 9V74 80-Core Processor"
+    ],
+    "affinity": [
+      0
+    ],
+    "host_cpu": 0,
+    "load_cpu": null,
+    "render_cpu": null,
+    "rt_priority": null,
+    "cpu_topology": {
+      "0": {
+        "core": "0",
+        "package": "0",
+        "siblings": "0",
+        "governor": null,
+        "frequency_khz": null
+      }
+    },
+    "irq_affinity": {
+      "24": "0-4",
+      "25": "0-4",
+      "26": "0-4",
+      "27": "0-4",
+      "28": "0-4",
+      "29": "0-4",
+      "30": "0-4",
+      "31": "0-4",
+      "32": "0-4",
+      "33": "0-4",
+      "34": "0-4",
+      "35": "0-4",
+      "36": "0-4",
+      "37": "0-4",
+      "38": "0-4",
+      "39": "0-4",
+      "40": "0-4",
+      "41": "0-4",
+      "42": "0-4",
+      "43": "0-4",
+      "44": "0-4",
+      "45": "0-4",
+      "46": "0-4"
+    },
+    "cpu_quota": "400000 100000",
+    "memory_limit": "17179869184",
+    "cpu_stat_before": "usage_usec 2953321994\nuser_usec 2750528698\nsystem_usec 202793295\nnice_usec 0\nnr_periods 44910\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+    "scheduler": 0,
+    "pmu_devices": [
+      "breakpoint",
+      "msr",
+      "software"
+    ],
+    "perf_event_paranoid": "2",
+    "preempt": null,
+    "isolated": "",
+    "git_sha": "69b52609b377e6ad558b7b2782da88d74a02c032",
+    "dirty": true,
+    "rustflags": "",
+    "cargo_features": "Provided by caller's build; use one binary for every mode (see guide).",
+    "host_sha256": "79dd2973dc732502e93d93cf208a8cc3c2050e7e77b2fffb1bdff88f0910aefb",
+    "launcher_sha256": "82f5de76c9e848fe35811d7a1160082dc810894815ca93327403f4ddf481afb0",
+    "clock": {
+      "implementation": "clock_gettime(CLOCK_MONOTONIC)",
+      "monotonic": true,
+      "adjustable": false,
+      "resolution": 1e-09
+    },
+    "rt_configuration": "External; this script does not change scheduling, IRQs or kernel configuration.",
+    "counter_scope": "Software work, not measured DDR/PMU traffic. Audio reference-work counters cover reference-evaluated ticks only; generic sample evaluation (current or idle compact) is uninstrumented. Node/edge counts cover both paths.",
+    "cpu_stat_after": "usage_usec 2962662926\nuser_usec 2756150059\nsystem_usec 206512867\nnice_usec 0\nnr_periods 45667\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0"
+  },
+  "dense-hybrid-32": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "affinity": [
+      0
+    ],
+    "command": [
+      "work/compare.py",
+      "--candidates",
+      "pure=work/bin/host-clock",
+      "hybrid=work/bin/host-hybrid",
+      "--launcher",
+      "work/bin/dense_chunk_benchmark",
+      "--output",
+      "work/dense-hybrid-32",
+      "--callbacks",
+      "256",
+      "--buffer",
+      "32",
+      "--repeats",
+      "4",
+      "--scenarios",
+      "idle",
+      "play",
+      "record",
+      "grab",
+      "--dense"
+    ],
+    "hosts": {
+      "pure": {
+        "path": "/workspace/shoopdaloop/work/bin/host-clock",
+        "sha256": "000d572dc9c09a53a8674aca6efdce21b71c5ddadd9f1a91f0c91e72c99a6680"
+      },
+      "hybrid": {
+        "path": "/workspace/shoopdaloop/work/bin/host-hybrid",
+        "sha256": "79dd2973dc732502e93d93cf208a8cc3c2050e7e77b2fffb1bdff88f0910aefb"
+      }
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  }
+}

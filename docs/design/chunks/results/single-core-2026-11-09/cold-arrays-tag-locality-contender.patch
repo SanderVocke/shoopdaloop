@@ -1,0 +1,68 @@
+--- a/src/rust/shoop_rt_engine/src/node.rs
++++ b/src/rust/shoop_rt_engine/src/node.rs
+@@ -326,7 +326,7 @@
+     monitoring: Box<[f32]>,
+     scratch: Box<[f32]>,
+     sends: Box<[f32]>,
+-    injected: [Option<MidiMessage>; INJECTED],
++    injected: Box<[Option<MidiMessage>; INJECTED]>,
+     /// Notes sounding through the monitoring feed, released when monitoring stops.
+     monitored: Box<[MidiState]>,
+     live_midi: Box<[MidiState]>,
+@@ -392,6 +392,7 @@
+     scratch: Box<[f32]>,
+ }
+ 
++#[repr(u8)]
+ pub enum EngineNode {
+     Processor(crate::HostedProcessor),
+     Loop(LoopNode),
+@@ -439,7 +440,7 @@
+             .automatic_monitoring
+             .store(false, core::sync::atomic::Ordering::Relaxed);
+         self.gains.reset();
+-        self.injected = [None; INJECTED];
++        self.injected.fill(None);
+         for state in &mut self.monitored {
+             *state = MidiState::default();
+         }
+@@ -488,7 +489,7 @@
+             monitoring: vec![0.; frames].into_boxed_slice(),
+             scratch: vec![0.; frames].into_boxed_slice(),
+             sends: vec![0.; frames].into_boxed_slice(),
+-            injected: [None; INJECTED],
++            injected: Box::new([None; INJECTED]),
+             monitored: (0..usize::from(settings.midi.enabled))
+                 .map(|_| MidiState::default())
+                 .collect(),
+--- a/src/rust/shoop_rt_engine/src/processors.rs
++++ b/src/rust/shoop_rt_engine/src/processors.rs
+@@ -175,7 +175,7 @@
+     signal: Option<Arc<crate::cells::Cells>>,
+     binding: Option<ProcessorTarget>,
+     pending_binding: Option<(rt_runtime::Epoch, ProcessorTarget)>,
+-    parameters: [(Frame, u32, f32); 64],
++    parameters: Box<[(Frame, u32, f32); 64]>,
+     parameter_count: usize,
+     manual_active: Option<(u32, bool)>,
+     global: crate::global_midi::GlobalMidi,
+@@ -193,7 +193,9 @@
+                 bytes: limits.midi_input.bytes_per_quantum,
+             },
+             global,
+-        )
++        )?
++        .checked_add(core::mem::size_of::<[(Frame, u32, f32); 64]>() + 64)
++        .ok_or(Error::Capacity)
+     }
+     pub(crate) fn new(
+         backend: Box<dyn Backend>,
+@@ -243,7 +245,7 @@
+             signal: None,
+             binding: None,
+             pending_binding: None,
+-            parameters: [(Frame(0), 0, 0.); 64],
++            parameters: Box::new([(Frame(0), 0, 0.); 64]),
+             parameter_count: 0,
+             manual_active: None,
+             global,

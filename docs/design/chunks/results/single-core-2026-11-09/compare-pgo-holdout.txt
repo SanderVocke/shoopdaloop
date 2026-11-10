@@ -1,0 +1,28 @@
+rotation 0 passed sample/capture assertions
+rotation 1 passed sample/capture assertions
+rotation 2 passed sample/capture assertions
+rotation 3 passed sample/capture assertions
+SUMMARY 1 32 current idle [('thin-one', 5648.0, 10931.5), ('pgo', 5393.0, 21096.0)] change% -4.51
+SUMMARY 1 32 current play [('thin-one', 7085.5, 12724.0), ('pgo', 6659.5, 19418.5)] change% -6.01
+SUMMARY 1 32 current record [('thin-one', 8687.5, 30530.0), ('pgo', 8067.0, 35773.0)] change% -7.14
+SUMMARY 1 32 compact idle [('thin-one', 3771.0, 4917.0), ('pgo', 3410.0, 13825.5)] change% -9.57
+SUMMARY 1 32 compact play [('thin-one', 5623.5, 14747.0), ('pgo', 5102.5, 9999.5)] change% -9.26
+SUMMARY 1 32 compact record [('thin-one', 6269.0, 19168.0), ('pgo', 5918.5, 17536.0)] change% -5.59
+SUMMARY 1 256 current idle [('thin-one', 36859.0, 104223.0), ('pgo', 34200.0, 61415.5)] change% -7.21
+SUMMARY 1 256 current play [('thin-one', 48641.5, 91569.5), ('pgo', 46243.0, 123642.0)] change% -4.93
+SUMMARY 1 256 current record [('thin-one', 63433.5, 117203.0), ('pgo', 58331.0, 130447.0)] change% -8.04
+SUMMARY 1 256 compact idle [('thin-one', 22308.0, 62241.5), ('pgo', 19879.5, 50775.0)] change% -10.89
+SUMMARY 1 256 compact play [('thin-one', 36974.0, 77960.0), ('pgo', 33760.0, 53694.0)] change% -8.69
+SUMMARY 1 256 compact record [('thin-one', 42337.5, 82175.5), ('pgo', 39683.5, 107348.0)] change% -6.27
+SUMMARY 4 32 current idle [('thin-one', 15292.5, 32497.5), ('pgo', 13885.0, 31386.5)] change% -9.2
+SUMMARY 4 32 current play [('thin-one', 21477.0, 75782.0), ('pgo', 19409.0, 52943.0)] change% -9.63
+SUMMARY 4 32 current record [('thin-one', 27190.0, 65492.0), ('pgo', 24571.0, 68591.0)] change% -9.63
+SUMMARY 4 32 compact idle [('thin-one', 9554.5, 21841.5), ('pgo', 8067.0, 18827.5)] change% -15.57
+SUMMARY 4 32 compact play [('thin-one', 16945.0, 59172.5), ('pgo', 15162.5, 45386.5)] change% -10.52
+SUMMARY 4 32 compact record [('thin-one', 18938.0, 53473.5), ('pgo', 16824.5, 45712.5)] change% -11.16
+SUMMARY 4 256 current idle [('thin-one', 115209.5, 199318.5), ('pgo', 103002.0, 155349.0)] change% -10.6
+SUMMARY 4 256 current play [('thin-one', 163696.0, 214476.0), ('pgo', 145509.5, 314618.5)] change% -11.11
+SUMMARY 4 256 current record [('thin-one', 209959.0, 332830.0), ('pgo', 188893.0, 330767.5)] change% -10.03
+SUMMARY 4 256 compact idle [('thin-one', 67940.0, 157512.5), ('pgo', 57394.5, 110417.5)] change% -15.52
+SUMMARY 4 256 compact play [('thin-one', 128579.5, 241790.5), ('pgo', 113647.5, 192182.5)] change% -11.61
+SUMMARY 4 256 compact record [('thin-one', 141703.5, 262576.5), ('pgo', 127267.5, 274479.0)] change% -10.19

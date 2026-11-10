@@ -1,0 +1,102 @@
+--- a/src/rust/shoop_rt_engine/src/cells.rs
++++ b/src/rust/shoop_rt_engine/src/cells.rs
+@@ -381,18 +381,40 @@
+     }
+ }
+ 
+-/// Publishes settled loop state at every boundary.
++#[derive(Clone, Copy, Eq, PartialEq)]
++struct StoppedPublication {
++    epoch: rt_runtime::Epoch,
++    pending: Option<(u32, u32, Mode)>,
++    generation: u32,
++    length: u64,
++    content_revision: u64,
++    timing_revision: u64,
++    position: u64,
++    capture_incomplete: bool,
++}
++
++/// Publishes settled loop state.
+ pub(crate) struct Observer(
+     pub Arc<Cells>,
+     pub rt_runtime::Epoch,
+     pub(crate) super::monitoring::Demand,
+     Box<[Option<(u32, u32, Mode)>]>,
++    Box<[Option<StoppedPublication>]>,
+ );
+ impl Observer {
+-    pub(crate) fn new(cells: Arc<Cells>) -> Self {
++    pub(crate) fn new(cells: Arc<Cells>, cache_stopped: bool) -> Self {
+         let demand = super::monitoring::Demand::new(cells.loops.len());
+         let pending = alloc::vec![None; cells.loops.len()].into_boxed_slice();
+-        Self(cells, rt_runtime::Epoch(0), demand, pending)
++        let slots = if cache_stopped {
++            cells.loops.len() + 1
++        } else {
++            0
++        };
++        let mut stopped = alloc::vec![None; slots].into_boxed_slice();
++        for value in &mut stopped {
++            *core::hint::black_box(value) = None;
++        }
++        Self(cells, rt_runtime::Epoch(0), demand, pending, stopped)
+     }
+ }
+ 
+@@ -452,8 +474,31 @@
+             let Some(cells) = self.0.loops.get(state.id.slot() as usize) else {
+                 continue;
+             };
++            let generation = state.id.generation();
++            let pending =
++                self.3[state.id.slot() as usize].filter(|(owner, _, _)| *owner == generation);
++            if let Some(cached) = self.4.get_mut(state.id.slot() as usize) {
++                if state.mode == Mode::Stopped && state.composite.is_none() {
++                    let publication = StoppedPublication {
++                        epoch: self.1,
++                        pending,
++                        generation,
++                        length: state.content_length,
++                        content_revision: state.content_revision.0,
++                        timing_revision: state.timing_revision,
++                        position: state.position,
++                        capture_incomplete: state.capture_incomplete,
++                    };
++                    // Primitive stopped telemetry has no public frame stamp.
++                    if state.last_pulse != Some(frame) && *cached == Some(publication) {
++                        continue;
++                    }
++                    *cached = Some(publication);
++                } else if cached.is_some() {
++                    *cached = None;
++                }
++            }
+             let publication = cells.publication.fetch_add(1, Ordering::SeqCst);
+-            let generation = state.id.generation();
+             if cells.generation.load(Ordering::SeqCst) != generation {
+                 cells.pulses.store(0, Ordering::SeqCst);
+                 cells.generation.store(generation, Ordering::SeqCst);
+@@ -461,8 +506,6 @@
+             if state.last_pulse == Some(frame) {
+                 cells.pulses.fetch_add(1, Ordering::SeqCst);
+             }
+-            let pending =
+-                self.3[state.id.slot() as usize].filter(|(owner, _, _)| *owner == generation);
+             cells.pending_mode.store(
+                 pending.map_or(0, |(_, _, mode)| mode_code(mode) + 1),
+                 Ordering::SeqCst,
+--- a/src/rust/shoop_rt_engine/src/lib.rs
++++ b/src/rust/shoop_rt_engine/src/lib.rs
+@@ -561,7 +561,10 @@
+                 sources: 2 * loops + 2,
+                 source_packets_per_callback: 64,
+             },
+-            observer: Some(Box::new(Observer::new(cells.clone()))),
++            observer: Some(Box::new(Observer::new(
++                cells.clone(),
++                description.audio_render_mode == rt_runtime::AudioRenderMode::Compact,
++            ))),
+         },
+     )?;
+     let input_capacity = input::Stage::capacity(&shared_settings);

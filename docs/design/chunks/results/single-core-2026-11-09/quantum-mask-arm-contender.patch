@@ -1,0 +1,29 @@
+--- a/src/rust/rt_runtime/src/quantum.rs
++++ b/src/rust/rt_runtime/src/quantum.rs
+@@ -21,11 +21,11 @@
+         self.0 as usize
+     }
+     pub fn aligned(self, frame: Frame) -> bool {
+-        frame.0 % self.0 as u64 == 0
++        frame.0 & (self.0 as u64 - 1) == 0
+     }
+     pub fn ceil(self, frame: Frame) -> Result<Frame, Error> {
+         let q = self.0 as u64;
+-        let remainder = frame.0 % q;
++        let remainder = frame.0 & (q - 1);
+         frame
+             .0
+             .checked_add(if remainder == 0 { 0 } else { q - remainder })
+--- a/src/rust/shoop_loops/src/resolver/compact.rs
++++ b/src/rust/shoop_loops/src/resolver/compact.rs
+@@ -82,9 +82,7 @@
+                     }
+                 }
+             }
+-            if state.content_length % q != 0
+-                || state.position % q != 0
+-                || state.capture_frames % q != 0
++            if (state.content_length | state.position | state.capture_frames) & (q - 1) != 0
+                 || state.advances()
+                     && state
+                         .position

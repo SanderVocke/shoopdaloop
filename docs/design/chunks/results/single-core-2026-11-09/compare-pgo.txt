@@ -1,0 +1,28 @@
+rotation 0 passed sample/capture assertions
+rotation 1 passed sample/capture assertions
+rotation 2 passed sample/capture assertions
+rotation 3 passed sample/capture assertions
+SUMMARY 32 current idle [('thin-one', 29423.0, 47290.0), ('pgo', 26524.0, 45307.0)] change% -9.85
+SUMMARY 32 current play [('thin-one', 43089.0, 88259.5), ('pgo', 38536.5, 67264.5)] change% -10.57
+SUMMARY 32 current record [('thin-one', 54400.0, 81139.5), ('pgo', 49483.0, 99616.5)] change% -9.04
+SUMMARY 32 chunks idle [('thin-one', 51035.5, 95720.5), ('pgo', 45717.5, 96657.5)] change% -10.42
+SUMMARY 32 chunks play [('thin-one', 76347.5, 129881.5), ('pgo', 70664.0, 129380.5)] change% -7.44
+SUMMARY 32 chunks record [('thin-one', 78430.5, 144212.5), ('pgo', 72051.0, 114804.5)] change% -8.13
+SUMMARY 32 chunks-descriptors idle [('thin-one', 50724.5, 110468.0), ('pgo', 45792.5, 100613.0)] change% -9.72
+SUMMARY 32 chunks-descriptors play [('thin-one', 76863.5, 120572.0), ('pgo', 70474.0, 108745.0)] change% -8.31
+SUMMARY 32 chunks-descriptors record [('thin-one', 78270.0, 141338.0), ('pgo', 72146.0, 121789.0)] change% -7.82
+SUMMARY 32 compact idle [('thin-one', 18021.5, 36148.0), ('pgo', 15202.5, 34575.5)] change% -15.64
+SUMMARY 32 compact play [('thin-one', 33204.0, 75912.0), ('pgo', 29959.0, 70208.0)] change% -9.77
+SUMMARY 32 compact record [('thin-one', 36619.0, 56679.0), ('pgo', 32638.5, 70303.5)] change% -10.87
+SUMMARY 256 current idle [('thin-one', 226969.0, 324492.5), ('pgo', 202829.0, 359284.0)] change% -10.64
+SUMMARY 256 current play [('thin-one', 347902.5, 498559.0), ('pgo', 316271.0, 543079.5)] change% -9.09
+SUMMARY 256 current record [('thin-one', 440894.0, 610739.5), ('pgo', 391517.0, 548522.5)] change% -11.2
+SUMMARY 256 chunks idle [('thin-one', 400629.5, 565728.0), ('pgo', 351913.5, 519690.5)] change% -12.16
+SUMMARY 256 chunks play [('thin-one', 613308.5, 905394.0), ('pgo', 560725.5, 814058.5)] change% -8.57
+SUMMARY 256 chunks record [('thin-one', 634339.0, 875700.0), ('pgo', 578371.5, 841123.5)] change% -8.82
+SUMMARY 256 chunks-descriptors idle [('thin-one', 395643.0, 540286.0), ('pgo', 353466.0, 475005.0)] change% -10.66
+SUMMARY 256 chunks-descriptors play [('thin-one', 614230.0, 759598.5), ('pgo', 565342.0, 795020.5)] change% -7.96
+SUMMARY 256 chunks-descriptors record [('thin-one', 627369.0, 828705.0), ('pgo', 577901.0, 773969.5)] change% -7.88
+SUMMARY 256 compact idle [('thin-one', 131433.5, 236082.5), ('pgo', 109971.5, 181803.0)] change% -16.33
+SUMMARY 256 compact play [('thin-one', 274044.0, 466277.0), ('pgo', 251235.0, 386539.0)] change% -8.32
+SUMMARY 256 compact record [('thin-one', 284384.0, 561357.0), ('pgo', 246353.0, 435316.0)] change% -13.37

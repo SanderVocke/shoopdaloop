@@ -1054,7 +1054,9 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
-            compact: resources.audio_render_mode() == rt_runtime::AudioRenderMode::Compact,
+            compact: resources.audio_render_mode() == rt_runtime::AudioRenderMode::Compact
+                || (resources.audio_render_mode() == rt_runtime::AudioRenderMode::Current
+                    && midi_slots == 0),
             compact_views_ready: false,
             compact_view_tick: false,
             shared: None,

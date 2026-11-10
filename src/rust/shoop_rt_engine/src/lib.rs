@@ -561,7 +561,10 @@ fn prepare_complete(
                 sources: 2 * loops + 2,
                 source_packets_per_callback: 64,
             },
-            observer: Some(Box::new(Observer::new(cells.clone()))),
+            observer: Some(Box::new(Observer::new(
+                cells.clone(),
+                description.audio_render_mode == rt_runtime::AudioRenderMode::Compact,
+            ))),
         },
     )?;
     let input_capacity = input::Stage::capacity(&shared_settings);

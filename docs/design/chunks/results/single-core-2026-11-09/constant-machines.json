@@ -1,0 +1,112 @@
+{
+  "callback-constant-32": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "affinity": [
+      0
+    ],
+    "command": [
+      "work/compare.py",
+      "--candidates",
+      "baseline=work/bin/host-baseline",
+      "constant=work/bin/host-constant",
+      "--launcher",
+      "work/bin/chunk_benchmark",
+      "--output",
+      "work/callback-constant-32",
+      "--callbacks",
+      "256",
+      "--buffer",
+      "32",
+      "--repeats",
+      "3"
+    ],
+    "hosts": {
+      "baseline": {
+        "path": "/workspace/shoopdaloop/work/bin/host-baseline",
+        "sha256": "da880643a84e5db7d6267cc1337bfe81dbba38771bcee986d870d6b16ad62e6c"
+      },
+      "constant": {
+        "path": "/workspace/shoopdaloop/work/bin/host-constant",
+        "sha256": "a9fad7a42486e01fcbf2139d075b678a628363f52c2b187482aa8d79916a76db"
+      }
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "callback-constant-256": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "affinity": [
+      0
+    ],
+    "command": [
+      "work/compare.py",
+      "--candidates",
+      "baseline=work/bin/host-baseline",
+      "constant=work/bin/host-constant",
+      "--launcher",
+      "work/bin/chunk_benchmark",
+      "--output",
+      "work/callback-constant-256",
+      "--callbacks",
+      "64",
+      "--buffer",
+      "256",
+      "--repeats",
+      "3"
+    ],
+    "hosts": {
+      "baseline": {
+        "path": "/workspace/shoopdaloop/work/bin/host-baseline",
+        "sha256": "da880643a84e5db7d6267cc1337bfe81dbba38771bcee986d870d6b16ad62e6c"
+      },
+      "constant": {
+        "path": "/workspace/shoopdaloop/work/bin/host-constant",
+        "sha256": "a9fad7a42486e01fcbf2139d075b678a628363f52c2b187482aa8d79916a76db"
+      }
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "dense-constant-32": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "affinity": [
+      0
+    ],
+    "command": [
+      "work/compare.py",
+      "--candidates",
+      "baseline=work/bin/host-baseline",
+      "constant=work/bin/host-constant",
+      "--launcher",
+      "work/bin/dense_chunk_benchmark",
+      "--output",
+      "work/dense-constant-32",
+      "--callbacks",
+      "256",
+      "--buffer",
+      "32",
+      "--repeats",
+      "4",
+      "--scenarios",
+      "idle",
+      "play",
+      "record",
+      "grab",
+      "--dense"
+    ],
+    "hosts": {
+      "baseline": {
+        "path": "/workspace/shoopdaloop/work/bin/host-baseline",
+        "sha256": "da880643a84e5db7d6267cc1337bfe81dbba38771bcee986d870d6b16ad62e6c"
+      },
+      "constant": {
+        "path": "/workspace/shoopdaloop/work/bin/host-constant",
+        "sha256": "a9fad7a42486e01fcbf2139d075b678a628363f52c2b187482aa8d79916a76db"
+      }
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "baseline_source": "69b52609b377e6ad558b7b2782da88d74a02c032",
+  "candidate_source_sha256": "d99d45774a13e61739c0666237191b0b176cc5ef5e35047d03300f59d7ed1dda"
+}

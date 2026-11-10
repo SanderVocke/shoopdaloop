@@ -309,7 +309,7 @@ impl ResourceStore {
             let ChunkRef::Persistent(reference) = sequence.spans[0].chunk else {
                 return Ok(false);
             };
-            if reference.first != channel || reference.stride != channels as usize {
+            if reference.first as usize != channel || reference.stride != channels {
                 return Ok(false);
             }
             if let Some(previous) = source {

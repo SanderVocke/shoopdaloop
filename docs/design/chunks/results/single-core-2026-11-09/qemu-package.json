@@ -1,0 +1,23 @@
+{
+  "Package": "qemu-user",
+  "Source": "qemu",
+  "Version": "1:10.0.13+ds-0+deb13u1",
+  "Installed-Size": "465171",
+  "Maintainer": "Debian QEMU Team <pkg-qemu-devel@lists.alioth.debian.org>",
+  "Architecture": "amd64",
+  "Replaces": "qemu-user-binfmt (<< 1:9.1.0), qemu-user-static (<< 1:9.1.0)",
+  "Recommends": "qemu-user-binfmt",
+  "Breaks": "qemu-user-binfmt (<< 1:9.1.0), qemu-user-static (<< 1:9.1.0)",
+  "Description": "QEMU user mode emulation (static binaries)",
+  "Multi-Arch": "foreign",
+  "Homepage": "http://www.qemu.org/",
+  "Built-Using": "capstone (= 5.0.7-1~deb13u1), gcc-14 (= 14.2.0-19), glib2.0 (= 2.84.4-3~deb13u5), glibc (= 2.41-12+deb13u3), sysprof (= 48.0-2), zlib (= 1:1.3.dfsg+really1.3.1-1)",
+  "Description-md5": "ac1d9a9271c8a65efd1b2a07327a5b98",
+  "Tag": "admin::kernel, admin::virtualization, devel::lang:c, devel::lang:python,",
+  "Section": "otherosfs",
+  "Priority": "optional",
+  "Filename": "pool/main/q/qemu/qemu-user_10.0.13+ds-0+deb13u1_amd64.deb",
+  "Size": "71089852",
+  "MD5sum": "516df209f7b82febaf9aeda1632f9cb4",
+  "SHA256": "ca6ede739327a20ae5a3498230c8a3a9a072c586e131bc6bcc1201eb1725e336"
+}

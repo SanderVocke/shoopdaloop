@@ -1,0 +1,56 @@
+--- a/src/rust/rt_runtime/src/audio_refs.rs
++++ b/src/rust/rt_runtime/src/audio_refs.rs
+@@ -311,6 +311,7 @@
+         0.
+     };
+     let mut gain = sequence.gain.start;
++    let constant = gain.is_finite() && gain != 0. && gain == sequence.gain.end;
+     for span in &mut sequence.spans[..sequence.len] {
+         let count = span.frames;
+         if count > frames - at {
+@@ -335,22 +336,34 @@
+                     _ => before.get(offset..offset + count),
+                 }
+                 .ok_or(Error::InvalidState)?;
+-                for (i, &sample) in samples.iter().enumerate() {
+-                    if at + i + 1 == frames && frames > 1 {
+-                        gain = sequence.gain.end;
++                if constant {
++                    for (i, &sample) in samples.iter().enumerate() {
++                        consume(at + i, sample * gain);
+                     }
+-                    consume(at + i, sample * gain);
+-                    gain += step;
+-                }
+-            }
+-            ChunkRef::Persistent(reference) => {
+-                resources.visit_audio_chunk(reference, count, |samples, first, stride| {
+-                    for i in 0..count {
++                } else {
++                    for (i, &sample) in samples.iter().enumerate() {
+                         if at + i + 1 == frames && frames > 1 {
+                             gain = sequence.gain.end;
+                         }
+-                        consume(at + i, samples[first + i * stride] * gain);
++                        consume(at + i, sample * gain);
+                         gain += step;
++                    }
++                }
++            }
++            ChunkRef::Persistent(reference) => {
++                resources.visit_audio_chunk(reference, count, |samples, first, stride| {
++                    if constant {
++                        for i in 0..count {
++                            consume(at + i, samples[first + i * stride] * gain);
++                        }
++                    } else {
++                        for i in 0..count {
++                            if at + i + 1 == frames && frames > 1 {
++                                gain = sequence.gain.end;
++                            }
++                            consume(at + i, samples[first + i * stride] * gain);
++                            gain += step;
++                        }
+                     }
+                 })?;
+             }

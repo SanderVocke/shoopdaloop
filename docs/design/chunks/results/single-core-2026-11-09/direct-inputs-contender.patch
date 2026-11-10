@@ -1,0 +1,166 @@
+--- a/src/rust/rt_runtime/src/executor_compact.rs
++++ b/src/rust/rt_runtime/src/executor_compact.rs
+@@ -14,6 +14,7 @@
+     end: usize,
+     output: usize,
+     outputs: usize,
++    direct: Option<usize>,
+ }
+ 
+ pub(super) struct Program {
+@@ -35,7 +36,8 @@
+                 first: 0,
+                 end: 0,
+                 output: 0,
+-                outputs: 0
++                outputs: 0,
++                direct: None
+             };
+             limits.max_nodes
+         ];
+@@ -106,12 +108,26 @@
+                     port: edge.destination.port as usize,
+                 });
+             }
++            let routes = &self.inputs[begin..];
++            let output = self.bases[step.node.slot() as usize];
++            let direct = routes.first().and_then(|first| {
++                let end = first.wire + slot.ports.audio_inputs;
++                (routes.len() == slot.ports.audio_inputs
++                    && end <= self.host
++                    && (end <= output || output + slot.ports.audio_outputs <= first.wire)
++                    && routes
++                        .iter()
++                        .enumerate()
++                        .all(|(port, route)| route.port == port && route.wire == first.wire + port))
++                .then_some(first.wire)
++            });
+             self.operations.push(Operation {
+                 node: step.node,
+                 first: begin,
+                 end: self.inputs.len(),
+                 output: self.bases[step.node.slot() as usize],
+                 outputs: slot.ports.audio_outputs,
++                direct,
+             });
+             first = step.input_end;
+         }
+@@ -209,31 +225,54 @@
+                 nodes += 1;
+                 edges += op.end - op.first;
+                 let buffers = &mut slot.buffers;
+-                buffers.input_sequences.fill(AudioSequence::default());
+-                buffers.input_mixed.fill(false);
+-                for index in op.first..op.end {
+-                    let route = program.inputs[index];
+-                    let source = program.source(route.wire, &mut arena, audio, start, q)?;
+-                    let input = &mut buffers.input_sequences[route.port];
+-                    if input.silent() {
+-                        *input = source;
+-                        arena.work.forwarded += 1;
+-                    } else if !source.silent() {
+-                        let offset = if buffers.input_mixed[route.port] {
+-                            let ChunkRef::Transient { offset, .. } = input.spans[0].chunk else {
+-                                return Err(Error::InvalidState);
++                if op.direct.is_none() {
++                    buffers.input_sequences.fill(AudioSequence::default());
++                    buffers.input_mixed.fill(false);
++                    for index in op.first..op.end {
++                        let route = program.inputs[index];
++                        let source = program.source(route.wire, &mut arena, audio, start, q)?;
++                        let input = &mut buffers.input_sequences[route.port];
++                        if input.silent() {
++                            *input = source;
++                            arena.work.forwarded += 1;
++                        } else if !source.silent() {
++                            let offset = if buffers.input_mixed[route.port] {
++                                let ChunkRef::Transient { offset, .. } = input.spans[0].chunk
++                                else {
++                                    return Err(Error::InvalidState);
++                                };
++                                offset
++                            } else {
++                                let offset = arena.allocate(q)?;
++                                arena.accumulate(*input, offset, q, &self.resources)?;
++                                *input = arena.transient(offset, q);
++                                buffers.input_mixed[route.port] = true;
++                                offset
+                             };
+-                            offset
+-                        } else {
+-                            let offset = arena.allocate(q)?;
+-                            arena.accumulate(*input, offset, q, &self.resources)?;
+-                            *input = arena.transient(offset, q);
+-                            buffers.input_mixed[route.port] = true;
+-                            offset
+-                        };
+-                        arena.accumulate(source, offset, q, &self.resources)?;
++                            arena.accumulate(source, offset, q, &self.resources)?;
++                        }
+                     }
+-                }
++                } else {
++                    arena.work.forwarded += (op.end - op.first) as u64;
++                }
++                let (inputs, outputs) = if let Some(first) = op.direct {
++                    let count = op.end - op.first;
++                    if first < op.output {
++                        let (before, after) = program.wires.split_at_mut(op.output);
++                        (&before[first..first + count], &mut after[..op.outputs])
++                    } else {
++                        let (before, after) = program.wires.split_at_mut(first);
++                        (
++                            &after[..count],
++                            &mut before[op.output..op.output + op.outputs],
++                        )
++                    }
++                } else {
++                    (
++                        &buffers.input_sequences[..],
++                        &mut program.wires[op.output..op.output + op.outputs],
++                    )
++                };
+                 let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
+                 let handled = processor.process_references(&mut ReferenceBlock {
+                     borrow_persistent: true,
+@@ -241,14 +280,14 @@
+                     frame,
+                     graph_epoch: self.epoch,
+                     quantum,
+-                    inputs: &buffers.input_sequences,
+-                    outputs: &mut program.wires[op.output..op.output + op.outputs],
++                    inputs,
++                    outputs: &mut *outputs,
+                     arena: &mut arena,
+                     resources: &mut self.resources,
+                     domain: &mut self.planner,
+                 })?;
+                 if !handled {
+-                    for (port, &sequence) in buffers.input_sequences.iter().enumerate() {
++                    for (port, &sequence) in inputs.iter().enumerate() {
+                         arena.read_into(
+                             sequence,
+                             &mut buffers.input[port * q..(port + 1) * q],
+@@ -277,10 +316,7 @@
+                         resources: self.resources.io(),
+                         domain: &mut self.planner,
+                     })?;
+-                    for (port, output) in program.wires[op.output..op.output + op.outputs]
+-                        .iter_mut()
+-                        .enumerate()
+-                    {
++                    for (port, output) in outputs.iter_mut().enumerate() {
+                         *output = arena.transient(offset + port * q, q);
+                     }
+                 }
+@@ -290,8 +326,8 @@
+                     frame,
+                     graph_epoch: self.epoch,
+                     quantum,
+-                    inputs: &buffers.input_sequences,
+-                    outputs: &mut program.wires[op.output..op.output + op.outputs],
++                    inputs,
++                    outputs: &mut *outputs,
+                     arena: &mut arena,
+                     resources: &mut self.resources,
+                     domain: &mut self.planner,

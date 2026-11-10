@@ -1,0 +1,28 @@
+--- a/src/rust/rt_runtime/src/audio_refs.rs
++++ b/src/rust/rt_runtime/src/audio_refs.rs
+@@ -352,6 +352,25 @@
+             }
+             ChunkRef::Persistent(reference) => {
+                 resources.visit_audio_chunk(reference, count, |samples, first, stride| {
++                    if constant && stride == 2 && count >= 4 {
++                        let source = &samples[first..];
++                        let groups = (count / 4).min(source.len() / 8);
++                        for (group, samples) in source[..groups * 8].chunks_exact(8).enumerate() {
++                            let values = [
++                                samples[0] * gain,
++                                samples[2] * gain,
++                                samples[4] * gain,
++                                samples[6] * gain,
++                            ];
++                            for (lane, sample) in values.into_iter().enumerate() {
++                                consume(at + group * 4 + lane, sample);
++                            }
++                        }
++                        for i in groups * 4..count {
++                            consume(at + i, source[i * 2] * gain);
++                        }
++                        return;
++                    }
+                     if constant {
+                         for i in 0..count {
+                             consume(at + i, samples[first + i * stride] * gain);

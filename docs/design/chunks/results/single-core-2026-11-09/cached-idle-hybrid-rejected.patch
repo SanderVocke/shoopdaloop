@@ -1,0 +1,132 @@
+--- a/src/rust/rt_runtime/src/executor.rs
++++ b/src/rust/rt_runtime/src/executor.rs
+@@ -1380,15 +1380,24 @@
+         callback_start: Frame,
+         quantum: crate::Quantum,
+     ) -> Result<(), Error> {
+-        if self.compact.is_some() {
+-            return self.run_graph_compact(audio, start, callback_start, quantum);
+-        }
+-        if self.audio_arena.is_some() {
+-            return self.run_graph_references(audio, midi, start, callback_start, quantum);
++        let materialized = self.compact.is_some() && self.planner.prefer_materialized_audio();
++        if !materialized {
++            if self.compact.is_some() {
++                return self.run_graph_compact(audio, start, callback_start, quantum);
++            }
++            if self.audio_arena.is_some() {
++                return self.run_graph_references(audio, midi, start, callback_start, quantum);
++            }
+         }
+         let Some(plan) = &self.active else {
+             return Ok(());
+         };
++        if materialized {
++            self.compact
++                .as_mut()
++                .ok_or(Error::InvalidState)?
++                .ensure_compiled(plan, &self.slots, self.epoch, self.host_sequences.len())?;
++        }
+         let q = quantum.frames();
+         let frame = audio.frame().checked_add(start)?;
+         let mut first = 0;
+--- a/src/rust/rt_runtime/src/executor_compact.rs
++++ b/src/rust/rt_runtime/src/executor_compact.rs
+@@ -125,6 +125,19 @@
+             });
+         }
+         self.epoch = Some(epoch);
++        Ok(())
++    }
++
++    pub(super) fn ensure_compiled<P>(
++        &mut self,
++        plan: &PreparedPlan,
++        slots: &[Option<Slot<P>>],
++        epoch: Epoch,
++        hosts: usize,
++    ) -> Result<(), Error> {
++        if self.epoch != Some(epoch) {
++            self.compile(plan, slots, epoch, hosts)?;
++        }
+         Ok(())
+     }
+ 
+@@ -167,9 +180,7 @@
+             let Some(plan) = &self.active else {
+                 return Ok(());
+             };
+-            if program.epoch != Some(self.epoch) {
+-                program.compile(plan, &self.slots, self.epoch, self.host_sequences.len())?;
+-            }
++            program.ensure_compiled(plan, &self.slots, self.epoch, self.host_sequences.len())?;
+             program.wires[program.host..program.host + self.host_sequences.len()]
+                 .fill(AudioSequence::default());
+             let q = quantum.frames();
+--- a/src/rust/rt_runtime/src/planner.rs
++++ b/src/rust/rt_runtime/src/planner.rs
+@@ -57,6 +57,11 @@
+     fn operation_bytes(&self) -> usize {
+         0
+     }
++    /// Prefer ordinary sample processing when it preserves every effect of the
++    /// prepared reference processors for this interval.
++    fn prefer_materialized_audio(&self) -> bool {
++        false
++    }
+     fn validate_quantum(&self, _quantum: Quantum) -> Result<(), Error> {
+         Ok(())
+     }
+--- a/src/rust/shoop_loops/src/runtime/mod.rs
++++ b/src/rust/shoop_loops/src/runtime/mod.rs
+@@ -660,6 +660,7 @@
+     compact: bool,
+     compact_views_ready: bool,
+     compact_view_tick: bool,
++    materialized_candidate: bool,
+     shared: Option<shared::Shared>,
+     wet_edits: Option<AudioStoreId>,
+     observer: Box<dyn BoundaryObserver>,
+@@ -1059,6 +1060,7 @@
+                     && midi_slots == 0),
+             compact_views_ready: false,
+             compact_view_tick: false,
++            materialized_candidate: false,
+             shared: None,
+             wet_edits: None,
+             observer,
+--- a/src/rust/shoop_loops/src/runtime/planner.rs
++++ b/src/rust/shoop_loops/src/runtime/planner.rs
+@@ -1100,6 +1100,9 @@
+     }
+ }
+ impl Planner for LoopPlanner {
++    fn prefer_materialized_audio(&self) -> bool {
++        self.compact_view_tick && self.materialized_candidate
++    }
+     fn validate_quantum(&self, quantum: rt_runtime::Quantum) -> Result<(), Error> {
+         if quantum != self.resolver.quantum() {
+             return Err(Error::InvalidConfig);
+@@ -1162,12 +1165,14 @@
+             shared.finish(end, self.graph_epoch, &mut context.resources)?;
+         }
+         if self.compact && !self.compact_view_tick {
++            let mut stopped = true;
+             self.compact_views_ready = self.pending.iter().all(Option::is_none)
+                 && self.rows.iter().enumerate().all(|(slot, row)| {
+                     let Some(row) = row.as_ref().filter(|r| r.assigned) else {
+                         return true;
+                     };
+                     let view = &self.views[slot];
++                    stopped &= view.decision.state.mode == Mode::Stopped;
+                     row.active.is_none()
+                         && !row.aborted
+                         && !view.lead
+@@ -1180,6 +1185,7 @@
+                             .iter()
+                             .all(|w| w.origin() == 0 && w.preplay == 0)
+                 });
++            self.materialized_candidate = self.compact_views_ready && stopped;
+         }
+         Ok(())
+     }

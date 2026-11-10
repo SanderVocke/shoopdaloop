@@ -293,8 +293,8 @@ impl AudioStore {
                     chunk: ChunkRef::Persistent(super::AudioChunkRef {
                         store,
                         lease,
-                        first: channel,
-                        stride: self.channels,
+                        first: channel as u32,
+                        stride: self.channels as u32,
                     }),
                     frames: self.page_frames,
                 },
@@ -388,8 +388,8 @@ impl AudioStore {
                 chunk: ChunkRef::Persistent(super::AudioChunkRef {
                     store,
                     lease,
-                    first: physical % self.page_frames * self.channels + channel,
-                    stride: self.channels,
+                    first: (physical % self.page_frames * self.channels + channel) as u32,
+                    stride: self.channels as u32,
                 }),
                 frames: count,
             };

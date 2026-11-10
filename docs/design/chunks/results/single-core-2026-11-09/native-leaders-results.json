@@ -1,0 +1,2434 @@
+[
+  {
+    "mode": "current",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 42.1225,
+    "p95_us": 65.687,
+    "p99_us": 98.114,
+    "max_us": 130.112,
+    "overruns": 0,
+    "late_p99_us": 189.049,
+    "late_max_us": 1988.392,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 76032,
+        "max": 76032
+      },
+      "resource_steps": {
+        "mean": 484.83984375,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.83984375,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 428.5,
+        "max": 496
+      },
+      "index_live": {
+        "mean": 995.3125,
+        "max": 1132
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/0-current",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 32.8535,
+    "p95_us": 43.804,
+    "p99_us": 88.49,
+    "max_us": 122.991,
+    "overruns": 0,
+    "late_p99_us": 193.327,
+    "late_max_us": 527.428,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 36,
+        "max": 36
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 115,
+        "max": 115
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 6531.5,
+        "max": 7679
+      },
+      "index_live": {
+        "mean": 42.1171875,
+        "max": 45
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/0-compact",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 63.2935,
+    "p95_us": 119.927,
+    "p99_us": 255.806,
+    "max_us": 289.987,
+    "overruns": 0,
+    "late_p99_us": 209.712,
+    "late_max_us": 297.523,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92416,
+        "max": 92416
+      },
+      "resource_steps": {
+        "mean": 484.875,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 1212.6875,
+        "max": 1283
+      },
+      "index_live": {
+        "mean": 2553.375,
+        "max": 2694
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/0-current",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 58.561,
+    "p95_us": 134.318,
+    "p99_us": 663.597,
+    "max_us": 1068.503,
+    "overruns": 2,
+    "late_p99_us": 469.596,
+    "late_max_us": 500.334,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2372,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 37.0625,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 434.734375,
+        "max": 435
+      },
+      "materialized": {
+        "mean": 29.1328125,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 6368,
+        "max": 6368
+      },
+      "sample_writes": {
+        "mean": 10129,
+        "max": 10240
+      },
+      "arena_peak_samples": {
+        "mean": 3537,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 19295.5,
+        "max": 20443
+      },
+      "index_live": {
+        "mean": 219.8984375,
+        "max": 227
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/0-compact",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 78.32499999999999,
+    "p95_us": 179.464,
+    "p99_us": 254.915,
+    "max_us": 2647.218,
+    "overruns": 1,
+    "late_p99_us": 371.273,
+    "late_max_us": 792.534,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 100608,
+        "max": 100608
+      },
+      "resource_steps": {
+        "mean": 484.91015625,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 117,
+        "max": 117
+      },
+      "nodes_skipped": {
+        "mean": 99,
+        "max": 99
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.91015625,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 776.0625,
+        "max": 852
+      },
+      "index_live": {
+        "mean": 1677.40234375,
+        "max": 1822
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/0-current",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 61.09,
+    "p95_us": 103.573,
+    "p99_us": 141.869,
+    "max_us": 291.299,
+    "overruns": 0,
+    "late_p99_us": 1259.975,
+    "late_max_us": 1917.949,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 164,
+        "max": 164
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 243,
+        "max": 243
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.16015625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 32,
+        "max": 32
+      },
+      "payload_live": {
+        "mean": 12260.5,
+        "max": 13408
+      },
+      "index_live": {
+        "mean": 199.8515625,
+        "max": 222
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/0-compact",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 72.952,
+    "p95_us": 112.806,
+    "p99_us": 155.489,
+    "max_us": 306.251,
+    "overruns": 0,
+    "late_p99_us": 216.059,
+    "late_max_us": 582.78,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92928,
+        "max": 92928
+      },
+      "resource_steps": {
+        "mean": 2788.875,
+        "max": 2790
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 2071.375,
+        "max": 2140
+      },
+      "index_live": {
+        "mean": 5173.75,
+        "max": 5320
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/0-current",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 61.144999999999996,
+    "p95_us": 110.633,
+    "p99_us": 162.559,
+    "max_us": 180.687,
+    "overruns": 0,
+    "late_p99_us": 260.142,
+    "late_max_us": 643.642,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2634,
+        "max": 19200
+      },
+      "resource_steps": {
+        "mean": 41.15625,
+        "max": 300
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 443.7109375,
+        "max": 445
+      },
+      "materialized": {
+        "mean": 30.64453125,
+        "max": 63
+      },
+      "sample_reads": {
+        "mean": 6496,
+        "max": 6496
+      },
+      "sample_writes": {
+        "mean": 10290.5,
+        "max": 14432
+      },
+      "arena_peak_samples": {
+        "mean": 3634.5,
+        "max": 7776
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 28329.5,
+        "max": 29477
+      },
+      "index_live": {
+        "mean": 273.17578125,
+        "max": 282
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/0-compact",
+    "repeat": 0,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 34.696,
+    "p95_us": 91.044,
+    "p99_us": 282.546,
+    "max_us": 2195.112,
+    "overruns": 1,
+    "late_p99_us": 1695.468,
+    "late_max_us": 2007.916,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 36,
+        "max": 36
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 115,
+        "max": 115
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 6535.5,
+        "max": 7683
+      },
+      "index_live": {
+        "mean": 42.36328125,
+        "max": 45
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/1-compact",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 42.552499999999995,
+    "p95_us": 99.226,
+    "p99_us": 310.597,
+    "max_us": 1128.502,
+    "overruns": 1,
+    "late_p99_us": 263.626,
+    "late_max_us": 333.792,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 76032,
+        "max": 76032
+      },
+      "resource_steps": {
+        "mean": 484.83984375,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.83984375,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 412.375,
+        "max": 481
+      },
+      "index_live": {
+        "mean": 959.8671875,
+        "max": 1100
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/1-current",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 59.5475,
+    "p95_us": 102.851,
+    "p99_us": 149.731,
+    "max_us": 322.976,
+    "overruns": 0,
+    "late_p99_us": 373.596,
+    "late_max_us": 3456.887,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2354,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 36.78125,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 434.8046875,
+        "max": 435
+      },
+      "materialized": {
+        "mean": 29.09765625,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 6368,
+        "max": 6368
+      },
+      "sample_writes": {
+        "mean": 10124.5,
+        "max": 10240
+      },
+      "arena_peak_samples": {
+        "mean": 3532.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 19424.5,
+        "max": 20572
+      },
+      "index_live": {
+        "mean": 220.53125,
+        "max": 227
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/1-compact",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 62.407,
+    "p95_us": 112.245,
+    "p99_us": 160.887,
+    "max_us": 188.547,
+    "overruns": 0,
+    "late_p99_us": 159.938,
+    "late_max_us": 172.003,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92416,
+        "max": 92416
+      },
+      "resource_steps": {
+        "mean": 484.875,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 1207.6875,
+        "max": 1278
+      },
+      "index_live": {
+        "mean": 2541.375,
+        "max": 2691
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/1-current",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 58.842,
+    "p95_us": 111.334,
+    "p99_us": 319.621,
+    "max_us": 500.507,
+    "overruns": 0,
+    "late_p99_us": 281.6,
+    "late_max_us": 1032.652,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 164,
+        "max": 164
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 243,
+        "max": 243
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.16015625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 32,
+        "max": 32
+      },
+      "payload_live": {
+        "mean": 12449.5,
+        "max": 13597
+      },
+      "index_live": {
+        "mean": 202.7109375,
+        "max": 223
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/1-compact",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 76.18199999999999,
+    "p95_us": 144.533,
+    "p99_us": 202.608,
+    "max_us": 250.589,
+    "overruns": 0,
+    "late_p99_us": 160.873,
+    "late_max_us": 311.377,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 100608,
+        "max": 100608
+      },
+      "resource_steps": {
+        "mean": 484.91015625,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 117,
+        "max": 117
+      },
+      "nodes_skipped": {
+        "mean": 99,
+        "max": 99
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.91015625,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 773.375,
+        "max": 842
+      },
+      "index_live": {
+        "mean": 1673.1328125,
+        "max": 1812
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/1-current",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 61.43,
+    "p95_us": 124.363,
+    "p99_us": 199.885,
+    "max_us": 254.075,
+    "overruns": 0,
+    "late_p99_us": 242.518,
+    "late_max_us": 256.139,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 36,
+        "max": 36
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 445,
+        "max": 445
+      },
+      "materialized": {
+        "mean": 30,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 6496,
+        "max": 6496
+      },
+      "sample_writes": {
+        "mean": 10208,
+        "max": 10208
+      },
+      "arena_peak_samples": {
+        "mean": 3552,
+        "max": 3552
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 28554.5,
+        "max": 29702
+      },
+      "index_live": {
+        "mean": 273.87890625,
+        "max": 282
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/1-compact",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 71.7555,
+    "p95_us": 118.315,
+    "p99_us": 173.386,
+    "max_us": 261.695,
+    "overruns": 0,
+    "late_p99_us": 159.0,
+    "late_max_us": 445.344,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92928,
+        "max": 92928
+      },
+      "resource_steps": {
+        "mean": 2788.875,
+        "max": 2790
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 2081.125,
+        "max": 2152
+      },
+      "index_live": {
+        "mean": 5199.25,
+        "max": 5350
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/1-current",
+    "repeat": 1,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 41.742000000000004,
+    "p95_us": 98.975,
+    "p99_us": 145.935,
+    "max_us": 172.664,
+    "overruns": 0,
+    "late_p99_us": 220.001,
+    "late_max_us": 2089.966,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 76032,
+        "max": 76032
+      },
+      "resource_steps": {
+        "mean": 484.83984375,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.83984375,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 427.5625,
+        "max": 499
+      },
+      "index_live": {
+        "mean": 991.19140625,
+        "max": 1136
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/2-current",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 36.3335,
+    "p95_us": 90.704,
+    "p99_us": 191.526,
+    "max_us": 4199.193,
+    "overruns": 2,
+    "late_p99_us": 663.876,
+    "late_max_us": 1283.653,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 36,
+        "max": 36
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 115,
+        "max": 115
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 6725.5,
+        "max": 7873
+      },
+      "index_live": {
+        "mean": 43.3828125,
+        "max": 45
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/2-compact",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 62.757,
+    "p95_us": 139.175,
+    "p99_us": 194.146,
+    "max_us": 236.858,
+    "overruns": 0,
+    "late_p99_us": 259.406,
+    "late_max_us": 630.208,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92416,
+        "max": 92416
+      },
+      "resource_steps": {
+        "mean": 484.875,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 1221.625,
+        "max": 1297
+      },
+      "index_live": {
+        "mean": 2568.25,
+        "max": 2728
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/2-current",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 60.734,
+    "p95_us": 118.855,
+    "p99_us": 190.941,
+    "max_us": 336.956,
+    "overruns": 0,
+    "late_p99_us": 269.288,
+    "late_max_us": 631.52,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2354,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 36.78125,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 434.8046875,
+        "max": 435
+      },
+      "materialized": {
+        "mean": 29.09765625,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 6368,
+        "max": 6368
+      },
+      "sample_writes": {
+        "mean": 10124.5,
+        "max": 10240
+      },
+      "arena_peak_samples": {
+        "mean": 3532.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 19362.5,
+        "max": 20510
+      },
+      "index_live": {
+        "mean": 220.56640625,
+        "max": 227
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/2-compact",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 80.238,
+    "p95_us": 122.57,
+    "p99_us": 177.422,
+    "max_us": 270.278,
+    "overruns": 0,
+    "late_p99_us": 247.951,
+    "late_max_us": 539.88,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 100608,
+        "max": 100608
+      },
+      "resource_steps": {
+        "mean": 484.91015625,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 117,
+        "max": 117
+      },
+      "nodes_skipped": {
+        "mean": 99,
+        "max": 99
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.91015625,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 778.375,
+        "max": 847
+      },
+      "index_live": {
+        "mean": 1680.1328125,
+        "max": 1819
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/2-current",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 58.521,
+    "p95_us": 75.762,
+    "p99_us": 113.968,
+    "max_us": 146.776,
+    "overruns": 0,
+    "late_p99_us": 211.935,
+    "late_max_us": 676.908,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 164,
+        "max": 164
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 243,
+        "max": 243
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.16015625,
+        "max": 10
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 32,
+        "max": 32
+      },
+      "payload_live": {
+        "mean": 12294.5,
+        "max": 13442
+      },
+      "index_live": {
+        "mean": 200.04296875,
+        "max": 222
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/2-compact",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 76.30199999999999,
+    "p95_us": 164.082,
+    "p99_us": 281.184,
+    "max_us": 414.39,
+    "overruns": 0,
+    "late_p99_us": 424.275,
+    "late_max_us": 1475.252,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92928,
+        "max": 92928
+      },
+      "resource_steps": {
+        "mean": 2788.875,
+        "max": 2790
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 2087.8125,
+        "max": 2157
+      },
+      "index_live": {
+        "mean": 5194.625,
+        "max": 5351
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/2-current",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 63.699,
+    "p95_us": 118.415,
+    "p99_us": 176.62,
+    "max_us": 217.47,
+    "overruns": 0,
+    "late_p99_us": 284.876,
+    "late_max_us": 688.6,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 36,
+        "max": 36
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 445,
+        "max": 445
+      },
+      "materialized": {
+        "mean": 30,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 6496,
+        "max": 6496
+      },
+      "sample_writes": {
+        "mean": 10208,
+        "max": 10208
+      },
+      "arena_peak_samples": {
+        "mean": 3552,
+        "max": 3552
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 28516.5,
+        "max": 29664
+      },
+      "index_live": {
+        "mean": 274.08984375,
+        "max": 282
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/2-compact",
+    "repeat": 2,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 32.8135,
+    "p95_us": 67.149,
+    "p99_us": 233.374,
+    "max_us": 1933.327,
+    "overruns": 1,
+    "late_p99_us": 211.595,
+    "late_max_us": 1030.519,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 36,
+        "max": 36
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 115,
+        "max": 115
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 6566.5,
+        "max": 7714
+      },
+      "index_live": {
+        "mean": 42.2578125,
+        "max": 45
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/3-compact",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "idle",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 42.207,
+    "p95_us": 78.285,
+    "p99_us": 109.261,
+    "max_us": 139.616,
+    "overruns": 0,
+    "late_p99_us": 212.463,
+    "late_max_us": 296.897,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 76032,
+        "max": 76032
+      },
+      "resource_steps": {
+        "mean": 484.83984375,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 21,
+        "max": 21
+      },
+      "nodes_skipped": {
+        "mean": 195,
+        "max": 195
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.83984375,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 416.5,
+        "max": 484
+      },
+      "index_live": {
+        "mean": 965.1875,
+        "max": 1103
+      }
+    },
+    "directory": "work/native-leaders-32/none/idle-signal/3-current",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 57.945,
+    "p95_us": 96.472,
+    "p99_us": 192.744,
+    "max_us": 236.919,
+    "overruns": 0,
+    "late_p99_us": 180.486,
+    "late_max_us": 295.808,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2374,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 37.09375,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 434.7265625,
+        "max": 435
+      },
+      "materialized": {
+        "mean": 29.13671875,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 6368,
+        "max": 6368
+      },
+      "sample_writes": {
+        "mean": 10129.5,
+        "max": 10240
+      },
+      "arena_peak_samples": {
+        "mean": 3537.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 19248.5,
+        "max": 20396
+      },
+      "index_live": {
+        "mean": 219.93359375,
+        "max": 227
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/3-compact",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 60.779,
+    "p95_us": 140.356,
+    "p99_us": 169.029,
+    "max_us": 209.088,
+    "overruns": 0,
+    "late_p99_us": 214.386,
+    "late_max_us": 260.903,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92416,
+        "max": 92416
+      },
+      "resource_steps": {
+        "mean": 484.875,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 1221.9375,
+        "max": 1290
+      },
+      "index_live": {
+        "mean": 2573.875,
+        "max": 2719
+      }
+    },
+    "directory": "work/native-leaders-32/none/play-signal/3-current",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 60.579499999999996,
+    "p95_us": 108.89,
+    "p99_us": 152.695,
+    "max_us": 199.373,
+    "overruns": 0,
+    "late_p99_us": 416.899,
+    "late_max_us": 2348.936,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2304,
+        "max": 2304
+      },
+      "resource_steps": {
+        "mean": 164,
+        "max": 164
+      },
+      "nodes_processed": {
+        "mean": 85,
+        "max": 85
+      },
+      "nodes_skipped": {
+        "mean": 131,
+        "max": 131
+      },
+      "forwarded": {
+        "mean": 243,
+        "max": 243
+      },
+      "materialized": {
+        "mean": 13,
+        "max": 13
+      },
+      "sample_reads": {
+        "mean": 1760,
+        "max": 1760
+      },
+      "sample_writes": {
+        "mean": 7040,
+        "max": 7040
+      },
+      "arena_peak_samples": {
+        "mean": 3008,
+        "max": 3008
+      },
+      "index_allocated": {
+        "mean": 0.16015625,
+        "max": 10
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 32,
+        "max": 32
+      },
+      "payload_live": {
+        "mean": 12425.5,
+        "max": 13573
+      },
+      "index_live": {
+        "mean": 202.171875,
+        "max": 223
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/3-compact",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "record",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 79.3365,
+    "p95_us": 145.695,
+    "p99_us": 255.667,
+    "max_us": 1438.127,
+    "overruns": 1,
+    "late_p99_us": 261.607,
+    "late_max_us": 648.399,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 100608,
+        "max": 100608
+      },
+      "resource_steps": {
+        "mean": 484.91015625,
+        "max": 486
+      },
+      "nodes_processed": {
+        "mean": 117,
+        "max": 117
+      },
+      "nodes_skipped": {
+        "mean": 99,
+        "max": 99
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.91015625,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 772.5,
+        "max": 840
+      },
+      "index_live": {
+        "mean": 1673.3125,
+        "max": 1810
+      }
+    },
+    "directory": "work/native-leaders-32/none/record-signal/3-current",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "compact",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 61.8665,
+    "p95_us": 178.443,
+    "p99_us": 232.221,
+    "max_us": 348.053,
+    "overruns": 0,
+    "late_p99_us": 256.927,
+    "late_max_us": 535.169,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2634,
+        "max": 19200
+      },
+      "resource_steps": {
+        "mean": 41.15625,
+        "max": 300
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 443.7109375,
+        "max": 445
+      },
+      "materialized": {
+        "mean": 30.64453125,
+        "max": 63
+      },
+      "sample_reads": {
+        "mean": 6496,
+        "max": 6496
+      },
+      "sample_writes": {
+        "mean": 10290.5,
+        "max": 14432
+      },
+      "arena_peak_samples": {
+        "mean": 3634.5,
+        "max": 7776
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 28482.5,
+        "max": 29630
+      },
+      "index_live": {
+        "mean": 273.94921875,
+        "max": 282
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/3-compact",
+    "repeat": 3,
+    "interference": "none"
+  },
+  {
+    "mode": "current",
+    "scenario": "grab",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 76.633,
+    "p95_us": 152.775,
+    "p99_us": 310.577,
+    "max_us": 343.416,
+    "overruns": 0,
+    "late_p99_us": 305.682,
+    "late_max_us": 989.206,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 92928,
+        "max": 92928
+      },
+      "resource_steps": {
+        "mean": 2788.875,
+        "max": 2790
+      },
+      "nodes_processed": {
+        "mean": 87,
+        "max": 87
+      },
+      "nodes_skipped": {
+        "mean": 129,
+        "max": 129
+      },
+      "forwarded": {
+        "mean": 0,
+        "max": 0
+      },
+      "materialized": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_reads": {
+        "mean": 0,
+        "max": 0
+      },
+      "sample_writes": {
+        "mean": 0,
+        "max": 0
+      },
+      "arena_peak_samples": {
+        "mean": 0,
+        "max": 0
+      },
+      "index_allocated": {
+        "mean": 162,
+        "max": 162
+      },
+      "index_reclaimed": {
+        "mean": 160.875,
+        "max": 162
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 2121.0625,
+        "max": 2197
+      },
+      "index_live": {
+        "mean": 5210.125,
+        "max": 5380
+      }
+    },
+    "directory": "work/native-leaders-32/none/grab-signal/3-current",
+    "repeat": 3,
+    "interference": "none"
+  }
+]

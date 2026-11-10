@@ -1,0 +1,464 @@
+[
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 80.569,
+    "p95_us": 140.186,
+    "p99_us": 184.302,
+    "max_us": 242.317,
+    "overruns": 0,
+    "late_p99_us": 216.985,
+    "late_max_us": 262.917,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2554,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 39.90625,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 149,
+        "max": 149
+      },
+      "nodes_skipped": {
+        "mean": 67,
+        "max": 67
+      },
+      "forwarded": {
+        "mean": 754.0234375,
+        "max": 755
+      },
+      "materialized": {
+        "mean": 29.48828125,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 10464,
+        "max": 10464
+      },
+      "sample_writes": {
+        "mean": 12222.5,
+        "max": 12288
+      },
+      "arena_peak_samples": {
+        "mean": 3582.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 26074.5,
+        "max": 27222
+      },
+      "index_live": {
+        "mean": 438.86328125,
+        "max": 446
+      }
+    },
+    "memory": "# memory=HistoryCapacity { retention_frames: 1440000, ordinary_payload_bytes: 67108864, history_audio_bytes: 268435456, shared_audio_bytes: 134250496, midi_payload_bytes: 0, audio_metadata_bytes: 343958032, midi_metadata_bytes: 0, total_resource_pages: 114696, writer_slots: 8, midi_events_per_source: 0, midi_bytes_per_source: 0 }",
+    "directory": "work/packed-density-v2-8-compact/0-play-retained",
+    "candidate": "retained",
+    "repeat": 0
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 70.60900000000001,
+    "p95_us": 177.381,
+    "p99_us": 239.313,
+    "max_us": 269.728,
+    "overruns": 0,
+    "late_p99_us": 264.929,
+    "late_max_us": 273.59,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2558,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 39.96875,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 149,
+        "max": 149
+      },
+      "nodes_skipped": {
+        "mean": 67,
+        "max": 67
+      },
+      "forwarded": {
+        "mean": 754.0078125,
+        "max": 755
+      },
+      "materialized": {
+        "mean": 29.49609375,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 10464,
+        "max": 10464
+      },
+      "sample_writes": {
+        "mean": 12223.5,
+        "max": 12288
+      },
+      "arena_peak_samples": {
+        "mean": 3583.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 26110.5,
+        "max": 27258
+      },
+      "index_live": {
+        "mean": 438.8984375,
+        "max": 446
+      }
+    },
+    "memory": "# memory=HistoryCapacity { retention_frames: 1440000, ordinary_payload_bytes: 67108864, history_audio_bytes: 268435456, shared_audio_bytes: 134250496, midi_payload_bytes: 0, audio_metadata_bytes: 343958032, midi_metadata_bytes: 0, total_resource_pages: 114696, writer_slots: 8, midi_events_per_source: 0, midi_bytes_per_source: 0 }",
+    "directory": "work/packed-density-v2-8-compact/0-play-packed",
+    "candidate": "packed",
+    "repeat": 0
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 68.94649999999999,
+    "p95_us": 146.626,
+    "p99_us": 233.294,
+    "max_us": 313.822,
+    "overruns": 0,
+    "late_p99_us": 238.022,
+    "late_max_us": 366.089,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2552,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 39.875,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 149,
+        "max": 149
+      },
+      "nodes_skipped": {
+        "mean": 67,
+        "max": 67
+      },
+      "forwarded": {
+        "mean": 754.03125,
+        "max": 755
+      },
+      "materialized": {
+        "mean": 29.484375,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 10464,
+        "max": 10464
+      },
+      "sample_writes": {
+        "mean": 12222,
+        "max": 12288
+      },
+      "arena_peak_samples": {
+        "mean": 3582,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 26138.5,
+        "max": 27286
+      },
+      "index_live": {
+        "mean": 439.00390625,
+        "max": 446
+      }
+    },
+    "memory": "# memory=HistoryCapacity { retention_frames: 1440000, ordinary_payload_bytes: 67108864, history_audio_bytes: 268435456, shared_audio_bytes: 134250496, midi_payload_bytes: 0, audio_metadata_bytes: 343958032, midi_metadata_bytes: 0, total_resource_pages: 114696, writer_slots: 8, midi_events_per_source: 0, midi_bytes_per_source: 0 }",
+    "directory": "work/packed-density-v2-8-compact/1-play-packed",
+    "candidate": "packed",
+    "repeat": 1
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 86.928,
+    "p95_us": 162.43,
+    "p99_us": 236.839,
+    "max_us": 367.922,
+    "overruns": 0,
+    "late_p99_us": 181.376,
+    "late_max_us": 339.758,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2552,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 39.875,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 149,
+        "max": 149
+      },
+      "nodes_skipped": {
+        "mean": 67,
+        "max": 67
+      },
+      "forwarded": {
+        "mean": 754.03125,
+        "max": 755
+      },
+      "materialized": {
+        "mean": 29.484375,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 10464,
+        "max": 10464
+      },
+      "sample_writes": {
+        "mean": 12222,
+        "max": 12288
+      },
+      "arena_peak_samples": {
+        "mean": 3582,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 26155.5,
+        "max": 27303
+      },
+      "index_live": {
+        "mean": 438.828125,
+        "max": 446
+      }
+    },
+    "memory": "# memory=HistoryCapacity { retention_frames: 1440000, ordinary_payload_bytes: 67108864, history_audio_bytes: 268435456, shared_audio_bytes: 134250496, midi_payload_bytes: 0, audio_metadata_bytes: 343958032, midi_metadata_bytes: 0, total_resource_pages: 114696, writer_slots: 8, midi_events_per_source: 0, midi_bytes_per_source: 0 }",
+    "directory": "work/packed-density-v2-8-compact/1-play-retained",
+    "candidate": "retained",
+    "repeat": 1
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 79.973,
+    "p95_us": 136.721,
+    "p99_us": 210.079,
+    "max_us": 216.178,
+    "overruns": 0,
+    "late_p99_us": 207.569,
+    "late_max_us": 385.398,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2562,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 40.03125,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 149,
+        "max": 149
+      },
+      "nodes_skipped": {
+        "mean": 67,
+        "max": 67
+      },
+      "forwarded": {
+        "mean": 753.9921875,
+        "max": 755
+      },
+      "materialized": {
+        "mean": 29.50390625,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 10464,
+        "max": 10464
+      },
+      "sample_writes": {
+        "mean": 12224.5,
+        "max": 12288
+      },
+      "arena_peak_samples": {
+        "mean": 3584.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 26068.5,
+        "max": 27216
+      },
+      "index_live": {
+        "mean": 438.4765625,
+        "max": 446
+      }
+    },
+    "memory": "# memory=HistoryCapacity { retention_frames: 1440000, ordinary_payload_bytes: 67108864, history_audio_bytes: 268435456, shared_audio_bytes: 134250496, midi_payload_bytes: 0, audio_metadata_bytes: 343958032, midi_metadata_bytes: 0, total_resource_pages: 114696, writer_slots: 8, midi_events_per_source: 0, midi_bytes_per_source: 0 }",
+    "directory": "work/packed-density-v2-8-compact/2-play-retained",
+    "candidate": "retained",
+    "repeat": 2
+  },
+  {
+    "mode": "compact",
+    "scenario": "play",
+    "input": "signal",
+    "callbacks": 256,
+    "budget_us": 666.6666666666666,
+    "p50_us": 69.47749999999999,
+    "p95_us": 161.207,
+    "p99_us": 240.935,
+    "max_us": 276.818,
+    "overruns": 0,
+    "late_p99_us": 287.51,
+    "late_max_us": 596.886,
+    "dropped": 0,
+    "counters": {
+      "resource_copy_bytes": {
+        "mean": 2558,
+        "max": 2816
+      },
+      "resource_steps": {
+        "mean": 39.96875,
+        "max": 44
+      },
+      "nodes_processed": {
+        "mean": 149,
+        "max": 149
+      },
+      "nodes_skipped": {
+        "mean": 67,
+        "max": 67
+      },
+      "forwarded": {
+        "mean": 754.0078125,
+        "max": 755
+      },
+      "materialized": {
+        "mean": 29.49609375,
+        "max": 30
+      },
+      "sample_reads": {
+        "mean": 10464,
+        "max": 10464
+      },
+      "sample_writes": {
+        "mean": 12223.5,
+        "max": 12288
+      },
+      "arena_peak_samples": {
+        "mean": 3583.5,
+        "max": 3648
+      },
+      "index_allocated": {
+        "mean": 0.03515625,
+        "max": 9
+      },
+      "index_reclaimed": {
+        "mean": 0,
+        "max": 0
+      },
+      "shared_payloads": {
+        "mean": 0,
+        "max": 0
+      },
+      "payload_live": {
+        "mean": 25922.5,
+        "max": 27070
+      },
+      "index_live": {
+        "mean": 437.9140625,
+        "max": 446
+      }
+    },
+    "memory": "# memory=HistoryCapacity { retention_frames: 1440000, ordinary_payload_bytes: 67108864, history_audio_bytes: 268435456, shared_audio_bytes: 134250496, midi_payload_bytes: 0, audio_metadata_bytes: 343958032, midi_metadata_bytes: 0, total_resource_pages: 114696, writer_slots: 8, midi_events_per_source: 0, midi_bytes_per_source: 0 }",
+    "directory": "work/packed-density-v2-8-compact/2-play-packed",
+    "candidate": "packed",
+    "repeat": 2
+  }
+]

@@ -1,0 +1,47 @@
+--- a/src/rust/rt_runtime/src/audio_refs.rs
++++ b/src/rust/rt_runtime/src/audio_refs.rs
+@@ -202,7 +202,7 @@
+             output.fill(0.);
+         }
+         visit(
+-            sequence,
++            &sequence,
+             frames,
+             self.epoch,
+             &self.data[..self.used],
+@@ -227,7 +227,7 @@
+         let (before, target) = self.data[..self.used].split_at_mut(offset);
+         let (target, after) = target.split_at_mut(frames);
+         visit(
+-            sequence,
++            &sequence,
+             frames,
+             self.epoch,
+             before,
+@@ -248,7 +248,7 @@
+     ) -> Result<f32, Error> {
+         let mut peak = 0u32;
+         visit(
+-            sequence,
++            &sequence,
+             frames,
+             self.epoch,
+             &self.data[..self.used],
+@@ -292,7 +292,7 @@
+ }
+ 
+ fn visit(
+-    mut sequence: AudioSequence,
++    sequence: &AudioSequence,
+     frames: usize,
+     epoch: u64,
+     before: &[f32],
+@@ -312,7 +312,7 @@
+     };
+     let mut gain = sequence.gain.start;
+     let constant = gain.is_finite() && gain != 0. && gain == sequence.gain.end;
+-    for span in &mut sequence.spans[..sequence.len] {
++    for span in &sequence.spans[..sequence.len] {
+         let count = span.frames;
+         if count > frames - at {
+             return Err(Error::InvalidShape);

@@ -1,0 +1,773 @@
+{
+  "purpose": "functional checksum equivalence only; timings discarded",
+  "cases": [
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "10642.065221039"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "85642.376386375"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 0,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "10642.000142695"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 32,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "example",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "current",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "example",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "85635.238417069"
+    },
+    {
+      "kind": "example",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    },
+    {
+      "kind": "standalone",
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": 256,
+      "history_prefill": 48000,
+      "checksum": "0.000000000"
+    }
+  ]
+}

@@ -1,0 +1,490 @@
+{
+  "purpose": "ARM functional equivalence only; all emulator timing fields discarded",
+  "cases": 24,
+  "binary_sha256": {
+    "control": "97b1889836181c7909e5c4fa8e9d6ca5858fa2f8051c302d15927d59cc001f50",
+    "pgo": "16736f1c710758e0ccbbd02d63fce8fa5e84163eab3ac8c0aa8e29743bb8ce11"
+  },
+  "rows": [
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "control"
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "control"
+    },
+    {
+      "mode": "current",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "0",
+      "candidate": "control"
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "0",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "0",
+      "candidate": "control"
+    },
+    {
+      "mode": "current",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "0",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "control"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "control"
+    },
+    {
+      "mode": "current",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "0",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "24",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "24",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "192",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "192",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "24",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "24",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "192",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "192",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "control"
+    },
+    {
+      "mode": "chunks-descriptors",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "control"
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "control"
+    },
+    {
+      "mode": "compact",
+      "scenario": "idle",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "24",
+      "candidate": "control"
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "17.050148525",
+      "arena_materializations": "24",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "192",
+      "candidate": "control"
+    },
+    {
+      "mode": "compact",
+      "scenario": "play",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "136.223688984",
+      "arena_materializations": "192",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "control"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": "32",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "16",
+      "candidate": "pgo"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "control"
+    },
+    {
+      "mode": "compact",
+      "scenario": "record",
+      "buffer": "256",
+      "tracks": "1",
+      "callbacks": "4",
+      "checksum": "0.000000000",
+      "arena_materializations": "128",
+      "candidate": "pgo"
+    }
+  ]
+}

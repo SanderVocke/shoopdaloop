@@ -202,7 +202,7 @@ impl RenderArena {
             output.fill(0.);
         }
         visit(
-            sequence,
+            &sequence,
             frames,
             self.epoch,
             &self.data[..self.used],
@@ -227,7 +227,7 @@ impl RenderArena {
         let (before, target) = self.data[..self.used].split_at_mut(offset);
         let (target, after) = target.split_at_mut(frames);
         visit(
-            sequence,
+            &sequence,
             frames,
             self.epoch,
             before,
@@ -248,7 +248,7 @@ impl RenderArena {
     ) -> Result<f32, Error> {
         let mut peak = 0u32;
         visit(
-            sequence,
+            &sequence,
             frames,
             self.epoch,
             &self.data[..self.used],
@@ -292,7 +292,7 @@ impl RenderArena {
 }
 
 fn visit(
-    mut sequence: AudioSequence,
+    sequence: &AudioSequence,
     frames: usize,
     epoch: u64,
     before: &[f32],
@@ -311,7 +311,8 @@ fn visit(
         0.
     };
     let mut gain = sequence.gain.start;
-    for span in &mut sequence.spans[..sequence.len] {
+    let constant = gain.is_finite() && gain != 0. && gain == sequence.gain.end;
+    for span in &sequence.spans[..sequence.len] {
         let count = span.frames;
         if count > frames - at {
             return Err(Error::InvalidShape);
@@ -335,22 +336,34 @@ fn visit(
                     _ => before.get(offset..offset + count),
                 }
                 .ok_or(Error::InvalidState)?;
-                for (i, &sample) in samples.iter().enumerate() {
-                    if at + i + 1 == frames && frames > 1 {
-                        gain = sequence.gain.end;
+                if constant {
+                    for (i, &sample) in samples.iter().enumerate() {
+                        consume(at + i, sample * gain);
                     }
-                    consume(at + i, sample * gain);
-                    gain += step;
+                } else {
+                    for (i, &sample) in samples.iter().enumerate() {
+                        if at + i + 1 == frames && frames > 1 {
+                            gain = sequence.gain.end;
+                        }
+                        consume(at + i, sample * gain);
+                        gain += step;
+                    }
                 }
             }
             ChunkRef::Persistent(reference) => {
                 resources.visit_audio_chunk(reference, count, |samples, first, stride| {
-                    for i in 0..count {
-                        if at + i + 1 == frames && frames > 1 {
-                            gain = sequence.gain.end;
+                    if constant {
+                        for i in 0..count {
+                            consume(at + i, samples[first + i * stride] * gain);
                         }
-                        consume(at + i, samples[first + i * stride] * gain);
-                        gain += step;
+                    } else {
+                        for i in 0..count {
+                            if at + i + 1 == frames && frames > 1 {
+                                gain = sequence.gain.end;
+                            }
+                            consume(at + i, samples[first + i * stride] * gain);
+                            gain += step;
+                        }
                     }
                 })?;
             }
@@ -427,6 +440,37 @@ impl<L> ReferenceBlock<'_, L> {
 mod tests {
     use super::*;
     use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
+
+    #[shoop_test]
+    fn constant_peak_preserves_zero_negative_and_nonfinite_samples() {
+        let resources = ResourceStore::new(
+            crate::Config::default().prepare().unwrap(),
+            Quantum::new(32).unwrap(),
+        )
+        .unwrap();
+        let mut arena = RenderArena::prepare(4, 0);
+        let offset = arena.allocate(4).unwrap();
+        arena
+            .output(offset, 4)
+            .copy_from_slice(&[0.25, -0.75, 0.5, -0.0]);
+        let sequence = arena.transient(offset, 4);
+        assert_no_heap(|| {
+            for (gain, expected) in [(2., 1.5), (-2., 1.5), (0., 0.), (-0., 0.), (0.5, 0.375)] {
+                assert_eq!(
+                    arena.peak(sequence.scaled(GainEnvelope::constant(gain)), 4, &resources),
+                    Ok(expected)
+                );
+            }
+            arena.output(offset, 4)[0] = f32::INFINITY;
+            assert!(arena.peak(sequence, 4, &resources).unwrap().is_infinite());
+            assert!(arena
+                .peak(sequence.scaled(GainEnvelope::constant(0.)), 4, &resources)
+                .unwrap()
+                .is_nan());
+            arena.output(offset, 4)[0] = f32::NAN;
+            assert!(arena.peak(sequence, 4, &resources).unwrap().is_nan());
+        });
+    }
 
     #[shoop_test]
     fn composed_endpoints_survive_split_spans_and_independent_source_mixing() {

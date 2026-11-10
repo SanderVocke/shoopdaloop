@@ -1,0 +1,6 @@
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+   Compiling shoop_loops v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops)
+   Compiling rt_buffered v0.3.0 (/workspace/shoopdaloop/src/rust/rt_buffered)
+   Compiling shoop_rt_engine v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_engine)
+   Compiling pi5_audio_benchmark v0.0.0 (/workspace/shoopdaloop/work/pi5-harness)
+    Finished `release` profile [optimized] target(s) in 30.85s

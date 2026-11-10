@@ -1,0 +1,11 @@
+{
+  "binary": "work/pi5-audio-bench/audio-bench-packed-descriptors",
+  "binary_sha256": "52fcf3ddcf31430095437dd55e75b94b6dfc89a9a2d7fa748aca17355c86b859",
+  "command": [
+    "/workspace/shoopdaloop/work/rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objdump",
+    "--no-show-raw-insn",
+    "--disassemble-symbols=_RNvMNtNtCsetTf0lGzr35_11shoop_loops8resolver7compactNtB4_8Resolver12compact_tick",
+    "work/pi5-audio-bench/audio-bench-packed-descriptors"
+  ],
+  "udiv_instructions": 3
+}

@@ -1,0 +1,248 @@
+{
+  "commands": [
+    [
+      "work/bin/standalone-pgo-generate",
+      "current",
+      "idle",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "current",
+      "idle",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "current",
+      "play",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "current",
+      "play",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "current",
+      "record",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "current",
+      "record",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks",
+      "idle",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks",
+      "idle",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks",
+      "play",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks",
+      "play",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks",
+      "record",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks",
+      "record",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks-descriptors",
+      "idle",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks-descriptors",
+      "idle",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks-descriptors",
+      "play",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks-descriptors",
+      "play",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks-descriptors",
+      "record",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "chunks-descriptors",
+      "record",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "compact",
+      "idle",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "compact",
+      "idle",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "compact",
+      "play",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "compact",
+      "play",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "compact",
+      "record",
+      "32",
+      "8",
+      "512",
+      "48000"
+    ],
+    [
+      "work/bin/standalone-pgo-generate",
+      "compact",
+      "record",
+      "256",
+      "8",
+      "64",
+      "48000"
+    ]
+  ],
+  "profiles": {
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-descriptors-idle-256-43966.profraw": "76cd29283e2b6b66582cf373b4bec39823fa4e32d9da4cb0d8607db74b369e52",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-descriptors-idle-32-43965.profraw": "648d6abb5cad8ed6d30984707fa627870fa864c25b229f912df43cfafc8f7788",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-descriptors-play-256-43968.profraw": "212a0dad3581b3a60d9ff063392cf65d53d3ff30b74ce10e8c6e05b6a0aa6a5c",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-descriptors-play-32-43967.profraw": "551f3df8ced2f26d055100902495d65740a0d7b54f98d48870e9161b810ffaeb",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-descriptors-record-256-43970.profraw": "d5545dfd552d96b4773e1a4955bb84ab939fa8525775402c1a56b622ca005ec9",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-descriptors-record-32-43969.profraw": "cd7a198edc7d839798163afb6bb20fb1a0ff92cfcc3a314859cf3938af1f7242",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-idle-256-43960.profraw": "cd9583a35e83a04db3382d74dcfd1a897e7ab20a568a5e4e80056021bae7ab49",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-idle-32-43959.profraw": "3f07c308b2415f6b6b351cee2578097354fefc1bedf22007b03d12413fb9cb59",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-play-256-43962.profraw": "340059e4df6590dcb6471093feb5b4e0d9f4c1729651b523976539daf0136363",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-play-32-43961.profraw": "5f0bc3a8556e07e8e4ae2f461400f311deea1f3537273152726170e545173a4f",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-record-256-43964.profraw": "2171d52838e953bffcec4d0dd568a818bfa0eeb5eeff5385dd6c62e7f85862c9",
+    "/workspace/shoopdaloop/work/pgo/raw/chunks-record-32-43963.profraw": "2b5801ae15aa2201cfd92e304cd461661be6c39a850f88a8836de58940f4b3e5",
+    "/workspace/shoopdaloop/work/pgo/raw/compact-idle-256-43972.profraw": "3467bb5956d043bd5035fff17a68fe75635eddb05c5838180ee5c3ad8b905528",
+    "/workspace/shoopdaloop/work/pgo/raw/compact-idle-32-43971.profraw": "f0a006657d7e9f89fbc9aa9fcca2cd7952e655334be03603f634b6b459fe6477",
+    "/workspace/shoopdaloop/work/pgo/raw/compact-play-256-43979.profraw": "dc1a26419fb87ead9577b053a4c7fc562d151c7ee8a1f00a6a0dc35e3993cc22",
+    "/workspace/shoopdaloop/work/pgo/raw/compact-play-32-43973.profraw": "dc58d8b9af5143095cf00e080e975c44c39ba697e908328383a22c2a9760b952",
+    "/workspace/shoopdaloop/work/pgo/raw/compact-record-256-43981.profraw": "f9620021f6b92c1bd6d5929b0fce310024ff9ac4c62a6d1316f27792214ea7fb",
+    "/workspace/shoopdaloop/work/pgo/raw/compact-record-32-43980.profraw": "46c23fe2a39f449d2a1df9c61dd33e133724cec1dcee62caff407da10efaf32c",
+    "/workspace/shoopdaloop/work/pgo/raw/current-idle-256-43950.profraw": "7459b5507cdaf76eda9519457efa5152e909d547f1f7c1d744470f23021234d8",
+    "/workspace/shoopdaloop/work/pgo/raw/current-idle-32-43949.profraw": "77666728868593709f20380743ea4f9b63499700156b9e3d5d5810c1a1bbcc80",
+    "/workspace/shoopdaloop/work/pgo/raw/current-play-256-43956.profraw": "da22eadaad473480c8f21af058891f75e949ae1cb56315f5d367cd4a81af1332",
+    "/workspace/shoopdaloop/work/pgo/raw/current-play-32-43951.profraw": "dd5c2393755de22118a630596508d0cd3b46a61d31a5f40f04a9e38b3f8ad767",
+    "/workspace/shoopdaloop/work/pgo/raw/current-record-256-43958.profraw": "9b60d1245f286d8ff8b5bb9c46c004df4ae19e925111d068f582da9a57f26f65",
+    "/workspace/shoopdaloop/work/pgo/raw/current-record-32-43957.profraw": "601b0445515cfe17e09934ca7377e373088ec94bda1fd7f003c5878254f90dc6"
+  },
+  "merged_sha256": "bfb301f82b641f37e4ad1a5200757c75d35cbd4eb3abb43c41c367e077733301",
+  "profdata_version": "LLVM (http://llvm.org/):\n  LLVM version 23.1.1-rust-1.99.1-stable\n  Optimized build.\n"
+}

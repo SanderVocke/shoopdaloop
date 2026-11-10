@@ -1,0 +1,159 @@
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+   Compiling shoop_loops v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops)
+   Compiling rt_buffered v0.3.0 (/workspace/shoopdaloop/src/rust/rt_buffered)
+   Compiling shoop_persistence_codec v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_persistence_codec)
+   Compiling shoop_rt_engine v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_engine)
+    Finished `release` profile [optimized] target(s) in 1m 13s
+     Running unittests src/lib.rs (target/release/deps/shoop_rt_engine-92807819f5342d84)
+
+running 60 tests
+test buffered_tests::buffered_composes_with_prepared_engine_dsp_and_typed_controls ... ok
+test cells::monitoring_tests::monitoring_owner_banks_follow_the_confirmed_model_even_when_observation_lags_or_a_candidate_reuses_its_id ... ok
+test cells::tests::shrinking_meter_width_discards_unreported_channels ... ok
+test global_midi::tests::deferred_controls_precede_ordinary_then_current_controls_at_equal_offsets ... ok
+test global_midi::tests::external_in_place_merge_matches_the_borrowed_stream_with_equal_time_controls ... ok
+test global_midi::tests::ordinary_and_current_controls_reserve_capacity_before_deferred_values ... ok
+test history::tests::production_history_layout_keeps_loop_memory_separate_and_refuses_oversized_shapes_without_allocation ... ok
+test node::tests::activating_a_prepared_strip_preserves_a_policy_change_confirmed_before_its_first_process ... ok
+test node::tests::configuration_for_an_unpublished_epoch_leaves_live_monitoring_untouched ... ok
+test node::tests::gain_blocks_preserve_ramps_balance_and_unwritten_suffixes ... ok
+test node::tests::peak_is_the_largest_magnitude_across_signs_and_exponents ... ok
+test processors::tests::generation_claim_and_incremental_return_never_expose_previous_owner ... ok
+test profiling::tests::exported_topology_matches_the_activated_descriptor_and_waits_for_capacity ... ok
+test render::shared_tests::a_failed_or_cancelled_growing_gesture_cannot_be_restarted_by_its_owned_finish ... ok
+test render::shared_tests::active_recording_refuses_private_publication_and_preserves_old_exports ... ok
+test render::shared_tests::audio_rerouting_preserves_the_unchanged_midi_sources_pre_cut_projection ... ok
+test render::shared_tests::buffered_production_preparation_accepts_dynamic_host_banks_beyond_sixty_four_ports ... ok
+test render::shared_tests::candidate_fences_preserve_controls_and_refuse_superseded_content_and_writers ... ok
+test render::shared_tests::candidate_preparation_is_fair_callback_bounded_and_cancellation_invalidates_the_id ... ok
+test render::shared_tests::continuous_mixed_writer_publishes_scheduled_cuts_and_keeps_retained_exports_exact ... ok
+test render::shared_tests::fixed_shared_seek_stop_and_output_recovery_preserve_the_selected_revision ... ok
+test render::shared_tests::fresh_recording_has_identity_media_while_monitoring_previous_channel_windows ... ok
+test render::shared_tests::history_playback_private_preparation_and_ready_publication_survive_exhausted_background_copy ... ok
+test render::shared_tests::host_partitions_agree_at_identical_history_playback_and_replacement_cuts ... ok
+test render::shared_tests::indexed_grab_windows_pad_requested_duration_without_copying_hidden_future_media ... ok
+test render::shared_tests::input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cut ... ok
+test render::shared_tests::late_graph_fault_does_not_certify_history_written_in_an_unfinished_tick ... ok
+test render::shared_tests::long_ordinary_recording_prepares_replacement_without_losing_input_during_building ... ok
+test render::shared_tests::long_simultaneous_chunk_captures_keep_their_committed_prefixes ... ok
+test render::shared_tests::measurements::fixed_shared_callback_measurements ... ignored, CI release measurement with retained raw callback artifacts
+test render::shared_tests::midi_storage_refusal_keeps_observation_and_recovers_a_truthful_segment ... ok
+test render::shared_tests::normal_preparation_captures_stopped_inputs_for_thirty_seconds_in_common_reserved_pools ... ok
+test render::shared_tests::paired_grab_refusal_releases_the_first_private_owner_and_reroutes_invalidate_source_ids ... ok
+test render::shared_tests::partial_host_input_never_becomes_a_retroactive_history_cut ... ok
+test render::shared_tests::persistence::fixed_shared_publication_round_trips_reload_edit_family_and_session_replacement ... ok
+test render::shared_tests::persistence::loaded_media_longer_than_live_history_uses_bounded_candidate_import_and_keeps_its_base ... ok
+test render::shared_tests::persistence::long_loaded_writer_prepares_before_entry_and_publishes_after_one_tick_without_suffix_repair ... ok
+test render::shared_tests::pooled_indexed_midi_histories_drive_mixed_grabs_ordinary_playback_and_reclaim_all_sources ... ok
+test render::shared_tests::pooled_sources_capture_distinct_signal_paths_at_one_fixed_cut_and_cleanup_once ... ok
+test render::shared_tests::prefix_recording_to_replacing_keeps_the_boundary_tick_and_active_exports ... ok
+test render::shared_tests::production_source_removal_retires_history_and_slot_reuse_cannot_retarget_retained_grabs ... ok
+test render::shared_tests::public_gesture_continues_the_prefix_and_finishes_without_controller_polling ... ok
+test render::shared_tests::public_gesture_uses_the_targets_pending_clock_delay_at_its_effective_cut ... ok
+test render::shared_tests::public_input_cancellation_survives_disconnect_and_late_refusal_preserves_solo_peers ... ok
+test render::shared_tests::public_input_protocol_grabs_replaces_and_retains_terminal_identity_on_normal_preparation ... ok
+test render::shared_tests::public_musical_grab_does_not_pad_density_eviction_as_recorded_history ... ok
+test render::shared_tests::replacing_maps_each_channel_window_and_preserves_raw_tails_manual_period_and_monitoring ... ok
+test render::shared_tests::saturated_unread_results_do_not_interrupt_history_and_shutdown_recovers_private_work ... ok
+test render::shared_tests::shared_grabs_private_wrapping_edits_and_fixed_playback_preserve_old_owners ... ok
+test render::shared_tests::shared_raw_windows_retain_history_across_manual_periods_and_host_partitions ... ok
+test render::shared_tests::shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread ... ok
+test render::shared_tests::source_reset_stops_a_live_prefix_at_its_last_complete_paired_cut ... ok
+test render::shared_tests::stopped_sources_support_audio_only_and_midi_only_completed_grabs ... ok
+test render::shared_tests::synchronized_replacing_waits_between_passes_and_resumes_exact_audio_and_midi ... ok
+test render::shared_tests::timing_edits_fence_an_already_prepared_shared_candidate ... ok
+test tests::direct_firmware_preparation_preserves_media_overlap_headroom ... ok
+test tests::late_control_topology_appends_respect_each_render_callback_budget ... ok
+test tests::offline_minimal_host_resolves_auto_policy_without_implementations ... ok
+test tests::owners_can_move_to_host_threads ... ok
+test topology::tests::images_match_the_loop_library_compiler ... ok
+
+test result: ok. 59 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 6.38s
+
+     Running tests/audio_only.rs (target/release/deps/audio_only-9bc0d39f1dfc96a0)
+
+running 1 test
+test audio_only_refuses_midi_without_consuming_an_audio_slot_or_disabling_capture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/audio_variants.rs (target/release/deps/audio_variants-82a757becf118aa5)
+
+running 2 tests
+test reference_graph_preserves_samples_capture_controls_wrap_and_callback_partitioning ... ok
+test retained_grabs_render_and_continue_identically_after_repeated_history_wraps ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s
+
+     Running tests/composites.rs (target/release/deps/composites-51733f57dd0eb614)
+
+running 16 tests
+test a_full_composite_pool_keeps_engine_and_all_loop_projection_records_in_one_round ... ok
+test a_live_plan_update_publishes_its_own_length_and_media_at_one_eligible_boundary ... ok
+test an_at_limit_sparse_plan_larger_than_the_command_window_stages_in_bounded_batches ... ok
+test authored_replacing_prepares_its_writer_and_overwrites_without_control_polling ... ok
+test clearing_a_composite_restores_primitive_controls_and_ends_child_occurrences ... ok
+test converted_composites_render_their_frame_plan_after_source_loss_and_resync_fresh_ids ... ok
+test explicit_recording_sections_finish_on_frames_after_the_source_stops ... ok
+test malformed_or_stale_programs_refuse_without_changing_the_working_arrangement ... ok
+test nested_starts_and_iteration_seeks_apply_child_snapshots_in_the_same_quantum ... ok
+test prepared_frame_programs_keep_their_media_under_every_quantum_and_partial_callback ... ok
+test private_replacement_prepares_composites_inaudibly_and_loads_them_stopped_with_repeat_intent ... ok
+test recording_admitted_during_conversion_preparation_survives_the_live_empty_fence_refusal ... ok
+test repeat_waits_hold_the_active_version_and_pending_edits_cancel_without_blocking_controls ... ok
+test replacing_reservation_pressure_refuses_the_candidate_and_reclaims_its_partial_writers ... ok
+test standalone_timing_slots_need_no_strip_or_signal_bindings_and_reuse_their_generation ... ok
+test stopped_composite_telemetry_keeps_its_frame_current ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/monitoring.rs (target/release/deps/monitoring-7b87d5714403294b)
+
+running 14 tests
+test a_completed_nested_one_pass_program_reenters_on_the_next_parent_pass ... ok
+test a_continuing_nested_clock_keeps_phase_until_completion_then_reenters_at_parent_wrap ... ok
+test a_delayed_start_prearms_only_when_its_admitted_countdown_reaches_zero ... ok
+test a_staged_recording_candidate_cannot_prearm_the_active_playback_plan ... ok
+test authored_record_replace_accepts_existing_content_and_a_short_gap_after_dense_midi_recording ... ok
+test authored_record_to_replace_keeps_exact_paired_media_without_a_controller_at_the_boundary ... ok
+test automatic_policy_can_change_during_primitive_recording_without_changing_manual_intent_or_capture ... ok
+test independent_stop_releases_automatic_demand_without_muting_a_manually_prearmed_track ... ok
+test nested_recording_releases_during_parent_repeat_wait_and_rearms_on_actual_restart ... ok
+test overlapping_recorders_share_monitoring_and_release_held_notes_only_after_the_last_demand ... ok
+test partial_replacing_after_wet_rerecord_retains_the_new_wet_tail_and_original_dry_tail ... ok
+test preparing_and_cancelling_a_private_replacement_preserves_live_recording_monitoring ... ok
+test replacement_installs_automatic_policy_before_the_first_composite_recording_quantum ... ok
+test upcoming_recording_monitors_the_first_quantum_and_releases_audio_and_midi_at_its_end ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.87s
+
+     Running tests/structure.rs (target/release/deps/structure-35ee005419baa530)
+
+running 9 tests
+test edits_keep_other_paths_continuous_and_ramp_removed_paths ... ok
+test master_outputs_are_connections_that_cross_fade_and_resync ... ok
+test only_occupied_slots_are_rendered ... ok
+test ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio ... ok
+test pools_and_identities_are_enforced ... ok
+test repeated_create_and_remove_hands_slots_over_without_leaking ... ok
+test reused_slots_start_fresh_and_clear_empties_a_loop ... ok
+test routes_connect_single_strip_outputs_to_single_master_channels ... ok
+test smoothing_applies_to_current_and_later_loops_within_the_limit ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests/timing.rs (target/release/deps/timing-3fe32ee2a0c905e5)
+
+running 2 tests
+test delays_of_an_unsynchronized_playing_loop_count_its_own_wraps ... ok
+test synchronized_transitions_match_the_legacy_reference ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/workflow.rs (target/release/deps/workflow-8786622e4adaf051)
+
+running 1 test
+test records_and_plays_back_through_a_strip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
