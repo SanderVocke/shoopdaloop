@@ -67,6 +67,24 @@ impl GraphStages {
         self.scope != 0
     }
     pub(crate) fn prepare(count: usize, config: crate::PreparedConfig) -> Result<Self, Error> {
+        Self::prepare_with_extra(count, config, 0)
+    }
+    pub(crate) fn prepare_fpga(count: usize, config: crate::PreparedConfig) -> Result<Self, Error> {
+        let limits = config.limits();
+        let bytes = limits
+            .max_nodes
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(limits.max_edges))
+            .and_then(|n| n.checked_add(limits.audio_outputs))
+            .and_then(|n| n.checked_mul(size_of::<crate::fpga::NodeInstruction>()))
+            .ok_or(Error::Capacity)?;
+        Self::prepare_with_extra(count, config, bytes)
+    }
+    fn prepare_with_extra(
+        count: usize,
+        config: crate::PreparedConfig,
+        extra: usize,
+    ) -> Result<Self, Error> {
         if count == 0 {
             return Err(Error::InvalidConfig);
         }
@@ -78,7 +96,9 @@ impl GraphStages {
             return Err(Error::Capacity);
         }
         let limits = config.limits();
-        let mut plan_bytes = size_of::<PreparedPlan>();
+        let mut plan_bytes = size_of::<PreparedPlan>()
+            .checked_add(extra)
+            .ok_or(Error::Capacity)?;
         for (count, size) in [
             (limits.max_nodes, size_of::<super::NodeStep>()),
             (limits.max_edges, size_of::<super::Connection>()),

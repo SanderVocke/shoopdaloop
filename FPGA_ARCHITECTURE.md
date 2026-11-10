@@ -45,7 +45,11 @@ The state processor executes operations on node state and metadata: playback
 positions, gains, ramps, media-view handles, and frame ranges. It emits jobs
 describing work for the job processor.
 
-The first implementation should use a simple single-issue processor. VLIW with
+The initial Rust reference uses single-issue instructions that process whole
+nodes against their live state and emit jobs. Programs remain unchanged across
+loop mode and parameter changes; structural graph changes produce a new program.
+Scheduled actions and transition propagation remain separate services. A smaller
+hardware-like instruction set can be derived in a later step. VLIW with
 lock-step issue slots is a possible later extension, allowing multiple
 independent metadata operations per cycle. The instruction set and degree of
 parallelism remain open.

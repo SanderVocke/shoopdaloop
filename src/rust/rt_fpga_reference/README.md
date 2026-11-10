@@ -4,57 +4,34 @@ An audio-only functional reference for the decomposition in `FPGA_ARCHITECTURE.m
 Readability and explicit subsystem boundaries take precedence over performance.
 This is not a cycle simulator, RTL generator, or hard real-time guarantee.
 
-## Follow one quantum
+## Persistent node programs
 
-1. `compiler::compile` visits the graph, assigns temporary buffers and state
-   addresses, and produces a sequential program. It rejects cycles, missing
-   inputs, sink-as-source connections, and duplicate physical output writers.
-2. `state::StateProcessor` executes that program. It loads/stores metadata,
-   advances playback positions and ramp state, and emits concrete jobs. It has
-   no graph or sample-store access.
-3. `jobs::JobProcessor` drains the FIFO in order. Only this side resolves media
-   views, accesses sample payloads, and performs sample arithmetic.
+Compile a program when the graph changes. Execute the same instructions every
+quantum, including when loops change between recording, playback and stopped.
+Controls change live state, not code. The current abstraction is deliberately
+coarse: an instruction processes a whole node using its current state and emits
+sample jobs. A hardware-like instruction set and VLIW lowering are deferred.
 
-The host-facing `Backend` joins these phases without giving either processor
-access to the graph. Its bindings allow controls to update state addresses.
-Instructions and jobs derive `Debug` so their complete contents can be inspected.
+The standalone compiler emits `ProcessLoopPlayback`, `ProcessLoopCapture`,
+`ProcessGain`, `ProcessMix`, input and output instructions. Operands identify
+persistent state addresses and temporary buffers. The state processor owns
+position/wrap logic, mode-dependent job selection, ramp progression, and capture
+finalization. It has no graph or sample-store access. Capture finalization emits
+seal jobs before playback may consume a completed take in that quantum.
+
+The job processor drains the ordered FIFO, resolves views/ranges into chunks,
+and performs sample arithmetic and storage operations. Changing the job stream
+from quantum to quantum is expected; changing the state program is not.
 
 ```sh
 cargo run -p rt_fpga_reference --example record_play
 cargo test -p rt_fpga_reference
 ```
 
-`record_play` prints the compiled instructions and emitted jobs, records a block,
-then verifies exact playback through a separately compiled program.
-
-## Deliberate first-model choices
-
-- Single issue, four typed metadata registers; no VLIW yet.
-- Input, looping playback, gain/ramp, binary mix, capture, and output nodes.
-- A finite job FIFO holds an entire quantum before execution. Insufficient
-  capacity is refused before state changes. There is no concurrent execution or
-  cycle-level backpressure model yet.
-- Fresh temporary buffers per producing operation, valid for one quantum. Fan-out
-  shares a buffer. Reads before production and multiple writes are errors.
-- A `Memory` interface separates job execution from external-memory representation.
-  `MediaStore` models mono chunks and external chunk-ID tables; extra channels use
-  separate paths. Chunk size and processing quantum are independent.
-- Recordings append privately, then seal for immutable playback. IDs never recycle;
-  snapshots, editing, reclamation, and finite external-memory admission are deferred.
-- Samples and gain factors use provisional signed Q8.24 (`i32`). Multiplication
-  uses `i64`, truncates toward zero, and saturates to `i32`; binary mixes saturate
-  per job. Ramp interpolation uses a wide intermediate and its original time
-  domain. This arithmetic is a readable reference, not a proposed hardware layout.
-- A standalone ramp starts at its current value on the first affected sample and
-  reaches the target at offset `duration`. A zero duration changes immediately.
-- Compilation and standalone capture may allocate. No standalone RT claim is made.
-- Execution errors can leave partially completed work; stop and reconstruct the
-  backend rather than retrying an affected quantum.
-- No MIDI, effects, smoothing, history/grab, or advanced loop editing.
+`record_play` prints one compiled node program and two different job streams,
+then verifies exact recorded playback without changing the program.
 
 ## Normal app / host selection
-
-The native host has a fourth experimental audio renderer:
 
 ```sh
 SHOOP_AUDIO_RENDER=fpga-reference SHOOP_AUDIO_BENCH_AUDIO_ONLY=1 \
@@ -69,37 +46,60 @@ nodes are refused rather than run through an existing audio renderer. MIDI track
 processed tracks/buses, preview, nonzero smoothing, special playback windows, and
 advanced recording modes are outside the subset.
 
-The app bridge lives in `rt_runtime::fpga` and the engine's `compile_fpga` methods.
-It translates the active prepared graph and settled app metadata into a program
-for each quantum, then invokes the same reference state and job interpreters.
-The graph is visited only during compilation. The compiler uses prepared storage;
-rendering remains under the engine's existing heap guards.
+The app compiler attaches an immutable `NodeProgram` to a prepared graph on the
+control owner. Its `ProcessNode` instructions reference persistent native node
+instances; explicit routing instructions use compiled port addresses. Neither
+mode nor parameter values are specialized into the program. Prepared graph slots
+reserve instruction storage, and program/graph activation transfers one owner.
+Signal execution follows the compiled instructions; it does not traverse the
+signal-graph descriptor, compile a program, or reinitialize node state each
+quantum. Structural graph changes compile another program.
 
-The existing app control endpoint and loop planner still settle musical
-transitions, media ownership, and grouped capture publication. This adapter does
-not claim to replace that entire control system with state-machine instructions.
-The standalone compiler additionally illustrates persistent playback/ramp state
-owned directly by the state processor. Moving more app state into that program
-is a subsequent experiment.
+The coarse app state processor is in `rt_runtime::executor`'s FPGA executor.
+It owns quantum state preparation, interprets node instructions, and finalizes
+capture/state after job completion. `process_fpga_state` implementations contain
+live node behaviour, including monitoring decisions and native ramp updates.
+The old per-quantum compiler has been replaced by a job writer: it only constructs
+sample jobs and transient operands; it does not generate another state program.
 
-`ExternalMemory` adapts existing retained media indexes and capture intervals to
-view/range jobs. App storage and I/O retain their existing `f32` representation;
-conversion occurs at the fixed-point job boundary. The standalone `MediaStore`
-uses actual fixed-point chunks. Neither model requires full media indexes in
-on-chip state memory. Native ramp endpoints come from existing control semantics,
-which differ from the standalone ramp's start-at-offset-zero convention.
+The existing loop planner is reused as a state/lifecycle library under this
+processor's begin/end phases: take preparation, mode-dependent media selection,
+capture reservation/publication, and position advancement retain their existing
+semantics. Scheduled action delivery remains outside the state processor.
+Transition propagation remains delegated to the existing resolver, including
+capture-failure feedback and transition retries. That algorithm is not represented
+as node instructions or proposed as FPGA logic in this step. There is no claim
+that these reused Rust helpers constitute a hardware implementation.
 
-Existing callback adaptation, bulk media export and telemetry are host services.
-Their code and overhead are included in an app-connected run, not models of FPGA
-sample-engine execution. Chunk-copy counters do not measure total DDR traffic.
+Node feedback, meters and bulk readback also execute under the app state
+processor's feedback phase. Sample jobs still execute separately in the job
+processor. Native I/O and retained media use `f32`; `ExternalMemory` converts at
+that boundary, while the standalone media store uses fixed-point chunks.
+Native control/ramp metadata retains its existing representation and endpoint
+semantics. Native and standalone ramp conventions can differ.
+
+## Deliberate first-model choices
+
+- Node-level single issue; no register ISA, VLIW or cycle-level timing model.
+- Finite FIFO, filled for a whole quantum before job execution. The standalone
+  model refuses insufficient queue capacity before changing state.
+- Fresh temporary sample buffers per producer per quantum; fan-out shares a buffer.
+- `Memory` separates jobs from storage. `MediaStore` uses mono chunks and external
+  chunk tables; extra channels use separate views. Chunk size and quantum are independent.
+- Private recording destinations seal for immutable playback. IDs never recycle;
+  editing, reclamation and finite external-memory admission are deferred. Reusing
+  a sealed standalone capture destination requires preparing a new view/state.
+- Provisional signed Q8.24 samples and gains. Multiplication uses `i64`, truncates
+  toward zero and saturates; binary mixes saturate per job. Ramp interpolation
+  preserves its time domain. This is a functional model, not a hardware layout.
+- A standalone ramp starts at its current value and reaches its target at offset
+  `duration`; zero duration changes immediately.
+- Standalone compilation/capture may allocate. The native adapter retains the
+  existing callback/control heap guards using prepared storage.
+- Execution errors can leave partial work: stop rather than retry that quantum.
+- No MIDI, effects, smoothing, history/grab or advanced loop editing.
 
 ## Comparison
-
-`shoop_rt_engine`'s `audio_variants` test compares all four renderers using the
-same audio scenario, including capture, simultaneous playback/monitoring,
-controls, wrap, deletion/recreation, and callback partitions 1/13/128 at Q=1/32.
-Fixed-point output/capture uses numerical tolerance. Ramp endpoints are compared;
-stacked native descriptor ramps may differ between endpoints.
 
 ```sh
 cargo test -p shoop_rt_engine --test audio_variants
@@ -113,7 +113,9 @@ python3 scripts/benchmark_audio_chunks.py \
   --scenarios idle record play record-play ramps churn
 ```
 
-The comparison script keeps its historical three-renderer default. Explicitly
-select the fourth mode and compatible scenarios; history/grab scenarios are
-unsupported. Timing numbers characterize this readable software implementation,
-not predicted FPGA timing.
+Tests compare output and captured audio at Q=1/32 and callback partitions 1/13/128,
+and assert that program contents and allocation identity remain unchanged across
+mode and parameter changes. Standalone coverage includes automatic take sealing,
+record/play/stop/seek/ramp changes through one program, FIFO refusal and fixed-point
+saturation. The historical three-renderer script default is unchanged.
+Timing results describe software, not predicted FPGA timing.

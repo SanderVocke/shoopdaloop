@@ -247,3 +247,58 @@ fn fixed_point_saturates_and_extreme_ramps_do_not_overflow() {
     assert_eq!(ramp.at(u32::MAX), Fixed(i32::MAX));
     assert_eq!(ramp.at(1 << 31), Fixed(0));
 }
+
+#[shoop_test]
+fn one_node_program_handles_record_stop_play_seek_and_ramps_without_recompilation() {
+    let mut media = MediaStore::new(32).unwrap();
+    let view = media.create_recording();
+    let graph = Graph {
+        quantum: 4,
+        nodes: vec![
+            // Playback deliberately precedes capture: capture finalization must precede reads.
+            Node::Playback {
+                view,
+                length: 8,
+                position: 0,
+                playing: false,
+            },
+            Node::Input { port: 0 },
+            Node::Gain {
+                input: NodeId(0),
+                gain: Fixed::ONE,
+            },
+            Node::Capture {
+                input: NodeId(1),
+                view,
+                recording: true,
+            },
+            Node::Output {
+                input: NodeId(2),
+                port: 0,
+            },
+        ],
+    };
+    let mut backend = Backend::new(&graph, media).unwrap();
+    let program = backend.program.clone();
+    let address = backend.program.instructions.as_ptr();
+    let input = fixed(&[0.125, 0.25, 0.5, 0.75]);
+    assert_eq!(render(&mut backend, &input), vec![Fixed::ZERO; 4]);
+    render(&mut backend, &input);
+    backend.set_enabled(NodeId(3), false).unwrap();
+    backend.set_enabled(NodeId(0), true).unwrap();
+    assert_eq!(render(&mut backend, &[Fixed::ZERO; 4]), input);
+    assert_eq!(backend.media.append(view, &input), Err(Error::InvalidView));
+    backend.set_enabled(NodeId(0), false).unwrap();
+    assert_eq!(
+        render(&mut backend, &[Fixed::ZERO; 4]),
+        vec![Fixed::ZERO; 4]
+    );
+    backend.seek(NodeId(0), 2).unwrap();
+    backend.set_gain(NodeId(2), Fixed::ZERO, 3).unwrap();
+    backend.set_enabled(NodeId(0), true).unwrap();
+    let output = render(&mut backend, &[Fixed::ZERO; 4]);
+    assert_eq!(output[0], input[2]);
+    assert_eq!(output[3], Fixed::ZERO);
+    assert_eq!(backend.program, program);
+    assert_eq!(backend.program.instructions.as_ptr(), address);
+}

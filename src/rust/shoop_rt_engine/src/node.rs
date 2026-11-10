@@ -738,9 +738,9 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
-    fn compile_fpga(
+    fn process_fpga_state(
         &mut self,
-        block: &mut rt_runtime::fpga::CompileBlock<'_, LoopPlanner>,
+        block: &mut rt_runtime::fpga::StateBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
         use rt_runtime::audio_refs::GainEnvelope;
         self.apply_configuration(block.graph_epoch);
@@ -750,7 +750,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             end: 1. - gain.end,
         };
         match self {
-            Self::Loop(node) => node.compile_fpga(block),
+            Self::Loop(node) => node.process_fpga_state(block),
             Self::StripInput(node) if node.processor.is_none() => {
                 let cells = &node.cells.strips[node.slot];
                 let automatic = cells.policy_enabled(node.generation)
@@ -766,27 +766,26 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
                 let bank = node.bank.envelope(frames);
                 let gains = node.gains.envelopes(frames, &mut node.unity);
                 for channel in 0..node.channels {
-                    let first = block.compiler.gain(block.inputs[channel], inverse(bank))?;
+                    let first = block.jobs.gain(block.inputs[channel], inverse(bank))?;
                     let second = block
-                        .compiler
+                        .jobs
                         .gain(block.inputs[node.channels + channel], bank)?;
-                    let source = block.compiler.mix(first, second)?;
+                    let source = block.jobs.mix(first, second)?;
                     let gain = gains[if node.inputs == 2 && channel < 2 {
                         channel + 1
                     } else {
                         0
                     }];
-                    let source = block.compiler.gain(source, gain)?;
+                    let source = block.jobs.gain(source, gain)?;
                     block.outputs[channel] = source;
-                    block.outputs[node.channels + channel] =
-                        block.compiler.gain(source, monitor)?;
+                    block.outputs[node.channels + channel] = block.jobs.gain(source, monitor)?;
                 }
                 Ok(())
             }
             Self::Fader(node) if node.processor.is_none() => {
                 let gain = node.presence.envelope(frames);
                 for (output, &input) in block.outputs.iter_mut().zip(block.inputs) {
-                    *output = block.compiler.gain(input, gain)?;
+                    *output = block.jobs.gain(input, gain)?;
                 }
                 Ok(())
             }
@@ -800,10 +799,10 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
                     } else {
                         0
                     }];
-                    let source = block.compiler.gain(block.inputs[channel], gain)?;
-                    let source = block.compiler.gain(source, mute)?;
-                    block.outputs[channel] = block.compiler.gain(source, inverse(bank))?;
-                    block.outputs[node.channels + channel] = block.compiler.gain(source, bank)?;
+                    let source = block.jobs.gain(block.inputs[channel], gain)?;
+                    let source = block.jobs.gain(source, mute)?;
+                    block.outputs[channel] = block.jobs.gain(source, inverse(bank))?;
+                    block.outputs[node.channels + channel] = block.jobs.gain(source, bank)?;
                 }
                 Ok(())
             }
@@ -821,10 +820,10 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
                     } else {
                         0
                     }];
-                    let source = block.compiler.gain(block.inputs[channel], gain)?;
-                    let source = block.compiler.gain(source, presence)?;
-                    block.outputs[channel] = block.compiler.gain(source, inverse(bank))?;
-                    block.outputs[node.channels + channel] = block.compiler.gain(source, bank)?;
+                    let source = block.jobs.gain(block.inputs[channel], gain)?;
+                    let source = block.jobs.gain(source, presence)?;
+                    block.outputs[channel] = block.jobs.gain(source, inverse(bank))?;
+                    block.outputs[node.channels + channel] = block.jobs.gain(source, bank)?;
                 }
                 Ok(())
             }

@@ -680,10 +680,18 @@ fn prepare_complete(
             );
             full
         },
-        plans: [
-            Some(PreparedPlan::with_capacity(config)?),
-            Some(PreparedPlan::with_capacity(config)?),
-        ],
+        plans: {
+            let mut plans = [
+                PreparedPlan::with_capacity(config)?,
+                PreparedPlan::with_capacity(config)?,
+            ];
+            if description.audio_render_mode == AudioRenderMode::FpgaReference {
+                for plan in &mut plans {
+                    plan.prepare_fpga_program_storage();
+                }
+            }
+            plans.map(Some)
+        },
     };
     let mut content_chunk_bytes = description
         .page_bytes

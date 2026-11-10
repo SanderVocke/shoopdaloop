@@ -401,7 +401,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if self.next_frame() != Frame(0) || self.epoch != Epoch(0) || self.active.is_some() {
             return Err(Error::InvalidState);
         }
-        let plan = compile(&self.catalog, graph)?;
+        let mut plan = compile(&self.catalog, graph)?;
+        if self.fpga.is_some() {
+            plan.compile_fpga_program()?;
+        }
         self.planner.admit_graph(&plan)?;
         self.epoch = self.epoch.checked_next()?;
         self.active = Some(plan);
@@ -582,7 +585,11 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if self.clock.next_frame() != Frame(0) || self.graph_stages.enabled() {
             return Err(Error::InvalidState);
         }
-        self.graph_stages = GraphStages::prepare(candidates, self.clock.config())?;
+        self.graph_stages = if self.fpga.is_some() {
+            GraphStages::prepare_fpga(candidates, self.clock.config())?
+        } else {
+            GraphStages::prepare(candidates, self.clock.config())?
+        };
         Ok(())
     }
 
@@ -1320,33 +1327,37 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let end = frame.checked_add(quantum.frames())?;
         self.profiling.begin_tick(frame.0, quantum.frames() as u32);
         self.deliver_actions(frame, callback_start, remaining)?;
-        self.planner.begin_tick(PlanContext {
-            graph_epoch: self.epoch,
-            graphs: GraphAccess::new(
-                &mut self.graph_stages,
-                &mut self.active,
-                &mut self.epoch,
-                true,
-                &|candidate| activation_compatible(&self.slots, candidate),
-                &mut self.recovery,
-            ),
-            callback_start,
-            frame,
-            ceiling: end,
-            resources: self.resources.planner_io(frame, end),
-            receipts: self.scheduler.receipts(frame),
-        })?;
-        if self.scheduler.recovery_pending() {
-            return Err(Error::InvalidState);
+        if self.fpga.is_some() {
+            self.run_fpga_tick(audio, start, callback_start, quantum)?;
+        } else {
+            self.planner.begin_tick(PlanContext {
+                graph_epoch: self.epoch,
+                graphs: GraphAccess::new(
+                    &mut self.graph_stages,
+                    &mut self.active,
+                    &mut self.epoch,
+                    true,
+                    &|candidate| activation_compatible(&self.slots, candidate),
+                    &mut self.recovery,
+                ),
+                callback_start,
+                frame,
+                ceiling: end,
+                resources: self.resources.planner_io(frame, end),
+                receipts: self.scheduler.receipts(frame),
+            })?;
+            if self.scheduler.recovery_pending() {
+                return Err(Error::InvalidState);
+            }
+            self.profiling.phase(rt_profiling::Phase::StateSettled);
+            self.profiling.graph_start(self.epoch.0, frame.0);
+            self.run_graph(audio, midi, start, callback_start, quantum)?;
+            self.planner.finish_tick(FinishContext {
+                interval: Interval { start: frame, end },
+                resources: self.resources.planner_io(end, end),
+                receipts: self.scheduler.receipts(end),
+            })?;
         }
-        self.profiling.phase(rt_profiling::Phase::StateSettled);
-        self.profiling.graph_start(self.epoch.0, frame.0);
-        self.run_graph(audio, midi, start, callback_start, quantum)?;
-        self.planner.finish_tick(FinishContext {
-            interval: Interval { start: frame, end },
-            resources: self.resources.planner_io(end, end),
-            receipts: self.scheduler.receipts(end),
-        })?;
         self.profiling.phase(rt_profiling::Phase::StateAdvanced);
         self.profiling.end_tick(true);
         self.tick_frame = end;
@@ -1364,9 +1375,6 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
-        if self.fpga.is_some() {
-            return self.run_graph_fpga(audio, midi, start, callback_start, quantum);
-        }
         if self.audio_arena.is_some() {
             return self.run_graph_references(audio, midi, start, callback_start, quantum);
         }

@@ -1180,6 +1180,13 @@ impl ControlEndpoint {
                 });
                 return true;
             }
+            if self.settings.fpga_reference {
+                if plan.compile_fpga_program().is_err() {
+                    self.work.return_plan(plan);
+                    job.fail(Refusal::Unsupported);
+                    return true;
+                }
+            }
             self.profile_layout.stage(plan.descriptor(), &self.next);
             let epoch = self.graph_epoch;
             self.submit_job(

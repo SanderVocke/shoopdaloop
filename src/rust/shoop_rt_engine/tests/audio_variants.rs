@@ -52,6 +52,15 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
         });
         h.done(transition(loop_id, LoopMode::Recording));
     }
+    let program = if mode == AudioRenderMode::FpgaReference {
+        let program = h.host.render.fpga_program().unwrap();
+        Some((
+            program.instructions.clone(),
+            program.instructions.as_ptr() as usize,
+        ))
+    } else {
+        None
+    };
     h.run(5 * q, partition);
     for index in 0..2 {
         h.done(transition(loop_id(index, 1), LoopMode::Playing));
@@ -106,6 +115,18 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
         h.read(loop_id(0, 1), BulkSelector::Audio { channel: 0 }).1,
         frozen
     );
+    if let Some((instructions, address)) = program {
+        let current = h.host.render.fpga_program().unwrap();
+        assert_eq!(
+            current.instructions, instructions,
+            "loop modes and controls must not alter the program"
+        );
+        assert_eq!(
+            current.instructions.as_ptr() as usize,
+            address,
+            "the program must not be replaced between quanta"
+        );
+    }
     h.done(Request::LoopClear {
         loop_id: loop_id(1, 1),
     });

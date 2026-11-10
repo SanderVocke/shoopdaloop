@@ -1,5 +1,4 @@
-//! Host bridge for the FPGA reference. Compilation owns graph/port knowledge;
-//! the interpreters receive only instructions, values, and ordered jobs.
+//! Persistent node-program compiler, state execution context, and sample-memory bridge.
 
 use crate::{
     audio_refs::GainEnvelope,
@@ -9,16 +8,118 @@ use crate::{
     Error, Frame, NodeId, PreparedConfig, Quantum,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
-use rt_fpga_reference::{
-    compiler::Program,
-    jobs::{JobProcessor, JobQueue, Memory},
-    state::{Address, Instruction, JobTemplate, Register, StateProcessor, Value},
-    storage::ViewId,
-};
 pub use rt_fpga_reference::{
     fixed::{Fixed, Ramp},
     jobs::{BufferId, Job},
 };
+use rt_fpga_reference::{
+    jobs::{JobProcessor, JobQueue, Memory},
+    storage::ViewId,
+};
+
+/// Compiled port references are addresses; executing them requires no graph search.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Source {
+    Host(usize),
+    Node { node: NodeId, port: usize },
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NodeInstruction {
+    BeginNode(NodeId),
+    RouteInput {
+        source: Source,
+        node: NodeId,
+        port: usize,
+    },
+    ProcessNode(NodeId),
+    RouteOutput {
+        source: Source,
+        port: usize,
+    },
+    EmitOutput {
+        port: usize,
+    },
+}
+#[derive(Debug, Eq, PartialEq)]
+pub struct NodeProgram {
+    pub instructions: Vec<NodeInstruction>,
+    pub(crate) valid: bool,
+}
+impl NodeProgram {
+    /// Called by the control-side graph builder, never by quantum execution.
+    pub fn prepare(config: PreparedConfig) -> Self {
+        let limits = config.limits();
+        Self {
+            instructions: Vec::with_capacity(
+                limits.max_nodes * 2 + limits.max_edges + limits.audio_outputs,
+            ),
+            valid: false,
+        }
+    }
+    pub fn rebuild(
+        &mut self,
+        descriptor: &crate::graph::PlanDescriptor,
+        outputs: usize,
+    ) -> Result<(), Error> {
+        self.valid = false;
+        self.instructions.clear();
+        use crate::graph::{Connection, PortType};
+        fn source(edge: &Connection) -> Result<Source, Error> {
+            if edge.source.kind != PortType::Audio || edge.destination.kind != PortType::Audio {
+                return Err(Error::InvalidConfig);
+            }
+            Ok(match edge.source.node {
+                Some(node) => Source::Node {
+                    node,
+                    port: edge.source.port as usize,
+                },
+                None => Source::Host(edge.source.port as usize),
+            })
+        }
+        let needed = descriptor.steps.len() * 2 + descriptor.connections.len() + outputs;
+        if needed > self.instructions.capacity() {
+            return Err(Error::Capacity);
+        }
+        let instructions = &mut self.instructions;
+        let mut first = 0;
+        for step in &descriptor.steps {
+            instructions.push(NodeInstruction::BeginNode(step.node));
+            for edge in descriptor
+                .connections
+                .get(first..step.input_end)
+                .ok_or(Error::InvalidGraph)?
+            {
+                if edge.destination.node != Some(step.node) {
+                    return Err(Error::InvalidGraph);
+                }
+                instructions.push(NodeInstruction::RouteInput {
+                    source: source(edge)?,
+                    node: step.node,
+                    port: edge.destination.port as usize,
+                });
+            }
+            instructions.push(NodeInstruction::ProcessNode(step.node));
+            first = step.input_end;
+        }
+        for edge in &descriptor.connections[first..] {
+            if edge.destination.node.is_some() {
+                return Err(Error::InvalidGraph);
+            }
+            instructions.push(NodeInstruction::RouteOutput {
+                source: source(edge)?,
+                port: edge.destination.port as usize,
+            });
+        }
+        for port in 0..outputs {
+            instructions.push(NodeInstruction::EmitOutput { port });
+        }
+        self.valid = true;
+        Ok(())
+    }
+    pub(crate) fn storage_bytes(&self) -> usize {
+        self.instructions.capacity() * core::mem::size_of::<NodeInstruction>()
+    }
+}
 
 #[derive(Clone, Copy)]
 enum View {
@@ -34,44 +135,37 @@ enum View {
     },
 }
 
-pub struct Compiler {
-    program: Program,
-    values: Vec<Value>,
+pub struct JobWriter {
+    queue: JobQueue,
     views: Vec<View>,
     buffers: usize,
     capacity: usize,
+    quantum: u32,
 }
 
-impl Compiler {
+impl JobWriter {
     fn new(quantum: Quantum, capacity: usize) -> Self {
         Self {
-            program: Program {
-                instructions: Vec::with_capacity(capacity * 5),
-                quantum: quantum.frames() as u32,
-                jobs_per_quantum: 0,
-            },
-            values: Vec::with_capacity(capacity),
+            queue: JobQueue::new(capacity),
             views: Vec::with_capacity(capacity),
+            quantum: quantum.frames() as u32,
             buffers: 0,
             capacity,
         }
     }
-    fn reset(&mut self) {
-        self.program.instructions.clear();
-        self.program.jobs_per_quantum = 0;
-        self.values.clear();
+    fn reset(&mut self) -> Result<(), Error> {
+        if !self.queue.is_empty() {
+            return Err(Error::InvalidState);
+        }
         self.views.clear();
         self.buffers = 0;
+        Ok(())
     }
     pub fn emit(&mut self, job: Job) -> Result<(), Error> {
-        if self.program.jobs_per_quantum == self.capacity {
-            return Err(Error::Capacity);
-        }
-        self.program
-            .instructions
-            .push(Instruction::Emit(JobTemplate::Literal(job)));
-        self.program.jobs_per_quantum += 1;
-        Ok(())
+        self.queue.push(job).map_err(map_error)
+    }
+    fn quantum(&self) -> u32 {
+        self.quantum
     }
     fn buffer(&mut self) -> Result<BufferId, Error> {
         if self.buffers == self.capacity {
@@ -102,32 +196,15 @@ impl Compiler {
     }
     pub fn gain(&mut self, source: BufferId, gain: GainEnvelope) -> Result<BufferId, Error> {
         let destination = self.buffer()?;
-        if self.values.len() == self.capacity || self.program.jobs_per_quantum == self.capacity {
-            return Err(Error::Capacity);
-        }
-        let address = Address(self.values.len());
-        self.values.push(Value::Ramp(Ramp::new(
-            Fixed::from_f32(gain.start),
-            Fixed::from_f32(gain.end),
-            self.program.quantum - 1,
-        )));
-        self.program.instructions.extend_from_slice(&[
-            Instruction::Load {
-                address,
-                destination: Register(0),
-            },
-            Instruction::Emit(JobTemplate::Gain {
-                ramp: Register(0),
-                source,
-                destination,
-            }),
-            Instruction::AdvanceRamp { ramp: Register(0) },
-            Instruction::Store {
-                source: Register(0),
-                address,
-            },
-        ]);
-        self.program.jobs_per_quantum += 1;
+        self.emit(Job::Gain {
+            ramp: Ramp::new(
+                Fixed::from_f32(gain.start),
+                Fixed::from_f32(gain.end),
+                self.quantum() - 1,
+            ),
+            source,
+            destination,
+        })?;
         Ok(destination)
     }
     pub fn read(
@@ -173,28 +250,27 @@ impl Compiler {
     }
 }
 
-/// App parameters and loop decisions enter here as metadata. There is no sample access.
-pub struct CompileBlock<'a, L: Planner> {
+/// A node instruction executes against its live state and emits sample jobs.
+pub struct StateBlock<'a, L: Planner> {
     pub node: NodeId,
     pub frame: Frame,
     pub graph_epoch: crate::Epoch,
     pub quantum: Quantum,
     pub inputs: &'a [BufferId],
     pub outputs: &'a mut [BufferId],
-    pub compiler: &'a mut Compiler,
+    pub jobs: &'a mut JobWriter,
     pub domain: &'a mut L,
 }
 
 pub(crate) struct Machine {
-    pub(crate) compiler: Compiler,
-    pub(crate) state: StateProcessor,
+    pub(crate) writer: JobWriter,
     pub(crate) jobs: JobProcessor,
-    pub(crate) queue: JobQueue,
     pub(crate) inputs: Box<[Box<[BufferId]>]>,
     pub(crate) outputs: Box<[Box<[BufferId]>]>,
     pub(crate) host_inputs: Box<[Box<[Fixed]>]>,
     pub(crate) host_outputs: Box<[Box<[Fixed]>]>,
     pub(crate) host_ids: Box<[Option<BufferId>]>,
+    pub(crate) output_ids: Box<[BufferId]>,
     staging: Box<[f32]>,
 }
 impl Machine {
@@ -241,30 +317,26 @@ impl Machine {
             .max()
             .unwrap_or(1);
         Ok(Self {
-            compiler: Compiler::new(quantum, capacity),
-            state: StateProcessor::prepare(capacity),
+            writer: JobWriter::new(quantum, capacity),
             jobs: JobProcessor::new(quantum.frames(), capacity),
-            queue: JobQueue::new(capacity),
             inputs: mappings(true),
             outputs: mappings(false),
             host_inputs: buffers(limits.audio_inputs),
             host_outputs: buffers(limits.audio_outputs),
             host_ids: vec![None; limits.audio_inputs].into_boxed_slice(),
+            output_ids: vec![BufferId(0); limits.audio_outputs].into_boxed_slice(),
             staging: vec![0.; channels * quantum.frames()].into_boxed_slice(),
         })
     }
-    pub(crate) fn reset(&mut self) {
-        self.compiler.reset();
+    pub(crate) fn reset(&mut self) -> Result<(), Error> {
+        self.writer.reset()?;
         self.host_ids.fill(None);
+        Ok(())
     }
     pub(crate) fn execute(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
-        self.state.reset(&self.compiler.values).map_err(map_error)?;
-        self.state
-            .run(&self.compiler.program, &mut self.queue)
-            .map_err(map_error)?;
         let mut memory = ExternalMemory {
             resources,
-            views: &self.compiler.views,
+            views: &self.writer.views,
             staging: &mut self.staging,
         };
         self.jobs.begin();
@@ -279,7 +351,7 @@ impl Machine {
             samples.fill(Fixed::ZERO);
             *output = samples;
         }
-        while let Some(job) = self.queue.pop() {
+        while let Some(job) = self.writer.queue.pop() {
             self.jobs
                 .execute(
                     job,

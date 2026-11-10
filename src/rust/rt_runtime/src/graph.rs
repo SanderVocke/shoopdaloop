@@ -214,6 +214,7 @@ pub struct PlanDescriptor {
 /// Prepared ownership, not yet permission to execute. Even compiler-generated
 /// plans must pass receiver validation against the live catalog before activation.
 pub struct PreparedPlan {
+    fpga_program: Option<crate::fpga::NodeProgram>,
     descriptor: PlanDescriptor,
     membership: Vec<Membership>,
     membership_stamp: u64,
@@ -242,6 +243,13 @@ impl PreparedPlan {
                 .and_then(|n| bytes.checked_add(n))
                 .ok_or(Error::Capacity)?;
         }
+        bytes = bytes
+            .checked_add(
+                self.fpga_program
+                    .as_ref()
+                    .map_or(0, |program| program.storage_bytes()),
+            )
+            .ok_or(Error::Capacity)?;
         if bytes > i32::MAX as usize {
             return Err(Error::Capacity);
         }
@@ -273,6 +281,7 @@ impl PreparedPlan {
             }
         }
         Ok(Self {
+            fpga_program: None,
             descriptor,
             membership,
             membership_stamp: 1,
@@ -330,12 +339,14 @@ impl PreparedPlan {
             .membership_stamp
             .checked_add(1)
             .ok_or(Error::Exhausted)?;
+        self.invalidate_fpga_program();
         self.descriptor.steps.clear();
         self.descriptor.connections.clear();
         self.membership_stamp = stamp;
         Ok(())
     }
     pub fn push_step(&mut self, step: NodeStep) -> Result<(), Error> {
+        self.invalidate_fpga_program();
         if self.descriptor.steps.len() == self.descriptor.steps.capacity()
             || self.descriptor.steps.len() == self.config.limits().max_nodes
         {
@@ -351,6 +362,7 @@ impl PreparedPlan {
         Ok(())
     }
     pub fn push_connection(&mut self, connection: Connection) -> Result<(), Error> {
+        self.invalidate_fpga_program();
         if self.descriptor.connections.len() == self.descriptor.connections.capacity()
             || self.descriptor.connections.len() == self.config.limits().max_edges
         {
@@ -358,6 +370,27 @@ impl PreparedPlan {
         }
         self.descriptor.connections.push(connection);
         Ok(())
+    }
+    fn invalidate_fpga_program(&mut self) {
+        if let Some(program) = &mut self.fpga_program {
+            program.valid = false;
+        }
+    }
+    /// Allocate/compile on the control owner before staging or initial activation.
+    pub fn prepare_fpga_program_storage(&mut self) {
+        if self.fpga_program.is_none() {
+            self.fpga_program = Some(crate::fpga::NodeProgram::prepare(self.config));
+        }
+    }
+    pub fn compile_fpga_program(&mut self) -> Result<(), Error> {
+        self.prepare_fpga_program_storage();
+        self.fpga_program
+            .as_mut()
+            .ok_or(Error::InvalidState)?
+            .rebuild(&self.descriptor, self.config.limits().audio_outputs)
+    }
+    pub fn fpga_program(&self) -> Option<&crate::fpga::NodeProgram> {
+        self.fpga_program.as_ref().filter(|program| program.valid)
     }
     pub fn descriptor(&self) -> &PlanDescriptor {
         &self.descriptor

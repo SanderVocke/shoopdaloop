@@ -40,6 +40,9 @@ pub enum Job {
         source: BufferId,
         view: ViewId,
     },
+    Seal {
+        view: ViewId,
+    },
     Output {
         source: BufferId,
         port: usize,
@@ -86,6 +89,9 @@ impl JobQueue {
 }
 
 pub trait Memory {
+    fn seal(&mut self, _view: ViewId) -> Result<(), Error> {
+        Err(Error::InvalidView)
+    }
     fn read(
         &mut self,
         view: ViewId,
@@ -216,6 +222,7 @@ impl JobProcessor {
                 self.require(source)?;
                 memory.write(view, &self.buffers[source.0])?;
             }
+            Job::Seal { view } => memory.seal(view)?,
             Job::Output { source, port } => {
                 self.require(source)?;
                 outputs

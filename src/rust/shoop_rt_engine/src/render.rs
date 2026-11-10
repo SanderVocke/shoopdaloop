@@ -67,6 +67,9 @@ impl Render {
         self.runtime.set_profiling_clock(clock);
     }
 
+    pub fn fpga_program(&self) -> Option<&rt_runtime::fpga::NodeProgram> {
+        self.runtime.fpga_program()
+    }
     pub fn next_frame(&self) -> Frame {
         self.runtime.next_frame()
     }

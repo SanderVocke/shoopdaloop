@@ -102,6 +102,9 @@ impl MediaStore {
 }
 
 impl crate::jobs::Memory for MediaStore {
+    fn seal(&mut self, view: ViewId) -> Result<(), Error> {
+        MediaStore::seal(self, view)
+    }
     fn read(
         &mut self,
         view: ViewId,

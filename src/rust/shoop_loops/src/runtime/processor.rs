@@ -93,9 +93,9 @@ impl CaptureNode {
     }
 }
 impl Processor<LoopPlanner> for LoopNode {
-    fn compile_fpga(
+    fn process_fpga_state(
         &mut self,
-        block: &mut rt_runtime::fpga::CompileBlock<'_, LoopPlanner>,
+        block: &mut rt_runtime::fpga::StateBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
         match self {
             Self::Playback(node) => {
@@ -122,14 +122,14 @@ impl Processor<LoopPlanner> for LoopNode {
                         } else {
                             1.
                         };
-                        let source = block.compiler.read(
+                        let source = block.jobs.read(
                             index,
                             channel,
                             node.binding.channels,
                             view.decision.state.position,
                             view.decision.state.content_length,
                         )?;
-                        block.outputs[channel] = block.compiler.gain(
+                        block.outputs[channel] = block.jobs.gain(
                             source,
                             rt_runtime::audio_refs::GainEnvelope::constant(
                                 view.gain * balance * f32::from_bits(window.gain_bits),
@@ -146,7 +146,7 @@ impl Processor<LoopPlanner> for LoopNode {
                 }
                 if let Some(interval) = view.capture {
                     block
-                        .compiler
+                        .jobs
                         .capture(interval, &block.inputs[..node.binding.channels])?;
                 }
                 Ok(())
