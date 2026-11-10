@@ -20,13 +20,9 @@ settled loop modes and positions without resolving transitions or advancing loop
 clocks. It has no graph or sample-store access and executes the instruction list
 once per quantum.
 
-The separate `TransitionProcessor` owns immediate loop controls, logical clocks,
-and one-shot enable/disable actions at a source loop's next wrap. It applies
-actions before state execution and advances clocks after successful job execution.
-Wrap eligibility is computed for all loops before any target changes, independently
-of their signal order. This standalone model only observes quantum boundaries;
-it does not yet split a quantum at an internal wrap or implement the app's full
-scheduling rules. Future composite loop handling belongs in this subsystem.
+`SignalTransitions` supplies node controls and one-shot `OnWrap` actions for the
+standalone `Backend` audio fixtures, including arbitrary non-grid loop lengths.
+The separate logical `TransitionProcessor` described below is the hardware model.
 
 The job processor drains the ordered FIFO, resolves views/ranges into chunks,
 and performs sample arithmetic and storage operations. Changing the job stream
@@ -39,6 +35,70 @@ cargo test -p rt_fpga_reference
 
 `record_play` prints one compiled node program and two different job streams,
 then verifies exact recorded playback without changing the program.
+
+## Logical transition processor
+
+`transitions::TransitionProcessor` models the transaction boundary intended for
+hardware. Logical `LoopId` values are independent of signal nodes, media views,
+and instruction order. A loop can have separate playback and capture bindings,
+or eventually be a timing-only composite. The native app still uses its existing
+resolver; adopting this model in the app is a separate integration step.
+
+Compile a `TransitionPlan` once from loop IDs, initial content lengths, sync
+sources, repeat-sync flags, quantum, and storage limits. Compilation produces
+canonical dependency components: acyclic components run in source-first order,
+and legal sync cycles settle in stable ID order. Each loop can deliver at most
+one pulse per boundary. `LoopKind::Composite` and a timeline reference reserve
+the extension point; this version returns `Unsupported` for either.
+
+The runtime protocol is:
+
+1. `submit(Command)` retains a request in a fixed slot with a generation-checked
+   ID. Stop, play, record, seek, retrigger, absolute frame scheduling, and delayed
+   source pulses are supported. Positions and lengths use the quantum grid;
+   scheduling frames round up. Supported quanta are 1, 16, 32, 64 and 128 frames.
+2. `preview(observations)` settles into prepared scratch. Inspect
+   `decisions(boundary)` to preflight media resources. `CaptureUnavailable` or
+   request-specific `Refused` observations can replace the preview at the same
+   frame. Every retry starts from committed state and retained inputs; it cannot
+   consume a delayed pulse twice. Preview does not publish state or completions.
+3. `commit(boundary)` publishes the candidate exactly once. Only the latest
+   successful boundary token is valid. `StateBindings::export` maps committed
+   decisions to validated playback enable/position/length and capture-enable
+   words before running the existing state/job processors.
+4. After successful quantum execution, `finish_quantum(boundary)` advances logical
+   clocks exactly once. A playback endpoint remains `position == content_length`;
+   the next preview resolves wrap/repeat waiting against the source's pulse.
+   Signal-state position operands are exports, not a second clock.
+5. Collect terminal requests with `take_completion`. Until collected, terminal
+   requests retain their slot and sequence. Reuse increments the generation;
+   exhausted generations retire the slot. A successful stop cancels older pending
+   commands for that loop, and the greatest eligible sequence wins arbitration.
+
+Submission, cancellation and collection are backpressured from the first preview
+until finish, including after a failed preview. Retry with corrected observations
+to obtain a valid candidate. Preview and commit can fail without publishing partial
+logical state; counters use checked arithmetic. State/job execution failures after
+commit require stopping the pipeline, rather than replaying that quantum.
+
+Preparation may allocate. Submission, cancellation, preview/retry, commit, finish,
+collection and binding export use prepared storage without heap operations.
+Loop/request capacities are explicit; event storage reserves at least two events
+per loop plus one per request, covering pulse, wrap and transition events without
+silent truncation. Preparation currently bounds loop/request slots to 65,536 each
+and events to 196,608. This is a transaction-level model, not a cycle count or a
+promise that every configuration meets a hardware deadline.
+
+Composite execution, trigger actions, request batches, playback monitoring during
+recording, media ownership/admission and live topology replacement are deferred.
+The model exports logical capture enable and published length/revision; a media
+adapter remains responsible for choosing recording views and reserving storage.
+`StateBindings` validates the entire export before writing any operand. It does
+not perform media preparation or enforce playback/capture exclusion in sample jobs.
+
+The testbench compares decisions, retained requests/completions, ordered events,
+and post-quantum state against `shoop_loops::Resolver` for this primitive subset.
+See `scripts/fpga_testbench/README.md` for replayable transition traces.
 
 ## Serialization and RTL comparison
 

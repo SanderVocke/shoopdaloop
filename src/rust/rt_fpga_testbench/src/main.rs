@@ -1,3 +1,4 @@
+use rt_fpga_testbench::transitions::{run_transition_case, run_transition_oracle};
 use rt_fpga_testbench::{run_audio_case, run_case, schema, Document, Payload};
 use std::io::{self, Read};
 
@@ -26,6 +27,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             run_audio_case(case)
                 .map_err(|error| format!("audio initialization failed: {error:?}"))?,
         ),
+        ("compile", Payload::TransitionPlan(plan)) => Payload::TransitionPlanImage(
+            rt_fpga_reference::transitions::TransitionPlan::compile(plan.description, plan.limits)
+                .map_err(|error| format!("transition compile failed: {error:?}"))?
+                .image()
+                .clone(),
+        ),
+        ("trace", Payload::TransitionCase(case)) => Payload::TransitionTrace(
+            run_transition_case(case)
+                .map_err(|error| format!("transition trace failed: {error:?}"))?,
+        ),
+        ("check", Payload::TransitionTrace(trace)) => {
+            let model = run_transition_case(trace.case.clone())
+                .map_err(|error| format!("transition model failed: {error:?}"))?;
+            let oracle = run_transition_oracle(trace.case.clone())
+                .map_err(|error| format!("transition oracle failed: {error:?}"))?;
+            if model != trace || oracle != trace {
+                return Err(
+                    "transition trace differs from hardware model or native resolver results"
+                        .into(),
+                );
+            }
+            Payload::TransitionTrace(trace)
+        }
         ("check", Payload::AudioTrace(trace)) => {
             if run_audio_case(trace.case.clone())
                 .map_err(|error| format!("audio initialization failed: {error:?}"))?

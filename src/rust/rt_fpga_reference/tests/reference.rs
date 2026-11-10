@@ -301,7 +301,7 @@ fn fifo_refusal_does_not_advance_state_and_unconsumed_jobs_are_not_overwritten()
     };
     let compiled = compile(&graph).unwrap();
     let mut transitions =
-        rt_fpga_reference::transitions::TransitionProcessor::new(&compiled.bindings);
+        rt_fpga_reference::transitions::SignalTransitions::new(&compiled.bindings);
     let mut state = StateProcessor::new(compiled.initial_state);
     assert_eq!(
         state.run(&compiled.program, &mut JobQueue::new(0)),

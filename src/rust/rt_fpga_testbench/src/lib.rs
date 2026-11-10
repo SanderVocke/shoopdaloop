@@ -14,6 +14,8 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+pub mod transitions;
+
 pub const FORMAT_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -96,6 +98,10 @@ pub enum Payload {
     AudioCase(AudioCase),
     AudioTrace(AudioTrace),
     Media(MediaSnapshot),
+    TransitionPlan(transitions::TransitionPlanInput),
+    TransitionPlanImage(rt_fpga_reference::transitions::TransitionPlanImage),
+    TransitionCase(transitions::TransitionCase),
+    TransitionTrace(transitions::TransitionTrace),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
