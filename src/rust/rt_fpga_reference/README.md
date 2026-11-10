@@ -15,9 +15,18 @@ sample jobs. A hardware-like instruction set and VLIW lowering are deferred.
 The standalone compiler emits `ProcessLoopPlayback`, `ProcessLoopCapture`,
 `ProcessGain`, `ProcessMix`, input and output instructions. Operands identify
 persistent state addresses and temporary buffers. The state processor owns
-position/wrap logic, mode-dependent job selection, ramp progression, and capture
-finalization. It has no graph or sample-store access. Capture finalization emits
-seal jobs before playback may consume a completed take in that quantum.
+mode-dependent job selection, ramp progression, and capture finalization. It reads
+settled loop modes and positions without resolving transitions or advancing loop
+clocks. It has no graph or sample-store access. Capture finalization emits seal
+jobs before playback may consume a completed take in that quantum.
+
+The separate `TransitionProcessor` owns immediate loop controls, logical clocks,
+and one-shot enable/disable actions at a source loop's next wrap. It applies
+actions before state execution and advances clocks after successful job execution.
+Wrap eligibility is computed for all loops before any target changes, independently
+of their signal order. This standalone model only observes quantum boundaries;
+it does not yet split a quantum at an internal wrap or implement the app's full
+scheduling rules. Future composite loop handling belongs in this subsystem.
 
 The job processor drains the ordered FIFO, resolves views/ranges into chunks,
 and performs sample arithmetic and storage operations. Changing the job stream
@@ -55,21 +64,25 @@ Signal execution follows the compiled instructions; it does not traverse the
 signal-graph descriptor, compile a program, or reinitialize node state each
 quantum. Structural graph changes compile another program.
 
-The coarse app state processor is in `rt_runtime::executor`'s FPGA executor.
-It owns quantum state preparation, interprets node instructions, and finalizes
-capture/state after job completion. `process_fpga_state` implementations contain
-live node behaviour, including monitoring decisions and native ramp updates.
-The old per-quantum compiler has been replaced by a job writer: it only constructs
-sample jobs and transient operands; it does not generate another state program.
+The app executes explicit transition, state, and job phases:
 
-The existing loop planner is reused as a state/lifecycle library under this
-processor's begin/end phases: take preparation, mode-dependent media selection,
-capture reservation/publication, and position advancement retain their existing
-semantics. Scheduled action delivery remains outside the state processor.
-Transition propagation remains delegated to the existing resolver, including
-capture-failure feedback and transition retries. That algorithm is not represented
-as node instructions or proposed as FPGA logic in this step. There is no claim
-that these reused Rust helpers constitute a hardware implementation.
+1. The transition processor delivers scheduled actions and previews logical loop
+   decisions using the existing resolver. Timing dependencies have their own order.
+2. State preparation reserves captures and selects media from those decisions.
+   A refused preparation feeds back into transition resolution before commit.
+3. The state processor interprets the compiled signal program and emits jobs.
+   `process_fpga_state` implementations handle live node behaviour, including
+   monitoring and ramps, through a read-only view of settled loop decisions.
+4. The job processor executes sample work. State feedback publishes captures.
+5. The transition processor advances logical time and collects completions.
+
+`rt_runtime` has separate FPGA transition and state executors. The native loop
+adapter separates resolver/timing logic from physical capture state preparation
+and publication. It retains shared native storage and transaction semantics;
+preparation and transition settlement rendezvous before the transition commits. This is
+a functional boundary, not a hardware implementation or a hardware protocol.
+The state program never contains transition propagation instructions. Its job
+writer only constructs sample jobs and transient operands.
 
 Node feedback, meters and bulk readback also execute under the app state
 processor's feedback phase. Sample jobs still execute separately in the job
@@ -117,5 +130,7 @@ Tests compare output and captured audio at Q=1/32 and callback partitions 1/13/1
 and assert that program contents and allocation identity remain unchanged across
 mode and parameter changes. Standalone coverage includes automatic take sealing,
 record/play/stop/seek/ramp changes through one program, FIFO refusal and fixed-point
-saturation. The historical three-renderer script default is unchanged.
+saturation. Standalone and app timing tests also reverse signal order relative to
+sync dependencies and check that sync edits and transitions preserve the signal
+program. The historical three-renderer script default is unchanged.
 Timing results describe software, not predicted FPGA timing.

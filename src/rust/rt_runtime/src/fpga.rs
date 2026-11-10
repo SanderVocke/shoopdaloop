@@ -259,7 +259,19 @@ pub struct StateBlock<'a, L: Planner> {
     pub inputs: &'a [BufferId],
     pub outputs: &'a mut [BufferId],
     pub jobs: &'a mut JobWriter,
-    pub domain: &'a mut L,
+    pub domain: &'a L,
+}
+
+/// Sample results and a read-only view of settled loop decisions.
+pub struct FeedbackBlock<'a, L: Planner> {
+    pub node: NodeId,
+    pub frame: Frame,
+    pub graph_epoch: crate::Epoch,
+    pub callback_start: Frame,
+    pub quantum: Quantum,
+    pub audio: crate::buffer::AudioPorts<'a>,
+    pub resources: crate::resource::ResourceIo<'a>,
+    pub domain: &'a L,
 }
 
 pub(crate) struct Machine {

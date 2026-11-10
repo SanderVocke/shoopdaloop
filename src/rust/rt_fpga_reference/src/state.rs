@@ -143,9 +143,6 @@ impl StateProcessor {
                             length,
                             destination,
                         })?;
-                        let next = (u128::from(current) + u128::from(program.quantum))
-                            % u128::from(length);
-                        self.write(position, Value::Word(next as u64))?;
                     }
                 }
                 Instruction::ProcessGain {

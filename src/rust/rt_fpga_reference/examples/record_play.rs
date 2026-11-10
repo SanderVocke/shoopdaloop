@@ -46,6 +46,7 @@ fn main() {
         .collect();
     let mut monitor = vec![Fixed::ZERO; 32];
     let mut playback = vec![Fixed::ZERO; 32];
+    backend.transitions.begin(&mut backend.state).unwrap();
     backend
         .state
         .run(&backend.program, &mut backend.queue)
@@ -63,9 +64,14 @@ fn main() {
             &mut [&mut monitor, &mut playback],
         )
         .unwrap();
+    backend
+        .transitions
+        .finish(&mut backend.state, backend.program.quantum)
+        .unwrap();
     let recorded = monitor.clone();
     backend.set_enabled(NodeId(2), false).unwrap();
     backend.set_enabled(NodeId(3), true).unwrap();
+    backend.transitions.begin(&mut backend.state).unwrap();
     backend
         .state
         .run(&backend.program, &mut backend.queue)
@@ -82,6 +88,10 @@ fn main() {
             &[&input],
             &mut [&mut monitor, &mut playback],
         )
+        .unwrap();
+    backend
+        .transitions
+        .finish(&mut backend.state, backend.program.quantum)
         .unwrap();
     assert_eq!(playback, recorded);
     assert_eq!(backend.program, program);

@@ -2,9 +2,8 @@
 use super::*;
 use crate::fpga::{Fixed, Job, Machine, NodeInstruction, Source, StateBlock};
 
-/// The host delivers scheduled actions before entering this state processor.
-/// The existing resolver supplies transition propagation; node/capture lifecycle,
-/// job construction and quantum finalization execute under this owner.
+/// Executes settled decisions in signal order. It neither resolves transitions
+/// nor advances the transition clock. Node/capture feedback precedes that advance.
 struct StateProcessor<'a, P, L: Planner, Q: ProcessorOperation> {
     runtime: &'a mut GraphRuntime<P, L, Q>,
 }
@@ -35,27 +34,6 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> StateProcessor<'_, P
         let runtime = &mut self.runtime;
         let frame = audio.frame().checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
-        runtime.planner.begin_tick(PlanContext {
-            graph_epoch: runtime.epoch,
-            graphs: GraphAccess::new(
-                &mut runtime.graph_stages,
-                &mut runtime.active,
-                &mut runtime.epoch,
-                true,
-                &|candidate| activation_compatible(&runtime.slots, candidate),
-                &mut runtime.recovery,
-            ),
-            callback_start,
-            frame,
-            ceiling: end,
-            resources: runtime.resources.planner_io(frame, end),
-            receipts: runtime.scheduler.receipts(frame),
-        })?;
-        if runtime.scheduler.recovery_pending() {
-            return Err(Error::InvalidState);
-        }
-        runtime.profiling.phase(rt_profiling::Phase::StateSettled);
-        runtime.profiling.graph_start(runtime.epoch.0, frame.0);
         let mut machine = runtime.fpga.take().ok_or(Error::InvalidState)?;
         let result = (|| {
             machine.reset()?;
@@ -107,7 +85,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> StateProcessor<'_, P
                                 inputs: &machine.inputs[slot],
                                 outputs: &mut machine.outputs[slot],
                                 jobs: &mut machine.writer,
-                                domain: &mut runtime.planner,
+                                domain: &runtime.planner,
                             })?;
                     }
                     NodeInstruction::RouteOutput { source, port } => {
@@ -158,19 +136,15 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> StateProcessor<'_, P
                     .processor
                     .as_mut()
                     .ok_or(Error::InvalidId)?
-                    .finish_fpga(&mut ProcessBlock {
+                    .finish_fpga(&mut crate::fpga::FeedbackBlock {
                         node,
                         graph_epoch: runtime.epoch,
                         callback_start,
                         frame,
-                        frames: q,
                         quantum,
                         audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
-                        midi_inputs: &buffers.midi_input,
-                        midi_outputs: &mut buffers.midi_output,
-                        midi_forwarded: &mut buffers.midi_forwarded,
                         resources: runtime.resources.io(),
-                        domain: &mut runtime.planner,
+                        domain: &runtime.planner,
                     })?;
                 increment(
                     &mut runtime.diagnostics.nodes_processed,
@@ -189,7 +163,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> StateProcessor<'_, P
         })();
         runtime.fpga = Some(machine);
         result?;
-        runtime.planner.finish_tick(FinishContext {
+        runtime.planner.finish_node_state(FinishContext {
             interval: Interval { start: frame, end },
             resources: runtime.resources.planner_io(end, end),
             receipts: runtime.scheduler.receipts(end),

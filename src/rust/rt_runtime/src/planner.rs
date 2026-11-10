@@ -72,6 +72,26 @@ pub trait Planner: Send {
     ) -> Result<(), Error> {
         Ok(())
     }
+    /// Timing/transition settlement is separate from signal-node execution.
+    fn begin_transitions(
+        &mut self,
+        context: PlanContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        self.begin_tick(context)
+    }
+    /// Commit physical node/capture results before advancing transition time.
+    fn finish_node_state(
+        &mut self,
+        _context: FinishContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+    fn finish_transitions(
+        &mut self,
+        context: FinishContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        self.finish_tick(context)
+    }
     fn recovery_safe(_operation: Self::Operation) -> bool {
         false
     }

@@ -212,12 +212,15 @@ fn fifo_refusal_does_not_advance_state_and_unconsumed_jobs_are_not_overwritten()
         }],
     };
     let compiled = compile(&graph).unwrap();
+    let mut transitions =
+        rt_fpga_reference::transitions::TransitionProcessor::new(&compiled.bindings);
     let mut state = StateProcessor::new(compiled.initial_state);
     assert_eq!(
         state.run(&compiled.program, &mut JobQueue::new(0)),
         Err(Error::QueueFull)
     );
     let mut queue = JobQueue::new(1);
+    transitions.begin(&mut state).unwrap();
     state.run(&compiled.program, &mut queue).unwrap();
     assert!(matches!(
         queue.iter().next(),
@@ -228,6 +231,10 @@ fn fifo_refusal_does_not_advance_state_and_unconsumed_jobs_are_not_overwritten()
         Err(Error::QueueFull)
     );
     queue.pop();
+    transitions
+        .finish(&mut state, compiled.program.quantum)
+        .unwrap();
+    transitions.begin(&mut state).unwrap();
     state.run(&compiled.program, &mut queue).unwrap();
     assert!(matches!(
         queue.iter().next(),
@@ -301,4 +308,95 @@ fn one_node_program_handles_record_stop_play_seek_and_ramps_without_recompilatio
     assert_eq!(output[3], Fixed::ZERO);
     assert_eq!(backend.program, program);
     assert_eq!(backend.program.instructions.as_ptr(), address);
+}
+
+#[shoop_test]
+fn transitions_follow_source_clocks_in_both_signal_orders_and_state_execution_cannot_advance_them()
+{
+    use rt_fpga_reference::{compiler::Binding, transitions::OnWrap};
+    for source_first in [false, true] {
+        let mut media = MediaStore::new(32).unwrap();
+        let target_view = media.insert(&fixed(&[0.125, 0.25, 0.5, 0.75])).unwrap();
+        let source_view = media.insert(&[Fixed::ONE; 4]).unwrap();
+        let (source, target) = if source_first {
+            (NodeId(0), NodeId(1))
+        } else {
+            (NodeId(1), NodeId(0))
+        };
+        let target_node = Node::Playback {
+            view: target_view,
+            length: 4,
+            position: 0,
+            playing: false,
+        };
+        let source_node = Node::Playback {
+            view: source_view,
+            length: 4,
+            position: 0,
+            playing: true,
+        };
+        let graph = Graph {
+            quantum: 2,
+            nodes: vec![
+                if source_first {
+                    source_node.clone()
+                } else {
+                    target_node.clone()
+                },
+                if source_first {
+                    target_node
+                } else {
+                    source_node
+                },
+                Node::Output {
+                    input: target,
+                    port: 0,
+                },
+            ],
+        };
+        let compiled = compile(&graph).unwrap();
+        let Binding::Playback { position, .. } = compiled.bindings[target.0] else {
+            panic!("playback binding");
+        };
+        let mut backend = Backend::new(&graph, media).unwrap();
+        let program = backend.program.clone();
+        backend
+            .transitions
+            .on_wrap(OnWrap {
+                source,
+                target,
+                enabled: true,
+            })
+            .unwrap();
+        assert_eq!(
+            render(&mut backend, &[Fixed::ZERO; 2]),
+            vec![Fixed::ZERO; 2]
+        );
+        assert_eq!(
+            render(&mut backend, &[Fixed::ZERO; 2]),
+            vec![Fixed::ZERO; 2]
+        );
+        assert_eq!(
+            render(&mut backend, &[Fixed::ZERO; 2]),
+            fixed(&[0.125, 0.25])
+        );
+        assert_eq!(backend.transitions.frame(), 6);
+        assert_eq!(backend.state.read(position).unwrap().word().unwrap(), 2);
+        assert_eq!(
+            backend
+                .transitions
+                .finish(&mut backend.state, backend.program.quantum),
+            Err(Error::InvalidState)
+        );
+        for _ in 0..2 {
+            backend
+                .state
+                .run(&backend.program, &mut backend.queue)
+                .unwrap();
+            assert_eq!(backend.transitions.frame(), 6);
+            assert_eq!(backend.state.read(position).unwrap().word().unwrap(), 2);
+            while backend.queue.pop().is_some() {}
+        }
+        assert_eq!(backend.program, program);
+    }
 }

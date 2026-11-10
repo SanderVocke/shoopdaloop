@@ -155,7 +155,7 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     ) -> Result<(), Error> {
         Err(Error::InvalidConfig)
     }
-    fn finish_fpga(&mut self, _block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
+    fn finish_fpga(&mut self, _block: &mut crate::fpga::FeedbackBlock<'_, L>) -> Result<(), Error> {
         Ok(())
     }
     fn process_references(
@@ -181,12 +181,12 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
     fn process_fpga_state(
         &mut self,
-        _block: &mut crate::fpga::StateBlock<'_, L>,
+        block: &mut crate::fpga::StateBlock<'_, L>,
     ) -> Result<(), Error> {
-        Err(Error::InvalidConfig)
+        (**self).process_fpga_state(block)
     }
-    fn finish_fpga(&mut self, _block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
-        Ok(())
+    fn finish_fpga(&mut self, block: &mut crate::fpga::FeedbackBlock<'_, L>) -> Result<(), Error> {
+        (**self).finish_fpga(block)
     }
     fn process_references(
         &mut self,

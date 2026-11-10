@@ -76,9 +76,29 @@ fn modes(views: &BTreeMap<u64, View>, range: std::ops::Range<u64>) -> Vec<LoopMo
 
 #[shoop_test]
 fn synchronized_transitions_match_the_legacy_reference() {
-    let mut harness = Harness::new(&description());
+    synchronized_reference(shoop_rt_engine::AudioRenderMode::Current, false);
+}
+
+#[shoop_test]
+fn fpga_transition_dependencies_are_independent_of_signal_order_and_preserve_the_program() {
+    for reversed in [false, true] {
+        synchronized_reference(shoop_rt_engine::AudioRenderMode::FpgaReference, reversed);
+    }
+}
+
+fn synchronized_reference(mode: shoop_rt_engine::AudioRenderMode, reversed: bool) {
+    let mut d = audio_description(mode);
+    if mode == shoop_rt_engine::AudioRenderMode::FpgaReference {
+        d.history.seconds = 0;
+        d.smoothing_frames = 0;
+    }
+    let mut harness = Harness::new(&d);
     let (sync_strip, track) = (strip(0, 1), strip(1, 1));
-    let (sync, a, b) = (loop_id(0, 1), loop_id(1, 1), loop_id(2, 1));
+    let (sync, a, b) = if reversed {
+        (loop_id(2, 1), loop_id(0, 1), loop_id(1, 1))
+    } else {
+        (loop_id(0, 1), loop_id(1, 1), loop_id(2, 1))
+    };
     for (index, id) in [sync_strip, track].into_iter().enumerate() {
         harness.done(Request::CreateStrip {
             strip: id,
@@ -100,6 +120,14 @@ fn synchronized_transitions_match_the_legacy_reference() {
             loop_id: id,
             strip: owner,
         });
+    }
+    let program = harness
+        .host
+        .render
+        .fpga_program()
+        .map(|p| (p.instructions.clone(), p.instructions.as_ptr() as usize));
+    if mode == shoop_rt_engine::AudioRenderMode::FpgaReference {
+        assert!(program.is_some());
     }
     harness.done(Request::LoopSync {
         loop_id: a,
@@ -164,21 +192,39 @@ fn synchronized_transitions_match_the_legacy_reference() {
     assert_eq!(modes(&views_b, 0..21), [LoopMode::Stopped; 21]);
     assert_eq!(views_b[&21].mode, LoopMode::Recording);
 
+    if let Some((instructions, address)) = program {
+        let current = harness.host.render.fpga_program().unwrap();
+        assert_eq!(current.instructions, instructions);
+        assert_eq!(current.instructions.as_ptr() as usize, address);
+    }
+    let compare_samples = |actual: &[f32], expected: &[f32]| {
+        if mode == shoop_rt_engine::AudioRenderMode::Current {
+            assert_eq!(actual, expected);
+        } else {
+            assert_eq!(actual.len(), expected.len());
+            assert!(actual
+                .iter()
+                .zip(expected)
+                .all(|(&a, &b)| (a - b).abs() <= 1e-6));
+        }
+    };
     let expected = |first: u64, length: u64| -> Vec<f32> {
         (first..first + length)
             .map(|frame| frame as f32 / 1000.)
             .collect()
     };
     let (total, samples, _) = harness.read(sync, BulkSelector::Audio { channel: 0 });
-    assert_eq!((total, samples), (16, expected(3, 16)));
+    assert_eq!(total, 16);
+    compare_samples(&samples, &expected(3, 16));
     let (total, samples, _) = harness.read(a, BulkSelector::Audio { channel: 0 });
-    assert_eq!((total, samples), (48, expected(51, 48)));
+    assert_eq!(total, 48);
+    compare_samples(&samples, &expected(51, 48));
     let played = &harness.outputs[0][(origin + 19) as usize..(origin + 179) as usize];
     for (offset, sample) in played.iter().enumerate() {
-        assert_eq!(*sample, (3 + offset as u64 % 16) as f32 / 1000.);
+        compare_samples(&[*sample], &[(3 + offset as u64 % 16) as f32 / 1000.]);
     }
     let played = &harness.outputs[1][(origin + 99) as usize..(origin + 131) as usize];
-    assert_eq!(played, &expected(51, 32)[..]);
+    compare_samples(played, &expected(51, 32));
     assert!(
         harness.outputs[1][(origin + 131) as usize..(origin + 180) as usize]
             .iter()

@@ -1,4 +1,4 @@
-//! Executable, audio-only reference for a compiler -> state processor -> job processor.
+//! Audio-only reference with separate compilation, transitions, state, and jobs.
 //! This is a readable functional model, not a cycle simulator or an RT implementation.
 
 #![no_std]
@@ -12,12 +12,14 @@ pub mod fixed;
 pub mod jobs;
 pub mod state;
 pub mod storage;
+pub mod transitions;
 
 use compiler::{Binding, Graph, NodeId, Program};
 use fixed::{Fixed, Ramp};
 use jobs::{JobProcessor, JobQueue};
 use state::{StateProcessor, Value};
 use storage::MediaStore;
+use transitions::TransitionProcessor;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -33,6 +35,7 @@ pub enum Error {
 pub struct Backend {
     pub program: Program,
     pub state: StateProcessor,
+    pub transitions: TransitionProcessor,
     pub jobs: JobProcessor,
     pub media: MediaStore,
     pub queue: JobQueue,
@@ -44,6 +47,7 @@ impl Backend {
         let compiled = compiler::compile(graph)?;
         Ok(Self {
             queue: JobQueue::new(compiled.program.jobs_per_quantum),
+            transitions: TransitionProcessor::new(&compiled.bindings),
             state: StateProcessor::new(compiled.initial_state),
             jobs: JobProcessor::new(graph.quantum, graph.nodes.len()),
             media,
@@ -57,33 +61,23 @@ impl Backend {
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
     ) -> Result<(), Error> {
+        if !self.queue.is_empty() || self.queue.remaining() < self.program.jobs_per_quantum {
+            return Err(Error::QueueFull);
+        }
+        self.transitions.begin(&mut self.state)?;
         self.state.run(&self.program, &mut self.queue)?;
         self.jobs
-            .run(&mut self.queue, &mut self.media, inputs, outputs)
+            .run(&mut self.queue, &mut self.media, inputs, outputs)?;
+        self.transitions
+            .finish(&mut self.state, self.program.quantum)
     }
 
     pub fn set_enabled(&mut self, node: NodeId, enabled: bool) -> Result<(), Error> {
-        let address = match self.bindings.get(node.0).ok_or(Error::InvalidGraph)? {
-            Binding::Playback { enabled, .. } | Binding::Capture { enabled, .. } => *enabled,
-            _ => return Err(Error::InvalidState),
-        };
-        self.state.write(address, Value::Word(u64::from(enabled)))
+        self.transitions.set_enabled(&mut self.state, node, enabled)
     }
 
     pub fn seek(&mut self, node: NodeId, position: u64) -> Result<(), Error> {
-        let Binding::Playback {
-            position: address,
-            length,
-            ..
-        } = *self.bindings.get(node.0).ok_or(Error::InvalidGraph)?
-        else {
-            return Err(Error::InvalidState);
-        };
-        let length = self.state.read(length)?.word()?;
-        if position >= length {
-            return Err(Error::InvalidState);
-        }
-        self.state.write(address, Value::Word(position))
+        self.transitions.seek(&mut self.state, node, position)
     }
 
     pub fn set_gain(&mut self, node: NodeId, target: Fixed, frames: u32) -> Result<(), Error> {

@@ -22,6 +22,8 @@ use core::marker::PhantomData;
 mod fpga_audio;
 #[path = "executor_audio.rs"]
 mod referenced_audio;
+#[path = "executor_transitions.rs"]
+mod transitions;
 
 /// Capture a prepared processor's port signature outside rendering. A runtime slot
 /// can later accept another generation with the same signature, not a larger one.
@@ -1326,10 +1328,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let frame = audio.frame().checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
         self.profiling.begin_tick(frame.0, quantum.frames() as u32);
-        self.deliver_actions(frame, callback_start, remaining)?;
         if self.fpga.is_some() {
+            self.begin_fpga_transitions(frame, end, callback_start, remaining)?;
             self.run_fpga_tick(audio, start, callback_start, quantum)?;
+            self.finish_fpga_transitions(frame, end)?;
         } else {
+            self.deliver_actions(frame, callback_start, remaining)?;
             self.planner.begin_tick(PlanContext {
                 graph_epoch: self.epoch,
                 graphs: GraphAccess::new(

@@ -832,9 +832,12 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         }
     }
 
-    fn finish_fpga(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+    fn finish_fpga(
+        &mut self,
+        block: &mut rt_runtime::fpga::FeedbackBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         match self {
-            Self::Reader(node) => node.process(block),
+            Self::Reader(node) => node.render_resources(block.callback_start, &mut block.resources),
             Self::StripInput(node) => {
                 for channel in 0..node.inputs as usize {
                     node.cells.strips[node.slot].input.raise(
