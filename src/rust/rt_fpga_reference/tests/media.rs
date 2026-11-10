@@ -22,6 +22,187 @@ fn read(store: &MediaStore, view: ViewId) -> Vec<Fixed> {
 }
 
 #[shoop_test]
+fn unaligned_slices_survive_source_clear_and_slot_reuse_without_copying_payloads() {
+    let mut store = MediaStore::with_chunk_limit(4, 3).unwrap();
+    let original = samples(&[1, 2, 3, i32::MIN, i32::MAX, -17, 7, 8, 9, 10, 11, 12]);
+    let a = store.insert(&original).unwrap();
+    let before = store.snapshot();
+    let b = store.slice(a, 3, 5).unwrap();
+    assert_eq!(store.snapshot().samples, before.samples);
+    assert_eq!(store.slot_count(), 3);
+    assert_eq!(store.chunk_ids(b).unwrap(), [ChunkId(0), ChunkId(1)]);
+    assert_eq!(
+        store.snapshot().views[b.0]
+            .as_ref()
+            .unwrap()
+            .range
+            .unwrap()
+            .offset,
+        3
+    );
+    assert_eq!(store.chunk_references(ChunkId(0)), Ok(2));
+    assert_eq!(store.chunk_references(ChunkId(1)), Ok(2));
+    assert_eq!(store.chunk_references(ChunkId(2)), Ok(1));
+    let expected = &original[3..8];
+    assert_eq!(read(&store, b), expected);
+    store.clear(a).unwrap();
+    assert_eq!(store.free_chunk_count(), 1);
+    let replacement = samples(&[91, 92, 93, 94]);
+    store.append(a, &replacement).unwrap();
+    assert_eq!(store.chunk_ids(a).unwrap(), [ChunkId(2)]);
+    assert_eq!(read(&store, b), expected);
+    let mut wrapped = [Fixed::ZERO; 13];
+    store.read_loop(b, 4, 5, &mut wrapped).unwrap();
+    for (index, sample) in wrapped.iter().enumerate() {
+        assert_eq!(*sample, expected[(4 + index) % 5]);
+    }
+    let mut restored = MediaStore::from_snapshot(store.snapshot()).unwrap();
+    for media in [&mut store, &mut restored] {
+        media.clear(b).unwrap();
+        assert_eq!(media.free_chunk_count(), 2);
+        assert_eq!(media.append(b, &[]), Err(Error::InvalidState));
+        media
+            .append(a, &samples(&[100, 101, 102, 103, 104, 105, 106, 107]))
+            .unwrap();
+        assert_eq!(
+            media.chunk_ids(a).unwrap(),
+            [ChunkId(2), ChunkId(1), ChunkId(0)]
+        );
+        assert_eq!(media.slot_count(), 3);
+        assert_eq!(media.free_chunk_count(), 0);
+        assert_eq!(
+            read(media, a),
+            samples(&[91, 92, 93, 94, 100, 101, 102, 103, 104, 105, 106, 107])
+        );
+    }
+    assert_eq!(store.snapshot(), restored.snapshot());
+}
+
+#[shoop_test]
+fn nested_and_empty_slices_outlive_their_sources_and_preserve_partial_tails() {
+    let mut store = MediaStore::new(4).unwrap();
+    let a = store.insert(&samples(&[1, 2, 3])).unwrap();
+    let b = store.slice(a, 1, 2).unwrap();
+    let empty = store.slice(b, 2, 0).unwrap();
+    let tail = store.slice(b, 1, 1).unwrap();
+    store.append(a, &samples(&[4, 5, 6, 7, 8, 9])).unwrap();
+    assert_eq!(store.chunk_references(ChunkId(0)), Ok(3));
+    assert_eq!(read(&store, b), samples(&[2, 3]));
+    assert_eq!(store.frames(empty), Ok(0));
+    assert!(store.chunk_ids(empty).unwrap().is_empty());
+    let before = store.snapshot();
+    assert_eq!(store.append(b, &samples(&[7])), Err(Error::InvalidState));
+    assert_eq!(
+        store.reserve_view_capacity(b, 100),
+        Err(Error::InvalidState)
+    );
+    for (start, frames) in [(3, 0), (2, 1), (0, 3), (u64::MAX, 1)] {
+        assert_eq!(store.slice(b, start, frames), Err(Error::InvalidView));
+    }
+    assert_eq!(store.snapshot(), before);
+    store.remove(a).unwrap();
+    store.remove(b).unwrap();
+    assert_eq!(read(&store, tail), samples(&[3]));
+    assert_eq!(store.chunk_references(ChunkId(0)), Ok(1));
+    let mut restored = MediaStore::from_snapshot(store.snapshot()).unwrap();
+    assert_eq!(read(&restored, tail), samples(&[3]));
+    restored.remove(tail).unwrap();
+    assert_eq!(restored.free_chunk_count(), restored.slot_count());
+    assert_eq!(restored.slice(a, 0, 0), Err(Error::InvalidView));
+    assert_eq!(restored.slice(empty, 0, 0), Ok(ViewId(4)));
+}
+
+#[shoop_test]
+fn incremental_release_counts_shared_chunks_and_respects_slice_offsets() {
+    let mut store = MediaStore::new(4).unwrap();
+    let a = store
+        .insert(&samples(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))
+        .unwrap();
+    let b = store.slice(a, 3, 6).unwrap();
+    for length in [5, 1, 0] {
+        assert_eq!(store.reclaim_chunk(b).unwrap(), length == 0);
+        assert_eq!(store.frames(b), Ok(length));
+        assert_eq!(read(&store, b), samples(&[4, 5, 6, 7, 8][..length]));
+        assert_eq!(store.free_chunk_count(), 0);
+        MediaStore::from_snapshot(store.snapshot()).unwrap();
+    }
+    assert!(store.reclaim_chunk(b).unwrap());
+    assert_eq!(store.append(b, &[Fixed(7)]), Err(Error::InvalidState));
+    for length in [8, 4, 0] {
+        let free = store.free_chunk_count();
+        assert_eq!(store.reclaim_chunk(a).unwrap(), length == 0);
+        assert_eq!(store.frames(a), Ok(length));
+        assert_eq!(store.free_chunk_count(), free + 1);
+    }
+}
+
+#[shoop_test]
+fn bounded_capture_cannot_reuse_chunks_retained_by_slices_and_failures_are_atomic() {
+    let mut store = MediaStore::with_chunk_limit(4, 1).unwrap();
+    let a = store.insert(&samples(&[1, 2, 3])).unwrap();
+    let b = store.slice(a, 1, 2).unwrap();
+    store.append(a, &[Fixed(4)]).unwrap();
+    let before = store.snapshot();
+    assert_eq!(store.append(a, &[Fixed(5)]), Err(Error::MemoryFull));
+    assert_eq!(store.snapshot(), before);
+    assert_eq!(store.chunk_references(ChunkId(0)), Ok(2));
+    store.clear(a).unwrap();
+    let before = store.snapshot();
+    assert_eq!(store.append(a, &[Fixed(9)]), Err(Error::MemoryFull));
+    assert_eq!(store.snapshot(), before);
+    assert_eq!(read(&store, b), samples(&[2, 3]));
+    store.remove(b).unwrap();
+    store.append(a, &[Fixed(9)]).unwrap();
+    assert_eq!(read(&store, a), samples(&[9]));
+    assert_eq!(store.chunk_references(ChunkId(0)), Ok(1));
+}
+
+#[shoop_test]
+fn snapshot_restore_rejects_writable_aliases_and_slices_into_unpublished_tail_samples() {
+    let mut store = MediaStore::new(4).unwrap();
+    let a = store.insert(&samples(&[1, 2, 3])).unwrap();
+    let b = store.slice(a, 1, 2).unwrap();
+    let good = store.snapshot();
+    let mut invalid = Vec::new();
+    let mut writers = good.clone();
+    let alias = writers.views[a.0].clone();
+    writers.views.push(alias);
+    invalid.push(writers);
+    let mut future = good.clone();
+    future.views[b.0]
+        .as_mut()
+        .unwrap()
+        .range
+        .as_mut()
+        .unwrap()
+        .offset = 2;
+    invalid.push(future);
+    let mut offset = good.clone();
+    offset.views[b.0]
+        .as_mut()
+        .unwrap()
+        .range
+        .as_mut()
+        .unwrap()
+        .offset = 4;
+    invalid.push(offset);
+    let mut writable = good.clone();
+    writable.views[b.0].as_mut().unwrap().range = None;
+    invalid.push(writable);
+    let mut free = good.clone();
+    free.free_chunks.push(ChunkId(0));
+    invalid.push(free);
+    let mut duplicate = good;
+    let view = duplicate.views[b.0].as_mut().unwrap();
+    view.frames = 5;
+    view.chunks.push(ChunkId(0));
+    invalid.push(duplicate);
+    for snapshot in invalid {
+        assert!(MediaStore::from_snapshot(snapshot).is_err());
+    }
+}
+
+#[shoop_test]
 fn consecutive_views_and_incremental_retirement_preserve_other_recordings() {
     let mut store = MediaStore::new(3).unwrap();
     let before = store.snapshot();
@@ -235,6 +416,74 @@ fn the_backend_records_and_plays_recycled_chunks_through_the_same_program() {
     assert_eq!(backend.media.slot_count(), 2);
     assert_eq!(backend.program, program);
     assert_eq!(backend.program.instructions.as_ptr(), address);
+}
+
+#[shoop_test]
+fn seeded_slices_and_source_reuse_match_independent_immutable_sample_ranges() {
+    for chunk_frames in [1, 3, 32] {
+        let mut store = MediaStore::new(chunk_frames).unwrap();
+        let mut expected: Vec<Option<Vec<Fixed>>> = Vec::new();
+        let mut read_only = Vec::new();
+        let mut seed = 0xcafe_babeu32;
+        for step in 0..2_000 {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            if expected.is_empty() || seed % 11 == 0 {
+                assert_eq!(store.create_recording().unwrap(), ViewId(expected.len()));
+                expected.push(Some(Vec::new()));
+                read_only.push(false);
+            }
+            let index = (seed >> 8) as usize % expected.len();
+            let id = ViewId(index);
+            let Some(model) = expected[index].as_ref() else {
+                continue;
+            };
+            match seed % 6 {
+                0 | 1 => {
+                    let start = (seed >> 16) as usize % (model.len() + 1);
+                    let length = (seed >> 3) as usize % (model.len() - start + 1);
+                    let range = model[start..start + length].to_vec();
+                    let next = store.slice(id, start as u64, length as u64).unwrap();
+                    assert_eq!(next, ViewId(expected.len()));
+                    expected.push(Some(range));
+                    read_only.push(true);
+                }
+                2 => {
+                    store.clear(id).unwrap();
+                    expected[index].as_mut().unwrap().clear();
+                }
+                3 => {
+                    store.remove(id).unwrap();
+                    expected[index] = None;
+                }
+                _ => {
+                    let input = vec![Fixed(seed as i32); (seed >> 16) as usize % 19];
+                    if read_only[index] {
+                        assert_eq!(store.append(id, &input), Err(Error::InvalidState));
+                    } else {
+                        store.append(id, &input).unwrap();
+                        expected[index].as_mut().unwrap().extend(input);
+                    }
+                }
+            }
+            for (index, model) in expected.iter().enumerate() {
+                if let Some(model) = model {
+                    assert_eq!(read(&store, ViewId(index)), *model);
+                }
+            }
+            if step % 37 == 0 {
+                store = MediaStore::from_snapshot(store.snapshot()).unwrap();
+            }
+        }
+        for (index, model) in expected.iter().enumerate() {
+            if model.is_some() {
+                store.remove(ViewId(index)).unwrap();
+            }
+        }
+        assert_eq!(store.free_chunk_count(), store.slot_count());
+        for slot in 0..store.slot_count() {
+            assert_eq!(store.chunk_references(ChunkId(slot)), Ok(0));
+        }
+    }
 }
 
 #[shoop_test]

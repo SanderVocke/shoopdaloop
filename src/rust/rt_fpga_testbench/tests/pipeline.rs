@@ -2,7 +2,7 @@ use rt_fpga_reference::{
     compiler::{compile, Graph, Node, NodeId},
     fixed::Fixed,
     pipeline::PipelineError,
-    storage::MediaStore,
+    storage::{MediaStore, ViewId},
     transitions::*,
     Error,
 };
@@ -140,4 +140,63 @@ fn combined_trace_stops_at_failed_state_with_committed_clock_unchanged() {
     );
     assert_eq!(trace.results[0].transition.next_frame, 0);
     assert!(trace.results[0].transition.committed);
+}
+
+#[shoop_test]
+fn shared_loop_pipeline_plays_a_retained_range_after_source_clear() {
+    let recorded = run_pipeline_case(fixture()).unwrap();
+    let snapshot = recorded
+        .results
+        .last()
+        .unwrap()
+        .audio
+        .as_ref()
+        .unwrap()
+        .media
+        .clone()
+        .unwrap();
+    let mut media = MediaStore::from_snapshot(snapshot).unwrap();
+    let slice = media.slice(ViewId(0), 3, 16).unwrap();
+    media.clear(ViewId(0)).unwrap();
+
+    let mut case = fixture();
+    case.name = "shared-loop-playback-of-retained-range".into();
+    case.media = Some(media.snapshot());
+    case.plan.description.loops[0].length = 16;
+    case.initial_state
+        .memory
+        .fill(rt_fpga_reference::state::Value::Word(slice.0 as u64));
+    case.steps.truncate(2);
+    case.steps[0].transition.commands[0].operation = Operation::Play {
+        position: 0,
+        retrigger: true,
+    };
+    let initial = case.initial_state.clone();
+    let trace = run_pipeline_case(case).unwrap();
+    let expected: Vec<_> = (0..16)
+        .map(|i| Fixed(if i < 13 { 1000 } else { 1001 }))
+        .collect();
+    for (i, row) in trace.results.iter().enumerate() {
+        assert_eq!(row.error, None);
+        assert_eq!(row.state, initial);
+        assert_eq!(row.transition.next_frame, (i as u64 + 1) * 16);
+        let audio = row.audio.as_ref().unwrap();
+        assert_eq!(audio.outputs, vec![expected.clone()]);
+        let snapshot = audio.media.as_ref().unwrap();
+        assert_eq!(snapshot.views[0].as_ref().unwrap().frames, 0);
+        assert_eq!(
+            snapshot.views[slice.0]
+                .as_ref()
+                .unwrap()
+                .range
+                .unwrap()
+                .offset,
+            3
+        );
+    }
+    let document = Document::new(Payload::PipelineTrace(trace));
+    assert_eq!(
+        Document::from_json(&document.to_json().unwrap()).unwrap(),
+        document
+    );
 }

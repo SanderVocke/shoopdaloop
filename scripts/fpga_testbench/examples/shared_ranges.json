@@ -1,0 +1,188 @@
+{
+  "format_version": 1,
+  "payload": {
+    "kind": "audio_case",
+    "value": {
+      "name": "shared unaligned slice, source clear, sample-exact playback and slot reuse",
+      "program": {
+        "instructions": [
+          {
+            "kind": "process_input",
+            "port": 0,
+            "destination": 0
+          },
+          {
+            "kind": "process_loop_capture",
+            "view": 0,
+            "enabled": 1,
+            "source": 0
+          },
+          {
+            "kind": "process_loop_playback",
+            "view": 2,
+            "position": 3,
+            "length": 4,
+            "enabled": 5,
+            "destination": 2
+          },
+          {
+            "kind": "process_output",
+            "source": 2,
+            "port": 0
+          }
+        ],
+        "quantum": 4,
+        "jobs_per_quantum": 4
+      },
+      "initial_state": {
+        "memory": [
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 1
+          },
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 5
+          },
+          {
+            "kind": "word",
+            "value": 1
+          }
+        ]
+      },
+      "queue_capacity": 4,
+      "buffers": 4,
+      "output_ports": 1,
+      "media": {
+        "chunk_frames": 4,
+        "chunk_limit": 3,
+        "samples": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "free_chunks": [],
+        "views": [
+          {
+            "chunks": [
+              0,
+              1,
+              2
+            ],
+            "frames": 12
+          }
+        ]
+      },
+      "steps": [
+        {
+          "inputs": [
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "writes": [],
+          "media_actions": [
+            {
+              "kind": "slice",
+              "source": 0,
+              "start": 3,
+              "frames": 5
+            }
+          ]
+        },
+        {
+          "inputs": [
+            [
+              91,
+              92,
+              93,
+              94
+            ]
+          ],
+          "writes": [
+            {
+              "address": 1,
+              "value": {
+                "kind": "word",
+                "value": 1
+              }
+            },
+            {
+              "address": 3,
+              "value": {
+                "kind": "word",
+                "value": 4
+              }
+            }
+          ],
+          "media_actions": [
+            {
+              "kind": "clear",
+              "view": 0
+            }
+          ]
+        },
+        {
+          "inputs": [
+            [
+              100,
+              101,
+              102,
+              103
+            ]
+          ],
+          "writes": [
+            {
+              "address": 5,
+              "value": {
+                "kind": "word",
+                "value": 0
+              }
+            }
+          ],
+          "media_actions": [
+            {
+              "kind": "clear",
+              "view": 1
+            }
+          ]
+        },
+        {
+          "inputs": [
+            [
+              104,
+              105,
+              106,
+              107
+            ]
+          ],
+          "writes": []
+        }
+      ]
+    }
+  }
+}

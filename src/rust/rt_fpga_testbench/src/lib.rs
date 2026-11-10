@@ -227,8 +227,17 @@ pub struct AudioStep {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MediaAction {
-    Clear { view: ViewId },
-    Remove { view: ViewId },
+    Clear {
+        view: ViewId,
+    },
+    Remove {
+        view: ViewId,
+    },
+    Slice {
+        source: ViewId,
+        start: u64,
+        frames: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -286,6 +295,11 @@ pub fn run_audio_case(case: AudioCase) -> Result<AudioTrace, Error> {
             .try_for_each(|action| match *action {
                 MediaAction::Clear { view } => memory.clear(view),
                 MediaAction::Remove { view } => memory.remove(view),
+                MediaAction::Slice {
+                    source,
+                    start,
+                    frames,
+                } => memory.slice(source, start, frames).map(|_| ()),
             });
         if outcome.is_ok() {
             stage = ExecutionStage::State;

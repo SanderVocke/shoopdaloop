@@ -237,8 +237,9 @@ semantics. Native and standalone ramp conventions can differ.
 - Views support append and reads within their recorded frame count. Capture and
   playback may run in the same quantum; FIFO order determines which samples have
   been written when a read executes. Clear/remove return chunk IDs to a LIFO free
-  stack, and allocation reuses those slots before growing the arena. View IDs
-  never recycle. Sharing and editing remain deferred.
+  stack after their last view releases them, and allocation reuses those slots
+  before growing the arena. Read-only slices share recorded chunks. View IDs
+  never recycle; writable forks and editing remain deferred.
 - Provisional signed Q8.24 samples and gains. Multiplication uses `i64`, truncates
   toward zero and saturates; binary mixes saturate per job. Ramp interpolation
   preserves its time domain. This is a functional model, not a hardware layout.
@@ -266,19 +267,32 @@ An append reserves everything before changing samples, chunk IDs, or frame count
 Earlier jobs in a failed quantum still retain their existing partial effects.
 Reads and appends copy spans bounded by chunk edges and logical loop wrap.
 
-`clear(view)` retains its ID/table capacity for another recording; `remove(view)`
-invalidates its ID permanently. Both release chunk IDs in table order, so the last
-released ID is allocated first. Call them only after jobs using the view have
-drained. They are linear control operations; no asynchronous reclamation, sharing,
-or reference counting is modeled. Reused slots may retain samples outside the
-new recording's published frame count, which reads cannot access. Arena capacity
-is retained for reuse rather than returned to the OS on each clear.
+`slice(source, start, frames)` creates an independent read-only view over a
+recorded range. It copies chunk IDs and retains per-slot references without
+copying samples or allocating payload slots. Partial first/last chunks, nested
+slices and empty ranges are supported. Reads wrap within the slice's logical
+frame count. A source may keep appending, be cleared or be removed; the slice's
+samples remain unchanged. Appending or reserving writable table capacity on a
+slice returns `InvalidState`, including after clearing it. Slice creation may
+allocate metadata and is not a constant-time operation.
+
+`clear(view)` retains its ID/table capacity and writable/read-only kind;
+`remove(view)` invalidates its ID permanently. Both release chunk references in
+table order; only the last reference returns an ID to the LIFO free stack.
+`reclaim_chunk(view)` releases at most one tail reference, adjusting its logical
+length, for callers with an incremental reclamation budget. Call these operations
+only after jobs using that view have drained. Reused slots may retain samples
+outside the new recording's published frame count, which reads cannot access.
+Arena capacity is retained for reuse rather than returned to the OS on each clear.
 
 `snapshot` and checked `from_snapshot` preserve samples, view tables, removed-view
-holes, optional limits, and free-stack order. They omit host capacity hints and
-cache/timing behavior. The audio trace tool accepts initial media, boundary
-clear/remove actions, and resulting snapshots. See its README and the
-`elastic_record_play.json` example. The standalone `Backend` uses this store
+holes, range offsets, optional limits, and free-stack order. Restore derives
+reference counts from the view tables. It rejects duplicate IDs within a view,
+writable aliases, free/live overlap, orphaned slots, and slices into a writable
+chunk's unpublished tail. Snapshots omit host capacity hints and cache/timing
+behavior. The audio trace tool accepts initial media, boundary slice/clear/remove
+actions, and resulting snapshots. See its README and the `elastic_record_play.json`
+and `shared_ranges.json` examples. The standalone `Backend` uses this store
 through the existing job memory interface.
 
 The app-selected reference renderer uses the same store for recording, playback,

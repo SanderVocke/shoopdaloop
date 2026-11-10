@@ -157,8 +157,11 @@ without placement/routing or a clock-frequency guarantee.
 With Verilator 5.032 and cocotb 1.9.2, default and small configurations passed
 119 cases and 5,144 quantum boundaries: 59 directed cases / 344 boundaries plus
 60 seeded sessions / 4,800 boundaries. Both coordinator protocol/reset tests
-passed. The Rust reference/testbench suite passed 54 tests, and the Python
-cross-language contract passed 14 tests.
+passed. After integrating read-only media ranges, the Rust reference/testbench
+suite passed 63 tests, five elastic-runtime tests passed, and the Python
+cross-language contract passed 16 tests. A fresh connected comparison passed
+69 cases / 1,144 boundaries across both configurations. The combined Rust trace
+also verifies playback of an unaligned retained slice after clearing its source.
 
 The standalone state and BRAM audio campaigns also passed after the interface
 changes. Shared-loop comparison covers descriptor execution for media operations
