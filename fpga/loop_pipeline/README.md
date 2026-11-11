@@ -279,7 +279,7 @@ The streamed TP increases this complete top's LUT4 count by 2,129 (12.0%) from
 
 The tables and opportunity analysis below record the scalar sample-engine
 baseline. Current measurements are in the
-[pipelined gain and mix checkpoint](#pipelined-gain-and-mix-checkpoint).
+[combined pipelining and chunk-burst checkpoint](#combined-pipelining-and-chunk-bursts).
 
 The `8x8` timing profile extends the media benchmark through the actual transition
 processor, committed loop-read port, state/job processors, media frontend, chunk
@@ -467,6 +467,8 @@ feasibility-study assumptions.
 
 ### Pipelined gain and mix checkpoint
 
+This checkpoint uses word transfers. The combined burst results follow below.
+
 The gain/mix implementation in `928d27aa` pipelines samples within each job while
 retaining one scratch read port, one write port, the shared multiplier and the
 same job order/arithmetic. All four complete quantum traces match Rust in both
@@ -529,3 +531,75 @@ passes multi-chunk and wrap cases. Standalone/combined and integrated synthesis
 checks pass, with no additional DSP or BRAM in the isolated arithmetic processor.
 All timings remain simulation cycle counts at an assumed clock, without routed
 timing or a hard real-time guarantee. PR CI is not inspected.
+
+### Combined pipelining and chunk bursts
+
+Revision `f3236460` merges upstream `6d605b24` (gain/mix pipeline `928d27aa`)
+with the chunk-burst implementation `e73c9870`. The merge needs no RTL changes.
+All four quanta match the complete Rust trace in both DDR3 and instant-memory
+simulations. A word-transfer control run uses the same merged source and DDR
+model. All three were measured with a clean working tree, seed 20261110, the
+same benchmark fixture, 128 read buffers, four write buffers, 64-bit AXI and an
+assumed 100 MHz fabric clock.
+
+```sh
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
+  --read-buffers 128 --axi-data-width 64 --memory-model dramsim3 \
+  --output work/merged-burst-profile
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
+  --read-buffers 128 --axi-data-width 64 --word-transfers --memory-model dramsim3 \
+  --output work/merged-word-profile
+```
+
+For the instant-memory control, select `--memory-model instant` and a different
+output directory. The fixture still processes 64 mono loops, Q=32, 64 gains,
+56 ordered mixes and eight outputs. Media positions advance on every quantum;
+128 KiB of backing samples exceeds the 16 KiB read pool.
+
+| Per playback quantum | Scalar + words | Pipelined + words | Pipelined + bursts |
+| --- | ---: | ---: | ---: |
+| Active time at 100 MHz | 297.48 us | 184.19–184.36 us | **164.84 us** |
+| Exposed fill wait | 0 | 19.35–19.52 us | **0** |
+| AXI read transactions | 2,048 | 2,048 | **64** |
+| Native READ commands | 2,048 | 2,048 | **512** |
+| Physical DDR data | 32 KiB | 32 KiB | **8 KiB** |
+| DMA active time | 169.33–169.48 us | 169.91–170.08 us | **37.54–37.99 us** |
+
+The combined result saves **132.64 us / 44.59%** against the scalar baseline,
+or **1.805x throughput** at the same assumed clock. Bursts alone save another
+**19.35–19.52 us / 10.51–10.59%** against the upstream word-transfer checkpoint.
+The DDR run now exactly matches the instant-memory control: prefetch hides all
+backing-memory service in this fixture. DMA activity overlaps compute and is
+not an additive part of the active execution time.
+
+| Boundary | Active cycles | Active time | Preflight wait | Raw run-to-done |
+| --- | ---: | ---: | ---: | ---: |
+| Apply 64 Play commands | 18,056 | 180.56 us | 15.40 us | 195.96 us |
+| Playback 1 | 16,484 | 164.84 us | 23.08 us | 187.92 us |
+| Playback 2 | 16,484 | 164.84 us | 15.88 us | 180.72 us |
+| Playback 3 | 16,484 | 164.84 us | 15.88 us | 180.72 us |
+
+Active time excludes the verifier's preflight pause, as in earlier checkpoints;
+raw latency includes it. Setup, input loading and final snapshots remain outside
+the run. In steady playback TP costs 10.06 us, SP 11.52 us, JP 143.21 us and
+other handshakes 0.05 us. JP includes 70.40 us of cached reads, 24.32 us of gains,
+38.08 us of mixes, 7.85 us of outputs and 2.56 us of output clearing. Cached
+sample delivery is now the largest remaining job cost.
+
+Steady active DDR data utilization is **2.3295%**, compared with 8.3316–8.3392%
+for the pipelined word-transfer run; command utilization is **0.7519%**. Although
+the active window is shorter, each quantum still transfers only 8 KiB physically.
+At 48 kHz, active execution takes **24.726%** of the 666.67 us audio period;
+the full-period DDR data utilization is **0.576%**. These are simulation estimates
+with the illustrative DDR3 profile, without routed timing or competing DDR users.
+
+Post-merge verification matches Rust for 51 connected DDR3 cases / 404 quanta
+across the default, small and odd profiles, plus preparation/fault/reset protocol
+tests. The 32-bit media-audio path passes 21 cases / 65 quanta, including faults
+during active gain and mix writes. Generated-wrapper consistency checks and
+warning-clean integrated lint pass at both bus widths.
+Generic checks and ECP5 synthesis pass for the default eight-loop AXI top:
+27,613 LUT4s, 14,153 flip-flops, 93 DP16KD blocks and four MULT18X18D blocks.
+Compared with the burst-only top this adds 56 LUT4s and 145 flip-flops, with
+unchanged BRAM and DSP counts. These capacities differ from the 64-loop timing
+profile; synthesis does not establish routed frequency or board fit.

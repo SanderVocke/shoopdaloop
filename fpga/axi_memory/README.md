@@ -302,6 +302,12 @@ the quantum window separate through the whole-model counters.
 
 ## Chunk-burst results
 
+The measurements in this section describe the scalar job processor at
+`e73c9870`. Current results after merging gain/mix pipelining are in
+[the combined checkpoint](../loop_pipeline/README.md#combined-pipelining-and-chunk-bursts):
+164.84 us per playback quantum at the same assumed 100 MHz, with zero exposed
+fill wait and the same 8 KiB of physical DDR traffic.
+
 The coordinated 64-loop fixture uses eight tracks of eight mono loops, Q=32,
 64 gains, 56 ordered mixes and eight outputs. Its 128 KiB of loop media exceeds
 the 16 KiB read pool. At an assumed 100 MHz with the illustrative DDR3 profile,

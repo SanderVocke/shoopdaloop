@@ -303,3 +303,5 @@ AXI top maps to 26,991 LUT4, 14,064 flip-flops, 93 DP16KD and four MULT18X18D;
 its integrated tops pass lint at both bus widths. No routed clock timing was
 measured. See the [full 64-loop remeasurement](../loop_pipeline/README.md#pipelined-gain-and-mix-checkpoint)
 for actual TP/state/job/DRAM overlap and the newly exposed memory waits.
+The later [combined chunk-burst checkpoint](../loop_pipeline/README.md#combined-pipelining-and-chunk-bursts)
+removes those exposed waits while retaining the gain/mix pipeline.
