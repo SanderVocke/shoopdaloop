@@ -29,7 +29,8 @@ def environment(args):
         raise ValueError("DRAMsim3 library/profile missing; run fpga/axi_memory/build_dramsim3.py first")
     return {"AXI_MEMORY_MODEL": args.memory_model, "AXI_MEMORY_CYCLES": str(args.memory_cycles),
             "AXI_DRAM_LIBRARY": str(args.dram_library.resolve()), "AXI_DRAM_CONFIG": str(args.dram_config.resolve()),
-            "AXI_FABRIC_HZ": str(args.fabric_hz), "AXI_PHYSICAL_BASE": str(args.physical_base)}
+            "AXI_FABRIC_HZ": str(args.fabric_hz), "AXI_PHYSICAL_BASE": str(args.physical_base),
+            "AXI_DATA_WIDTH": str(args.axi_data_width)}
 
 
 def create_memory(dut, words, *, seed=0, word_only=False, output=None):
@@ -56,6 +57,9 @@ def metadata():
                 fabric_hz=int(os.environ.get("AXI_FABRIC_HZ", "100000000")),
                 physical_base=int(os.environ.get("AXI_PHYSICAL_BASE", str(0x01000000))),
                 fixed_cycles=int(os.environ.get("AXI_MEMORY_CYCLES", "7")),
+                axi_data_width=int(os.environ.get("AXI_DATA_WIDTH", "32")),
                 profile=str(profile), profile_sha256=digest(profile), library_sha256=digest(library),
+                model_patch_sha256=digest(HERE/"native/drain.patch"),
                 model_revision=dict(line.split("=", 1) for line in (HERE/"dramsim3.lock").read_text().splitlines())["revision"],
-                revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip())
+                revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                working_tree_dirty=bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT)))

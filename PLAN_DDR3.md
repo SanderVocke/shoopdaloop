@@ -200,17 +200,17 @@ on it. Keep detailed-model runs small during development.
 
 ### 5. Add measurements that handle variable memory latency
 
-- [ ] Update prefetch instrumentation to record actual transfer intervals and
+- [x] Update prefetch instrumentation to record actual transfer intervals and
   wait cycles without requiring all chunks to have the same service time. Keep
   the old constant-cost replay clearly confined to fixed-latency runs.
-- [ ] Emit machine-readable reports with counts, mean, median, standard
+- [x] Emit machine-readable reports with counts, mean, median, standard
   deviation, min/max and tail percentiles for reads/writes, single beats/bursts,
   first/last read beat, and AXI acknowledgement versus native service where
   available. Count logical bytes separately from native DRAM traffic.
-- [ ] Include queue/backpressure time, chunk fill/writeback durations, exposed
+- [x] Include queue/backpressure time, chunk fill/writeback durations, exposed
   demand stalls, total quantum cycles/time, and simulation execution time. Record
   the seed, revision, model/config hash, clocks, placement and cache capacities.
-- [ ] Verify counts and summary statistics against small hand-checkable cases;
+- [x] Verify counts and summary statistics against small hand-checkable cases;
   run word/burst microbenchmarks without changing the application producer.
 
 ### 6. End-to-end validation and delivery

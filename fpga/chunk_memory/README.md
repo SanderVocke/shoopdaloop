@@ -6,6 +6,10 @@ Media metadata owns allocation, views and references; chunk memory owns raw
 samples, buffering, coherence and external transfers. Arithmetic scratch stays
 in the job processor.
 
+The default simulation memory path now uses the shared synthesizable AXI
+endpoint. See [AXI memory and DRAMsim3](../axi_memory/README.md) for detailed
+timing, bus-width options, and the retained legacy word-port mode.
+
 ## Command and data interfaces
 
 Commands transfer on `cmd_valid && cmd_ready`. Each carries a 32-bit `cmd_id`,
@@ -129,10 +133,10 @@ python fpga/chunk_memory/simulate.py
 python fpga/chunk_memory/simulate.py --config small \
   --case fpga/chunk_memory/examples/ordering.json --waves
 bash fpga/chunk_memory/check.sh
-python fpga/media_store/simulate.py --pipeline --response-cycles 7
-python fpga/loop_pipeline/simulate.py --media --response-cycles 7
+python fpga/media_store/simulate.py --pipeline --memory-model legacy --response-cycles 7
+python fpga/loop_pipeline/simulate.py --media --memory-model legacy --response-cycles 7
 python fpga/loop_pipeline/simulate.py --media --config small \
-  --read-buffers 1 --write-buffers 1 --response-cycles 7
+  --read-buffers 1 --write-buffers 1 --memory-model legacy --response-cycles 7
 ```
 
 Independent profiles cover four-word, 32-word, odd-sized and one-word pools. Protocol
@@ -149,7 +153,7 @@ The 8x8 timing workload now stores 512 samples per loop (128 KiB total), exceedi
 
 ```sh
 python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --read-buffers 128 --response-cycles 7 --output work/chunk-8x8
+  --read-buffers 128 --memory-model legacy --response-cycles 7 --output work/chunk-8x8
 ```
 
 Timing excludes setup, readback and snapshot fences. Backing transaction counts

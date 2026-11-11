@@ -28,6 +28,10 @@ Host commands and observations
              +--------- finish after successful samples +
 ```
 
+The default simulation memory path now uses the shared synthesizable AXI
+endpoint. See [AXI memory and DRAMsim3](../axi_memory/README.md) for detailed
+timing, bus-width options, and the retained legacy word-port mode.
+
 ## Ownership and publication
 
 The transition processor alone writes logical mode, position, length, revisions
@@ -179,7 +183,7 @@ steps also retain exact scratch/output samples and FIFO effects. With an initial
 python fpga/loop_pipeline/simulate.py
 python fpga/loop_pipeline/simulate.py --config default --random-cases 30
 python fpga/loop_pipeline/simulate.py --media --random-cases 30
-python fpga/loop_pipeline/simulate.py --media --response-cycles 7 --random-cases 10
+python fpga/loop_pipeline/simulate.py --media --memory-model legacy --response-cycles 7 --random-cases 10
 python fpga/loop_pipeline/simulate.py --media --config default \
   --case fpga/loop_pipeline/examples/record_play_samples.json
 python fpga/loop_pipeline/simulate.py --config default \

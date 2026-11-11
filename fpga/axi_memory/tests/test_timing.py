@@ -8,7 +8,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE/"sim"))
-from axi_memory import FixedTiming, summary
+from axi_memory import FixedTiming, histogram_summary, summary
 from dram_timing import DramTiming, DEFAULT_CONFIG, DEFAULT_LIBRARY
 
 
@@ -20,6 +20,8 @@ class StatisticsTests(unittest.TestCase):
         self.assertEqual(result["p99"], 5)
         self.assertAlmostEqual(result["stddev"], 2**0.5)
         self.assertEqual(summary([]), {"count": 0})
+        self.assertEqual(histogram_summary({"1": 1, "2": 1, "3": 1, "4": 1, "5": 1}), result)
+        self.assertEqual(histogram_summary({"3": 2})["median"], 3)
 
     def test_fixed_clock(self):
         timing = FixedTiming(7)
@@ -65,7 +67,7 @@ class NativeTests(unittest.TestCase):
         # More than one refresh interval; idle time must advance the controller.
         self.assertGreater(self.model.ticks, 4160)
         self.assertGreater(self.transact(0x1000000), 0)
-        self.model.lib.shoop_dram_print_stats(self.model.handle)
+        self.model.report(final=True)
         stats = json.loads(Path(self.directory.name, "dramsim3.json").read_text())
         self.assertGreater(stats["0"]["num_ref_cmds"], 0)
 
@@ -114,6 +116,16 @@ class NativeTests(unittest.TestCase):
         for address in (-16, 1, self.model.capacity):
             with self.assertRaises(ValueError):
                 self.model.submit(address, False)
+
+    def test_final_statistics_are_not_double_counted(self):
+        self.transact(0x1000000, True)
+        first = self.model.report(final=True)
+        second = self.model.report(final=True)
+        self.assertEqual(first, second)
+        self.assertEqual(first["dram_write_commands"], 1)
+        self.assertEqual(first["dram_write_service_dram_cycles"]["count"], 1)
+        with self.assertRaises(RuntimeError):
+            self.model.advance()
 
 
 if __name__ == "__main__":

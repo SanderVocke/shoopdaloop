@@ -2,6 +2,7 @@
 from collections import Counter
 
 from codec import decode_job
+from axi_memory import summary
 
 
 def value(signal):
@@ -11,6 +12,8 @@ def value(signal):
 class PrefetchTiming:
     def __init__(self, dut, media, chunk_frames):
         self.dut = dut
+        if hasattr(dut, "m_axi_awvalid"):
+            dut = dut.core
         self.state = dut.pipeline.state_engine
         self.memory = dut.media.sample_memory
         self.media = media
@@ -106,13 +109,20 @@ class PrefetchTiming:
                 "reads_waiting": sum(wait > 0 for wait in waits),
                 "transfer_schedule": transfers, "read_deadlines": deadlines}
 
-    def finish(self, total, response_cycles):
+    def finish(self, total, response_cycles, *, uniform_word_port=True):
         assert self.total == total, (self.total, total)
         assert self.active_transfer is None
         assert len(self.jobs) == len(self.emitted) == 192
         reads = [job for job in self.jobs if "chunk" in job]
         assert len(reads) == len({job["chunk"] for job in reads}) == len(self.transfers) == 64
         assert {item["chunk"] for item in self.transfers} == {job["chunk"] for job in reads}
+        if not uniform_word_port:
+            return {"measured": {"total_cycles": self.total,
+                                 "non_fill_wait_cycles": self.total-self.counts["demand_fill_wait"],
+                                 "chunk_service_cycles": summary([t["end"]-t["start"]+1 for t in self.transfers]),
+                                 **self.counts},
+                    "jobs": self.jobs, "transfers": self.transfers,
+                    "replay_omitted": "Constant-cost replay is only defined for the legacy fixed word port"}
         service = {item["end"] - item["start"] for item in self.transfers}
         assert len(service) == 1, service
         service = service.pop() + 1

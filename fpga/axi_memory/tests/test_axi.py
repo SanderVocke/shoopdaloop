@@ -134,7 +134,19 @@ async def words_and_bursts(dut):
             await driver.transaction(address, size, count, [0]*count if write else None,
                                      [0]*count if write else None, error=True)
             assert driver.memory.reads+driver.memory.writes == requests
+    memory = driver.memory
+    for write in (False, True):
+        expected = 0
+        for record in memory.records:
+            if record["write"] == write:
+                first = record["address"]//memory.timing.native_bytes
+                last = (record["address"]+((record["length"]+1) << record["size"])-1)//memory.timing.native_bytes
+                expected += last-first+1
+                assert len(record["beat_cycles"]) == (1 if write else record["length"]+1)
+        assert expected == (memory.native_writes if write else memory.native_reads)
     report = driver.memory.report()
+    if hasattr(driver.memory.timing, "report"):
+        report["native"] = driver.memory.timing.report(final=True)
     report["configuration"] = metadata()
     Path(os.environ["AXI_OUTPUT"]).joinpath("axi-statistics.json").write_text(json.dumps(report, indent=2)+"\n")
     driver.memory.close()

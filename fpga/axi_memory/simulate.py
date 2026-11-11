@@ -26,6 +26,7 @@ def main():
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
     for width in ((32, 64) if args.data_width == "all" else (int(args.data_width),)):
+        memory_env["AXI_DATA_WIDTH"] = str(width)
         for word in (False, True):
             top = "word_axi" if word else "axi_master"
             output = args.output.resolve()/f"{top}-{width}"

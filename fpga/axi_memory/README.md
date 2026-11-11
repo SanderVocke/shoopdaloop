@@ -137,3 +137,56 @@ preserve the cores' public host ports. The generator checks for interface drift.
 The full-loop testbench has internal word-port probes for protocol checks, not
 an alternate external memory service. Both manual-clock and free-running tests
 use the same AXI state machine and functional store.
+
+## Measurements
+
+`memory-timing.json` contains actual quantum cycles, assumed-clock microseconds,
+host-operation transaction statistics, chunk transfer intervals, and simulation
+execution time. The host-operation statistics include snapshots/fences outside
+the measured quantum; quantum totals are the RTL admission-to-completion time.
+`prefetch-analysis.json` contains measured fill waits and DMA intervals. The
+uniform-service replay remains available only with the legacy word backend.
+
+Latency groups distinguish read/write and single beat/burst, and report count,
+mean, median, population standard deviation, min/max and nearest-rank p95/p99.
+AXI latency runs from address acceptance to R/B consumption; response-available
+and interbeat timing are separate, as are channel and native admission stalls.
+Word-port and AXI handshakes add latency outside the native DRAM timing itself.
+Write bursts are buffered through WLAST before native submission in this model.
+
+Native reports distinguish submitted burst bytes from actual READ/WRITE command
+bytes: controller write merging and forwarding can reduce the latter. Read
+callback latency and posted write-admission latency are separate from native
+physical service histograms. Finalization drains and prints native statistics
+once; DRAMsim3's final-statistics printer is not idempotent. Final drain ticks
+are reported separately and do not extend the measured logical quantum.
+
+Reproduce the aligned 64-loop/Q=32 case for each model:
+
+```sh
+python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
+  --prefetch-analysis --read-buffers 128 --memory-model instant --output work/ddr3-bench-instant
+python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
+  --prefetch-analysis --read-buffers 128 --memory-model fixed --memory-cycles 7 --output work/ddr3-bench-fixed
+python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
+  --prefetch-analysis --read-buffers 128 --memory-model dramsim3 --output work/ddr3-bench-dram
+python fpga/media_store/simulate.py --pipeline --config default --timing \
+  --memory-model dramsim3 --output work/ddr3-record-dram
+```
+
+Initial results at assumed 100 MHz, 128 read buffers and four write buffers:
+
+| Model | Quantum cycles (each of four) | Quantum time | Exposed fill wait |
+| --- | ---: | ---: | ---: |
+| Instant AXI | 28,996 | 289.96 us | 0 |
+| Fixed, seven native-delay cycles | 28,996 | 289.96 us | 0 |
+| DDR3-1066 x16 DRAMsim3 | 28,996 | 289.96 us | 0 |
+
+Each quantum reads 2,048 words from fresh chunk positions, with no writes. Across
+the four detailed quanta, 8,192 read responses average 4.2745 AXI fabric cycles,
+median 4, standard deviation 2.3515, p99 26 and maximum 37. The model issues
+8,192 native READ commands (131,072 bytes for 32,768 useful bytes). Early prefetch
+hides their latency in this workload; the equal totals do not imply zero DDR
+cost or prove timing under other traffic. All outputs and logical media match
+Rust bitwise. The media is larger than the cache and positions move every
+quantum, so these results do not depend on reusing the previous quantum's chunk.

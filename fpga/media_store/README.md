@@ -11,6 +11,10 @@ Chunk memory supplies read/write buffering, forwarding, prefetch and chunk-level
 arbitration. The memory port can attach to a DDR controller; a vendor controller
 and native burst adapter remain future work. Rust remains elastic; RTL has limits.
 
+The default simulation memory path now uses the shared synthesizable AXI
+endpoint. See [AXI memory and DRAMsim3](../axi_memory/README.md) for detailed
+timing, bus-width options, and the retained legacy word-port mode.
+
 ## Structure and capacities
 
 - `rtl/media_store.sv`: serial commands, allocation, ownership and range translation.
@@ -209,7 +213,7 @@ playback/mixing, without recording or loop-transition processing.
 
 ```sh
 python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --read-buffers 128 --response-cycles 7 --output work/chunk-8x8
+  --read-buffers 128 --memory-model legacy --response-cycles 7 --output work/chunk-8x8
 ```
 
 The selected case is saved beside `8x8/memory-timing.json` for replay. Initial
@@ -227,7 +231,7 @@ job emission, job execution, chunk-fill waits and physical transfers:
 
 ```sh
 python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --prefetch-analysis --read-buffers 128 --response-cycles 7 \
+  --prefetch-analysis --read-buffers 128 --memory-model legacy --response-cycles 7 \
   --output work/prefetch-opportunity-c7
 ```
 
@@ -377,7 +381,7 @@ Run the deterministic timing case, with Rust comparisons enabled:
 
 ```sh
 python fpga/media_store/simulate.py --pipeline --config default --timing \
-  --response-cycles 7 --output work/fpga-ddr-estimate/c7
+  --memory-model legacy --response-cycles 7 --output work/fpga-ddr-estimate/c7
 ```
 
 `default/memory-timing.json` records total/state/job cycle counts and memory

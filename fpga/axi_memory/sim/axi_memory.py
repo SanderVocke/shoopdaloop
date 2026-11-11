@@ -14,6 +14,25 @@ def summary(values):
             **{f"p{p}": ordered[max(0, math.ceil(len(values)*p/100)-1)] for p in (95, 99)}}
 
 
+def histogram_summary(histogram):
+    values = sorted((int(value), count) for value, count in histogram.items() if count)
+    count = sum(n for _, n in values)
+    if not count:
+        return {"count": 0}
+    def at(rank):
+        cumulative = 0
+        for value, n in values:
+            cumulative += n
+            if cumulative >= rank:
+                return value
+        raise AssertionError("histogram rank exceeds population")
+    mean = sum(value*n for value, n in values)/count
+    return dict(count=count, mean=mean, median=(at((count+1)//2)+at(count//2+1))/2,
+                stddev=math.sqrt(sum((value-mean)**2*n for value, n in values)/count),
+                min=values[0][0], max=values[-1][0],
+                **{f"p{p}": at(math.ceil(count*p/100)) for p in (95, 99)})
+
+
 class FixedTiming:
     native_bytes = 16
 
@@ -64,6 +83,7 @@ class AxiMemory:
         self.cycle = self.reads = self.writes = 0
         self.native_reads = self.native_writes = 0
         self.records = []
+        self.address_stalls = self.write_stalls = self.response_stalls = self.submission_stalls = 0
         self.resetting = False
 
     @property
@@ -109,6 +129,7 @@ class AxiMemory:
                 if (active["submitted"] and all(self.timing.ready(token) for token in active["tokens"].values())
                         and self.offered_b is None):
                     self.offered_b = int(active["error"])*2
+                    active.setdefault("available", self.cycle+1)
             else:
                 index = active["index"]
                 address = active["address"]+(index << active["size"])
@@ -116,6 +137,7 @@ class AxiMemory:
                 token = active["tokens"].get(block)
                 if token is not None and self.timing.ready(token) and self.offered_r is None:
                     self.offered_r = (active["data"][index], int(active["error"])*2, int(index == active["length"]))
+                    active.setdefault("available", self.cycle+1)
         if self.offered_b is not None:
             values.update(bvalid=1, bresp=self.offered_b)
         if self.offered_r is not None:
@@ -143,7 +165,7 @@ class AxiMemory:
         blocks = list(range(first, end, self.timing.native_bytes))
         self.active = dict(address=address, length=length, size=size, write=write,
                            error=error, start=self.cycle, index=0, blocks=blocks,
-                           tokens={}, submitted=False,
+                           tokens={}, submitted=False, beats=[],
                            data=[self.read_bus(address+(i << size)) for i in range(length+1)])
         self.writes += int(write)
         self.reads += int(not write)
@@ -152,7 +174,10 @@ class AxiMemory:
         active = self.active
         self.records.append({key: active[key] for key in ("address", "length", "size", "write", "start", "first")})
         self.records[-1].update(end=self.cycle, latency=self.cycle-active["start"],
-                                first_latency=active["first"]-active["start"])
+                                first_latency=active["first"]-active["start"],
+                                available_latency=active["available"]-active["start"],
+                                submission_latency=active["submission"]-active["start"],
+                                beat_cycles=active["beats"])
         self.active = None
         self.write_beats = []
 
@@ -169,6 +194,9 @@ class AxiMemory:
             self.held = {}
             return
         self.resetting = False
+        self.address_stalls += sum(bool(packet[c+"valid"] and not self.driven[c+"ready"]) for c in ("aw", "ar"))
+        self.write_stalls += int(bool(packet["wvalid"] and not self.driven["wready"]))
+        self.response_stalls += sum(bool(self.driven[c+"valid"] and not packet[c+"ready"]) for c in ("r", "b"))
         for channel, fields in (("aw", ("awid", "awaddr", "awlen", "awsize", "awburst")),
                                 ("ar", ("arid", "araddr", "arlen", "arsize", "arburst")),
                                 ("w", ("wdata", "wstrb", "wlast"))):
@@ -181,10 +209,12 @@ class AxiMemory:
                 self.held.pop(channel, None)
         if self.driven["bvalid"] and packet["bready"]:
             self.active.setdefault("first", self.cycle)
+            self.active["beats"].append(self.cycle)
             self.offered_b = None
             self.finish()
         if self.driven["rvalid"] and packet["rready"]:
             self.active.setdefault("first", self.cycle)
+            self.active["beats"].append(self.cycle)
             last = self.offered_r[2]
             self.offered_r = None
             self.active["index"] += 1
@@ -214,24 +244,32 @@ class AxiMemory:
             if address not in active["tokens"]:
                 token = self.timing.submit(address, active["write"])
                 if token is None:
+                    self.submission_stalls += 1
                     break
+                active.setdefault("submission", self.cycle)
                 active["tokens"][address] = token
                 self.native_writes += int(active["write"])
                 self.native_reads += int(not active["write"])
         active["submitted"] = len(active["tokens"]) == len(active["blocks"])
 
-    def report(self):
+    def report(self, records=None):
+        records = self.records if records is None else records
         groups = {}
         for write in (False, True):
             for burst in (False, True):
-                selected = [r for r in self.records if r["write"] == write and (r["length"] > 0) == burst]
+                selected = [r for r in records if r["write"] == write and (r["length"] > 0) == burst]
                 name = ("write" if write else "read")+("_burst" if burst else "_word")
                 groups[name] = {"latency_cycles": summary([r["latency"] for r in selected]),
-                                "first_response_cycles": summary([r["first_latency"] for r in selected])}
+                                "first_response_cycles": summary([r["first_latency"] for r in selected]),
+                                "response_available_cycles": summary([r["available_latency"] for r in selected]),
+                                "native_submission_cycles": summary([r["submission_latency"] for r in selected]),
+                                "interbeat_cycles": summary([b-a for r in selected for a,b in zip(r["beat_cycles"], r["beat_cycles"][1:])])}
         return dict(cycles=self.cycle, reads=self.reads, writes=self.writes,
-                    logical_bytes=sum((r["length"]+1) << r["size"] for r in self.records),
+                    logical_bytes=sum((r["length"]+1) << r["size"] for r in records),
                     native_reads=self.native_reads, native_writes=self.native_writes,
-                    native_bytes=(self.native_reads+self.native_writes)*self.timing.native_bytes,
+                    native_requested_bytes=(self.native_reads+self.native_writes)*self.timing.native_bytes,
+                    address_stall_cycles=self.address_stalls, write_stall_cycles=self.write_stalls,
+                    response_stall_cycles=self.response_stalls, native_queue_stall_cycles=self.submission_stalls,
                     groups=groups)
 
     def close(self):

@@ -1,8 +1,10 @@
 """ctypes timing policy. Samples and AXI scheduling stay outside the native model."""
 import configparser
+from collections import Counter
 import ctypes as C
+import json
 from pathlib import Path
-from axi_memory import summary
+from axi_memory import histogram_summary, summary
 
 HERE = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = HERE/"configs/zynq7010-ddr3-1066-x16.ini"
@@ -50,6 +52,7 @@ class DramTiming:
         self._create()
 
     def _create(self):
+        self.final_statistics = None
         self.handle = self.lib.shoop_dram_create(str(self.config).encode(), (str(self.output)+"/").encode())
         if not self.handle:
             raise RuntimeError(self.lib.shoop_dram_error().decode())
@@ -66,10 +69,14 @@ class DramTiming:
                                     cycles=event.completed-event.submitted))
 
     def advance(self):
+        if self.final_statistics is not None:
+            raise RuntimeError("cannot advance a finalized DRAM report; reset first")
         self.lib.shoop_dram_advance(self.handle, self.fabric_hz)
         self.poll()
 
     def submit(self, address, write):
+        if self.final_statistics is not None:
+            raise RuntimeError("cannot submit after a finalized DRAM report; reset first")
         if address % self.native_bytes or not 0 <= address < self.capacity:
             raise ValueError("native DDR address out of range or unaligned")
         token = self.lib.shoop_dram_submit(self.handle, address, int(write))
@@ -97,15 +104,34 @@ class DramTiming:
         self.done.clear()
         self._create()
 
-    def report(self):
+    def report(self, *, final=False):
+        if final and self.final_statistics is None:
+            before = self.ticks
+            self.drain()
+            self.lib.shoop_dram_print_stats(self.handle)
+            stats = json.loads((self.output/"dramsim3.json").read_text())
+            reads = sum(s["num_read_cmds"] for s in stats.values())
+            writes = sum(s["num_write_cmds"] for s in stats.values())
+            read_hist, write_hist = Counter(), Counter()
+            for channel in stats.values():
+                read_hist.update(channel.get("read_latency") or {})
+                write_hist.update(channel.get("write_latency") or {})
+            self.final_statistics = dict(dram_read_commands=reads, dram_write_commands=writes,
+                                         dram_command_bytes=(reads+writes)*self.native_bytes,
+                                         refresh_commands=sum(s["num_ref_cmds"] for s in stats.values()),
+                                         dram_read_service_dram_cycles=histogram_summary(read_hist),
+                                         dram_write_service_dram_cycles=histogram_summary(write_hist),
+                                         final_drain_dram_ticks=self.ticks-before)
         return dict(tck_fs=self.tck_fs, native_bytes=self.native_bytes, fabric_hz=self.fabric_hz,
                     ticks=self.ticks, idle=self.idle,
+                    physical_counts_generation=self.generation,
+                    physical_counts_finalized=self.final_statistics is not None,
                     read_service_dram_cycles=summary([e["cycles"] for e in self.events if not e["write"]]),
-                    write_admission_dram_cycles=summary([e["cycles"] for e in self.events if e["write"]]))
+                    write_admission_dram_cycles=summary([e["cycles"] for e in self.events if e["write"]]),
+                    **(self.final_statistics or {}))
 
     def close(self):
         if self.handle:
-            self.drain()
-            self.lib.shoop_dram_print_stats(self.handle)
+            self.report(final=True)
             self.lib.shoop_dram_destroy(self.handle)
             self.handle = None

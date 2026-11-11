@@ -2,6 +2,7 @@
 from copy import deepcopy
 import json
 import os
+import time
 from pathlib import Path
 import random
 import cocotb
@@ -123,6 +124,8 @@ async def compare(dut, case, seed, *, stalls=True):
         (OUTPUT / "failure.observed.json").write_text(json.dumps({"results": observed, "error": str(error)}, indent=2)+"\n")
         dut._log.error("failed pipeline case %s", case["name"])
         raise
+    finally:
+        driver.media.close()
     return timing
 
 
@@ -220,6 +223,10 @@ async def memory_timing(dut):
         driver.timing_probe = PrefetchTiming(dut, case["media"], MEDIA[2])
     await driver.load(case)
     response_cycles = int(os.environ["MEDIA_RESPONSE_CYCLES"])
+    from options import metadata
+    configuration = metadata()
+    fabric_hz = configuration["fabric_hz"]
+    started = time.perf_counter()
     results = []
     analysis = []
     for label, step, expected in zip(labels, case["steps"], trace["payload"]["value"]["results"]):
@@ -230,7 +237,8 @@ async def memory_timing(dut):
         actual = await driver.quantum_audio(step, stalls=False)
         wire.assert_audio_result_matches(expected, actual)
         latencies = driver.media.response_latencies[responses:]
-        assert all(value == response_cycles for value in latencies), "memory response delay differs from configured service time"
+        if driver.media.axi is None:
+            assert all(value == response_cycles for value in latencies), "memory response delay differs from configured service time"
         if session:
             assert sum(job["kind"] == "read_view" for job in actual["jobs"]) == 64
             assert driver.media.write_requests == writes
@@ -240,26 +248,32 @@ async def memory_timing(dut):
                         "reads": driver.media.read_requests - reads,
                         "writes": driver.media.write_requests - writes,
                         "response_cycles": response_cycles})
+        results[-1]["total_us"] = driver.timing["total"]*1e6/fabric_hz
         if analyze:
-            measured = driver.timing_probe.finish(driver.timing["total"], response_cycles)
+            measured = driver.timing_probe.finish(driver.timing["total"], response_cycles,
+                                                 uniform_word_port=driver.media.axi is None)
             measured["operation"] = label
             analysis.append(measured)
         dut._log.info("%s: %s cycles, %s reads, %s writes", label, driver.timing,
                       results[-1]["reads"], results[-1]["writes"])
+    statistics = driver.media.axi.report(final=True) if driver.media.axi is not None else None
     (OUTPUT / "memory-timing.json").write_text(json.dumps(
-        {"case": case["name"], "fabric_hz": 100_000_000, "quantum_frames": case["program"]["quantum"],
+        {"case": case["name"], "fabric_hz": fabric_hz, "quantum_frames": case["program"]["quantum"],
+         "configuration": configuration, "seed": SEED, "simulation_seconds": time.perf_counter()-started,
+         "memory_statistics": statistics,
          "read_buffers": int(os.environ["MEDIA_READ_BUFFERS"]), "write_buffers": int(os.environ["MEDIA_WRITE_BUFFERS"]),
          "response_cycles": response_cycles, "results": results}, indent=2)+"\n")
     if analyze:
         (OUTPUT / "prefetch-analysis.json").write_text(json.dumps(
-            {"fabric_hz": 100_000_000, "quantum_frames": MEDIA[2],
+            {"fabric_hz": fabric_hz, "quantum_frames": MEDIA[2], "configuration": configuration,
              "assumptions": ["Playback only, one aligned unique chunk per read, stable published mappings",
                              "All current-quantum chunks fit in the read pool; hints are not dropped",
                              "One serial chunk transfer at the measured word-port service rate",
                              "No prefetch or residency carried into the model from earlier iterations",
                              "Eight cycles per serial metadata resolution unless specified; RAM-backed tables",
-                             "Replay preserves measured non-fill work; estimates are not RTL prefetch timings"],
+                             "Replay is only supplied for legacy fixed latency; AXI results are measured RTL timings"],
              "results": analysis}, indent=2)+"\n")
+    driver.media.close()
 
 
 @cocotb.test()
@@ -314,3 +328,4 @@ async def pipeline_protocol(dut):
     await driver.load(value)
     wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0],
                                     await driver.quantum_audio(value["steps"][0]))
+    driver.media.close()
