@@ -16,8 +16,10 @@ directly. The wrapper also supports `run_external_jobs`: descriptors then transf
 with `external_job_valid && external_job_ready` through `monitor_data`. After the
 FIFO empties, `external_done_valid && external_done_ready` reports completion or
 `external_error`. The wrapper stays busy until that acknowledgement. Its internal
-BRAM job processor remains the default path. The connected pipeline's README
-defines external error encoding and clock/transaction ownership.
+job processor remains the default path. The connected top enables media through
+`media_audio_pipeline`, executing actual recording/playback against its external
+sample-memory port. Its README defines external error encoding and
+clock/transaction ownership.
 
 ## Structure
 

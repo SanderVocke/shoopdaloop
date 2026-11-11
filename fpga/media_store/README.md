@@ -140,8 +140,10 @@ destinations become ready only after the last sample. The ordinary BRAM-only top
 defaults to `ENABLE_MEDIA=0` and continues refusing media jobs with code 3.
 
 The wrapper forwards the shared loop-record read port and external-job completion
-ports. The media tests use per-node playback/capture state. The separate connected
-loop pipeline retains its BRAM-only sample path and ties off the unused media ports.
+ports. The standalone media tests use per-node playback/capture state.
+`fpga/loop_pipeline` instantiates this wrapper beneath the transition coordinator:
+logical playback/capture reads committed loop records, media preparation can run
+during preflight, and logical time advances only after actual sample completion.
 
 ## Comparison and reproduction
 

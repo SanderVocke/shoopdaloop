@@ -245,10 +245,15 @@ format version 1 and the existing subsystem document shapes.
 target/debug/fpga-reference trace \
   < fpga/loop_pipeline/examples/record_play.json > work/pipeline.trace.json
 target/debug/fpga-reference check < work/pipeline.trace.json > /dev/null
+target/debug/fpga-reference trace \
+  < fpga/loop_pipeline/examples/record_play_samples.json > work/pipeline-samples.trace.json
+target/debug/fpga-reference check < work/pipeline-samples.trace.json > /dev/null
 ```
 
 `fpga/loop_pipeline/README.md` describes the shared RAM interface, coordinator,
-external job acknowledgement, combined Rust/RTL comparison and limitations.
+external job acknowledgement, combined Rust/RTL comparison and limitations. Its
+internal RTL executor now includes the bounded media store: `simulate.py --media`
+compares complete transitions, jobs, recorded/replayed samples and media snapshots.
 
 ## Serial media commands
 

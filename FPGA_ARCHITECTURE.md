@@ -71,10 +71,14 @@ packed rows, Rust/native/RTL comparison bench and synthesis/cycle measurements.
 pauses for resource preparation/retry, commit publishes the selected loop bank,
 and state execution reads that bank through a multiplexed RAM port. Finish follows
 successful job completion. Node state retains view handles and ramps without
-duplicating logical loop clocks or modes. The BRAM job subset executes in RTL;
-media jobs can use an external executor/completion interface while their sample
-hardware remains deferred. Rust provides the same coordinated flow and serialized
-combined traces. State/job failures retain partial effects and freeze clocks.
+duplicating logical loop clocks or modes. Its internal job processor connects
+through `media_audio_pipeline` to the bounded store and external sample-memory
+port, executing recording and playback alongside the BRAM scratch-buffer jobs.
+Host media preparation is available during preflight and commit waits for it to
+finish. An external executor/completion interface remains optional. Rust provides
+the same coordinated flow and serialized combined traces. The integrated bench
+compares decisions, jobs, samples and complete media snapshots. State/job failures
+retain partial effects and freeze clocks.
 
 ## State processor
 
@@ -180,8 +184,9 @@ standalone reference's six node instructions. Its README specifies the packed
 instruction/state/job ABI, configuration protocol, and synthesis commands.
 Lint, synthesis checks, and a cocotb/Verilator behavioral comparison against
 versioned Rust traces are available. The bench compares ordered jobs, complete
-state, and status per quantum, with separate hardware protocol checks. Transition
-and job processors are outside this RTL prototype.
+state, and status per quantum, with separate hardware protocol checks. This
+isolated top keeps transition and job execution separate; `loop_pipeline`
+connects all three processors and the media store.
 
 ## BRAM job processor milestone
 
@@ -196,7 +201,8 @@ README for interface, coverage, cycle counts, and ECP5 synthesis results.
 `fpga/media_store` adds a bounded RTL counterpart of the Rust chunk store, including
 shared read-only ranges, reference counts and deterministic slot reuse. Metadata
 uses synchronous on-chip RAM; samples use a stalled external memory port. Its
-`media_audio_pipeline` connects ReadView/Capture jobs to that store. Cocotb compares
+`media_audio_pipeline` connects ReadView/Capture jobs to that store and is also
+instantiated by the transition-coordinated `loop_pipeline`. Cocotb compares
 serial store commands and complete audio quanta against Rust, including sample
 bits, ownership, FIFO effects and memory backpressure. Physical DDR controllers,
 burst access and large-session metadata storage remain future work.

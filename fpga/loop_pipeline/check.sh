@@ -9,6 +9,7 @@ sources=()
 for source in sp_ram sp_job_fifo sp_engine state_processor; do sources+=("fpga/state_processor/rtl/$source.sv"); done
 for source in jp_sample_ram jp_divider job_processor audio_pipeline; do sources+=("fpga/job_processor/rtl/$source.sv"); done
 for source in tp_ram tp_priority transition_processor; do sources+=("fpga/transition_processor/rtl/$source.sv"); done
+for source in media_ram media_store memory_delay media_audio_pipeline; do sources+=("fpga/media_store/rtl/$source.sv"); done
 sources+=(fpga/loop_pipeline/rtl/loop_pipeline.sv)
 read_command="read_verilog -sv -Ifpga/state_processor/rtl ${sources[*]}"
 yosys -V > "$output_dir/versions.txt"
@@ -35,6 +36,7 @@ netlist=json.loads((output/'default-ecp5.json').read_text())
 cells=Counter(cell['type'] for cell in netlist['modules']['loop_pipeline']['cells'].values())
 (output/'resources.json').write_text(json.dumps({'loops':8,'requests':16,'events':32,
     'program':64,'state':32,'jobs':64,'frames':32,'buffers':16,'input_ports':2,'output_ports':2,
+    'views':32,'slots':32,'chunk_frames':32,'memory_response_cycles':1,
     'cells':dict(sorted(cells.items())),'timing_checked':False},indent=2)+'\n')
 print('Connected ECP5 mapping:',dict(sorted(cells.items())))
 PY

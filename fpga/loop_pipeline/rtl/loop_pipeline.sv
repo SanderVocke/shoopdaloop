@@ -10,7 +10,11 @@ module loop_pipeline #(
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
-    parameter integer OUTPUT_PORTS = 2
+    parameter integer OUTPUT_PORTS = 2,
+    parameter integer VIEWS = 32,
+    parameter integer SLOTS = 32,
+    parameter integer CHUNK_FRAMES = 32,
+    parameter integer MEMORY_RESPONSE_CYCLES = 1
 ) (
     input wire clk,
     input wire reset,
@@ -77,7 +81,22 @@ module loop_pipeline #(
     input wire preflight_retry,
     output reg [3:0] preflight_error,
     output reg [127:0] boundary_token,
-    output wire transition_busy
+    output wire transition_busy,
+    input wire [63:0] arena_base,
+    input wire store_cmd_valid, output wire store_cmd_ready, input wire [2:0] store_cmd_opcode,
+    input wire [63:0] store_cmd_view, input wire [63:0] store_cmd_start, input wire [63:0] store_cmd_length,
+    input wire [31:0] store_cmd_count,
+    output wire store_busy, output wire store_done, output wire [7:0] store_error_code,
+    output wire [31:0] store_result_view, output wire store_result_empty,
+    input wire store_write_valid, output wire store_write_ready, input wire [31:0] store_write_data,
+    output wire store_read_valid, input wire store_read_ready, output wire [31:0] store_read_data,
+    input wire store_cfg_valid, output wire store_cfg_ready, input wire store_cfg_write,
+    input wire [2:0] store_cfg_space, input wire [31:0] store_cfg_address, input wire [159:0] store_cfg_write_data,
+    output wire store_cfg_response_valid, output wire store_cfg_response_error, output wire [159:0] store_cfg_read_data,
+    output wire memory_valid, input wire memory_ready, output wire memory_write,
+    output wire [63:0] memory_address, output wire [31:0] memory_write_data,
+    input wire memory_response_valid, output wire memory_response_ready,
+    input wire memory_response_error, input wire [31:0] memory_read_data
 );
     typedef enum logic [3:0] { IDLE, PREVIEW_SEND, PREVIEW_WAIT, PREFLIGHT,
         COMMIT_SEND, COMMIT_WAIT, AUDIO_START, AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT } phase_t;
@@ -97,25 +116,28 @@ module loop_pipeline #(
     wire audio_run_ready, audio_done, audio_busy, state_cfg_ready, sample_cfg_ready;
     wire [7:0] audio_error;
     wire [1:0] audio_error_stage;
-    wire unused_media_cmd_valid, unused_media_write_valid, unused_media_read_ready;
-    wire [2:0] unused_media_opcode;
-    wire [63:0] unused_media_view, unused_media_start, unused_media_length;
-    wire [31:0] unused_media_count, unused_media_write_data;
+    wire host_store_cmd_ready, host_store_cfg_ready;
+    wire host_store_write_ready, host_store_read_valid;
+    reg [63:0] quantum_arena;
     reg [31:0] instructions, states, quantum, budget, buffers, inputs, outputs;
     reg external_jobs;
     wire configure = phase == IDLE || phase == PREFLIGHT || phase == FAULT;
-    wire unused_status = &{1'b0,audio_busy};
     assign transition_busy = tp_busy;
 
-    assign busy = phase != IDLE && phase != FAULT;
+    assign busy = (phase != IDLE && phase != FAULT) || audio_busy;
     assign run_ready = phase == IDLE && audio_run_ready && tp_command_ready && !command_valid && !reset;
-    assign preflight_valid = phase == PREFLIGHT && !reset;
+    assign preflight_valid = phase == PREFLIGHT && audio_run_ready && tp_command_ready
+        && !command_valid && !cfg_valid && !audio_cfg_valid && !store_cmd_valid && !store_cfg_valid && !reset;
     assign command_ready = host_access && !reserved_command && tp_command_ready && !reset;
     assign response_valid = host_access && tp_response_valid && !reset;
     assign response_error = tp_response_error;
     assign response_data = tp_response_data;
     assign cfg_ready = configure && state_cfg_ready;
     assign audio_cfg_ready = configure && sample_cfg_ready;
+    assign store_cmd_ready = configure && host_store_cmd_ready;
+    assign store_cfg_ready = configure && host_store_cfg_ready;
+    assign store_write_ready = configure && host_store_write_ready;
+    assign store_read_valid = configure && host_store_read_valid;
 
     transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH)) timing (
         .clk(clk), .reset(reset),
@@ -130,8 +152,10 @@ module loop_pipeline #(
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .configured_quantum(configured_quantum)
     );
-    audio_pipeline #(.PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
-        .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS)) audio (
+    media_audio_pipeline #(.PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+        .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
+        .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES)) audio (
         .clk(clk), .reset(reset), .run_valid(phase == AUDIO_START), .run_ready(audio_run_ready),
         .run_instruction_count(instructions), .run_state_count(states), .run_quantum(quantum), .run_job_budget(budget),
         .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs), .job_enable(job_enable),
@@ -149,11 +173,23 @@ module loop_pipeline #(
         .drain_valid(drain_valid), .drain_ready(drain_ready),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
-        .media_cmd_valid(unused_media_cmd_valid), .media_cmd_ready(1'b0), .media_cmd_opcode(unused_media_opcode),
-        .media_cmd_view(unused_media_view), .media_cmd_start(unused_media_start), .media_cmd_length(unused_media_length),
-        .media_cmd_count(unused_media_count), .media_done(1'b0), .media_error(8'b0),
-        .media_write_valid(unused_media_write_valid), .media_write_ready(1'b0), .media_write_data(unused_media_write_data),
-        .media_read_valid(1'b0), .media_read_ready(unused_media_read_ready), .media_read_data(32'b0)
+        .arena_base((phase == IDLE || phase == FAULT) ? arena_base : quantum_arena),
+        .store_cmd_valid(store_cmd_valid && configure), .store_cmd_ready(host_store_cmd_ready),
+        .store_cmd_opcode(store_cmd_opcode), .store_cmd_view(store_cmd_view),
+        .store_cmd_start(store_cmd_start), .store_cmd_length(store_cmd_length), .store_cmd_count(store_cmd_count),
+        .store_busy(store_busy), .store_done(store_done), .store_error_code(store_error_code),
+        .store_result_view(store_result_view), .store_result_empty(store_result_empty),
+        .store_write_valid(store_write_valid && configure), .store_write_ready(host_store_write_ready),
+        .store_write_data(store_write_data), .store_read_valid(host_store_read_valid),
+        .store_read_ready(store_read_ready && configure), .store_read_data(store_read_data),
+        .store_cfg_valid(store_cfg_valid && configure), .store_cfg_ready(host_store_cfg_ready), .store_cfg_write(store_cfg_write),
+        .store_cfg_space(store_cfg_space), .store_cfg_address(store_cfg_address), .store_cfg_write_data(store_cfg_write_data),
+        .store_cfg_response_valid(store_cfg_response_valid), .store_cfg_response_error(store_cfg_response_error),
+        .store_cfg_read_data(store_cfg_read_data),
+        .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
+        .memory_address(memory_address), .memory_write_data(memory_write_data),
+        .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
+        .memory_response_error(memory_response_error), .memory_read_data(memory_read_data)
     );
 
     always @(posedge clk) begin
@@ -161,7 +197,7 @@ module loop_pipeline #(
             phase <= IDLE; done <= 0; error_code <= 0; error_stage <= 0;
             preflight_error <= 0; boundary_token <= 0;
             instructions <= 0; states <= 0; quantum <= 0; budget <= 0;
-            buffers <= 0; inputs <= 0; outputs <= 0; external_jobs <= 0;
+            buffers <= 0; inputs <= 0; outputs <= 0; external_jobs <= 0; quantum_arena <= 0;
         end else begin
             done <= 0;
             case (phase)
@@ -176,14 +212,14 @@ module loop_pipeline #(
                     end else begin
                         instructions <= run_instruction_count; states <= run_state_count; quantum <= run_quantum;
                         budget <= run_job_budget; buffers <= run_buffers; inputs <= run_inputs; outputs <= run_outputs;
-                        external_jobs <= run_external_jobs; phase <= PREVIEW_SEND;
+                        external_jobs <= run_external_jobs; quantum_arena <= arena_base; phase <= PREVIEW_SEND;
                     end
                 end
                 PREVIEW_SEND: if (tp_command_ready) phase <= PREVIEW_WAIT;
                 PREVIEW_WAIT: if (tp_response_valid) begin
                     boundary_token <= tp_response_data[127:0]; preflight_error <= tp_response_error; phase <= PREFLIGHT;
                 end
-                PREFLIGHT: if (preflight_ready && tp_command_ready && !command_valid && !cfg_valid && !audio_cfg_valid) begin
+                PREFLIGHT: if (preflight_valid && preflight_ready) begin
                     if (preflight_retry) phase <= PREVIEW_SEND;
                     else if (preflight_error != 0) begin
                         error_stage <= 1; error_code <= {4'b0,preflight_error}; done <= 1; phase <= IDLE;

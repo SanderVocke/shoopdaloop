@@ -11,7 +11,11 @@ module loop_pipeline_tb #(
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
-    parameter integer OUTPUT_PORTS = 2
+    parameter integer OUTPUT_PORTS = 2,
+    parameter integer VIEWS = 32,
+    parameter integer SLOTS = 32,
+    parameter integer CHUNK_FRAMES = 32,
+    parameter integer MEMORY_RESPONSE_CYCLES = 1
 ) (
     output reg clk,
     input wire reset,
@@ -79,6 +83,21 @@ module loop_pipeline_tb #(
     output reg [3:0] preflight_error,
     output reg [127:0] boundary_token,
     output wire transition_busy,
+    input wire [63:0] arena_base,
+    input wire store_cmd_valid, output wire store_cmd_ready, input wire [2:0] store_cmd_opcode,
+    input wire [63:0] store_cmd_view, input wire [63:0] store_cmd_start, input wire [63:0] store_cmd_length,
+    input wire [31:0] store_cmd_count,
+    output wire store_busy, output wire store_done, output wire [7:0] store_error_code,
+    output wire [31:0] store_result_view, output wire store_result_empty,
+    input wire store_write_valid, output wire store_write_ready, input wire [31:0] store_write_data,
+    output wire store_read_valid, input wire store_read_ready, output wire [31:0] store_read_data,
+    input wire store_cfg_valid, output wire store_cfg_ready, input wire store_cfg_write,
+    input wire [2:0] store_cfg_space, input wire [31:0] store_cfg_address, input wire [159:0] store_cfg_write_data,
+    output wire store_cfg_response_valid, output wire store_cfg_response_error, output wire [159:0] store_cfg_read_data,
+    output wire memory_valid, input wire memory_ready, output wire memory_write,
+    output wire [63:0] memory_address, output wire [31:0] memory_write_data,
+    input wire memory_response_valid, output wire memory_response_ready,
+    input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire [63:0] debug_frame,
     output wire debug_bank,
     output wire debug_shared_read
@@ -87,7 +106,9 @@ module loop_pipeline_tb #(
     always #5 clk<=~clk;
     loop_pipeline #(.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
-        .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS)) core (.*);
+        .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
+        .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES)) core (.*);
     assign debug_frame=core.timing.frame;
     assign debug_bank=core.timing.active_bank;
     assign debug_shared_read=core.loop_read_valid && core.loop_read_ready;

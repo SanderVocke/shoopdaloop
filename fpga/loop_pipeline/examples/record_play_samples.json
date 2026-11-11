@@ -1,0 +1,508 @@
+{
+  "format_version": 1,
+  "payload": {
+    "kind": "pipeline_case",
+    "value": {
+      "buffers": 2,
+      "initial_state": {
+        "memory": [
+          {
+            "kind": "word",
+            "value": 0
+          },
+          {
+            "kind": "word",
+            "value": 0
+          }
+        ]
+      },
+      "media": {
+        "chunk_frames": 32,
+        "chunk_limit": 32,
+        "free_chunks": [],
+        "samples": [],
+        "views": [
+          {
+            "chunks": [],
+            "frames": 0
+          },
+          {
+            "chunks": [],
+            "frames": 0
+          }
+        ]
+      },
+      "name": "actual-record-play-retake-q16",
+      "output_ports": 1,
+      "plan": {
+        "description": {
+          "loops": [
+            {
+              "id": {
+                "generation": 3,
+                "slot": 0
+              },
+              "kind": "primitive",
+              "length": 0,
+              "repeat_sync": false,
+              "sync_source": null,
+              "timeline": null
+            }
+          ],
+          "quantum": 16
+        },
+        "limits": {
+          "events": 4,
+          "loop_slots": 1,
+          "pending_requests": 2
+        }
+      },
+      "program": {
+        "instructions": [
+          {
+            "destination": 0,
+            "kind": "process_input",
+            "port": 0
+          },
+          {
+            "destination": 1,
+            "kind": "process_logical_playback",
+            "loop_id": {
+              "generation": 3,
+              "slot": 0
+            },
+            "view": 0
+          },
+          {
+            "kind": "process_logical_capture",
+            "loop_id": {
+              "generation": 3,
+              "slot": 0
+            },
+            "source": 0,
+            "view": 1
+          },
+          {
+            "kind": "process_output",
+            "port": 0,
+            "source": 1
+          }
+        ],
+        "jobs_per_quantum": 4,
+        "quantum": 16
+      },
+      "queue_capacity": 64,
+      "steps": [
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [
+              {
+                "at": 0,
+                "operation": {
+                  "kind": "record"
+                },
+                "sequence": 1,
+                "target": {
+                  "generation": 3,
+                  "slot": 0
+                },
+                "timing": {
+                  "kind": "at"
+                }
+              }
+            ],
+            "previews": [
+              [],
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -100000,
+                  100257,
+                  100514,
+                  -100771,
+                  101028,
+                  101285,
+                  -101542,
+                  101799,
+                  102056,
+                  -102313,
+                  102570,
+                  102827,
+                  -103084,
+                  103341,
+                  103598,
+                  -103855
+                ]
+              ]
+            }
+          },
+          "writes": []
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [
+              {
+                "at": 0,
+                "operation": {
+                  "kind": "play",
+                  "position": 0,
+                  "retrigger": true
+                },
+                "sequence": 2,
+                "target": {
+                  "generation": 3,
+                  "slot": 0
+                },
+                "timing": {
+                  "kind": "at"
+                }
+              }
+            ],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -107919,
+                  108176,
+                  108433,
+                  -108690,
+                  108947,
+                  109204,
+                  -109461,
+                  109718,
+                  109975,
+                  -110232,
+                  110489,
+                  110746,
+                  -111003,
+                  111260,
+                  111517,
+                  -111774
+                ]
+              ]
+            }
+          },
+          "writes": []
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -115838,
+                  116095,
+                  116352,
+                  -116609,
+                  116866,
+                  117123,
+                  -117380,
+                  117637,
+                  117894,
+                  -118151,
+                  118408,
+                  118665,
+                  -118922,
+                  119179,
+                  119436,
+                  -119693
+                ]
+              ]
+            }
+          },
+          "writes": []
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [
+              {
+                "at": 0,
+                "operation": {
+                  "kind": "seek",
+                  "position": 0,
+                  "retrigger": true
+                },
+                "sequence": 3,
+                "target": {
+                  "generation": 3,
+                  "slot": 0
+                },
+                "timing": {
+                  "kind": "at"
+                }
+              }
+            ],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -123757,
+                  124014,
+                  124271,
+                  -124528,
+                  124785,
+                  125042,
+                  -125299,
+                  125556,
+                  125813,
+                  -126070,
+                  126327,
+                  126584,
+                  -126841,
+                  127098,
+                  127355,
+                  -127612
+                ]
+              ]
+            }
+          },
+          "writes": []
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [
+              {
+                "at": 0,
+                "operation": {
+                  "kind": "stop"
+                },
+                "sequence": 4,
+                "target": {
+                  "generation": 3,
+                  "slot": 0
+                },
+                "timing": {
+                  "kind": "at"
+                }
+              }
+            ],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -131676,
+                  131933,
+                  132190,
+                  -132447,
+                  132704,
+                  132961,
+                  -133218,
+                  133475,
+                  133732,
+                  -133989,
+                  134246,
+                  134503,
+                  -134760,
+                  135017,
+                  135274,
+                  -135531
+                ]
+              ]
+            }
+          },
+          "writes": []
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [
+              {
+                "at": 0,
+                "operation": {
+                  "kind": "record"
+                },
+                "sequence": 5,
+                "target": {
+                  "generation": 3,
+                  "slot": 0
+                },
+                "timing": {
+                  "kind": "at"
+                }
+              }
+            ],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -139595,
+                  139852,
+                  140109,
+                  -140366,
+                  140623,
+                  140880,
+                  -141137,
+                  141394,
+                  141651,
+                  -141908,
+                  142165,
+                  142422,
+                  -142679,
+                  142936,
+                  143193,
+                  -143450
+                ]
+              ]
+            }
+          },
+          "writes": [
+            {
+              "address": 1,
+              "value": {
+                "kind": "word",
+                "value": 1
+              }
+            }
+          ]
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [
+              {
+                "at": 0,
+                "operation": {
+                  "kind": "play",
+                  "position": 0,
+                  "retrigger": true
+                },
+                "sequence": 6,
+                "target": {
+                  "generation": 3,
+                  "slot": 0
+                },
+                "timing": {
+                  "kind": "at"
+                }
+              }
+            ],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -147514,
+                  147771,
+                  148028,
+                  -148285,
+                  148542,
+                  148799,
+                  -149056,
+                  149313,
+                  149570,
+                  -149827,
+                  150084,
+                  150341,
+                  -150598,
+                  150855,
+                  151112,
+                  -151369
+                ]
+              ]
+            }
+          },
+          "writes": [
+            {
+              "address": 0,
+              "value": {
+                "kind": "word",
+                "value": 1
+              }
+            }
+          ]
+        },
+        {
+          "transition": {
+            "cancel": [],
+            "collect": [],
+            "collect_completed": true,
+            "commands": [],
+            "previews": [
+              []
+            ]
+          },
+          "work": {
+            "kind": "audio",
+            "value": {
+              "inputs": [
+                [
+                  -155433,
+                  155690,
+                  155947,
+                  -156204,
+                  156461,
+                  156718,
+                  -156975,
+                  157232,
+                  157489,
+                  -157746,
+                  158003,
+                  158260,
+                  -158517,
+                  158774,
+                  159031,
+                  -159288
+                ]
+              ]
+            }
+          },
+          "writes": []
+        }
+      ]
+    }
+  }
+}
