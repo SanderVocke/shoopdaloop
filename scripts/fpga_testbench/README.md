@@ -41,15 +41,20 @@ schema; saved documents with other versions are rejected.
 
 ## Values and representation
 
-Every document has `format_version: 1` and a `payload` with `kind` and `value`.
+Every document has `format_version: 2` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
-`bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
-`audio_trace`, `media`, `media_case`, `media_trace`, `transition_plan`, `transition_plan_image`,
+`read_intents`, `resolver_case`, `resolver_trace`, `bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
+`audio_trace`, `media`, `media_case`, `media_trace`, `chunk_case`, `chunk_trace`, `transition_plan`, `transition_plan_image`,
 `transition_case`, `transition_trace`, `pipeline_case`, and `pipeline_trace`.
 
 - IDs, addresses, ports, capacities, and instruction counts are unsigned 32-bit
   integers on the wire. Existing host `usize` fields use checked conversions.
-- State words, playback positions, and lengths are unsigned 64-bit integers.
+- State words, playback chunk indices and chunk counts are unsigned 64-bit integers.
+  Graphs/programs require `chunk_frames`. Playback nodes/jobs use explicit
+  `position_chunks` and `length_chunks`; read intents add the actual window's
+  `chunks` count. The quantum and arithmetic ramps retain sample units.
+  Version 1 used frame positions and is rejected; existing examples now state
+  their chunk size explicitly, including one-sample chunks for older sample grids.
 - Samples and gains use raw signed 32-bit Q8.24 integers. Ramp duration and elapsed
   counters use unsigned 32-bit integers. No floating-point conversion is involved.
 - State snapshots are `{"memory": [...]}` in address order. A value is either
@@ -85,6 +90,8 @@ The executable reads one document from stdin and writes one document to stdout:
 | `check` | `trace` | Same trace, after recomputing and comparing its results |
 | `trace` | `audio_case` | `audio_trace` from actual state and job execution |
 | `check` | `audio_trace` | Same trace, after recomputing both processors |
+| `trace` | `resolver_case` | `resolver_trace` with resolved IDs for each advisory read window |
+| `check` | `resolver_trace` | Same trace, after recomputing the resolver |
 | `trace` | `media_case` | `media_trace` from actual storage commands |
 | `check` | `media_trace` | Same trace, after recomputing the media store |
 | `compile` | `transition_plan` | Canonical `transition_plan_image` |
@@ -154,7 +161,7 @@ and scratch state persist between steps. Shape and execution errors preserve
 partial effects and stop the trace.
 
 Use `assert_audio_result_matches` for complete bit-exact comparison. The new
-payload variants are additive in format version 1; existing state traces are
+payload variants are additive in format version 2; existing state traces are
 unchanged. See `fpga/job_processor/README.md` for the supported job subset,
 hardware interfaces, simulation commands, and measured results.
 
@@ -168,7 +175,7 @@ read-only view additionally has `"range":{"offset":3}`, where the unsigned
 32-bit offset is within its first chunk. Its `frames` is the range's logical
 length; reads wrap within that length. Aligned and empty read-only ranges use
 offset zero. Empty ranges own no chunks. Writable views omit `range` entirely;
-explicit null is rejected. This optional field is additive in format version 1,
+explicit null is rejected. This optional field is additive in format version 2,
 preserving existing writable-view documents.
 
 Optional `chunk_limit` bounds the number of slots for FPGA comparisons; omit it
@@ -239,7 +246,7 @@ External steps drain descriptors and report a modeled completion. Audio steps
 run the actual Rust sample processor and media store. State/job failures stop
 the trace with partial effects retained and logical time unadvanced. A failed
 preview remains replaceable at the same frame. The additive variants retain
-format version 1 and the existing subsystem document shapes.
+format version 2 and the existing subsystem document shapes.
 
 ```sh
 target/debug/fpga-reference trace \
@@ -257,7 +264,13 @@ compares complete transitions, jobs, recorded/replayed samples and media snapsho
 
 ## Serial media commands
 
-`media_case` and `media_trace` are additional format-version-1 payloads for testing
+For lower-level storage tests, `chunk_case` / `chunk_trace` expose read/write spans,
+prefetch, fence and retirement with u32 request IDs. Each result includes status,
+read samples and logical arena contents. Prefetch is advisory; the Rust reference
+has immediate writes/fences, while RTL validates buffering and delayed writeback
+separately. See [chunk-memory protocol and replay](../../fpga/chunk_memory/README.md).
+
+`media_case` and `media_trace` are additional format-version-2 payloads for testing
 the store independently of signal execution. A case contains `name`, initial
 `media`, and `steps`. Command kinds are `create`, `slice`, `clear`, `remove`,
 `reclaim`, `append`, and `read`. Append supplies `view` and raw `samples`; read

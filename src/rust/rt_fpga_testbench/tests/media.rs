@@ -12,9 +12,10 @@ use rt_fpga_testbench::{
 use shoop_wasm_test_support::shoop_test;
 
 fn case(limit: usize) -> AudioCase {
-    let mut media = MediaStore::with_chunk_limit(3, limit).unwrap();
+    let mut media = MediaStore::with_chunk_limit(2, limit).unwrap();
     let view = media.create_recording().unwrap();
     let compiled = compile(&Graph {
+        chunk_frames: 2,
         quantum: 4,
         nodes: vec![
             Node::Input { port: 0 },
@@ -25,7 +26,7 @@ fn case(limit: usize) -> AudioCase {
             },
             Node::Playback {
                 view,
-                length: 4,
+                length: 2,
                 position: 0,
                 playing: false,
             },
@@ -127,18 +128,27 @@ fn shared_range_traces_preserve_samples_through_source_clear_and_reuse() {
     );
     let first = trace.results[0].media.as_ref().unwrap();
     let slice = first.views[1].as_ref().unwrap();
-    assert_eq!(slice.chunks, [ChunkId(0), ChunkId(1)]);
-    assert_eq!(slice.range.unwrap().offset, 3);
+    assert_eq!(
+        slice.chunks,
+        [ChunkId(3), ChunkId(4), ChunkId(5), ChunkId(6), ChunkId(7)]
+    );
+    assert_eq!(slice.range.unwrap().offset, 0);
     let reused = trace.results[1].media.as_ref().unwrap();
-    assert_eq!(reused.views[0].as_ref().unwrap().chunks, [ChunkId(2)]);
+    assert_eq!(
+        reused.views[0].as_ref().unwrap().chunks,
+        [ChunkId(11), ChunkId(10), ChunkId(9), ChunkId(8)]
+    );
     assert_eq!(reused.samples.len(), first.samples.len());
     let released = trace.results[2].media.as_ref().unwrap();
-    assert_eq!(released.free_chunks, [ChunkId(0)]);
+    assert_eq!(
+        released.free_chunks,
+        [ChunkId(0), ChunkId(1), ChunkId(2), ChunkId(3)]
+    );
     assert!(released.views[1].as_ref().unwrap().chunks.is_empty());
     let final_media = trace.results[3].media.as_ref().unwrap();
     assert_eq!(
         final_media.views[0].as_ref().unwrap().chunks,
-        [ChunkId(2), ChunkId(1), ChunkId(0)]
+        (0..12).rev().map(ChunkId).collect::<Vec<_>>()
     );
     assert!(final_media.free_chunks.is_empty());
     for result in &trace.results {
@@ -220,7 +230,7 @@ fn audio_traces_capture_recycled_slots_and_restore_allocator_state_exactly() {
         reused.views[0].as_ref().unwrap().chunks,
         [ChunkId(1), ChunkId(0)]
     );
-    assert_eq!(reused.samples.len(), 6);
+    assert_eq!(reused.samples.len(), 4);
     let released = trace.results[4].media.as_ref().unwrap();
     assert_eq!(released.views, [None]);
     assert_eq!(released.free_chunks, [ChunkId(1), ChunkId(0)]);

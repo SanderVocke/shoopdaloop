@@ -97,6 +97,13 @@ impl Pipeline {
         self.transitions.preview(observations)
     }
     pub fn run_state(&mut self, boundary: BoundaryId) -> Result<(), PipelineError> {
+        self.run_state_with_intents(boundary, |_| {})
+    }
+    pub fn run_state_with_intents(
+        &mut self,
+        boundary: BoundaryId,
+        sink: impl FnMut(crate::resolver::ReadIntent),
+    ) -> Result<(), PipelineError> {
         if self.phase != Phase::Preparing {
             return Err(PipelineError::Transition(TransitionError::InvalidState));
         }
@@ -104,12 +111,13 @@ impl Pipeline {
             .commit(boundary)
             .map_err(PipelineError::Transition)?;
         self.phase = Phase::Running(boundary);
-        let result = self.state.run_with_loops(
+        let result = self.state.run_with_loops_and_intents(
             &self.program,
             &mut self.queue,
             self.transitions
                 .committed(boundary)
                 .map_err(PipelineError::Transition)?,
+            sink,
         );
         if result.is_err() {
             self.phase = Phase::Faulted;
@@ -155,7 +163,9 @@ impl Pipeline {
         if self.phase != Phase::Running(boundary) {
             return Err(PipelineError::Transition(TransitionError::InvalidState));
         }
-        if jobs.quantum() != self.program.quantum as usize {
+        if jobs.quantum() != self.program.quantum as usize
+            || memory.chunk_frames() != self.program.chunk_frames as usize
+        {
             return self.finish_jobs(boundary, Err(Error::InvalidShape));
         }
         let result = jobs.run(&mut self.queue, memory, inputs, outputs);
@@ -172,7 +182,7 @@ impl Pipeline {
         let boundary = self
             .preview(observations)
             .map_err(PipelineError::Transition)?;
-        self.run_state(boundary)?;
+        self.run_state_with_intents(boundary, |intent| intent.prefetch(memory))?;
         self.run_jobs(boundary, jobs, memory, inputs, outputs)
     }
 }

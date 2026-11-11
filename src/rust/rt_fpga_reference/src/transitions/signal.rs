@@ -26,10 +26,14 @@ pub struct SignalTransitions {
     wrapped: Vec<bool>,
     pending: Vec<OnWrap>,
     frame: u64,
+    chunk_frames: u32,
     in_quantum: bool,
 }
 impl SignalTransitions {
     pub fn new(bindings: &[Binding]) -> Self {
+        Self::with_chunk_frames(bindings, 1)
+    }
+    pub fn with_chunk_frames(bindings: &[Binding], chunk_frames: u32) -> Self {
         let loops = bindings
             .iter()
             .map(|binding| match *binding {
@@ -53,6 +57,7 @@ impl SignalTransitions {
             wrapped: vec![false; bindings.len()],
             pending: Vec::with_capacity(bindings.len().max(1) * 4),
             frame: 0,
+            chunk_frames,
             in_quantum: false,
         }
     }
@@ -125,7 +130,7 @@ impl SignalTransitions {
     }
     /// Advance once after a successful quantum, never once per signal node.
     pub fn finish(&mut self, state: &mut StateProcessor, quantum: u32) -> Result<(), Error> {
-        if !self.in_quantum {
+        if !self.in_quantum || self.chunk_frames == 0 || quantum % self.chunk_frames != 0 {
             return Err(Error::InvalidState);
         }
         let end = self
@@ -147,7 +152,7 @@ impl SignalTransitions {
             if length == 0 || current >= length {
                 return Err(Error::InvalidState);
             }
-            let next = u128::from(current) + u128::from(quantum);
+            let next = u128::from(current) + u128::from(quantum / self.chunk_frames);
             self.wrapped[index] = next >= u128::from(length);
             state.write(position, Value::Word((next % u128::from(length)) as u64))?;
         }

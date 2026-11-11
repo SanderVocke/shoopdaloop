@@ -24,7 +24,7 @@ class PipelineDriver(Driver):
         self.media=None
         self.preflight_hook=None
     async def reset(self):
-        self.set(run_valid=0,run_instruction_count=0,run_state_count=0,run_quantum=0,run_job_budget=0,
+        self.set(run_valid=0,run_instruction_count=0,run_state_count=0,run_quantum=0, run_chunk_frames=0,run_job_budget=0,
             run_buffers=0,run_inputs=0,run_outputs=0,job_enable=1,drain_ready=0,
             cfg_valid=0,cfg_state=0,cfg_write=0,cfg_address=0,cfg_write_data=0,
             audio_cfg_valid=0,audio_cfg_space=0,audio_cfg_write=0,audio_cfg_address=0,audio_cfg_write_data=0,
@@ -113,10 +113,10 @@ class PipelineDriver(Driver):
         if self.media is not None:self.set(arena_base=self.media.base)
         assert int(self.raw.run_ready.value)
         self.set(run_valid=1,run_instruction_count=len(self.case['program']['instructions']),run_state_count=len(self.case['initial_state']['memory']),
-            run_quantum=q,run_job_budget=self.case['program']['jobs_per_quantum'],run_external_jobs=int(external),
+            run_quantum=q,run_chunk_frames=self.case['program']['chunk_frames'],run_job_budget=self.case['program']['jobs_per_quantum'],run_external_jobs=int(external),
             run_buffers=self.case['buffers'],run_inputs=len(inputs),run_outputs=self.case['output_ports'])
         await self.edge();self.set(run_valid=0,run_instruction_count=0xffffffff,run_state_count=0xffffffff,
-            run_quantum=0,run_job_budget=0xffffffff,run_external_jobs=int(not external),run_buffers=0,run_inputs=0,run_outputs=0)
+            run_quantum=0, run_chunk_frames=0,run_job_budget=0xffffffff,run_external_jobs=int(not external),run_buffers=0,run_inputs=0,run_outputs=0)
         if self.media is not None:self.set(arena_base=0xffffffffffffffff)
         previews=[]
         for i,observations in enumerate(control['previews']):

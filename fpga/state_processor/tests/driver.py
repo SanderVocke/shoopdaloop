@@ -53,7 +53,7 @@ class Driver:
 
     async def reset(self):
         self.set(clk=0, reset=1, run_valid=0, run_instruction_count=0, run_state_count=0,
-                 run_quantum=0, run_job_budget=0, cfg_valid=0, cfg_state=0,
+                 run_quantum=0, run_chunk_frames=0, run_job_budget=0, cfg_valid=0, cfg_state=0,
                  cfg_write=0, cfg_address=0, cfg_write_data=0, job_ready=0,
                  loop_read_ready=0, loop_response_valid=0, loop_response_error=0, loop_response_data=0)
         await self.tick()
@@ -104,7 +104,7 @@ class Driver:
 
     def run_inputs(self, **overrides):
         values = dict(run_valid=1, run_instruction_count=len(self.program["instructions"]),
-                      run_state_count=self.state_count, run_quantum=self.program["quantum"],
+                      run_state_count=self.state_count, run_quantum=self.program["quantum"], run_chunk_frames=self.program["chunk_frames"],
                       run_job_budget=self.program["jobs_per_quantum"])
         values.update(overrides)
         self.set(**values)

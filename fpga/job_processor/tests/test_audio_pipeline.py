@@ -16,13 +16,13 @@ REFERENCE = Path(os.environ["AUDIO_REFERENCE"])
 
 
 def document(kind, value):
-    return {"format_version": 1, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
 
 
 def compile_graphs():
     result = {}
     for frames in sorted({1, min(3, CAPACITIES[3]), CAPACITIES[3]}):
-        graph = {"quantum": frames, "nodes": [
+        graph = {"chunk_frames": 1, "quantum": frames, "nodes": [
             {"kind": "input", "port": 0}, {"kind": "gain", "input": 0, "gain": ONE // 2},
             {"kind": "input", "port": 1}, {"kind": "gain", "input": 2, "gain": ONE // 2},
             {"kind": "mix", "left": 1, "right": 3}, {"kind": "output", "input": 4, "port": 0}]}

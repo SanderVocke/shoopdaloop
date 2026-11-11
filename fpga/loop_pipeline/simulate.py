@@ -24,10 +24,13 @@ def main():
     parser.add_argument('--case',type=Path)
     parser.add_argument('--media',action='store_true',help='compare actual recording/playback samples and media')
     parser.add_argument('--response-cycles',type=int,default=1)
+    parser.add_argument('--read-buffers',type=int,default=4)
+    parser.add_argument('--write-buffers',type=int,default=4)
     args=parser.parse_args()
     if args.random_cases<0:parser.error('random-cases must be nonnegative')
     if args.case and args.config=='all':parser.error('--case requires one --config')
     if args.response_cycles<1:parser.error('response-cycles must be positive')
+    if min(args.read_buffers,args.write_buffers)<1:parser.error('buffer capacities must be positive')
     subprocess.run(['cargo','build','--locked','-p','rt_fpga_testbench'],cwd=ROOT,check=True)
     sys.path[:0]=[str(HERE/'tests'),str(ROOT/'fpga/transition_processor/tests'),str(ROOT/'scripts'),
                   str(ROOT/'fpga/media_store/tests')]
@@ -36,7 +39,8 @@ def main():
         ('state_processor',['sp_ram.sv','sp_job_fifo.sv','sp_engine.sv','state_processor.sv']),
         ('job_processor',['jp_sample_ram.sv','jp_divider.sv','job_processor.sv','audio_pipeline.sv']),
         ('transition_processor',['tp_ram.sv','tp_priority.sv','transition_processor.sv']),
-        ('media_store',['media_ram.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
+        ('chunk_memory',['chunk_ram.sv','chunk_memory.sv']),
+        ('media_store',['media_ram.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
         ('loop_pipeline',['loop_pipeline.sv'])] for s in names]
     for name,depths in (CONFIGS if args.config=='all' else {args.config:CONFIGS[args.config]}).items():
         output=args.output.resolve()/name;output.mkdir(parents=True,exist_ok=True)
@@ -44,6 +48,7 @@ def main():
         parameters=dict(zip(PARAMS,depths))
         parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),MEDIA_CONFIGS[name]))
         parameters['MEMORY_RESPONSE_CYCLES']=args.response_cycles
+        parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers)
         runner.build(verilog_sources=[*sources,HERE/'tests/loop_pipeline_tb.sv'],includes=[ROOT/'fpga/state_processor/rtl'],
             hdl_toplevel='loop_pipeline_tb',parameters=parameters,build_args=['--Wall','--timing','--timescale','1ns/1ps'],
             build_dir=output/'build',always=True,waves=args.waves,log_file=output/'build.log')
@@ -53,6 +58,7 @@ def main():
                 'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),
                 'LP_OUTPUT':str(output),'LP_REFERENCE':str(ROOT/'target/debug/fpga-reference'),
                 'LP_MEDIA_CAPACITIES':','.join(map(str,MEDIA_CONFIGS[name])),
+                'LP_WRITE_BUFFERS':str(args.write_buffers),
                 'LP_CASE':str(args.case.resolve()) if args.case else ''})
         report=ET.parse(results).getroot()
         if len(list(report.iter('testcase')))!=(1 if args.case else 3) or any(list(report.iter(t)) for t in ['failure','error','skipped']):

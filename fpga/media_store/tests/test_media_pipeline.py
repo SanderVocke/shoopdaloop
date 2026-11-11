@@ -7,6 +7,7 @@ import random
 import cocotb
 import fpga_testbench as wire
 from pipeline_driver import PipelineDriver
+from codec import encode_value
 
 CAPACITIES = tuple(map(int, os.environ["AUDIO_CAPACITIES"].split(",")))
 MEDIA = tuple(map(int, os.environ["MEDIA_CAPACITIES"].split(",")))
@@ -17,15 +18,15 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def document(kind, value):
-    return {"format_version": 1, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
 
 
 def record_case(frames, seed=0):
     rng = random.Random(seed)
-    graph = {"quantum": frames, "nodes": [
+    graph = {"chunk_frames": MEDIA[2], "quantum": frames, "nodes": [
         {"kind": "input", "port": 0}, {"kind": "gain", "input": 0, "gain": 8388608},
         {"kind": "capture", "input": 1, "view": 0, "recording": True},
-        {"kind": "playback", "view": 0, "length": frames, "position": 0, "playing": False},
+        {"kind": "playback", "view": 0, "length_chunks": max(1, frames // MEDIA[2]), "position_chunks": 0, "playing": False},
         {"kind": "output", "input": 3, "port": 0}]}
     compiled = wire.run_reference("compile", document("graph", graph), executable=REFERENCE)["payload"]["value"]
     capture = compiled["bindings"][2]["value"]["enabled"]
@@ -40,7 +41,7 @@ def record_case(frames, seed=0):
                       "free_chunks": [], "views": [{"chunks": [], "frames": 0}]},
             "steps": [
                 {"writes": [], "inputs": [[rng.randint(-(1 << 31), (1 << 31)-1) for _ in range(frames)]]},
-                {"writes": writes(0, 1, frames-1), "inputs": [[0]*frames]},
+                {"writes": writes(0, 1, 0), "inputs": [[0]*frames]},
                 {"writes": writes(1, 0), "inputs": [[-3]*frames], "media_actions": [{"kind": "clear", "view": 0}]},
                 {"writes": writes(0, 1), "inputs": [[0]*frames]},
             ]}
@@ -48,14 +49,14 @@ def record_case(frames, seed=0):
 
 def session_case(seed):
     rng = random.Random(seed)
-    frames, tracks, loops, length = 32, 8, 8, 96
+    frames, tracks, loops, length = 32, 8, 8, 512
     nodes, views, samples = [], [], []
     for track in range(tracks):
         mixed = None
         for loop in range(loops):
             view = track * loops + loop
-            nodes.append({"kind": "playback", "view": view, "length": length,
-                          "position": (view * 17) % length, "playing": True})
+            nodes.append({"kind": "playback", "view": view, "length_chunks": length // MEDIA[2],
+                          "position_chunks": view % (length // MEDIA[2]), "playing": True})
             nodes.append({"kind": "gain", "input": len(nodes)-1, "gain": 8388608})
             gained = len(nodes)-1
             if mixed is not None:
@@ -67,14 +68,40 @@ def session_case(seed):
             samples.extend(rng.randint(-(1 << 24), (1 << 24)-1) for _ in range(length))
             views.append({"chunks": list(range(start, start + length // MEDIA[2])), "frames": length})
         nodes.append({"kind": "output", "input": mixed, "port": track})
-    compiled = wire.run_reference("compile", document("graph", {"quantum": frames, "nodes": nodes}),
+    compiled = wire.run_reference("compile", document("graph", {"quantum": frames, "chunk_frames": MEDIA[2], "nodes": nodes}),
                                   executable=REFERENCE)["payload"]["value"]
+    positions = [(binding["value"]["position"], node["position_chunks"])
+                 for node, binding in zip(nodes, compiled["bindings"]) if node["kind"] == "playback"]
     return {"name": "8-tracks-8-playing-loops-q32", "program": compiled["program"],
             "initial_state": {"memory": compiled["initial_state"]}, "queue_capacity": CAPACITIES[2],
             "buffers": len(nodes), "output_ports": tracks,
             "media": {"chunk_frames": MEDIA[2], "chunk_limit": MEDIA[1], "samples": samples,
                       "free_chunks": [], "views": views},
-            "steps": [{"writes": [], "inputs": []} for _ in range(4)]}
+            "steps": [{"writes": [{"address": address, "value": {"kind": "word", "value": (start+i) % (length // MEDIA[2])}}
+                                   for address, start in positions], "inputs": []} for i in range(4)]}
+
+
+def dependent_case():
+    cf = MEDIA[2]
+    graph = {"quantum": cf, "chunk_frames": cf, "nodes": [
+        {"kind": "playback", "view": 0, "position_chunks": 0, "length_chunks": 1, "playing": True},
+        {"kind": "gain", "input": 0, "gain": 8388608},
+        {"kind": "capture", "input": 1, "view": 0, "recording": True},
+        {"kind": "playback", "view": 0, "position_chunks": 1, "length_chunks": 2, "playing": True},
+        {"kind": "output", "input": 3, "port": 0}]}
+    compiled = wire.run_reference("compile", document("graph", graph), executable=REFERENCE)["payload"]["value"]
+    first = compiled["bindings"][0]["value"]
+    second = compiled["bindings"][3]["value"]
+    rows = []
+    for index in range(3):
+        values = [(first["position"], index), (first["length"], index+1),
+                  (second["position"], index+1), (second["length"], index+2)]
+        rows.append({"writes": [{"address": a, "value": {"kind": "word", "value": v}} for a,v in values], "inputs": []})
+    return {"name": "ordered-read-capture-publish-read", "program": compiled["program"],
+            "initial_state": {"memory": compiled["initial_state"]}, "queue_capacity": CAPACITIES[2],
+            "buffers": 5, "output_ports": 1,
+            "media": {"chunk_frames": cf, "samples": [100000+i*128 for i in range(cf)],
+                      "free_chunks": [], "views": [{"chunks": [0], "frames": cf}]}, "steps": rows}
 
 
 async def compare(dut, case, seed, *, stalls=True):
@@ -106,48 +133,62 @@ async def directed_pipeline(dut):
         payload = wire.load(replay)["payload"]
         await compare(dut, payload["value"]["case"] if payload["kind"] == "audio_trace" else payload["value"], SEED)
         return
-    cases = [record_case(n) for n in sorted({1, 3, CAPACITIES[3]})]
-    if MEDIA[2] == 4:
-        cases.append(wire.load(ROOT / "scripts/fpga_testbench/examples/shared_ranges.json")["payload"]["value"])
-    else:
-        saved = wire.load(ROOT / "scripts/fpga_testbench/examples/shared_ranges.json")["payload"]["value"]
-        cf = MEDIA[2]
-        saved["program"]["quantum"] = cf
-        saved["media"]["chunk_frames"] = cf
-        saved["media"]["samples"] = list(range(1, 3*cf+1))
-        saved["media"]["views"][0]["frames"] = 3*cf
-        playback = saved["program"]["instructions"][2]
-        saved["initial_state"]["memory"][playback["length"]]["value"] = cf+1
-        saved["steps"][0]["media_actions"][0].update(start=cf-1, frames=cf+1)
-        saved["steps"][0]["inputs"] = [[0]*cf]
-        saved["steps"][1]["inputs"] = [[-(1 << 31), (1 << 31)-1, -3, 3]*(cf//4)]
-        for write in saved["steps"][1]["writes"]:
-            if write["address"] == playback["position"]:
-                write["value"]["value"] = cf
-        saved["steps"][2]["inputs"] = [list(range(100, 100+cf))]
-        saved["steps"][3]["inputs"] = [list(range(100+cf, 100+2*cf))]
-        cases.append(saved)
-    invalid = record_case(3)
+    cases = [record_case(n) for n in sorted({MEDIA[2], CAPACITIES[3]})]
+    if CAPACITIES[3] > MEDIA[2]:
+        wrapped = record_case(CAPACITIES[3])
+        wrapped["name"] = "multiple-chunk-window-with-loop-wrap"
+        position = wrapped["program"]["instructions"][3]["position"]
+        for write in wrapped["steps"][1]["writes"]:
+            if write["address"] == position:
+                write["value"]["value"] = CAPACITIES[3] // MEDIA[2] - 1
+        cases.append(wrapped)
+    cf = MEDIA[2]
+    shared = record_case(cf)
+    shared["name"] = "aligned-retained-range-and-capture"
+    shared["media"].update(samples=list(range(1, 3*cf+1)), views=[{"chunks": [0, 1, 2], "frames": 3*cf}])
+    capture = shared["program"]["instructions"][2]
+    playback = shared["program"]["instructions"][3]
+    shared["initial_state"]["memory"][capture["enabled"]]["value"] = 0
+    shared["initial_state"]["memory"][playback["enabled"]]["value"] = 1
+    shared["initial_state"]["memory"][playback["view"]]["value"] = 1
+    shared["steps"] = [
+        {"writes": [], "inputs": [[0]*cf], "media_actions": [
+            {"kind": "slice", "source": 0, "start": cf, "frames": cf}, {"kind": "clear", "view": 0}]},
+        {"writes": [{"address": capture["enabled"], "value": {"kind": "word", "value": 1}}], "inputs": [[1234]*cf]},
+    ]
+    cases.append(shared)
+    if CAPACITIES[1] >= 11:
+        cases.append(dependent_case())
+    invalid = record_case(cf)
     invalid["media"]["chunk_limit"] = 0
     invalid["name"] = "capture-capacity-failure"
     cases.append(invalid)
-    readonly = record_case(3)
+    readonly = record_case(cf)
     readonly["media"]["views"][0]["range"] = {"offset": 0}
     readonly["name"] = "capture-readonly-failure"
     cases.append(readonly)
-    missing = record_case(3)
+    missing = record_case(cf)
     missing["media"]["views"] = []
     missing["name"] = "capture-missing-view-failure"
     cases.append(missing)
-    control = record_case(3)
+    control = record_case(cf)
     control["name"] = "slice-control-failure"
     control["steps"][0]["media_actions"] = [{"kind": "slice", "source": 0, "start": 1, "frames": 1}]
     cases.append(control)
-    playback_failure = record_case(3)
+    playback_failure = record_case(cf)
     playback_failure["name"] = "read-length-failure"
     playback = playback_failure["program"]["instructions"][3]
     playback_failure["steps"][1]["writes"].append({"address": playback["length"], "value": {"kind": "word", "value": 4}})
     cases.append(playback_failure)
+    overflow = record_case(cf)
+    overflow["name"] = "chunk-position-overflows-frame-address"
+    playback = overflow["program"]["instructions"][3]
+    position = 1 << (64 - (cf.bit_length()-1))
+    for write in overflow["steps"][1]["writes"]:
+        if write["address"] == playback["position"]:
+            write["value"]["value"] = position
+    overflow["steps"][1]["writes"].append({"address": playback["length"], "value": {"kind": "word", "value": position+1}})
+    cases.append(overflow)
     timing = {}
     for index, value in enumerate(cases):
         timing[value["name"]] = await compare(dut, value, SEED+index, stalls=index >= 3)
@@ -159,7 +200,7 @@ async def directed_pipeline(dut):
 async def randomized_pipeline(dut):
     count = int(os.environ["MEDIA_RANDOM_CASES"])
     for index in range(count):
-        frames = (1, 3, CAPACITIES[3])[index % 3]
+        frames = (MEDIA[2], CAPACITIES[3])[index % 2]
         await compare(dut, record_case(frames, SEED+index), SEED+index+1000)
     (OUTPUT / "random-summary.json").write_text(json.dumps({"cases": count, "quanta": 4*count}, indent=2)+"\n")
 
@@ -167,24 +208,31 @@ async def randomized_pipeline(dut):
 @cocotb.test()
 async def memory_timing(dut):
     session = os.environ["MEDIA_CONFIG"] == "8x8"
+    analyze = os.environ.get("MEDIA_PREFETCH_ANALYSIS") == "1"
     case = session_case(SEED) if session else record_case(CAPACITIES[3], SEED)
     labels = [f"playback_{index+1}" for index in range(len(case["steps"]))] if session else [
         "fresh_record", "playback", "reused_record", "playback_again"]
     wire.dump(document("audio_case", case), OUTPUT / "memory-timing.case.json")
     trace = wire.run_reference("trace", document("audio_case", case), executable=REFERENCE)
     driver = PipelineDriver(dut, CAPACITIES, MEDIA, SEED)
+    if analyze:
+        from prefetch_timing import PrefetchTiming
+        driver.timing_probe = PrefetchTiming(dut, case["media"], MEDIA[2])
     await driver.load(case)
     response_cycles = int(os.environ["MEDIA_RESPONSE_CYCLES"])
     results = []
+    analysis = []
     for label, step, expected in zip(labels, case["steps"], trace["payload"]["value"]["results"]):
         reads, writes = driver.media.read_requests, driver.media.write_requests
         responses = len(driver.media.response_latencies)
+        if analyze:
+            driver.timing_probe.begin()
         actual = await driver.quantum_audio(step, stalls=False)
         wire.assert_audio_result_matches(expected, actual)
         latencies = driver.media.response_latencies[responses:]
-        assert latencies and set(latencies) == {response_cycles}, "memory response delay differs from configured service time"
+        assert all(value == response_cycles for value in latencies), "memory response delay differs from configured service time"
         if session:
-            assert driver.media.read_requests - reads == 64*32
+            assert sum(job["kind"] == "read_view" for job in actual["jobs"]) == 64
             assert driver.media.write_requests == writes
             assert len(actual["jobs"]) == 192
         results.append({"operation": label, "cycles": driver.timing,
@@ -192,16 +240,31 @@ async def memory_timing(dut):
                         "reads": driver.media.read_requests - reads,
                         "writes": driver.media.write_requests - writes,
                         "response_cycles": response_cycles})
+        if analyze:
+            measured = driver.timing_probe.finish(driver.timing["total"], response_cycles)
+            measured["operation"] = label
+            analysis.append(measured)
         dut._log.info("%s: %s cycles, %s reads, %s writes", label, driver.timing,
                       results[-1]["reads"], results[-1]["writes"])
     (OUTPUT / "memory-timing.json").write_text(json.dumps(
         {"case": case["name"], "fabric_hz": 100_000_000, "quantum_frames": case["program"]["quantum"],
+         "read_buffers": int(os.environ["MEDIA_READ_BUFFERS"]), "write_buffers": int(os.environ["MEDIA_WRITE_BUFFERS"]),
          "response_cycles": response_cycles, "results": results}, indent=2)+"\n")
+    if analyze:
+        (OUTPUT / "prefetch-analysis.json").write_text(json.dumps(
+            {"fabric_hz": 100_000_000, "quantum_frames": MEDIA[2],
+             "assumptions": ["Playback only, one aligned unique chunk per read, stable published mappings",
+                             "All current-quantum chunks fit in the read pool; hints are not dropped",
+                             "One serial chunk transfer at the measured word-port service rate",
+                             "No prefetch or residency carried into the model from earlier iterations",
+                             "Eight cycles per serial metadata resolution unless specified; RAM-backed tables",
+                             "Replay preserves measured non-fill work; estimates are not RTL prefetch timings"],
+             "results": analysis}, indent=2)+"\n")
 
 
 @cocotb.test()
 async def pipeline_protocol(dut):
-    value = record_case(3)
+    value = record_case(MEDIA[2])
     trace = wire.run_reference("trace", document("audio_case", value), executable=REFERENCE)
     driver = PipelineDriver(dut, CAPACITIES, MEDIA, SEED)
     await driver.load(value)
@@ -239,9 +302,14 @@ async def pipeline_protocol(dut):
                 "buffers": buffers, "outputs": outputs, "stage": "jobs", "status": {"kind": "completed"},
                 "media": await driver.media.snapshot()}
     wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0], observed)
-    await driver.load(value)
+    fault_case = deepcopy(value)
+    fault_case["media"]["samples"] = list(range(1, MEDIA[2]+1))
+    fault_case["media"]["views"] = [{"chunks": [0], "frames": MEDIA[2]}]
+    await driver.load(fault_case)
+    for write in fault_case["steps"][1]["writes"]:
+        await driver.configure(True, write["address"], encode_value(write["value"]))
     driver.media.fail_next = True
-    assert await driver.execute_audio(value["steps"][0]["inputs"]) == (2, 8)
+    assert await driver.execute_audio(value["steps"][1]["inputs"]) == (2, 8)
     assert not int(dut.run_ready.value), "memory fault allowed another quantum"
     await driver.load(value)
     wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0],

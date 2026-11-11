@@ -13,6 +13,7 @@ module sp_engine #(
     input  wire [31:0]                         instruction_count,
     input  wire [31:0]                         state_count,
     input  wire [31:0]                         quantum,
+    input wire [31:0] chunk_frames,
     input  wire [31:0]                         job_budget,
     input  wire [31:0]                         queued_jobs,
     input  wire [31:0]                         queue_remaining,
@@ -46,6 +47,14 @@ module sp_engine #(
         ENABLE, POSITION, LENGTH, VIEW, RAMP
     } operand_t;
 
+    reg [5:0] chunk_shift;
+    function automatic [5:0] shift_for(input [31:0] frames);
+        begin
+            shift_for = 0;
+            for (integer bit_index=0; bit_index<32; bit_index=bit_index+1)
+                if (frames[bit_index]) shift_for = 6'(bit_index);
+        end
+    endfunction
     phase_t phase;
     operand_t operand;
     reg [PC_BITS-1:0] pc;
@@ -105,7 +114,7 @@ module sp_engine #(
             pc <= 0;
             run_count <= 0;
             run_state_count <= 0;
-            run_quantum <= 0;
+            run_quantum <= 0; chunk_shift <= 0;
             opcode <= 0;
             arg0 <= 0;
             arg1 <= 0;
@@ -124,11 +133,14 @@ module sp_engine #(
             done <= 0;
             case (phase)
                 IDLE: if (start) begin
-                    pc <= 0;
+                    pc <= 0; chunk_shift <= shift_for(chunk_frames);
                     error_code <= `SHOOP_SP_OK;
                     if ((queued_jobs != 0) || (queue_remaining < job_budget)) begin
                         error_code <= `SHOOP_SP_QUEUE_FULL;
                         done <= 1;
+                    end else if (chunk_frames == 0 || (chunk_frames & (chunk_frames-1)) != 0
+                        || quantum == 0 || (quantum & (chunk_frames-1)) != 0) begin
+                        error_code <= `SHOOP_SP_INVALID_STATE; done <= 1;
                     end else if (instruction_count > 32'(PROGRAM_DEPTH)) begin
                         error_code <= `SHOOP_SP_INVALID_PROGRAM;
                         done <= 1;
@@ -202,10 +214,10 @@ module sp_engine #(
                         done <= 1;
                         phase <= IDLE;
                     end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
-                        if (loop_response_data[33+:2] == 1 && loop_response_data[35+:64] != 0
-                            && loop_response_data[99+:64] < loop_response_data[35+:64]) begin
-                            position <= loop_response_data[99+:64];
-                            length <= loop_response_data[35+:64];
+                        if (loop_response_data[33+:2] == 1 && (loop_response_data[35+:64] >> chunk_shift) != 0
+                            && (loop_response_data[99+:64] >> chunk_shift) < (loop_response_data[35+:64] >> chunk_shift)) begin
+                            position <= loop_response_data[99+:64] >> chunk_shift;
+                            length <= loop_response_data[35+:64] >> chunk_shift;
                             operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
                         end else begin
                             job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);

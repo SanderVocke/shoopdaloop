@@ -1,14 +1,15 @@
 # Bounded RTL media store
 
 This prototype mirrors Rust `MediaStore`: mono fixed-point chunks, shared read-only
-ranges, per-slot references and deterministic LIFO reuse. Samples use an external
-memory port. Small bounded metadata uses synchronous on-chip RAM.
+ranges, per-slot references and deterministic LIFO reuse. Samples pass through
+[chunk memory](../chunk_memory/README.md) to the external memory port. Small
+bounded metadata uses synchronous on-chip RAM.
 `media_audio_pipeline` connects the store to state/job execution, enabling ReadView
 and Capture alongside arithmetic jobs.
 
-The memory port can attach to a DDR controller or cache. This milestone includes
-an independently stalled simulation slave, without a vendor DDR controller or
-burst/cache implementation. The Rust model remains elastic; RTL has physical limits.
+Chunk memory supplies read/write buffering, forwarding, prefetch and chunk-level
+arbitration. The memory port can attach to a DDR controller; a vendor controller
+and native burst adapter remain future work. Rust remains elastic; RTL has limits.
 
 ## Structure and capacities
 
@@ -45,6 +46,7 @@ at a time. Configuration takes priority, and commands/configuration block while 
 | 4 | Reclaim | `cmd_view` | Release at most one tail reference; `result_empty` |
 | 5 | Append | `cmd_view`, `cmd_count`: input words | Updated recording |
 | 6 | Read | `cmd_view`, `cmd_start`: position, `cmd_length`: loop length, `cmd_count`: output words | Sample stream |
+| 7 | Fence | None | Earlier writes acknowledged by backing memory |
 
 Slices copy IDs and retain references, with no sample-memory transactions. Nested
 ranges retain their own references. Partial boundary chunks stay allocated while
@@ -54,7 +56,7 @@ empty append and append after clear.
 
 Clear/remove release in table order. Reclaim releases from the tail and truncates
 logical length, accounting for the first-chunk offset. Only a zero reference count
-returns an ID to the free stack. Allocation pops that stack before growing the slot
+retires the allocation before returning its ID to the free stack. Allocation pops that stack before growing the slot
 high-water mark; storage does not shrink. Append preflights capacity before changing
 media. New slots are zeroed, including unpublished tails, matching Rust snapshots.
 Reused slots retain old unpublished samples. Descriptors/lengths publish at completion.
@@ -64,19 +66,25 @@ Zero-word reads still validate the view, position and loop length.
 
 Append consumes `cmd_count` words on `write_valid && write_ready`. Read emits
 `cmd_count` words on `read_valid && read_ready`. Valid/data remain stable while
-stalled. A refused command terminates its stream via `done`.
+stalled. A refused command terminates its stream via `done`. Append completes when
+samples are buffered and visible; use Fence before inspecting backing DDR.
+
+The frontend resolves and streams whole spans within each chunk. Job-FIFO logical
+read hints and upcoming spans feed the chunk prefetch interface; invalid hints
+are ignored. `READ_BUFFERS` and `WRITE_BUFFERS` default to four each.
 
 `memory_valid && memory_ready` transfers one 32-bit read/write request. Addresses
 are bytes: admitted base plus `(slot * CHUNK_FRAMES + offset) * 4`. The base must
 be four-byte aligned and leave room for the physical arena without u64 overflow.
 Request fields remain stable under backpressure. At most one request is outstanding;
-both reads and writes require a response. The slave retains response valid/data/error
-until `memory_response_ready`. No fixed response latency is assumed.
+both reads and writes require a response. Transfers cover entire chunks and may
+continue after command/audio completion. The slave retains response valid/data/error
+until `memory_response_ready`. No fixed response latency is assumed. The chunk
+service binds the arena base for its reset epoch.
 
 Commands are serialized and hold audio admission until completion. Command sizes
 and external-memory service must be bounded before claiming an audio deadline.
-This word interface establishes correctness; efficient DDR bursts and arbitration
-remain separate work.
+Chunk arbitration is internal; efficient native DDR bursts remain separate work.
 
 ### Errors and reset
 
@@ -94,8 +102,12 @@ can leave partial writes/provisional allocation: the controller reports it and
 refuses commands until reset. Internal ownership invariant failures also halt.
 There is no retry/rollback protocol for these faults.
 
+`memory_fault` also reports writeback errors after logical completion. The full
+loop coordinator contains those faults without rolling back completed clocks.
+
 Synchronous active-high reset aborts work and clears logical counts/control while
-retaining RAM/external samples. Old contents are inaccessible until descriptors
+retaining RAM/external samples. Fence first if buffered writes must survive reset.
+Old contents are inaccessible until descriptors
 and slots initialize. Coordinate reset with the slave so an old response cannot
 be mistaken for a new transaction. Reset begins a new store epoch.
 
@@ -183,29 +195,106 @@ chunk/quantum maximum 8). Program/state/FIFO sizes are 32/16/32 for default and
 and timing. Logs, xUnit reports, summaries and optional waveforms go under `work/`.
 Synthesis checks forbid latches and combinational division/modulo.
 
-The separate `8x8` configuration has 64 views, 256 slots, chunk/quantum maximum 32,
+The separate `8x8` configuration has 64 views, 1,024 slots, chunk/quantum maximum 32,
 program/state/FIFO depths 256/512/256, 256 scratch buffers and eight input/output
 ports. Select it explicitly; `all` retains the smaller regression configurations.
 With `--pipeline --config 8x8 --timing`, the workload is 64 simultaneous mono loop
 playbacks, each with a constant 0.5 gain, grouped into eight tracks of eight loops.
 Seven binary mixes per track feed one mono output per track: 192 instructions/jobs
 per quantum (64 reads, 64 gains, 56 mixes, eight outputs), with 320 state entries.
-Each loop has 96 samples in three distinct chunks. Staggered positions and four
-successive quanta exercise chunk boundaries and loop wraparound. All media, state,
+Each loop has 512 samples in sixteen distinct chunks. Aligned, staggered chunk
+positions advance across four quanta, including loop wraparound. All media, state,
 jobs, scratch samples and output samples compare exactly with Rust. This measures
 playback/mixing, without recording or loop-transition processing.
 
 ```sh
 python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --response-cycles 7 --output work/fpga-ddr-8x8/c7
+  --read-buffers 128 --response-cycles 7 --output work/chunk-8x8
 ```
 
 The selected case is saved beside `8x8/memory-timing.json` for replay. Initial
 program/state/media setup and per-quantum result readback are outside the measured
 audio execution interval. This configuration enlarges RAM capacities, retaining
 one state processor, one job processor and one outstanding sample-memory request.
+The 128 KiB sample fixture exceeds the selected 16 KiB read pool; cold fills and
+steady access are both measured. Older timing tables below used the smaller
+96-sample loops and the direct-memory implementation.
+
+### Within-quantum prefetch opportunity
+
+Add `--prefetch-analysis` to record the aligned playback state
+job emission, job execution, chunk-fill waits and physical transfers:
+
+```sh
+python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
+  --prefetch-analysis --read-buffers 128 --response-cycles 7 \
+  --output work/prefetch-opportunity-c7
+```
+
+`prefetch-analysis.json` contains the measured timeline and an optimistic replay.
+The replay serializes chunk transfers at their measured service rate, releases
+each request only after its state-processor emission and eight cycles of serial
+metadata resolution, and preserves execution time outside chunk-fill waits.
+Every replay starts with no resident chunks. It assumes enough hint buffering
+to retain all 64 intents and enough read buffers to avoid eviction. The diagnostic
+observes the current RTL and also produces a replay estimate.
+
+Before implementing early hints, four successive quanta at each service rate
+matched Rust. These baseline measurements and replay estimates use 100 MHz:
+
+| Word response delay | Shallow-prefetch baseline | Waiting for fills | Early-prefetch replay | Remaining replay wait |
+| --- | ---: | ---: | ---: | ---: |
+| 7 cycles | 355.47 µs | 65.51 µs | 289.96 µs | 0 µs |
+| 13 cycles | 478.35 µs | 188.39 µs | 292.78 µs | 2.82 µs |
+
+Each quantum fetches 64 distinct chunks, or 2,048 words, with zero writes and no
+reuse from earlier quanta. At seven cycles, a complete transfer costs 257 cycles
+including dispatch: 164.48 µs for all chunks, against 289.96 µs of measured work
+outside fill waits. The replay finishes all transfers by 164.66 µs and meets every
+read deadline. The potential reduction from current aligned RTL is 18.4%; at
+13 cycles it is 38.8%. With 25-cycle responses, the replay takes 538.54 µs and
+retains 248.58 µs of exposed wait: bandwidth eventually limits the overlap.
+
+These estimates support intra-iteration hiding for this playback/gain/mix graph.
+They do not establish the same overlap for dependent capture/read chains, dropped
+hints, DDR-backed metadata or a future faster arithmetic engine. The original
+timing fixture uses unaligned positions, so compare these numbers within this
+aligned experiment. The word-delay model remains a rough service-rate estimate.
+
+### Implemented early prefetch
+
+The implemented state-enqueue FIFO and separate resolver achieve the following
+actual RTL results at the same assumed 100 MHz, with 128 read buffers:
+
+| Response delay | Total | Exposed fill wait | Reduction from aligned baseline |
+| --- | ---: | ---: | ---: |
+| 7 cycles | 289.96 µs | 0 µs | 18.4% |
+| 13 cycles | 292.93 µs | 2.97 µs | 38.8% |
+
+All four moving quanta at each setting matched Rust and fetched exactly 2,048
+new words, with no writes or reuse from earlier iterations. These results include
+1,408 state cycles and 192 jobs per quantum. The 13-cycle result is 0.15 µs above
+the optimistic replay estimate. No whole-iteration prefetch barrier is used.
+
+Separate resolver tests compare 483 requests across three configurations. Chunk
+coherence tests cover queued/completed/in-flight supersession, delayed stale
+responses, repeated writes and retirement/reuse. Pipeline comparisons include
+capture/publication/read dependencies, multi-chunk wrap and single-buffer pressure.
+The default full-loop synthesis profile (eight loops, four read/write buffers)
+uses 25,357 LUT4s, 13,764 FFs, 93 DP16KDs and four DSPs on ECP5. Lint and generic
+checks pass for ordinary and minimum configurations, without latches or division.
+These resource counts describe the default synthesis profile, not the larger
+64-loop timing fixture, and exclude a DDR controller and place/route.
+
+The warning-denying workspace build, targeted Rust tests, 19 Python contract tests
+and RTL comparisons passed. The remaining full-workspace test run was stopped at
+the user's request before pushing; PR CI was not inspected.
 
 ## Initial measurements
+
+The following direct-memory measurements precede chunk-memory integration
+(commit `59186a5f`). Current interfaces and validation are described in
+[chunk memory](../chunk_memory/README.md).
 
 Verilator 5.032 / cocotb 1.9.2, seed 20261110; Yosys 0.52, default capacities:
 
@@ -246,6 +335,9 @@ loading and readback. They are behavioral counts, not an achieved clock frequenc
 or a service bound for a real DDR device.
 
 ## Rough DDR3 timing estimate
+
+The numerical tables in this section describe the direct-memory baseline above.
+The delay model now sits below chunk memory and applies to physical transactions.
 
 The [PYNQ-Z1](https://digilent.com/shop/pynq-z1-python-productivity-for-zynq-7000-arm-fpga-soc/)
 has a 16-bit DDR3 interface at 1050 MT/s: 2.1 GB/s raw peak bandwidth. For an initial

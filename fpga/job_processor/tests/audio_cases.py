@@ -17,7 +17,7 @@ def samples(frames, phase=0):
 
 
 def make_case(name, instructions, memory, capacities, *, frames=3, buffers=6, outputs=2, steps=3, inputs=None):
-    return {"name": name, "program": {"instructions": instructions, "quantum": frames,
+    return {"name": name, "program": {"chunk_frames": 1, "instructions": instructions, "quantum": frames,
                                       "jobs_per_quantum": len(instructions)},
             "initial_state": {"memory": memory}, "queue_capacity": capacities[2],
             "buffers": buffers, "output_ports": outputs,

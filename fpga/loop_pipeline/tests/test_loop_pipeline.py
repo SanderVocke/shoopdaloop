@@ -11,7 +11,7 @@ from cases import case, spec, step, command
 DEPTHS=tuple(map(int,os.environ['LP_DEPTHS'].split(',')))
 OUTPUT=Path(os.environ['LP_OUTPUT'])
 REFERENCE=Path(os.environ['LP_REFERENCE'])
-def document(kind,value):return {'format_version':1,'payload':{'kind':kind,'value':value}}
+def document(kind,value):return {'format_version':2,'payload':{'kind':kind,'value':value}}
 
 async def compare(dut,value):
     source=document('pipeline_case',value)
@@ -57,7 +57,7 @@ async def coordinator_protocol(dut):
     # Reset must abort a paused preflight and preserve signal RAM.
     await driver.observations([])
     await FallingEdge(dut.clk)
-    driver.set(run_valid=1,run_quantum=16,run_instruction_count=len(value['program']['instructions']),run_state_count=1,
+    driver.set(run_valid=1,run_quantum=16,run_chunk_frames=1,run_instruction_count=len(value['program']['instructions']),run_state_count=1,
         run_job_budget=4,run_external_jobs=1,run_buffers=2,run_inputs=0,run_outputs=1)
     await driver.edge();driver.set(run_valid=0)
     await with_timeout(RisingEdge(dut.preflight_valid),1_000_000,'ns');await Timer(1,units='ns')

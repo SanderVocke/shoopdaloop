@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "payload": {
     "kind": "audio_case",
     "value": {
@@ -32,7 +32,8 @@
           }
         ],
         "quantum": 4,
-        "jobs_per_quantum": 4
+        "jobs_per_quantum": 4,
+        "chunk_frames": 1
       },
       "initial_state": {
         "memory": [
@@ -66,8 +67,8 @@
       "buffers": 4,
       "output_ports": 1,
       "media": {
-        "chunk_frames": 4,
-        "chunk_limit": 3,
+        "chunk_frames": 1,
+        "chunk_limit": 12,
         "samples": [
           1,
           2,
@@ -88,7 +89,16 @@
             "chunks": [
               0,
               1,
-              2
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
             ],
             "frames": 12
           }

@@ -16,6 +16,8 @@ use alloc::vec::Vec;
 pub struct Program {
     pub instructions: Vec<Instruction>,
     pub quantum: u32,
+    /// Samples per media chunk. Media positions and lengths use chunk units.
+    pub chunk_frames: u32,
     #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
     #[cfg_attr(feature = "schema", schemars(with = "u32"))]
     pub jobs_per_quantum: usize,
@@ -143,7 +145,15 @@ impl StateProcessor {
         ))
     }
     pub fn run(&mut self, program: &Program, queue: &mut JobQueue) -> Result<(), Error> {
-        self.run_inner(program, queue, None)
+        self.run_inner(program, queue, None, &mut |_| {})
+    }
+    pub fn run_with_intents(
+        &mut self,
+        program: &Program,
+        queue: &mut JobQueue,
+        mut sink: impl FnMut(crate::resolver::ReadIntent),
+    ) -> Result<(), Error> {
+        self.run_inner(program, queue, None, &mut sink)
     }
     pub fn run_with_loops(
         &mut self,
@@ -151,17 +161,51 @@ impl StateProcessor {
         queue: &mut JobQueue,
         loops: CommittedLoops<'_>,
     ) -> Result<(), Error> {
-        self.run_inner(program, queue, Some(loops))
+        self.run_inner(program, queue, Some(loops), &mut |_| {})
+    }
+    pub fn run_with_loops_and_intents(
+        &mut self,
+        program: &Program,
+        queue: &mut JobQueue,
+        loops: CommittedLoops<'_>,
+        mut sink: impl FnMut(crate::resolver::ReadIntent),
+    ) -> Result<(), Error> {
+        self.run_inner(program, queue, Some(loops), &mut sink)
     }
     fn run_inner(
         &mut self,
         program: &Program,
         queue: &mut JobQueue,
         loops: Option<CommittedLoops<'_>>,
+        sink: &mut impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
             return Err(Error::QueueFull);
         }
+        if program.chunk_frames == 0
+            || program.quantum == 0
+            || program.quantum % program.chunk_frames != 0
+        {
+            return Err(Error::InvalidState);
+        }
+        let mut emit = |job| {
+            queue.push(job)?;
+            if let Job::ReadView {
+                view,
+                position,
+                length,
+                ..
+            } = job
+            {
+                sink(crate::resolver::ReadIntent {
+                    view,
+                    position,
+                    length,
+                    chunks: u64::from(program.quantum / program.chunk_frames),
+                });
+            }
+            Ok::<(), Error>(())
+        };
         for &instruction in &program.instructions {
             match instruction {
                 Instruction::ProcessLogicalPlayback {
@@ -173,11 +217,13 @@ impl StateProcessor {
                         .ok_or(Error::InvalidState)?
                         .read(loop_id)
                         .map_err(|_| Error::InvalidState)?;
-                    queue.push(if state.plays() {
+                    let position = state.position / u64::from(program.chunk_frames);
+                    let length = state.content_length / u64::from(program.chunk_frames);
+                    emit(if state.plays() && length != 0 && position < length {
                         Job::ReadView {
                             view: self.view(view)?,
-                            position: state.position,
-                            length: state.content_length,
+                            position,
+                            length,
                             destination,
                         }
                     } else {
@@ -194,14 +240,14 @@ impl StateProcessor {
                         .read(loop_id)
                         .map_err(|_| Error::InvalidState)?;
                     if state.mode == Mode::Recording {
-                        queue.push(Job::Capture {
+                        emit(Job::Capture {
                             source,
                             view: self.view(view)?,
                         })?;
                     }
                 }
                 Instruction::ProcessInput { port, destination } => {
-                    queue.push(Job::Input { port, destination })?
+                    emit(Job::Input { port, destination })?
                 }
                 Instruction::ProcessLoopPlayback {
                     view,
@@ -211,14 +257,14 @@ impl StateProcessor {
                     destination,
                 } => {
                     if self.read(enabled)?.word()? == 0 {
-                        queue.push(Job::Silence { destination })?;
+                        emit(Job::Silence { destination })?;
                     } else {
                         let current = self.read(position)?.word()?;
                         let length = self.read(length)?.word()?;
                         if length == 0 || current >= length {
                             return Err(Error::InvalidState);
                         }
-                        queue.push(Job::ReadView {
+                        emit(Job::ReadView {
                             view: self.view(view)?,
                             position: current,
                             length,
@@ -232,7 +278,7 @@ impl StateProcessor {
                     destination,
                 } => {
                     let mut value = self.read(ramp)?.ramp()?;
-                    queue.push(Job::Gain {
+                    emit(Job::Gain {
                         ramp: value,
                         source,
                         destination,
@@ -244,7 +290,7 @@ impl StateProcessor {
                     left,
                     right,
                     destination,
-                } => queue.push(Job::Mix {
+                } => emit(Job::Mix {
                     left,
                     right,
                     destination,
@@ -255,15 +301,13 @@ impl StateProcessor {
                     source,
                 } => {
                     if self.read(enabled)?.word()? != 0 {
-                        queue.push(Job::Capture {
+                        emit(Job::Capture {
                             view: self.view(view)?,
                             source,
                         })?;
                     }
                 }
-                Instruction::ProcessOutput { source, port } => {
-                    queue.push(Job::Output { source, port })?
-                }
+                Instruction::ProcessOutput { source, port } => emit(Job::Output { source, port })?,
             }
         }
         Ok(())

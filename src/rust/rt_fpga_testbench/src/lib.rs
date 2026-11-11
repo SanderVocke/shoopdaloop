@@ -14,11 +14,13 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+pub mod chunks;
 pub mod media;
 pub mod pipeline;
+pub mod resolver;
 pub mod transitions;
 
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "u32", into = "u32")]
@@ -91,6 +93,9 @@ pub enum Payload {
     Instructions(Vec<Instruction>),
     State(StateSnapshot),
     Jobs(Vec<Job>),
+    ReadIntents(Vec<rt_fpga_reference::resolver::ReadIntent>),
+    ResolverCase(resolver::ResolverCase),
+    ResolverTrace(resolver::ResolverTrace),
     Bindings(Vec<Binding>),
     StateWrites(Vec<StateWrite>),
     OnWrap(OnWrap),
@@ -102,6 +107,8 @@ pub enum Payload {
     Media(MediaSnapshot),
     MediaCase(media::MediaCase),
     MediaTrace(media::MediaTrace),
+    ChunkCase(chunks::ChunkCase),
+    ChunkTrace(chunks::ChunkTrace),
     TransitionPlan(transitions::TransitionPlanInput),
     TransitionPlanImage(rt_fpga_reference::transitions::TransitionPlanImage),
     TransitionCase(transitions::TransitionCase),
@@ -283,7 +290,7 @@ pub fn run_audio_case(case: AudioCase) -> Result<AudioTrace, Error> {
     let mut outputs = vec![vec![Fixed::ZERO; quantum]; case.output_ports as usize];
     let mut memory = match &case.media {
         Some(snapshot) => MediaStore::from_snapshot(snapshot.clone())?,
-        None => MediaStore::new(1)?,
+        None => MediaStore::new(case.program.chunk_frames as usize)?,
     };
     let include_media =
         case.media.is_some() || case.steps.iter().any(|step| step.media_actions.is_some());
@@ -310,7 +317,11 @@ pub fn run_audio_case(case: AudioCase) -> Result<AudioTrace, Error> {
                 .writes
                 .iter()
                 .try_for_each(|write| state.write(write.address, write.value))
-                .and_then(|()| state.run(&case.program, &mut queue));
+                .and_then(|()| {
+                    state.run_with_intents(&case.program, &mut queue, |intent| {
+                        intent.prefetch(&mut memory)
+                    })
+                });
         }
         let jobs = queue.iter().copied().collect();
         if outcome.is_ok() {

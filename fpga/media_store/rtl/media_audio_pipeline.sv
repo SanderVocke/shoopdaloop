@@ -5,12 +5,14 @@ module media_audio_pipeline #(
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
-    parameter integer MEMORY_RESPONSE_CYCLES = 1
+    parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4
 ) (
     input wire clk, input wire reset,
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
-    input wire [31:0] run_quantum, input wire [31:0] run_job_budget,
+    input wire [31:0] run_quantum,
+    input wire [31:0] run_chunk_frames, input wire [31:0] run_job_budget,
     input wire [31:0] run_buffers, input wire [31:0] run_inputs, input wire [31:0] run_outputs,
     input wire job_enable, output wire busy, output wire done,
     output wire [7:0] error_code, output wire [1:0] error_stage,
@@ -43,9 +45,12 @@ module media_audio_pipeline #(
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
     input wire memory_response_valid, output wire memory_response_ready,
-    input wire memory_response_error, input wire [31:0] memory_read_data
+    input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_fault
 );
     wire pipeline_busy, pipeline_ready, state_cfg_ready, sample_cfg_ready;
+    wire pipeline_done;
+    reg completion_pending;
     wire job_cmd_valid, job_cmd_ready, job_write_valid, job_write_ready, job_read_valid, job_read_ready;
     wire [2:0] job_opcode;
     wire [63:0] job_view, job_start, job_length;
@@ -55,7 +60,15 @@ module media_audio_pipeline #(
     wire [63:0] store_memory_address;
     wire [31:0] store_memory_write_data, store_memory_read_data;
     wire store_memory_response_valid, store_memory_response_ready, store_memory_response_error;
+    wire hint_valid, hint_ready;
+    wire [63:0] hint_view, hint_position, hint_length;
+    wire [31:0] hint_count;
     assign busy = pipeline_busy || store_busy;
+    assign done = (pipeline_done || completion_pending) && !store_busy;
+    always @(posedge clk) begin
+        if (reset) completion_pending <= 0;
+        else completion_pending <= (pipeline_done || completion_pending) && !done;
+    end
     assign run_ready = pipeline_ready && internal_ready && !store_cmd_valid && !store_cfg_valid;
     assign cfg_ready = state_cfg_ready && !store_busy;
     assign audio_cfg_ready = sample_cfg_ready && !store_busy;
@@ -72,13 +85,13 @@ module media_audio_pipeline #(
     audio_pipeline #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
-        .ENABLE_MEDIA(1)
+        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1)
     ) pipeline (
         .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(pipeline_ready),
         .run_instruction_count(run_instruction_count), .run_state_count(run_state_count),
-        .run_quantum(run_quantum), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
+        .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
         .run_inputs(run_inputs), .run_outputs(run_outputs), .job_enable(job_enable),
-        .busy(pipeline_busy), .done(done), .error_code(error_code), .error_stage(error_stage),
+        .busy(pipeline_busy), .done(pipeline_done), .error_code(error_code), .error_stage(error_stage),
         .state_busy(state_busy), .state_done(state_done), .jobs_busy(jobs_busy), .jobs_done(jobs_done), .buffer_ready(buffer_ready),
         .cfg_valid(cfg_valid && !store_busy), .cfg_ready(state_cfg_ready), .cfg_state(cfg_state), .cfg_write(cfg_write),
         .cfg_address(cfg_address), .cfg_write_data(cfg_write_data), .cfg_response_valid(cfg_response_valid),
@@ -95,18 +108,21 @@ module media_audio_pipeline #(
         .external_done_valid(external_done_valid), .external_done_ready(external_done_ready), .external_error(external_error),
         .media_cmd_valid(job_cmd_valid), .media_cmd_ready(job_cmd_ready), .media_cmd_opcode(job_opcode),
         .media_cmd_view(job_view), .media_cmd_start(job_start), .media_cmd_length(job_length), .media_cmd_count(job_count),
-        .media_done(internal_done), .media_error(store_error_code),
+        .media_done(internal_done), .media_error(store_error_code), .media_fault(memory_fault),
         .media_write_valid(job_write_valid), .media_write_ready(job_write_ready), .media_write_data(job_write_data),
-        .media_read_valid(job_read_valid), .media_read_ready(job_read_ready), .media_read_data(store_sample)
+        .media_read_valid(job_read_valid), .media_read_ready(job_read_ready), .media_read_data(store_sample),
+        .media_hint_valid(hint_valid), .media_hint_ready(hint_ready), .media_hint_view(hint_view),
+        .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES)) media (
+    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
+        .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
         .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
         .cmd_opcode(pipeline_busy ? job_opcode : store_cmd_opcode), .cmd_view(pipeline_busy ? job_view : store_cmd_view),
         .cmd_start(pipeline_busy ? job_start : store_cmd_start), .cmd_length(pipeline_busy ? job_length : store_cmd_length),
         .cmd_count(pipeline_busy ? job_count : store_cmd_count),
-        .busy(store_busy), .done(internal_done), .error_code(store_error_code),
+        .busy(store_busy), .done(internal_done), .error_code(store_error_code), .memory_fault(memory_fault),
         .result_view(store_result_view), .result_empty(store_result_empty),
         .write_valid(pipeline_busy ? job_write_valid : store_write_valid), .write_ready(internal_write_ready),
         .write_data(pipeline_busy ? job_write_data : store_write_data),

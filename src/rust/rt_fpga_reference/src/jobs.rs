@@ -37,7 +37,9 @@ pub enum Job {
     },
     ReadView {
         view: ViewId,
+        #[cfg_attr(feature = "serde", serde(rename = "position_chunks"))]
         position: u64,
+        #[cfg_attr(feature = "serde", serde(rename = "length_chunks"))]
         length: u64,
         destination: BufferId,
     },
@@ -102,7 +104,11 @@ impl JobQueue {
     }
 }
 
+/// Positions and lengths are in chunks; sample streams retain sample units.
 pub trait Memory {
+    fn chunk_frames(&self) -> usize {
+        1
+    }
     fn read(
         &mut self,
         view: ViewId,
@@ -111,6 +117,7 @@ pub trait Memory {
         output: &mut [Fixed],
     ) -> Result<(), Error>;
     fn write(&mut self, view: ViewId, samples: &[Fixed]) -> Result<(), Error>;
+    fn prefetch(&mut self, _view: ViewId, _position: u64, _length: u64, _chunks: u64) {}
 }
 
 pub struct JobProcessor {
@@ -138,7 +145,9 @@ impl JobProcessor {
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
     ) -> Result<(), Error> {
-        if inputs.iter().any(|input| input.len() != self.quantum)
+        if memory.chunk_frames() == 0
+            || self.quantum % memory.chunk_frames() != 0
+            || inputs.iter().any(|input| input.len() != self.quantum)
             || outputs.iter().any(|output| output.len() != self.quantum)
         {
             return Err(Error::InvalidShape);
@@ -148,6 +157,20 @@ impl JobProcessor {
             output.fill(Fixed::ZERO);
         }
         while let Some(job) = queue.jobs.pop_front() {
+            if let Some(Job::ReadView {
+                view,
+                position,
+                length,
+                ..
+            }) = queue.jobs.front()
+            {
+                memory.prefetch(
+                    *view,
+                    *position,
+                    *length,
+                    (self.quantum / memory.chunk_frames()) as u64,
+                );
+            }
             self.execute(job, memory, inputs, outputs)?;
         }
         Ok(())

@@ -15,7 +15,7 @@ REFERENCE = Path(os.environ["MEDIA_REFERENCE"])
 
 
 def document(kind, value):
-    return {"format_version": 1, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
 
 
 async def compare(dut, value, *, seed, stalls=True):
@@ -79,6 +79,24 @@ async def randomized_media(dut):
 @cocotb.test()
 async def media_protocol(dut):
     driver = Driver(dut, CAPACITIES, SEED)
+    unpublished = case("unpublished-hint", CAPACITIES[2], CAPACITIES[1], [])["media"]
+    unpublished["views"] = [{"chunks": [], "frames": 0}]
+    await driver.load(unpublished)
+    driver.set(hint_valid=1, hint_view=0, hint_position=0, hint_length=CAPACITIES[2], hint_count=CAPACITIES[2])
+    for _ in range(100):
+        ready = int(dut.hint_ready.value)
+        await driver.tick()
+        if ready:
+            break
+    else:
+        raise AssertionError("unpublished hint was not admitted")
+    driver.set(hint_valid=0)
+    for _ in range(20):
+        await driver.tick()
+    driver.base += 0x1000
+    driver.set(arena_base=driver.base)
+    result = await driver.command(command("append", view=0, samples=[117]*CAPACITIES[2]))
+    assert result["status"]["kind"] == "completed", "ignored hint bound the old arena"
     await driver.load(case("empty", CAPACITIES[2], CAPACITIES[1], [])["media"])
     for space, size in ((0, 4), (1, CAPACITIES[0]), (2, CAPACITIES[0]*CAPACITIES[1]),
                         (3, CAPACITIES[1]), (4, CAPACITIES[1]), (7, 0)):
@@ -143,6 +161,15 @@ async def media_protocol(dut):
     driver.set(read_ready=0, arena_base=driver.base)
     await driver.tick()
     assert await driver.snapshot() == original, "blocked write changed ownership"
+    driver.set(arena_base=driver.base+0x100000)
+    await finish(await admit(6, length=1, count=1), 4)
+    await finish(await admit(5, count=driver.chunk_frames), 4)
+    assert not int(dut.memory_fault.value), "a rejected base change poisoned chunk memory"
+    driver.set(arena_base=driver.base)
+    recovered = await driver.command(command("read", view=0, position=0, length=1, frames=1))
+    assert recovered["value"] == {"kind": "samples", "value": [MAX]}
+    assert recovered["media"] == original, "rejected base change partially allocated media"
+    await driver.load(original)
     driver.fail_next = True
     after = await admit(6, length=1, count=1)
     driver.set(read_ready=1)

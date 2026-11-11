@@ -14,7 +14,8 @@ module loop_pipeline #(
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
-    parameter integer MEMORY_RESPONSE_CYCLES = 1
+    parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4
 ) (
     input wire clk,
     input wire reset,
@@ -23,6 +24,7 @@ module loop_pipeline #(
     input wire [31:0] run_instruction_count,
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
+    input wire [31:0] run_chunk_frames,
     input wire [31:0] run_job_budget,
     input wire [31:0] run_buffers,
     input wire [31:0] run_inputs,
@@ -96,13 +98,14 @@ module loop_pipeline #(
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
     input wire memory_response_valid, output wire memory_response_ready,
-    input wire memory_response_error, input wire [31:0] memory_read_data
+    input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_fault
 );
     typedef enum logic [3:0] { IDLE, PREVIEW_SEND, PREVIEW_WAIT, PREFLIGHT,
         COMMIT_SEND, COMMIT_WAIT, AUDIO_START, AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT } phase_t;
     phase_t phase;
     wire host_access = phase == IDLE || phase == PREFLIGHT || phase == FAULT;
-    wire coordinator_send = phase == PREVIEW_SEND || phase == COMMIT_SEND || phase == FINISH_SEND;
+    wire coordinator_send = (phase == PREVIEW_SEND || phase == COMMIT_SEND || phase == FINISH_SEND) && !memory_fault;
     wire coordinator_wait = phase == PREVIEW_WAIT || phase == COMMIT_WAIT || phase == FINISH_WAIT;
     wire reserved_command = command_opcode == 9 || command_opcode == 10 || command_opcode == 11;
     wire tp_command_ready, tp_response_valid;
@@ -119,8 +122,9 @@ module loop_pipeline #(
     wire host_store_cmd_ready, host_store_cfg_ready;
     wire host_store_write_ready, host_store_read_valid;
     reg [63:0] quantum_arena;
-    reg [31:0] instructions, states, quantum, budget, buffers, inputs, outputs;
+    reg [31:0] instructions, states, quantum, chunk_frames, budget, buffers, inputs, outputs;
     reg external_jobs;
+    reg fault_report_pending;
     wire configure = phase == IDLE || phase == PREFLIGHT || phase == FAULT;
     assign transition_busy = tp_busy;
 
@@ -155,9 +159,9 @@ module loop_pipeline #(
     media_audio_pipeline #(.PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES)) audio (
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS)) audio (
         .clk(clk), .reset(reset), .run_valid(phase == AUDIO_START), .run_ready(audio_run_ready),
-        .run_instruction_count(instructions), .run_state_count(states), .run_quantum(quantum), .run_job_budget(budget),
+        .run_instruction_count(instructions), .run_state_count(states), .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_job_budget(budget),
         .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs), .job_enable(job_enable),
         .run_external_jobs(external_jobs), .external_job_valid(external_job_valid), .external_job_ready(external_job_ready),
         .external_done_valid(external_done_valid), .external_done_ready(external_done_ready), .external_error(external_error),
@@ -189,18 +193,21 @@ module loop_pipeline #(
         .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
         .memory_address(memory_address), .memory_write_data(memory_write_data),
         .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
-        .memory_response_error(memory_response_error), .memory_read_data(memory_read_data)
+        .memory_response_error(memory_response_error), .memory_read_data(memory_read_data), .memory_fault(memory_fault)
     );
 
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE; done <= 0; error_code <= 0; error_stage <= 0;
             preflight_error <= 0; boundary_token <= 0;
-            instructions <= 0; states <= 0; quantum <= 0; budget <= 0;
+            instructions <= 0; states <= 0; quantum <= 0; chunk_frames <= 0; budget <= 0;
             buffers <= 0; inputs <= 0; outputs <= 0; external_jobs <= 0; quantum_arena <= 0;
+            fault_report_pending <= 0;
         end else begin
             done <= 0;
-            case (phase)
+            if (memory_fault && phase != FAULT) begin
+                error_code <= 8; error_stage <= 3; fault_report_pending <= 1; phase <= FAULT;
+            end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
                     error_code <= 0; error_stage <= 0;
                     if (configured_quantum == 0 || run_quantum != configured_quantum) begin
@@ -210,7 +217,7 @@ module loop_pipeline #(
                         error_code <= run_job_budget > JOB_DEPTH || queued_jobs != 0 ? 8'd1 : 8'd2;
                         error_stage <= 2; done <= 1;
                     end else begin
-                        instructions <= run_instruction_count; states <= run_state_count; quantum <= run_quantum;
+                        instructions <= run_instruction_count; states <= run_state_count; quantum <= run_quantum; chunk_frames <= run_chunk_frames;
                         budget <= run_job_budget; buffers <= run_buffers; inputs <= run_inputs; outputs <= run_outputs;
                         external_jobs <= run_external_jobs; quantum_arena <= arena_base; phase <= PREVIEW_SEND;
                     end
@@ -244,7 +251,7 @@ module loop_pipeline #(
                     error_code <= {4'b0,tp_response_error}; done <= 1;
                     phase <= tp_response_error == 0 ? IDLE : FAULT;
                 end
-                FAULT: begin end
+                FAULT: if (fault_report_pending && !audio_busy) begin done <= 1; fault_report_pending <= 0; end
                 default: phase <= FAULT;
             endcase
         end

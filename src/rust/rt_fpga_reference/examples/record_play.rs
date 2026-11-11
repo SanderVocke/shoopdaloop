@@ -10,6 +10,7 @@ fn main() {
     let mut media = MediaStore::new(32).unwrap();
     let take = media.create_recording().unwrap();
     let graph = Graph {
+        chunk_frames: 32,
         quantum: 32,
         nodes: vec![
             Node::Input { port: 0 },
@@ -24,7 +25,7 @@ fn main() {
             },
             Node::Playback {
                 view: take,
-                length: 32,
+                length: 1,
                 position: 0,
                 playing: false,
             },
@@ -49,7 +50,9 @@ fn main() {
     backend.transitions.begin(&mut backend.state).unwrap();
     backend
         .state
-        .run(&backend.program, &mut backend.queue)
+        .run_with_intents(&backend.program, &mut backend.queue, |intent| {
+            intent.prefetch(&mut backend.media)
+        })
         .unwrap();
     println!(
         "Recording jobs:\n{:#?}",
@@ -74,7 +77,9 @@ fn main() {
     backend.transitions.begin(&mut backend.state).unwrap();
     backend
         .state
-        .run(&backend.program, &mut backend.queue)
+        .run_with_intents(&backend.program, &mut backend.queue, |intent| {
+            intent.prefetch(&mut backend.media)
+        })
         .unwrap();
     println!(
         "Playback jobs:\n{:#?}",

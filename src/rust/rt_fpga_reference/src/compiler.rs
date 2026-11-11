@@ -45,7 +45,9 @@ pub enum Node {
     },
     Playback {
         view: ViewId,
+        #[cfg_attr(feature = "serde", serde(rename = "length_chunks"))]
         length: u64,
+        #[cfg_attr(feature = "serde", serde(rename = "position_chunks"))]
         position: u64,
         playing: bool,
     },
@@ -78,6 +80,7 @@ pub struct Graph {
     #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
     #[cfg_attr(feature = "schema", schemars(with = "u32"))]
     pub quantum: usize,
+    pub chunk_frames: u32,
     pub nodes: Vec<Node>,
 }
 
@@ -139,13 +142,14 @@ fn inputs(node: &Node) -> Vec<NodeId> {
 
 pub fn compile(graph: &Graph) -> Result<Compiled, Error> {
     let quantum = u32::try_from(graph.quantum).map_err(|_| Error::InvalidShape)?;
-    if quantum == 0 {
+    if quantum == 0 || graph.chunk_frames == 0 || quantum % graph.chunk_frames != 0 {
         return Err(Error::InvalidShape);
     }
     let mut result = Compiled {
         program: Program {
             instructions: Vec::new(),
             quantum,
+            chunk_frames: graph.chunk_frames,
             jobs_per_quantum: 0,
         },
         initial_state: Vec::new(),

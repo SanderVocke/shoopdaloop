@@ -23,6 +23,7 @@ fn render(backend: &mut Backend, input: &[Fixed]) -> Vec<Fixed> {
 #[shoop_test]
 fn state_execution_emits_jobs_without_accessing_or_resolving_samples() {
     let graph = Graph {
+        chunk_frames: 1,
         quantum: 32,
         nodes: vec![
             Node::Playback {
@@ -58,12 +59,13 @@ fn state_execution_emits_jobs_without_accessing_or_resolving_samples() {
 }
 
 #[shoop_test]
-fn recording_preserves_partial_chunks_and_playback_wraps_independently_of_chunk_size() {
-    for chunk_frames in [1, 32, 128] {
+fn recording_and_playback_use_whole_chunks_at_each_quantum() {
+    for chunk_frames in [1, 4, 32] {
         let mut media = MediaStore::new(chunk_frames).unwrap();
         let take = media.create_recording().unwrap();
         let graph = Graph {
-            quantum: 3,
+            quantum: chunk_frames,
+            chunk_frames: chunk_frames as u32,
             nodes: vec![
                 Node::Input { port: 0 },
                 Node::Capture {
@@ -74,19 +76,18 @@ fn recording_preserves_partial_chunks_and_playback_wraps_independently_of_chunk_
             ],
         };
         let mut backend = Backend::new(&graph, media).unwrap();
-        let samples = fixed(&[0.125, -0.25, 0.5]);
-        backend.process(&[&samples], &mut []).unwrap();
-        backend.process(&[&samples], &mut []).unwrap();
-        backend.set_enabled(NodeId(1), false).unwrap();
-        backend.process(&[&fixed(&[1., 1., 1.])], &mut []).unwrap();
-        assert_eq!(backend.media.frames(take), Ok(6));
+        let first = vec![Fixed(17); chunk_frames];
+        let second = vec![Fixed(-31); chunk_frames];
+        backend.process(&[&first], &mut []).unwrap();
+        backend.process(&[&second], &mut []).unwrap();
         let graph = Graph {
-            quantum: 8,
+            quantum: chunk_frames,
+            chunk_frames: chunk_frames as u32,
             nodes: vec![
                 Node::Playback {
                     view: take,
-                    length: 5,
-                    position: 4,
+                    length: 2,
+                    position: 1,
                     playing: true,
                 },
                 Node::Output {
@@ -96,21 +97,17 @@ fn recording_preserves_partial_chunks_and_playback_wraps_independently_of_chunk_
             ],
         };
         let mut backend = Backend::new(&graph, backend.media).unwrap();
-        let original = [samples[0], samples[1], samples[2], samples[0], samples[1]];
-        for quantum in 0..4 {
-            let result = render(&mut backend, &[Fixed::ZERO; 8]);
-            for (offset, &sample) in result.iter().enumerate() {
-                assert_eq!(sample, original[(4 + quantum * 8 + offset) % 5]);
-            }
+        for expected in [&second, &first, &second] {
+            assert_eq!(
+                render(&mut backend, &vec![Fixed::ZERO; chunk_frames]),
+                *expected
+            );
         }
-        backend.set_enabled(NodeId(0), false).unwrap();
+        backend.seek(NodeId(0), 0).unwrap();
         assert_eq!(
-            render(&mut backend, &[Fixed::ZERO; 8]),
-            vec![Fixed::ZERO; 8]
+            render(&mut backend, &vec![Fixed::ZERO; chunk_frames]),
+            first
         );
-        backend.seek(NodeId(0), 2).unwrap();
-        backend.set_enabled(NodeId(0), true).unwrap();
-        assert_eq!(render(&mut backend, &[Fixed::ZERO; 8])[0], original[2]);
     }
 }
 
@@ -118,7 +115,7 @@ fn recording_preserves_partial_chunks_and_playback_wraps_independently_of_chunk_
 fn playback_and_capture_share_a_view_in_either_signal_order() {
     for quantum in [1, 4] {
         for capture_first in [false, true] {
-            let mut media = MediaStore::new(3).unwrap();
+            let mut media = MediaStore::new(1).unwrap();
             let view = media.create_recording().unwrap();
             let capture_node = Node::Capture {
                 input: NodeId(0),
@@ -137,6 +134,7 @@ fn playback_and_capture_share_a_view_in_either_signal_order() {
                 (NodeId(2), NodeId(1))
             };
             let graph = Graph {
+                chunk_frames: 1,
                 quantum,
                 nodes: vec![
                     Node::Input { port: 0 },
@@ -210,6 +208,7 @@ fn view_reads_require_existing_recorded_ranges() {
 #[shoop_test]
 fn fanout_mixing_and_ramps_have_explicit_sample_semantics() {
     let graph = Graph {
+        chunk_frames: 1,
         quantum: 3,
         nodes: vec![
             Node::Input { port: 0 },
@@ -231,7 +230,7 @@ fn fanout_mixing_and_ramps_have_explicit_sample_semantics() {
             },
         ],
     };
-    let mut backend = Backend::new(&graph, MediaStore::new(32).unwrap()).unwrap();
+    let mut backend = Backend::new(&graph, MediaStore::new(1).unwrap()).unwrap();
     backend.set_gain(NodeId(1), Fixed::ZERO, 5).unwrap();
     let ramp = Ramp::new(Fixed::ONE, Fixed::ZERO, 5);
     for quantum in 0..4 {
@@ -249,6 +248,7 @@ fn fanout_mixing_and_ramps_have_explicit_sample_semantics() {
 #[shoop_test]
 fn compiler_schedules_forward_references_and_rejects_invalid_graphs() {
     let graph = Graph {
+        chunk_frames: 1,
         quantum: 1,
         nodes: vec![
             Node::Output {
@@ -282,7 +282,11 @@ fn compiler_schedules_forward_references_and_rejects_invalid_graphs() {
         ],
     ] {
         assert!(matches!(
-            compile(&Graph { quantum: 1, nodes }),
+            compile(&Graph {
+                quantum: 1,
+                chunk_frames: 1,
+                nodes
+            }),
             Err(Error::InvalidGraph)
         ));
     }
@@ -291,6 +295,7 @@ fn compiler_schedules_forward_references_and_rejects_invalid_graphs() {
 #[shoop_test]
 fn fifo_refusal_does_not_advance_state_and_unconsumed_jobs_are_not_overwritten() {
     let graph = Graph {
+        chunk_frames: 1,
         quantum: 32,
         nodes: vec![Node::Playback {
             view: rt_fpga_reference::storage::ViewId(0),
@@ -345,9 +350,10 @@ fn fixed_point_saturates_and_extreme_ramps_do_not_overflow() {
 
 #[shoop_test]
 fn one_node_program_handles_record_stop_play_seek_and_ramps_without_recompilation() {
-    let mut media = MediaStore::new(32).unwrap();
+    let mut media = MediaStore::new(1).unwrap();
     let view = media.create_recording().unwrap();
     let graph = Graph {
+        chunk_frames: 1,
         quantum: 4,
         nodes: vec![
             Node::Playback {
@@ -402,7 +408,7 @@ fn transitions_follow_source_clocks_in_both_signal_orders_and_state_execution_ca
 {
     use rt_fpga_reference::{compiler::Binding, transitions::OnWrap};
     for source_first in [false, true] {
-        let mut media = MediaStore::new(32).unwrap();
+        let mut media = MediaStore::new(1).unwrap();
         let target_view = media.insert(&fixed(&[0.125, 0.25, 0.5, 0.75])).unwrap();
         let source_view = media.insert(&[Fixed::ONE; 4]).unwrap();
         let (source, target) = if source_first {
@@ -423,6 +429,7 @@ fn transitions_follow_source_clocks_in_both_signal_orders_and_state_execution_ca
             playing: true,
         };
         let graph = Graph {
+            chunk_frames: 1,
             quantum: 2,
             nodes: vec![
                 if source_first {

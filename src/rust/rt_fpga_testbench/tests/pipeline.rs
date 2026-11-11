@@ -18,9 +18,10 @@ fn fixture() -> PipelineCase {
         slot: 0,
         generation: 9,
     };
-    let mut media = MediaStore::new(7).unwrap();
+    let mut media = MediaStore::new(1).unwrap();
     let view = media.create_recording().unwrap();
     let compiled = compile(&Graph {
+        chunk_frames: 1,
         quantum: 16,
         nodes: vec![
             Node::LogicalPlayback { loop_id, view },
@@ -191,7 +192,7 @@ fn shared_loop_pipeline_plays_a_retained_range_after_source_clear() {
                 .range
                 .unwrap()
                 .offset,
-            3
+            0
         );
     }
     let document = Document::new(Payload::PipelineTrace(trace));
