@@ -90,6 +90,10 @@ future hardware: the same AXI master -> PS HP compatibility wrapper -> PS DDR
   DDR address window. Existing tests use `0x1234000000`, above the PS address
   range; do not silently truncate it. Use the same mapping in simulation and the
   eventual hardware wrapper. Record physical placement in timing reports.
+  Integration finding: the full-loop tests deliberately change the live arena
+  input after run admission. Expose the cores' already-bound `memory_arena_base`
+  as an additional word-port output, so address translation uses the same
+  snapshot as the DMA engine. Request/response handshakes remain unchanged.
 - A word write completes on its AXI B response; a read completes on its R beat.
   Fence/retire require earlier transactions to complete at the AXI boundary,
   preserving same-address visibility and safe reuse. They do not assert that
@@ -181,15 +185,15 @@ on it. Keep detailed-model runs small during development.
 
 ### 4. Wire the common endpoint into the existing pipelines
 
-- [ ] Add AXI integration tops for chunk memory, media audio, and the full loop
+- [x] Add AXI integration tops for chunk memory, media audio, and the full loop
   pipeline. Keep the core word port internal and expose one AXI memory path.
-- [ ] Update simulation runners and source lists to select timing mode, native
+- [x] Update simulation runners and source lists to select timing mode, native
   library, profile, fabric clock, and address window. Retain quick default runs
   and existing deterministic-delay comparisons without stacking two delays.
-- [ ] Adapt `media_driver.py`, `loop_memory.py`, and chunk tests to the shared
+- [x] Adapt `media_driver.py`, `loop_memory.py`, and chunk tests to the shared
   backend. Preserve host configuration/snapshot helpers, seeded stalls, held
   responses, fault injection, and timing observer hooks.
-- [ ] Compare instant-AXI runs with existing Rust fixtures first; then run a
+- [x] Compare instant-AXI runs with existing Rust fixtures first; then run a
   bounded detailed-model subset covering record/play, wrap, multiple chunks,
   ordered read/write/read, stale prefetch responses, fence, and retire/reuse.
   Drain to the appropriate visibility point before comparing backing contents.

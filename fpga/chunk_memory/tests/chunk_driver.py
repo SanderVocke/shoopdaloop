@@ -1,5 +1,6 @@
 """Independent word-memory slave and public chunk command transport."""
 import random
+import os
 from cocotb.triggers import Timer
 
 OPCODES = {"read": 0, "write": 1, "prefetch": 2, "fence": 3, "retire": 4}
@@ -29,6 +30,14 @@ class Driver:
         self.requests = self.reads = self.writes = self.cycles = 0
         self.held_request = self.held_read = self.held_response = None
         self.burst = None
+        self.axi = None
+        if hasattr(dut, "m_axi_awvalid"):
+            from word_service import WordService
+            self.axi = WordService(self, dut, seed=seed, output=os.environ.get("CHUNK_OUTPUT"))
+
+    def close(self):
+        if self.axi is not None:
+            self.axi.close()
 
     def set(self, **values):
         for name, value in values.items():
@@ -39,13 +48,18 @@ class Driver:
 
     async def tick(self):
         self.set(clk=0)
-        response = self.pending is not None and self.pending[0] == 0 and not self.pause
-        self.set(memory_ready=int(not self.pause and self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
-                 memory_response_valid=int(response), memory_response_error=int(response and self.pending[2]),
-                 memory_read_data=self.pending[1] if response else 0)
+        if self.axi is not None:
+            self.axi.drive()
+        else:
+            response = self.pending is not None and self.pending[0] == 0 and not self.pause
+            self.set(memory_ready=int(not self.pause and self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
+                     memory_response_valid=int(response), memory_response_error=int(response and self.pending[2]),
+                     memory_read_data=self.pending[1] if response else 0)
         await Timer(5, units="ns")
         before = self.sample()
-        if int(self.dut.reset.value):
+        if self.axi is not None:
+            self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
+        elif int(self.dut.reset.value):
             self.pending = self.held_request = self.held_read = self.held_response = self.burst = None
         else:
             request = tuple(before[key] for key in ("memory_write", "memory_address", "memory_write_data"))

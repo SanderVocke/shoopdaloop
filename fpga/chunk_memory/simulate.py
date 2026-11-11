@@ -12,6 +12,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CONFIGS = {"default": (16, 32, 4, 4), "small": (8, 4, 2, 2),
            "odd": (9, 8, 3, 3), "minimum": (3, 1, 1, 1)}
+sys.path.insert(0, str(ROOT/"fpga/axi_memory/sim"))
+from options import add_options, environment
 
 
 def main():
@@ -21,7 +23,13 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "work/fpga-chunk-memory")
     parser.add_argument("--waves", action="store_true")
     parser.add_argument("--case", type=Path)
+    add_options(parser, legacy=True)
     args = parser.parse_args()
+    try:
+        memory_env = environment(args)
+    except ValueError as error:
+        parser.error(str(error))
+    axi = args.memory_model != "legacy"
     if args.random_cases < 0:
         parser.error("random-cases must be nonnegative")
     if args.case and args.config == "all":
@@ -34,18 +42,23 @@ def main():
         output = args.output.resolve() / name
         output.mkdir(parents=True, exist_ok=True)
         runner = get_runner("verilator")
-        runner.build(verilog_sources=[HERE / "rtl/chunk_ram.sv", HERE / "rtl/chunk_memory.sv"],
-                     hdl_toplevel="chunk_memory", parameters=dict(zip(
-                         ("SLOTS", "CHUNK_FRAMES", "READ_BUFFERS", "WRITE_BUFFERS"), capacities)),
+        top = "chunk_memory_axi" if axi else "chunk_memory"
+        sources = [HERE/"rtl/chunk_ram.sv", HERE/"rtl/chunk_memory.sv"]
+        parameters = dict(zip(("SLOTS", "CHUNK_FRAMES", "READ_BUFFERS", "WRITE_BUFFERS"), capacities))
+        if axi:
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_memory_axi.sv")]
+            parameters.update(AXI_DATA_WIDTH=args.axi_data_width, PHYSICAL_BASE=args.physical_base)
+        runner.build(verilog_sources=sources, includes=[ROOT/"fpga/state_processor/rtl"],
+                     hdl_toplevel=top, parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"], build_dir=output / "build",
                      always=True, waves=args.waves, log_file=output / "build.log")
-        result = runner.test(hdl_toplevel="chunk_memory", test_module="test_chunk_memory", seed=20261111,
+        result = runner.test(hdl_toplevel=top, test_module="test_chunk_memory", seed=20261111,
                              testcase="conformance" if args.case else None,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"CHUNK_CAPACITIES": ",".join(map(str, capacities)),
                                         "CHUNK_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
                                         "CHUNK_OUTPUT": str(output), "CHUNK_RANDOM_CASES": str(args.random_cases),
-                                        "CHUNK_CASE": str(args.case.resolve()) if args.case else ""})
+                                        "CHUNK_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         report = ET.parse(result).getroot()
         if len(list(report.iter("testcase"))) != (1 if args.case else 3) or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped")):
             raise SystemExit(f"Chunk-memory comparison failed: {output / 'simulation.log'}")

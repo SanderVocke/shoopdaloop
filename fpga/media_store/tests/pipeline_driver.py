@@ -9,7 +9,7 @@ class StorePorts:
         self.dut = dut
 
     def __getattr__(self, name):
-        shared = name in ("clk", "reset", "arena_base") or name.startswith("memory_")
+        shared = name in ("clk", "reset", "arena_base") or name.startswith(("memory_", "m_axi_"))
         return getattr(self.dut, name if shared else "store_" + name)
 
 

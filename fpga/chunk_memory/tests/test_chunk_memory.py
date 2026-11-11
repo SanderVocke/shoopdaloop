@@ -44,6 +44,8 @@ async def compare(dut, operations, seed, case=None):
         wire.dump(document("chunk_case", case), OUTPUT / "failure.case.json")
         wire.dump(trace, OUTPUT / "failure.expected.trace.json")
         raise
+    finally:
+        driver.close()
 
 
 @cocotb.test()
@@ -277,6 +279,7 @@ async def buffering_protocol(dut):
     assert observed == initial[:frames]
     driver.set(read_ready=0, response_ready=0)
     assert await driver.command({"kind": "fence"}, 101) == (0, [])
+    driver.close()
 
 
 @cocotb.test()
@@ -316,3 +319,4 @@ async def faults_and_reset(dut):
     await driver.reset([11]*len(driver.memory))
     driver.pause = False
     assert await driver.command({"kind": "read", "chunk": 0, "offset": 0, "frames": 1}, 16) == (0, [11])
+    driver.close()

@@ -40,6 +40,8 @@ async def compare(dut, value, *, seed, stalls=True):
             {"name": value["name"], "results": observed, "timing": timing, "error": str(error)}, indent=2) + "\n")
         dut._log.error("failed case %s; replay artifacts in %s", value["name"], OUTPUT)
         raise
+    finally:
+        driver.close()
     return expected, timing
 
 
@@ -186,3 +188,4 @@ async def media_protocol(dut):
     await finish(await admit(0), 4)
     driver.set(arena_base=driver.base)
     assert await driver.configure(0, 0) == 0
+    driver.close()

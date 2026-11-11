@@ -9,7 +9,7 @@ class StorePorts:
         self.dut = dut
 
     def __getattr__(self, name):
-        shared = name in ('clk', 'reset', 'arena_base') or name.startswith('memory_')
+        shared = name in ('clk', 'reset', 'arena_base') or name.startswith(('memory_', 'm_axi_'))
         return getattr(self.dut, name if shared else 'store_' + name)
 
 
@@ -43,6 +43,17 @@ class LoopMemory(StoreDriver):
     async def serve(self):
         while True:
             await FallingEdge(self.raw.clk)
+            if self.axi is not None:
+                self.axi.drive()
+                await Timer(1, units='ns')
+                packet = self.axi.sample()
+                resetting = bool(int(self.raw.reset.value))
+                if self.before_clock is not None and not resetting:
+                    self.before_clock()
+                await RisingEdge(self.raw.clk)
+                self.cycles += 1
+                self.axi.step(packet, resetting)
+                continue
             response = self.pending is not None and self.pending[0] == 0 and not self.pause_responses
             self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
                      memory_response_valid=int(response), memory_read_data=self.pending[1] if response else 0,
@@ -87,3 +98,4 @@ class LoopMemory(StoreDriver):
 
     def close(self):
         self.task.kill()
+        super().close()

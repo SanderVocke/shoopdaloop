@@ -97,6 +97,7 @@ module loop_pipeline_tb #(
     output wire store_cfg_response_valid, output wire store_cfg_response_error, output wire [159:0] store_cfg_read_data,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
+    output wire [63:0] memory_arena_base,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire memory_fault,

@@ -1,0 +1,105 @@
+// Generated integration wrapper; do not edit by hand.
+`include "state_processor_defs.svh"
+
+module media_store_axi #(
+    parameter integer VIEWS = 32,
+    parameter integer SLOTS = 32,
+    parameter integer CHUNK_FRAMES = 32,
+    parameter integer READ_BUFFERS = 4,
+    parameter integer WRITE_BUFFERS = 4,
+    parameter integer VIEW_BITS = (VIEWS < 2) ? 1 : $clog2(VIEWS),
+    parameter integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS),
+    parameter integer TABLE_BITS = (VIEWS * SLOTS < 2) ? 1 : $clog2(VIEWS * SLOTS),
+    parameter integer AXI_DATA_WIDTH = 32,
+    parameter [31:0] PHYSICAL_BASE = 32'h01000000
+) (
+    input wire clk,
+    input wire reset,
+    input wire [63:0] arena_base,
+    input wire hint_valid,
+    output wire hint_ready,
+    input wire [63:0] hint_view,
+    input wire [63:0] hint_position,
+    input wire [63:0] hint_length,
+    input wire [31:0] hint_count,
+    input wire cmd_valid,
+    output wire cmd_ready,
+    input wire [2:0] cmd_opcode,
+    input wire [63:0] cmd_view,
+    input wire [63:0] cmd_start,
+    input wire [63:0] cmd_length,
+    input wire [31:0] cmd_count,
+    output wire busy,
+    output wire done,
+    output wire [7:0] error_code,
+    output wire memory_fault,
+    output wire [31:0] result_view,
+    output wire result_empty,
+    input wire write_valid,
+    output wire write_ready,
+    input wire [31:0] write_data,
+    output wire read_valid,
+    input wire read_ready,
+    output wire [31:0] read_data,
+    input wire cfg_valid,
+    output wire cfg_ready,
+    input wire cfg_write,
+    input wire [2:0] cfg_space,
+    input wire [31:0] cfg_address,
+    input wire [159:0] cfg_write_data,
+    output wire cfg_response_valid,
+    output wire cfg_response_error,
+    output wire [159:0] cfg_read_data,
+    output wire m_axi_awid,
+    output wire [31:0] m_axi_awaddr,
+    output wire [7:0] m_axi_awlen,
+    output wire [2:0] m_axi_awsize,
+    output wire [1:0] m_axi_awburst,
+    output wire m_axi_awvalid,
+    input wire m_axi_awready,
+    output wire [AXI_DATA_WIDTH-1:0] m_axi_wdata,
+    output wire [AXI_DATA_WIDTH/8-1:0] m_axi_wstrb,
+    output wire m_axi_wlast,
+    output wire m_axi_wvalid,
+    input wire m_axi_wready,
+    input wire m_axi_bid,
+    input wire [1:0] m_axi_bresp,
+    input wire m_axi_bvalid,
+    output wire m_axi_bready,
+    output wire m_axi_arid,
+    output wire [31:0] m_axi_araddr,
+    output wire [7:0] m_axi_arlen,
+    output wire [2:0] m_axi_arsize,
+    output wire [1:0] m_axi_arburst,
+    output wire m_axi_arvalid,
+    input wire m_axi_arready,
+    input wire m_axi_rid,
+    input wire [AXI_DATA_WIDTH-1:0] m_axi_rdata,
+    input wire [1:0] m_axi_rresp,
+    input wire m_axi_rlast,
+    input wire m_axi_rvalid,
+    output wire m_axi_rready
+);
+    wire memory_valid;
+    wire memory_ready;
+    wire memory_write;
+    wire [63:0] memory_address;
+    wire [31:0] memory_write_data;
+    wire [63:0] memory_arena_base;
+    wire memory_response_valid;
+    wire memory_response_ready;
+    wire memory_response_error;
+    wire [31:0] memory_read_data;
+    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
+    wire [31:0] physical_base = PHYSICAL_BASE;
+    media_store #(
+        .VIEWS(VIEWS),
+        .SLOTS(SLOTS),
+        .CHUNK_FRAMES(CHUNK_FRAMES),
+        .READ_BUFFERS(READ_BUFFERS),
+        .WRITE_BUFFERS(WRITE_BUFFERS),
+        .VIEW_BITS(VIEW_BITS),
+        .SLOT_BITS(SLOT_BITS),
+        .TABLE_BITS(TABLE_BITS)) core (.*);
+    word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+endmodule

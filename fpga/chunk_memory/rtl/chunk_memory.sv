@@ -18,6 +18,7 @@ module chunk_memory #(
     output wire busy, output reg fault,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
+    output wire [63:0] memory_arena_base,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data
 );
@@ -80,6 +81,7 @@ module chunk_memory #(
     assign memory_write = dma_write;
     assign memory_address = active_base + (64'(dma_chunk)*64'(CHUNK_FRAMES) + {32'b0,dma_index})*4;
     assign memory_write_data = dma_data;
+    assign memory_arena_base = active_base;
     assign memory_response_ready = !fault && !reset && (dma_phase == D_READ_WAIT || dma_phase == D_WRITE_WAIT);
 
     initial begin

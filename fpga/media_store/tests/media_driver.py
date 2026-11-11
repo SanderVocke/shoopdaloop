@@ -1,5 +1,6 @@
 """Public command/configuration ports and an independent stalled sample-memory slave."""
 from collections import Counter
+import os
 import random
 from cocotb.triggers import Timer
 
@@ -34,6 +35,14 @@ class Driver:
         self.fail_next = False
         self.chunk_limit = None
         self.before_clock = None
+        self.axi = None
+        if hasattr(dut, "m_axi_awvalid"):
+            from word_service import WordService
+            self.axi = WordService(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
+
+    def close(self):
+        if self.axi is not None:
+            self.axi.close()
 
     def set(self, **values):
         for name, value in values.items():
@@ -44,14 +53,19 @@ class Driver:
 
     async def tick(self):
         self.dut.clk.value = 0
-        response = self.pending is not None and self.pending[0] == 0
-        self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
-                 memory_response_valid=int(response),
-                 memory_read_data=self.pending[1] if response else 0,
-                 memory_response_error=int(response and self.pending[2]))
+        if self.axi is not None:
+            self.axi.drive()
+        else:
+            response = self.pending is not None and self.pending[0] == 0
+            self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
+                     memory_response_valid=int(response),
+                     memory_read_data=self.pending[1] if response else 0,
+                     memory_response_error=int(response and self.pending[2]))
         await Timer(5, units="ns")
         before = self.sample()
-        if int(self.dut.reset.value):
+        if self.axi is not None:
+            self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
+        elif int(self.dut.reset.value):
             self.pending = self.held_request = self.held_read = None
             self.request_cycle = None
         else:

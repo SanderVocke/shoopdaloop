@@ -12,6 +12,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CONFIGS = {"default": (32, 32, 32), "small": (16, 8, 4), "odd": (5, 5, 8),
            "wide": (16, 32, 4), "8x8": (64, 1024, 32)}
+sys.path.insert(0, str(ROOT/"fpga/axi_memory/sim"))
+from options import add_options, environment
 
 
 def main():
@@ -31,7 +33,15 @@ def main():
     parser.add_argument("--prefetch-analysis", action="store_true",
                         help="instrument aligned 8x8 timing and estimate within-quantum early prefetch (requires >=64 read buffers)")
     parser.add_argument("--output", type=Path, default=ROOT / "work/fpga-media-sim")
+    add_options(parser, legacy=True)
     args = parser.parse_args()
+    try:
+        memory_env = environment(args)
+    except ValueError as error:
+        parser.error(str(error))
+    axi = args.memory_model != "legacy"
+    if axi and args.response_cycles != 1:
+        parser.error("--response-cycles is for --memory-model legacy; AXI fixed mode uses --memory-cycles")
     if args.random_cases < 0 or (args.case and args.config == "all"):
         parser.error("use nonnegative --random-cases and one --config for --case")
     if min(args.read_buffers, args.write_buffers) < 1:
@@ -70,6 +80,10 @@ def main():
             sources += [HERE / "rtl/memory_delay.sv", HERE / "rtl/media_audio_pipeline.sv"]
             parameters.update(zip(("PROGRAM_DEPTH", "STATE_DEPTH", "JOB_DEPTH", "MAX_FRAMES", "BUFFERS", "INPUT_PORTS", "OUTPUT_PORTS"), audio))
             parameters["MEMORY_RESPONSE_CYCLES"] = args.response_cycles
+        if axi:
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", top+"_axi.sv")]
+            top += "_axi"
+            parameters.update(AXI_DATA_WIDTH=args.axi_data_width, PHYSICAL_BASE=args.physical_base)
         runner.build(verilog_sources=sources, includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
                      parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"],
@@ -87,7 +101,7 @@ def main():
                                         "MEDIA_RESPONSE_CYCLES": str(args.response_cycles),
                                         "MEDIA_PREFETCH_ANALYSIS": str(int(args.prefetch_analysis)),
                                         "MEDIA_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
-                                        "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else ""})
+                                        "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()

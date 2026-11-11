@@ -25,6 +25,7 @@ module media_store #(
     output wire memory_valid, input wire memory_ready,
     output wire memory_write, output wire [63:0] memory_address,
     output wire [31:0] memory_write_data,
+    output wire [63:0] memory_arena_base,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     input wire cfg_valid, output wire cfg_ready, input wire cfg_write,
@@ -167,7 +168,7 @@ module media_store #(
         .prefetch_valid(resolver_prefetch_valid && prefetch_admission), .prefetch_ready(cm_prefetch_ready), .prefetch_chunk(resolver_prefetch_chunk),
         .busy(cm_busy), .fault(memory_fault),
         .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
-        .memory_address(memory_address), .memory_write_data(memory_write_data),
+        .memory_address(memory_address), .memory_write_data(memory_write_data), .memory_arena_base(memory_arena_base),
         .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
         .memory_response_error(memory_response_error), .memory_read_data(memory_read_data)
     );

@@ -44,6 +44,7 @@ module media_audio_pipeline #(
     output wire store_cfg_response_valid, output wire store_cfg_response_error, output wire [159:0] store_cfg_read_data,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
+    output wire [63:0] memory_arena_base,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire memory_fault
@@ -131,7 +132,7 @@ module media_audio_pipeline #(
         .cfg_space(store_cfg_space), .cfg_address(store_cfg_address), .cfg_write_data(store_cfg_write_data),
         .cfg_response_valid(store_cfg_response_valid), .cfg_response_error(store_cfg_response_error), .cfg_read_data(store_cfg_read_data),
         .memory_valid(store_memory_valid), .memory_ready(store_memory_ready), .memory_write(store_memory_write),
-        .memory_address(store_memory_address), .memory_write_data(store_memory_write_data),
+        .memory_address(store_memory_address), .memory_write_data(store_memory_write_data), .memory_arena_base(memory_arena_base),
         .memory_response_valid(store_memory_response_valid), .memory_response_ready(store_memory_response_ready),
         .memory_response_error(store_memory_response_error), .memory_read_data(store_memory_read_data)
     );

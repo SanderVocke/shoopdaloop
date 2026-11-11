@@ -26,6 +26,9 @@ addresses are translated as `physical_base + (address - arena_base)` within a
 configured arena byte count. Underflow, overflow, and out-of-window requests
 fail locally instead of truncating high address bits. Default physical placement
 is `0x01000000`; all existing synthetic 64-bit arena bases remain usable.
+The cores expose their bound `memory_arena_base` alongside the word port. The
+adapter uses this snapshot, since the live run/configuration input may change
+after admission while background memory traffic still uses the bound arena.
 
 On hardware the endpoint attaches through an AXI4-to-AXI3 compatibility wrapper:
 LEN is at most 15 and WID is fixed zero. Zynq-7000 HP supports 32/64-bit buses.
@@ -106,3 +109,31 @@ is required by the binding so a final small write batch makes progress.
 
 Native tests also verify row hits/conflicts, bank overlap, refresh while idle,
 the 5 1/3 DRAM ticks per 100 MHz fabric cycle, and generation-tagged reset.
+
+## Integrated pipeline
+
+The chunk, media-store, media-audio and full-loop runners use AXI with instant
+memory by default. `--memory-model fixed --memory-cycles 7` selects a deterministic
+native-block delay; `--memory-model dramsim3` selects detailed timing. Neither
+mode groups individual words into bursts. `--axi-data-width 64` exercises narrow
+word lanes on the wider bus; `--physical-base 0x02000000` changes DDR placement.
+
+```sh
+python fpga/chunk_memory/simulate.py --config all
+python fpga/media_store/simulate.py --pipeline --config all
+python fpga/loop_pipeline/simulate.py --media --config all
+python fpga/loop_pipeline/simulate.py --media --config small --memory-model dramsim3
+python fpga/axi_memory/generate_tops.py --check
+bash fpga/axi_memory/check_pipeline.sh
+```
+
+`--memory-model legacy` retains the original word-slave fixtures, including the
+old `--response-cycles` floor. That option is rejected in AXI mode to avoid
+stacking delays. Fixed AXI timing includes the endpoint's handshake overhead;
+its delay number is not directly comparable to the old word-response floor.
+
+The checked-in thin wrappers expose only AXI for external transactions and
+preserve the cores' public host ports. The generator checks for interface drift.
+The full-loop testbench has internal word-port probes for protocol checks, not
+an alternate external memory service. Both manual-clock and free-running tests
+use the same AXI state machine and functional store.
