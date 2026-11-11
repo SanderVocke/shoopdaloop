@@ -26,6 +26,8 @@ class DramTiming:
         cfg.read(self.config)
         if cfg.get("dram_structure", "protocol") != "DDR3" or not cfg.getboolean("system", "unified_queue"):
             raise ValueError("use a DDR3 unified-queue profile for bounded small-write drain")
+        if cfg.getint("timing", "tREFI") <= 0:
+            raise ValueError("DDR3 refresh interval must be positive")
         self.capacity = cfg.getint("system", "channel_size")*1024*1024*cfg.getint("system", "channels")
         self.fabric_hz = int(fabric_hz)
         if not 1_000_000 <= self.fabric_hz <= 1_000_000_000:
