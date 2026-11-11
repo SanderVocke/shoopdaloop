@@ -60,6 +60,27 @@ The job snapshot is immutable; the state processor advances ramps between quanta
 There is no combinational divider or division per sample. Generic checks forbid
 `$div`, `$mod`, and latches. ECP5 maps the shared multiplier to four 18x18 DSPs.
 
+### Streaming gain and mix
+
+Gain overlaps synchronous scratch reads, multiplication, scaling and scratch
+writes. Each issued read captures its own gain value; ramp progression advances
+with issued samples, so multiple in-flight samples retain the correct gains.
+The shared multiplier still initializes ramps and processes samples. Scaling
+and saturation retain their registered stage and existing bitwise behavior.
+After pipeline fill, the engine writes one gain result per clock.
+
+Mix alternates its two operand reads on the existing single scratch read port.
+It retains the first operand while reading the second and overlaps subsequent
+reads with result writes. It writes one mixed result every two clocks, including
+when both sources refer to the same buffer. No RAM port or multiplier is added.
+
+Both paths drain their last write before publishing destination readiness and
+accepting the next job. Reset clears validity; an asynchronous media fault
+aborts in-flight work and suppresses further stream writes. `job_enable` still
+gates admission only, leaving accepted streams running. For quantum Q, constant
+gain job intervals are Q+6 clocks and mix intervals are 2Q+4, including job
+handoffs. Live ramps retain the existing divider initialization before streaming.
+
 ## Interfaces
 
 All interfaces share one clock and synchronous active-high reset. Reset aborts
@@ -193,6 +214,9 @@ is no placement/routing or timing-closure check.
 
 ## Initial results
 
+The following initial cycle/mapping results describe the scalar sample engine.
+Current measurements are in the pipelining checkpoint below.
+
 Verilator 5.032 / cocotb 1.9.2, seed 20261110:
 
 | Configuration | Directed cases/quanta | Seeded cases/quanta |
@@ -251,3 +275,31 @@ No board I/O mapping or routed timing result is claimed.
 These initial mapping counts precede the shared-loop/external-execution ports.
 See `fpga/loop_pipeline/README.md` for the connected top's current mapping and
 capacities.
+
+## Gain/mix pipelining checkpoint
+
+Revision `928d27aa` retains all 432 directed/seeded cases and 1,287 quanta from
+the two profiles above, matching Rust bitwise. The new protocol test verifies
+one-/two-clock write cadence, ordered destinations and publication only after
+the final write. Forty reset placements cover fill/drain, partial writes,
+one-sample and odd-size quanta, followed by Rust-checked restart. Media protocol
+tests inject faults during both gain and mix with valid writes in flight.
+
+The Q=32 two-input milestone now takes 800 clocks while both ramps are live
+(state 28, jobs 769, handoff 3), then 534 clocks after both ramps end. Previously
+these totals were 1,144 and 878. Ramp division costs are unchanged.
+
+Paired standalone ECP5 mapping with the pre-pipeline source at `52c70d51`:
+
+| Cell | Scalar | Pipelined |
+| --- | ---: | ---: |
+| LUT4 | 1,423 | 1,617 |
+| TRELLIS_FF | 1,055 | 1,200 |
+| DP16KD | 3 | 3 |
+| MULT18X18D | 4 | 4 |
+
+Standalone/combined lint and generic/ECP5 checks pass. The default eight-loop
+AXI top maps to 26,991 LUT4, 14,064 flip-flops, 93 DP16KD and four MULT18X18D;
+its integrated tops pass lint at both bus widths. No routed clock timing was
+measured. See the [full 64-loop remeasurement](../loop_pipeline/README.md#pipelined-gain-and-mix-checkpoint)
+for actual TP/state/job/DRAM overlap and the newly exposed memory waits.
