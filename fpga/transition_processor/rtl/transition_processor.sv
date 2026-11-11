@@ -78,7 +78,7 @@ module transition_processor #(
         S_APPLY_UNLINK_DONE,
         S_PREVIEW_OBS, S_OBS_CHECK, S_OBS_TARGET, S_OBS_REQUEST,
         S_OBS_NEXT,
-        S_COPY_LOOP, S_COPY_LOOP_WRITE, S_COPY_REQUEST, S_COPY_REQUEST_WRITE,
+        S_COPY,
         S_DIRECT_SCAN, S_DIRECT_CHECK,
         S_OFFER_LOOP, S_OFFER_CHECK, S_OFFER_LOSER,
         S_COMPONENT, S_COMPONENT_END, S_COMPONENT_END_CHECK,
@@ -89,7 +89,7 @@ module transition_processor #(
         S_REACT, S_REACT_CHECK, S_REACT_OFFER_DONE, S_REACT_APPLY, S_REACT_NATURAL,
         S_APPLY, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK, S_CANCEL_OLDER_NEXT,
         S_NATURAL, S_NATURAL_SOURCE, S_NATURAL_WRAP,
-        S_FINAL, S_FINAL_CHECK, S_FINISH_LOOP, S_FINISH_WRITE,
+        S_FINAL, S_FINISH_LOOP,
         S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY
     } state_t;
     state_t state, read_return, offer_return, apply_return, natural_return, react_return, list_return;
@@ -166,14 +166,22 @@ module transition_processor #(
     wire [63:0] mr_data;
     wire [127:0] or_data;
     wire [255:0] er_data;
+    reg loop_stream_valid, request_stream_valid;
+    wire loop_stream = state == S_COPY || state == S_FINAL || state == S_FINISH_LOOP;
+    wire loop_stream_read = cursor < loop_slots && !reset;
+    wire request_stream_read = request_cursor < request_slots && !reset;
+    wire [LA-1:0] stream_loop_address = loop_address(cursor, state == S_FINAL ? !active_bank : active_bank);
+    wire [RA-1:0] stream_request_address = request_address(request_cursor, active_bank);
     wire loop_accept = loop_read_valid && loop_read_ready;
     wire loop_in_range = loop_read_slot < loop_slots;
     wire [LA-1:0] shared_address = LA'(loop_read_slot + (active_bank ? LOOP_DEPTH : 0));
     tp_ram #(.WIDTH(832), .DEPTH(2*LOOP_DEPTH), .ADDR_BITS(LA)) loops (
-        clk, lr_en || (loop_accept && loop_in_range), loop_accept ? shared_address : lr_address,
+        clk, loop_stream ? loop_stream_read : lr_en || (loop_accept && loop_in_range),
+        loop_stream ? stream_loop_address : loop_accept ? shared_address : lr_address,
         lr_data, lw_en, lw_address, lw_data);
     tp_ram #(.WIDTH(RW), .DEPTH(2*REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
-        clk, rr_en, rr_address, rr_data, rw_en, rw_address, rw_data);
+        clk, state == S_COPY ? request_stream_read : rr_en,
+        state == S_COPY ? stream_request_address : rr_address, rr_data, rw_en, rw_address, rw_data);
     tp_ram #(.WIDTH(256), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
         clk, sr_en, sr_address, sr_data, sw_en, sw_address, sw_data);
     tp_ram #(.WIDTH(64), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) members (
@@ -406,6 +414,7 @@ module transition_processor #(
         lr_en <= 0; lw_en <= 0; rr_en <= 0; rw_en <= 0;
         sr_en <= 0; sw_en <= 0; mr_en <= 0; mw_en <= 0;
         or_en <= 0; ow_en <= 0; er_en <= 0; ew_en <= 0;
+        loop_stream_valid <= 0; request_stream_valid <= 0;
         if (response_valid && response_ready) response_valid <= 0;
         if (reset) begin
             state <= S_IDLE;
@@ -825,7 +834,9 @@ module transition_processor #(
                 end
                 S_UNLINK_DONE: state <= list_return;
                 S_PREVIEW_OBS: begin
-                    if (observation_cursor == observation_count) begin cursor <= 0; state <= S_COPY_LOOP; end
+                    if (observation_cursor == observation_count) begin
+                        cursor <= 0; request_cursor <= 0; state <= S_COPY;
+                    end
                     else read_observation(observation_cursor, S_OBS_CHECK);
                 end
                 S_OBS_CHECK: begin
@@ -861,22 +872,20 @@ module transition_processor #(
                     end
                     observation_cursor <= observation_cursor+1'b1; state <= S_PREVIEW_OBS;
                 end
-                S_COPY_LOOP: begin
-                    if (cursor == loop_slots) begin cursor <= 0; state <= S_COPY_REQUEST; end
-                    else read_loop(cursor, active_bank, 0, 0, S_COPY_LOOP_WRITE);
-                end
-                S_COPY_LOOP_WRITE: begin
-                    temporary_loop = loop_row; temporary_loop[576+:228] = 0;
-                    write_loop(cursor, !active_bank, temporary_loop);
-                    cursor <= cursor+1'b1; state <= S_COPY_LOOP;
-                end
-                S_COPY_REQUEST: begin
-                    if (cursor == request_slots) begin request_cursor <= 0; state <= S_DIRECT_SCAN; end
-                    else read_request(cursor, active_bank, S_COPY_REQUEST_WRITE);
-                end
-                S_COPY_REQUEST_WRITE: begin
-                    write_request(cursor, !active_bank, request_row);
-                    cursor <= cursor+1'b1; state <= S_COPY_REQUEST;
+                S_COPY: begin
+                    loop_stream_valid <= loop_stream_read;
+                    request_stream_valid <= request_stream_read;
+                    if (loop_stream_read) cursor <= cursor+1'b1;
+                    if (request_stream_read) request_cursor <= request_cursor+1'b1;
+                    if (loop_stream_valid) begin
+                        temporary_loop = lr_data; temporary_loop[576+:228] = 0;
+                        write_loop(cursor-1'b1, !active_bank, temporary_loop);
+                    end
+                    if (request_stream_valid)
+                        write_request(request_cursor-1'b1, !active_bank, rr_data);
+                    // Registered writes retire on this edge before settlement.
+                    if (!loop_stream_read && !request_stream_read && !loop_stream_valid && !request_stream_valid)
+                        state <= S_DIRECT_SCAN;
                 end
                 S_DIRECT_SCAN: begin
                     if (!absolute_valid) begin component_start <= 0; state <= S_COMPONENT; end
@@ -927,7 +936,8 @@ module transition_processor #(
                 S_COMPONENT_END_CHECK: begin
                     if (member_row[32]) begin
                         component_end <= member_cursor+1'b1;
-                        member_cursor <= component_start; state <= S_FIRST;
+                        member_cursor <= component_start;
+                        state <= member_cursor == component_start ? S_FIRST_MEMBER : S_FIRST;
                     end else begin member_cursor <= member_cursor+1'b1; state <= S_COMPONENT_END; end
                 end
                 S_FIRST: begin
@@ -938,8 +948,16 @@ module transition_processor #(
                     target_slot <= member_row[31:0];
                     read_loop(member_row[31:0], !active_bank, 0, 1, S_FIRST_APPLY);
                 end
-                S_FIRST_APPLY: begin apply_return <= S_FIRST_NATURAL; state <= S_APPLY; end
-                S_FIRST_NATURAL: begin natural_return <= S_FIRST_INHERIT; state <= S_NATURAL; end
+                S_FIRST_APPLY: begin
+                    if (!loop_row[INTENT_VALID]) begin
+                        if (!at_end(loop_row)) state <= S_FIRST_INHERIT;
+                        else begin natural_return <= S_FIRST_INHERIT; state <= S_NATURAL; end
+                    end else begin apply_return <= S_FIRST_NATURAL; state <= S_APPLY; end
+                end
+                S_FIRST_NATURAL: begin
+                    if (!at_end(loop_row)) state <= S_FIRST_INHERIT;
+                    else begin natural_return <= S_FIRST_INHERIT; state <= S_NATURAL; end
+                end
                 S_FIRST_INHERIT: begin
                     if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]
                         && !masked[target_slot[SA-1:0]] && !delivered[target_slot[SA-1:0]])
@@ -1101,29 +1119,31 @@ module transition_processor #(
                     end
                 end
                 S_FINAL: begin
-                    if (cursor == loop_slots) begin
+                    loop_stream_valid <= loop_stream_read;
+                    if (loop_stream_read) cursor <= cursor+1'b1;
+                    if (loop_stream_valid) begin
+                        addition = {1'b0,lr_data[POSITION+:64]}+{33'b0,quantum};
+                        if (lr_data[VALID] && plays(lr_data) && (addition[64] || addition[63:0] > lr_data[LENGTH+:64]))
+                            reply(INVALID_FRAME, 0);
+                        else begin
+                            addition = {1'b0,lr_data[CAPTURE+:64]}+{33'b0,quantum};
+                            if (lr_data[VALID] && lr_data[MODE+:2] == RECORDING && addition[64]) reply(EXHAUSTED, 0);
+                        end
+                    end else if (!loop_stream_read) begin
                         candidate_valid <= 1; phase <= PREVIEW; reply(OK, {704'b0,serial,frame});
-                    end else read_loop(cursor, !active_bank, 0, 0, S_FINAL_CHECK);
-                end
-                S_FINAL_CHECK: begin
-                    addition = {1'b0,loop_row[POSITION+:64]}+{33'b0,quantum};
-                    if (loop_row[VALID] && plays(loop_row) && (addition[64] || addition[63:0] > loop_row[LENGTH+:64]))
-                        reply(INVALID_FRAME, 0);
-                    else begin
-                        addition = {1'b0,loop_row[CAPTURE+:64]}+{33'b0,quantum};
-                        if (loop_row[VALID] && loop_row[MODE+:2] == RECORDING && addition[64]) reply(EXHAUSTED, 0);
-                        else begin cursor <= cursor+1'b1; state <= S_FINAL; end
                     end
                 end
                 S_FINISH_LOOP: begin
-                    if (cursor == loop_slots) begin frame <= frame+64'(quantum); phase <= IDLE_PHASE; candidate_valid <= 0; reply(OK, 0); end
-                    else read_loop(cursor, active_bank, 0, 0, S_FINISH_WRITE);
-                end
-                S_FINISH_WRITE: begin
-                    temporary_loop = loop_row;
-                    if (loop_row[VALID] && plays(loop_row)) temporary_loop[POSITION+:64] = loop_row[POSITION+:64]+64'(quantum);
-                    if (loop_row[VALID] && loop_row[MODE+:2] == RECORDING) temporary_loop[CAPTURE+:64] = loop_row[CAPTURE+:64]+64'(quantum);
-                    write_loop(cursor, active_bank, temporary_loop); cursor <= cursor+1'b1; state <= S_FINISH_LOOP;
+                    loop_stream_valid <= loop_stream_read;
+                    if (loop_stream_read) cursor <= cursor+1'b1;
+                    if (loop_stream_valid) begin
+                        temporary_loop = lr_data;
+                        if (lr_data[VALID] && plays(lr_data)) temporary_loop[POSITION+:64] = lr_data[POSITION+:64]+64'(quantum);
+                        if (lr_data[VALID] && lr_data[MODE+:2] == RECORDING) temporary_loop[CAPTURE+:64] = lr_data[CAPTURE+:64]+64'(quantum);
+                        write_loop(cursor-1'b1, active_bank, temporary_loop);
+                    end else if (!loop_stream_read) begin
+                        frame <= frame+64'(quantum); phase <= IDLE_PHASE; candidate_valid <= 0; reply(OK, 0);
+                    end
                 end
                 S_READ_LOOP_REPLY: reply(OK, loop_row);
                 S_READ_REQUEST_REPLY: reply(OK, {192'b0,request_row[639:0]});

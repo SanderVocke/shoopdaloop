@@ -65,7 +65,10 @@ multicycle RTL FSM with double-bank synchronous loop/request/journal memories.
 Prepared follower links, per-loop pending-request lists, and ready-pulse priority
 selection replace repeated table/member searches. Indexes share the candidate
 transaction. Preview writes a candidate bank; commit switches banks atomically; finish
-advances committed clocks. Its README defines the command/response interface,
+advances committed clocks. Loop/request bank copies stream concurrently; final
+validation and clock advancement process one loop per clock after pipeline fill.
+Singleton/no-work fast paths reduce dispatch overhead while settlement retains
+one resolver and its canonical ordering. Its README defines the command/response interface,
 packed rows, Rust/native/RTL comparison bench and synthesis/cycle measurements.
 `fpga/loop_pipeline` connects the three processors under one coordinator. Preview
 pauses for resource preparation/retry, commit publishes the selected loop bank,

@@ -49,7 +49,7 @@ def main():
         if not results.is_file():
             raise SystemExit(f"No simulation results; see {output / 'simulation.log'}")
         report = ET.parse(results).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.case else 4)
+        if (len(list(report.iter("testcase"))) != (1 if args.case else 5)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Behavioral simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: behavioral simulation passed; results in {output}", flush=True)

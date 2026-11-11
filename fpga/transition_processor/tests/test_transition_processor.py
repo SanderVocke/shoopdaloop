@@ -181,6 +181,75 @@ async def transport_and_negative_cases(dut):
 
 
 @cocotb.test()
+async def streamed_passes_and_reset(dut):
+    configurations = {(min(5, DEPTHS[0]), min(2, DEPTHS[1])),
+                      (min(2, DEPTHS[0]), min(7, DEPTHS[1]))}
+    for loops, requests in sorted(configurations):
+        target = loops-1
+        value = make_case(f'stream-tail-{loops}-{requests}', [spec(i, 32) for i in range(loops)], [
+            step([command(target, i+1, {"kind": "record"}) for i in range(requests)], previews=[[], []]),
+            step([command(target, requests+1)]), step(),
+        ], requests=requests)
+        await compare(dut, value)
+        image = wire.run_reference('compile', document('transition_plan', value['plan']), executable=REFERENCE)['payload']['value']
+        driver = Driver(dut, DEPTHS)
+
+        # The last logical row must be checked, even with more rows prefetched.
+        await driver.load(value, image)
+        raw = await driver.ok(abi.READ_STATE, target)
+        await FallingEdge(dut.clk)
+        dut.core.loops.memory[target].value = raw | (2 << 33) | ((2**64-16) << 192)
+        before = await driver.states()
+        assert (await driver.command(abi.PREVIEW))[0] == 8
+        assert await driver.states() == before
+        if loops > 1:
+            raw = await driver.ok(abi.READ_STATE, 0)
+            await FallingEdge(dut.clk)
+            dut.core.loops.memory[0].value = raw | (1 << 33) | (31 << 128)
+            assert (await driver.command(abi.PREVIEW))[0] == 6
+
+        await driver.load(value, image)
+        token = await driver.ok(abi.PREVIEW)
+        await driver.ok(abi.COMMIT, data=token)
+        await driver.ok(abi.FINISH, data=token)
+        assert driver.last_cycles <= loops+5, 'Finish stalled between loop rows'
+
+        # Abort with a read or registered write pending in each streaming pass.
+        for stage in ('copy', 'validate', 'finish'):
+            for delay in (1, 2):
+                await driver.load(value, image)
+                token = 0
+                if stage == 'finish':
+                    token = await driver.ok(abi.PREVIEW)
+                    await driver.ok(abi.COMMIT, data=token)
+                await FallingEdge(dut.clk)
+                driver.set(command_valid=1, command_opcode=abi.FINISH if stage=='finish' else abi.PREVIEW,
+                           command_index=0, command_data=token)
+                await driver.edge()
+                driver.set(command_valid=0)
+                for _ in range(10000):
+                    active = bool(int(dut.core.loop_stream.value))
+                    bank = int(dut.core.stream_loop_address.value)//DEPTHS[0]
+                    committed = int(dut.core.phase.value)==3
+                    candidate = bank != int(dut.core.active_bank.value)
+                    if active and ((stage=='finish' and committed)
+                                   or (stage=='validate' and not committed and candidate)
+                                   or (stage=='copy' and not committed and not candidate)):
+                        break
+                    await driver.edge()
+                else:raise AssertionError(f'{stage} pass did not start')
+                for _ in range(delay):await driver.edge()
+                await driver.reset()
+                await Timer(100, units='ns')
+                assert not int(dut.response_valid.value) and not int(dut.busy.value)
+                assert not (await driver.status())['configured']
+                await driver.load(value, image)
+                assert all(s['mode']=='stopped' and s['position']==0 and s['capture_frames']==0
+                           for s in await driver.states())
+                assert all(r is None for r in await driver.requests())
+
+
+@cocotb.test()
 async def sixty_four_loop_workload(dut):
     summary = {"depths": DEPTHS, "cases": {}, "outside_physical_capacity": 0}
     values = list(workloads())

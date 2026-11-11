@@ -201,7 +201,7 @@ without placement/routing or a clock-frequency guarantee.
 
 ## Verification checkpoint
 
-Verilator 5.032 and cocotb 1.9.2 passed these comparisons against Rust across
+Before streaming the TP passes, Verilator 5.032 and cocotb 1.9.2 passed these comparisons against Rust across
 default, small and odd configurations:
 
 | Campaign | Cases | Quantum boundaries |
@@ -217,12 +217,33 @@ default configuration). All preflight, bus-fault, clock-hold, blocked-host and
 pending-memory reset/recovery checks passed in both memory-delay campaigns.
 The checked-in sample fixture also replays with seven-cycle responses.
 
-The Rust reference/testbench suite passed 65 tests, and the Python cross-language
+That checkpoint's Rust reference/testbench suite passed 65 tests, and the Python cross-language
 contract passed 17 tests. These checks use the existing Rust pipeline and store;
 the integration required no changes to their sample semantics.
 
-Yosys 0.52 mapped the default connected top to ECP5 using 17,713 LUT4,
-11,186 flip-flops, 2,781 CCU2C carry cells, 83 DP16KD block RAMs,
+The streamed TP passes retain the same transaction, shared-read and sample
+interfaces. An identical 18-quantum 64-loop replay (eight tracks, per-loop gains,
+track mixing, Q=32, seven-cycle memory responses, no random stalls) matched Rust
+after the optimization, including unchanged state/job cycle counts and memory
+traffic. At an assumed 150 MHz:
+
+| Measurement | Before streaming | After streaming |
+| --- | ---: | ---: |
+| TP, one quiet preview + commit + Finish | 15.89 µs | 6.52 µs |
+| TP, three busy recording previews + commit + Finish | 73.61 µs | 50.60 µs |
+| Whole quantum, worst recording case | 505.33 µs | 482.32 µs |
+| Whole quantum, quiet all-loop playback | 321.75 µs | 312.37 µs |
+
+TP/whole-quantum times exclude host preflight inspection pauses. The worst
+accepted-run-to-done time including those pauses fell from 547.49 to 524.47 µs.
+Fresh connected regressions passed 58 media cases / 629 quanta with seven-cycle
+responses and 119 control cases / 2,919 quanta across default/small/odd, including
+all preparation, fault and reset protocol checks. The standalone TP comparison
+passed 205 cases / 10,274 boundaries across four depth profiles. Python contract
+tests passed all 17 cases.
+
+Yosys 0.52 mapped the default connected top to ECP5 using 19,842 LUT4,
+11,189 flip-flops, 2,834 CCU2C carry cells, 83 DP16KD block RAMs,
 68 distributed RAM cells and four MULT18X18D DSPs. These capacities are
 8/16/32 for loop/request/event tables, 64/32/64 for program/state/job storage,
 and 32/32/32 for media views/slots/chunk frames.
@@ -230,3 +251,5 @@ The wide rows favor a simple first implementation and incur RAM granularity
 costs. These are complete connected-top counts, not a sum of earlier standalone
 figures. Lint and generic synthesis also passed 3/5/11 and 1/1/3 loop-table
 configurations. No placement, routed timing or board transport is included.
+The streamed TP increases this complete top's LUT4 count by 2,129 (12.0%) from
+17,713, while BRAM and DSP counts remain unchanged; it adds three flip-flops.

@@ -45,7 +45,8 @@ follower discovery from quantum execution. Cross-component source pulses are
 observed when visiting the later component.
 
 Preview copies committed records into the candidate bank and clears boundary
-scratch. It then:
+scratch. Loop and request copies stream concurrently through their separate RAMs,
+each reading the next row while the previous row is written. It then:
 
 1. Pops pending absolute requests from a priority mask and offers those due now.
 2. Applies intents and natural boundaries in canonical component/member order,
@@ -74,6 +75,25 @@ never overlap; simulation asserts that property. The RAM's `no_rw_check` attribu
 avoids collision emulation. A separate dispatch edge flushes state writes before
 list-head read/modify/write. Small pulse/delivery/eligibility masks and refusal
 reasons remain prepared scratch. No divider, multiplier or DSP block is required.
+
+Singleton components reuse the member entry already fetched during component
+discovery. A loop with no pending intent and no natural boundary bypasses the
+apply/natural dispatch states; source inheritance and pulse handling still run
+in their canonical order. The same no-boundary bypass follows an applied intent.
+
+Final validation and Finish also stream one loop row per clock after pipeline
+fill. Registered copy/Finish writes drain before settlement or the completion
+response. Validation checks rows in slot order, preserving the first error when
+multiple rows are invalid. Reset clears the stream-valid flags, and speculative
+read-ahead cannot change committed state.
+
+For L logical loop slots and R logical request slots, the copy pass takes
+`max(L, R) + 2` clocks, and validation/Finish each take `L + 2` clocks. These pass
+counts exclude command/coordinator handshakes. Tables retain the same RAM layout,
+two banks, read/write ports and packed interfaces; there is one resolver.
+The Rust reference keeps its bulk slice copies and existing traversal: these
+optimizations hide synchronous RAM latency and remove RTL dispatch cycles without
+changing musical behavior.
 
 Defaults are 64 loop slots, 64 request slots and 192 events per journal bank.
 Logical capacities can be smaller, including holes in the loop slot table.
@@ -250,6 +270,11 @@ Protocol tests cover held responses, changed/busy command inputs, stale tokens,
 phase guards, invalid configuration, reset during work and counter/generation
 exhaustion. Exhaustion uses simulation-only hierarchical fault injection; no
 production test-write interface exists.
+Streaming-specific tests exercise unequal loop/request counts, terminal records
+at the request-table tail, last-loop validation failures, first-error ordering,
+and reset with a read or registered write pending during copy, validation and
+Finish. Reload/readback checks verify recovery after every reset. A cycle budget
+guards against stalls between Finish rows.
 
 The default seeded generator uses the same 100 graphs × 80 quanta as the Rust
 regression. Small (7/11/25), minimum (1/1/3), and wide (130/130/390) configurations
@@ -263,10 +288,20 @@ have explicit directed cases.
 `check.sh` runs warning-clean lint and generic no-latch/no-multiply/no-divide checks
 for all four configurations, plus default ECP5 mapping and a resource JSON file.
 
-The commands above passed with Verilator 5.032 and cocotb 1.9.2: 216 cases and
+Before streaming, the commands above passed with Verilator 5.032 and cocotb 1.9.2: 216 cases and
 11,081 quantum boundaries across the four configurations and wide-ID replay,
 including 130 seeded graphs × 80 quanta. Transport/negative tests also passed.
 The corresponding Rust tests (50) and Python tests (14) passed.
+
+The streaming checkpoint passed 30 seeded graphs per configuration: 205 directed,
+seeded and public workload cases / 10,274 quantum boundaries across default,
+small, minimum and wide. Every profile passed all five cocotb tests, including
+the tail/error/reset checks above. The connected media regression passed 58 cases
+/ 629 quanta with seven-cycle memory responses, and the connected control
+regression passed 119 cases / 2,919 quanta across default/small/odd. An identical
+18-quantum 64-loop media replay also matched Rust, with unchanged state/job cycle
+counts and sample-memory traffic. All lint/generic/ECP5 checks and the 17 Python
+contract tests passed. Rust behavior and serialization remain unchanged.
 
 ## Measurements
 
@@ -300,3 +335,23 @@ completion collection, decision/journal readback, response stalls and the
 state/job processors. No FPGA clock-frequency guarantee or whole-pipeline
 deadline is established; ECP5 mapping counts are separate from placement and
 timing closure.
+
+Streaming the bulk passes and taking singleton/no-work fast paths further reduces
+the same public workload cases, with the Rust model and packed interfaces
+unchanged:
+
+| Workload | Indexed cycles above | Streamed cycles | Estimated time at 150 MHz |
+| --- | ---: | ---: | ---: |
+| 8 tracks × 8 loops, record/play, delayed changes, repeat sync | 2,137–4,078 | 928–2,917 | 6.19–19.45 µs |
+| One 64-member sync cycle, all active, wraps/retriggered seeks | 3,278–4,686 | 2,320–3,728 | 15.47–24.85 µs |
+
+These remain single-preview + commit + Finish counts. The integrated replay in
+`fpga/loop_pipeline/README.md` also measures retry-heavy quanta and actual media
+jobs at 64 loops with 128 request slots.
+The wide profile's 130-request cycle measures 2,386–3,794 clocks: its 66 extra
+logical request rows now add 66 clocks instead of 264.
+
+With streaming and the shared loop-read port, Yosys 0.52 maps the default
+64/64/192 top to 16,927 LUT4, 7,750 flip-flops, 1,227 CCU2C carry cells,
+60 DP16KD block RAMs, eight distributed RAM cells and zero DSPs. Streaming adds
+no RAM ports or table storage. This mapping is separate from routed timing.
