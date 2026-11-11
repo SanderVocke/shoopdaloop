@@ -52,8 +52,8 @@ The configuration port is an idle-only request interface:
   configuration response is pending.
 
 A quantum starts when `run_valid && run_ready`. This latches
-`run_instruction_count`, `run_state_count`, and `run_quantum` and checks
-`run_job_budget` against the available FIFO capacity. All four inputs are unsigned
+`run_instruction_count`, `run_state_count`, `run_quantum`, and `run_chunk_frames` and checks
+`run_job_budget` against the available FIFO capacity. These inputs are unsigned
 32-bit values. `run_state_count` is the logical length of the state vector, which
 may be smaller than the physical RAM. Only the first `run_instruction_count`
 program entries execute. Counts exceeding physical capacities are rejected.
@@ -62,8 +62,10 @@ Admission first requires an empty FIFO and at least `run_job_budget` free entrie
 matching the Rust preflight. Use the compiled `Program::jobs_per_quantum` as the
 budget. A budget understated by a hand-written program can also cause a queue-full
 error during execution. Such a failure retains earlier jobs and state writes.
-`run_quantum=0` is accepted, as it is by the raw Rust state executor; the normal
-compiler requires a positive quantum.
+The quantum must be positive and an integral number of chunks. The RTL chunk
+size is a positive power of two. Media position/length words are chunk indices
+and counts. Arithmetic ramp counters retain samples. Shared loop records still
+carry frames; logical playback converts them at the input boundary.
 
 `busy` covers execution. Configuration cannot modify state or program while busy.
 The engine executes:
@@ -89,7 +91,12 @@ FIFO before starting the next run. `queued_jobs` reports its current occupancy.
 the job processor has executed the jobs. FIFO head prefetch can add latency before
 the first job becomes valid and between accepted jobs.
 
-## Packed ABI, version 1
+Each accepted read-job enqueue also pulses `read_intent_valid` with
+`read_intent_data`. This advisory output is independent of normal FIFO draining
+and cannot stall state execution. The combined pipeline buffers these intents
+and resolves them while state execution continues.
+
+## Packed ABI, version 2
 
 Bit positions below describe packed integers, independent of a host transport's
 byte order. A byte-oriented transport should encode the least significant byte

@@ -1,4 +1,4 @@
-"""Convert architectural JSON values to the version-1 packed RTL ABI."""
+"""Convert architectural JSON values to the version-2 packed RTL ABI."""
 
 INSTRUCTIONS = {
     "process_input": (0, ("port", "destination")),
@@ -77,7 +77,7 @@ def decode_job(value):
     if opcode == 2:
         assert id1 == 0
         return {"kind": "read_view", "destination": id0, "view": p0,
-                "position": p1, "length": p2}
+                "position_chunks": p1, "length_chunks": p2}
     if opcode == 3:
         assert p2 == 0
         return {"kind": "gain", "source": id0, "destination": id1,

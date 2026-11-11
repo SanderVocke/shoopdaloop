@@ -359,9 +359,10 @@ fn imported_snapshots_reject_invalid_ownership_addresses_and_geometry() {
 
 #[shoop_test]
 fn the_backend_records_and_plays_recycled_chunks_through_the_same_program() {
-    let mut media = MediaStore::with_chunk_limit(3, 2).unwrap();
+    let mut media = MediaStore::with_chunk_limit(2, 2).unwrap();
     let view = media.create_recording().unwrap();
     let graph = Graph {
+        chunk_frames: 2,
         quantum: 4,
         nodes: vec![
             Node::Input { port: 0 },
@@ -376,7 +377,7 @@ fn the_backend_records_and_plays_recycled_chunks_through_the_same_program() {
             },
             Node::Playback {
                 view,
-                length: 4,
+                length: 2,
                 position: 0,
                 playing: false,
             },

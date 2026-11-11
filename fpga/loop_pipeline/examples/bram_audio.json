@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "payload": {
     "kind": "pipeline_case",
     "value": {
@@ -82,7 +82,8 @@
           }
         ],
         "jobs_per_quantum": 5,
-        "quantum": 16
+        "quantum": 16,
+        "chunk_frames": 1
       },
       "queue_capacity": 64,
       "steps": [

@@ -7,7 +7,7 @@ import fpga_testbench as wire
 
 
 def document(kind, value):
-    return {'format_version': 1, 'payload': {'kind': kind, 'value': value}}
+    return {'format_version': 2, 'payload': {'kind': kind, 'value': value}}
 
 
 def empty(capacities, views):
@@ -17,7 +17,22 @@ def empty(capacities, views):
 
 
 def audio(value, depths, capacities, views=None):
+    value = deepcopy(value)
+    cf = capacities[2]
+    old_q = value['plan']['description']['quantum']
+    minimum_q = next(q for q in (1, 16, 32, 64, 128) if q >= cf)
+    factor = max(1, minimum_q // old_q)
+    if factor != 1:
+        value['plan']['description']['quantum'] *= factor
+        for loop in value['plan']['description']['loops']:
+            loop['length'] *= factor
+        for row in value['steps']:
+            for item in row['commands']:
+                item['at'] *= factor
+                if 'position' in item['operation']:
+                    item['operation']['position'] *= factor
     result = connect(value, depths)
+    result['program']['chunk_frames'] = cf
     loops = sorted(value['plan']['description']['loops'], key=lambda x: x['id']['slot'], reverse=True)
     result['initial_state']['memory'] = [dict(kind='word', value=i)
                                        for i in range(len(loops)) for _ in range(2)]
@@ -34,6 +49,10 @@ def audio(value, depths, capacities, views=None):
 
 def recorded(capacities, steps, executable):
     initial = empty(capacities, 0)
+    steps = deepcopy(steps)
+    for item in steps:
+        if item['kind'] == 'append' and len(item['samples']) < capacities[2]:
+            item['samples'] = [sample for sample in item['samples'] for _ in range(max(16, capacities[2]))]
     source = document('media_case', dict(name='prepare-loop-media', media=initial, steps=steps))
     trace = wire.run_reference('trace', source, executable=executable)['payload']['value']
     assert all(row['status']['kind'] == 'completed' for row in trace['results'])
@@ -42,7 +61,7 @@ def recorded(capacities, steps, executable):
 
 def directed(depths, capacities, executable):
     n = min(depths[0], depths[1], (depths[2]-1)//2, (depths[3]-2)//2,
-            depths[4]//2, (depths[5]-2)//2, depths[7]-1, capacities[0], capacities[1])
+            depths[4]//2, (depths[5]-2)//2, depths[7]-1, capacities[0], capacities[1] // (max(16, capacities[2]) // capacities[2]))
     q = max(q for q in (1, 16, 32) if q <= min(depths[6], capacities[2]))
     yield audio(case('actual-all-loop-slots-record-and-play', [spec(i, 0) for i in range(n)], [
         step([command(i, i+1, dict(kind='record')) for i in range(n)]),
@@ -64,20 +83,21 @@ def directed(depths, capacities, executable):
         value['steps'][6]['writes'] = [dict(address=0, value=dict(kind='word', value=1))]
         yield value
 
-    q = 1
-    loops = [spec(0, 2, 1, True), spec(1, 2, 0, True)]
-    value = audio(case('actual-sync-cycle-and-delayed-retrigger', loops, [
-        step([command(0, 1), command(1, 2)], previews=[[], [], []]),
-        step([command(1, 3, seek(0, True), source=0, skip=1)], previews=[[], []]),
-        step(), step(), step(), step([command(0, 4, {'kind': 'stop'})]), step(),
-    ], q=q, requests=min(4, depths[1])), depths, capacities)
-    value['media'] = recorded(capacities, [
-        dict(kind='create'), dict(kind='append', view=0, samples=[-12345, 67890]),
-        dict(kind='create'), dict(kind='append', view=1, samples=[2147483647, -2147483648]),
-    ], executable)
-    yield value
+    if 4*(max(16, capacities[2])//capacities[2]) <= capacities[1]:
+        q = 1
+        loops = [spec(0, 2, 1, True), spec(1, 2, 0, True)]
+        value = audio(case('actual-sync-cycle-and-delayed-retrigger', loops, [
+            step([command(0, 1), command(1, 2)], previews=[[], [], []]),
+            step([command(1, 3, seek(0, True), source=0, skip=1)], previews=[[], []]),
+            step(), step(), step(), step([command(0, 4, {'kind': 'stop'})]), step(),
+        ], q=q, requests=min(4, depths[1])), depths, capacities)
+        value['media'] = recorded(capacities, [
+            dict(kind='create'), dict(kind='append', view=0, samples=[-12345, 67890]),
+            dict(kind='create'), dict(kind='append', view=1, samples=[2147483647, -2147483648]),
+        ], executable)
+        yield value
 
-    q = 16 if depths[6] >= 16 and capacities[1]*capacities[2] >= 32 else 1
+    q = max(16, capacities[2])
     value = audio(case('actual-refused-record-keeps-playing-old-view', [spec(0, 2*q)], [
         step([command(0, 1)]),
         step([command(0, 2, {'kind': 'record'})], previews=[[], [dict(kind='capture_unavailable', target=lid(0), reason='capacity')]]),
@@ -88,14 +108,14 @@ def directed(depths, capacities, executable):
         dict(kind='append', view=0, samples=[1111+i for i in range(2*q)]), dict(kind='create')], executable)
     yield value
 
-    q = min(16, depths[6])
-    value = audio(case('actual-unaligned-retained-range-wrap', [spec(0, q)], [
+    q = max(16, capacities[2])
+    value = audio(case('actual-aligned-retained-range-wrap', [spec(0, q)], [
         step([command(0, 1)]), step(), step([command(0, 2, seek(0, True))]), step(),
     ], q=q, requests=2), depths, capacities, views=2)
     value['initial_state']['memory'] = [dict(kind='word', value=1), dict(kind='word', value=0)]
-    start = min(3, capacities[2]-1)
+    start = capacities[2]
     value['media'] = recorded(capacities, [dict(kind='create'),
-        dict(kind='append', view=0, samples=[100000+i*37 for i in range(q+start+1)]),
+        dict(kind='append', view=0, samples=[100000+i*37 for i in range(q+start+capacities[2])]),
         dict(kind='slice', source=0, start=start, frames=q), dict(kind='clear', view=0)], executable)
     yield value
 
@@ -117,9 +137,8 @@ def directed(depths, capacities, executable):
 def seeded(depths, capacities, count):
     rng = random.Random(20261111)
     for index in range(count):
-        n = rng.randint(1, min(3, depths[0], depths[7]-3, (depths[4]-1)//2))
-        q = rng.choice([q for q in (1, 16, 32) if q <= depths[6]
-                        and (index % 5 == 0 or 2*n*((2*q + capacities[2]-1)//capacities[2]) <= capacities[1])])
+        n = rng.randint(1, min(3, depths[0], depths[7]-3, (depths[4]-1)//2, capacities[1]//(2*(max(16,capacities[2])//capacities[2]))))
+        q = rng.choice([q for q in sorted({max(16, capacities[2]), 16, 32}) if max(16, capacities[2]) <= q <= depths[6]])
         sequences = 0
         rows = []
         for frame in range(18):

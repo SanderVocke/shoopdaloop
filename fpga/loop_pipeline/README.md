@@ -28,6 +28,10 @@ Host commands and observations
              +--------- finish after successful samples +
 ```
 
+The default simulation memory path now uses the shared synthesizable AXI
+endpoint. See [AXI memory and DRAMsim3](../axi_memory/README.md) for detailed
+timing, bus-width options, and the retained legacy word-port mode.
+
 ## Ownership and publication
 
 The transition processor alone writes logical mode, position, length, revisions
@@ -118,11 +122,22 @@ With `run_external_jobs=0`, the internal job processor executes Input, Silence,
 Gain, Mix, Output, ReadView and Capture. `media_audio_pipeline` connects the last
 two to `media_store`: recording appends actual input samples; playback reads
 stored samples into scratch BRAM, including wrapped and retained-range reads.
-Finish waits for successful completion of all sample work and memory responses.
+Finish waits for successful logical completion of sample work. Captures may
+complete into the chunk write pool while DDR writeback continues. Use host store
+opcode 7 (Fence) before observing backing memory. Testbench snapshots do this
+explicitly; it is outside the measured audio execution interval.
+
+The media frontend uses [chunk memory](../chunk_memory/README.md), with configurable
+`READ_BUFFERS` / `WRITE_BUFFERS`, shared coherence and a background transfer engine.
+Job-FIFO lookahead supplies advisory read hints. The `memory_fault` output reports
+late errors even after a quantum completed. The coordinator freezes further
+execution, reports stage 3/code 8 after foreground quiescence and requires reset.
+It preserves already advanced clocks. Reset also invalidates the chunk buffers;
+fence first when posted writes must be retained across a planned reset.
 
 `store_cmd_*`, `store_cfg_*` and host sample streams are available while idle,
 paused for preflight or faulted, subject to the store's own readiness/fault guards.
-Host commands support Create, Slice, Clear, Remove, Reclaim, Append and Read.
+Host commands support Create, Slice, Clear, Remove, Reclaim, Append, Read and Fence.
 They share the store with jobs and cannot interleave with job execution. A fresh
 recording needs a prepared empty view (or a cleared reusable view); resetting
 logical recording length does not clear physical media. Playback and capture
@@ -140,7 +155,7 @@ InvalidView/MemoryFull/InvalidState.
 
 The packed store interfaces and snapshot layout are specified in
 [`media_store/README.md`](../media_store/README.md). Physical DDR controllers,
-bursts/caching, large-session metadata and board audio/host transport remain
+native bursts, large-session metadata and board audio/host transport remain
 outside this milestone.
 
 With `run_external_jobs=1`, `external_job_valid` and `monitor_data` expose the
@@ -168,7 +183,7 @@ steps also retain exact scratch/output samples and FIFO effects. With an initial
 python fpga/loop_pipeline/simulate.py
 python fpga/loop_pipeline/simulate.py --config default --random-cases 30
 python fpga/loop_pipeline/simulate.py --media --random-cases 30
-python fpga/loop_pipeline/simulate.py --media --response-cycles 7 --random-cases 10
+python fpga/loop_pipeline/simulate.py --media --memory-model legacy --response-cycles 7 --random-cases 10
 python fpga/loop_pipeline/simulate.py --media --config default \
   --case fpga/loop_pipeline/examples/record_play_samples.json
 python fpga/loop_pipeline/simulate.py --config default \
@@ -201,7 +216,12 @@ without placement/routing or a clock-frequency guarantee.
 
 ## Verification checkpoint
 
-Before streaming the TP passes, Verilator 5.032 and cocotb 1.9.2 passed these comparisons against Rust across
+The measurements below precede chunk-memory integration. Current buffering,
+sample comparisons, synthesis estimates and moving-playback timing are recorded
+in the [chunk-memory checkpoint](../chunk_memory/README.md#verification-checkpoint).
+
+Before streaming the TP passes, Verilator 5.032 and cocotb 1.9.2 passed these
+comparisons against Rust across
 default, small and odd configurations:
 
 | Campaign | Cases | Quantum boundaries |

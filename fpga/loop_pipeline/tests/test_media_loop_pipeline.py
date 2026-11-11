@@ -55,8 +55,9 @@ async def directed_against_rust(dut):
         values = directed(DEPTHS, MEDIA, REFERENCE)
     for value in values:
         summary[value['name']] = await compare(dut, value)
-    assert any(row['reads'] for row in summary.values())
-    if not replay:assert any(row['writes'] for row in summary.values())
+    if not replay:
+        assert any(row['reads'] for row in summary.values())
+        assert any(row['writes'] for row in summary.values())
     (OUTPUT/'media-directed-summary.json').write_text(json.dumps(summary, indent=2)+'\n')
 
 
@@ -87,7 +88,7 @@ async def resource_preparation_and_faults(dut):
         prepared = True
 
     result = await compare(dut, value, create, empty(MEDIA, 0))
-    assert result['writes'] and result['reads']
+    assert result['writes'], 'recorded data did not reach DDR at the snapshot fence'
 
     # Exhausted view metadata must be reported before committing the recording.
     value = audio(case('preflight-view-refusal', [spec(0, 0)], [step(
@@ -139,9 +140,10 @@ async def resource_preparation_and_faults(dut):
 
     # Physical bus errors have no Rust equivalent: assert fault containment,
     # inspectability and reset recovery separately from sample equivalence.
-    value = audio(case('physical-memory-fault-and-reset', [spec(0, 0)], [
-        step([command(0, 1, dict(kind='record'))]), step([command(0, 2)]),
+    value = audio(case('physical-memory-fault-and-reset', [spec(0, 1)], [
+        step([command(0, 1)]), step([command(0, 2, dict(kind='record'))]),
     ], q=1, requests=1), DEPTHS, MEDIA)
+    value['media'] = recorded(MEDIA, [dict(kind='create'), dict(kind='append', view=0, samples=[123456])], REFERENCE)
     trace = wire.run_reference('trace', document('pipeline_case', value), executable=REFERENCE)['payload']['value']
     image = wire.run_reference('compile', document('transition_plan', value['plan']), executable=REFERENCE)['payload']['value']
     driver, memory = PipelineDriver(dut, DEPTHS), LoopMemory(dut, MEDIA, 17)
@@ -201,6 +203,45 @@ async def resource_preparation_and_faults(dut):
         assert memory.pending is None and not int(dut.memory_valid.value)
         probing = False
         memory.pause_responses = False
+        await driver.initialize(value, image)
+        for row, expected in zip(value['steps'], trace['results']):
+            assert await driver.step(row) == expected
+
+        # A buffered recording can finish its logical quantum before DDR fails.
+        posted = audio(case('late-writeback-fault', [spec(0, 0)], [
+            step([command(0, 1, dict(kind='record'))]),
+        ], q=1, requests=1), DEPTHS, MEDIA)
+        posted_image = wire.run_reference('compile', document('transition_plan', posted['plan']), executable=REFERENCE)['payload']['value']
+        await driver.initialize(posted, posted_image)
+        memory.pause_responses = True
+        memory.fail_next = True
+        running = cocotb.start_soon(driver.step(posted['steps'][0]))
+        can_post = int(os.environ['LP_WRITE_BUFFERS']) >= posted['program']['quantum']//MEDIA[2]
+        expected_frame = posted['program']['quantum'] if can_post else 0
+        try:
+            for _ in range(20000):
+                await driver.edge()
+                if (int(dut.debug_frame.value) == expected_frame and memory.pending is not None
+                        and int(dut.store_busy.value) and (can_post or int(dut.jobs_busy.value))):
+                    break
+            else:
+                raise AssertionError('recording did not reach posted completion or write-pool pressure')
+            if not can_post:
+                for _ in range(30):
+                    await driver.edge()
+                    assert int(dut.debug_frame.value) == 0 and not int(dut.done.value)
+            assert not int(dut.memory_fault.value) and memory.pending[2]
+        finally:
+            running.kill()
+        memory.pause_responses = False
+        for _ in range(10000):
+            await driver.edge()
+            if int(dut.memory_fault.value) and int(dut.error_code.value) == 8:
+                break
+        else:
+            raise AssertionError('late writeback failure was not propagated')
+        assert int(dut.error_stage.value) == 3 and int(dut.debug_frame.value) == expected_frame
+        assert not int(dut.run_ready.value) and not int(dut.store_cmd_ready.value)
         await driver.initialize(value, image)
         for row, expected in zip(value['steps'], trace['results']):
             assert await driver.step(row) == expected

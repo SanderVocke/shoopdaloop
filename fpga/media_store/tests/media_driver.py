@@ -1,5 +1,6 @@
 """Public command/configuration ports and an independent stalled sample-memory slave."""
 from collections import Counter
+import os
 import random
 from cocotb.triggers import Timer
 
@@ -34,6 +35,14 @@ class Driver:
         self.fail_next = False
         self.chunk_limit = None
         self.before_clock = None
+        self.axi = None
+        if hasattr(dut, "m_axi_awvalid"):
+            from word_service import WordService
+            self.axi = WordService(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
+
+    def close(self):
+        if self.axi is not None:
+            self.axi.close()
 
     def set(self, **values):
         for name, value in values.items():
@@ -44,14 +53,19 @@ class Driver:
 
     async def tick(self):
         self.dut.clk.value = 0
-        response = self.pending is not None and self.pending[0] == 0
-        self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
-                 memory_response_valid=int(response),
-                 memory_read_data=self.pending[1] if response else 0,
-                 memory_response_error=int(response and self.pending[2]))
+        if self.axi is not None:
+            self.axi.drive()
+        else:
+            response = self.pending is not None and self.pending[0] == 0
+            self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
+                     memory_response_valid=int(response),
+                     memory_read_data=self.pending[1] if response else 0,
+                     memory_response_error=int(response and self.pending[2]))
         await Timer(5, units="ns")
         before = self.sample()
-        if int(self.dut.reset.value):
+        if self.axi is not None:
+            self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
+        elif int(self.dut.reset.value):
             self.pending = self.held_request = self.held_read = None
             self.request_cycle = None
         else:
@@ -94,6 +108,8 @@ class Driver:
         return before, after
 
     async def reset(self):
+        if hasattr(self.dut, "hint_valid"):
+            self.set(hint_valid=0, hint_view=0, hint_position=0, hint_length=0, hint_count=0)
         self.set(clk=0, reset=1, arena_base=self.base, cmd_valid=0, cmd_opcode=0, cmd_view=0,
                  cmd_start=0, cmd_length=0, cmd_count=0, write_valid=0, write_data=0, read_ready=0,
                  cfg_valid=0, cfg_write=0, cfg_space=0, cfg_address=0, cfg_write_data=0)
@@ -147,6 +163,7 @@ class Driver:
             await self.configure(0, index, value)
 
     async def snapshot(self):
+        await self.fence()
         views, slots, free = [await self.configure(0, index) for index in range(3)]
         assert views <= self.views and free <= slots <= self.slots
         result = {"chunk_frames": self.chunk_frames, "samples": [signed(x) for x in self.memory[:slots*self.chunk_frames]],
@@ -167,6 +184,25 @@ class Driver:
         for chunk in range(slots):
             assert await self.configure(3, chunk) == refs[chunk], "reference count differs from view ownership"
         return result
+
+    async def fence(self):
+        self.set(cmd_valid=1, cmd_opcode=7, cmd_view=0, cmd_start=0, cmd_length=0, cmd_count=0,
+                 write_valid=0, read_ready=0)
+        for _ in range(100000):
+            before, after = await self.tick()
+            if before["cmd_ready"]:
+                break
+        else:
+            raise AssertionError("media fence admission timed out")
+        self.set(cmd_valid=0)
+        for _ in range(100000):
+            if after["done"]:
+                break
+            _, after = await self.tick()
+        else:
+            raise AssertionError("media fence completion timed out")
+        assert after["error_code"] == 0, "media fence reported a memory fault"
+        await self.tick()
 
     async def command(self, command, *, stalls=True):
         self.stalls = stalls

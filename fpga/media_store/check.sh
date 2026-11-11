@@ -6,9 +6,10 @@ mkdir -p "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
 cd "$repo_root"
 sources=()
+sources+=(fpga/chunk_memory/rtl/chunk_ram.sv fpga/chunk_memory/rtl/chunk_memory.sv)
 for module in sp_ram sp_job_fifo sp_engine state_processor; do sources+=("fpga/state_processor/rtl/$module.sv"); done
 for module in jp_sample_ram jp_divider job_processor audio_pipeline; do sources+=("fpga/job_processor/rtl/$module.sv"); done
-sources+=(fpga/media_store/rtl/media_ram.sv fpga/media_store/rtl/media_store.sv fpga/media_store/rtl/memory_delay.sv fpga/media_store/rtl/media_audio_pipeline.sv)
+sources+=(fpga/media_store/rtl/media_ram.sv fpga/media_store/rtl/media_prefetch_resolver.sv fpga/media_store/rtl/media_store.sv fpga/media_store/rtl/memory_delay.sv fpga/media_store/rtl/media_audio_pipeline.sv)
 read_command='read_verilog -sv -Ifpga/state_processor/rtl'
 for source in "${sources[@]}"; do read_command+=" \"$source\""; done
 yosys -V > "$output_dir/versions.txt"

@@ -23,6 +23,12 @@ Compiler                              Transition processor
                         Job processor
                              |
                              v
+                       Media frontend
+                             |
+                             v
+                        Chunk memory
+                             |
+                             v
                      Audio / external memory
 ```
 
@@ -86,7 +92,7 @@ retain partial effects and freeze clocks.
 ## State processor
 
 The state processor consumes settled loop decisions and executes operations on
-node state and metadata: gains, ramps, media-view handles, and frame ranges. It
+node state and metadata: gains, ramps, media-view handles, and ranges in chunk counts. It
 reads logical playback positions from the committed loop table and emits
 jobs describing work for the job processor. It owns physical capture preparation
 and publication, with feedback to transition processing when needed.
@@ -104,23 +110,46 @@ parallelism remain open.
 ## Job processor
 
 The job processor consumes an ordered stream of jobs and performs sample
-processing and the bulk, potentially all, of external-memory access.
+processing. A media frontend resolves views/ranges into chunk spans, and a
+separate chunk-memory subsystem handles buffered sample access and external
+transfers. Arithmetic scratch remains with the job processor.
+
+State enqueue events also feed an advisory read-intent FIFO and a separate
+resolver using existing media metadata. Chunk memory owns coherence across
+intervening writes; demand jobs preserve their execution-time lookup. See
+[early prefetch](FPGA_CHUNK_PREFETCH.md).
 
 Jobs may describe reading a media range, writing captured audio, applying gain
 or ramps, mixing, and delivering output. Jobs can refer to intermediate results
 produced by earlier jobs.
 
-The state processor can work with media views and ranges; the job processor
+The state processor can work with media views and ranges; the media frontend
 resolves these into the underlying stored chunks. Exact job formats and
 execution strategies will be developed incrementally.
 
+## Chunk memory
+
+Chunk memory exposes read/write spans, advisory prefetch, fence and retirement.
+RTL owns bounded read/write BRAM pools, a shared coherence directory and a chunk
+transfer scheduler. Writes complete when buffered and visible, with asynchronous
+DDR writeback; fences and retirement account for outstanding transfers. The Rust
+implementation retains an elastic arena and immediate completion. Both standalone
+and full-loop tests compare logical results; separate protocol tests exercise
+backpressure, forwarding, reuse and late faults. See
+[the design](FPGA_CHUNK_MEMORY.md) and [implementation](fpga/chunk_memory/README.md).
+The integrated RTL tops use a shared synthesizable AXI master for external
+sample memory. A cocotb slave connects instant/fixed memory or a ctypes-wrapped
+DRAMsim3 DDR3 timing model at that boundary. Current transfers remain single-word;
+the endpoint and simulation independently support bursts. See
+[AXI memory](fpga/axi_memory/README.md).
+
 ## Storage model
 
-Audio is stored in chunks identified by IDs. Media views map logical frame
+Audio is stored in chunks identified by IDs. Media views map logical chunk
 ranges onto stored audio.
 
-The processing quantum is initially assumed to be 32 frames. Storage chunks may
-have the same size or contain multiple quanta.
+The primary profile uses a 32-sample quantum and 32-sample chunks. Media jobs
+address whole chunks, with positions in chunk indices and lengths in chunk counts.
 
 Complete sample storage and media indexes reside in external RAM. On-chip
 memory holds active processor state, programs, queues, and bounded working

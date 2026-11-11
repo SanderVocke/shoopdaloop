@@ -11,7 +11,9 @@ from cocotb.runner import get_runner
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CONFIGS = {"default": (32, 32, 32), "small": (16, 8, 4), "odd": (5, 5, 8),
-           "8x8": (64, 256, 32)}
+           "wide": (16, 32, 4), "8x8": (64, 1024, 32)}
+sys.path.insert(0, str(ROOT/"fpga/axi_memory/sim"))
+from options import add_options, environment
 
 
 def main():
@@ -22,18 +24,34 @@ def main():
     parser.add_argument("--case", type=Path)
     parser.add_argument("--waves", action="store_true")
     parser.add_argument("--pipeline", action="store_true")
+    parser.add_argument("--read-buffers", type=int, default=4)
+    parser.add_argument("--write-buffers", type=int, default=4)
     parser.add_argument("--response-cycles", type=int, default=1,
                         help="minimum cycles per sample-memory response (pipeline only)")
     parser.add_argument("--timing", action="store_true",
                         help="measure record/play/reuse, or 64-loop playback with --config 8x8 (pipeline only)")
+    parser.add_argument("--prefetch-analysis", action="store_true",
+                        help="instrument aligned 8x8 timing and estimate within-quantum early prefetch (requires >=64 read buffers)")
     parser.add_argument("--output", type=Path, default=ROOT / "work/fpga-media-sim")
+    add_options(parser, legacy=True)
     args = parser.parse_args()
+    try:
+        memory_env = environment(args)
+    except ValueError as error:
+        parser.error(str(error))
+    axi = args.memory_model != "legacy"
+    if axi and args.response_cycles != 1:
+        parser.error("--response-cycles is for --memory-model legacy; AXI fixed mode uses --memory-cycles")
     if args.random_cases < 0 or (args.case and args.config == "all"):
         parser.error("use nonnegative --random-cases and one --config for --case")
+    if min(args.read_buffers, args.write_buffers) < 1:
+        parser.error("buffer capacities must be positive")
     if args.response_cycles < 1 or ((args.response_cycles != 1 or args.timing) and not args.pipeline):
         parser.error("use positive --response-cycles; delay/timing options require --pipeline")
     if args.timing and args.case:
         parser.error("--timing and --case are mutually exclusive")
+    if args.prefetch_analysis and (not args.timing or args.config != "8x8" or args.read_buffers < 64):
+        parser.error("--prefetch-analysis requires --timing --config 8x8 and at least 64 read buffers")
     subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "fpga/job_processor/tests"),
                    str(ROOT / "fpga/state_processor/tests"), str(ROOT / "scripts")]
@@ -45,9 +63,13 @@ def main():
         output.mkdir(parents=True, exist_ok=True)
         runner = get_runner("verilator")
         top = "media_audio_pipeline" if args.pipeline else "media_store"
-        sources = [HERE / "rtl/media_ram.sv", HERE / "rtl/media_store.sv"]
+        sources = [ROOT / "fpga/chunk_memory/rtl/chunk_ram.sv", ROOT / "fpga/chunk_memory/rtl/chunk_memory.sv",
+                   HERE / "rtl/media_ram.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
         parameters = dict(zip(("VIEWS", "SLOTS", "CHUNK_FRAMES"), capacities))
+        parameters.update(READ_BUFFERS=args.read_buffers, WRITE_BUFFERS=args.write_buffers)
         audio = (32, 16, 32, 32, 16, 2, 2) if name == "default" else (16, 8, 16, capacities[2], 8, 2, 2)
+        if name == "wide":
+            audio = (32, 16, 32, 32, 16, 2, 2)
         if name == "8x8":
             audio = (256, 512, 256, 32, 256, 8, 8)
         if args.pipeline:
@@ -58,6 +80,10 @@ def main():
             sources += [HERE / "rtl/memory_delay.sv", HERE / "rtl/media_audio_pipeline.sv"]
             parameters.update(zip(("PROGRAM_DEPTH", "STATE_DEPTH", "JOB_DEPTH", "MAX_FRAMES", "BUFFERS", "INPUT_PORTS", "OUTPUT_PORTS"), audio))
             parameters["MEMORY_RESPONSE_CYCLES"] = args.response_cycles
+        if axi:
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", top+"_axi.sv")]
+            top += "_axi"
+            parameters.update(AXI_DATA_WIDTH=args.axi_data_width, PHYSICAL_BASE=args.physical_base)
         runner.build(verilog_sources=sources, includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
                      parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"],
@@ -69,11 +95,13 @@ def main():
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"MEDIA_CAPACITIES": ",".join(map(str, capacities)),
                                         "MEDIA_CONFIG": name,
+                                        "MEDIA_READ_BUFFERS": str(args.read_buffers), "MEDIA_WRITE_BUFFERS": str(args.write_buffers),
                                         "AUDIO_CAPACITIES": ",".join(map(str, audio)),
                                         "MEDIA_SEED": str(args.seed), "MEDIA_RANDOM_CASES": str(args.random_cases),
                                         "MEDIA_RESPONSE_CYCLES": str(args.response_cycles),
+                                        "MEDIA_PREFETCH_ANALYSIS": str(int(args.prefetch_analysis)),
                                         "MEDIA_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
-                                        "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else ""})
+                                        "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()

@@ -140,8 +140,10 @@ enable Rust recording/playback and shared-range comparisons; the media-enabled R
 bench compares those cases too.
 Python validates the generated schema and compares complete results; it does
 not implement reference sample arithmetic. The format change adds payload
-variants within version 1; existing state traces and the default native renderer
-remain unaffected.
+variants within version 2. Programs explicitly specify `chunk_frames`; media
+jobs use `position_chunks` and `length_chunks`. Arithmetic ramps retain sample
+units. Normal media execution requires the configured physical chunk size;
+BRAM-only and external-job runs retain their separate profiles.
 
 ## Run and reproduce
 

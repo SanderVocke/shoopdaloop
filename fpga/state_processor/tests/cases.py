@@ -22,7 +22,7 @@ def ins(kind, **fields):
 
 def case(name, instructions, memory, capacity, *, quantum=32, budget=None, writes=None):
     return {"name": name,
-            "program": {"instructions": instructions, "quantum": quantum,
+            "program": {"chunk_frames": 1, "instructions": instructions, "quantum": quantum,
                         "jobs_per_quantum": len(instructions) if budget is None else budget},
             "initial_state": {"memory": memory}, "queue_capacity": capacity,
             "steps": [{"writes": items} for items in (writes if writes is not None else [[]])]}

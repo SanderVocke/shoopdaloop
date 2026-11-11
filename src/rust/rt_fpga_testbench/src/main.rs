@@ -1,5 +1,7 @@
+use rt_fpga_testbench::chunks::run_chunk_case;
 use rt_fpga_testbench::media::run_media_case;
 use rt_fpga_testbench::pipeline::run_pipeline_case;
+use rt_fpga_testbench::resolver::run_resolver_case;
 use rt_fpga_testbench::transitions::{run_transition_case, run_transition_oracle};
 use rt_fpga_testbench::{run_audio_case, run_case, schema, Document, Payload};
 use std::io::{self, Read};
@@ -25,6 +27,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|error| format!("compile failed: {error:?}"))?,
         ),
         ("trace", Payload::Case(case)) => Payload::Trace(run_case(case)),
+        ("trace", Payload::ResolverCase(case)) => Payload::ResolverTrace(
+            run_resolver_case(case)
+                .map_err(|error| format!("resolver initialization failed: {error:?}"))?,
+        ),
+        ("check", Payload::ResolverTrace(trace)) => {
+            if run_resolver_case(trace.case.clone())
+                .map_err(|error| format!("resolver initialization failed: {error:?}"))?
+                != trace
+            {
+                return Err("trace differs from Rust resolver results".into());
+            }
+            Payload::ResolverTrace(trace)
+        }
+        ("trace", Payload::ChunkCase(case)) => Payload::ChunkTrace(
+            run_chunk_case(case)
+                .map_err(|error| format!("chunk initialization failed: {error:?}"))?,
+        ),
+        ("check", Payload::ChunkTrace(trace)) => {
+            if run_chunk_case(trace.case.clone())
+                .map_err(|error| format!("chunk initialization failed: {error:?}"))?
+                != trace
+            {
+                return Err("trace differs from Rust chunk memory results".into());
+            }
+            Payload::ChunkTrace(trace)
+        }
         ("trace", Payload::PipelineCase(case)) => Payload::PipelineTrace(
             run_pipeline_case(case)
                 .map_err(|error| format!("pipeline initialization failed: {error:?}"))?,

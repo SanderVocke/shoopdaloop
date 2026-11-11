@@ -21,7 +21,7 @@ EXECUTABLE = Path(os.environ["SHOOP_FPGA_REFERENCE"])
 
 
 def document(kind, value):
-    return {"format_version": 1, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
 
 
 def fits(value):
@@ -76,9 +76,9 @@ async def directed_against_rust(dut):
     example = deepcopy(wire.load(ROOT / "scripts/fpga_testbench/examples/record_play.json")["payload"]["value"])
     example["queue_capacity"] = DEPTHS[2]
     values.append(example)
-    graph = {"quantum": 32, "nodes": [
+    graph = {"chunk_frames": 1, "quantum": 32, "nodes": [
         {"kind": "input", "port": 3},
-        {"kind": "playback", "view": 17, "length": 45, "position": 40, "playing": True},
+        {"kind": "playback", "view": 17, "length_chunks": 45, "position_chunks": 40, "playing": True},
         {"kind": "gain", "input": 0, "gain": 8388608},
         {"kind": "mix", "left": 1, "right": 2},
         {"kind": "capture", "input": 3, "view": 17, "recording": True},

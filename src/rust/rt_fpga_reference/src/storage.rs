@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use crate::{fixed::Fixed, Error};
+use crate::{chunk_memory::ChunkMemory, fixed::Fixed, Error};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -84,7 +84,7 @@ pub struct MediaSnapshot {
 pub struct MediaStore {
     chunk_frames: usize,
     chunk_limit: Option<usize>,
-    samples: Vec<Fixed>,
+    memory: ChunkMemory,
     references: Vec<usize>,
     free_chunks: Vec<ChunkId>,
     views: Vec<Option<ViewSnapshot>>,
@@ -98,7 +98,7 @@ impl MediaStore {
         Ok(Self {
             chunk_frames,
             chunk_limit: None,
-            samples: Vec::new(),
+            memory: ChunkMemory::new(chunk_frames)?,
             references: Vec::new(),
             free_chunks: Vec::new(),
             views: Vec::new(),
@@ -112,11 +112,19 @@ impl MediaStore {
     }
 
     pub fn slot_count(&self) -> usize {
-        self.samples.len() / self.chunk_frames
+        self.memory.slot_count()
     }
 
     pub fn slot_capacity(&self) -> usize {
-        self.samples.capacity() / self.chunk_frames
+        self.memory.slot_capacity()
+    }
+
+    pub fn chunk_memory(&self) -> &ChunkMemory {
+        &self.memory
+    }
+
+    pub fn fence(&mut self) -> Result<(), Error> {
+        self.memory.fence()
     }
 
     pub fn free_chunk_count(&self) -> usize {
@@ -133,12 +141,7 @@ impl MediaStore {
         if self.chunk_limit.is_some_and(|limit| chunks > limit) {
             return Err(Error::MemoryFull);
         }
-        let samples = chunks
-            .checked_mul(self.chunk_frames)
-            .ok_or(Error::MemoryFull)?;
-        self.samples
-            .try_reserve(samples - self.samples.len())
-            .map_err(|_| Error::MemoryFull)?;
+        self.memory.reserve_slots(chunks)?;
         self.references
             .try_reserve(chunks - self.references.len())
             .map_err(|_| Error::MemoryFull)?;
@@ -208,6 +211,29 @@ impl MediaStore {
         usize::try_from(view.frames).map_err(|_| Error::InvalidShape)
     }
 
+    pub fn slice_chunks(
+        &mut self,
+        source: ViewId,
+        start: u64,
+        chunks: u64,
+    ) -> Result<ViewId, Error> {
+        let start = start
+            .checked_mul(self.chunk_frames as u64)
+            .ok_or(Error::InvalidView)?;
+        let frames = chunks
+            .checked_mul(self.chunk_frames as u64)
+            .ok_or(Error::InvalidView)?;
+        self.slice(source, start, frames)
+    }
+
+    pub(crate) fn range_offset(&self, id: ViewId) -> Result<usize, Error> {
+        Ok(self
+            .views
+            .get(id.0)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidView)?
+            .offset())
+    }
     pub fn chunk_ids(&self, id: ViewId) -> Result<&[ChunkId], Error> {
         Ok(&self
             .views
@@ -273,7 +299,12 @@ impl MediaStore {
             .and_then(Option::as_mut)
             .ok_or(Error::InvalidView)?;
         for chunk in view.chunks.drain(..) {
-            release_chunk(&mut self.references, &mut self.free_chunks, chunk);
+            release_chunk(
+                &mut self.references,
+                &mut self.free_chunks,
+                &mut self.memory,
+                chunk,
+            )?;
         }
         view.frames = 0;
         if let Some(range) = &mut view.range {
@@ -291,7 +322,12 @@ impl MediaStore {
             .take()
             .ok_or(Error::InvalidView)?;
         for chunk in view.chunks {
-            release_chunk(&mut self.references, &mut self.free_chunks, chunk);
+            release_chunk(
+                &mut self.references,
+                &mut self.free_chunks,
+                &mut self.memory,
+                chunk,
+            )?;
         }
         Ok(())
     }
@@ -304,7 +340,12 @@ impl MediaStore {
             .and_then(Option::as_mut)
             .ok_or(Error::InvalidView)?;
         if let Some(chunk) = view.chunks.pop() {
-            release_chunk(&mut self.references, &mut self.free_chunks, chunk);
+            release_chunk(
+                &mut self.references,
+                &mut self.free_chunks,
+                &mut self.memory,
+                chunk,
+            )?;
             let capacity = (view.chunks.len() * self.chunk_frames).saturating_sub(view.offset());
             view.frames = view.frames.min(capacity as u64);
             if view.chunks.is_empty() {
@@ -340,8 +381,7 @@ impl MediaStore {
         self.reserve_view_capacity(id, new_frames)?;
 
         // All fallible reservations precede changes to samples, IDs, and lengths.
-        self.samples
-            .resize(new_slots * self.chunk_frames, Fixed::ZERO);
+        self.memory.grow_zeroed(new_slots)?;
         self.references.resize(new_slots, 0);
         let view = self.views[id.0].as_mut().ok_or(Error::InvalidView)?;
         let mut next_slot = old_slots;
@@ -359,8 +399,11 @@ impl MediaStore {
         while !remaining.is_empty() {
             let offset = frame % self.chunk_frames;
             let count = remaining.len().min(self.chunk_frames - offset);
-            let address = view.chunks[frame / self.chunk_frames].0 * self.chunk_frames + offset;
-            self.samples[address..address + count].copy_from_slice(&remaining[..count]);
+            self.memory.write(
+                view.chunks[frame / self.chunk_frames],
+                offset,
+                &remaining[..count],
+            )?;
             remaining = &remaining[count..];
             frame += count;
         }
@@ -392,8 +435,12 @@ impl MediaStore {
                 .len()
                 .min(self.chunk_frames - offset)
                 .min((length - frame) as usize);
-            let address = view.chunks[at / self.chunk_frames].0 * self.chunk_frames + offset;
-            remaining[..count].copy_from_slice(&self.samples[address..address + count]);
+            let ordinal = at / self.chunk_frames;
+            self.memory
+                .read(view.chunks[ordinal], offset, &mut remaining[..count])?;
+            if let Some(&next) = view.chunks.get(ordinal + 1) {
+                self.memory.prefetch(next)?;
+            }
             remaining = &mut remaining[count..];
             frame += count as u64;
             if frame == length {
@@ -408,7 +455,7 @@ impl MediaStore {
         MediaSnapshot {
             chunk_frames: self.chunk_frames,
             chunk_limit: self.chunk_limit,
-            samples: self.samples.clone(),
+            samples: self.memory.samples().to_vec(),
             free_chunks: self.free_chunks.clone(),
             views: self.views.clone(),
         }
@@ -480,7 +527,7 @@ impl MediaStore {
             .references
             .extend(assigned.iter().map(|owner| owner.references));
         store.chunk_limit = snapshot.chunk_limit;
-        store.samples = snapshot.samples;
+        store.memory = ChunkMemory::from_samples(snapshot.chunk_frames, snapshot.samples)?;
         store.free_chunks = snapshot.free_chunks;
         store.views = snapshot.views;
         store.reserve_chunk_capacity(slots)?;
@@ -497,11 +544,20 @@ struct Ownership {
     free: bool,
 }
 
-fn release_chunk(references: &mut [usize], free: &mut Vec<ChunkId>, chunk: ChunkId) {
+fn release_chunk(
+    references: &mut [usize],
+    free: &mut Vec<ChunkId>,
+    memory: &mut ChunkMemory,
+    chunk: ChunkId,
+) -> Result<(), Error> {
+    if references[chunk.0] == 1 {
+        memory.retire(chunk)?;
+    }
     references[chunk.0] -= 1;
     if references[chunk.0] == 0 {
         free.push(chunk);
     }
+    Ok(())
 }
 
 fn chunk_count(frames: usize, chunk_frames: usize) -> usize {
@@ -509,6 +565,9 @@ fn chunk_count(frames: usize, chunk_frames: usize) -> usize {
 }
 
 impl crate::jobs::Memory for MediaStore {
+    fn chunk_frames(&self) -> usize {
+        self.chunk_frames
+    }
     fn read(
         &mut self,
         view: ViewId,
@@ -516,9 +575,29 @@ impl crate::jobs::Memory for MediaStore {
         length: u64,
         output: &mut [Fixed],
     ) -> Result<(), Error> {
+        let position = position
+            .checked_mul(self.chunk_frames as u64)
+            .ok_or(Error::InvalidView)?;
+        let length = length
+            .checked_mul(self.chunk_frames as u64)
+            .ok_or(Error::InvalidView)?;
         self.read_loop(view, position, length, output)
     }
     fn write(&mut self, view: ViewId, samples: &[Fixed]) -> Result<(), Error> {
         self.append(view, samples)
+    }
+    fn prefetch(&mut self, view: ViewId, position: u64, length: u64, chunks: u64) {
+        crate::resolver::resolve(
+            crate::resolver::ReadIntent {
+                view,
+                position,
+                length,
+                chunks,
+            },
+            self,
+            |chunk| {
+                let _ = self.memory.prefetch(chunk);
+            },
+        );
     }
 }

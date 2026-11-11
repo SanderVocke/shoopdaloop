@@ -4,6 +4,23 @@ An audio-only functional reference for the decomposition in `FPGA_ARCHITECTURE.m
 Readability and explicit subsystem boundaries take precedence over performance.
 This is not a cycle simulator, RTL generator, or hard real-time guarantee.
 
+## Chunk ranges and speculative reads
+
+Graphs/programs explicitly specify samples per chunk; their quantum covers an
+integral number of chunks. Media positions and lengths are chunk indices and
+counts. Arithmetic ramp durations and shared transition records retain samples;
+logical state instructions convert committed positions at their input boundary.
+The serialized contract is version 2, with explicit `position_chunks` and
+`length_chunks` fields; version-1 documents are rejected.
+
+`StateProcessor::run_with_intents` and `run_with_loops_and_intents` accept an
+optional advisory sink. `resolver::resolve` translates a `ReadIntent` into IDs
+for only the requested window, including wrap. Invalid/unpublished hints do
+nothing. Actual job reads still resolve the current view after preceding writes.
+Backend and full-pipeline execution invoke this path while retaining the elastic
+store and no-op physical prefetch. `slice_chunks` prepares chunk-based ranges;
+lower-level frame/span APIs remain available independently.
+
 ## Persistent node programs
 
 Compile a program when the graph changes. Execute the same instructions every
@@ -354,3 +371,17 @@ The host benchmark CSV also reports elastic growth, sample access and reclamatio
 counters. These shared-machine measurements do not establish a worst-case bound.
 Measured results and reproduction commands are recorded in
 `docs/design/chunks/ELASTIC_REFERENCE_RESULTS.md`.
+
+## Chunk-memory boundary
+
+`chunk_memory::ChunkMemory` owns the elastic sample-slot arena. `MediaStore` keeps
+view tables, allocation and reference counts, resolves spans once per chunk, and
+delegates reads/writes and last-reference retirement. Its public media snapshot
+format remains unchanged. The job processor can hint the next queued ReadView;
+unpublished or invalid hints have no effect. Prefetch is a no-op in direct memory,
+and fence/retire complete synchronously. The CPU path uses methods and slices,
+without cache or handshake simulation.
+
+The [RTL service](../../../fpga/chunk_memory/README.md) implements bounded buffering
+and asynchronous transfer semantics behind the same logical boundary. Standalone
+serialized chunk traces and full-loop sample traces compare against this model.

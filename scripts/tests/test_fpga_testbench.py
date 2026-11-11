@@ -21,7 +21,7 @@ I32_MAX = 2**31 - 1
 
 
 def document(kind, value):
-    return {"format_version": 1, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
 
 
 def word(value):
@@ -37,19 +37,40 @@ def ramp():
 
 def graph():
     return document("graph", {
-        "quantum": 32,
+        "quantum": 32, "chunk_frames": 1,
         "nodes": [
             {"kind": "input", "port": 0},
             {"kind": "gain", "input": 0, "gain": 8388608},
             {"kind": "mix", "left": 0, "right": 1},
             {"kind": "capture", "input": 2, "view": 17, "recording": True},
-            {"kind": "playback", "view": 17, "length": 45, "position": 0, "playing": False},
+            {"kind": "playback", "view": 17, "length_chunks": 45, "position_chunks": 0, "playing": False},
             {"kind": "output", "input": 4, "port": 0},
         ],
     })
 
 
 class CrossLanguageContract(unittest.TestCase):
+    def test_resolver_intents_roundtrip_chunk_units_and_actual_windows(self):
+        intents = [{"view": U32_MAX, "position_chunks": U64_MAX,
+                    "length_chunks": U64_MAX, "chunks": U64_MAX}]
+        source = document("read_intents", intents)
+        self.assertEqual(self.reference("roundtrip", source), source)
+        case = document("resolver_case", {
+            "name": "chunk-window-wrap-and-unpublished", "media": {
+                "chunk_frames": 4, "samples": list(range(12)), "free_chunks": [],
+                "views": [{"chunks": [0, 1, 2], "frames": 12}, {"chunks": [], "frames": 0}]},
+            "requests": [
+                {"view": 0, "position_chunks": 2, "length_chunks": 3, "chunks": 2},
+                {"view": 1, "position_chunks": 0, "length_chunks": 1, "chunks": 1},
+                intents[0]],
+        })
+        trace = self.reference("trace", case)
+        self.assertEqual(trace["payload"]["value"]["results"], [[2, 0], [], []])
+        self.assertEqual(self.reference("check", trace), trace)
+        trace["payload"]["value"]["results"][0][0] = 1
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.reference("check", trace)
+
     @classmethod
     def setUpClass(cls):
         default = ROOT / "target/debug" / ("fpga-reference.exe" if os.name == "nt" else "fpga-reference")
@@ -97,8 +118,8 @@ class CrossLanguageContract(unittest.TestCase):
         jobs = [
             {"kind": "input", "port": U32_MAX, "destination": U32_MAX},
             {"kind": "silence", "destination": U32_MAX},
-            {"kind": "read_view", "view": U32_MAX, "position": U64_MAX - 1,
-             "length": U64_MAX, "destination": U32_MAX},
+            {"kind": "read_view", "view": U32_MAX, "position_chunks": U64_MAX - 1,
+             "length_chunks": U64_MAX, "destination": U32_MAX},
             {"kind": "gain", "source": U32_MAX, "destination": U32_MAX, "ramp": ramp()},
             {"kind": "mix", "left": U32_MAX, "right": U32_MAX, "destination": U32_MAX},
             {"kind": "capture", "source": U32_MAX, "view": U32_MAX},
@@ -177,7 +198,7 @@ class CrossLanguageContract(unittest.TestCase):
 
     def test_audio_traces_preserve_samples_readiness_and_reject_sample_mismatches(self):
         compiled = self.reference("compile", document("graph", {
-            "quantum": 3,
+            "quantum": 3, "chunk_frames": 1,
             "nodes": [{"kind": "input", "port": 0},
                       {"kind": "gain", "input": 0, "gain": 8388608},
                       {"kind": "output", "input": 1, "port": 0}],
@@ -213,6 +234,19 @@ class CrossLanguageContract(unittest.TestCase):
         self.assertEqual(len(trace["payload"]["value"]["results"]), 5)
         self.assertEqual(self.reference("check", trace), trace)
 
+    def test_chunk_memory_trace_roundtrip_and_rejection(self):
+        case = wire.load(ROOT / "fpga/chunk_memory/examples/ordering.json")
+        self.assertEqual(self.reference("roundtrip", case), case)
+        trace = self.reference("trace", case)
+        self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
+        rows = trace["payload"]["value"]["results"]
+        self.assertEqual(rows[2]["samples"], [0, I32_MIN, I32_MAX, 3])
+        self.assertEqual(rows[6]["samples"], [0, I32_MIN, I32_MAX, -17])
+        self.assertEqual(rows[-1]["status"], {"kind": "completed"})
+        bad = deepcopy(case)
+        bad["payload"]["value"]["requests"][0]["id"] = U32_MAX+1
+        self.assert_rejected_by_both(bad)
+
     def test_elastic_media_growth_reuse_snapshots_and_bounded_capture_failure(self):
         case = wire.load(ROOT / "scripts/fpga_testbench/examples/elastic_record_play.json")
         trace = self.reference("trace", case)
@@ -220,11 +254,11 @@ class CrossLanguageContract(unittest.TestCase):
         self.assertEqual(len(results), 6)
         self.assertEqual(results[2]["outputs"], [[7, 8, 1, 2]])
         self.assertEqual(results[4]["outputs"], [[I32_MIN, I32_MAX, -3, 3]])
-        self.assertEqual(results[0]["media"]["views"][0]["chunks"], [0, 1])
-        self.assertEqual(results[1]["media"]["views"][0]["chunks"], [0, 1, 2])
-        self.assertEqual(results[3]["media"]["views"][0]["chunks"], [2, 1])
+        self.assertEqual(results[0]["media"]["views"][0]["chunks"], [0, 1, 2, 3])
+        self.assertEqual(results[1]["media"]["views"][0]["chunks"], list(range(8)))
+        self.assertEqual(results[3]["media"]["views"][0]["chunks"], [7, 6, 5, 4])
         self.assertEqual(results[-1]["media"]["views"], [None])
-        self.assertEqual(results[-1]["media"]["free_chunks"], [0, 2, 1])
+        self.assertEqual(results[-1]["media"]["free_chunks"], [0, 1, 2, 3, 7, 6, 5, 4])
         self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
         media = document("media", results[-1]["media"])
         self.assertEqual(self.reference("roundtrip", media), media)
@@ -260,10 +294,10 @@ class CrossLanguageContract(unittest.TestCase):
         self.assertEqual(results[1]["outputs"], [[8, 4, 5, 6]])
         first = results[0]["media"]
         self.assertEqual(first["samples"], case["payload"]["value"]["media"]["samples"])
-        self.assertEqual(first["views"][1], {"chunks": [0, 1], "frames": 5, "range": {"offset": 3}})
-        self.assertEqual(results[1]["media"]["views"][0]["chunks"], [2])
-        self.assertEqual(results[2]["media"]["free_chunks"], [0])
-        self.assertEqual(results[3]["media"]["views"][0]["chunks"], [2, 1, 0])
+        self.assertEqual(first["views"][1], {"chunks": [3, 4, 5, 6, 7], "frames": 5, "range": {"offset": 0}})
+        self.assertEqual(results[1]["media"]["views"][0]["chunks"], [11, 10, 9, 8])
+        self.assertEqual(results[2]["media"]["free_chunks"], [0, 1, 2, 3])
+        self.assertEqual(results[3]["media"]["views"][0]["chunks"], list(reversed(range(12))))
         self.assertEqual(results[3]["media"]["free_chunks"], [])
         self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
         media = document("media", results[1]["media"])
@@ -355,8 +389,8 @@ class CrossLanguageContract(unittest.TestCase):
                          ["input", "gain", "mix", "read_view", "output"])
         self.assertEqual(results[0]["jobs"][1]["ramp"], ramp())
         self.assertEqual(results[1]["jobs"][1]["ramp"]["elapsed"], U32_MAX)
-        self.assertEqual(results[1]["jobs"][3]["position"], 40)
-        self.assertEqual(results[2]["jobs"][3]["position"], 40)
+        self.assertEqual(results[1]["jobs"][3]["position_chunks"], 40)
+        self.assertEqual(results[2]["jobs"][3]["position_chunks"], 40)
         self.assertEqual(results[2]["state"]["memory"][-1], word(U64_MAX))
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "trace.json"
@@ -402,14 +436,14 @@ class CrossLanguageContract(unittest.TestCase):
     def test_unknown_missing_and_wrongly_typed_fields_are_rejected_by_both(self):
         bad = [
             {"payload": {"kind": "jobs", "value": []}},
-            {"format_version": 1, "payload": {"kind": "mystery", "value": []}},
+            {"format_version": 2, "payload": {"kind": "mystery", "value": []}},
             document("status", {"kind": "completed", "extra": 1}),
             document("bindings", [{"kind": "none", "extra": 1}]),
             document("status", {"kind": "completed", "value": None}),
             document("bindings", [{"kind": "none", "value": None}]),
             document("status", {"kind": "failed", "value": {"error": "mystery"}}),
         ]
-        for version in [0, 2, True, 1.0, "1"]:
+        for version in [0, 1, True, 2.0, "2"]:
             value = document("jobs", [])
             value["format_version"] = version
             bad.append(value)
@@ -441,7 +475,7 @@ class CrossLanguageContract(unittest.TestCase):
 
     def test_duplicate_fields_and_nonfinite_numbers_are_rejected(self):
         for text in [
-            '{"format_version":1,"format_version":1,"payload":{"kind":"jobs","value":[]}}',
+            '{"format_version":2,"format_version":2,"payload":{"kind":"jobs","value":[]}}',
             '{"format_version":NaN,"payload":{"kind":"jobs","value":[]}}',
         ]:
             with self.subTest(text=text), self.assertRaises(ValueError):

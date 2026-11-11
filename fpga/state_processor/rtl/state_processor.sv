@@ -15,6 +15,7 @@ module state_processor #(
     input  wire [31:0]                         run_instruction_count,
     input  wire [31:0]                         run_state_count,
     input  wire [31:0]                         run_quantum,
+    input wire [31:0] run_chunk_frames,
     input  wire [31:0]                         run_job_budget,
     output wire                                busy,
     output wire                                done,
@@ -33,6 +34,8 @@ module state_processor #(
     input  wire                                job_ready,
     output wire [`SHOOP_SP_JOB_BITS-1:0]         job_data,
     output wire [31:0]                         queued_jobs,
+    output wire read_intent_valid,
+    output wire [`SHOOP_SP_JOB_BITS-1:0] read_intent_data,
     output wire loop_read_valid,
     input wire loop_read_ready,
     output wire [31:0] loop_read_slot,
@@ -80,6 +83,8 @@ module state_processor #(
     wire [31:0] queue_remaining = 32'(JOB_DEPTH) - queued_jobs;
 
     assign queued_jobs = 32'(fifo_count);
+    assign read_intent_valid = engine_job_valid && engine_job_ready && engine_job_data[7:0] == `SHOOP_SP_JOB_READ;
+    assign read_intent_data = engine_job_data;
     assign cfg_ready = !busy && !cfg_pending && !reset;
     assign run_ready = !busy && !cfg_pending && !cfg_valid && !reset;
     assign cfg_response_valid = cfg_pending && !reset;
@@ -134,7 +139,7 @@ module state_processor #(
     ) engine (
         .clk(clk), .reset(reset), .start(run_valid && run_ready),
         .instruction_count(run_instruction_count), .state_count(run_state_count),
-        .quantum(run_quantum), .job_budget(run_job_budget),
+        .quantum(run_quantum), .chunk_frames(run_chunk_frames), .job_budget(run_job_budget),
         .queued_jobs(queued_jobs), .queue_remaining(queue_remaining),
         .busy(busy), .done(done), .error_code(error_code), .instruction_pc(instruction_pc),
         .program_read_enable(program_read_enable), .program_read_address(program_read_address),

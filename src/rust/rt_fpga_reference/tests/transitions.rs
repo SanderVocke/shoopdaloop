@@ -183,6 +183,7 @@ fn prepared_shared_loop_execution_does_not_touch_heap() {
     let mut processor = TransitionProcessor::prepare(plan(loops, n, n));
     let mut state = StateProcessor::new(vec![Value::Word(0); n as usize]);
     let program = Program {
+        chunk_frames: 1,
         quantum: 16,
         jobs_per_quantum: n as usize,
         instructions: (0..n)
@@ -244,6 +245,7 @@ fn shared_reads_require_committed_token_and_match_generation() {
     );
     let mut state = StateProcessor::new(vec![Value::Word(0)]);
     let mut program = Program {
+        chunk_frames: 1,
         quantum: 16,
         jobs_per_quantum: 1,
         instructions: vec![Instruction::ProcessLogicalPlayback {
@@ -287,6 +289,7 @@ fn shared_reads_require_committed_token_and_match_generation() {
 
 fn loop_program() -> Program {
     Program {
+        chunk_frames: 1,
         quantum: 16,
         jobs_per_quantum: 4,
         instructions: vec![
@@ -314,7 +317,7 @@ fn loop_program() -> Program {
 
 #[shoop_test]
 fn logical_record_play_uses_shared_records_in_one_pipeline() {
-    let mut media = MediaStore::new(7).unwrap();
+    let mut media = MediaStore::new(1).unwrap();
     let view = media.create_recording().unwrap();
     let mut pipeline = Pipeline::prepare(
         plan(vec![spec(0, 0, None)], 1, 2),
@@ -405,7 +408,7 @@ fn pipeline_rejects_a_job_processor_with_a_different_quantum() {
     pipeline.run_state(boundary).unwrap();
     let queued: Vec<_> = pipeline.queued_jobs().copied().collect();
     let mut jobs = JobProcessor::new(32, 2);
-    let mut media = MediaStore::new(7).unwrap();
+    let mut media = MediaStore::new(1).unwrap();
     let mut output = [Fixed(99); 32];
     assert_eq!(
         pipeline.run_jobs(

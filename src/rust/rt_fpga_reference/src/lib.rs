@@ -7,10 +7,12 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
+pub mod chunk_memory;
 pub mod compiler;
 pub mod fixed;
 pub mod jobs;
 pub mod pipeline;
+pub mod resolver;
 pub mod state;
 pub mod storage;
 pub mod transitions;
@@ -52,10 +54,16 @@ pub struct Backend {
 
 impl Backend {
     pub fn new(graph: &Graph, media: MediaStore) -> Result<Self, Error> {
+        if graph.chunk_frames as usize != media.chunk_memory().chunk_frames() {
+            return Err(Error::InvalidShape);
+        }
         let compiled = compiler::compile(graph)?;
         Ok(Self {
             queue: JobQueue::new(compiled.program.jobs_per_quantum),
-            transitions: SignalTransitions::new(&compiled.bindings),
+            transitions: SignalTransitions::with_chunk_frames(
+                &compiled.bindings,
+                graph.chunk_frames,
+            ),
             state: StateProcessor::new(compiled.initial_state),
             jobs: JobProcessor::new(graph.quantum, graph.nodes.len()),
             media,
@@ -73,7 +81,10 @@ impl Backend {
             return Err(Error::QueueFull);
         }
         self.transitions.begin(&mut self.state)?;
-        self.state.run(&self.program, &mut self.queue)?;
+        self.state
+            .run_with_intents(&self.program, &mut self.queue, |intent| {
+                intent.prefetch(&mut self.media)
+            })?;
         self.jobs
             .run(&mut self.queue, &mut self.media, inputs, outputs)?;
         self.transitions

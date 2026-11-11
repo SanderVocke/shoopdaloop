@@ -2,23 +2,30 @@ module media_store #(
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
+    parameter integer READ_BUFFERS = 4,
+    parameter integer WRITE_BUFFERS = 4,
     parameter integer VIEW_BITS = (VIEWS < 2) ? 1 : $clog2(VIEWS),
     parameter integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS),
     parameter integer TABLE_BITS = (VIEWS * SLOTS < 2) ? 1 : $clog2(VIEWS * SLOTS)
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base,
+    input wire hint_valid, output wire hint_ready,
+    input wire [63:0] hint_view, input wire [63:0] hint_position, input wire [63:0] hint_length,
+    input wire [31:0] hint_count,
     input wire cmd_valid, output wire cmd_ready,
     input wire [2:0] cmd_opcode,
     input wire [63:0] cmd_view, input wire [63:0] cmd_start,
     input wire [63:0] cmd_length, input wire [31:0] cmd_count,
     output wire busy, output reg done, output reg [7:0] error_code,
+    output wire memory_fault,
     output reg [31:0] result_view, output reg result_empty,
     input wire write_valid, output wire write_ready, input wire [31:0] write_data,
     output wire read_valid, input wire read_ready, output wire [31:0] read_data,
     output wire memory_valid, input wire memory_ready,
     output wire memory_write, output wire [63:0] memory_address,
     output wire [31:0] memory_write_data,
+    output wire [63:0] memory_arena_base,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     input wire cfg_valid, output wire cfg_ready, input wire cfg_write,
@@ -28,7 +35,7 @@ module media_store #(
     output wire [159:0] cfg_read_data
 );
     localparam [2:0] CREATE = 0, SLICE = 1, CLEAR = 2, REMOVE = 3,
-        RECLAIM = 4, APPEND = 5, READ = 6;
+        RECLAIM = 4, APPEND = 5, READ = 6, FENCE = 7;
     localparam [7:0] OK = 0, INVALID_VIEW = 1, INVALID_STATE = 2,
         MEMORY_FULL = 3, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
     localparam integer SHIFT = $clog2(CHUNK_FRAMES);
@@ -37,8 +44,10 @@ module media_store #(
         IDLE, DESCRIPTOR_READ, DESCRIPTOR_RESULT, CHECK,
         TABLE_READ, TABLE_RESULT, REF_READ, REF_RESULT, UPDATE_REFERENCE,
         PUBLISH, ALLOCATE, FREE_RESULT, ALLOCATE_WRITE,
-        ZERO_REQUEST, ZERO_WAIT, WRITE_INPUT, SAMPLE_TABLE_READ,
-        SAMPLE_TABLE_RESULT, SAMPLE_REQUEST, SAMPLE_WAIT, READ_OUTPUT, FINISH
+        ZERO_REQUEST, ZERO_DATA, ZERO_WAIT, SAMPLE_TABLE_READ,
+        SAMPLE_TABLE_RESULT, SAMPLE_REQUEST, SAMPLE_DATA, SAMPLE_WAIT,
+        RETIRE_REQUEST, RETIRE_WAIT, FENCE_REQUEST, FENCE_WAIT,
+        FINISH
     } phase_t;
     phase_t phase;
     reg descriptor_read, descriptor_write, table_read, table_write, ref_read, ref_write, free_read, free_write;
@@ -55,7 +64,7 @@ module media_store #(
     reg [159:0] cfg_globals_data;
     reg [2:0] opcode;
     reg [31:0] view_index, count, index, first_chunk, remaining, append_index;
-    reg [31:0] chunk, sample, sample_index, zero_index;
+    reg [31:0] chunk, sample_index, zero_index, span_count, span_index;
     reg [63:0] base, start, length, cursor;
     reg [159:0] descriptor;
     wire [63:0] frames = descriptor[127:64];
@@ -64,7 +73,7 @@ module media_store #(
     reg new_valid, new_range;
     reg [31:0] new_offset, new_chunks;
     reg [63:0] new_frames;
-    reg fresh;
+    reg fresh, arena_bound;
     wire [63:0] absolute_start = {32'b0, offset} + start;
     wire [63:0] append_end = frames + {32'b0, count};
     wire [63:0] append_chunks = (append_end + 64'(CHUNK_FRAMES-1)) >> SHIFT;
@@ -90,6 +99,36 @@ module media_store #(
     wire [TABLE_BITS-1:0] control_address = TABLE_BITS'(view_index * 32'(SLOTS) + control_ordinal);
     wire [TABLE_BITS-1:0] sample_address = TABLE_BITS'(view_index * 32'(SLOTS) + 32'(absolute_sample >> SHIFT));
     wire [31:0] word_offset = (phase == ZERO_REQUEST) ? zero_index : absolute_sample[31:0] & 32'(CHUNK_FRAMES-1);
+    wire [31:0] samples_left = count-sample_index;
+    wire [31:0] chunk_left = 32'(CHUNK_FRAMES) - (absolute_sample[31:0] & 32'(CHUNK_FRAMES-1));
+    wire [31:0] contiguous = samples_left < chunk_left ? samples_left : chunk_left;
+    wire [31:0] next_span = opcode == READ && (length-cursor) < {32'b0,contiguous} ? 32'(length-cursor) : contiguous;
+    wire cm_cmd_ready, cm_write_ready, cm_read_valid, cm_read_last, cm_response_valid, cm_prefetch_ready;
+    wire [31:0] cm_read_data, cm_response_id;
+    wire [7:0] cm_response_error;
+    wire unused_cm_status, cm_busy;
+    wire resolver_ready, resolver_prefetch_valid;
+    wire [31:0] resolver_prefetch_chunk, resolver_descriptor_address, resolver_table_address;
+    wire unused_resolver_addresses = &{1'b0,resolver_descriptor_address,resolver_table_address};
+    wire resolver_descriptor_valid, resolver_table_valid;
+    wire descriptor_grant = resolver_descriptor_valid && !descriptor_read && !reset;
+    wire table_grant = resolver_table_valid && !table_read && !reset;
+    wire [VIEW_BITS-1:0] descriptor_ram_address = descriptor_read ? descriptor_read_address
+        : resolver_descriptor_address[VIEW_BITS-1:0];
+    wire [TABLE_BITS-1:0] table_ram_address = table_read ? table_read_address
+        : resolver_table_address[TABLE_BITS-1:0];
+    reg descriptor_response, table_response;
+    wire hint_base_valid = arena_base[1:0] == 0 && arena_base <= 64'hffffffffffffffff-ARENA_BYTES
+        && (!arena_bound || arena_base == base);
+    wire hint_admission = !faulted && !reset && (arena_bound || (phase == IDLE && !cmd_valid));
+    wire prefetch_admission = arena_bound || !cmd_valid;
+    wire cm_data_read = phase == SAMPLE_DATA && opcode == READ;
+    wire cm_data_write = phase == SAMPLE_DATA && opcode == APPEND;
+    wire cm_response_ready = phase == ZERO_WAIT || phase == SAMPLE_WAIT || phase == RETIRE_WAIT || phase == FENCE_WAIT;
+    wire cm_command = phase == ZERO_REQUEST || phase == SAMPLE_REQUEST || phase == RETIRE_REQUEST || phase == FENCE_REQUEST;
+    wire [2:0] cm_opcode = phase == FENCE_REQUEST ? 3'd3 : phase == RETIRE_REQUEST ? 3'd4
+        : phase == ZERO_REQUEST || opcode == APPEND ? 3'd1 : 3'd0;
+    assign unused_cm_status = &{1'b0,cm_read_last,cm_response_id,cm_busy};
 
     function automatic [159:0] pack_view(input valid, input range_view,
         input [31:0] first_offset, input [63:0] frame_count, input [31:0] chunk_count);
@@ -105,6 +144,7 @@ module media_store #(
     end
     assign busy = phase != IDLE;
     assign cmd_ready = !busy && !cfg_pending && !cfg_valid && !faulted && !reset;
+    assign hint_ready = resolver_ready && hint_admission;
     assign cfg_ready = !busy && !cfg_pending && !reset;
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_read_data = (cfg_response_error || cfg_was_write) ? 160'b0
@@ -112,21 +152,51 @@ module media_store #(
         : (cfg_response_space == 1) ? descriptor_data
         : (cfg_response_space == 2) ? {128'b0, table_data}
         : (cfg_response_space == 3) ? {128'b0, reference_data} : {128'b0, free_data};
-    assign write_ready = (phase == WRITE_INPUT) && !reset;
-    assign read_valid = (phase == READ_OUTPUT) && !reset;
-    assign read_data = sample;
-    assign memory_valid = ((phase == ZERO_REQUEST) || (phase == SAMPLE_REQUEST)) && !reset;
-    assign memory_write = (phase == ZERO_REQUEST) || (opcode == APPEND);
-    assign memory_address = base + (({32'b0, chunk} << SHIFT) + {32'b0, word_offset}) * 4;
-    assign memory_write_data = (phase == ZERO_REQUEST) ? 32'b0 : sample;
-    assign memory_response_ready = ((phase == ZERO_WAIT) || (phase == SAMPLE_WAIT)) && !reset;
+    assign write_ready = cm_data_write && cm_write_ready && !reset;
+    assign read_valid = cm_data_read && cm_read_valid && !reset;
+    assign read_data = cm_read_data;
+
+    chunk_memory #(.SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS)) sample_memory (
+        .clk(clk), .reset(reset), .arena_base(base),
+        .cmd_valid(cm_command && !reset), .cmd_ready(cm_cmd_ready), .cmd_opcode(cm_opcode), .cmd_id(32'b0),
+        .cmd_chunk(chunk), .cmd_offset(phase == ZERO_REQUEST ? 32'b0 : word_offset),
+        .cmd_count(phase == ZERO_REQUEST ? 32'(CHUNK_FRAMES) : span_count),
+        .write_valid((phase == ZERO_DATA || (cm_data_write && write_valid)) && !reset),
+        .write_ready(cm_write_ready), .write_data(phase == ZERO_DATA ? 32'b0 : write_data),
+        .read_valid(cm_read_valid), .read_ready(cm_data_read && read_ready), .read_data(cm_read_data), .read_last(cm_read_last),
+        .response_valid(cm_response_valid), .response_ready(cm_response_ready), .response_id(cm_response_id), .response_error(cm_response_error),
+        .prefetch_valid(resolver_prefetch_valid && prefetch_admission), .prefetch_ready(cm_prefetch_ready), .prefetch_chunk(resolver_prefetch_chunk),
+        .busy(cm_busy), .fault(memory_fault),
+        .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
+        .memory_address(memory_address), .memory_write_data(memory_write_data), .memory_arena_base(memory_arena_base),
+        .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
+        .memory_response_error(memory_response_error), .memory_read_data(memory_read_data)
+    );
+
+    media_prefetch_resolver #(.SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES)) resolver (
+        .clk(clk), .reset(reset || faulted || memory_fault || (!arena_bound && cmd_valid && cmd_ready)),
+        .hint_valid(hint_valid && hint_base_valid && hint_admission), .hint_ready(resolver_ready),
+        .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
+        .view_count(view_count), .slot_count(slot_count),
+        .descriptor_valid(resolver_descriptor_valid), .descriptor_ready(descriptor_grant),
+        .descriptor_address(resolver_descriptor_address), .descriptor_response(descriptor_response), .descriptor_data(descriptor_data),
+        .table_valid(resolver_table_valid), .table_ready(table_grant), .table_address(resolver_table_address),
+        .table_response(table_response), .table_data(table_data),
+        .prefetch_valid(resolver_prefetch_valid), .prefetch_ready(cm_prefetch_ready && prefetch_admission), .prefetch_chunk(resolver_prefetch_chunk)
+    );
+    always @(posedge clk) begin
+        if (reset) begin descriptor_response <= 0; table_response <= 0; end
+        else begin descriptor_response <= descriptor_grant; table_response <= table_grant; end
+    end
 
     media_ram #(.WIDTH(160), .DEPTH(VIEWS), .ADDR_BITS(VIEW_BITS)) descriptors (
-        .clk(clk), .read_enable(descriptor_read && !reset), .read_address(descriptor_read_address), .read_data(descriptor_data),
+        .clk(clk), .read_enable((descriptor_read || descriptor_grant) && !reset),
+        .read_address(descriptor_ram_address), .read_data(descriptor_data),
         .write_enable(descriptor_write && !reset), .write_address(descriptor_write_address), .write_data(descriptor_write_data)
     );
     media_ram #(.DEPTH(VIEWS*SLOTS), .ADDR_BITS(TABLE_BITS)) tables (
-        .clk(clk), .read_enable(table_read && !reset), .read_address(table_read_address), .read_data(table_data),
+        .clk(clk), .read_enable((table_read || table_grant) && !reset),
+        .read_address(table_ram_address), .read_data(table_data),
         .write_enable(table_write && !reset), .write_address(table_write_address), .write_data(table_write_data)
     );
     media_ram #(.DEPTH(SLOTS), .ADDR_BITS(SLOT_BITS)) counts (
@@ -223,9 +293,9 @@ module media_store #(
             remaining <= 0;
             append_index <= 0;
             chunk <= 0;
-            sample <= 0;
             sample_index <= 0;
             zero_index <= 0;
+            span_count <= 0; span_index <= 0;
             base <= 0;
             start <= 0;
             length <= 0;
@@ -237,8 +307,14 @@ module media_store #(
             new_chunks <= 0;
             new_frames <= 0;
             fresh <= 0;
+            arena_bound <= 0;
         end else begin
             done <= 0;
+            if (cm_command && cm_cmd_ready) arena_bound <= 1;
+            if (hint_valid && hint_ready && hint_base_valid) begin
+                if (!arena_bound) base <= arena_base;
+            end
+            if (resolver_prefetch_valid && cm_prefetch_ready && prefetch_admission) arena_bound <= 1;
             cfg_pending <= cfg_accept;
             if (cfg_accept) begin
                 cfg_globals_data <= 0;
@@ -262,13 +338,14 @@ module media_store #(
                     start <= cmd_start;
                     length <= cmd_length;
                     count <= cmd_count;
-                    base <= arena_base;
+                    if (!arena_bound) base <= arena_base;
                     error_code <= OK;
                     result_view <= 0;
                     result_empty <= 0;
                     index <= 0;
                     sample_index <= 0;
-                    if ((arena_base[1:0] != 0) || (arena_base > 64'hffffffffffffffff - ARENA_BYTES)) begin
+                    if ((arena_base[1:0] != 0) || (arena_base > 64'hffffffffffffffff - ARENA_BYTES)
+                        || (arena_bound && arena_base != base)) begin
                         error_code <= INVALID_SHAPE;
                         phase <= FINISH;
                     end else if (cmd_opcode == CREATE) begin
@@ -283,9 +360,8 @@ module media_store #(
                             new_chunks <= 0;
                             phase <= PUBLISH;
                         end
-                    end else if (cmd_opcode > READ) begin
-                        error_code <= INVALID_SHAPE;
-                        phase <= FINISH;
+                    end else if (cmd_opcode == FENCE) begin
+                            phase <= FENCE_REQUEST;
                     end else if (cmd_view >= {32'b0, view_count}) begin
                         error_code <= INVALID_VIEW;
                         phase <= FINISH;
@@ -297,8 +373,7 @@ module media_store #(
                 DESCRIPTOR_RESULT: begin
                     descriptor <= descriptor_data;
                     if (!descriptor_data[0]) begin
-                        error_code <= INVALID_VIEW;
-                        phase <= FINISH;
+                        error_code <= INVALID_VIEW; phase <= FINISH;
                     end else phase <= CHECK;
                 end
                 CHECK: begin
@@ -373,7 +448,7 @@ module media_store #(
                         error_code <= INVALID_STATE;
                         faulted <= 1;
                         phase <= FINISH;
-                    end else phase <= UPDATE_REFERENCE;
+                    end else phase <= opcode != SLICE && reference_data == 1 ? RETIRE_REQUEST : UPDATE_REFERENCE;
                 end
                 UPDATE_REFERENCE: begin
                     if ((opcode != SLICE) && (reference_data == 1)) free_count <= free_count + 1;
@@ -388,7 +463,7 @@ module media_store #(
                     end
                     phase <= FINISH;
                 end
-                ALLOCATE: if (remaining == 0) phase <= WRITE_INPUT;
+                ALLOCATE: if (remaining == 0) phase <= SAMPLE_TABLE_READ;
                     else if (free_count != 0) begin
                         phase <= FREE_RESULT;
                     end else begin
@@ -409,44 +484,60 @@ module media_store #(
                     zero_index <= 0;
                     phase <= fresh ? ZERO_REQUEST : ALLOCATE;
                 end
-                ZERO_REQUEST: if (memory_valid && memory_ready) phase <= ZERO_WAIT;
-                ZERO_WAIT: if (memory_response_valid && memory_response_ready) begin
-                    if (memory_response_error) begin
-                        error_code <= MEMORY_FAULT;
-                        faulted <= 1;
-                        phase <= FINISH;
-                    end else if (zero_index + 1 == 32'(CHUNK_FRAMES)) phase <= ALLOCATE;
-                    else begin zero_index <= zero_index + 1; phase <= ZERO_REQUEST; end
+                ZERO_REQUEST: if (cm_cmd_ready) phase <= ZERO_DATA;
+                ZERO_DATA: if (cm_write_ready) begin
+                    zero_index <= zero_index+1;
+                    if (zero_index+1 == 32'(CHUNK_FRAMES)) phase <= ZERO_WAIT;
                 end
-                WRITE_INPUT: if (write_valid && write_ready) begin sample <= write_data; phase <= SAMPLE_TABLE_READ; end
+                ZERO_WAIT: if (cm_response_valid) begin
+                    if (cm_response_error != 0) begin
+                        error_code <= cm_response_error; phase <= FINISH;
+                        faulted <= 1;
+                    end
+                    else phase <= ALLOCATE;
+                end
                 SAMPLE_TABLE_READ: phase <= SAMPLE_TABLE_RESULT;
                 SAMPLE_TABLE_RESULT: begin
                     chunk <= table_data;
+                    span_count <= next_span; span_index <= 0;
                     if (table_data >= slot_count) begin error_code <= INVALID_VIEW; phase <= FINISH; end
                     else phase <= SAMPLE_REQUEST;
                 end
-                SAMPLE_REQUEST: if (memory_valid && memory_ready) phase <= SAMPLE_WAIT;
-                SAMPLE_WAIT: if (memory_response_valid && memory_response_ready) begin
-                    if (memory_response_error) begin
-                        error_code <= MEMORY_FAULT;
-                        faulted <= 1;
-                        phase <= FINISH;
-                    end else if (opcode == READ) begin sample <= memory_read_data; phase <= READ_OUTPUT; end
-                    else if (sample_index + 1 == count) phase <= PUBLISH;
-                    else begin
-                        sample_index <= sample_index + 1;
-                        cursor <= cursor + 1;
-                        phase <= WRITE_INPUT;
-                    end
-                end
-                READ_OUTPUT: if (read_valid && read_ready) begin
+                SAMPLE_REQUEST: if (cm_cmd_ready) phase <= SAMPLE_DATA;
+                SAMPLE_DATA: if ((cm_data_read && cm_read_valid && read_ready) || (cm_data_write && write_valid && cm_write_ready)) begin
                     sample_index <= sample_index + 1;
-                    cursor <= (cursor + 1 == length) ? 64'b0 : cursor + 1;
-                    phase <= (sample_index + 1 == count) ? FINISH : SAMPLE_TABLE_READ;
+                    span_index <= span_index+1;
+                    cursor <= opcode == READ && cursor+1 == length ? 64'b0 : cursor+1;
+                    if (span_index+1 == span_count) phase <= SAMPLE_WAIT;
+                end
+                SAMPLE_WAIT: if (cm_response_valid) begin
+                    if (cm_response_error != 0) begin
+                        error_code <= cm_response_error; phase <= FINISH;
+                        faulted <= 1;
+                    end
+                    else phase <= sample_index == count ? (opcode == READ ? FINISH : PUBLISH) : SAMPLE_TABLE_READ;
+                end
+                RETIRE_REQUEST: if (cm_cmd_ready) phase <= RETIRE_WAIT;
+                RETIRE_WAIT: if (cm_response_valid) begin
+                    if (cm_response_error != 0) begin
+                        error_code <= cm_response_error; phase <= FINISH;
+                        faulted <= 1;
+                    end
+                    else phase <= UPDATE_REFERENCE;
+                end
+                FENCE_REQUEST: if (cm_cmd_ready) phase <= FENCE_WAIT;
+                FENCE_WAIT: if (cm_response_valid) begin
+                    error_code <= cm_response_error;
+                    if (cm_response_error != 0) faulted <= 1;
+                    phase <= FINISH;
                 end
                 FINISH: begin done <= 1; phase <= IDLE; end
                 default: begin error_code <= INVALID_STATE; faulted <= 1; phase <= FINISH; end
             endcase
+            if (memory_fault) begin
+                faulted <= 1; error_code <= MEMORY_FAULT;
+                if (phase != IDLE && phase != FINISH) phase <= FINISH;
+            end
         end
     end
 endmodule

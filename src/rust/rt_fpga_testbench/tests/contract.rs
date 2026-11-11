@@ -26,6 +26,7 @@ fn case() -> StateCase {
     StateCase {
         name: "capture/play and a saturating ramp".into(),
         program: Program {
+            chunk_frames: 1,
             quantum: 32,
             jobs_per_quantum: 6,
             instructions: vec![
@@ -98,6 +99,7 @@ fn audio_case() -> AudioCase {
     AudioCase {
         name: "sample processing and persistent state".into(),
         program: Program {
+            chunk_frames: 1,
             quantum: 3,
             jobs_per_quantum: 5,
             instructions: vec![
@@ -146,6 +148,7 @@ fn audio_case() -> AudioCase {
 #[shoop_test]
 fn all_subsystem_values_roundtrip_with_exact_integer_bits() {
     let graph = Graph {
+        chunk_frames: 1,
         quantum: 32,
         nodes: vec![
             Node::Input { port: 0 },
@@ -438,11 +441,11 @@ fn the_published_schema_is_generated_from_the_rust_boundary_types() {
 #[shoop_test]
 fn versions_unknown_fields_and_unrepresentable_indices_are_rejected() {
     for json in [
-        r#"{"format_version":2,"payload":{"kind":"status","value":{"kind":"completed"}}}"#,
-        r#"{"format_version":1,"payload":{"kind":"status","value":{"kind":"completed","extra":1}}}"#,
-        r#"{"format_version":1,"payload":{"kind":"bindings","value":[{"kind":"none","extra":1}]}}"#,
-        r#"{"format_version":1,"payload":{"kind":"status","value":{"kind":"completed","value":null}}}"#,
-        r#"{"format_version":1,"payload":{"kind":"state_writes","value":[{"address":4294967296,"value":{"kind":"word","value":0}}]}}"#,
+        r#"{"format_version":1,"payload":{"kind":"status","value":{"kind":"completed"}}}"#,
+        r#"{"format_version":2,"payload":{"kind":"status","value":{"kind":"completed","extra":1}}}"#,
+        r#"{"format_version":2,"payload":{"kind":"bindings","value":[{"kind":"none","extra":1}]}}"#,
+        r#"{"format_version":2,"payload":{"kind":"status","value":{"kind":"completed","value":null}}}"#,
+        r#"{"format_version":2,"payload":{"kind":"state_writes","value":[{"address":4294967296,"value":{"kind":"word","value":0}}]}}"#,
     ] {
         assert!(Document::from_json(json).is_err(), "{json}");
     }

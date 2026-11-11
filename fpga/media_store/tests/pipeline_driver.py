@@ -9,7 +9,7 @@ class StorePorts:
         self.dut = dut
 
     def __getattr__(self, name):
-        shared = name in ("clk", "reset", "arena_base") or name.startswith("memory_")
+        shared = name in ("clk", "reset", "arena_base") or name.startswith(("memory_", "m_axi_"))
         return getattr(self.dut, name if shared else "store_" + name)
 
 
@@ -18,8 +18,14 @@ class PipelineDriver(AudioDriver):
         super().__init__(dut, capacities, seed)
         self.media = MediaDriver(StorePorts(dut), media_capacities, seed+17)
         self.media.before_clock = self.before_clock
+        self.timing_probe = None
+        self.bus_probe = None
 
     def before_clock(self):
+        if self.timing_probe is not None:
+            self.timing_probe.observe(self.media.cycles)
+        if self.bus_probe is not None:
+            self.bus_probe.observe(self.media.cycles)
         before = self.sample()
         self.before_audio = before
         if int(self.dut.reset.value):

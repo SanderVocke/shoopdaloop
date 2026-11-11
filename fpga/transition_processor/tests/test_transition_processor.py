@@ -17,7 +17,7 @@ REFERENCE = Path(os.environ["TP_REFERENCE"])
 
 
 def document(kind, value):
-    return {"format_version": 1, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
 
 
 async def compare(dut, case):

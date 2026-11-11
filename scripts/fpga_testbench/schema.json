@@ -331,11 +331,240 @@
       "maximum": 4294967295,
       "minimum": 0
     },
+    "ChunkCase": {
+      "type": "object",
+      "properties": {
+        "chunk_frames": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "name": {
+          "type": "string"
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChunkRequest"
+          }
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "chunk_frames",
+        "samples",
+        "requests"
+      ]
+    },
     "ChunkId": {
       "type": "integer",
       "format": "uint32",
       "maximum": 4294967295,
       "minimum": 0
+    },
+    "ChunkOperation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "chunk": {
+              "$ref": "#/$defs/ChunkId"
+            },
+            "frames": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "read"
+            },
+            "offset": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "chunk",
+            "offset",
+            "frames"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "chunk": {
+              "$ref": "#/$defs/ChunkId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "write"
+            },
+            "offset": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "chunk",
+            "offset",
+            "samples"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "chunk": {
+              "$ref": "#/$defs/ChunkId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "prefetch"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "chunk"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fence"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "chunk": {
+              "$ref": "#/$defs/ChunkId"
+            },
+            "kind": {
+              "type": "string",
+              "const": "retire"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "chunk"
+          ]
+        }
+      ]
+    },
+    "ChunkRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "operation": {
+          "$ref": "#/$defs/ChunkOperation"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "operation"
+      ]
+    },
+    "ChunkResult": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
+        "memory": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648
+          }
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": -2147483648
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/ExecutionStatus"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "samples",
+        "memory"
+      ]
+    },
+    "ChunkTrace": {
+      "type": "object",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/ChunkCase"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChunkResult"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "case",
+        "results"
+      ]
     },
     "Collection": {
       "type": "object",
@@ -615,11 +844,17 @@
     },
     "FormatVersion": {
       "type": "integer",
-      "const": 1
+      "const": 2
     },
     "Graph": {
       "type": "object",
       "properties": {
+        "chunk_frames": {
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
         "nodes": {
           "type": "array",
           "items": {
@@ -636,6 +871,7 @@
       "additionalProperties": false,
       "required": [
         "quantum",
+        "chunk_frames",
         "nodes"
       ]
     },
@@ -903,13 +1139,13 @@
               "type": "string",
               "const": "read_view"
             },
-            "length": {
+            "length_chunks": {
               "type": "integer",
               "format": "uint64",
               "maximum": 18446744073709551615,
               "minimum": 0
             },
-            "position": {
+            "position_chunks": {
               "type": "integer",
               "format": "uint64",
               "maximum": 18446744073709551615,
@@ -923,8 +1159,8 @@
           "required": [
             "kind",
             "view",
-            "position",
-            "length",
+            "position_chunks",
+            "length_chunks",
             "destination"
           ]
         },
@@ -1682,7 +1918,7 @@
               "type": "string",
               "const": "playback"
             },
-            "length": {
+            "length_chunks": {
               "type": "integer",
               "format": "uint64",
               "maximum": 18446744073709551615,
@@ -1691,7 +1927,7 @@
             "playing": {
               "type": "boolean"
             },
-            "position": {
+            "position_chunks": {
               "type": "integer",
               "format": "uint64",
               "maximum": 18446744073709551615,
@@ -1705,8 +1941,8 @@
           "required": [
             "kind",
             "view",
-            "length",
-            "position",
+            "length_chunks",
+            "position_chunks",
             "playing"
           ]
         },
@@ -2159,6 +2395,60 @@
           "properties": {
             "kind": {
               "type": "string",
+              "const": "read_intents"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ReadIntent"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "resolver_case"
+            },
+            "value": {
+              "$ref": "#/$defs/ResolverCase"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "resolver_trace"
+            },
+            "value": {
+              "$ref": "#/$defs/ResolverTrace"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
               "const": "bindings"
             },
             "value": {
@@ -2339,6 +2629,40 @@
             },
             "value": {
               "$ref": "#/$defs/MediaTrace"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "chunk_case"
+            },
+            "value": {
+              "$ref": "#/$defs/ChunkCase"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "chunk_trace"
+            },
+            "value": {
+              "$ref": "#/$defs/ChunkTrace"
             }
           },
           "additionalProperties": false,
@@ -2734,6 +3058,13 @@
     "Program": {
       "type": "object",
       "properties": {
+        "chunk_frames": {
+          "description": "Samples per media chunk. Media positions and lengths use chunk units.",
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
         "instructions": {
           "type": "array",
           "items": {
@@ -2757,6 +3088,7 @@
       "required": [
         "instructions",
         "quantum",
+        "chunk_frames",
         "jobs_per_quantum"
       ]
     },
@@ -2795,6 +3127,39 @@
         "target",
         "duration",
         "elapsed"
+      ]
+    },
+    "ReadIntent": {
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "type": "integer",
+          "format": "uint64",
+          "maximum": 18446744073709551615,
+          "minimum": 0
+        },
+        "length_chunks": {
+          "type": "integer",
+          "format": "uint64",
+          "maximum": 18446744073709551615,
+          "minimum": 0
+        },
+        "position_chunks": {
+          "type": "integer",
+          "format": "uint64",
+          "maximum": 18446744073709551615,
+          "minimum": 0
+        },
+        "view": {
+          "$ref": "#/$defs/ViewId"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "view",
+        "position_chunks",
+        "length_chunks",
+        "chunks"
       ]
     },
     "ReadOnlyRange": {
@@ -2874,6 +3239,51 @@
         "id",
         "command",
         "effective"
+      ]
+    },
+    "ResolverCase": {
+      "type": "object",
+      "properties": {
+        "media": {
+          "$ref": "#/$defs/MediaSnapshot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReadIntent"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "media",
+        "requests"
+      ]
+    },
+    "ResolverTrace": {
+      "type": "object",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/ResolverCase"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ChunkId"
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "case",
+        "results"
       ]
     },
     "Response": {

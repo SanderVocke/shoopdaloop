@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "payload": {
     "kind": "audio_case",
     "value": {
@@ -65,7 +65,8 @@
           }
         ],
         "jobs_per_quantum": 6,
-        "quantum": 32
+        "quantum": 32,
+        "chunk_frames": 1
       },
       "queue_capacity": 32,
       "steps": [

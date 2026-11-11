@@ -127,6 +127,8 @@ enum View {
         index: ReadIndex,
         channel: usize,
         channels: usize,
+        position: u64,
+        length: u64,
     },
     Capture {
         interval: CaptureTickId,
@@ -219,12 +221,14 @@ impl JobWriter {
             index,
             channel,
             channels,
+            position,
+            length,
         })?;
         let destination = self.buffer()?;
         self.emit(Job::ReadView {
             view,
-            position,
-            length,
+            position: 0,
+            length: 1,
             destination,
         })?;
         Ok(destination)
@@ -340,6 +344,7 @@ impl Machine {
     }
     pub(crate) fn execute(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         let mut memory = ExternalMemory {
+            chunk_frames: self.writer.quantum as usize,
             resources,
             views: &self.writer.views,
         };
@@ -377,10 +382,14 @@ fn map_error(error: rt_fpga_reference::Error) -> Error {
     }
 }
 struct ExternalMemory<'a> {
+    chunk_frames: usize,
     resources: &'a mut ResourceStore,
     views: &'a [View],
 }
 impl Memory for ExternalMemory<'_> {
+    fn chunk_frames(&self) -> usize {
+        self.chunk_frames
+    }
     fn read(
         &mut self,
         view: ViewId,
@@ -393,15 +402,22 @@ impl Memory for ExternalMemory<'_> {
             index,
             channel,
             channels,
+            position: origin,
+            length: source_length,
         }) = self.views.get(view.0).copied()
         else {
             return Err(fail());
         };
-        if length == 0 || position >= length || channel >= channels {
+        if position != 0
+            || length != 1
+            || source_length == 0
+            || origin >= source_length
+            || channel >= channels
+        {
             return Err(fail());
         }
         self.resources
-            .read_elastic_audio(index, channel, position, length, output)
+            .read_elastic_audio(index, channel, origin, source_length, output)
             .map_err(|_| fail())
     }
     fn write(&mut self, view: ViewId, samples: &[Fixed]) -> Result<(), rt_fpga_reference::Error> {

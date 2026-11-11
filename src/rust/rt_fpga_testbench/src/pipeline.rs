@@ -74,7 +74,7 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
     let mut jobs = JobProcessor::new(case.program.quantum as usize, case.buffers as usize);
     let mut media = match &case.media {
         Some(s) => MediaStore::from_snapshot(s.clone()),
-        None => MediaStore::new(7),
+        None => MediaStore::new(case.program.chunk_frames as usize),
     }
     .map_err(PipelineError::Jobs)?;
     let mut outputs =
@@ -135,7 +135,9 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
         let mut error = None;
         let committed = boundary.is_some();
         if let Some(boundary) = boundary {
-            error = p.run_state(boundary).err();
+            error = p
+                .run_state_with_intents(boundary, |intent| intent.prefetch(&mut media))
+                .err();
         }
         let states = p.transitions().states().collect();
         let requests = p.transitions().request_slots().collect();
