@@ -64,3 +64,19 @@ from logical AXI traffic. Refresh advances even while AXI is idle or stalled.
 
 The model approximates DDR service, not the exact PS controller, HP bridge or
 concurrent CPU traffic. Observed maxima are measurements, not hard WCET bounds.
+
+## Isolated checks
+
+With Verilator, Yosys, a C++ compiler and the Python requirements installed:
+
+```sh
+python fpga/axi_memory/simulate.py
+python fpga/axi_memory/simulate.py --fixed-cycles 7 --output work/axi-fixed
+bash fpga/axi_memory/check.sh
+```
+
+The suite tests both bus widths, reads/writes of 1/2/16 beats, upper word lanes,
+byte strobes, native-block crossings, AW-before-W and W-before-AW, stalled
+responses, local address/shape rejection, errors and coordinated reset. Both
+endpoints pass warning-clean lint and ECP5 synthesis; synthesis is not place and
+route or a frequency guarantee.

@@ -153,14 +153,14 @@ on it. Keep detailed-model runs small during development.
 
 ### 2. Implement and verify the AXI master boundary
 
-- [ ] Add the synthesizable burst-capable endpoint and single-word adapter.
+- [x] Add the synthesizable burst-capable endpoint and single-word adapter.
   Keep the existing chunk engine's request/response contract unchanged.
-- [ ] Add a minimal instant AXI slave and direct command fixture. Verify reads,
+- [x] Add a minimal instant AXI slave and direct command fixture. Verify reads,
   writes, burst lengths 1/2/16, native-block crossings, narrow transfers, byte
   strobes, response errors, reset, and independently stalled AXI channels.
-- [ ] Check that word-adapter traffic always has LEN=0 and size=4 bytes, and that
+- [x] Check that word-adapter traffic always has LEN=0 and size=4 bytes, and that
   one outstanding request cannot be accidentally duplicated or reordered.
-- [ ] Run isolated cocotb protocol tests, lint, and synthesis for the supported
+- [x] Run isolated cocotb protocol tests, lint, and synthesis for the supported
   widths. Record endpoint resource overhead; do not infer achieved clock timing
   from synthesis alone.
 
