@@ -23,6 +23,7 @@ class PipelineDriver(Driver):
         self.raw=dut;self.capacities=depths
         self.media=None
         self.preflight_hook=None
+        self.stalls=True
     async def reset(self):
         self.set(run_valid=0,run_instruction_count=0,run_state_count=0,run_quantum=0, run_chunk_frames=0,run_job_budget=0,
             run_buffers=0,run_inputs=0,run_outputs=0,job_enable=1,drain_ready=0,
@@ -136,7 +137,7 @@ class PipelineDriver(Driver):
             if done_ready:completion_delay+=1
             status=step['work']['value'] if external else {'kind':'completed'}
             injected=0 if status['kind']=='completed' else ERRORS.index(status['value']['error'])+1
-            self.set(external_job_ready=int(self.random.randrange(4)!=0),job_enable=int(self.random.randrange(5)!=0),
+            self.set(external_job_ready=int(not self.stalls or self.random.randrange(4)!=0),job_enable=int(not self.stalls or self.random.randrange(5)!=0),
                 external_done_valid=int(external and completion_delay>4),external_error=injected)
             await Timer(1,units='ns')
             if held is not None:
