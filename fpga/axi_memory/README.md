@@ -1,9 +1,10 @@
 # AXI sample memory
 
-The implementation follows [PLAN_DDR3.md](../../PLAN_DDR3.md). Baseline:
-`8f64c32d` on `proto/fpga-rust-reference`, existing PR #969. The existing cores
-retain their word port. Integrated tops put the common synthesizable AXI master
-between that port and external memory. No accesses bypass AXI in these tops.
+The endpoint and timing model follow [PLAN_DDR3.md](../../PLAN_DDR3.md). The
+subsequent chunk-burst implementation extends its original word-only producer.
+Integrated tops now use whole-chunk descriptors and sample streams through the
+common synthesizable AXI master. No accesses bypass AXI in these tops. The word
+port remains selectable for regressions and before/after comparisons.
 
 ## Endpoint contract
 
@@ -29,6 +30,28 @@ is `0x01000000`; all existing synthetic 64-bit arena bases remain usable.
 The cores expose their bound `memory_arena_base` alongside the word port. The
 adapter uses this snapshot, since the live run/configuration input may change
 after admission while background memory traffic still uses the bound arena.
+
+`chunk_axi` accepts `memory_address`, `memory_write` and `memory_count` on
+`memory_valid && memory_ready`. Count is a nonzero number of 32-bit samples.
+It validates and snapshots the whole descriptor, then exchanges samples through
+independent `memory_write_valid/ready` or `memory_read_valid/ready` streams. The
+existing data wires carry individual 32-bit samples. The aggregate
+`memory_response_valid/ready/error` completes the entire descriptor.
+
+The adapter emits at most 16 beats per burst and never crosses a physical 4 KiB
+boundary. A 32-sample/128-byte chunk uses two SIZE=2, LEN=15 bursts on a 32-bit
+bus, or one SIZE=3, LEN=15 burst on a 64-bit bus. Lower-address samples occupy
+the low word of each packed beat. A four-byte prefix or tail uses a narrow beat
+with the appropriate lane/strobe. One burst remains outstanding at a time;
+the pack/unpack register adds no BRAM and leaves cache RAM 32 bits wide.
+
+Read failures discard the failed beat and drain the remaining R beats even if
+the sample consumer is stalled. No later bursts are issued after an error.
+Write completion follows the final B response; cache validity/dirty state is
+updated only after a successful aggregate completion. Fences and retirement
+therefore wait for all constituent transactions. Reset remains coordinated with
+the downstream slave. The cache's existing RAM request/result sequencing is
+retained, so this version does not promise a full-width beat every clock.
 
 On hardware the endpoint attaches through an AXI4-to-AXI3 compatibility wrapper:
 LEN is at most 15 and WID is fixed zero. Zynq-7000 HP supports 32/64-bit buses.
@@ -82,9 +105,12 @@ bash fpga/axi_memory/check.sh
 
 The suite tests both bus widths, reads/writes of 1/2/16 beats, upper word lanes,
 byte strobes, native-block crossings, AW-before-W and W-before-AW, stalled
-responses, local address/shape rejection, errors and coordinated reset. Both
-endpoints pass warning-clean lint and ECP5 synthesis; synthesis is not place and
-route or a frequency guarantee.
+responses, local address/shape rejection, errors and coordinated reset. Chunk
+tests add odd sample counts, multi-burst descriptors, 4 KiB splitting, exact
+128-byte burst shapes, adjacent-lane preservation, descriptor snapshots, error
+drain while the consumer stalls, and reset during partially packed transfers.
+All three tops pass warning-clean lint and ECP5 synthesis; synthesis is not
+place and route or a frequency guarantee.
 
 ## Detailed timing setup
 
@@ -118,9 +144,10 @@ the 5 1/3 DRAM ticks per 100 MHz fabric cycle, and generation-tagged reset.
 
 The chunk, media-store, media-audio and full-loop runners use AXI with instant
 memory by default. `--memory-model fixed --memory-cycles 7` selects a deterministic
-native-block delay; `--memory-model dramsim3` selects detailed timing. Neither
-mode groups individual words into bursts. `--axi-data-width 64` exercises narrow
-word lanes on the wider bus; `--physical-base 0x02000000` changes DDR placement.
+native-block delay; `--memory-model dramsim3` selects detailed timing. All these
+modes use chunk bursts by default. `--axi-data-width 64` enables packed beats;
+`--physical-base 0x02000000` changes DDR placement. `--word-transfers` selects
+the original narrow word transactions through the same endpoint/model.
 
 ```sh
 python fpga/chunk_memory/simulate.py --config all
@@ -138,7 +165,7 @@ its delay number is not directly comparable to the old word-response floor.
 
 The checked-in thin wrappers expose only AXI for external transactions and
 preserve the cores' public host ports. The generator checks for interface drift.
-The full-loop testbench has internal word-port probes for protocol checks, not
+The full-loop testbench has internal memory-port probes for protocol checks, not
 an alternate external memory service. Both manual-clock and free-running tests
 use the same AXI state machine and functional store.
 
@@ -178,7 +205,8 @@ python fpga/media_store/simulate.py --pipeline --config default --timing \
   --memory-model dramsim3 --output work/ddr3-record-dram
 ```
 
-Initial results at assumed 100 MHz, 128 read buffers and four write buffers:
+Initial word-transfer results at assumed 100 MHz, 128 read buffers and four write
+buffers (reproduce with `--word-transfers`):
 
 | Model | Quantum cycles (each of four) | Quantum time | Exposed fill wait |
 | --- | ---: | ---: | ---: |
@@ -195,7 +223,7 @@ cost or prove timing under other traffic. All outputs and logical media match
 Rust bitwise. The media is larger than the cache and positions move every
 quantum, so these results do not depend on reusing the previous quantum's chunk.
 
-## Validation record
+## Original word-transfer validation record
 
 - Instant/fixed/DRAMsim3 endpoint suites pass at both 32 and 64 bits, including
   directed burst tests. Eleven native/statistics tests and 19 Rust/Python contract
@@ -227,7 +255,7 @@ not inspected. Existing cocotb waveform clocks are normalized to ten nanoseconds
 `--fabric-hz` controls the modeled DRAM clock ratio and report time conversion.
 Waveform timestamps represent physical time directly at the default 100 MHz.
 
-## DDR bus utilization
+## Original word-transfer DDR bus utilization
 
 Each detailed timing result has a `ddr_bus` object for the same execution window
 as the RTL quantum cycle count. It excludes host loading, snapshot readback and
@@ -254,8 +282,8 @@ expected fourfold traffic reduction in this model, whose independent word reads
 do not reuse overfetch. Better packing can make the bus busier during a shorter
 transfer while reducing its occupancy over the unchanged quantum/audio period.
 This leaves more capacity for contention; the exact benefit on hardware depends
-on controller coalescing, arbitration and other traffic. No burst converter has
-been added to the pipeline.
+on controller coalescing, arbitration and other traffic. The current chunk
+adapter implements this grouping.
 
 The instrumented 64-loop Q=32 run still matches Rust at 28,996 cycles per quantum.
 Each of its four quanta transfers 32 KiB physically for 8 KiB of useful samples:
@@ -271,3 +299,55 @@ not an implemented burst-converter benchmark. At an assumed 48 kHz sample rate,
 averaging over the full 666.67 us audio period instead gives 2.304% current load
 and 0.576% projected burst load. Recording reports keep late writeback outside
 the quantum window separate through the whole-model counters.
+
+## Chunk-burst results
+
+The coordinated 64-loop fixture uses eight tracks of eight mono loops, Q=32,
+64 gains, 56 ordered mixes and eight outputs. Its 128 KiB of loop media exceeds
+the 16 KiB read pool. At an assumed 100 MHz with the illustrative DDR3 profile,
+64-bit packed bursts match the complete Rust transition/job/sample/media trace
+over all four quanta. Reproduce with:
+
+```sh
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
+  --read-buffers 128 --axi-data-width 64 --memory-model dramsim3 \
+  --output work/chunk-burst-profile
+```
+
+Each quantum issues 64 AXI read bursts and 512 native READ commands, transferring
+8 KiB physically for 8 KiB of useful samples. Word mode issues 2,048 AXI reads
+and native READs, transferring 32 KiB. Steady active DDR data utilization drops
+from 5.1634% to **1.2908%**; command utilization is approximately **0.4273%**.
+DMA activity now occupies **3,752–3,787 fabric cycles (37.52–37.87 us)** per
+quantum, versus 16,933–16,948 cycles in the same 64-bit word-mode DDR run.
+It overlaps processing and must not be added to the critical path.
+
+Active execution remains **31,320 cycles / 313.20 us** for starting all loops,
+then **29,748 cycles / 297.48 us** per playback quantum. Demand-fill wait remains
+zero: prefetch already hid the serialized word path. The benefit here is a
+fourfold reduction in physical traffic and more margin for contention or a
+faster job engine, without changing Rust behavior.
+
+The isolated chunk adapter, including its endpoint, synthesizes to 713 LUT4s /
+240 flip-flops at 32 bits, or 902 LUT4s / 251 flip-flops at 64 bits, with no
+BRAM or DSP blocks. These are ECP5 synthesis estimates, without place and route.
+
+Validation with Verilator 5.032, cocotb 1.9.2 and Yosys 0.52:
+
+- All ten isolated endpoint/adapter tests pass in fixed-delay and DRAMsim3 modes
+  at both bus widths, including page splitting with different logical/physical
+  page boundaries, stalled sample streams, faults and coordinated reset.
+- All four chunk profiles pass at both widths: 56 Rust comparison cases and
+  4,800 random requests, plus buffering/fault/protocol tests.
+- Connected burst pipelines match Rust for 130 cases / 1,045 quanta across both
+  widths and all three capacity profiles, including the DDR run with a single
+  read and write buffer. Separate protocol/fault checks also pass. AXI word mode
+  and the legacy delayed port each pass another 12 cases / 59 quanta.
+- Standalone media wrappers pass all three profiles: 63 cases / 1,485 commands.
+  Eleven native timing tests, 19 format-contract tests and generated-wrapper
+  consistency checks pass. Rust sources and wire formats are unchanged.
+- All four AXI tops pass warning-clean lint at both widths. The default eight-loop
+  top passes generic checks and ECP5 synthesis: 27,557 LUT4s, 14,008 flip-flops,
+  93 DP16KD blocks and four MULT18X18D blocks. This is the default capacity
+  profile, not the 64-loop timing profile; it includes neither a DDR controller
+  nor placement/routed timing.

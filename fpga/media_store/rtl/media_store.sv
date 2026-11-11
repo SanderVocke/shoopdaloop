@@ -3,7 +3,7 @@ module media_store #(
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer READ_BUFFERS = 4,
-    parameter integer WRITE_BUFFERS = 4,
+    parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0,
     parameter integer VIEW_BITS = (VIEWS < 2) ? 1 : $clog2(VIEWS),
     parameter integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS),
     parameter integer TABLE_BITS = (VIEWS * SLOTS < 2) ? 1 : $clog2(VIEWS * SLOTS)
@@ -26,6 +26,9 @@ module media_store #(
     output wire memory_write, output wire [63:0] memory_address,
     output wire [31:0] memory_write_data,
     output wire [63:0] memory_arena_base,
+    output wire [31:0] memory_count,
+    output wire memory_write_valid, input wire memory_write_ready,
+    input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     input wire cfg_valid, output wire cfg_ready, input wire cfg_write,
@@ -156,7 +159,7 @@ module media_store #(
     assign read_valid = cm_data_read && cm_read_valid && !reset;
     assign read_data = cm_read_data;
 
-    chunk_memory #(.SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS)) sample_memory (
+    chunk_memory #(.SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) sample_memory (
         .clk(clk), .reset(reset), .arena_base(base),
         .cmd_valid(cm_command && !reset), .cmd_ready(cm_cmd_ready), .cmd_opcode(cm_opcode), .cmd_id(32'b0),
         .cmd_chunk(chunk), .cmd_offset(phase == ZERO_REQUEST ? 32'b0 : word_offset),
@@ -169,6 +172,9 @@ module media_store #(
         .busy(cm_busy), .fault(memory_fault),
         .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
         .memory_address(memory_address), .memory_write_data(memory_write_data), .memory_arena_base(memory_arena_base),
+        .memory_count(memory_count), .memory_write_valid(memory_write_valid),
+        .memory_write_ready(memory_write_ready), .memory_read_valid(memory_read_valid),
+        .memory_read_ready(memory_read_ready),
         .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
         .memory_response_error(memory_response_error), .memory_read_data(memory_read_data)
     );

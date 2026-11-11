@@ -6,7 +6,7 @@ module media_audio_pipeline #(
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
-    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4
+    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
     input wire clk, input wire reset,
     input wire run_valid, output wire run_ready,
@@ -45,6 +45,9 @@ module media_audio_pipeline #(
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
     output wire [63:0] memory_arena_base,
+    output wire [31:0] memory_count,
+    output wire memory_write_valid, input wire memory_write_ready,
+    input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire memory_fault
@@ -58,6 +61,8 @@ module media_audio_pipeline #(
     wire [31:0] job_count, job_write_data, store_sample;
     wire internal_ready, internal_done, internal_cfg_ready, internal_write_ready, internal_read_valid;
     wire store_memory_valid, store_memory_ready, store_memory_write;
+    wire [31:0] store_memory_count;
+    wire store_memory_write_valid, store_memory_write_ready, store_memory_read_valid, store_memory_read_ready;
     wire [63:0] store_memory_address;
     wire [31:0] store_memory_write_data, store_memory_read_data;
     wire store_memory_response_valid, store_memory_response_ready, store_memory_response_error;
@@ -116,7 +121,7 @@ module media_audio_pipeline #(
         .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS)) media (
+    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
         .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
         .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
@@ -133,17 +138,25 @@ module media_audio_pipeline #(
         .cfg_response_valid(store_cfg_response_valid), .cfg_response_error(store_cfg_response_error), .cfg_read_data(store_cfg_read_data),
         .memory_valid(store_memory_valid), .memory_ready(store_memory_ready), .memory_write(store_memory_write),
         .memory_address(store_memory_address), .memory_write_data(store_memory_write_data), .memory_arena_base(memory_arena_base),
+        .memory_count(store_memory_count), .memory_write_valid(store_memory_write_valid),
+        .memory_write_ready(store_memory_write_ready), .memory_read_valid(store_memory_read_valid),
+        .memory_read_ready(store_memory_read_ready),
         .memory_response_valid(store_memory_response_valid), .memory_response_ready(store_memory_response_ready),
         .memory_response_error(store_memory_response_error), .memory_read_data(store_memory_read_data)
     );
     memory_delay #(.RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES)) delay (
         .clk(clk), .reset(reset),
         .request_valid(store_memory_valid), .request_ready(store_memory_ready),
+        .request_count(store_memory_count),
+        .request_write_valid(store_memory_write_valid), .request_write_ready(store_memory_write_ready),
+        .response_read_valid(store_memory_read_valid), .response_read_ready(store_memory_read_ready),
         .request_write(store_memory_write), .request_address(store_memory_address), .request_write_data(store_memory_write_data),
         .response_valid(store_memory_response_valid), .response_ready(store_memory_response_ready),
         .response_error(store_memory_response_error), .response_read_data(store_memory_read_data),
         .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
         .memory_address(memory_address), .memory_write_data(memory_write_data),
+        .memory_count(memory_count), .memory_write_valid(memory_write_valid), .memory_write_ready(memory_write_ready),
+        .memory_read_valid(memory_read_valid), .memory_read_ready(memory_read_ready),
         .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
         .memory_response_error(memory_response_error), .memory_read_data(memory_read_data)
     );

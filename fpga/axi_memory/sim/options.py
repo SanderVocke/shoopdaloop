@@ -18,6 +18,7 @@ def add_options(parser, *, legacy=False):
     parser.add_argument("--fabric-hz", type=int, default=100_000_000)
     parser.add_argument("--physical-base", type=lambda value: int(value, 0), default=0x01000000)
     parser.add_argument("--axi-data-width", type=int, choices=(32, 64), default=32)
+    parser.add_argument("--word-transfers", action="store_true", help="use single-word transfers in integrated AXI cores")
 
 
 def environment(args):
@@ -30,7 +31,7 @@ def environment(args):
     return {"AXI_MEMORY_MODEL": args.memory_model, "AXI_MEMORY_CYCLES": str(args.memory_cycles),
             "AXI_DRAM_LIBRARY": str(args.dram_library.resolve()), "AXI_DRAM_CONFIG": str(args.dram_config.resolve()),
             "AXI_FABRIC_HZ": str(args.fabric_hz), "AXI_PHYSICAL_BASE": str(args.physical_base),
-            "AXI_DATA_WIDTH": str(args.axi_data_width)}
+            "AXI_DATA_WIDTH": str(args.axi_data_width), "AXI_WORD_TRANSFERS": str(int(args.word_transfers))}
 
 
 def create_memory(dut, words, *, seed=0, word_only=False, output=None):
@@ -58,6 +59,7 @@ def metadata():
                 physical_base=int(os.environ.get("AXI_PHYSICAL_BASE", str(0x01000000))),
                 fixed_cycles=int(os.environ.get("AXI_MEMORY_CYCLES", "7")),
                 axi_data_width=int(os.environ.get("AXI_DATA_WIDTH", "32")),
+                word_transfers=os.environ.get("AXI_WORD_TRANSFERS") == "1",
                 profile=str(profile), profile_sha256=digest(profile), library_sha256=digest(library),
                 model_patch_sha256=digest(HERE/"native/drain.patch"),
                 model_revision=dict(line.split("=", 1) for line in (HERE/"dramsim3.lock").read_text().splitlines())["revision"],

@@ -15,7 +15,7 @@ module loop_pipeline #(
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
-    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4
+    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
     input wire clk,
     input wire reset,
@@ -98,6 +98,9 @@ module loop_pipeline #(
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
     output wire [63:0] memory_arena_base,
+    output wire [31:0] memory_count,
+    output wire memory_write_valid, input wire memory_write_ready,
+    input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire memory_fault
@@ -160,7 +163,7 @@ module loop_pipeline #(
     media_audio_pipeline #(.PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS)) audio (
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) audio (
         .clk(clk), .reset(reset), .run_valid(phase == AUDIO_START), .run_ready(audio_run_ready),
         .run_instruction_count(instructions), .run_state_count(states), .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_job_budget(budget),
         .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs), .job_enable(job_enable),
@@ -193,6 +196,9 @@ module loop_pipeline #(
         .store_cfg_read_data(store_cfg_read_data),
         .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
         .memory_address(memory_address), .memory_write_data(memory_write_data), .memory_arena_base(memory_arena_base),
+        .memory_count(memory_count), .memory_write_valid(memory_write_valid),
+        .memory_write_ready(memory_write_ready), .memory_read_valid(memory_read_valid),
+        .memory_read_ready(memory_read_ready),
         .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
         .memory_response_error(memory_response_error), .memory_read_data(memory_read_data), .memory_fault(memory_fault)
     );

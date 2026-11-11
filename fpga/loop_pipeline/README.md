@@ -144,10 +144,11 @@ logical recording length does not clear physical media. Playback and capture
 can use separate view-state words so a refused retake preserves the old playback
 handle. There is no sealed/unsealed view state.
 
-The external port transfers one 32-bit sample per request at a 64-bit byte
-address, with at most one request outstanding. Reads and writes both require a
-response; request/response stalls are supported. `MEMORY_RESPONSE_CYCLES` defaults
-to one and can impose additional response delay for simulation. The memory
+The integrated AXI port transfers whole chunks through bursts of at most 16
+beats. The internal `BURST_MEMORY` interface carries a 64-bit byte address and
+sample count, 32-bit sample streams, and an aggregate completion; the direct
+core also retains acknowledged word mode. `MEMORY_RESPONSE_CYCLES` defaults to
+one and can impose additional response delay for simulation. The memory
 adapter must flush outstanding traffic on reset. A physical bus fault reports
 job code 8, freezes logical time and requires reset; partial sample effects can
 survive, including provisional metadata allocations. Codes 5/6/7 report
@@ -155,7 +156,7 @@ InvalidView/MemoryFull/InvalidState.
 
 The packed store interfaces and snapshot layout are specified in
 [`media_store/README.md`](../media_store/README.md). Physical DDR controllers,
-native bursts, large-session metadata and board audio/host transport remain
+large-session metadata and board audio/host transport remain
 outside this milestone.
 
 With `run_external_jobs=1`, `external_job_valid` and `monitor_data` expose the
@@ -274,7 +275,7 @@ configurations. No placement, routed timing or board transport is included.
 The streamed TP increases this complete top's LUT4 count by 2,129 (12.0%) from
 17,713, while BRAM and DSP counts remain unchanged; it adds three flip-flops.
 
-## Coordinated 64-loop benchmark with DRAMsim3
+## Coordinated 64-loop benchmark with DRAMsim3 (word-transfer baseline)
 
 The `8x8` timing profile extends the media benchmark through the actual transition
 processor, committed loop-read port, state/job processors, media frontend, chunk
@@ -285,9 +286,9 @@ bitwise Rust comparisons in both instant-memory and detailed DDR3 modes.
 ```sh
 python fpga/axi_memory/build_dramsim3.py
 python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
-  --read-buffers 128 --memory-model dramsim3 --output work/coordinated64-dram
+  --read-buffers 128 --word-transfers --memory-model dramsim3 --output work/coordinated64-dram
 python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
-  --read-buffers 128 --memory-model instant --output work/coordinated64-instant
+  --read-buffers 128 --word-transfers --memory-model instant --output work/coordinated64-instant
 ```
 
 Ordinary `--config all` retains default/small/odd profiles. The large timing
@@ -309,6 +310,9 @@ outputs. Logical playback instructions obtain their positions/modes from TP
 records rather than independent state words. Verification compares the complete
 transition trace, jobs, state, samples and media snapshots with Rust. Random
 backpressure is disabled for the benchmark, while normal regression retains it.
+
+The following baseline predates the chunk-burst adapter. Current burst results
+appear in [the AXI memory documentation](../axi_memory/README.md#chunk-burst-results).
 
 ### Measurement boundary and results
 
@@ -411,10 +415,10 @@ which matters as the sample engine becomes faster and for competing traffic.
    toward one sample per clock projects up to 4,096 saved clocks (40.96 us),
    before overhead and backpressure. This is the next large independent cost.
 
-3. **Implement chunk bursts alongside those datapath changes.** Currently they
-   primarily buy traffic/headroom, with zero measured critical-path benefit.
+3. **Keep chunk bursts alongside those datapath changes.** The adapter now
+   primarily buys traffic/headroom, with zero measured critical-path benefit.
    The gain/mix projections together would reduce active compute toward 161.8
-   us, already below the current roughly 169 us serialized fill span even before
+   us, already below the word-mode roughly 169 us serialized fill span even before
    its start offset. Memory would then become exposed unless its transaction
    overhead also shrinks. The actual speedup needs another combined RTL/DRAM
    run; the ideal savings above cannot simply be added to predict final runtime.

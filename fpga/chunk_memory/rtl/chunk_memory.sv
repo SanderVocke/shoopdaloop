@@ -2,7 +2,8 @@ module chunk_memory #(
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer READ_BUFFERS = 4,
-    parameter integer WRITE_BUFFERS = 4
+    parameter integer WRITE_BUFFERS = 4,
+    parameter integer BURST_MEMORY = 0
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base,
@@ -19,6 +20,9 @@ module chunk_memory #(
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data,
     output wire [63:0] memory_arena_base,
+    output wire [31:0] memory_count,
+    output wire memory_write_valid, input wire memory_write_ready,
+    input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data
 );
@@ -29,8 +33,9 @@ module chunk_memory #(
     localparam [63:0] ARENA_BYTES = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     typedef enum logic [3:0] { IDLE, CHECK, LOOKUP, WAIT_LINE, READ_REQUEST,
         READ_RESULT, READ_SEND, WRITE_DATA, COMMIT, FLUSH, RETIRING, RESPONSE } phase_t;
-    typedef enum logic [2:0] { D_IDLE, D_READ_REQUEST, D_READ_WAIT,
-        D_RAM_REQUEST, D_RAM_RESULT, D_WRITE_REQUEST, D_WRITE_WAIT } dma_phase_t;
+    typedef enum logic [3:0] { D_IDLE, D_READ_REQUEST, D_READ_WAIT,
+        D_RAM_REQUEST, D_RAM_RESULT, D_WRITE_REQUEST, D_WRITE_WAIT,
+        D_TRANSFER, D_STREAM_READ, D_STREAM_WRITE, D_STREAM_WAIT } dma_phase_t;
     phase_t phase;
     dma_phase_t dma_phase;
     reg [2:0] opcode;
@@ -62,7 +67,8 @@ module chunk_memory #(
         || (phase == IDLE && incoming_write && !incoming_write_space);
     wire dma_response = memory_response_valid && memory_response_ready;
     wire supersede_fill = dma_active && dma_speculative && phase == LOOKUP && opcode == WRITE && dma_chunk == chunk;
-    wire fill_word = dma_phase == D_READ_WAIT && dma_response && !memory_response_error
+    wire fill_word = (BURST_MEMORY != 0 ? memory_read_valid && memory_read_ready
+        : dma_phase == D_READ_WAIT && dma_response && !memory_response_error)
         && !dma_obsolete && !supersede_fill;
     wire [31:0] read_a_data, read_b_data, write_a_data, write_b_data;
     wire unused_read_b = &{1'b0,read_b_data};
@@ -77,12 +83,19 @@ module chunk_memory #(
         && (base_bound || (phase == IDLE && !cmd_valid))
         && !(cmd_valid && (cmd_opcode == PREFETCH || cmd_opcode == FENCE || cmd_opcode == RETIRE));
     assign busy = phase != IDLE || dma_active || hint_pending || (dirty_count != 0);
-    assign memory_valid = !fault && !reset && (dma_phase == D_READ_REQUEST || dma_phase == D_WRITE_REQUEST);
+    assign memory_valid = !fault && !reset && (BURST_MEMORY != 0 ? dma_phase == D_TRANSFER
+        : dma_phase == D_READ_REQUEST || dma_phase == D_WRITE_REQUEST);
     assign memory_write = dma_write;
-    assign memory_address = active_base + (64'(dma_chunk)*64'(CHUNK_FRAMES) + {32'b0,dma_index})*4;
+    assign memory_address = active_base + (64'(dma_chunk)*64'(CHUNK_FRAMES)
+        + (BURST_MEMORY != 0 ? 64'b0 : {32'b0,dma_index}))*4;
     assign memory_write_data = dma_data;
     assign memory_arena_base = active_base;
-    assign memory_response_ready = !fault && !reset && (dma_phase == D_READ_WAIT || dma_phase == D_WRITE_WAIT);
+    assign memory_count = BURST_MEMORY != 0 ? 32'(CHUNK_FRAMES) : 32'd1;
+    assign memory_write_valid = BURST_MEMORY != 0 && dma_phase == D_STREAM_WRITE && !fault && !reset;
+    assign memory_read_ready = BURST_MEMORY != 0 && dma_phase == D_STREAM_READ && !fault && !reset
+        && !(dma_write_pool && (write_word || (phase == READ_REQUEST && use_write_pool)));
+    assign memory_response_ready = !fault && !reset && (BURST_MEMORY != 0
+        ? dma_active && dma_phase != D_TRANSFER : dma_phase == D_READ_WAIT || dma_phase == D_WRITE_WAIT);
 
     initial begin
         if (SLOTS < 1 || SLOTS > 65536 || CHUNK_FRAMES < 1 || CHUNK_FRAMES > 65536
@@ -266,11 +279,12 @@ module chunk_memory #(
                         dma_line <= fill_line; dma_write_pool <= fill_write_pool; dma_write <= 0;
                         dma_speculative <= 0; dma_obsolete <= 0;
                         dma_chunk <= fill_write_pool ? write_tag[fill_line] : read_tag[fill_line];
-                        dma_phase <= D_READ_REQUEST;
+                        dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_READ_REQUEST;
                     end else if (flush_found && (quiet >= 32'(CHUNK_FRAMES+8) || need_space || phase == FLUSH || phase == RETIRING)) begin
                         dma_line <= flush_line; dma_chunk <= write_tag[flush_line];
                         dma_speculative <= 0; dma_obsolete <= 0;
-                        dma_write_pool <= 1; dma_write <= 1; dma_phase <= D_RAM_REQUEST;
+                        dma_write_pool <= 1; dma_write <= 1;
+                        dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_RAM_REQUEST;
                     end else if (hint_pending && phase != CHECK && phase != LOOKUP && phase != WAIT_LINE
                         && phase != FLUSH && phase != RETIRING && !(cmd_valid && cmd_ready)) begin
                         if (hint_hit) hint_pending <= 0;
@@ -278,7 +292,8 @@ module chunk_memory #(
                             read_tag[read_victim_line] <= hint_chunk;
                             read_present[read_victim_line] <= 1; read_loaded[read_victim_line] <= 0;
                             dma_line <= read_victim_line; dma_chunk <= hint_chunk;
-                            dma_write_pool <= 0; dma_write <= 0; dma_phase <= D_READ_REQUEST;
+                            dma_write_pool <= 0; dma_write <= 0;
+                            dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_READ_REQUEST;
                             dma_speculative <= 1; dma_obsolete <= 0;
                             next_read <= read_victim_line + 1 == 32'(READ_BUFFERS) ? 0 : read_victim_line+1;
                             hint_pending <= 0;
@@ -295,11 +310,31 @@ module chunk_memory #(
                     end else begin dma_index <= dma_index+1; dma_phase <= D_READ_REQUEST; end
                 end
                 D_RAM_REQUEST: dma_phase <= D_RAM_RESULT;
-                D_RAM_RESULT: begin dma_data <= write_b_data; dma_phase <= D_WRITE_REQUEST; end
+                D_RAM_RESULT: begin
+                    dma_data <= write_b_data;
+                    dma_phase <= BURST_MEMORY != 0 ? D_STREAM_WRITE : D_WRITE_REQUEST;
+                end
                 D_WRITE_REQUEST: if (memory_valid && memory_ready) dma_phase <= D_WRITE_WAIT;
                 D_WRITE_WAIT: if (dma_response) begin
                     if (dma_index+1 == 32'(CHUNK_FRAMES)) begin dirty[dma_line] <= 0; dma_phase <= D_IDLE; end
                     else begin dma_index <= dma_index+1; dma_phase <= D_RAM_REQUEST; end
+                end
+                D_TRANSFER: if (memory_valid && memory_ready)
+                    dma_phase <= dma_write ? D_RAM_REQUEST : D_STREAM_READ;
+                D_STREAM_READ: if (memory_read_valid && memory_read_ready) begin
+                    if (dma_index+1 == 32'(CHUNK_FRAMES)) dma_phase <= D_STREAM_WAIT;
+                    else dma_index <= dma_index+1;
+                end
+                D_STREAM_WRITE: if (memory_write_valid && memory_write_ready) begin
+                    if (dma_index+1 == 32'(CHUNK_FRAMES)) dma_phase <= D_STREAM_WAIT;
+                    else begin dma_index <= dma_index+1; dma_phase <= D_RAM_REQUEST; end
+                end
+                D_STREAM_WAIT: if (dma_response && !memory_response_error) begin
+                    if (dma_write) dirty[dma_line] <= 0;
+                    else if (dma_write_pool) write_loaded[dma_line] <= 1;
+                    else if (!dma_obsolete && !supersede_fill) read_loaded[dma_line] <= 1;
+                    else begin read_present[dma_line] <= 0; read_loaded[dma_line] <= 0; end
+                    dma_phase <= D_IDLE;
                 end
                 default: dma_phase <= D_IDLE;
             endcase

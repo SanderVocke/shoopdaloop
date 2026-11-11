@@ -17,7 +17,7 @@ parameter integer LOOP_DEPTH = 8,
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
-    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4,
+    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000
 ) (
@@ -154,6 +154,11 @@ parameter integer LOOP_DEPTH = 8,
     wire memory_response_error = core.memory_response_error;
     wire memory_response_ready = core.memory_response_ready;
     wire memory_response_valid = core.memory_response_valid;
+    wire memory_read_ready = core.memory_read_ready;
+    wire memory_read_valid = core.memory_read_valid;
+    wire memory_write_ready = core.memory_write_ready;
+    wire memory_write_valid = core.memory_write_valid;
+    wire [31:0] memory_count = core.memory_count;
     wire [63:0] memory_arena_base = core.memory_arena_base;
     wire [31:0] memory_write_data = core.memory_write_data;
     wire [63:0] memory_address = core.memory_address;
@@ -166,7 +171,7 @@ parameter integer LOOP_DEPTH = 8,
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS),
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY),
         .AXI_DATA_WIDTH(AXI_DATA_WIDTH),.PHYSICAL_BASE(PHYSICAL_BASE)) core (.*);
     assign debug_frame=core.core.timing.frame;
     assign debug_bank=core.core.timing.active_bank;

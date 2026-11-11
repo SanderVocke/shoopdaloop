@@ -8,8 +8,8 @@ bounded metadata uses synchronous on-chip RAM.
 and Capture alongside arithmetic jobs.
 
 Chunk memory supplies read/write buffering, forwarding, prefetch and chunk-level
-arbitration. The memory port can attach to a DDR controller; a vendor controller
-and native burst adapter remain future work. Rust remains elastic; RTL has limits.
+arbitration and AXI chunk bursts. The memory port can attach to a DDR controller;
+a vendor controller remains future work. Rust remains elastic; RTL has limits.
 
 The default simulation memory path now uses the shared synthesizable AXI
 endpoint. See [AXI memory and DRAMsim3](../axi_memory/README.md) for detailed
@@ -20,7 +20,7 @@ timing, bus-width options, and the retained legacy word-port mode.
 - `rtl/media_store.sv`: serial commands, allocation, ownership and range translation.
 - `rtl/media_ram.sv`: synchronous metadata RAM, one read and one write port.
 - `rtl/media_audio_pipeline.sv`: exclusive store ownership between jobs and host commands.
-- `rtl/memory_delay.sv`: optional minimum response delay for each sample-memory word.
+- `rtl/memory_delay.sv`: optional minimum completion delay for a memory transfer.
 - `simulate.py`, `tests/`: Rust comparisons for standalone storage and complete audio quanta.
 - `check.sh`: warning-clean lint and generic/ECP5 synthesis for both tops.
 
@@ -88,7 +88,7 @@ service binds the arena base for its reset epoch.
 
 Commands are serialized and hold audio admission until completion. Command sizes
 and external-memory service must be bounded before claiming an audio deadline.
-Chunk arbitration is internal; efficient native DDR bursts remain separate work.
+Chunk arbitration is internal; integrated AXI tops transfer chunks in bursts.
 
 ### Errors and reset
 

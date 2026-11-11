@@ -1,4 +1,5 @@
 """Adapt existing host drivers to the shared AXI slave without driving core wires."""
+import os
 from options import create_memory
 from axi_memory import summary
 
@@ -6,7 +7,8 @@ from axi_memory import summary
 class WordService:
     def __init__(self, owner, dut, *, seed=0, output=None):
         self.owner = owner
-        self.memory = create_memory(dut, owner.memory, seed=seed, output=output, word_only=True)
+        self.memory = create_memory(dut, owner.memory, seed=seed, output=output,
+                                    word_only=os.environ.get("AXI_WORD_TRANSFERS") == "1")
         self.records = 0
         self.transactions = 0
         self.chunk = None
@@ -33,7 +35,8 @@ class WordService:
             word = (record["address"]-memory.base)//4
             if self.chunk is None:
                 self.chunk = dict(chunk=word//frames, write=record["write"], start=record["start"], words=0)
-            self.chunk["words"] += 1
+            self.chunk["words"] += ((record["length"]+1) << record["size"])//4
+            assert self.chunk["words"] <= frames, "AXI transfer crossed a chunk boundary"
             if self.chunk["words"] == frames:
                 self.transfers.append({**self.chunk, "end": record["end"], "cycles": record["end"]-self.chunk["start"]})
                 self.chunk = None
@@ -59,7 +62,8 @@ class WordService:
                     assert word % owner.frames == 0, "transfer did not begin at a chunk boundary"
                     owner.burst = [write, word, 0]
                 assert write == owner.burst[0] and word == owner.burst[1]+owner.burst[2], "chunk transfers interleaved"
-                owner.burst[2] += 1
+                owner.burst[2] += ((active["length"]+1) << active["size"])//4
+                assert owner.burst[2] <= owner.frames, "AXI transfer crossed a chunk boundary"
                 if owner.burst[2] == owner.frames:
                     owner.burst = None
         self.transactions = owner.requests

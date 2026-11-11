@@ -5,9 +5,9 @@ output_dir=${1:-"$repo_root/work/axi-synthesis"}
 mkdir -p "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
 cd "$repo_root"
-sources=(fpga/axi_memory/rtl/axi_master.sv fpga/axi_memory/rtl/word_axi.sv)
+sources=(fpga/axi_memory/rtl/axi_master.sv fpga/axi_memory/rtl/word_axi.sv fpga/axi_memory/rtl/chunk_axi.sv)
 for width in 32 64; do
-    for top in axi_master word_axi; do
+    for top in axi_master word_axi chunk_axi; do
         name=$top-$width
         verilator --lint-only --Wall --top-module "$top" -GDATA_WIDTH="$width" "${sources[@]}" > "$output_dir/$name-lint.log" 2>&1
         yosys -Q -T -q -l "$output_dir/$name-ecp5.log" -p \

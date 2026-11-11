@@ -32,7 +32,7 @@ def generate():
     for directory, name in (("chunk_memory", "chunk_memory"), ("media_store", "media_store"),
                             ("media_store", "media_audio_pipeline"), ("loop_pipeline", "loop_pipeline")):
         match, ports = header((FPGA/directory/"rtl"/f"{name}.sv").read_text())
-        params = match[2].strip()
+        params = match[2].strip().replace('BURST_MEMORY = 0', 'BURST_MEMORY = 1')
         param_names = re.findall(r"parameter\s+integer\s+(\w+)\s*=", params)
         public = [(p.replace("output reg", "output wire"), n) for p, n in ports if not n.startswith("memory_") or n == "memory_fault"]
         private = [(p, n) for p, n in ports if n.startswith("memory_") and n != "memory_fault"]
@@ -45,16 +45,25 @@ def generate():
         text += "    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;\n"
         text += "    wire [31:0] physical_base = PHYSICAL_BASE;\n"
         text += f"    {name} #(\n        "+",\n        ".join(f".{p}({p})" for p in param_names)+") core (.*);\n"
-        text += "    word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);\nendmodule\n"
+        text += """    generate if (BURST_MEMORY != 0) begin : bursts
+        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+    end else begin : words
+        wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
+        assign memory_write_ready = 0;
+        assign memory_read_valid = 0;
+        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+    end endgenerate
+endmodule
+"""
         result[HERE/"rtl"/f"{name}_axi.sv"] = text
     original = (FPGA/"loop_pipeline/tests/loop_pipeline_tb.sv").read_text()
     match, ports = header(original)
     public = [(p, n) for p, n in ports if not n.startswith("memory_") or n == "memory_fault"]
-    text = original[:match.start()]+"module loop_pipeline_axi_tb #(\n"+match[2].strip()
+    text = original[:match.start()]+"module loop_pipeline_axi_tb #(\n"+match[2].strip().replace('BURST_MEMORY = 0', 'BURST_MEMORY = 1')
     text += ",\n    parameter integer AXI_DATA_WIDTH = 32,\n    parameter [31:0] PHYSICAL_BASE = 32'h01000000\n) (\n"
     text += ",\n".join("    "+p+n for p, n in public+axi_ports)+"\n);"
     body = original[match.end():].replace("    loop_pipeline #(", "    loop_pipeline_axi #(")
-    body = body.replace(".WRITE_BUFFERS(WRITE_BUFFERS)) core", ".WRITE_BUFFERS(WRITE_BUFFERS),\n        .AXI_DATA_WIDTH(AXI_DATA_WIDTH),.PHYSICAL_BASE(PHYSICAL_BASE)) core")
+    body = body.replace(".BURST_MEMORY(BURST_MEMORY)) core", ".BURST_MEMORY(BURST_MEMORY),\n        .AXI_DATA_WIDTH(AXI_DATA_WIDTH),.PHYSICAL_BASE(PHYSICAL_BASE)) core")
     body = re.sub(r"\bcore\.", "core.core.", body)
     private = [(p, n) for p, n in ports if n.startswith("memory_") and n != "memory_fault"]
     for prefix, name in private:

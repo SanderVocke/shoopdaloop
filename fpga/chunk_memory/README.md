@@ -69,12 +69,25 @@ the memory port for a complete chunk, bounding interference to one transfer at
 this arbitration level. Latency also depends on memory and client backpressure;
 these are not hard real-time guarantees.
 
-The current adapter issues 32-bit words at 64-bit byte addresses, with one physical
-request outstanding. Both reads and writes require acknowledgement. Words of each
-chunk transfer are sequential and never interleaved with another transfer. A future
-adapter can group words into bursts later; no vendor controller is included.
-The integrated AXI endpoint already supports bursts, while its producer emits
-one word per AXI transaction. The word-delay floor is retained for legacy tests.
+With `BURST_MEMORY=1`, the DMA submits one descriptor per whole chunk through
+`memory_valid/ready/write/address/count`; count is in 32-bit samples. Write data
+uses `memory_write_valid/ready/data`, and read data uses
+`memory_read_valid/ready/data`. A separate `memory_response_valid/ready/error`
+acknowledges the complete transfer. Cache lines become loaded, or cease being
+dirty, only after successful completion. A transfer error can arrive before all
+samples, and aborts the DMA through the existing sticky-fault path.
+
+Integrated AXI tops enable this mode by default. Their adapter packs two samples
+per 64-bit beat, limits bursts to 16 beats, and splits at physical 4 KiB boundaries.
+A 32-sample chunk takes two 16-beat bursts on a 32-bit bus, or one on a 64-bit bus.
+Only one burst is outstanding, and chunks never interleave. Sample RAM remains
+32 bits wide. Narrow transfers handle an upper word lane or a one-sample chunk.
+The adapter drains failed read bursts before reporting the error; successful
+write completion waits for every B response. No vendor controller is included.
+
+Direct cores default to `BURST_MEMORY=0`, preserving the original acknowledged
+word port. `--word-transfers` selects it through the AXI wrappers for comparisons;
+`--memory-model legacy` selects the original word slave and delay floor.
 With AXI, fences drain interface responses and guarantee visibility rather than
 physical DRAM completion; the simulator has a separate native-model drain.
 
@@ -84,7 +97,7 @@ overflow. Each command latches its base before validation. Reset aborts requests
 and invalidates tags while retaining RAM data. Reset/flush the downstream response
 source together, and fence before planned reset if posted writes must be preserved.
 
-Parameters are `SLOTS`, power-of-two `CHUNK_FRAMES`, `READ_BUFFERS` and
+Capacity parameters are `SLOTS`, power-of-two `CHUNK_FRAMES`, `READ_BUFFERS` and
 `WRITE_BUFFERS`; defaults are 32/32/4/4. Samples use synchronous dual-port RAM.
 Write-buffer fills and foreground writes share one physical write port. Normal
 capacities infer BRAM; a single-word pool uses registers. Tags/control use registers.

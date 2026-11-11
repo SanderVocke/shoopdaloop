@@ -46,8 +46,8 @@ def main():
         sources = [HERE/"rtl/chunk_ram.sv", HERE/"rtl/chunk_memory.sv"]
         parameters = dict(zip(("SLOTS", "CHUNK_FRAMES", "READ_BUFFERS", "WRITE_BUFFERS"), capacities))
         if axi:
-            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_memory_axi.sv")]
-            parameters.update(AXI_DATA_WIDTH=args.axi_data_width, PHYSICAL_BASE=args.physical_base)
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv", "chunk_memory_axi.sv")]
+            parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
         runner.build(verilog_sources=sources, includes=[ROOT/"fpga/state_processor/rtl"],
                      hdl_toplevel=top, parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"], build_dir=output / "build",
