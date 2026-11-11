@@ -5,7 +5,7 @@ import random
 
 import cocotb
 from cocotb.triggers import Timer
-from axi_memory import AxiMemory, FixedTiming
+from options import create_memory, metadata
 
 
 class Driver:
@@ -13,7 +13,7 @@ class Driver:
         self.dut, self.word = dut, word
         self.rng = random.Random(731)
         self.words = [0x12345678 ^ i for i in range(8192)]
-        self.memory = AxiMemory(dut, self.words, timing=FixedTiming(int(os.environ.get("AXI_FIXED_CYCLES", "0"))), seed=57)
+        self.memory = create_memory(dut, self.words, seed=57, output=os.environ["AXI_OUTPUT"])
         self.memory.stalls = True
         self.width = self.memory.width
 
@@ -134,7 +134,9 @@ async def words_and_bursts(dut):
             await driver.transaction(address, size, count, [0]*count if write else None,
                                      [0]*count if write else None, error=True)
             assert driver.memory.reads+driver.memory.writes == requests
-    Path(os.environ["AXI_OUTPUT"]).joinpath("axi-statistics.json").write_text(json.dumps(driver.memory.report(), indent=2)+"\n")
+    report = driver.memory.report()
+    report["configuration"] = metadata()
+    Path(os.environ["AXI_OUTPUT"]).joinpath("axi-statistics.json").write_text(json.dumps(report, indent=2)+"\n")
     driver.memory.close()
 
 

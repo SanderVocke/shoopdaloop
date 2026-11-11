@@ -166,16 +166,16 @@ on it. Keep detailed-model runs small during development.
 
 ### 3. Implement the DRAMsim3 C ABI and Python timing backend
 
-- [ ] Add reproducible native-library build/loading and a thin ctypes binding.
+- [x] Add reproducible native-library build/loading and a thin ctypes binding.
   Implement transaction bookkeeping, bounded admission, clock conversion,
   completion polling, and explicit statistics/drain behavior.
-- [ ] Implement one shared functional memory and AXI slave service with instant,
+- [x] Implement one shared functional memory and AXI slave service with instant,
   fixed, and DRAMsim3 timing policies. Separate clock scheduling from service
   state so both existing manual-clock and free-running tests can use it.
-- [ ] Verify native-wrapper behavior without RTL first: read/write visibility,
+- [x] Verify native-wrapper behavior without RTL first: read/write visibility,
   repeated addresses, partial writes, queue saturation, non-integral clocks,
   idle refresh, reset generations, and a final small write workload that drains.
-- [ ] Run the same directed AXI word/burst tests against DRAMsim3. Add focused
+- [x] Run the same directed AXI word/burst tests against DRAMsim3. Add focused
   row-hit/conflict, bank, read/write-turnaround, and refresh cases; check timing
   relationships and transaction counts rather than fragile exact cycle totals.
 

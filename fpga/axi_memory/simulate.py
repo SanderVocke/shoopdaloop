@@ -8,16 +8,20 @@ import xml.etree.ElementTree as ET
 from cocotb.runner import get_runner
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE/"sim"))
+from options import add_options, environment
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-width", choices=("32", "64", "all"), default="all")
-    parser.add_argument("--fixed-cycles", type=int, default=0)
+    add_options(parser)
     parser.add_argument("--output", type=Path, default=HERE.parents[1]/"work/axi-memory")
     args = parser.parse_args()
-    if args.fixed_cycles < 0:
-        parser.error("fixed-cycles must be nonnegative")
+    try:
+        memory_env = environment(args)
+    except ValueError as error:
+        parser.error(str(error))
     sys.path[:0] = [str(HERE/"sim"), str(HERE/"tests")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
@@ -33,7 +37,7 @@ def main():
                          log_file=output/"build.log", always=True)
             result = runner.test(hdl_toplevel=top, test_module="test_word" if word else "test_axi",
                                  test_dir=output, log_file=output/"simulation.log",
-                                 extra_env={"AXI_OUTPUT": str(output), "AXI_FIXED_CYCLES": str(args.fixed_cycles)})
+                                 extra_env={"AXI_OUTPUT": str(output), **memory_env})
             report = ET.parse(result).getroot()
             if len(list(report.iter("testcase"))) != (1 if word else 2) or any(list(report.iter(t)) for t in ("failure", "error", "skipped")):
                 raise SystemExit(f"AXI simulation failed: {output/'simulation.log'}")

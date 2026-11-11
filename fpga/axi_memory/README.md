@@ -71,7 +71,7 @@ With Verilator, Yosys, a C++ compiler and the Python requirements installed:
 
 ```sh
 python fpga/axi_memory/simulate.py
-python fpga/axi_memory/simulate.py --fixed-cycles 7 --output work/axi-fixed
+python fpga/axi_memory/simulate.py --memory-model fixed --memory-cycles 7 --output work/axi-fixed
 bash fpga/axi_memory/check.sh
 ```
 
@@ -80,3 +80,29 @@ byte strobes, native-block crossings, AW-before-W and W-before-AW, stalled
 responses, local address/shape rejection, errors and coordinated reset. Both
 endpoints pass warning-clean lint and ECP5 synthesis; synthesis is not place and
 route or a frequency guarantee.
+
+## Detailed timing setup
+
+The optional native model needs Git, patch, CMake (3.16 or newer), and a C++11
+compiler. It is not required for the instant/fixed suites.
+
+```sh
+python fpga/axi_memory/build_dramsim3.py
+python fpga/axi_memory/tests/test_timing.py
+python fpga/axi_memory/simulate.py --memory-model dramsim3 --output work/axi-dram
+```
+
+The build fetches the exact lock revision into `work/dramsim3/source`, retains
+the MIT license, and patches a separate build copy. `native/drain.patch` only
+adds idle observation and tracks the last issued write's data-completion time;
+it does not change scheduling or callback behavior. The shared library and its
+dependency live together in `work/dramsim3/build` with an origin-relative RPATH.
+Override locations with `--dram-library`, `--dram-config`, and `--output`.
+
+The C ABI reports read completions and **posted write admissions** separately.
+Its physical-drain hook waits for transaction/command queues, read callbacks and
+issued write data. It is not a prefetch or pipeline barrier. The unified queue
+is required by the binding so a final small write batch makes progress.
+
+Native tests also verify row hits/conflicts, bank overlap, refresh while idle,
+the 5 1/3 DRAM ticks per 100 MHz fabric cycle, and generation-tagged reset.

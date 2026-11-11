@@ -1,0 +1,76 @@
+diff --git a/src/controller.cc b/src/controller.cc
+index a582dcc..6e58795 100644
+--- a/src/controller.cc
++++ b/src/controller.cc
+@@ -256,6 +256,7 @@ void Controller::IssueCommand(const Command &cmd) {
+             std::cerr << cmd.hex_addr << " not in write queue!" << std::endl;
+             exit(1);
+         }
++        write_done_ = std::max(write_done_, clk_ + config_.write_delay);
+         auto wr_lat = clk_ - it->second.added_cycle + config_.write_delay;
+         simple_stats_.AddValue("write_latency", wr_lat);
+         pending_wr_q_.erase(it);
+diff --git a/src/controller.h b/src/controller.h
+index 77bd6af..4490a44 100644
+--- a/src/controller.h
++++ b/src/controller.h
+@@ -31,6 +31,11 @@ class Controller {
+     bool WillAcceptTransaction(uint64_t hex_addr, bool is_write) const;
+     bool AddTransaction(Transaction trans);
+     int QueueUsage() const;
++    bool IsIdle() const {
++        return pending_rd_q_.empty() && pending_wr_q_.empty() && return_queue_.empty()
++            && unified_queue_.empty() && read_queue_.empty() && write_buffer_.empty()
++            && cmd_queue_.QueueEmpty() && clk_ >= write_done_;
++    }
+     // Stats output
+     void PrintEpochStats();
+     void PrintFinalStats();
+@@ -41,6 +46,7 @@ class Controller {
+ 
+    private:
+     uint64_t clk_;
++    uint64_t write_done_ = 0;
+     const Config &config_;
+     SimpleStats simple_stats_;
+     ChannelState channel_state_;
+diff --git a/src/dram_system.h b/src/dram_system.h
+index 7864b2c..8ce7882 100644
+--- a/src/dram_system.h
++++ b/src/dram_system.h
+@@ -27,6 +27,10 @@ class BaseDRAMSystem {
+     void PrintEpochStats();
+     void PrintStats();
+     void ResetStats();
++    bool IsIdle() const {
++        for (const auto* controller : ctrls_) if (!controller->IsIdle()) return false;
++        return true;
++    }
+ 
+     virtual bool WillAcceptTransaction(uint64_t hex_addr,
+                                        bool is_write) const = 0;
+diff --git a/src/memory_system.cc b/src/memory_system.cc
+index 739ea1a..cb0cc85 100644
+--- a/src/memory_system.cc
++++ b/src/memory_system.cc
+@@ -50,6 +50,8 @@ void MemorySystem::PrintStats() const { dram_system_->PrintStats(); }
+ 
+ void MemorySystem::ResetStats() { dram_system_->ResetStats(); }
+ 
++bool MemorySystem::IsIdle() const { return dram_system_->IsIdle(); }
++
+ MemorySystem* GetMemorySystem(const std::string &config_file, const std::string &output_dir,
+                  std::function<void(uint64_t)> read_callback,
+                  std::function<void(uint64_t)> write_callback) {
+diff --git a/src/memory_system.h b/src/memory_system.h
+index 57eeca1..0f67055 100644
+--- a/src/memory_system.h
++++ b/src/memory_system.h
+@@ -26,6 +26,7 @@ class MemorySystem {
+     int GetQueueSize() const;
+     void PrintStats() const;
+     void ResetStats();
++    bool IsIdle() const;
+ 
+     bool WillAcceptTransaction(uint64_t hex_addr, bool is_write) const;
+     bool AddTransaction(uint64_t hex_addr, bool is_write);
