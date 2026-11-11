@@ -320,3 +320,83 @@ async def faults_and_reset(dut):
     driver.pause = False
     assert await driver.command({"kind": "read", "chunk": 0, "offset": 0, "frames": 1}, 16) == (0, [11])
     driver.close()
+
+
+@cocotb.test()
+async def read_stream_protocol(dut):
+    driver = Driver(dut, CAPACITIES, 791)
+    driver.stalls = False
+    initial = [signed((0x81234567+0x1020305*i) & 0xffffffff) for i in range(len(driver.memory))]
+
+    async def read_span(offset, count, expected, stall_at=None):
+        driver.set(cmd_valid=1, cmd_opcode=0, cmd_id=123, cmd_chunk=0,
+                   cmd_offset=offset, cmd_count=count, read_ready=0, response_ready=0)
+        before, _ = await driver.tick()
+        assert before['cmd_ready']
+        driver.set(cmd_valid=0, cmd_offset=0xffffffff, cmd_count=0xffffffff)
+        samples, clocks, held = [], [], None
+        stalled, hold = False, 0
+        for _ in range(10000):
+            if len(samples) == stall_at and not stalled:
+                stalled, hold = True, 7
+            ready = hold == 0
+            hold = max(0, hold-1)
+            driver.set(read_ready=int(ready))
+            before, _ = await driver.tick()
+            payload = (before['read_data'], before['read_last'])
+            if held is not None:
+                assert before['read_valid'] and payload == held, 'stalled read changed'
+            held = payload if before['read_valid'] and not ready else None
+            if before['read_valid'] and ready:
+                samples.append(signed(before['read_data']))
+                clocks.append(driver.cycles)
+                assert bool(before['read_last']) == (len(samples) == count)
+            if before['response_valid']:
+                assert not before['read_valid'] and len(samples) == count
+                break
+        else:
+            raise AssertionError('streamed read timed out')
+        assert samples == expected
+        if stall_at is None:
+            assert all(b-a == 1 for a,b in zip(clocks, clocks[1:])), 'resident read did not sustain one sample per clock'
+        driver.set(read_ready=0)
+        for _ in range(5):
+            before, _ = await driver.tick()
+            assert before['response_valid'] and before['response_id'] == 123 and before['response_error'] == 0
+            assert not before['read_valid'] and not before['cmd_ready']
+        driver.set(response_ready=1)
+        await driver.tick()
+        driver.set(response_ready=0)
+
+    for forwarded in (False, True):
+        driver.pause = False
+        await driver.reset(initial)
+        expected = initial[:driver.frames]
+        if forwarded:
+            driver.pause = True
+            expected = list(reversed(expected))
+            assert await driver.command({'kind':'write', 'chunk':0, 'offset':0, 'samples':expected}, stalls=False) == (0, [])
+        else:
+            assert await driver.command({'kind':'read', 'chunk':0, 'offset':0, 'frames':driver.frames}, stalls=False) == (0, expected)
+            driver.pause = True
+        for offset, count in sorted({(0, 0), (0, 1), (0, driver.frames), (1, driver.frames-1)}):
+            await read_span(offset, count, expected[offset:offset+count])
+        for stall_at in range(driver.frames):
+            await read_span(0, driver.frames, expected, stall_at)
+        driver.pause = False
+        assert await driver.command({'kind':'fence'}, stalls=False) == (0, [])
+
+    for delay in range(min(driver.frames+6, 10)):
+        await driver.reset(initial)
+        assert await driver.command({'kind':'read', 'chunk':0, 'offset':0, 'frames':driver.frames}, stalls=False) == (0, initial[:driver.frames])
+        driver.set(cmd_valid=1, cmd_opcode=0, cmd_id=456, cmd_chunk=0, cmd_offset=0,
+                   cmd_count=driver.frames, read_ready=delay % 2, response_ready=0)
+        assert (await driver.tick())[0]['cmd_ready']
+        driver.set(cmd_valid=0)
+        for _ in range(delay):
+            await driver.tick()
+        replacement = [signed((x+delay+91) & 0xffffffff) for x in initial]
+        await driver.reset(replacement)
+        assert not int(dut.read_valid.value) and not int(dut.response_valid.value)
+        assert await driver.command({'kind':'read', 'chunk':0, 'offset':0, 'frames':driver.frames}, stalls=False) == (0, replacement[:driver.frames])
+    driver.close()

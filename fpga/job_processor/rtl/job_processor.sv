@@ -114,9 +114,11 @@ module job_processor #(
     wire streaming = phase == GAIN_STREAM || phase == MIX_STREAM;
     wire stream_read = streaming && frame < quantum;
     wire stream_write = streaming && stream_store_valid && !((ENABLE_MEDIA != 0) && media_fault);
+    wire playback_write = (ENABLE_MEDIA != 0) && phase == MEDIA_READ
+        && media_read_valid && media_read_ready && !media_fault;
     wire scratch_read = ((phase == READ_REQUEST) && (opcode != `SHOOP_SP_JOB_INPUT))
         || stream_read || (phase == MEDIA_SOURCE_REQUEST);
-    wire scratch_write = ((phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT)) || stream_write;
+    wire scratch_write = ((phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT)) || stream_write || playback_write;
     wire output_write = (phase == CLEAR_OUTPUT) || ((phase == STORE) && (opcode == `SHOOP_SP_JOB_OUTPUT));
     wire [INPUT_BITS-1:0] input_address = INPUT_BITS'(32'(port_index) * 32'(MAX_FRAMES) + frame);
     wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'((phase == MIX_STREAM && mix_second) ? source_b : source_a)
@@ -205,7 +207,8 @@ module job_processor #(
         .clk(clk), .read_enable(!reset && (scratch_read || (scratch_access && !cfg_write))),
         .read_address(scratch_ram_read_address), .read_data(scratch_data),
         .write_enable(!reset && (scratch_write || (scratch_access && cfg_write))),
-        .write_address(scratch_ram_write_address), .write_data(busy ? result_sample : cfg_write_data)
+        .write_address(scratch_ram_write_address),
+        .write_data(busy ? (playback_write ? media_read_data : result_sample) : cfg_write_data)
     );
 
     always @(posedge clk) begin
@@ -511,18 +514,20 @@ module job_processor #(
                         if (opcode != `SHOOP_SP_JOB_OUTPUT)
                             buffer_ready[BUFFER_BITS'(destination)] <= 1;
                         frame <= 0;
-                        phase <= (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_DONE : FETCH;
+                        phase <= FETCH;
                     end else begin
                         frame <= frame + 1;
-                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE
-                            : (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : READ_REQUEST;
+                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE : READ_REQUEST;
                     end
                 end
                 MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)
                     phase <= (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : MEDIA_SOURCE_REQUEST;
                 MEDIA_READ: if (media_read_valid && media_read_ready) begin
-                    result_sample <= media_read_data;
-                    phase <= STORE;
+                    if (frame+1 == quantum) begin
+                        buffer_ready[BUFFER_BITS'(destination)] <= 1;
+                        frame <= 0;
+                        phase <= MEDIA_DONE;
+                    end else frame <= frame+1;
                 end
                 MEDIA_SOURCE_REQUEST: phase <= MEDIA_SOURCE_RESULT;
                 MEDIA_SOURCE_RESULT: begin sample_a <= scratch_data; phase <= MEDIA_WRITE; end

@@ -304,8 +304,8 @@ the quantum window separate through the whole-model counters.
 
 The measurements in this section describe the scalar job processor at
 `e73c9870`. Current results after merging gain/mix pipelining are in
-[the combined checkpoint](../loop_pipeline/README.md#combined-pipelining-and-chunk-bursts):
-164.84 us per playback quantum at the same assumed 100 MHz, with zero exposed
+[the playback streaming checkpoint](../loop_pipeline/README.md#pipelined-playback-sample-delivery):
+125.16 us per playback quantum at the same assumed 100 MHz, with zero exposed
 fill wait and the same 8 KiB of physical DDR traffic.
 
 The coordinated 64-loop fixture uses eight tracks of eight mono loops, Q=32,

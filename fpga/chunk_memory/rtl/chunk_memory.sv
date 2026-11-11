@@ -31,8 +31,8 @@ module chunk_memory #(
     localparam integer RADDR_BITS = (READ_BUFFERS*CHUNK_FRAMES < 2) ? 1 : $clog2(READ_BUFFERS*CHUNK_FRAMES);
     localparam integer WADDR_BITS = (WRITE_BUFFERS*CHUNK_FRAMES < 2) ? 1 : $clog2(WRITE_BUFFERS*CHUNK_FRAMES);
     localparam [63:0] ARENA_BYTES = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
-    typedef enum logic [3:0] { IDLE, CHECK, LOOKUP, WAIT_LINE, READ_REQUEST,
-        READ_RESULT, READ_SEND, WRITE_DATA, COMMIT, FLUSH, RETIRING, RESPONSE } phase_t;
+    typedef enum logic [3:0] { IDLE, CHECK, LOOKUP, WAIT_LINE, READ_STREAM,
+        WRITE_DATA, COMMIT, FLUSH, RETIRING, RESPONSE } phase_t;
     typedef enum logic [3:0] { D_IDLE, D_READ_REQUEST, D_READ_WAIT,
         D_RAM_REQUEST, D_RAM_RESULT, D_WRITE_REQUEST, D_WRITE_WAIT,
         D_TRANSFER, D_STREAM_READ, D_STREAM_WRITE, D_STREAM_WAIT } dma_phase_t;
@@ -40,6 +40,8 @@ module chunk_memory #(
     dma_phase_t dma_phase;
     reg [2:0] opcode;
     reg [31:0] request_id, chunk, offset, count, index, line;
+    reg [31:0] read_issued;
+    reg read_pending, read_output_valid;
     reg use_write_pool;
     reg [63:0] requested_base, active_base;
     reg base_bound;
@@ -59,7 +61,7 @@ module chunk_memory #(
     reg [31:0] dirty_count;
     integer i, candidate;
     wire dma_active = dma_phase != D_IDLE;
-    wire read_pinned = !use_write_pool && (phase == WAIT_LINE || phase == READ_REQUEST || phase == READ_RESULT || phase == READ_SEND);
+    wire read_pinned = !use_write_pool && (phase == WAIT_LINE || phase == READ_STREAM);
     wire write_claimed = opcode == WRITE && phase != IDLE && phase != RESPONSE;
     wire incoming_write = cmd_valid && cmd_opcode == WRITE && cmd_count != 0 && cmd_chunk < 32'(SLOTS)
         && cmd_offset <= 32'(CHUNK_FRAMES) && cmd_count <= 32'(CHUNK_FRAMES)-cmd_offset;
@@ -73,9 +75,15 @@ module chunk_memory #(
     wire [31:0] read_a_data, read_b_data, write_a_data, write_b_data;
     wire unused_read_b = &{1'b0,read_b_data};
     wire write_word = phase == WRITE_DATA && write_valid && write_ready;
+    wire read_output_ready = !read_output_valid || read_ready;
+    wire read_ram_ready = !read_pending || read_output_ready;
+    wire read_issue = phase == READ_STREAM && read_issued < count && read_ram_ready && !fault && !reset;
+    wire read_ram_reserved = phase == READ_STREAM && use_write_pool
+        && (read_issue || (read_pending && !read_output_ready));
+    wire fill_blocked = dma_write_pool && (write_word || read_ram_reserved);
     assign cmd_ready = phase == IDLE && !fault && !reset && (!incoming_write || incoming_write_space);
     assign write_ready = phase == WRITE_DATA && !fault && !reset;
-    assign read_valid = phase == READ_SEND && !fault && !reset;
+    assign read_valid = phase == READ_STREAM && read_output_valid && !fault && !reset;
     assign read_last = index + 1 == count;
     assign response_valid = phase == RESPONSE && !reset;
     assign response_id = request_id;
@@ -93,9 +101,10 @@ module chunk_memory #(
     assign memory_count = BURST_MEMORY != 0 ? 32'(CHUNK_FRAMES) : 32'd1;
     assign memory_write_valid = BURST_MEMORY != 0 && dma_phase == D_STREAM_WRITE && !fault && !reset;
     assign memory_read_ready = BURST_MEMORY != 0 && dma_phase == D_STREAM_READ && !fault && !reset
-        && !(dma_write_pool && (write_word || (phase == READ_REQUEST && use_write_pool)));
+        && !fill_blocked;
     assign memory_response_ready = !fault && !reset && (BURST_MEMORY != 0
-        ? dma_active && dma_phase != D_TRANSFER : dma_phase == D_READ_WAIT || dma_phase == D_WRITE_WAIT);
+        ? dma_active && dma_phase != D_TRANSFER
+        : (dma_phase == D_READ_WAIT && (!fill_blocked || memory_response_error)) || dma_phase == D_WRITE_WAIT);
 
     initial begin
         if (SLOTS < 1 || SLOTS > 65536 || CHUNK_FRAMES < 1 || CHUNK_FRAMES > 65536
@@ -149,15 +158,16 @@ module chunk_memory #(
     end
 
     chunk_ram #(.DEPTH(READ_BUFFERS*CHUNK_FRAMES), .ADDR_BITS(RADDR_BITS)) read_ram (
-        .clk(clk), .a_enable(!reset && phase == READ_REQUEST && !use_write_pool), .a_write(1'b0),
-        .a_address(RADDR_BITS'(line*32'(CHUNK_FRAMES)+offset+index)), .a_write_data(32'b0), .a_read_data(read_a_data),
+        .clk(clk), .a_enable(read_issue && !use_write_pool), .a_write(1'b0),
+        .a_address(RADDR_BITS'(line*32'(CHUNK_FRAMES)+offset+read_issued)), .a_write_data(32'b0), .a_read_data(read_a_data),
         .b_enable(!reset && fill_word && !dma_write_pool), .b_write(1'b1),
         .b_address(RADDR_BITS'(dma_line*32'(CHUNK_FRAMES)+dma_index)), .b_write_data(memory_read_data), .b_read_data(read_b_data)
     );
     chunk_ram #(.DEPTH(WRITE_BUFFERS*CHUNK_FRAMES), .ADDR_BITS(WADDR_BITS)) write_ram (
-        .clk(clk), .a_enable(!reset && (write_word || (phase == READ_REQUEST && use_write_pool) || (fill_word && dma_write_pool))),
+        .clk(clk), .a_enable(!reset && (write_word || (read_issue && use_write_pool) || (fill_word && dma_write_pool))),
         .a_write(write_word || (fill_word && dma_write_pool)),
-        .a_address(WADDR_BITS'((fill_word && dma_write_pool) ? dma_line*32'(CHUNK_FRAMES)+dma_index : line*32'(CHUNK_FRAMES)+offset+index)),
+        .a_address(WADDR_BITS'((fill_word && dma_write_pool) ? dma_line*32'(CHUNK_FRAMES)+dma_index
+            : line*32'(CHUNK_FRAMES)+offset+(read_issue ? read_issued : index))),
         .a_write_data(fill_word && dma_write_pool ? memory_read_data : write_data), .a_read_data(write_a_data),
         .b_enable(!reset && dma_phase == D_RAM_REQUEST), .b_write(1'b0),
         .b_address(WADDR_BITS'(dma_line*32'(CHUNK_FRAMES)+dma_index)), .b_write_data(32'b0), .b_read_data(write_b_data)
@@ -167,6 +177,7 @@ module chunk_memory #(
         if (reset) begin
             phase <= IDLE; dma_phase <= D_IDLE; fault <= 0;
             opcode <= READ; request_id <= 0; chunk <= 0; offset <= 0; count <= 0; index <= 0; line <= 0;
+            read_issued <= 0; read_pending <= 0; read_output_valid <= 0;
             use_write_pool <= 0; requested_base <= 0; active_base <= 0; base_bound <= 0;
             read_present <= 0; read_loaded <= 0; write_present <= 0; write_loaded <= 0; dirty <= 0;
             next_read <= 0; next_write <= 0; quiet <= 0; hint_pending <= 0; hint_chunk <= 0;
@@ -188,6 +199,7 @@ module chunk_memory #(
                 IDLE: if (cmd_valid && cmd_ready) begin
                     opcode <= cmd_opcode; request_id <= cmd_id; chunk <= cmd_chunk;
                     offset <= cmd_offset; count <= cmd_count; index <= 0; requested_base <= arena_base;
+                    read_issued <= 0; read_pending <= 0; read_output_valid <= 0;
                     response_error <= 0; phase <= CHECK;
                     if (cmd_opcode == WRITE) quiet <= 0;
                 end
@@ -220,12 +232,12 @@ module chunk_memory #(
                     if (opcode == WRITE && dma_active && dma_chunk == chunk && !dma_speculative) begin end
                     else if (write_hit) begin
                         line <= write_hit_line; use_write_pool <= 1;
-                        phase <= write_loaded[write_hit_line] ? ((opcode == WRITE) ? WRITE_DATA : READ_REQUEST) : WAIT_LINE;
+                        phase <= write_loaded[write_hit_line] ? ((opcode == WRITE) ? WRITE_DATA : READ_STREAM) : WAIT_LINE;
                         if (opcode == WRITE) for (integer r = 0; r < READ_BUFFERS; r = r+1)
                             if (read_present[r] && read_tag[r] == chunk) begin read_present[r] <= 0; read_loaded[r] <= 0; end
                     end else if (opcode == READ && read_hit) begin
                         line <= read_hit_line; use_write_pool <= 0;
-                        phase <= read_loaded[read_hit_line] ? READ_REQUEST : WAIT_LINE;
+                        phase <= read_loaded[read_hit_line] ? READ_STREAM : WAIT_LINE;
                     end else if (opcode == READ && read_victim) begin
                         line <= read_victim_line; use_write_pool <= 0;
                         read_present[read_victim_line] <= 1; read_loaded[read_victim_line] <= 0;
@@ -244,12 +256,18 @@ module chunk_memory #(
                     end
                 end
                 WAIT_LINE: if (use_write_pool ? write_loaded[line] : read_loaded[line])
-                    phase <= opcode == WRITE ? WRITE_DATA : READ_REQUEST;
-                READ_REQUEST: phase <= READ_RESULT;
-                READ_RESULT: begin read_data <= use_write_pool ? write_a_data : read_a_data; phase <= READ_SEND; end
-                READ_SEND: if (read_valid && read_ready) begin
-                    index <= index + 1;
-                    phase <= read_last ? RESPONSE : READ_REQUEST;
+                    phase <= opcode == WRITE ? WRITE_DATA : READ_STREAM;
+                READ_STREAM: begin
+                    if (read_output_ready) begin
+                        read_output_valid <= read_pending;
+                        if (read_pending) read_data <= use_write_pool ? write_a_data : read_a_data;
+                    end
+                    if (read_ram_ready) read_pending <= read_issue;
+                    if (read_issue) read_issued <= read_issued+1;
+                    if (read_valid && read_ready) begin
+                        index <= index+1;
+                        if (read_last) phase <= RESPONSE;
+                    end
                 end
                 WRITE_DATA: if (write_word) begin
                     quiet <= 0; index <= index + 1;

@@ -279,7 +279,7 @@ The streamed TP increases this complete top's LUT4 count by 2,129 (12.0%) from
 
 The tables and opportunity analysis below record the scalar sample-engine
 baseline. Current measurements are in the
-[combined pipelining and chunk-burst checkpoint](#combined-pipelining-and-chunk-bursts).
+[playback sample delivery checkpoint](#pipelined-playback-sample-delivery).
 
 The `8x8` timing profile extends the media benchmark through the actual transition
 processor, committed loop-read port, state/job processors, media frontend, chunk
@@ -534,6 +534,8 @@ timing or a hard real-time guarantee. PR CI is not inspected.
 
 ### Combined pipelining and chunk bursts
 
+This checkpoint precedes the cache-to-scratch read pipeline measured below.
+
 Revision `f3236460` merges upstream `6d605b24` (gain/mix pipeline `928d27aa`)
 with the chunk-burst implementation `e73c9870`. The merge needs no RTL changes.
 All four quanta match the complete Rust trace in both DDR3 and instant-memory
@@ -603,3 +605,78 @@ Generic checks and ECP5 synthesis pass for the default eight-loop AXI top:
 Compared with the burst-only top this adds 56 LUT4s and 145 flip-flops, with
 unchanged BRAM and DSP counts. These capacities differ from the 64-loop timing
 profile; synthesis does not establish routed frequency or board fit.
+
+### Pipelined playback sample delivery
+
+The cache overlaps successive synchronous RAM reads using independent valid bits
+for the RAM return and output register. Backpressure holds both stages without
+reissuing or dropping samples; the line remains pinned until its final sample
+is consumed. The job processor writes each accepted ReadView sample directly
+to scratch RAM and publishes its destination on the final write. This retains
+the existing RAM ports, media interfaces and Rust behavior.
+
+The same 64-loop fixture, seed, Q=32, 128 read buffers, four write buffers,
+64-bit AXI and illustrative DDR3 profile produce the following measured results
+at an assumed 100 MHz:
+
+| Measurement | Before playback pipelining | After |
+| --- | ---: | ---: |
+| ReadView job, 32 samples | 110 clocks | **48 clocks** |
+| All 64 ReadView jobs | 70.40 us | **30.72 us** |
+| Job processor busy | 143.21 us | **103.53 us** |
+| Steady active cycles | 16,484 | **12,516** |
+| Steady active time | 164.84 us | **125.16 us** |
+| Apply all 64 Play commands | 180.56 us | **140.88 us** |
+| Exposed demand-fill wait | 0 | **0** |
+
+All four complete quantum traces match Rust. Instant-memory and DDR3 runs have
+identical active cycles and processor/job breakdowns. The measured saving is
+**3,968 clocks / 39.68 us / 24.07%**, or **1.317x throughput** relative to the
+previous checkpoint. A read job costs 32 sample clocks, two pipeline fill clocks
+and 14 other clocks. The two fill clocks per chunk explain the 128-clock
+difference from the estimate that replaced every three-clock sample iteration
+with a single clock. Relative to the scalar/word baseline, execution is now
+**2.377x faster** and takes **57.93% less active time**.
+
+| Quantum | Active cycles | Active time | Preflight wait | Raw run-to-done |
+| --- | ---: | ---: | ---: | ---: |
+| Apply 64 Play commands | 14,088 | 140.88 us | 15.40 us | 156.28 us |
+| Playback 1 | 12,516 | 125.16 us | 23.08 us | 148.24 us |
+| Playback 2 | 12,516 | 125.16 us | 15.88 us | 141.04 us |
+| Playback 3 | 12,516 | 125.16 us | 15.88 us | 141.04 us |
+
+Preflight verifier pauses, setup and snapshots keep the same measurement
+boundaries. TP remains 10.06 us in steady playback, SP 11.52 us, gains 24.32 us,
+mixes 38.08 us, outputs 7.85 us, output clear 2.56 us and other handshakes 0.05 us.
+Mix now has the largest individual job cost, followed by playback reads. At
+48 kHz, active execution uses **18.774%** of the 666.67 us audio period.
+
+Memory traffic remains 64 AXI bursts / 512 native READs / 8 KiB physically per
+quantum. DMA activity spans 37.59–37.89 us and overlaps execution. Active DDR
+data utilization rises to **3.068%** because the observation window is shorter;
+full-period utilization remains 0.576%. There are no writes in this playback
+fixture. A separate instrumented replay confirms consecutive playback samples
+and scratch writes, while comparing startup and steady playback with Rust.
+
+```sh
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
+  --read-buffers 128 --axi-data-width 64 --memory-model dramsim3 \
+  --output work/playback-stream-profile
+```
+
+Both-width integrated lint and generic/ECP5 synthesis pass. The default eight-loop
+AXI top maps to 26,967 LUT4s, 14,187 flip-flops, 93 DP16KD blocks and four
+MULT18X18D blocks. Relative to the previous top this adds 34 flip-flops and
+retains its BRAM/DSP counts. This capacity profile differs from the 64-loop
+benchmark; no routed timing or board fit is established.
+
+Verification matches Rust for 63 connected DDR3 cases / 554 quanta plus
+preparation/fault/reset checks. The single-read/single-write-buffer DDR3 profile
+passes another 16 cases / 87 quanta. Word-AXI and delayed legacy loop paths each
+pass 12 cases / 59 quanta. All four chunk profiles pass in 32-/64-bit burst and
+legacy modes, including one-sample chunks, empty/partial reads, write-buffer
+forwarding, stalls at every sample position and reset with pending data.
+Media-audio comparisons pass 61 cases / 189 quanta at 64 bits and 21 cases /
+65 quanta at 32 bits, plus the new cadence/publication/reset/fault protocol
+checks. The BRAM arithmetic regression retains all 172 cases / 507 quanta and
+its stream/reset checks. Rust source and wire formats are unchanged.

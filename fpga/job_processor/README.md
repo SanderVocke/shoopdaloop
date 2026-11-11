@@ -305,3 +305,18 @@ measured. See the [full 64-loop remeasurement](../loop_pipeline/README.md#pipeli
 for actual TP/state/job/DRAM overlap and the newly exposed memory waits.
 The later [combined chunk-burst checkpoint](../loop_pipeline/README.md#combined-pipelining-and-chunk-bursts)
 removes those exposed waits while retaining the gain/mix pipeline.
+
+## Playback sample delivery
+
+ReadView samples write scratch RAM directly on the media valid/ready handshake,
+with no intervening per-sample store state. The destination becomes ready on
+its final write; the job still awaits media completion and propagates failures.
+Reset and a reported memory fault suppress further playback writes. Combined
+with the cache read pipeline, resident chunks sustain one sample per clock.
+Rust arithmetic, media semantics and job formats are unchanged.
+
+The [playback timing checkpoint](../loop_pipeline/README.md#pipelined-playback-sample-delivery)
+measures 48 clocks per Q=32 ReadView job, down from 110, and 125.16 us per
+64-loop playback quantum at an assumed 100 MHz. Protocol tests check consecutive
+scratch addresses/writes, publication on the last write, resets during the
+stream, an unrelated prefetch fault during playback, and Rust-checked restart.

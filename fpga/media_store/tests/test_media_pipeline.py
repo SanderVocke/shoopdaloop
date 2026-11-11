@@ -284,6 +284,104 @@ async def memory_timing(dut):
 
 
 @cocotb.test()
+async def playback_stream_protocol(dut):
+    driver = PipelineDriver(dut, CAPACITIES, MEDIA, SEED+91)
+    core = dut.core.pipeline.sample_engine if driver.media.axi is not None else dut.pipeline.sample_engine
+    writes = []
+    before_clock = driver.media.before_clock
+
+    def observe():
+        before_clock()
+        if not int(dut.reset.value) and int(core.playback_write.value):
+            assert not (int(dut.buffer_ready.value) & 1), 'playback published before its final write'
+            writes.append((driver.media.cycles, int(core.scratch_ram_write_address.value)))
+
+    driver.media.before_clock = observe
+
+    def make_case(frames, second_view=False):
+        nodes = [{'kind':'playback', 'view':0, 'playing':True, 'position_chunks':0, 'length_chunks':1}]
+        if second_view:
+            nodes.append({'kind':'playback', 'view':1, 'playing':True, 'position_chunks':0, 'length_chunks':1})
+        nodes.append({'kind':'output', 'input':0, 'port':0})
+        compiled = wire.run_reference('compile', document('graph', {'quantum':frames,
+            'chunk_frames':MEDIA[2], 'nodes':nodes}), executable=REFERENCE)['payload']['value']
+        views = 2 if second_view else 1
+        return {'name':'playback-stream', 'program':compiled['program'],
+            'initial_state':{'memory':compiled['initial_state']}, 'queue_capacity':CAPACITIES[2],
+            'buffers':2, 'output_ports':1,
+            'media':{'chunk_frames':MEDIA[2], 'samples':[13-7*i for i in range(views*MEDIA[2])],
+                     'free_chunks':[], 'views':[{'chunks':[i], 'frames':MEDIA[2]} for i in range(views)]},
+            'steps':[{'writes':[], 'inputs':[]}]}
+
+    async def warm(case):
+        await driver.load(case)
+        result = await driver.media.command({'kind':'read', 'view':0, 'position':0,
+                                            'length':MEDIA[2], 'frames':case['program']['quantum']}, stalls=False)
+        assert result['status']['kind'] == 'completed'
+        writes.clear()
+
+    frames = min(CAPACITIES[3], MEDIA[2])
+    case = make_case(frames)
+    target = wire.run_reference('trace', document('audio_case', case), executable=REFERENCE)['payload']['value']['results'][0]
+    assert target['status']['kind'] == 'completed'
+    await warm(case)
+    wire.assert_audio_result_matches(target, await driver.quantum_audio(case['steps'][0], stalls=False))
+    assert [address for _,address in writes] == list(range(frames))
+    assert all(b[0]-a[0] == 1 for a,b in zip(writes, writes[1:])), 'playback scratch writes were not consecutive'
+    for prefix in sorted({0, min(1, frames-1), frames//2, frames-1}):
+        await warm(case)
+        driver.consumed, driver.drained = [], []
+        driver.set(run_buffers=2, run_inputs=0, run_outputs=1, job_enable=1, drain_ready=0)
+        await driver.start()
+        for _ in range(10000):
+            if (len(writes) >= prefix and int(core.media_read_ready.value)
+                    and (prefix != 0 or int(core.playback_write.value))):
+                break
+            await driver.tick()
+        else:
+            raise AssertionError('playback did not reach reset placement')
+        driver.set(reset=1)
+        await driver.tick()
+        driver.set(reset=0)
+        for _ in range(6):
+            await driver.tick()
+            assert not int(core.scratch_write.value) and not int(dut.buffer_ready.value), 'stale playback write after reset'
+        await warm(case)
+        wire.assert_audio_result_matches(target, await driver.quantum_audio(case['steps'][0], stalls=False))
+
+    if frames >= 16 and driver.media.axi is not None:
+        abort_case = make_case(frames, second_view=True)
+        await warm(abort_case)
+        driver.media.pause_responses = True
+        driver.media.fail_next = True
+        driver.consumed, driver.drained = [], []
+        driver.set(run_buffers=2, run_inputs=0, run_outputs=1, job_enable=1, drain_ready=0)
+        await driver.start()
+        for _ in range(10000):
+            await driver.tick()
+            if writes:
+                break
+        else:
+            raise AssertionError('cached playback did not overlap failing prefetch')
+        assert driver.media.pending is not None and driver.media.pending[2]
+        driver.media.pause_responses = False
+        for _ in range(10000):
+            _, after = await driver.tick()
+            if after['done']:
+                break
+        else:
+            raise AssertionError('playback did not abort on a memory fault')
+        assert after['error_stage'] == 2 and after['error_code'] == 8
+        assert not (after['buffer_ready'] & 1)
+        for _ in range(6):
+            await driver.tick()
+            assert not int(core.playback_write.value) and not int(core.scratch_write.value)
+        await warm(case)
+        wire.assert_audio_result_matches(target, await driver.quantum_audio(case['steps'][0], stalls=False))
+    driver.media.close()
+
+
+@cocotb.test()
 async def pipeline_protocol(dut):
     value = record_case(MEDIA[2])
     trace = wire.run_reference("trace", document("audio_case", value), executable=REFERENCE)

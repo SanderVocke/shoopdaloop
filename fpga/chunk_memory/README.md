@@ -60,6 +60,14 @@ Dirty write lines forward reads directly. Partial write misses fill the old chun
 before modification; full overwrites need no old-data fetch. Conflicting fills,
 writes, writebacks and retirements are serialized by chunk identity.
 
+Resident reads pipeline RAM requests, returned samples and delivery. A valid bit
+tracks the synchronous RAM output and another tracks the held output register;
+each stage advances only when its successor has room. After pipeline fill, an
+unstalled reader receives one sample per clock. Issued and consumed indices are
+separate, so arbitrary stalls preserve data/last and completion follows the last
+accepted sample. A line stays pinned throughout the stream. Shared write-pool
+port arbitration also protects a pending RAM result while the output is stalled.
+
 The demand and transfer FSMs run concurrently. Demand fills have priority. Dirty
 writeback runs after a quiet interval of `CHUNK_FRAMES+8` periods, or earlier for
 buffer pressure, fence or retirement. The interval combines adjacent writes,

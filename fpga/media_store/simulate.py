@@ -89,7 +89,7 @@ def main():
                      build_args=["--Wall", "--timescale", "1ns/1ps"],
                      build_dir=output / "build", always=True, waves=args.waves, log_file=output / "build.log")
         testcase = "memory_timing" if args.timing else (("directed_pipeline" if args.pipeline else "directed_media") if args.case else
-                   ["directed_pipeline", "randomized_pipeline", "pipeline_protocol"] if args.pipeline else None)
+                   ["directed_pipeline", "randomized_pipeline", "pipeline_protocol", "playback_stream_protocol"] if args.pipeline else None)
         result = runner.test(hdl_toplevel=top, test_module="test_media_pipeline" if args.pipeline else "test_media_store",
                              testcase=testcase, seed=args.seed,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
@@ -105,7 +105,7 @@ def main():
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.case or args.timing else 3)
+        if (len(list(report.iter("testcase"))) != (1 if args.case or args.timing else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

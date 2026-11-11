@@ -60,7 +60,7 @@ def main():
                                         "CHUNK_OUTPUT": str(output), "CHUNK_RANDOM_CASES": str(args.random_cases),
                                         "CHUNK_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         report = ET.parse(result).getroot()
-        if len(list(report.iter("testcase"))) != (1 if args.case else 3) or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped")):
+        if len(list(report.iter("testcase"))) != (1 if args.case else 4) or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped")):
             raise SystemExit(f"Chunk-memory comparison failed: {output / 'simulation.log'}")
         print(f"{name}: chunk-memory comparisons and protocol tests passed", flush=True)
 
