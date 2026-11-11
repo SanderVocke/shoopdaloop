@@ -123,3 +123,17 @@ def assert_transition_result_matches(expected, observed):
             f"expected: {json.dumps(expected, sort_keys=True)}\n"
             f"observed: {json.dumps(observed, sort_keys=True)}"
         )
+
+
+def assert_media_result_matches(expected, observed):
+    """Compare storage command results, sample words and complete ownership state."""
+    definition = {"$ref": "#/$defs/MediaResult", "$defs": schema()["$defs"]}
+    validator = _validator_class()(definition)
+    validator.validate(expected)
+    validator.validate(observed)
+    if expected != observed:
+        raise AssertionError(
+            "media command differs\n"
+            f"expected: {json.dumps(expected, sort_keys=True)}\n"
+            f"observed: {json.dumps(observed, sort_keys=True)}"
+        )

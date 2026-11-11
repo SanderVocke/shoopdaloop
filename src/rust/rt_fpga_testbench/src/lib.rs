@@ -14,6 +14,7 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+pub mod media;
 pub mod pipeline;
 pub mod transitions;
 
@@ -99,6 +100,8 @@ pub enum Payload {
     AudioCase(AudioCase),
     AudioTrace(AudioTrace),
     Media(MediaSnapshot),
+    MediaCase(media::MediaCase),
+    MediaTrace(media::MediaTrace),
     TransitionPlan(transitions::TransitionPlanInput),
     TransitionPlanImage(rt_fpga_reference::transitions::TransitionPlanImage),
     TransitionCase(transitions::TransitionCase),

@@ -1247,6 +1247,213 @@
         }
       ]
     },
+    "MediaCase": {
+      "type": "object",
+      "properties": {
+        "media": {
+          "$ref": "#/$defs/MediaSnapshot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MediaCommand"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "media",
+        "steps"
+      ]
+    },
+    "MediaCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "create"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "frames": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "slice"
+            },
+            "source": {
+              "$ref": "#/$defs/ViewId"
+            },
+            "start": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "start",
+            "frames"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "clear"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "remove"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "reclaim"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "append"
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              }
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view",
+            "samples"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "frames": {
+              "type": "integer",
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "read"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "position": {
+              "type": "integer",
+              "format": "uint64",
+              "maximum": 18446744073709551615,
+              "minimum": 0
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view",
+            "position",
+            "length",
+            "frames"
+          ]
+        }
+      ]
+    },
+    "MediaResult": {
+      "type": "object",
+      "properties": {
+        "media": {
+          "$ref": "#/$defs/MediaSnapshot"
+        },
+        "status": {
+          "$ref": "#/$defs/ExecutionStatus"
+        },
+        "value": {
+          "$ref": "#/$defs/MediaValue"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "value",
+        "media"
+      ]
+    },
     "MediaSnapshot": {
       "type": "object",
       "properties": {
@@ -1297,6 +1504,99 @@
         "samples",
         "free_chunks",
         "views"
+      ]
+    },
+    "MediaTrace": {
+      "type": "object",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/MediaCase"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MediaResult"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "case",
+        "results"
+      ]
+    },
+    "MediaValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "view"
+            },
+            "value": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "empty"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "samples"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 2147483647,
+                "minimum": -2147483648
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
       ]
     },
     "Mode": {
@@ -2005,6 +2305,40 @@
             },
             "value": {
               "$ref": "#/$defs/MediaSnapshot"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "media_case"
+            },
+            "value": {
+              "$ref": "#/$defs/MediaCase"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "media_trace"
+            },
+            "value": {
+              "$ref": "#/$defs/MediaTrace"
             }
           },
           "additionalProperties": false,

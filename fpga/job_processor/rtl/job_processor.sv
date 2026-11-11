@@ -5,6 +5,7 @@ module job_processor #(
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
     parameter integer OUTPUT_PORTS = 2,
+    parameter integer ENABLE_MEDIA = 0,
     parameter integer BUFFER_BITS = (BUFFERS > 1) ? $clog2(BUFFERS) : 1,
     parameter integer SCRATCH_BITS = (BUFFERS * MAX_FRAMES > 1) ? $clog2(BUFFERS * MAX_FRAMES) : 1,
     parameter integer INPUT_BITS = (INPUT_PORTS * MAX_FRAMES > 1) ? $clog2(INPUT_PORTS * MAX_FRAMES) : 1,
@@ -35,14 +36,22 @@ module job_processor #(
     input wire [31:0] cfg_write_data,
     output wire cfg_response_valid,
     output wire cfg_response_error,
-    output wire [31:0] cfg_read_data
+    output wire [31:0] cfg_read_data,
+    output wire media_cmd_valid, input wire media_cmd_ready,
+    output wire [2:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
+    output wire [63:0] media_cmd_start, output wire [63:0] media_cmd_length,
+    output wire [31:0] media_cmd_count,
+    input wire media_done, input wire [7:0] media_error,
+    output wire media_write_valid, input wire media_write_ready, output wire [31:0] media_write_data,
+    input wire media_read_valid, output wire media_read_ready, input wire [31:0] media_read_data
 );
     localparam [7:0] OK = 0, INVALID_BUFFER = 1, INVALID_SHAPE = 2, UNSUPPORTED = 3, INVALID_JOB = 4;
     typedef enum logic [4:0] {
         IDLE, CLEAR_OUTPUT, FETCH, DECODE, READ_REQUEST, READ_RESULT,
         MIX_REQUEST, MIX_RESULT, RAMP_PREPARE, RAMP_MULTIPLY,
         INITIAL_DIVIDE, INITIAL_WAIT, STEP_DIVIDE, STEP_WAIT,
-        SAMPLE_MULTIPLY, SAMPLE_RESULT, STORE
+        SAMPLE_MULTIPLY, SAMPLE_RESULT, STORE,
+        MEDIA_COMMAND, MEDIA_READ, MEDIA_SOURCE_REQUEST, MEDIA_SOURCE_RESULT, MEDIA_WRITE, MEDIA_DONE
     } phase_t;
     phase_t phase;
     reg [31:0] quantum, logical_buffers, input_count, output_count, remaining_jobs;
@@ -51,6 +60,7 @@ module job_processor #(
     wire [7:0] opcode = packet[7:0];
     wire [15:0] id0 = packet[23:8], id1 = packet[39:24];
     wire unused_packet = &{1'b0, packet[63:40], packet[255:192]};
+    wire unused_media = &{1'b0, media_cmd_ready, media_done, media_error, media_write_ready, media_read_valid, media_read_data};
     reg [15:0] source_a, source_b, destination, port_index;
     reg [31:0] sample_a, result_sample;
     reg [31:0] current_gain, ramp_start, ramp_target, duration, elapsed;
@@ -84,7 +94,7 @@ module job_processor #(
     wire scratch_access = cfg_accept && cfg_in_range && (cfg_space == 2);
     wire input_read = (phase == READ_REQUEST) && (opcode == `SHOOP_SP_JOB_INPUT);
     wire scratch_read = ((phase == READ_REQUEST) && (opcode != `SHOOP_SP_JOB_INPUT))
-        || (phase == MIX_REQUEST);
+        || (phase == MIX_REQUEST) || (phase == MEDIA_SOURCE_REQUEST);
     wire scratch_write = (phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT);
     wire output_write = (phase == CLEAR_OUTPUT) || ((phase == STORE) && (opcode == `SHOOP_SP_JOB_OUTPUT));
     wire [INPUT_BITS-1:0] input_address = INPUT_BITS'(32'(port_index) * 32'(MAX_FRAMES) + frame);
@@ -142,6 +152,15 @@ module job_processor #(
     assign cfg_response_error = cfg_error;
     assign cfg_read_data = (cfg_error || cfg_was_write) ? 32'b0
         : (cfg_response_space == 0) ? input_data : (cfg_response_space == 1) ? output_data : scratch_data;
+    assign media_cmd_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_COMMAND) && !reset;
+    assign media_cmd_opcode = (ENABLE_MEDIA == 0) ? 3'b0 : (opcode == `SHOOP_SP_JOB_READ) ? 3'd6 : 3'd5;
+    assign media_cmd_view = (ENABLE_MEDIA == 0) ? 64'b0 : packet[127:64];
+    assign media_cmd_start = (ENABLE_MEDIA == 0) ? 64'b0 : packet[191:128];
+    assign media_cmd_length = (ENABLE_MEDIA == 0) ? 64'b0 : packet[255:192];
+    assign media_cmd_count = (ENABLE_MEDIA == 0) ? 32'b0 : quantum;
+    assign media_write_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_WRITE) && !reset;
+    assign media_write_data = (ENABLE_MEDIA == 0) ? 32'b0 : sample_a;
+    assign media_read_ready = (ENABLE_MEDIA != 0) && (phase == MEDIA_READ) && !reset;
 
     jp_divider divide (
         .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE)),
@@ -219,7 +238,19 @@ module job_processor #(
             product_negative <= 0;
         end else begin
             done <= 0;
-            case (phase)
+            if ((ENABLE_MEDIA != 0) && media_done && (phase >= MEDIA_COMMAND)) begin
+                if (media_error != 0) begin
+                    case (media_error)
+                        1: error_code <= 5;
+                        2: error_code <= 7;
+                        3: error_code <= 6;
+                        4: error_code <= INVALID_SHAPE;
+                        default: error_code <= 8;
+                    endcase
+                    done <= 1;
+                    phase <= IDLE;
+                end else phase <= FETCH;
+            end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
                     error_code <= OK;
                     if ((run_quantum == 0) || (run_quantum > 32'(MAX_FRAMES))
@@ -318,10 +349,19 @@ module job_processor #(
                                 phase <= READ_REQUEST;
                             end
                         end
-                        `SHOOP_SP_JOB_READ, `SHOOP_SP_JOB_CAPTURE: begin
-                            error_code <= UNSUPPORTED;
-                            done <= 1;
-                            phase <= IDLE;
+                        `SHOOP_SP_JOB_READ: begin
+                            if (ENABLE_MEDIA == 0) begin
+                                error_code <= UNSUPPORTED; done <= 1; phase <= IDLE;
+                            end else if (!destination_valid(id0)) begin
+                                error_code <= INVALID_BUFFER; done <= 1; phase <= IDLE;
+                            end else begin destination <= id0; phase <= MEDIA_COMMAND; end
+                        end
+                        `SHOOP_SP_JOB_CAPTURE: begin
+                            if (ENABLE_MEDIA == 0) begin
+                                error_code <= UNSUPPORTED; done <= 1; phase <= IDLE;
+                            end else if (!source_valid(id0)) begin
+                                error_code <= INVALID_BUFFER; done <= 1; phase <= IDLE;
+                            end else begin source_a <= id0; phase <= MEDIA_COMMAND; end
                         end
                         default: begin
                             error_code <= INVALID_JOB;
@@ -395,10 +435,11 @@ module job_processor #(
                         if (opcode != `SHOOP_SP_JOB_OUTPUT)
                             buffer_ready[BUFFER_BITS'(destination)] <= 1;
                         frame <= 0;
-                        phase <= FETCH;
+                        phase <= (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_DONE : FETCH;
                     end else begin
                         frame <= frame + 1;
-                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE : READ_REQUEST;
+                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE
+                            : (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : READ_REQUEST;
                         if ((opcode == `SHOOP_SP_JOB_GAIN) && !constant_gain) begin
                             elapsed <= elapsed + 1;
                             if ({1'b0, elapsed} + 1 >= {1'b0, duration}) begin
@@ -412,6 +453,19 @@ module job_processor #(
                         end
                     end
                 end
+                MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)
+                    phase <= (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : MEDIA_SOURCE_REQUEST;
+                MEDIA_READ: if (media_read_valid && media_read_ready) begin
+                    result_sample <= media_read_data;
+                    phase <= STORE;
+                end
+                MEDIA_SOURCE_REQUEST: phase <= MEDIA_SOURCE_RESULT;
+                MEDIA_SOURCE_RESULT: begin sample_a <= scratch_data; phase <= MEDIA_WRITE; end
+                MEDIA_WRITE: if (media_write_valid && media_write_ready) begin
+                    if (frame + 1 == quantum) begin frame <= 0; phase <= MEDIA_DONE; end
+                    else begin frame <= frame + 1; phase <= MEDIA_SOURCE_REQUEST; end
+                end
+                MEDIA_DONE: phase <= MEDIA_DONE;
                 default: begin
                     error_code <= INVALID_JOB;
                     done <= 1;

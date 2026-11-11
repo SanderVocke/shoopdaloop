@@ -7,7 +7,8 @@ module audio_pipeline #(
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
-    parameter integer OUTPUT_PORTS = 2
+    parameter integer OUTPUT_PORTS = 2,
+    parameter integer ENABLE_MEDIA = 0
 ) (
     input wire clk,
     input wire reset,
@@ -65,7 +66,14 @@ module audio_pipeline #(
     input wire external_job_ready,
     input wire external_done_valid,
     output wire external_done_ready,
-    input wire [7:0] external_error
+    input wire [7:0] external_error,
+    output wire media_cmd_valid, input wire media_cmd_ready,
+    output wire [2:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
+    output wire [63:0] media_cmd_start, output wire [63:0] media_cmd_length,
+    output wire [31:0] media_cmd_count,
+    input wire media_done, input wire [7:0] media_error,
+    output wire media_write_valid, input wire media_write_ready, output wire [31:0] media_write_data,
+    input wire media_read_valid, output wire media_read_ready, input wire [31:0] media_read_data
 );
     typedef enum logic [2:0] {IDLE, STATE_WAIT, JOB_START, JOB_WAIT, EXTERNAL_WAIT} phase_t;
     phase_t phase;
@@ -105,7 +113,8 @@ module audio_pipeline #(
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
     );
     job_processor #(
-        .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS)
+        .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
+        .ENABLE_MEDIA(ENABLE_MEDIA)
     ) sample_engine (
         .clk(clk), .reset(reset), .run_valid(phase == JOB_START), .run_ready(job_run_ready),
         .run_quantum(quantum), .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs),
@@ -114,7 +123,12 @@ module audio_pipeline #(
         .cfg_valid(audio_cfg_valid && (phase == IDLE)), .cfg_ready(job_cfg_ready),
         .cfg_space(audio_cfg_space), .cfg_write(audio_cfg_write), .cfg_address(audio_cfg_address),
         .cfg_write_data(audio_cfg_write_data), .cfg_response_valid(audio_cfg_response_valid),
-        .cfg_response_error(audio_cfg_response_error), .cfg_read_data(audio_cfg_read_data)
+        .cfg_response_error(audio_cfg_response_error), .cfg_read_data(audio_cfg_read_data),
+        .media_cmd_valid(media_cmd_valid), .media_cmd_ready(media_cmd_ready), .media_cmd_opcode(media_cmd_opcode),
+        .media_cmd_view(media_cmd_view), .media_cmd_start(media_cmd_start), .media_cmd_length(media_cmd_length),
+        .media_cmd_count(media_cmd_count), .media_done(media_done), .media_error(media_error),
+        .media_write_valid(media_write_valid), .media_write_ready(media_write_ready), .media_write_data(media_write_data),
+        .media_read_valid(media_read_valid), .media_read_ready(media_read_ready), .media_read_data(media_read_data)
     );
 
     always @(posedge clk) begin

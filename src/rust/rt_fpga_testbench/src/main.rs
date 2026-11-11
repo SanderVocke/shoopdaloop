@@ -1,3 +1,4 @@
+use rt_fpga_testbench::media::run_media_case;
 use rt_fpga_testbench::pipeline::run_pipeline_case;
 use rt_fpga_testbench::transitions::{run_transition_case, run_transition_oracle};
 use rt_fpga_testbench::{run_audio_case, run_case, schema, Document, Payload};
@@ -36,6 +37,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Err("trace differs from shared-loop pipeline results".into());
             }
             Payload::PipelineTrace(trace)
+        }
+        ("trace", Payload::MediaCase(case)) => Payload::MediaTrace(
+            run_media_case(case)
+                .map_err(|error| format!("media initialization failed: {error:?}"))?,
+        ),
+        ("check", Payload::MediaTrace(trace)) => {
+            if run_media_case(trace.case.clone())
+                .map_err(|error| format!("media initialization failed: {error:?}"))?
+                != trace
+            {
+                return Err("trace differs from Rust media store results".into());
+            }
+            Payload::MediaTrace(trace)
         }
         ("trace", Payload::AudioCase(case)) => Payload::AudioTrace(
             run_audio_case(case)

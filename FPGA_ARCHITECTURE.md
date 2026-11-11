@@ -191,5 +191,12 @@ holds reusable quantum scratch and I/O buffers. A shared multiplier and iterativ
 ramp initialization preserve the Rust fixed-point semantics. The cocotb bench
 compares full state, buffer readiness, intermediate/output samples, and FIFO
 effects against traces from both actual Rust processors. See that directory's
-README for interface, coverage, cycle counts, and ECP5 synthesis results. Media
-playback/capture and external-memory access remain deferred.
+README for interface, coverage, cycle counts, and ECP5 synthesis results.
+
+`fpga/media_store` adds a bounded RTL counterpart of the Rust chunk store, including
+shared read-only ranges, reference counts and deterministic slot reuse. Metadata
+uses synchronous on-chip RAM; samples use a stalled external memory port. Its
+`media_audio_pipeline` connects ReadView/Capture jobs to that store. Cocotb compares
+serial store commands and complete audio quanta against Rust, including sample
+bits, ownership, FIFO effects and memory backpressure. Physical DDR controllers,
+burst access and large-session metadata storage remain future work.

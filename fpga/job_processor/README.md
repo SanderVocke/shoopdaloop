@@ -5,8 +5,10 @@ BRAM quantum buffers. `audio_pipeline` connects the job processor to the existin
 state processor's FIFO. The comparison bench runs the same program and samples
 through the actual Rust state and job processors.
 
-ReadView, Capture, and external sample memory are deferred. Those jobs are
-explicitly refused. BRAM holds scratch and I/O buffers, not loop recordings.
+The ordinary top defaults to `ENABLE_MEDIA=0` and refuses ReadView and Capture.
+The optional media command/stream interface connects those jobs to the bounded
+external-memory store in `fpga/media_store`; its combined top and tests exercise
+recording, playback and shared ranges. BRAM here holds scratch and I/O buffers.
 
 `fpga/loop_pipeline` connects transition processing through this wrapper's shared
 loop read port. Logical playback/capture instructions use committed loop records
@@ -131,7 +133,9 @@ unconsumed jobs, state, outputs, and one entry per scratch buffer: samples if
 ready, null otherwise. They also identify the failing/completed stage and status.
 
 `run_audio_case` invokes actual Rust `StateProcessor::run` and
-`JobProcessor::run`, retaining buffers/outputs across steps. Media is empty.
+`JobProcessor::run`, retaining buffers/outputs across steps. Optional media snapshots
+enable Rust recording/playback and shared-range comparisons; the media-enabled RTL
+bench compares those cases too.
 Python validates the generated schema and compares complete results; it does
 not implement reference sample arithmetic. The format change adds payload
 variants within version 1; existing state traces and the default native renderer

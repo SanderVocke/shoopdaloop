@@ -295,6 +295,12 @@ actions, and resulting snapshots. See its README and the `elastic_record_play.js
 and `shared_ranges.json` examples. The standalone `Backend` uses this store
 through the existing job memory interface.
 
+The bounded RTL store and media-enabled state/job pipeline in `fpga/media_store`
+are compared against these operations and audio traces. Serial `media_case`
+traces expose allocation, range creation, reads/writes and reclamation directly,
+including ownership and free-stack order after each command. The sample-memory
+port is exercised with independent request/response stalls.
+
 The app-selected reference renderer uses the same store for recording, playback,
 bulk readback, and import/export. Resource revisions and snapshot leases still
 own each take. A snapshot bounds reads to its published prefix even while the

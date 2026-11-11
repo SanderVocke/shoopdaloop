@@ -44,7 +44,7 @@ schema; saved documents with other versions are rejected.
 Every document has `format_version: 1` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
 `bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
-`audio_trace`, `media`, `transition_plan`, `transition_plan_image`,
+`audio_trace`, `media`, `media_case`, `media_trace`, `transition_plan`, `transition_plan_image`,
 `transition_case`, `transition_trace`, `pipeline_case`, and `pipeline_trace`.
 
 - IDs, addresses, ports, capacities, and instruction counts are unsigned 32-bit
@@ -85,6 +85,8 @@ The executable reads one document from stdin and writes one document to stdout:
 | `check` | `trace` | Same trace, after recomputing and comparing its results |
 | `trace` | `audio_case` | `audio_trace` from actual state and job execution |
 | `check` | `audio_trace` | Same trace, after recomputing both processors |
+| `trace` | `media_case` | `media_trace` from actual storage commands |
+| `check` | `media_trace` | Same trace, after recomputing the media store |
 | `compile` | `transition_plan` | Canonical `transition_plan_image` |
 | `trace` | `transition_case` | `transition_trace` from the logical hardware model |
 | `check` | `transition_trace` | Same trace, checked against both model and native resolver |
@@ -210,8 +212,9 @@ target/debug/fpga-reference check < work/elastic.trace.json > /dev/null
 This six-quantum example grows a recording, plays a wrapped range, clears and
 reuses slots, plays new content, and removes the view. Supplying a resulting state
 and media snapshot as another case's initial state/media resumes the same logical
-memory state. The BRAM job-processor RTL still refuses media jobs; external-memory
-RTL implementation and its cycle behavior remain future work.
+memory state. The ordinary BRAM top keeps media disabled. The media-enabled
+`fpga/media_store` top executes ReadView/Capture through an external sample-memory
+port and compares these traces against Rust.
 
 `examples/shared_ranges.json` creates an unaligned slice, clears the source and
 captures into its reusable slot while playing the slice bit-exactly. It then
@@ -246,6 +249,31 @@ target/debug/fpga-reference check < work/pipeline.trace.json > /dev/null
 
 `fpga/loop_pipeline/README.md` describes the shared RAM interface, coordinator,
 external job acknowledgement, combined Rust/RTL comparison and limitations.
+
+## Serial media commands
+
+`media_case` and `media_trace` are additional format-version-1 payloads for testing
+the store independently of signal execution. A case contains `name`, initial
+`media`, and `steps`. Command kinds are `create`, `slice`, `clear`, `remove`,
+`reclaim`, `append`, and `read`. Append supplies `view` and raw `samples`; read
+supplies `view`, u64 `position`/`length`, and a u32 output `frames` count.
+Other operands follow the media actions above; reclaim takes `view`.
+
+Every command result contains `status`, a tagged `value` (`none`, `view`, `empty`
+or `samples`), and a complete media snapshot. Failed commands return `none` and
+the unchanged media; subsequent commands still run. Invalid initial snapshots
+instead reject initialization. Rust executes actual store operations. Python's
+`assert_media_result_matches` validates and compares every field.
+
+```sh
+target/debug/fpga-reference trace \
+  < fpga/media_store/examples/shared_ranges.json > work/shared-media.trace.json
+target/debug/fpga-reference check < work/shared-media.trace.json > /dev/null
+```
+
+The RTL driver also compares reference counters with counts derived from view
+tables. See `fpga/media_store/README.md` for ports, physical-capacity differences,
+simulation, backpressure/reset tests, cycle counts and synthesis results.
 
 ## Logical transition boundary traces
 

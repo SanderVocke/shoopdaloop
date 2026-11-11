@@ -326,6 +326,25 @@ class CrossLanguageContract(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             self.reference("trace", bad)
 
+    def test_serial_media_command_traces_compare_samples_results_and_chunk_ownership(self):
+        case = wire.load(ROOT / "fpga/media_store/examples/shared_ranges.json")
+        self.assertEqual(self.reference("roundtrip", case), case)
+        trace = self.reference("trace", case)
+        self.assertEqual(self.reference("check", wire.loads(wire.dumps(trace))), trace)
+        results = trace["payload"]["value"]["results"]
+        self.assertEqual(results[5]["value"], {"kind": "samples", "value": [8, 4, 5, 6, 7, 8, 4, 5, 6, 7, 8]})
+        self.assertEqual(results[12]["status"], {"kind": "failed", "value": {"error": "invalid_view"}})
+        for field in ("samples", "offset", "free"):
+            observed = deepcopy(results[5])
+            if field == "samples":
+                observed["value"]["value"][0] ^= 1
+            elif field == "offset":
+                observed["media"]["views"][1]["range"]["offset"] = 2
+            else:
+                observed["media"]["free_chunks"].append(0)
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                wire.assert_media_result_matches(results[5], observed)
+
     def test_trace_runs_the_rust_processor_and_can_be_replayed_after_python_io(self):
         trace = self.reference("trace", self.case())
         results = trace["payload"]["value"]["results"]

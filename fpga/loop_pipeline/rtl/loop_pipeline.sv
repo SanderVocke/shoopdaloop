@@ -97,6 +97,10 @@ module loop_pipeline #(
     wire audio_run_ready, audio_done, audio_busy, state_cfg_ready, sample_cfg_ready;
     wire [7:0] audio_error;
     wire [1:0] audio_error_stage;
+    wire unused_media_cmd_valid, unused_media_write_valid, unused_media_read_ready;
+    wire [2:0] unused_media_opcode;
+    wire [63:0] unused_media_view, unused_media_start, unused_media_length;
+    wire [31:0] unused_media_count, unused_media_write_data;
     reg [31:0] instructions, states, quantum, budget, buffers, inputs, outputs;
     reg external_jobs;
     wire configure = phase == IDLE || phase == PREFLIGHT || phase == FAULT;
@@ -144,7 +148,12 @@ module loop_pipeline #(
         .monitor_valid(monitor_valid), .monitor_ready(monitor_ready), .monitor_data(monitor_data), .queued_jobs(queued_jobs),
         .drain_valid(drain_valid), .drain_ready(drain_ready),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
-        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
+        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
+        .media_cmd_valid(unused_media_cmd_valid), .media_cmd_ready(1'b0), .media_cmd_opcode(unused_media_opcode),
+        .media_cmd_view(unused_media_view), .media_cmd_start(unused_media_start), .media_cmd_length(unused_media_length),
+        .media_cmd_count(unused_media_count), .media_done(1'b0), .media_error(8'b0),
+        .media_write_valid(unused_media_write_valid), .media_write_ready(1'b0), .media_write_data(unused_media_write_data),
+        .media_read_valid(1'b0), .media_read_ready(unused_media_read_ready), .media_read_data(32'b0)
     );
 
     always @(posedge clk) begin
