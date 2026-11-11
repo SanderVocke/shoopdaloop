@@ -20,7 +20,9 @@ the data observed by reads. No dependency-aware prefetch scheduler is required.
   Required demand fills and writebacks retain their existing ordering.
 - Prefetch acceptance acknowledges a hint, not completed residency. Hints may be
   dropped; demand reads already wait for usable data. `Fence` drains writeback
-  and active transfers to external memory; it is not a prefetch-readiness fence.
+  and active transfers to the external memory interface; it is not a
+  prefetch-readiness fence. AXI completion guarantees visibility and ordering,
+  while the DDR controller may still hold posted writes internally.
 
 ## Earlier hints and a small resolver
 

@@ -134,6 +134,11 @@ implementation retains an elastic arena and immediate completion. Both standalon
 and full-loop tests compare logical results; separate protocol tests exercise
 backpressure, forwarding, reuse and late faults. See
 [the design](FPGA_CHUNK_MEMORY.md) and [implementation](fpga/chunk_memory/README.md).
+The integrated RTL tops use a shared synthesizable AXI master for external
+sample memory. A cocotb slave connects instant/fixed memory or a ctypes-wrapped
+DRAMsim3 DDR3 timing model at that boundary. Current transfers remain single-word;
+the endpoint and simulation independently support bursts. See
+[AXI memory](fpga/axi_memory/README.md).
 
 ## Storage model
 

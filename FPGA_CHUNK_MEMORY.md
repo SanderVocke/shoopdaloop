@@ -26,7 +26,7 @@ buffer handles private. Packet widths and physical port organization remain open
 | Read | Chunk ID, sample offset, count | Sample stream and completion/status |
 | Write | Chunk ID, sample offset, count, sample stream | Completion when buffered and logically visible |
 | Prefetch | Chunk ID | Advisory hint; no completion dependency |
-| Fence | Ordered after earlier writes | Completion when those writes have reached DDR |
+| Fence | Ordered after earlier writes | Completion when those writes are acknowledged at the external memory interface |
 | Retire | Chunk ID | Completion when the allocation can safely be reused |
 
 Commands, streams and completions use ready/valid flow control. Accepting a write
@@ -61,6 +61,9 @@ The subsystem may reorder independent chunk transfers. Conflicting operations
 preserve their defined order, and reads issued after write completion observe the
 new data even before DDR writeback. Fence covers prior writes in its ordered
 request stream.
+With the AXI endpoint, external completion means B/R acceptance and ordered
+visibility, not physical DRAM-cell completion. The simulation's physical model
+drain is a separate operation. See [AXI memory](fpga/axi_memory/README.md).
 
 The metadata owner requests retirement once logical references are gone. It waits
 for acknowledgement before reusing the allocation. Retirement accounts for cached

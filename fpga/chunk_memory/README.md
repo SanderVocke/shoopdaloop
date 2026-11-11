@@ -72,9 +72,11 @@ these are not hard real-time guarantees.
 The current adapter issues 32-bit words at 64-bit byte addresses, with one physical
 request outstanding. Both reads and writes require acknowledgement. Words of each
 chunk transfer are sequential and never interleaved with another transfer. A future
-DDR burst adapter can replace this implementation; no vendor controller is included.
-The existing word-delay model remains downstream of the cache and delays actual
-backing transactions.
+adapter can group words into bursts later; no vendor controller is included.
+The integrated AXI endpoint already supports bursts, while its producer emits
+one word per AXI transaction. The word-delay floor is retained for legacy tests.
+With AXI, fences drain interface responses and guarantee visibility rather than
+physical DRAM completion; the simulator has a separate native-model drain.
 
 `arena_base` binds on the first valid command and remains fixed until reset. It
 must be four-byte aligned and leave room for `SLOTS*CHUNK_FRAMES*4` bytes without
