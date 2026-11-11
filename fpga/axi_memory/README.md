@@ -50,9 +50,11 @@ C ABI, polls completions and advances multiple DRAM clocks per fabric cycle.
 The supplied profile assumes one 4 Gbit x16 device, eight banks, 32,768 rows,
 1,024 columns, one rank, and 512 MiB total. Its 1.875 ns clock gives DDR3-1066
 and a 16-byte native BL8 transfer. The example fabric clock is 100 MHz. These
-are illustrative conservative timings, not a specification for every Zynq-7010
+are illustrative timing assumptions, not a specification for every Zynq-7010
 board or a specific memory part. Power values are placeholders, not power
 estimates. Physical placement, clocks and profile hash belong in every report.
+See [profile provenance](configs/README.md) for the assumed values and their
+limits; this profile is not sourced from a specific board or memory part.
 
 The profile uses an open-page unified transaction queue. Upstream DRAMsim3 posts
 write callbacks after admission, before physical completion. Separate read/write
@@ -97,10 +99,12 @@ python fpga/axi_memory/simulate.py --memory-model dramsim3 --output work/axi-dra
 
 The build fetches the exact lock revision into `work/dramsim3/source`, retains
 the MIT license, and patches a separate build copy. `native/drain.patch` only
-adds idle observation and tracks the last issued write's data-completion time;
+adds idle/bus observation and tracks the last issued write's data-completion time;
 it does not change scheduling or callback behavior. The shared library and its
 dependency live together in `work/dramsim3/build` with an origin-relative RPATH.
 Override locations with `--dram-library`, `--dram-config`, and `--output`.
+Rebuild an older native library to obtain ABI 2 and bus counters; stale libraries
+fail with a rebuild instruction.
 
 The C ABI reports read completions and **posted write admissions** separately.
 Its physical-drain hook waits for transaction/command queues, read callbacks and
@@ -194,7 +198,7 @@ quantum, so these results do not depend on reusing the previous quantum's chunk.
 ## Validation record
 
 - Instant/fixed/DRAMsim3 endpoint suites pass at both 32 and 64 bits, including
-  directed burst tests. Nine native/statistics tests and 19 Rust/Python contract
+  directed burst tests. Eleven native/statistics tests and 19 Rust/Python contract
   tests pass. The unchanged Rust reference/testbench packages pass 74 tests.
 - Instant AXI: all four chunk profiles (20 comparison cases, 1,600 random
   requests, plus protocol tests); all three media profiles (12 seeded cases each);
@@ -222,3 +226,48 @@ are no Rust source changes. The checks above are local; PR CI is deliberately
 not inspected. Existing cocotb waveform clocks are normalized to ten nanoseconds;
 `--fabric-hz` controls the modeled DRAM clock ratio and report time conversion.
 Waveform timestamps represent physical time directly at the default 100 MHz.
+
+## DDR bus utilization
+
+Each detailed timing result has a `ddr_bus` object for the same execution window
+as the RTL quantum cycle count. It excludes host loading, snapshot readback and
+post-quantum fences. `whole_model_bus` in the final native report additionally
+covers those host intervals and final drain, so its denominator is different.
+
+`data_bus_utilization` is the fraction of channel-clock slots occupied by actual
+physical read/write data, with separate direction fractions. The native observer
+counts CL/CWL-delayed data beats, not callbacks or request latency. BL8 occupies
+four DRAM clocks per physical command; merged/forwarded requests add no duplicate
+bursts. Sampling counters does not drain or print/reset statistics. Windows can
+split a transfer and still count only the cycles actually inside the window.
+
+`command_bus_utilization` separately counts issued READ/WRITE/ACT/PRE/REF/etc.
+command slots; it is not a measure of bank availability. Refresh, turnarounds and
+row constraints can limit service even when the data bus is idle. Physical bytes
+and bytes/second use the full bus width, including overfetched or masked lanes;
+theoretical peak is `channels * bus_bytes * 2 / tCK`.
+
+Grouping contiguous words should reduce aggregate data-bus use for this workload:
+32 separate four-byte reads cost 32 native 16-byte transfers (512 bytes) for a
+128-byte chunk. Burst access needs eight such transfers (128 bytes). That is an
+expected fourfold traffic reduction in this model, whose independent word reads
+do not reuse overfetch. Better packing can make the bus busier during a shorter
+transfer while reducing its occupancy over the unchanged quantum/audio period.
+This leaves more capacity for contention; the exact benefit on hardware depends
+on controller coalescing, arbitration and other traffic. No burst converter has
+been added to the pipeline.
+
+The instrumented 64-loop Q=32 run still matches Rust at 28,996 cycles per quantum.
+Each of its four quanta transfers 32 KiB physically for 8 KiB of useful samples:
+8,192 occupied DDR data cycles out of approximately 154,645 available cycles.
+Data-bus utilization is **5.2973%** during execution, and command-bus utilization
+is **1.457–1.460%**. Native traffic averages 113.009 MB/s against a theoretical
+2.133 GB/s peak. Whole-model utilization, including idle host setup/readback, is
+3.2439%; it must not replace the execution-window number.
+
+For the same unchanged execution time, efficiently grouped chunk reads would
+transfer 8 KiB and occupy about **1.3243%** of data-bus time; this is a projection,
+not an implemented burst-converter benchmark. At an assumed 48 kHz sample rate,
+averaging over the full 666.67 us audio period instead gives 2.304% current load
+and 0.576% projected burst load. Recording reports keep late writeback outside
+the quantum window separate through the whole-model counters.

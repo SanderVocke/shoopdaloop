@@ -12,6 +12,10 @@ struct Completion {
     uint32_t write;
 };
 
+struct BusSnapshot {
+    uint64_t ticks, read_cycles, write_cycles, read_commands, write_commands, command_cycles;
+};
+
 class Bridge {
  public:
     std::unique_ptr<dramsim3::MemorySystem> memory;
@@ -57,6 +61,12 @@ uint32_t shoop_dram_native_bytes(Bridge* bridge) {
     return bridge->memory->GetBusBits()/8*bridge->memory->GetBurstLength();
 }
 uint64_t shoop_dram_ticks(Bridge* bridge) { return bridge->ticks; }
+uint32_t shoop_dram_abi_version() { return 2; }
+void shoop_dram_bus_snapshot(Bridge* bridge, BusSnapshot* result) {
+    auto counters = bridge->memory->GetBusCounters();
+    *result = {bridge->ticks, counters.read_cycles, counters.write_cycles,
+               counters.read_commands, counters.write_commands, counters.command_cycles};
+}
 
 uint64_t shoop_dram_submit(Bridge* bridge, uint64_t address, uint32_t write) {
     if (bridge->outstanding >= static_cast<uint64_t>(bridge->memory->GetQueueSize())

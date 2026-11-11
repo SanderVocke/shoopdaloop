@@ -127,6 +127,50 @@ class NativeTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.model.advance()
 
+    def test_bus_counters_include_physical_bursts_not_callbacks(self):
+        start = self.model.bus_snapshot()
+        tokens = [self.model.submit(0x1000000, False) for _ in range(4)]
+        self.model.drain()
+        self.assertTrue(all(self.model.ready(token) for token in tokens))
+        read = self.model.bus_utilization(start)
+        self.assertEqual(read["read_commands"], 1, "merged reads must not count as separate DDR bursts")
+        self.assertEqual(read["read_cycles"], 4)
+        self.assertEqual(read["transferred_bytes"], 16)
+        self.assertGreater(read["command_cycles"], read["read_commands"])
+        self.assertGreater(read["data_bus_utilization"], 0)
+        self.assertLessEqual(read["data_bus_utilization"], 1)
+        self.assertAlmostEqual(read["transfer_bytes_per_second"]/read["peak_bytes_per_second"], read["data_bus_utilization"])
+        start = self.model.bus_snapshot()
+        self.transact(0x1001000, True)
+        self.model.drain()
+        write = self.model.bus_utilization(start)
+        self.assertEqual(write["write_commands"], 1)
+        self.assertEqual(write["write_cycles"], 4)
+        self.assertEqual(write["read_cycles"], 0)
+        start = self.model.bus_snapshot()
+        for _ in range(20):
+            self.model.advance()
+        idle = self.model.bus_utilization(start)
+        self.assertEqual(idle["data_bus_utilization"], 0)
+        self.model.reset()
+        with self.assertRaises(ValueError):
+            self.model.bus_utilization(start)
+
+    def test_bus_count_windows_add_without_double_counting(self):
+        start = self.model.bus_snapshot()
+        token = self.model.submit(0x1000000, False)
+        previous, accumulated = start, 0
+        for _ in range(100):
+            self.model.advance()
+            current = self.model.bus_snapshot()
+            accumulated += self.model.bus_utilization(previous, current)["data_busy_cycles"]
+            previous = current
+            if self.model.ready(token):
+                break
+        self.assertTrue(self.model.ready(token))
+        self.assertEqual(accumulated, 4)
+        self.assertEqual(accumulated, self.model.bus_utilization(start)["data_busy_cycles"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -255,6 +255,11 @@ inline review threads were checked after pushing; neither contained feedback.
 There was no automated review to address or approval to wait for. PR CI was not
 inspected, and the PR remains open without an autonomous merge.
 
+The bus-utilization follow-up adds native data/command-cycle snapshots and
+execution-window reports without changing scheduling or adding a burst converter.
+The 64-loop run measures 5.2973% data-bus utilization during execution. Profile
+provenance is documented in [the configuration notes](fpga/axi_memory/configs/README.md).
+
 ## Execution contract
 
 - Keep this plan updated as work progresses and check off completed items.

@@ -222,6 +222,9 @@ async def memory_timing(dut):
         from prefetch_timing import PrefetchTiming
         driver.timing_probe = PrefetchTiming(dut, case["media"], MEDIA[2])
     await driver.load(case)
+    if driver.media.axi is not None and hasattr(driver.media.axi.memory.timing, "bus_snapshot"):
+        from bus_timing import QuantumBusTiming
+        driver.bus_probe = QuantumBusTiming(dut, driver.media.axi.memory.timing)
     response_cycles = int(os.environ["MEDIA_RESPONSE_CYCLES"])
     from options import metadata
     configuration = metadata()
@@ -234,6 +237,8 @@ async def memory_timing(dut):
         responses = len(driver.media.response_latencies)
         if analyze:
             driver.timing_probe.begin()
+        if driver.bus_probe is not None:
+            driver.bus_probe.begin()
         actual = await driver.quantum_audio(step, stalls=False)
         wire.assert_audio_result_matches(expected, actual)
         latencies = driver.media.response_latencies[responses:]
@@ -249,6 +254,8 @@ async def memory_timing(dut):
                         "writes": driver.media.write_requests - writes,
                         "response_cycles": response_cycles})
         results[-1]["total_us"] = driver.timing["total"]*1e6/fabric_hz
+        if driver.bus_probe is not None:
+            results[-1]["ddr_bus"] = driver.bus_probe.finish(driver.timing["total"])
         if analyze:
             measured = driver.timing_probe.finish(driver.timing["total"], response_cycles,
                                                  uniform_word_port=driver.media.axi is None)

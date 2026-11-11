@@ -19,10 +19,13 @@ class PipelineDriver(AudioDriver):
         self.media = MediaDriver(StorePorts(dut), media_capacities, seed+17)
         self.media.before_clock = self.before_clock
         self.timing_probe = None
+        self.bus_probe = None
 
     def before_clock(self):
         if self.timing_probe is not None:
             self.timing_probe.observe(self.media.cycles)
+        if self.bus_probe is not None:
+            self.bus_probe.observe(self.media.cycles)
         before = self.sample()
         self.before_audio = before
         if int(self.dut.reset.value):

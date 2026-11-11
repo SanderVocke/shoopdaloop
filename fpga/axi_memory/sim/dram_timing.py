@@ -15,6 +15,11 @@ class Completion(C.Structure):
     _fields_ = [(name, C.c_uint64) for name in ("id", "address", "submitted", "completed")]+[("write", C.c_uint32)]
 
 
+class BusSnapshot(C.Structure):
+    _fields_ = [(name, C.c_uint64) for name in
+                ("ticks", "read_cycles", "write_cycles", "read_commands", "write_commands", "command_cycles")]
+
+
 class DramTiming:
     def __init__(self, library=DEFAULT_LIBRARY, config=DEFAULT_CONFIG, output=None, fabric_hz=100_000_000):
         self.library, self.config = Path(library).resolve(), Path(config).resolve()
@@ -31,10 +36,18 @@ class DramTiming:
         if cfg.getint("timing", "tREFI") <= 0:
             raise ValueError("DDR3 refresh interval must be positive")
         self.capacity = cfg.getint("system", "channel_size")*1024*1024*cfg.getint("system", "channels")
+        self.channels = cfg.getint("system", "channels")
+        self.bus_width = cfg.getint("system", "bus_width")
         self.fabric_hz = int(fabric_hz)
         if not 1_000_000 <= self.fabric_hz <= 1_000_000_000:
             raise ValueError("fabric frequency must be 1 MHz to 1 GHz")
         self.lib = C.CDLL(str(self.library))
+        try:
+            self.lib.shoop_dram_abi_version.restype = C.c_uint32
+            if self.lib.shoop_dram_abi_version() != 2:
+                raise AttributeError("unsupported ABI")
+        except AttributeError as error:
+            raise RuntimeError("rebuild DRAMsim3 with fpga/axi_memory/build_dramsim3.py (ABI 2 required)") from error
         signatures = {
             "create": (C.c_void_p, [C.c_char_p, C.c_char_p]), "destroy": (None, [C.c_void_p]),
             "tck_fs": (C.c_uint64, [C.c_void_p]), "native_bytes": (C.c_uint32, [C.c_void_p]),
@@ -42,6 +55,7 @@ class DramTiming:
             "advance": (None, [C.c_void_p, C.c_uint64]), "poll": (C.c_uint32, [C.c_void_p, C.POINTER(Completion)]),
             "idle": (C.c_uint32, [C.c_void_p]), "drain": (C.c_uint32, [C.c_void_p, C.c_uint64]),
             "print_stats": (None, [C.c_void_p]), "error": (C.c_char_p, [])}
+        signatures["bus_snapshot"] = (None, [C.c_void_p, C.POINTER(BusSnapshot)])
         for name, (restype, argtypes) in signatures.items():
             function = getattr(self.lib, "shoop_dram_"+name)
             function.restype, function.argtypes = restype, argtypes
@@ -98,6 +112,32 @@ class DramTiming:
             raise RuntimeError("DRAM model failed to drain within the tick limit")
         self.poll()
 
+    def bus_snapshot(self):
+        result = BusSnapshot()
+        self.lib.shoop_dram_bus_snapshot(self.handle, C.byref(result))
+        return dict(generation=self.generation, **{name: getattr(result, name) for name, _ in result._fields_})
+
+    def bus_utilization(self, start, end=None):
+        end = self.bus_snapshot() if end is None else end
+        if start["generation"] != end["generation"]:
+            raise ValueError("bus utilization window crosses a model reset")
+        counters = {name: end[name]-start[name] for name, _ in BusSnapshot._fields_}
+        ticks = counters.pop("ticks")
+        if ticks <= 0 or any(value < 0 for value in counters.values()):
+            raise ValueError("bus utilization requires a forward, nonempty window")
+        capacity = ticks*self.channels
+        busy = counters["read_cycles"]+counters["write_cycles"]
+        physical_bytes = busy*(self.bus_width//8)*2
+        seconds = ticks*self.tck_fs/1e15
+        return dict(dram_ticks=ticks, channels=self.channels, elapsed_seconds=seconds,
+                    data_busy_cycles=busy, data_bus_utilization=busy/capacity,
+                    read_data_bus_utilization=counters["read_cycles"]/capacity,
+                    write_data_bus_utilization=counters["write_cycles"]/capacity,
+                    command_bus_utilization=counters["command_cycles"]/capacity,
+                    transferred_bytes=physical_bytes, transfer_bytes_per_second=physical_bytes/seconds,
+                    peak_bytes_per_second=(self.bus_width//8)*2*1e15/self.tck_fs*self.channels,
+                    **counters)
+
     def reset(self):
         self.lib.shoop_dram_destroy(self.handle)
         self.generation += 1
@@ -122,7 +162,13 @@ class DramTiming:
                                          dram_read_service_dram_cycles=histogram_summary(read_hist),
                                          dram_write_service_dram_cycles=histogram_summary(write_hist),
                                          final_drain_dram_ticks=self.ticks-before)
+            snapshot = self.bus_snapshot()
+            if snapshot["ticks"]:
+                zero = {name: 0 for name, _ in BusSnapshot._fields_}
+                zero["generation"] = self.generation
+                self.final_statistics["whole_model_bus"] = self.bus_utilization(zero, snapshot)
         return dict(tck_fs=self.tck_fs, native_bytes=self.native_bytes, fabric_hz=self.fabric_hz,
+                    abi_version=2,
                     ticks=self.ticks, idle=self.idle,
                     physical_counts_generation=self.generation,
                     physical_counts_finalized=self.final_statistics is not None,
