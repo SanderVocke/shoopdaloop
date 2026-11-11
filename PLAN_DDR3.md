@@ -1,6 +1,7 @@
 # AXI memory endpoint and DRAMsim3 integration
 
-Status: executing on `proto/fpga-rust-reference`, baseline `8f64c32d`.
+Status: implementation and local validation complete; PR delivery in progress.
+Branch: `proto/fpga-rust-reference`, baseline `8f64c32d`.
 
 ## Goal and scope
 
@@ -215,21 +216,21 @@ on it. Keep detailed-model runs small during development.
 
 ### 6. End-to-end validation and delivery
 
-- [ ] Run the existing standalone chunk, media and full-loop Rust/RTL comparison
+- [x] Run the existing standalone chunk, media and full-loop Rust/RTL comparison
   suites through instant AXI; repeat representative seeded cases with DRAMsim3.
   Retain isolated endpoint burst tests as a separate required gate.
-- [ ] Re-run aligned 8x8/64-loop playback at Q=32 with moving positions and media
+- [x] Re-run aligned 8x8/64-loop playback at Q=32 with moving positions and media
   larger than cache capacity. Compare instant, fixed, and DRAMsim3 timing with
   identical inputs/cache sizes; distinguish cold and subsequent quanta. Include
   a smaller capture/writeback workload to validate posted-write accounting.
-- [ ] Check samples and logical media bitwise against Rust. Report timing rather
+- [x] Check samples and logical media bitwise against Rust. Report timing rather
   than imposing a speculative performance target. A measured maximum is not a
   hard real-time bound, and generic DRAMsim3 controller timing is not an exact
   model of the Zynq PS controller, HP bridge, or other system traffic.
-- [ ] Run lint/synthesis for the integrated AXI top and record resource changes.
+- [x] Run lint/synthesis for the integrated AXI top and record resource changes.
   Run the repository's applicable local gates once at this milestone; use Rust
   formatting, warning-denying builds and test-attribute checks if Rust changed.
-- [ ] Document setup, fast/detailed commands, burst tests, profile assumptions,
+- [x] Document setup, fast/detailed commands, burst tests, profile assumptions,
   statistics meanings, reset/fence guarantees and current modeling limitations.
 - [ ] Commit milestones, push, and update the existing PR or open a new PR for
   the chosen branch. Check automated review comments, address applicable

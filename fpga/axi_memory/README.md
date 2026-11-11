@@ -190,3 +190,35 @@ hides their latency in this workload; the equal totals do not imply zero DDR
 cost or prove timing under other traffic. All outputs and logical media match
 Rust bitwise. The media is larger than the cache and positions move every
 quantum, so these results do not depend on reusing the previous quantum's chunk.
+
+## Validation record
+
+- Instant/fixed/DRAMsim3 endpoint suites pass at both 32 and 64 bits, including
+  directed burst tests. Nine native/statistics tests and 19 Rust/Python contract
+  tests pass. The unchanged Rust reference/testbench packages pass 74 tests.
+- Instant AXI: all four chunk profiles (20 comparison cases, 1,600 random
+  requests, plus protocol tests); all three media profiles (12 seeded cases each);
+  all three audio profiles (55 cases, 165 quanta); all three full-loop profiles
+  (57 cases, 479 quanta, plus preparation/fault tests).
+- Detailed timing: standalone chunks, media audio, full-loop record/playback
+  (10 cases, 45 quanta, plus fault tests), and the 64-loop benchmark pass. A
+  64-bit, single-read/single-write-buffer audio run passes 13 cases/33 quanta,
+  including multi-chunk windows and wrap. The legacy delayed full-loop path
+  still passes.
+- The small capture benchmark issues 64 logical word writes and 61 physical
+  native WRITE commands: the controller merges three buffered writes. Posted
+  admissions average two DRAM ticks; physical write service averages 13.623
+  ticks, with a maximum of 155. Cache-forwarded playback needs no backing reads.
+- Every integrated top passes warning-clean lint at both bus widths. The
+  default eight-loop AXI top passes generic checks and ECP5 synthesis with
+  24,263 LUT4s, 13,916 flip-flops, 93 DP16KD blocks and four MULT18X18D blocks.
+  Its optimizer remapping differs from the word-only top, so isolated endpoint
+  counts are a better measure of bridge cost: 303 LUT4s/152 flip-flops at 32
+  bits, 406 LUT4s/152 flip-flops at 64 bits. No extra BRAM is needed by the
+  endpoint. These profiles are not the 64-loop timing configuration.
+
+Detailed setup was also rebuilt from a fresh pinned dependency checkout. There
+are no Rust source changes. The checks above are local; PR CI is deliberately
+not inspected. Existing cocotb waveform clocks are normalized to ten nanoseconds;
+`--fabric-hz` controls the modeled DRAM clock ratio and report time conversion.
+Waveform timestamps represent physical time directly at the default 100 MHz.
