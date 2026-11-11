@@ -1,6 +1,6 @@
 # AXI memory endpoint and DRAMsim3 integration
 
-Status: implementation and local validation complete; PR delivery in progress.
+Status: completed, committed and delivered through PR #969.
 Branch: `proto/fpga-rust-reference`, baseline `8f64c32d`.
 
 ## Goal and scope
@@ -232,11 +232,28 @@ on it. Keep detailed-model runs small during development.
   formatting, warning-denying builds and test-attribute checks if Rust changed.
 - [x] Document setup, fast/detailed commands, burst tests, profile assumptions,
   statistics meanings, reset/fence guarantees and current modeling limitations.
-- [ ] Commit milestones, push, and update the existing PR or open a new PR for
+- [x] Commit milestones, push, and update the existing PR or open a new PR for
   the chosen branch. Check automated review comments, address applicable
   feedback, and repeat until approval or a documented blocker. **Do not inspect
   PR CI**, per the user's instruction. Do not merge autonomously; report local
   validation and any unresolved review feedback.
+
+
+## Completion record
+
+All stages are complete. Reproduction commands, validation counts, resource
+estimates and measurements are recorded in [the AXI memory README](fpga/axi_memory/README.md).
+The final detailed 64-loop run was recorded from clean revision `7c3781b7` and
+matches the instant/fixed runs at 28,996 cycles per quantum. Native, burst,
+protocol, Rust/Python and full-loop comparison tests pass. No Rust source was
+changed.
+
+The work is committed on `proto/fpga-rust-reference` and delivered to
+[PR #969](https://github.com/SanderVocke/shoopdaloop/pull/969), whose description
+covers the final implementation and local validation. Review submissions and
+inline review threads were checked after pushing; neither contained feedback.
+There was no automated review to address or approval to wait for. PR CI was not
+inspected, and the PR remains open without an autonomous merge.
 
 ## Execution contract
 
