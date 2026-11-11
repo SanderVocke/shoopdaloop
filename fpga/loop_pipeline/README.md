@@ -273,3 +273,186 @@ figures. Lint and generic synthesis also passed 3/5/11 and 1/1/3 loop-table
 configurations. No placement, routed timing or board transport is included.
 The streamed TP increases this complete top's LUT4 count by 2,129 (12.0%) from
 17,713, while BRAM and DSP counts remain unchanged; it adds three flip-flops.
+
+## Coordinated 64-loop benchmark with DRAMsim3
+
+The `8x8` timing profile extends the media benchmark through the actual transition
+processor, committed loop-read port, state/job processors, media frontend, chunk
+cache and synthesizable AXI endpoint. It follows upstream TP-streaming revision
+`c280613e`; profiling support is in `20dfca2a`. The same complete fixture passes
+bitwise Rust comparisons in both instant-memory and detailed DDR3 modes.
+
+```sh
+python fpga/axi_memory/build_dramsim3.py
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
+  --read-buffers 128 --memory-model dramsim3 --output work/coordinated64-dram
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
+  --read-buffers 128 --memory-model instant --output work/coordinated64-instant
+```
+
+Ordinary `--config all` retains default/small/odd profiles. The large timing
+profile is opt-in. Its saved `benchmark.case.json` can also be replayed using
+`--media --config 8x8 --case PATH` without timing mode.
+
+The fixture contains eight tracks of eight independent mono playback loops,
+32-sample chunks/quanta, 512 samples per loop, one constant 0.5 gain per loop,
+seven ordered mixes per track and eight outputs. It uses 64 loop slots, 128
+request slots, 256 events, 256 program/job entries and 512 state entries, with
+64 media views, 1,024 sample slots, 128 read buffers and four write buffers.
+The media holds 128 KiB of audio versus 16 KiB in the read pool. Positions move
+every quantum; each iteration reads 64 different chunks. Sequence zero starts
+all loops through 64 actual Play commands. Later quanta have no new commands
+and encounter four staggered natural wraps each.
+
+The graph emits 192 jobs per quantum: 64 reads, 64 gains, 56 mixes and eight
+outputs. Logical playback instructions obtain their positions/modes from TP
+records rather than independent state words. Verification compares the complete
+transition trace, jobs, state, samples and media snapshots with Rust. Random
+backpressure is disabled for the benchmark, while normal regression retains it.
+
+### Measurement boundary and results
+
+`execution-timing.json` records coordinator phases, TP states, job-processor
+phases and per-job costs, plus DDR data/command utilization. Setup, command
+submission, input loading and final snapshots occur outside the measured run.
+During preflight the existing verifier reads candidate decisions and checks
+committed state/requests/events. These intentional pauses are recorded under
+`preflight_wait_cycles`, separately from active FPGA phases. Active time is the
+sum of the observed phases excluding the entire PREFLIGHT wait, including its
+acknowledgement cycle; an automatic approver would still require that handshake.
+It is not the raw accepted-run-to-done latency.
+
+All times below assume a 100 MHz fabric clock and the documented illustrative
+DDR3-1066 x16 profile. No placement or routed frequency was measured.
+
+| Quantum | Active phase cycles | Active time | Preflight wait | Raw run-to-done |
+| --- | ---: | ---: | ---: | ---: |
+| Start all 64 loops | 31,320 | 313.20 us | 15.40 us | 328.60 us |
+| Playback 1 | 29,748 | 297.48 us | 23.08 us | 320.56 us |
+| Playback 2 | 29,748 | 297.48 us | 15.88 us | 313.36 us |
+| Playback 3 | 29,748 | 297.48 us | 15.88 us | 313.36 us |
+
+Instant and DRAMsim3 runs have identical active/raw times, processor phase
+counts and per-job costs across all four quanta. The original media-only
+benchmark, rerun at `c280613e`, remains 28,996 clocks / 289.96 us. Its scope omits
+TP and uses standalone playback state; logical playback here saves 256 state
+cycles, while TP and coordination add 1,008 clocks in steady playback, for a
+net 752-clock difference. The prior 150 MHz / fixed-delay TP checkpoint above
+has a different workload and memory path; its absolute times are not this run's
+before/after comparison.
+
+Steady-playback active time has the following additive breakdown:
+
+| Work | Count | Cycles | Time at 100 MHz | Share |
+| --- | ---: | ---: | ---: | ---: |
+| Gain jobs | 64 | 10,432 | 104.32 us | 35.07% |
+| Mix jobs | 56 | 9,072 | 90.72 us | 30.50% |
+| Cached media read jobs | 64 | 7,040 | 70.40 us | 23.67% |
+| State processor | 192 instructions | 1,152 | 11.52 us | 3.87% |
+| TP preview/commit/Finish and their handshakes | One boundary | 1,006 | 10.06 us | 3.38% |
+| Output jobs | 8 | 785 | 7.85 us | 2.64% |
+| Initial output clear | 256 samples | 256 | 2.56 us | 0.86% |
+| Other audio/coordinator handshakes | — | 5 | 0.05 us | 0.02% |
+| Total | | 29,748 | 297.48 us | 100% |
+
+Job intervals span successive job acceptances; the final output includes job
+completion. Job-processor busy time is 27,585 clocks (92.73% of active time).
+Starting all loops raises TP work to 2,578 clocks / 25.78 us; SP/JP work stays
+unchanged. At an assumed 48 kHz sample rate, 297.48 us is 44.62% of a 666.67 us
+audio period; this workload measurement does not establish a hard bound.
+
+### Memory activity and overlap
+
+There are zero exposed demand-fill wait cycles. DRAMsim3 transfers 2,048 words
+as 2,048 native READ commands per quantum: 32 KiB physically for 8 KiB of useful
+samples, with no writes. Steady-playback DDR data utilization is 5.1634% and
+command utilization is 1.4219%, measured over the active phases. Starting all
+loops gives 4.9042% data utilization because its observation window is longer.
+The data volume is unchanged. At 48 kHz, the full-period average remains 2.304%.
+
+Read AXI response latency over all four detailed quanta averages 4.2709 fabric
+cycles, median 4, p99 26 and maximum 33. The chunk DMA is active for
+16,933–16,948 fabric clocks (169.33–169.48 us) per iteration. This activity
+overlaps state/job processing and must not be added to the additive table.
+It is mostly serialized word-transaction/control time; physical DDR data beats
+occupy only 8,192 DRAM clocks / 15.36 us per iteration.
+
+The instant-memory control confirms that faster external memory alone currently
+removes no critical-path cycles. Efficient chunk bursts still project to one
+quarter of the physical traffic and about 1.291% data-bus occupancy over the
+same steady execution window. They also reduce the serialized transfer span,
+which matters as the sample engine becomes faster and for competing traffic.
+
+### Optimization opportunities
+
+1. **Pipeline the sample datapath and its RAM accesses.** Gains and mixes account
+   for 65.56% of steady active time. Every 32-sample gain takes 163 clocks and
+   each mix 162: approximately five clocks per sample. Gain executes separate
+   read-request, read-result, multiply, product-result and store states. Mix
+   sequentially reads both operands and then stores. These are issue-rate and
+   data-movement costs; merely making multiplication faster addresses only part
+   of them. The measured JP phases spend 11,776 clocks on operand read stages,
+   4,096 on multiply/product-result stages and 6,144 on stores, across the
+   applicable jobs. Overlap those stages across samples before replicating
+   whole node processors.
+
+   A one-sample-per-clock gain pipeline would ideally save up to 8,192 clocks
+   (81.92 us); a two-clock-per-sample mix using the existing single read port
+   would ideally save 5,376 (53.76 us). These are per-sample-loop projections,
+   before pipeline fill/drain and any newly exposed memory waits. Two source
+   reads per mix set a port-bandwidth constraint; one-clock mixes require a
+   different RAM organization or operand forwarding.
+
+2. **Stream cached samples into scratch RAM more efficiently.** A read job
+   takes 110 clocks despite a resident chunk and zero DDR wait. The cache read
+   FSM requests, collects and sends each sample, and JP has a separate store
+   state. Pipeline both sides of this path; just changing DDR bursts does not
+   remove these hit-path cycles. Moving the roughly three-clock sample path
+   toward one sample per clock projects up to 4,096 saved clocks (40.96 us),
+   before overhead and backpressure. This is the next large independent cost.
+
+3. **Implement chunk bursts alongside those datapath changes.** Currently they
+   primarily buy traffic/headroom, with zero measured critical-path benefit.
+   The gain/mix projections together would reduce active compute toward 161.8
+   us, already below the current roughly 169 us serialized fill span even before
+   its start offset. Memory would then become exposed unless its transaction
+   overhead also shrinks. The actual speedup needs another combined RTL/DRAM
+   run; the ideal savings above cannot simply be added to predict final runtime.
+
+4. **Consider forwarding/fusion after establishing streaming throughput.**
+   Read → gain → mix currently materializes intermediate scratch buffers and
+   rereads them. Chaining these operations can avoid accesses and reduce storage.
+   Preserve every existing fixed-point rounding/clipping point and the ordered
+   saturating mix sequence. Algebraic reassociation or a wider accumulator can
+   change bitwise results. Scratch-buffer liveness/reuse is also useful for area,
+   although it alone does not remove the current sample-loop cycles.
+
+5. **Keep TP/SP optimization proportional to their remaining cost.** Eliminating
+   all steady TP work could save at most 10.06 us (3.38%) here; all SP work is
+   11.52 us (3.87%). TP copy/validation/Finish streaming consumes 262 of its 1,006
+   clocks. More complex incremental state machinery to remove those passes has
+   a small total-time ceiling in this playback case. Likewise, VLIW state issue
+   does not address the dominant JP loops. Retry-heavy recording/sync workloads
+   need separate profiling before applying this prioritization to them.
+
+The first implementation step suggested by this profile is a pipelined gain/mix
+execution path, retaining the same job and fixed-point contracts, with chunk
+bursts prepared to keep memory ahead of it. Ramp dividers are unused by the
+constant-gain fixture, and output clearing is under 1%; neither is the first
+timing target for this workload.
+
+### Capacity and verification limits
+
+This is a simulation capacity profile, not a small-board fit result. The current
+dense `VIEWS*SLOTS` chunk-ID RAM alone reserves 64*1,024*4 = 256 KiB despite only
+1,024 live IDs (4 KiB). Scratch reserves another 32 KiB and the read pool 16 KiB,
+before TP/SP/program RAM and physical BRAM padding. Compact or external chunk-ID
+tables are therefore an important area issue. Such metadata accesses are not
+included in the DDR traffic above; current metadata is local RAM.
+
+Both memory modes compare all four quanta with the actual Rust pipeline. A
+regular small-profile DRAMsim3 run also passes directed, seeded and preparation/
+fault/reset protocol tests after adding the opt-in profiling mode. RTL behavior
+and the Rust reference are unchanged by this instrumentation. PR CI is not
+inspected. The clock, x16 DDR profile and absence of other DDR users remain
+feasibility-study assumptions.
