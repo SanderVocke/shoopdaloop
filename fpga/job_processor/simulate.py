@@ -52,7 +52,7 @@ def main():
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.case else 3)
+        if (len(list(report.iter("testcase"))) != (1 if args.case else 4)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Behavioral simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: audio pipeline passed; results in {output}", flush=True)

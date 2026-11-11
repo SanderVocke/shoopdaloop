@@ -335,4 +335,52 @@ async def pipeline_protocol(dut):
     await driver.load(value)
     wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0],
                                     await driver.quantum_audio(value["steps"][0]))
+    if driver.media.axi is not None:
+        frames, cf = CAPACITIES[3], MEDIA[2]
+        graph = {"quantum": frames, "chunk_frames": cf, "nodes": [
+            {"kind": "input", "port": 0}, {"kind": "gain", "input": 0, "gain": 8388608},
+            {"kind": "mix", "left": 0, "right": 1},
+            {"kind": "playback", "view": 0, "position_chunks": 0, "length_chunks": frames//cf, "playing": True},
+            {"kind": "output", "input": 2, "port": 0}]}
+        compiled = wire.run_reference("compile", document("graph", graph), executable=REFERENCE)["payload"]["value"]
+        abort_case = {"name": "fault-during-arithmetic-stream", "program": compiled["program"],
+            "initial_state": {"memory": compiled["initial_state"]}, "queue_capacity": CAPACITIES[2],
+            "buffers": 4, "output_ports": 1,
+            "media": {"chunk_frames": cf, "samples": list(range(frames)), "free_chunks": [],
+                      "views": [{"chunks": list(range(frames//cf)), "frames": frames}]},
+            "steps": [{"writes": [], "inputs": [[7*i-13 for i in range(frames)]]}]}
+        core = dut.core.pipeline.sample_engine
+        for kind, destination in (("gain", 1), ("mix", 2)):
+            await driver.load(abort_case)
+            driver.media.stalls = False
+            driver.media.pause_responses = True
+            driver.media.fail_next = True
+            for frame, sample in enumerate(abort_case["steps"][0]["inputs"][0]):
+                await driver.audio_configure(0, frame, sample)
+            driver.consumed, driver.drained = [], []
+            driver.set(run_buffers=4, run_inputs=1, run_outputs=1, job_enable=1, drain_ready=0)
+            await driver.start()
+            for _ in range(1000):
+                await driver.tick()
+                if (driver.consumed and driver.consumed[-1]["kind"] == kind
+                        and int(core.streaming.value) and int(core.stream_store_valid.value)):
+                    break
+            else:
+                raise AssertionError(f"{kind} did not start while the failing prefetch was held")
+            assert driver.media.pending is not None and driver.media.pending[2]
+            driver.media.pause_responses = False
+            for _ in range(1000):
+                _, after = await driver.tick()
+                if after["done"]:
+                    break
+            else:
+                raise AssertionError("arithmetic stream did not abort on a memory fault")
+            assert after["error_stage"] == 2 and after["error_code"] == 8
+            assert not (after["buffer_ready"] & (1 << destination))
+            for _ in range(6):
+                await driver.tick()
+                assert not int(core.stream_store_valid.value) and not int(core.scratch_write.value)
+        await driver.load(value)
+        wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0],
+                                        await driver.quantum_audio(value["steps"][0]))
     driver.media.close()

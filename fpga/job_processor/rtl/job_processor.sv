@@ -52,9 +52,9 @@ module job_processor #(
     localparam [7:0] OK = 0, INVALID_BUFFER = 1, INVALID_SHAPE = 2, UNSUPPORTED = 3, INVALID_JOB = 4;
     typedef enum logic [4:0] {
         IDLE, CLEAR_OUTPUT, FETCH, DECODE, READ_REQUEST, READ_RESULT,
-        MIX_REQUEST, MIX_RESULT, RAMP_PREPARE, RAMP_MULTIPLY,
+        RAMP_PREPARE, RAMP_MULTIPLY,
         INITIAL_DIVIDE, INITIAL_WAIT, STEP_DIVIDE, STEP_WAIT,
-        SAMPLE_MULTIPLY, SAMPLE_RESULT, STORE,
+        STORE, GAIN_STREAM, MIX_STREAM,
         MEDIA_COMMAND, MEDIA_READ, MEDIA_SOURCE_REQUEST, MEDIA_SOURCE_RESULT, MEDIA_WRITE, MEDIA_DONE
     } phase_t;
     reg [5:0] chunk_shift;
@@ -76,6 +76,9 @@ module job_processor #(
     wire unused_media = &{1'b0, media_cmd_ready, media_done, media_error, media_write_ready, media_read_valid, media_read_data};
     reg [15:0] source_a, source_b, destination, port_index;
     reg [31:0] sample_a, result_sample;
+    reg [31:0] stream_frame, gain_read_gain;
+    reg gain_read_valid, gain_product_valid, stream_store_valid;
+    reg mix_second, mix_read_valid, mix_read_second;
     reg [31:0] current_gain, ramp_start, ramp_target, duration, elapsed;
     reg [31:0] magnitude, fraction, step_quotient, step_remainder, delta_magnitude;
     reg ramp_negative, constant_gain;
@@ -89,9 +92,9 @@ module job_processor #(
     reg hint_pending, hinted_head;
     assign media_hint_valid = (ENABLE_MEDIA != 0) && hint_pending && !media_fault && !reset;
     wire [31:0] multiply_a = (phase == RAMP_MULTIPLY) ? delta_magnitude
-        : (sample_a[31] ? -sample_a : sample_a);
+        : (scratch_data[31] ? -scratch_data : scratch_data);
     wire [31:0] multiply_b = (phase == RAMP_MULTIPLY) ? elapsed
-        : (current_gain[31] ? -current_gain : current_gain);
+        : (gain_read_gain[31] ? -gain_read_gain : gain_read_gain);
     wire [63:0] multiplied = multiply_a * multiply_b;
     wire divide_done;
     wire [63:0] divide_quotient;
@@ -108,14 +111,18 @@ module job_processor #(
     wire output_access = cfg_accept && cfg_in_range && (cfg_space == 1);
     wire scratch_access = cfg_accept && cfg_in_range && (cfg_space == 2);
     wire input_read = (phase == READ_REQUEST) && (opcode == `SHOOP_SP_JOB_INPUT);
+    wire streaming = phase == GAIN_STREAM || phase == MIX_STREAM;
+    wire stream_read = streaming && frame < quantum;
+    wire stream_write = streaming && stream_store_valid && !((ENABLE_MEDIA != 0) && media_fault);
     wire scratch_read = ((phase == READ_REQUEST) && (opcode != `SHOOP_SP_JOB_INPUT))
-        || (phase == MIX_REQUEST) || (phase == MEDIA_SOURCE_REQUEST);
-    wire scratch_write = (phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT);
+        || stream_read || (phase == MEDIA_SOURCE_REQUEST);
+    wire scratch_write = ((phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT)) || stream_write;
     wire output_write = (phase == CLEAR_OUTPUT) || ((phase == STORE) && (opcode == `SHOOP_SP_JOB_OUTPUT));
     wire [INPUT_BITS-1:0] input_address = INPUT_BITS'(32'(port_index) * 32'(MAX_FRAMES) + frame);
-    wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'((phase == MIX_REQUEST) ? source_b : source_a)
+    wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'((phase == MIX_STREAM && mix_second) ? source_b : source_a)
         * 32'(MAX_FRAMES) + frame);
-    wire [SCRATCH_BITS-1:0] scratch_write_address = SCRATCH_BITS'(32'(destination) * 32'(MAX_FRAMES) + frame);
+    wire [SCRATCH_BITS-1:0] scratch_write_address = SCRATCH_BITS'(32'(destination) * 32'(MAX_FRAMES)
+        + (streaming ? stream_frame : frame));
     wire [OUTPUT_BITS-1:0] output_address = OUTPUT_BITS'(((phase == CLEAR_OUTPUT) ? clear_port : 32'(port_index))
         * 32'(MAX_FRAMES) + frame);
     wire [INPUT_BITS-1:0] input_ram_read_address = busy ? INPUT_BITS'(input_address) : INPUT_BITS'(cfg_address);
@@ -253,6 +260,9 @@ module job_processor #(
             port_index <= 0;
             sample_a <= 0;
             result_sample <= 0;
+            stream_frame <= 0; gain_read_gain <= 0;
+            gain_read_valid <= 0; gain_product_valid <= 0; stream_store_valid <= 0;
+            mix_second <= 0; mix_read_valid <= 0; mix_read_second <= 0;
             current_gain <= 0;
             ramp_start <= 0;
             ramp_target <= 0;
@@ -269,6 +279,7 @@ module job_processor #(
             product_negative <= 0;
         end else begin
             done <= 0;
+            gain_read_valid <= 0; gain_product_valid <= 0; mix_read_valid <= 0; stream_store_valid <= 0;
             if ((ENABLE_MEDIA != 0) && media_fault && phase != IDLE) begin
                 error_code <= 8; done <= 1; phase <= IDLE;
             end else if ((ENABLE_MEDIA != 0) && media_done && (phase >= MEDIA_COMMAND)) begin
@@ -326,6 +337,7 @@ module job_processor #(
                 end
                 DECODE: begin
                     frame <= 0;
+                    stream_frame <= 0; mix_second <= 0;
                     case (opcode)
                         `SHOOP_SP_JOB_INPUT: begin
                             if (!destination_valid(id1) || (32'(id0) >= input_count)) begin
@@ -369,7 +381,7 @@ module job_processor #(
                                 source_a <= id0;
                                 source_b <= id1;
                                 destination <= packet[79:64];
-                                phase <= READ_REQUEST;
+                                phase <= MIX_STREAM;
                             end
                         end
                         `SHOOP_SP_JOB_OUTPUT: begin
@@ -413,20 +425,7 @@ module job_processor #(
                 end
                 READ_REQUEST: phase <= READ_RESULT;
                 READ_RESULT: begin
-                    if (opcode == `SHOOP_SP_JOB_GAIN) begin
-                        sample_a <= scratch_data;
-                        phase <= SAMPLE_MULTIPLY;
-                    end else if (opcode == `SHOOP_SP_JOB_MIX) begin
-                        sample_a <= scratch_data;
-                        phase <= MIX_REQUEST;
-                    end else begin
-                        result_sample <= (opcode == `SHOOP_SP_JOB_INPUT) ? input_data : scratch_data;
-                        phase <= STORE;
-                    end
-                end
-                MIX_REQUEST: phase <= MIX_RESULT;
-                MIX_RESULT: begin
-                    result_sample <= saturating_mix(sample_a, scratch_data);
+                    result_sample <= (opcode == `SHOOP_SP_JOB_INPUT) ? input_data : scratch_data;
                     phase <= STORE;
                 end
                 RAMP_PREPARE: begin
@@ -439,7 +438,7 @@ module job_processor #(
                     if ((packet[159:128] == 0) || (packet[191:160] >= packet[159:128]) || (delta == 0)) begin
                         current_gain <= packet[127:96];
                         constant_gain <= 1;
-                        phase <= READ_REQUEST;
+                        phase <= GAIN_STREAM;
                     end else begin
                         constant_gain <= 0;
                         phase <= RAMP_MULTIPLY;
@@ -460,16 +459,52 @@ module job_processor #(
                 STEP_WAIT: if (divide_done) begin
                     step_quotient <= divide_quotient[31:0];
                     step_remainder <= divide_remainder;
-                    phase <= READ_REQUEST;
+                    phase <= GAIN_STREAM;
                 end
-                SAMPLE_MULTIPLY: begin
-                    product <= multiplied;
-                    product_negative <= sample_a[31] ^ current_gain[31];
-                    phase <= SAMPLE_RESULT;
-                end
-                SAMPLE_RESULT: begin
-                    result_sample <= scaled_product(product[63:24], product_negative);
-                    phase <= STORE;
+                GAIN_STREAM, MIX_STREAM: begin
+                    if (phase == GAIN_STREAM) begin
+                        gain_read_valid <= stream_read;
+                        gain_product_valid <= gain_read_valid;
+                        stream_store_valid <= gain_product_valid;
+                        if (stream_read) begin
+                            gain_read_gain <= current_gain;
+                            frame <= frame+1;
+                            if (frame+1 < quantum && !constant_gain) begin
+                                elapsed <= elapsed+1;
+                                if ({1'b0,elapsed}+1 >= {1'b0,duration}) begin
+                                    current_gain <= ramp_target; constant_gain <= 1;
+                                end else begin
+                                    magnitude <= next_magnitude;
+                                    fraction <= carry_fraction ? 32'(fraction_sum-{1'b0,duration}) : fraction_sum[31:0];
+                                    current_gain <= ramp_value(ramp_start, ramp_negative, next_magnitude);
+                                end
+                            end
+                        end
+                        if (gain_read_valid) begin
+                            product <= multiplied;
+                            product_negative <= scratch_data[31] ^ gain_read_gain[31];
+                        end
+                        if (gain_product_valid)
+                            result_sample <= scaled_product(product[63:24], product_negative);
+                    end else begin
+                        mix_read_valid <= stream_read;
+                        mix_read_second <= mix_second;
+                        stream_store_valid <= mix_read_valid && mix_read_second;
+                        if (stream_read) begin
+                            mix_second <= !mix_second;
+                            if (mix_second) frame <= frame+1;
+                        end
+                        if (mix_read_valid) begin
+                            if (mix_read_second) result_sample <= saturating_mix(sample_a, scratch_data);
+                            else sample_a <= scratch_data;
+                        end
+                    end
+                    if (stream_write) begin
+                        if (stream_frame+1 == quantum) begin
+                            buffer_ready[BUFFER_BITS'(destination)] <= 1;
+                            phase <= FETCH;
+                        end else stream_frame <= stream_frame+1;
+                    end
                 end
                 STORE: begin
                     if (frame + 1 == quantum) begin
@@ -481,17 +516,6 @@ module job_processor #(
                         frame <= frame + 1;
                         phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE
                             : (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : READ_REQUEST;
-                        if ((opcode == `SHOOP_SP_JOB_GAIN) && !constant_gain) begin
-                            elapsed <= elapsed + 1;
-                            if ({1'b0, elapsed} + 1 >= {1'b0, duration}) begin
-                                current_gain <= ramp_target;
-                                constant_gain <= 1;
-                            end else begin
-                                magnitude <= next_magnitude;
-                                fraction <= carry_fraction ? 32'(fraction_sum - {1'b0, duration}) : fraction_sum[31:0];
-                                current_gain <= ramp_value(ramp_start, ramp_negative, next_magnitude);
-                            end
-                        end
                     end
                 end
                 MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)
