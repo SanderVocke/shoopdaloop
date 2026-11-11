@@ -145,3 +145,65 @@ async def sample_protocol(dut):
                            frames=min(3, CAPACITIES[3]), buffers=2, outputs=1, steps=1)
     await driver.load(unsupported)
     assert await driver.execute_audio(unsupported["steps"][0]["inputs"]) == (2, 3)
+
+
+@cocotb.test()
+async def arithmetic_stream_protocol(dut):
+    frames = CAPACITIES[3]
+    value = make_case('streaming-gain-mix', [ins('input', port=0, destination=0),
+        ins('gain', ramp=0, source=0, destination=1), ins('mix', left=0, right=1, destination=2),
+        ins('output', source=2, port=0)], [ramp(0, -ONE//2)], CAPACITIES,
+        frames=frames, buffers=3, outputs=1, steps=1, inputs=[samples(frames)])
+    target = wire.run_reference('trace', document('audio_case', value), executable=REFERENCE)['payload']['value']['results'][0]
+    driver = AudioDriver(dut, CAPACITIES, SEED)
+    core = dut.sample_engine
+    writes = {'gain': [], 'mix': []}
+
+    def observe(cycle):
+        if not int(dut.reset.value) and int(core.stream_write.value):
+            kind = driver.consumed[-1]['kind']
+            assert kind in writes
+            destination = 1 if kind == 'gain' else 2
+            assert not (int(dut.buffer_ready.value) & (1 << destination)), 'buffer published before its final write'
+            writes[kind].append((cycle, int(core.scratch_ram_write_address.value)))
+
+    driver.sample_observer = observe
+    await driver.load(value)
+    wire.assert_audio_result_matches(target, await driver.quantum_audio(value['steps'][0]))
+    for kind, interval, destination in (('gain', 1, 1), ('mix', 2, 2)):
+        assert len(writes[kind]) == frames
+        assert [address for _,address in writes[kind]] == list(range(destination*frames, (destination+1)*frames))
+        assert all(b[0]-a[0] == interval for a,b in zip(writes[kind], writes[kind][1:])), kind
+    driver.sample_observer = None
+
+    for count in sorted({1, frames}):
+        for kind in ('gain', 'mix'):
+            for delay in range(5):
+                reset_case = deepcopy(value)
+                reset_case['program']['quantum'] = count
+                reset_case['initial_state']['memory'] = [ramp(ONE, -ONE, count+1)]
+                reset_case['steps'][0]['inputs'] = [samples(count)]
+                await driver.load(reset_case)
+                for index, sample in enumerate(reset_case['steps'][0]['inputs'][0]):
+                    await driver.audio_configure(0, index, sample)
+                driver.set(run_buffers=3, run_inputs=1, run_outputs=1, job_enable=1, drain_ready=0)
+                driver.consumed = []
+                await driver.start()
+                for _ in range(1000):
+                    await driver.tick()
+                    if driver.consumed and driver.consumed[-1]['kind'] == kind and int(core.streaming.value):
+                        break
+                else:
+                    raise AssertionError(f'{kind} did not enter its streaming phase')
+                for _ in range(delay):
+                    await driver.tick()
+                driver.set(reset=1)
+                _, after = await driver.tick()
+                assert not after['busy'] and not after['buffer_ready'] and not after['queued_jobs']
+                driver.set(reset=0)
+                for _ in range(6):
+                    await driver.tick()
+                    assert not int(core.scratch_write.value) and not int(core.stream_store_valid.value), 'stale pipeline write after reset'
+                reset_case['initial_state'] = await driver.snapshot()
+                expected = wire.run_reference('trace', document('audio_case', reset_case), executable=REFERENCE)['payload']['value']['results'][0]
+                wire.assert_audio_result_matches(expected, await driver.quantum_audio(reset_case['steps'][0]))

@@ -277,6 +277,10 @@ The streamed TP increases this complete top's LUT4 count by 2,129 (12.0%) from
 
 ## Coordinated 64-loop benchmark with DRAMsim3 (word-transfer baseline)
 
+The tables and opportunity analysis below record the scalar sample-engine
+baseline. Current measurements are in the
+[pipelined gain and mix checkpoint](#pipelined-gain-and-mix-checkpoint).
+
 The `8x8` timing profile extends the media benchmark through the actual transition
 processor, committed loop-read port, state/job processors, media frontend, chunk
 cache and synthesizable AXI endpoint. It follows upstream TP-streaming revision
@@ -460,3 +464,68 @@ fault/reset protocol tests after adding the opt-in profiling mode. RTL behavior
 and the Rust reference are unchanged by this instrumentation. PR CI is not
 inspected. The clock, x16 DDR profile and absence of other DDR users remain
 feasibility-study assumptions.
+
+### Pipelined gain and mix checkpoint
+
+The gain/mix implementation in `928d27aa` pipelines samples within each job while
+retaining one scratch read port, one write port, the shared multiplier and the
+same job order/arithmetic. All four complete quantum traces match Rust in both
+instant-memory and DRAMsim3 runs. The source commit was measured with a clean
+working tree using the same fixture, seed, capacities and 100 MHz assumption
+as the baseline above. Reproduction commands are unchanged.
+
+| Measurement | Scalar baseline | Pipelined |
+| --- | ---: | ---: |
+| Constant gain, clocks/job at Q=32 | 163 | 38 |
+| Mix, clocks/job at Q=32 | 162 | 68 |
+| All 64 gain jobs | 104.32 us | 24.32 us |
+| All 56 mix jobs | 90.72 us | 38.08 us |
+| Steady active time, instant memory | 297.48 us | 164.84 us |
+| Steady active time, DRAMsim3 | 297.48 us | 184.19–184.36 us |
+| Applying all 64 Play commands, DRAMsim3 | 313.20 us | 199.91 us |
+
+The sample loops remove exactly 13,264 clocks / 132.64 us of compute work:
+8,000 clocks from gains and 5,264 from mixes. With DRAMsim3 the actual steady
+reduction is 38.03–38.08%, or a 1.614–1.615x speedup. At 48 kHz, active execution
+occupies about 27.6% of the audio period, compared with 44.62% before.
+
+Per-quantum detailed measurements, with preflight verifier pauses still separate:
+
+| Boundary | Active cycles | Active time | Exposed fill wait | Raw run-to-done |
+| --- | ---: | ---: | ---: | ---: |
+| Apply 64 Play commands | 19,991 | 199.91 us | 19.35 us | 215.31 us |
+| Playback 1 | 18,419 | 184.19 us | 19.35 us | 207.27 us |
+| Playback 2 | 18,436 | 184.36 us | 19.52 us | 200.24 us |
+| Playback 3 | 18,431 | 184.31 us | 19.47 us | 200.19 us |
+
+TP remains 10.06 us in steady playback (25.78 us when starting all loops), state
+processing remains 11.52 us, outputs remain 7.85 us, output clear 2.56 us and
+other handshakes 0.05 us. Instant-memory JP busy time falls from 275.85 to
+143.21 us. Detailed memory adds 19.35–19.52 us of newly exposed fill waits,
+raising JP time to 162.56–162.73 us. Thus the pipeline achieved the predicted
+compute savings, and the previously hidden serial chunk-fill path now limits
+part of the speedup.
+
+The cached-hit read work itself is still 70.40 us; with these fill waits the
+64 read jobs cost 89.75–89.92 us. The serialized chunk DMA now runs for about
+170 us per quantum. DDR traffic is unchanged at 2,048 word transactions / 32 KiB
+physical data per iteration. Data-bus utilization during steady active execution
+rises from 5.16% to 8.33–8.34% because the same transfers occur in less time.
+At a fixed 48 kHz audio cadence the full-period bandwidth demand remains 2.304%.
+
+Chunk bursts are now a useful next timing target as well as a bandwidth target:
+the instant-memory comparison identifies about 19.5 us of current exposed memory
+cost. Cached sample streaming is still the largest remaining non-DDR job cost,
+but speeding it up without improving fills would expose more memory wait.
+Neither path is changed by this checkpoint. The constant-gain fixture does not
+measure divider-heavy live-ramp performance; arithmetic/ramp behavior is covered
+by the separate Rust comparisons.
+
+Verification includes 432 BRAM directed/seeded cases / 1,287 quanta plus stream
+cadence and reset tests; 55 media pipeline cases / 165 quanta plus active-stream
+fault tests; and 45 connected DRAMsim3 cases / 318 quanta plus preparation/fault/
+reset protocol tests. A 64-bit, single-read/single-write-buffer media run also
+passes multi-chunk and wrap cases. Standalone/combined and integrated synthesis
+checks pass, with no additional DSP or BRAM in the isolated arithmetic processor.
+All timings remain simulation cycle counts at an assumed clock, without routed
+timing or a hard real-time guarantee. PR CI is not inspected.

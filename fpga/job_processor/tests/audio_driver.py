@@ -23,6 +23,7 @@ class AudioDriver(Driver):
         self.consumed = []
         self.drained = []
         self.timing = {}
+        self.sample_observer = None
 
     async def tick(self):
         self.dut.clk.value = 0
@@ -40,6 +41,8 @@ class AudioDriver(Driver):
             if before["monitor_valid"] and before["monitor_ready"]:
                 target = self.consumed if before["jobs_busy"] else self.drained
                 target.append(decode_job(before["monitor_data"]))
+        if self.sample_observer is not None:
+            self.sample_observer(self.cycles)
         self.dut.clk.value = 1
         await Timer(5, units="ns")
         after = self.sample()
