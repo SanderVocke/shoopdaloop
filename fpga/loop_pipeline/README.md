@@ -91,11 +91,14 @@ recording with zero captured frames and causes one `BeginCapture` job. Full IDs
 are validated before use. Node state does not duplicate loop modes or clocks.
 
 Media commands are four bits; internal opcode 8 begins/reuses a recording view.
-Sample payloads use the chunk-memory service; descriptors, references and chunk
-indexes use synchronous on-chip RAM. The generated
+Sample payloads use the chunk-memory service; descriptors and compact roots stay
+on chip, while chunk-ID vectors, reference counts and free IDs use
+[persistent DDR metadata caches](../media_store/DDR_METADATA.md). The generated
 [`loop_pipeline_axi`](../axi_memory/README.md) top connects the existing buffered
 chunk service to AXI, including backpressure, retirement and late fault handling.
-The legacy word-memory port remains available for focused comparisons.
+The two DMA clients share one burst-fair AXI port. The legacy word-memory port
+remains available as a functional diagnostic. Current DDR metadata timings and
+replay commands are in [the measurement report](../media_store/measurements/README.md).
 
 ## Reproduce checks
 

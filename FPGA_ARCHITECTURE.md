@@ -124,9 +124,9 @@ and full-loop tests compare logical results; separate protocol tests exercise
 backpressure, forwarding, reuse and late faults. See
 [the design](FPGA_CHUNK_MEMORY.md) and [implementation](fpga/chunk_memory/README.md).
 The integrated RTL tops use a shared synthesizable AXI master for external
-sample memory. A cocotb slave connects instant/fixed memory or a ctypes-wrapped
-DRAMsim3 DDR3 timing model at that boundary. Current transfers remain single-word;
-the endpoint and simulation independently support bursts. See
+sample and metadata memory. Separate DMA clients alternate at complete AXI burst
+boundaries, with one outstanding transaction. Native direct simulation uses an SV
+backing store; realistic simulation uses cocotb and a ctypes-wrapped DRAMsim3 model. See
 [AXI memory](fpga/axi_memory/README.md).
 
 ## Storage model
@@ -217,10 +217,12 @@ effects against traces from both actual Rust processors. See that directory's
 README for interface, coverage, cycle counts, and ECP5 synthesis results.
 
 `fpga/media_store` adds a bounded RTL counterpart of the Rust chunk store, including
-shared read-only ranges, reference counts and deterministic slot reuse. Metadata
-uses synchronous on-chip RAM; samples use a stalled external memory port. Its
+shared read-only ranges, reference counts and deterministic slot reuse. Compact
+descriptors/roots remain on chip; allocated chunk-ID vectors, reference counts and
+the reusable-ID stack live in DDR behind bounded persistent caches. Its
 `media_audio_pipeline` connects ReadView/Capture jobs to that store and is also
 instantiated by the transition-coordinated `loop_pipeline`. Cocotb compares
 serial store commands and complete audio quanta against Rust, including sample
-bits, ownership, FIFO effects and memory backpressure. Physical DDR controllers,
-burst access and large-session metadata storage remain future work.
+bits, ownership, FIFO effects and memory backpressure. Samples and metadata share
+the integrated AXI burst endpoint. See [metadata design and capacities](fpga/media_store/DDR_METADATA.md).
+Physical DDR controllers and board integration remain future work.

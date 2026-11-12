@@ -3,7 +3,9 @@
 This prototype mirrors Rust `MediaStore`: mono fixed-point chunks, shared read-only
 ranges, per-slot references and deterministic LIFO reuse. Samples pass through
 [chunk memory](../chunk_memory/README.md) to the external memory port. Small
-bounded metadata uses synchronous on-chip RAM.
+view descriptors use synchronous on-chip RAM. Chunk-ID vectors, reference counts
+and the reusable-ID stack use DDR-backed persistent caches; see
+[the metadata architecture](DDR_METADATA.md).
 `media_audio_pipeline` connects the store to state/job execution, enabling ReadView
 and Capture alongside arithmetic jobs.
 
@@ -19,19 +21,20 @@ timing, bus-width options, and the retained legacy word-port mode.
 
 - `rtl/media_store.sv`: serial commands, allocation, ownership and range translation.
 - `rtl/media_ram.sv`: synchronous metadata RAM, one read and one write port.
+- `rtl/media_metadata.sv`: compact radix-indexed vectors and serialized ownership metadata.
+- `rtl/metadata_cache.sv`: persistent writeback cache used by tables, counts and free IDs.
 - `rtl/media_audio_pipeline.sv`: exclusive store ownership between jobs and host commands.
 - `rtl/memory_delay.sv`: optional minimum completion delay for a memory transfer.
 - `simulate.py`, `tests/`: Rust comparisons for standalone storage and complete audio quanta.
 - `check.sh`: warning-clean lint and generic/ECP5 synthesis for both tops.
 
-Defaults: 32 issued view IDs, 32 slots, 32 samples per chunk. Each view has a fixed
-table block of `SLOTS` entries. This `VIEWS * SLOTS` metadata layout is deliberately
-small and bounded; a large session needs a different table allocation/storage
-implementation. Deleted view IDs remain holes and are not reissued within a reset
+Defaults: 32 issued view IDs, 32 slots, 32 samples per chunk. Each view allocates
+only the table/directory pages it uses from a bounded DDR page pool. Cache sizes
+are independently configurable and persist across quanta. Deleted view IDs remain holes and are not reissued within a reset
 epoch. View exhaustion is an additional hardware refusal; Rust's table is elastic.
 
 CHUNK_FRAMES is a compile-time power of two, `1..65536`. VIEWS/SLOTS can each be
-`1..65536`, with the table address space fitting u32. Non-power-of-two view/slot
+positive, with VIEWS at most 65536 and the packed table address fitting u32. Non-power-of-two view/slot
 capacities are tested. Positions, lengths and external byte addresses are 64-bit;
 samples, IDs and reference counts are 32-bit. Samples retain raw Q8.24 bits.
 
@@ -97,7 +100,7 @@ Chunk arbitration is internal; integrated AXI tops transfer chunks in bursts.
 | 0 | Completed |
 | 1 | Invalid view or frame range |
 | 2 | Invalid state, including append to read-only views |
-| 3 | Slot or physical view capacity exhausted |
+| 3 | Slot, physical view or metadata page capacity exhausted |
 | 4 | Invalid opcode or arena base |
 | 5 | External-memory error |
 
@@ -118,7 +121,7 @@ be mistaken for a new transaction. Reset begins a new store epoch.
 ## Metadata configuration
 
 The idle-only configuration port transfers on `cfg_valid && cfg_ready`; responses
-pulse in the following cycle. Data is 160 bits, with zeros above bit 31 in scalar
+pulse after the variable-latency metadata operation. Data is 160 bits, with zeros above bit 31 in scalar
 spaces. Write/error responses return zero. Full 32-bit addresses are checked before
 narrowing. Load only trusted, Rust-validated images while execution is stopped;
 this debug/loading port does not implement the complete snapshot validator.
@@ -127,14 +130,18 @@ this debug/loading port does not implement the complete snapshot validator.
 | --- | --- | --- |
 | 0 | 0 / 1 / 2 / 3 | Issued views / slot high-water mark / free count / logical slot limit |
 | 1 | View ID | Descriptor: valid bit 0, read-only bit 1, offset `[63:32]`, frames `[127:64]`, table count `[159:128]` |
-| 2 | `view * SLOTS + ordinal` | Chunk ID |
+| 2 | `(view << SLOT_BITS) \| ordinal` | Chunk ID; SLOT_BITS = max(1, clog2(SLOTS)) |
 | 3 | Slot ID | Reference count |
 | 4 | Stack index | Chunk ID, top at `free_count - 1` |
+| 5 | 0, write | Fence and invalidate metadata caches/leaf translations |
 
 Descriptor bits `[31:2]` are reserved. Logical slot limit defaults to SLOTS and
 supports snapshots with smaller `chunk_limit`. Snapshots without a limit compare
 identically while operations fit physical capacity. Restore must supply mutually
 consistent descriptors, tables, counters and free entries.
+Write each view's table as a dense ordinal prefix during restore. Reads beyond
+that prefix and sparse writes are refused. Space 5 is a cold-cache diagnostic;
+normal quantum boundaries do not flush metadata.
 
 ## State/job integration
 

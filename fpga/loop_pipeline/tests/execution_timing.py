@@ -29,6 +29,7 @@ class ExecutionTiming:
         self.start = self.total = None
         self.phases, self.jp_phases, self.tp_states = Counter(), Counter(), Counter()
         self.state_cycles = self.job_cycles = self.fill_wait = self.dma_cycles = 0
+        self.metadata_stalls = self.metadata_busy = 0
         self.jobs = []
         self.completions = {}
         self.metadata_start = self.metadata_snapshot()
@@ -49,6 +50,9 @@ class ExecutionTiming:
                 result[name+'_'+metric]=int(getattr(cache,metric).value)
         result['directory_reads']=int(meta.directory_reads.value)
         result['table_reads']=int(meta.table_reads.value)
+        for i,name in enumerate(('table_read','table_write','reference_read','reference_write',
+                                 'stack_read','stack_write','trim','capacity_check','fence','invalidate')):
+            result[name+'_operations']=int(meta.operations[i].value)
         return result
 
     def snapshot(self):
@@ -94,6 +98,9 @@ class ExecutionTiming:
             self.jobs[-1].setdefault('end', time)
         self.fill_wait += int(int(self.cm.phase.value) == 3 and int(self.cm.opcode.value) == 0)
         self.dma_cycles += int(int(self.cm.dma_phase.value) != 0)
+        if hasattr(self.core.audio.media,'metadata'):
+            self.metadata_stalls += int(not int(self.core.audio.media.advance.value))
+            self.metadata_busy += int(int(self.core.audio.media.metadata.phase.value) != 0)
 
     def bus(self):
         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
@@ -118,10 +125,15 @@ class ExecutionTiming:
         active = self.total
         metadata_end=self.metadata_snapshot()
         delta={key:metadata_end[key]-self.metadata_start[key] for key in metadata_end} if metadata_end else None
+        if delta is not None:
+            for access in ('read','write'):
+                delta['logical_'+access+'_bytes']=4*sum(delta[bank+'_'+access+'_operations'] for bank in ('table','reference','stack'))
+            delta['directory_read_bytes']=4*delta['directory_reads']
         return dict(completion_cycles=self.completions,metadata_statistics=delta,raw_cycles=self.total,
                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,
                     coordinator_phases=dict(self.phases), job_phases=dict(self.jp_phases),
                     transition_states=dict(self.tp_states), jobs=grouped,
                     demand_fill_wait_cycles=self.fill_wait, transfer_active_cycles=self.dma_cycles,
+                    metadata_foreground_stall_cycles=self.metadata_stalls,metadata_service_busy_cycles=self.metadata_busy,
                     raw_ddr_bus=self.bus(), active_ddr_bus=self.bus())

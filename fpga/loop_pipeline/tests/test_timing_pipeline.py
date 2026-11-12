@@ -43,9 +43,12 @@ async def benchmark64(dut):
     started = time.perf_counter()
     try:
         await driver.initialize(value, image)
+        initialization_cycles=memory.cycles
+        preparation_started=memory.cycles
         await memory.fence()
         if hasattr(dut.core,'memory_endpoint') and hasattr(dut.core.memory_endpoint,'scheduler'):
             await memory.configure(5,0,1)
+        cold_preparation_cycles=memory.cycles-preparation_started
         for index, (row, target) in enumerate(zip(value['steps'], expected['payload']['value']['results'])):
             reads, writes = memory.read_requests, memory.write_requests
             probe.begin()
@@ -69,7 +72,9 @@ async def benchmark64(dut):
         fence_started=memory.cycles
         await memory.fence()
         fence_cycles=memory.cycles-fence_started
+        snapshot_started=memory.cycles
         final_media=await memory.snapshot()
+        snapshot_cycles=memory.cycles-snapshot_started
         assert final_media==expected['payload']['value']['results'][-1]['audio']['media']
         cleanup=[]
         if workload=='mixed':
@@ -85,6 +90,7 @@ async def benchmark64(dut):
             loop_slots=64, request_slots=128, quantum_frames=32, chunk_frames=32,
             read_buffers=int(os.environ['LP_READ_BUFFERS']), write_buffers=int(os.environ['LP_WRITE_BUFFERS']),
             final_fence_cycles=fence_cycles,observation="full snapshots" if verify else "no intermediate media snapshots; cold metadata and sample caches",
+            initialization_cycles=initialization_cycles,cold_preparation_cycles=cold_preparation_cycles,final_snapshot_cycles=snapshot_cycles,
             simulation_seconds=time.perf_counter()-started, results=results, memory_statistics=statistics), indent=2)+'\n')
     finally:
         memory.close()

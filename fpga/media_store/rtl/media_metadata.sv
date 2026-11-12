@@ -152,7 +152,9 @@ module media_metadata #(
                         response_error <= 1; phase <= RESPONSE;
                     end else if (!checked && (opcode == 1 || opcode == 7) && additional > available) begin
                         response_error <= 3; phase <= RESPONSE;
-                    end else if (opcode == 7) phase <= RESPONSE;
+                    end else if (opcode == 0 && ordinal >= used) begin response_error <= 1; phase <= RESPONSE; end
+                    else if ((opcode == 1 || opcode == 6) && ordinal > used) begin response_error <= 4; phase <= RESPONSE; end
+                    else if (opcode == 7) phase <= RESPONSE;
                     else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_NEXT; end
                     else if (!checked && cached_leaf != 0 && cached_index == (ordinal >> 4)) begin
                         page <= cached_leaf; level <= 0;

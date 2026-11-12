@@ -178,11 +178,11 @@ Stages are sequential; each depends on the preceding stage's verification.
 
 ### 6. Validate end to end, synthesize and benchmark
 
-- [ ] Run the relevant Rust/media, resolver, AXI, chunk, audio and full-loop
+- [x] Run the relevant Rust/media, resolver, AXI, chunk, audio and full-loop
   regressions. Cover 32-/64-bit buses, normal/odd/minimum cache capacities, word
   diagnostics, stereo bindings, retained ranges, wrap, capture forwarding,
   clear/remove/reclaim and reuse in native and DRAMsim3 modes.
-- [ ] Inject metadata fill/writeback, reference-update and stack refill/spill
+- [x] Inject metadata fill/writeback, reference-update and stack refill/spill
   faults, including speculative reads and failures after buffered completion.
   Check sticky fault propagation, no further unsafe reuse, draining and coordinated
   reset/restore. Exercise contention and eventual completion under backpressure.
@@ -344,3 +344,20 @@ banks, and reset during outstanding traffic. Connected tests now explicitly
 exercise a cold metadata-prefetch error and two views sharing one stereo loop.
 The former directory scan and a multi-burst early-write-error hang were corrected
 before delivery. Native/realistic small-loop tests and the odd stereo case pass.
+
+Upstream through `62ddd33e` is merged. The native-memory squash has exactly the
+same tree as the earlier merged baseline, so conflict resolution retains the
+metadata integration and adds the numeric-contract work. Rust tests for audio
+math/reference/testbench, the warning-denying targeted build, formatting and the
+test-attribute policy check pass. Both-width native/realistic audio/loop
+regressions, the legacy scalar path, 19 wire-contract tests and standalone native
+RAM tests pass. All eight final cache/service configurations and a realistic
+stereo replay pass after enforcing dense-prefix writes and trimmed-read bounds.
+
+The optimized mixed workload peaks at 73,805 clocks (738.05 us at 100 MHz), down
+from 81,281 clocks before the directory-scan optimization. The simultaneous retake
+still exceeds the 666.67 us quantum budget; this is synchronous cleanup, not an
+ordinary steady recording quantum. No asynchronous reclamation is added.
+Final reports add logical metadata operation/byte counts, foreground metadata
+stalls, service busy time, initialization/cold-preparation and final snapshot
+costs. These overlap other execution and are not added to processor totals.

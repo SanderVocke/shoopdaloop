@@ -35,6 +35,8 @@ async def indexed_metadata_reuse_and_limits(dut):
     await request(1,0,int(os.environ.get('METADATA_SERVICE_SLOTS','256')),123,error=1)
     slots=int(os.environ.get('METADATA_SERVICE_SLOTS','256'))
     levels=((slots-1).bit_length()+3)//4
+    await request(1,0,1,123,error=4)
+    assert int(dut.metadata.high_water.value)==0
     for i in range(32):await request(1,0,i,100+i)
     for i in range(16):await request(1,1,i,200+i)
     high=int(dut.metadata.high_water.value)
@@ -50,6 +52,8 @@ async def indexed_metadata_reuse_and_limits(dut):
         assert await request(2,index=i)==i+1
         assert await request(4,index=i)==69-i
     await request(6,0,17)
+    await request(0,0,17,error=1)
+    await request(6,0,18,error=4)
     assert int(dut.metadata.free_pages.value)==0
     await request(6,0,16)
     assert int(dut.metadata.free_pages.value)==1
