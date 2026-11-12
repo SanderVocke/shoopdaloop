@@ -14,6 +14,13 @@ input, rather than a frequency-search result.
 See [routed resource usage](RESOURCES.md) for totals and the subsystem breakdown
 of the fully routed 64-loop deployment, including debug instrumentation.
 
+Prebuilt deployment bundles belong in
+[GitHub release assets](https://github.com/SanderVocke/shoopdaloop/releases),
+outside Git. A bundle contains the hardware outputs, load/control scripts, a
+portable manifest and build provenance; a companion SHA256 file verifies the
+download. The validated experimental build has not been tested on hardware and
+its requested 100 MHz clock remains unqualified; see [validation](VALIDATION.md).
+
 ## AXI connection
 
 The common master exposes native AXI3: four-bit AWLEN/ARLEN, WID=0 and one
