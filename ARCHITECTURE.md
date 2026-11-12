@@ -12,12 +12,19 @@
 ## Current application composition
 
 The [session recovery plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_NATIVE_SESSION_RECOVERY.md) introduces the production
-application architecture. UI and Lua use `shoop_app_client`; `shoop_app` owns session
-state/admitted work; `shoop_rt_backend` is its engine adapter. `shoop_host` owns those
+application architecture. UI and Lua use `shoop_app_client`; `shoop_app` owns musical
+session state/admitted work; `shoop_rt_backend` is its engine adapter. `shoop_host` owns those
 components and a native RT host independently of external UIs. Typed local delivery
 uses the same contract. In the browser, client/service/Lua stay on the main thread
 and the RT engine stays in the AudioWorklet. Generic `shoop_transport*` carriers are
 shared below application and engine protocol lifecycles.
+
+The agreed [P16 contract](docs/native_session_recovery/p16-client-scripts.md) keeps
+script source, resources and execution client-owned. The client composes the saved
+project file from a backend musical capture and its own script additions, and sends
+only musical data on load. Backend reattachment recovers music, not another
+client's scripts. This ownership decision is accepted; P16 file/resource workflows
+remain unimplemented.
 
 The RT engine is the sole production stack. Old application/engine/worklet code is
 isolated as development/reference evidence. Temporary feature gaps and their retained

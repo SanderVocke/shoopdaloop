@@ -11,6 +11,15 @@ Each script has an isolated state owned by the application runtime. Stopping or
 restarting a script removes its callbacks, timers, logical MIDI ports,
 connections, queued output, and script-owned dialogs.
 
+Script source, resources and execution belong to the client. A script included in
+a session is embedded in that client's saved project file; it is not stored on
+the backend or transferred to another client on attachment. The agreed P16
+contract in ``docs/native_session_recovery/p16-client-scripts.md`` restores the
+file/resource workflows below, which remain open on the replacement backend.
+The client will combine its scripts with a backend musical capture when saving,
+and retain scripts locally while sending only musical data when loading. Loaded
+scripts remain stopped until explicitly started, even when saved as enabled.
+
 Every script must make ``shoop_announce_api_version(major, minor)`` its first
 Shoop API call. The current version is ``1.6``. A script runs only when its major
 equals the host major and its minor is no newer than the host minor. Missing,

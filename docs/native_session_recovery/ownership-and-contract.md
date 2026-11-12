@@ -7,6 +7,15 @@ on this branch; no rebase or merge of unrelated `origin/master` changes is inten
 This inventory describes the extraction target, not implemented recovery behavior.
 Acceptance criteria remain those in `PLAN_NATIVE_SESSION_RECOVERY.md`.
 
+P16 ownership clarification agreed on 2026-11-12: script source, resources,
+session-inclusion metadata and execution are client-owned. The client assembles
+them with the service's musical capture in a session file, and separates them
+before staging a musical load. The service owns neither a script catalog nor
+script-resource storage. Reattachment does not transfer scripts from the previous
+client; their unsaved recovery is outside backend recovery. See the
+[P16 contract](p16-client-scripts.md) for confirmed-load reconciliation and the
+explicit-start rule. This is a contract change; P16 implementation remains open.
+
 The output-bus restoration follows this ownership split: the service retains bus,
 channel and port identities, logical order, display order and admitted results
 across UI loss. The adapter owns generation-safe engine mappings and confirmed
@@ -16,9 +25,10 @@ live IDs. Zero active buses does not trigger default-bus bootstrap on attachment
 
 ## ApplicationModel field ownership
 
-Every field at the implementation baseline is covered below. An allocated view is
-only a cache; the service owns the state used to produce it. Backend telemetry is
-engine-owned, while mappings and the last confirmed projection live in the service.
+Every field at the implementation baseline is covered below, with its service or
+client owner. For service-owned fields, an allocated view is only a cache of
+service state. Backend telemetry is engine-owned, while mappings and the last
+confirmed projection live in the service. Client script state remains client-owned.
 
 | Owner | Fields | Extraction rule |
 | --- | --- | --- |

@@ -48,9 +48,31 @@ uses fresh identities and stopped loops; old exports retain their original data.
 | Core composites | Preserve authored identities, original timing basis, frozen geometry, nested references, explicit sync and repeat intent; load stopped with fresh runtime identities | See the [composite contract](composites.md) and [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md); captures exclude pending candidates and refuse active/scheduled/future recording |
 | Built-in FX/OxiSynth, External dry/wet, bus FX and dependent composite events | Preserve processor state/mappings, recorded settings, role media and authored modes | Supported under P03/P06/P08/P17 and the built-in portion of P07; prepare privately and publish atomically, without flattening or dropping state |
 | Carla and general latency/take controls | Refuse complete documents requiring unavailable capabilities | Remaining storage, capture, load and applicable export work belongs to P07/P09/P10 |
-| Session-owned scripts/resources | Refuse documents requiring unavailable ownership/resource handling | P16 remains open; VM stays client-side and is never serialized/restarted |
+| Session-owned scripts/resources | Production file workflows currently refuse these documents; P16 restores client-side archive composition and extraction | [P16 contract](p16-client-scripts.md): source, resources and preferences stay client-owned; only musical data reaches the service; loaded scripts remain stopped |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
+
+## Client-owned additions to session files (P16)
+
+The agreed [P16 contract](p16-client-scripts.md) distinguishes the live musical
+session from the saved file. The client combines an immutable musical capture with
+a fixed copy of its script definitions/resources for save/store, and validates and
+retains those additions locally on load. Only the musical portion enters service
+staging. Existing production refusals remain until this client path is implemented.
+
+Prepare local script replacements before submitting musical commit; install them
+stopped only after confirmed success, preserving machine-owned scripts. Failed or
+cancelled preparation leaves the previous scripts intact. Accepted backend work
+remains host-owned across UI loss, but client additions do not: a different client
+cannot recover the previous client's scripts from the backend. There is no atomic
+transaction across backend state and client memory; a surviving client reconciles
+the original operation and keeps scripts inactive if its outcome is uncertain.
+
+The service transfer limits below continue to apply to musical objects only.
+P16 adds bounded client archive/resource accounting, not resource objects to the
+service transfer protocol. No script source, resource bundle or VM state is
+uploaded to the host. See the [implementation plan](../../PLAN_P16_CLIENT_SCRIPT_PERSISTENCE.md)
+for archive, worker and client workflow changes.
 
 ## Finite budgets
 
@@ -141,8 +163,11 @@ normal service work or silently restart against newer content.
   and explicitly requested length updates apply. Exact MIDI preserves event bytes,
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
-  mutation. They are not omitted from save or stripped during load. Session script
-  persistence remains a named follow-up. Audio/MIDI click generation
+  mutation. They are not omitted from save or stripped during load. P16's client
+  section is retained separately from musical data, rather than discarded because
+  it is absent from the service schema. Unsupported script execution does not
+  justify dropping a valid supported-format bundle. Script persistence remains
+  open under the client-owned contract above. Audio/MIDI click generation
   and insertion use the restored bounded import path. System/Master audio preview
   is complete under P15; see the [preview contract](preview.md).
 
