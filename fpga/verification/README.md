@@ -9,9 +9,11 @@ media in raw Q8.24, per-quantum input, and named actions. `compile` lowers the
 production graph's ordered descriptor and production timing components into an
 RTL image. Instructions, state addresses and chunk tables are outputs of that
 compilation. The program remains constant when actions or loop modes change.
-These production images use one-chunk allocation. The runner sets that geometry
-explicitly; the reference/block-allocation benchmarks exercise 32-chunk blocks
-through their block-aware image and snapshot adapters.
+Production images describe physical chunks. With `--block-chunks 32`, the runner
+repacks the initial media into allocation blocks before configuration; the common
+scenario and production Rust results stay unchanged. The adapter preserves shared
+initial ranges, and runtime allocation and reclamation execute entirely in RTL.
+Each run saves the actual configured media image beside the production image.
 
 ```sh
 cargo build -p rt_backend_testbench
@@ -66,10 +68,18 @@ host-buffer partitions have separate gates. Run the common corpus with:
 
 ```sh
 python fpga/verification/simulate.py --directed --random-cases 30 --faults
+python fpga/verification/simulate.py --directed --random-cases 2 --block-chunks 32 --faults
 python fpga/verification/simulate.py --long-sessions
 python fpga/verification/simulate.py --benchmark64 --config 8x8 \
   --read-buffers 128 --memory-model dramsim3
 ```
+
+`--directed --block-chunks 32` also records stereo across an allocation-block
+boundary, retains the old take, and records/plays a replacement. Exhaustion checks
+fill the configured allocation unit before testing sticky fault and reset behavior.
+Ordinary blocked profiles reserve the same number of allocation units as one-chunk
+profiles, with a larger physical sample arena. The 64-loop blocked timing arenas
+use 2,048 / 4,096 / 2,304 physical chunks for original / streaming / mixed.
 
 Every scenario also runs through production float. `float-accuracy.json` reports
 maximum absolute/RMS error, signed bias, first-to-last quantum drift, and a checked
@@ -97,3 +107,19 @@ resource refusals, and have separate sticky-silence/reset checks.
 DRAMsim3 adds actual data/command bus utilization over the active processing
 window, excluding host setup and observation. These are simulator measurements,
 not board-level deadline guarantees.
+
+Standalone TP transport cases use `transition-run` / `transition-compile` and
+versioned `transition_case`, `transition_image`, `transition_trace` documents.
+They execute the production resolver directly and expose hardware request-slot
+observations; the common runner still compares semantic action names. These
+fixtures contain no parallel transition executor or ordering algorithm.
+
+Exports use explicit cuts: `recording` selects a live immutable prefix;
+`playback`/`latest` select a completed take outside active recording. Exporting
+a prior playback binding during an active retake is outside this milestone and
+is rejected explicitly, as are exports at the same cut as a transition for that
+loop. Retain the old take before beginning the retake to compare its lifetime.
+Streaming/mixed scale inputs are available with `--benchmark64 --scale-workload
+streaming|mixed`; their node/arithmetic order is the production order. The mixed
+case ends recording to compare final media and therefore differs from historical
+hardware-shaped timing inputs. No old case format is accepted with changed meaning.

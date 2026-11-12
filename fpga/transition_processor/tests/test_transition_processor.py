@@ -1,4 +1,4 @@
-"""Architectural comparisons against Rust and native resolver plus bus checks."""
+"""Compare to the production resolver, including standalone transport checks."""
 import json
 from copy import deepcopy
 import os
@@ -7,7 +7,7 @@ import cocotb
 from cocotb.triggers import FallingEdge, Timer
 import codec as abi
 from cases import case as make_case, directed, seeded, workloads, spec, lid, rid, play, command, step
-import fpga_testbench as wire
+import rt_backend_testbench as wire
 from driver import Driver
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -16,26 +16,22 @@ OUTPUT = Path(os.environ["TP_OUTPUT"])
 REFERENCE = Path(os.environ["TP_REFERENCE"])
 
 
-def document(kind, value):
-    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
-
 
 async def compare(dut, case):
-    source = document("transition_case", case)
-    trace = wire.run_reference("trace", source, executable=REFERENCE)
-    wire.run_reference("check", trace, executable=REFERENCE)
-    image = wire.run_reference("compile", document("transition_plan", case["plan"]), executable=REFERENCE)["payload"]["value"]
+    source = dict(case,format_version=1)
+    trace = wire.run(source,kind="transition_case",command="transition-run",executable=REFERENCE)
+    image = wire.run(source,kind="transition_case",command="transition-compile",executable=REFERENCE)
     driver = Driver(dut, DEPTHS)
     observed = []
     try:
         await driver.load(case, image)
-        for step, expected in zip(case["steps"], trace["payload"]["value"]["results"]):
+        for step, expected in zip(case["steps"], trace["results"]):
             actual = await driver.step(step)
             observed.append(actual)
-            wire.assert_transition_result_matches(expected, actual)
+            wire.assert_exact(actual,expected)
     except BaseException as error:
-        wire.dump(source, OUTPUT / "failure.case.json")
-        wire.dump(trace, OUTPUT / "failure.expected.trace.json")
+        wire.dump(source, OUTPUT / "failure.case.json", "transition_case")
+        wire.dump(trace, OUTPUT / "failure.expected.trace.json", "transition_trace")
         (OUTPUT / "failure.observed.json").write_text(json.dumps({"results": observed, "error": str(error)}, indent=2) + "\n")
         dut._log.error("Failed case %s, step %d", case["name"], len(observed) - 1)
         raise
@@ -46,16 +42,11 @@ async def compare(dut, case):
 async def directed_against_rust(dut):
     replay = os.environ.get("TP_CASE")
     if replay:
-        loaded = wire.load(replay)["payload"]
-        case = loaded["value"]["case"] if loaded["kind"] == "transition_trace" else loaded["value"]
+        case = wire.load(replay,"transition_case")
         cycles = await compare(dut, case)
         (OUTPUT / "replay-cycles.json").write_text(json.dumps(cycles, indent=2) + "\n")
         return
     values = list(directed(DEPTHS))
-    example = wire.load(ROOT / "scripts/fpga_testbench/examples/transition_record_play_sync.json")["payload"]["value"]
-    if (example["plan"]["limits"]["loop_slots"] <= DEPTHS[0]
-            and example["plan"]["limits"]["pending_requests"] <= DEPTHS[1]):
-        values.append(example)
     summary = {"cases": {}, "quanta": 0}
     for value in values:
         summary["cases"][value["name"]] = await compare(dut, value)
@@ -81,7 +72,7 @@ async def seeded_against_rust(dut):
 @cocotb.test()
 async def transport_and_negative_cases(dut):
     value=make_case('transport',[spec(0,32)],[step([command(0,1)])],requests=1)
-    image=wire.run_reference('compile',document('transition_plan',value['plan']),executable=REFERENCE)['payload']['value']
+    image=wire.run(dict(value,format_version=1),kind='transition_case',command='transition-compile',executable=REFERENCE)
     driver=Driver(dut,DEPTHS)
     await driver.load(value,image)
     before=await driver.states()
@@ -109,7 +100,7 @@ async def transport_and_negative_cases(dut):
 @cocotb.test()
 async def scratch_initialization_and_reset(dut):
     value=make_case('reset-during-processing',[spec(0,32)],[step([command(0,1)])],requests=1)
-    image=wire.run_reference('compile',document('transition_plan',value['plan']),executable=REFERENCE)['payload']['value']
+    image=wire.run(dict(value,format_version=1),kind='transition_case',command='transition-compile',executable=REFERENCE)
     driver=Driver(dut,DEPTHS)
     await driver.load(value,image)
     await driver.ok(abi.SUBMIT,data=abi.encode_command(command(0,1)))

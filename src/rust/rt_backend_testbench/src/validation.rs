@@ -152,7 +152,21 @@ impl Scenario {
                         }
                         Some(name)
                     }
-                    Action::Cancel { name, .. } | Action::Export { name, .. } => Some(name),
+                    Action::Cancel { name, request } => {
+                        if !names.contains(request) {
+                            return Err("cancel refers to unknown prior action".into());
+                        }
+                        Some(name)
+                    }
+                    Action::Export { name, target, .. } => {
+                        if !self.loops.iter().any(|l| l.id == *target) {
+                            return Err("export refers to unknown loop".into());
+                        }
+                        if step.actions.iter().any(|a| matches!(a, Action::Transition { target: other, .. } if other == target)) {
+                            return Err("exports need a separate observation boundary from transitions of that loop".into());
+                        }
+                        Some(name)
+                    }
                 };
                 if let Some(name) = name {
                     if name.is_empty() || !names.insert(name) {

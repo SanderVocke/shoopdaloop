@@ -120,3 +120,28 @@ block-loop smoke and production mono/silence/gain-ramp plus fault/reset cases
 pass at AXI64. AXI32 production mono also passes with explicitly reduced metadata
 cache/page dimensions. Stored benchmark/resource artifacts retain their original
 clean measured revision; no performance claims are regenerated from merge tests.
+
+PR #972 conflict resolution: merged target commit `fa6d9f55`, which moves RTL
+subsystem and full-loop verification onto production Rust. Kept the replacement
+runner and removed the superseded full-model block/timing tests. The production
+runner now accepts blocked geometry, repacks only initial media, preserves
+partially overlapping shared ranges, and compares logical results against the
+unchanged production scenario. Saved physical media images expose the actual
+configured block layout. Standalone block ownership/audio tests now assert
+logical values, lifetime, refusal and restore directly. No executable Python
+path under `fpga/` imports the retiring FPGA model. Historical performance and
+resource reports remain tied to `d1a67219`; their replay commands require that
+revision, and the current common-session benchmark is documented separately.
+
+Post-resolution validation passes: warning-denying workspace build, formatting,
+targeted reference/math/production Rust tests, test-attribute policy, generated
+wrappers, 28 Python contract/packing tests; 17 production/RTL scenarios at AXI64
+with 32-chunk blocks/native SV memory (including a 43-quantum stereo block-boundary
+capture/retained-export/retake case), and 17 one-chunk production scenarios at
+AXI32 through DRAMsim3. Both full-loop campaigns include deterministic stalls and
+sticky fault/reset containment. Standalone block ownership/restore passes at
+native AXI64; sample capture/playback and retained-range reuse pass at DRAMsim3
+AXI32; grouped retirement/coherence/fault/reset passes at DRAMsim3 AXI64. Logs are
+under `work/block-upstream-*`. No RTL behavior changed during this merge, and no
+new synthesis or 64-loop performance result is claimed. CI/review follow-up stays
+out of scope as requested.

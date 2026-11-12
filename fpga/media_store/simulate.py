@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a bounded RTL media store with the Rust elastic media store."""
+"""Check media ownership/protocols or the standalone sample pipeline."""
 import argparse
 import os
 from pathlib import Path
@@ -48,11 +48,17 @@ def main():
         parser.error("buffer capacities must be positive")
     if args.response_cycles < 1 or ((args.response_cycles != 1 or args.timing) and not args.pipeline):
         parser.error("use positive --response-cycles; delay/timing options require --pipeline")
-    if args.timing and args.case:
-        parser.error("--timing and --case are mutually exclusive")
-    if args.prefetch_analysis and (not args.timing or args.config != "8x8" or args.read_buffers < 64):
-        parser.error("--prefetch-analysis requires --timing --config 8x8 and at least 64 read buffers")
-    subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
+    if args.case:
+        parser.error('hardware-shaped cases are retired; use fpga/verification/simulate.py --case with a common scenario')
+    if args.timing:
+        command=[sys.executable,str(ROOT/'fpga/verification/simulate.py'),'--output',str(args.output),
+            '--memory-model',args.memory_model,'--read-buffers',str(args.read_buffers),'--write-buffers',str(args.write_buffers),
+            '--metadata-lines',str(args.metadata_lines),'--reference-lines',str(args.reference_lines),'--stack-lines',str(args.stack_lines),
+            '--block-chunks',str(args.block_chunks),'--axi-data-width',str(args.axi_data_width),'--dram-library',str(args.dram_library),'--dram-config',str(args.dram_config)]
+        if args.config=='8x8':command+=['--benchmark64','--config','8x8']
+        if args.word_transfers:command+=['--word-transfers']
+        subprocess.run(command,cwd=ROOT,check=True)
+        return
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "fpga/job_processor/tests"),
                    str(ROOT / "fpga/state_processor/tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
@@ -92,10 +98,8 @@ def main():
                      parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"],
                      build_dir=output / "build", always=True, waves=args.waves, log_file=output / "build.log")
-        testcase = "memory_timing" if args.timing else (("directed_pipeline" if args.pipeline else "directed_media") if args.case else
-                   ["directed_pipeline", "randomized_pipeline", "pipeline_protocol", "playback_stream_protocol"] if args.pipeline else None)
-        block_test=args.block_chunks>1 and not args.case and not args.timing
-        if block_test:testcase=None
+        block_test=args.block_chunks>1
+        testcase=None if block_test else ['directed_pipeline','randomized_pipeline','pipeline_protocol','playback_stream_protocol'] if args.pipeline else None
         module=('test_block_audio' if args.pipeline else 'test_block_media') if block_test else ('test_media_pipeline' if args.pipeline else 'test_media_store')
         result = runner.test(hdl_toplevel=top, test_module=module,
                              testcase=testcase, seed=args.seed,
@@ -107,12 +111,11 @@ def main():
                                         "MEDIA_SEED": str(args.seed), "MEDIA_RANDOM_CASES": str(args.random_cases),
                                         "MEDIA_RESPONSE_CYCLES": str(args.response_cycles),
                                         "MEDIA_PREFETCH_ANALYSIS": str(int(args.prefetch_analysis)),
-                                        "MEDIA_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
                                         "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.case or args.timing or block_test else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (1 if block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

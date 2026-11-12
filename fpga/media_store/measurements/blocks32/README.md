@@ -97,6 +97,13 @@ Counts exclude simulation memory, a physical DDR controller and place/route. Def
 
 ## Reproduce
 
+These commands reproduce the stored measurements at revision `d1a67219`.
+The current production-backed runner uses common logical scenarios instead of
+the historical FPGA-reference fixtures. To measure that corpus, use
+`fpga/verification/simulate.py --benchmark64 --config 8x8 --scale-workload mixed
+--block-chunks 32` with the desired AXI/cache/memory options. The workloads and
+oracle differ, so those new measurements are not historical replay results.
+
 ```sh
 python fpga/axi_memory/build_dramsim3.py
 for workload in original streaming mixed; do

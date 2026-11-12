@@ -1,18 +1,14 @@
+"""Flat visible-memory assertions plus real cache coherence and transport checks."""
 import json
 import os
 from pathlib import Path
 import random
 import cocotb
-import fpga_testbench as wire
 from chunk_driver import Driver, ERRORS, signed
 
 CAPACITIES = tuple(map(int, os.environ["CHUNK_CAPACITIES"].split(",")))
-REFERENCE = Path(os.environ["CHUNK_REFERENCE"])
 OUTPUT = Path(os.environ["CHUNK_OUTPUT"])
 
-
-def document(kind, value):
-    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
 
 
 async def compare(dut, operations, seed, case=None):
@@ -24,25 +20,33 @@ async def compare(dut, operations, seed, case=None):
             "requests": [{"id": (0xffffffff-index) & 0xffffffff, "operation": op}
                          for index, op in enumerate([*operations, {"kind": "fence"}])]}
     assert case["chunk_frames"] == frames and len(case["samples"]) == slots*frames
-    trace = wire.run_reference("trace", document("chunk_case", case), executable=REFERENCE)
-    wire.run_reference("check", trace, executable=REFERENCE)
+    visible = list(case["samples"])
     driver = Driver(dut, CAPACITIES, seed)
     await driver.reset(case["samples"])
     try:
-        for request, expected in zip(case["requests"], trace["payload"]["value"]["results"]):
+        for request in case["requests"]:
+            operation=request['operation'];kind=operation['kind']
+            expected_code=0;expected_samples=[]
+            if kind!='fence':
+                chunk=operation['chunk']
+                if not 0<=chunk<slots:expected_code=1
+                elif kind in ('read','write'):
+                    offset=operation['offset'];count=operation.get('frames',len(operation.get('samples',[])))
+                    if offset>frames or count>frames-offset:expected_code=4
+                    else:
+                        first=chunk*frames+offset
+                        if kind=='read':expected_samples=visible[first:first+count]
+                        else:visible[first:first+count]=operation['samples']
             code, samples = await driver.command(request["operation"], request["id"])
-            status = {"kind": "completed"} if code == 0 else {"kind": "failed", "value": {"error": ERRORS[code]}}
-            assert status == expected["status"]
-            assert samples == expected["samples"]
-            if request["operation"]["kind"] == "fence":
-                assert [signed(x) for x in await driver.read_memory()] == expected["memory"]
+            assert code == expected_code,(request,code,expected_code)
+            assert samples == expected_samples,(request,samples,expected_samples)
+            if operation['kind']=='fence':
+                assert [signed(x) for x in await driver.read_memory()] == visible
         assert await driver.command({"kind": "fence"}) == (0, [])
-        results = trace["payload"]["value"]["results"]
-        assert [signed(x) for x in await driver.read_memory()] == (results[-1]["memory"] if results else case["samples"])
+        assert [signed(x) for x in await driver.read_memory()] == visible
         assert driver.burst is None and driver.pending is None
     except BaseException:
-        wire.dump(document("chunk_case", case), OUTPUT / "failure.case.json")
-        wire.dump(trace, OUTPUT / "failure.expected.trace.json")
+        (OUTPUT/"failure.case.json").write_text(json.dumps(dict(case,format_version=1),indent=2)+"\n")
         raise
     finally:
         driver.close()
@@ -51,8 +55,8 @@ async def compare(dut, operations, seed, case=None):
 @cocotb.test()
 async def conformance(dut):
     if os.environ.get("CHUNK_CASE"):
-        payload = wire.load(os.environ["CHUNK_CASE"])["payload"]
-        value = payload["value"]["case"] if payload["kind"] == "chunk_trace" else payload["value"]
+        value=json.loads(Path(os.environ['CHUNK_CASE']).read_text())
+        assert value.pop('format_version')==1
         await compare(dut, [], 20261111, case=value)
         return
     slots, frames, _, _ = CAPACITIES

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the chunk-memory RTL service with the synchronous Rust reference."""
+"""Check chunk-memory visibility, coherence and transport invariants."""
 import argparse
 import os
 from pathlib import Path
@@ -35,7 +35,6 @@ def main():
         parser.error("random-cases must be nonnegative")
     if args.case and args.config == "all":
         parser.error("--case requires one --config")
-    subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
@@ -59,7 +58,6 @@ def main():
                              testcase="conformance" if args.case else None,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"CHUNK_CAPACITIES": ",".join(map(str, capacities)),"CHUNK_RETIRE_CHUNKS":str(args.retire_chunks),
-                                        "CHUNK_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
                                         "CHUNK_OUTPUT": str(output), "CHUNK_RANDOM_CASES": str(args.random_cases),
                                         "CHUNK_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         report = ET.parse(result).getroot()

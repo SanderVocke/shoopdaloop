@@ -86,14 +86,17 @@ that complete session; timing fixtures use the unchanged profile at smaller size
 `--block-chunks 32` enables blocked simulation. Regression runners otherwise keep
 one-chunk mode. Ordinary profiles reserve 32 times their legacy sample slots;
 the full-system timing profiles explicitly use 2,048 / 4,096 / 2,304 physical
-chunks for original / streaming / mixed, respectively. Benchmark fixtures are
-repacked outside execution, and Rust verifies that audio, jobs, node/loop state
-and statuses match their original chunk-allocation cases before simulation.
+chunks for original / streaming / mixed, respectively. Initial production images are repacked outside execution. The production Rust
+comparison checks logical audio, loop states, transitions, outcomes and exported
+media; it does not require physical allocation equality. Directed blocked runs
+also cover stereo capture across a block boundary and a retake with a retained
+old take. Standalone tests check ownership, ranges, refusal atomicity and cache
+retirement without invoking the retiring FPGA Rust executor.
 
 ```sh
 python fpga/media_store/simulate.py --config all --block-chunks 32
 python fpga/media_store/simulate.py --pipeline --config all --block-chunks 32
-python fpga/loop_pipeline/simulate.py --media --config all --block-chunks 32
+python fpga/loop_pipeline/simulate.py --directed --random-cases 2 --block-chunks 32 --faults
 python fpga/chunk_memory/simulate.py --config default --retire-chunks 32
 ```
 

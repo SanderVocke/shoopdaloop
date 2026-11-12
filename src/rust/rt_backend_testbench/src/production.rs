@@ -620,6 +620,20 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
         outcomes.extend(admissions);
         let frame = runtime.next_frame();
         for action in &step.actions {
+            if let wire::Action::Export {
+                target, selection, ..
+            } = action
+            {
+                let state = checked(runtime.planner().resolver().state(loop_id(*target)?))?;
+                if (state.mode == loops::Mode::Recording)
+                    != matches!(selection, wire::Selection::Recording)
+                {
+                    return Err("unsupported export cut: use recording selection while recording, and playback/latest at a completed-take boundary".into());
+                }
+                if state.mode != loops::Mode::Recording && state.content_length == 0 {
+                    return Err("unsupported export cut: no published content".into());
+                }
+            }
             let (name, command) = match action {
                 wire::Action::Transition {
                     name,

@@ -10,10 +10,15 @@ import codec as tp
 from pipeline_driver import sp
 from execution_timing import ExecutionTiming
 from options import metadata
+from block_images import reblock
 
 OUTPUT=Path(os.environ['UNIFY_OUTPUT'])
 DEPTHS=tuple(map(int,os.environ['LP_DEPTHS'].split(',')))
 MEDIA=tuple(map(int,os.environ['LP_MEDIA_CAPACITIES'].split(',')))
+BLOCK_CHUNKS=int(os.environ.get('AXI_BLOCK_CHUNKS','1'))
+
+def physical_media(image):
+    return {**reblock(image['media'],BLOCK_CHUNKS,MEDIA[1]),'chunk_limit':MEDIA[1]}
 
 def identity(value):return value['slot'],value['generation']
 
@@ -47,7 +52,8 @@ def logical_media(snapshot,views,states):
             data=[]
             for chunk in value['chunks']:
                 first=chunk*snapshot['chunk_frames'];data.extend(snapshot['samples'][first:first+snapshot['chunk_frames']])
-            channels.append(data[:value['frames']])
+            offset=value.get('range',{}).get('offset',0)
+            channels.append(data[offset:offset+value['frames']])
         if channels and channels[0]:
             result.append(dict(name=f"loop:{row['id']['slot']}:{row['id']['generation']}",frames=len(channels[0]),samples=dict(encoding='q824',channels=channels)))
     return result
@@ -60,7 +66,8 @@ async def production_scenarios(dut):
         scenario=wire.load(OUTPUT/f'{index}.scenario.json')
         image=wire.load(OUTPUT/f'{index}.image.json','image')
         expected=wire.load(OUTPUT/f'{index}.expected.json','result')
-        physical={**image['media'],'chunk_limit':MEDIA[1]}
+        physical=physical_media(image)
+        (OUTPUT/f'{index}.physical-media.json').write_text(json.dumps(physical,indent=2)+'\n')
         case=dict(name=scenario['name'],plan=dict(description=image['transition']['description'],limits=image['transition']['limits']),
             program=image['program'],initial_state=image['initial_state'],buffers=image['buffers'],output_ports=image['output_ports'],queue_capacity=DEPTHS[5],media=physical)
         driver=PipelineDriver(dut,DEPTHS,20261112);driver.stalls=os.environ['UNIFY_STALLS']=='1'
@@ -169,7 +176,7 @@ if os.environ.get('UNIFY_FAULTS')=='1':
         def physical(image):
             return dict(name=image['name'],plan=dict(description=image['transition']['description'],limits=image['transition']['limits']),
                 program=image['program'],initial_state=image['initial_state'],buffers=image['buffers'],output_ports=image['output_ports'],queue_capacity=DEPTHS[5],
-                media={**image['media'],'chunk_limit':MEDIA[1]})
+                media=physical_media(image))
         def row(inputs,commands=()):
             return dict(transition=dict(collect_completed=True,collect=[],cancel=[],commands=list(commands)),writes=[],work=dict(kind='audio',value=dict(inputs=inputs)))
         def record_command():return dict(target=dict(slot=0,generation=1),sequence=1,at=0,timing=dict(kind='at'),operation=dict(kind='record'))
@@ -181,16 +188,21 @@ if os.environ.get('UNIFY_FAULTS')=='1':
         image['program']['jobs_per_quantum']+=1
         driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
         try:
-            case=physical(image);case['media']['chunk_limit']=scenario['quantum']//MEDIA[2]
+            capacity=max(BLOCK_CHUNKS,scenario['quantum']//MEDIA[2])
+            filled_quanta=capacity*MEDIA[2]//scenario['quantum']
+            failed_frame=filled_quanta*scenario['quantum']
+            case=physical(image);case['media']['chunk_limit']=capacity
             await driver.initialize(case,image['transition'])
             assert (await driver.step(row(scenario['steps'][0]['inputs'],[record_command()])))['error'] is None
+            for _ in range(filled_quanta-1):
+                assert (await driver.step(row(scenario['steps'][1]['inputs'])))['error'] is None
             failed=await driver.step(row(scenario['steps'][1]['inputs']))
             assert failed['error']==dict(stage='jobs',error='memory_full')
             assert failed['audio']['outputs']==[[0]*32]
-            assert failed['transition']['next_frame']==32
+            assert failed['transition']['next_frame']==failed_frame
             assert int(dut.faulted.value) and not int(dut.run_ready.value)
             held=await driver.step(row(scenario['steps'][2]['inputs']))
-            assert held['error']==failed['error'] and held['transition']['next_frame']==32
+            assert held['error']==failed['error'] and held['transition']['next_frame']==failed_frame
             assert held['audio']['outputs']==[[0]*32]
             case=physical(image)
             await driver.initialize(case,image['transition'])
@@ -214,3 +226,86 @@ if os.environ.get('UNIFY_FAULTS')=='1':
         finally:memory.close()
         (OUTPUT/'fault-containment.json').write_text(json.dumps(dict(arena_exhaustion=True,partial_output_silenced=True,
             late_memory_error=True,sticky_silence=True,reset_reload=True),indent=2)+'\n')
+
+        scenario=base('fault-state-generation',cf=MEDIA[2]);scenario['steps']=[step()]
+        image=wire.run(scenario,executable=executable,command='compile')
+        stale=deepcopy(image)
+        next(i for i in stale['program']['instructions'] if i['kind']=='process_logical_playback')['loop_id']['generation']+=1
+        driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
+        try:
+            await driver.initialize(physical(stale),stale['transition'])
+            failed=await driver.step(row(scenario['steps'][0]['inputs']))
+            assert failed['error']==dict(stage='state',error='invalid_state')
+            assert failed['audio']['outputs']==[[0]*32] and failed['transition']['next_frame']==0
+            await driver.initialize(physical(image),image['transition'])
+            assert (await driver.step(row(scenario['steps'][0]['inputs'])))['error'] is None
+        finally:memory.close()
+
+        scenario=base('fault-descriptor-exhaustion',cf=MEDIA[2]);scenario['steps']=[step()]
+        image=wire.run(scenario,executable=executable,command='compile')
+        capture=next(i for i in image['program']['instructions'] if i['kind']=='process_logical_capture')
+        image['initial_state']['memory'][capture['view']]['value']=MEDIA[0]
+        image['media']['views']=[dict(chunks=[],frames=0) for _ in range(MEDIA[0])]
+        driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
+        try:
+            await driver.initialize(physical(image),image['transition'])
+            failed=await driver.step(row(scenario['steps'][0]['inputs'],[record_command()]))
+            assert failed['error']==dict(stage='jobs',error='memory_full')
+            assert failed['audio']['outputs']==[[0]*32] and failed['transition']['next_frame']==0
+            image['initial_state']['memory'][capture['view']]['value']=0
+            await driver.initialize(physical(image),image['transition'])
+            assert (await driver.step(row(scenario['steps'][0]['inputs'],[record_command()])))['error'] is None
+            # BeginCapture also creates its stable view when no descriptor was preloaded.
+            image['media']['views']=[]
+            await driver.initialize(physical(image),image['transition'])
+            assert (await driver.step(row(scenario['steps'][0]['inputs'],[record_command()])))['error'] is None
+        finally:memory.close()
+
+        scenario=loaded(base('fault-cold-metadata-and-reset',cf=MEDIA[2]),64);scenario['steps']=[step()]
+        image=wire.run(scenario,executable=executable,command='compile')
+        driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
+        command=dict(target=dict(slot=0,generation=1),sequence=1,at=0,timing=dict(kind='at'),operation=dict(kind='play',position=0,retrigger=False))
+        try:
+            await driver.initialize(physical(image),image['transition'])
+            await memory.fence();await memory.configure(5,0,1);memory.fail_next=True
+            failed=await driver.step(row(scenario['steps'][0]['inputs'],[command]))
+            assert failed['error']==dict(stage='jobs',error='memory_fault') and failed['transition']['next_frame']==0
+            await driver.initialize(physical(image),image['transition'])
+            memory.pause_responses=True
+            running=cocotb.start_soon(driver.step(row(scenario['steps'][0]['inputs'],[command])))
+            for _ in range(10000):
+                await driver.edge()
+                if memory.pending is not None:break
+            else:raise AssertionError('no outstanding memory request')
+            running.kill();await driver.reset()
+            assert memory.pending is None
+            memory.pause_responses=False
+            await driver.initialize(physical(image),image['transition'])
+            assert (await driver.step(row(scenario['steps'][0]['inputs'],[command])))['error'] is None
+        finally:memory.close()
+
+        scenario=base('fault-posted-writeback',cf=MEDIA[2]);scenario['steps']=[step()]
+        image=wire.run(scenario,executable=executable,command='compile')
+        driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
+        try:
+            case=physical(image);case['media']=None
+            free_slots=max(BLOCK_CHUNKS,32//MEDIA[2])
+            memory.initial_override=dict(block_chunks=BLOCK_CHUNKS,chunk_frames=MEDIA[2],samples=[0]*(free_slots*MEDIA[2]),
+                free_chunks=list(range(free_slots)),views=[dict(chunks=[],frames=0)])
+            await driver.initialize(case,image['transition'])
+            memory.pause_responses=True;memory.fail_next=True
+            first=await driver.step(row(scenario['steps'][0]['inputs'],[record_command()]))
+            assert first['error'] is None and first['transition']['next_frame']==32
+            memory.pause_responses=False
+            for _ in range(10000):
+                await driver.edge()
+                if int(dut.faulted.value):break
+            else:raise AssertionError('posted writeback fault was not latched')
+            failed=await driver.step(row(scenario['steps'][0]['inputs']))
+            assert failed['error']==dict(stage='jobs',error='memory_fault')
+            assert failed['audio']['outputs']==[[0]*32] and failed['transition']['next_frame']==32
+        finally:memory.close()
+        result=json.loads((OUTPUT/'fault-containment.json').read_text())
+        result.update(state_generation=True,descriptor_exhaustion=True,automatic_view_creation=True,
+            cold_metadata_error=True,reset_outstanding=True,posted_writeback=True)
+        (OUTPUT/'fault-containment.json').write_text(json.dumps(result,indent=2)+'\n')

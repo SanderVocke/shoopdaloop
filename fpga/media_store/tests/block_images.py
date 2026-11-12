@@ -28,28 +28,27 @@ def canonicalize(media):
 def reblock(media, block_chunks, capacity):
     if media.get('block_chunks',1)==block_chunks:return deepcopy(media)
     assert media.get('block_chunks',1)==1
-    cf=media['chunk_frames'];mapping={};samples=[];views=[None]*len(media['views'])
-    order=sorted(range(len(views)),key=lambda i:(media['views'][i] is None,
-        'range' in (media['views'][i] or {}),-len((media['views'][i] or {}).get('chunks',[]))))
-    for i in order:
-        view=media['views'][i]
+    cf=media['chunk_frames'];mapping={};samples=[];views=[]
+    following={};previous={};chunks=set()
+    for view in media['views']:
         if view is None:continue
-        ids=view['chunks']
-        if not ids:views[i]=deepcopy(view);continue
-        known=[chunk in mapping for chunk in ids]
-        if any(known):
-            assert all(known), 'fixture has overlapping non-nested ranges'
-            translated=[mapping[chunk] for chunk in ids]
-            first=translated[0]%block_chunks
-            assert all(chunk%block_chunks==(first+j)%block_chunks for j,chunk in enumerate(translated))
-            assert all(translated[j]//block_chunks==translated[j-1]//block_chunks for j in range(1,len(translated)) if (first+j)%block_chunks!=0)
-        else:
-            start=len(samples)//cf
-            samples.extend([0]*(((len(ids)+block_chunks-1)//block_chunks)*block_chunks*cf))
-            translated=list(range(start,start+len(ids)))
-            for old,new in zip(ids,translated):
-                mapping[old]=new;samples[new*cf:(new+1)*cf]=media['samples'][old*cf:(old+1)*cf]
-        views[i]={**deepcopy(view),'chunks':translated}
+        ids=view['chunks'];chunks.update(ids)
+        for left,right in zip(ids,ids[1:]):
+            assert following.setdefault(left,right)==right,'fixture has branching chunk sequences'
+            assert previous.setdefault(right,left)==left,'fixture has merging chunk sequences'
+    for head in sorted(chunks-previous.keys()):
+        sequence=[head]
+        while sequence[-1] in following:
+            sequence.append(following[sequence[-1]])
+            assert len(sequence)<=len(chunks),'fixture has cyclic chunk sequences'
+        start=len(samples)//cf
+        samples.extend([0]*(((len(sequence)+block_chunks-1)//block_chunks)*block_chunks*cf))
+        for offset,old in enumerate(sequence):
+            new=start+offset;mapping[old]=new
+            samples[new*cf:(new+1)*cf]=media['samples'][old*cf:(old+1)*cf]
+    assert len(mapping)==len(chunks),'fixture has cyclic chunk sequences'
+    for view in media['views']:
+        views.append(None if view is None else {**deepcopy(view),'chunks':[mapping[chunk] for chunk in view['chunks']]})
     free=[]
     for _ in range((len(media['free_chunks'])+block_chunks-1)//block_chunks):
         first=len(samples)//cf;free.extend(range(first,first+block_chunks));samples.extend([0]*(block_chunks*cf))
