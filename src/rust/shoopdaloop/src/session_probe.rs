@@ -20,6 +20,7 @@ use std::{
 mod busfx;
 mod composites;
 mod input;
+mod scripts;
 pub use busfx::run as bus_fx;
 pub use composites::run as composites;
 pub use input::run as input;
@@ -553,7 +554,23 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         transport = transport.id()
     )
     .entered();
-    let (root, mut host, entry) = launch(transport, 192)?;
+    let (root, mut host, entry) = launch_with_settings(
+        transport,
+        shoop_app_api::HostSettings {
+            driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
+            pools: NewEnginePools {
+                quantum: 32,
+                buses: 8,
+                bus_channels: 8,
+                tracks: 3,
+                loops: 20,
+                channels: 2,
+                loop_memory_mb: 192,
+            },
+            processors: shoop_app_api::ProcessorSettings::disabled(),
+            ..Default::default()
+        },
+    )?;
     let app = crate::application::ApplicationRuntime::attach(
         entry.clone(),
         crate::application::ApplicationStartOptions {
@@ -648,8 +665,10 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         action: LoopAction::PlayClicked,
     })?;
     file_wait(&handle, |s| s.tracks[1].loops[0].mode == LoopMode::Playing)?;
+    scripts::include(&handle, root.path())?;
     let session_file = root.path().join("roundtrip.shoop");
     let before = file_save(&handle, &session_file)?;
+    scripts::verify_archive(&before)?;
     ensure!(
         before
             .media
@@ -720,7 +739,13 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
                 .all(|l| l.mode == LoopMode::Stopped),
         "load did not publish fresh stopped owners"
     );
+    scripts::explicit_start(&handle)?;
     let after = file_save(&handle, &root.path().join("resaved.shoop"))?;
+    scripts::verify_archive(&after)?;
+    ensure!(
+        before.scripts == after.scripts && before.document.scripts == after.document.scripts,
+        "script data changed across save/load/save"
+    );
     ensure!(
         before.media.values().collect::<Vec<_>>() == after.media.values().collect::<Vec<_>>(),
         "large media changed across save/load/save"
@@ -798,14 +823,15 @@ fn socket_file_loss(
 ) -> Result<ClientMessage> {
     use shoop_app_protocol::{persistence::*, persistence_transfer::Source, TransferId};
     use shoop_persistence_codec::codec::{Decoded, Value, Work};
-    let Value::Image(image) = Work::Prepare {
+    let image = match (Work::Prepare {
         decoded: Decoded::Session(bundle),
         mapping: Vec::new(),
         update_length: true,
-    }
+    })
     .run()?
-    else {
-        unreachable!()
+    {
+        Value::Image(image) | Value::PreparedSession { image, .. } => image,
+        _ => anyhow::bail!("expected musical image"),
     };
     let source =
         Source::new(std::sync::Arc::clone(&image)).map_err(|error| anyhow!("{error:?}"))?;

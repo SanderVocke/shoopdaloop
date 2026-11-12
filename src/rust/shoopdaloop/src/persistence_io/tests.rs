@@ -115,7 +115,7 @@ async fn pending_composite_capture_notice_survives_encoding_and_platform_file_co
                 outcome: FileOutputOutcome::Saved,
             },
             &state,
-            false,
+            &mut shoop_scripting::ScriptManager::new(),
         )
         .unwrap();
     let task = provider.task().unwrap();
@@ -2195,3 +2195,5 @@ async fn master_preview_identity_survives_renamed_session_and_clears_when_remove
         Some(f.runtime.snapshot().buses[0].id)
     );
 }
+
+mod scripts;

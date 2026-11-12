@@ -408,9 +408,6 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
         .filter(|content| content.composite.is_none())
         .map(|content| content.id)
         .collect();
-    if !doc.scripts.is_empty() {
-        unsupported.insert("session scripts/resources (P16)");
-    }
     for state in &doc.fx_states {
         canonical_state(state.chain_type, &state.internal_state)?;
     }
@@ -488,7 +485,10 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
 }
 pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>> {
     requirements(&bundle.document)?;
-    ensure!(bundle.scripts.is_empty(), "session scripts/resources (P16)");
+    ensure!(
+        bundle.scripts.is_empty(),
+        "client script additions must be extracted before musical preparation"
+    );
     validate_bundle(&bundle)?;
     materialize_composite_timing(&mut bundle.document)?;
     let media = bundle

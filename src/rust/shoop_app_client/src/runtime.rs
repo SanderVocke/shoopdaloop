@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+mod conversion;
+
 pub trait Delivery {
     fn send(&mut self, message: ClientMessage) -> Result<(), Error>;
     fn poll(&mut self, client: &mut Client) -> Result<usize, Error>;
@@ -27,9 +29,20 @@ pub trait PersistenceIo {
         &mut self,
         intent: AppIntent,
         state: &SessionSnapshot,
-        session_scripts: bool,
+        scripts: &mut ScriptManager,
     ) -> anyhow::Result<()>;
-    fn tick(&mut self, client: &mut Client, delivery: &mut dyn Delivery, session_scripts: bool);
+    fn tick(
+        &mut self,
+        client: &mut Client,
+        delivery: &mut dyn Delivery,
+        scripts: &mut ScriptManager,
+    );
+    fn scripting_suspended(&self) -> bool {
+        false
+    }
+    fn take_installed_epoch(&mut self) -> Option<u64> {
+        None
+    }
     fn dismiss_completed(&mut self);
     fn task(&self) -> Option<IoTaskState>;
     fn take_output(&mut self) -> Option<ApplicationFileOutput>;
@@ -107,6 +120,7 @@ pub struct Runtime {
     client: Client,
     delivery: Box<dyn Delivery>,
     scripts: ScriptManager,
+    conversions: conversion::Conversions,
     previous: ControlSnapshot,
     startup: Option<Startup>,
     startup_ids: Vec<Option<ScriptId>>,
@@ -132,6 +146,9 @@ pub struct Runtime {
     controls_suspended: bool,
     persistence_io: Option<Box<dyn PersistenceIo>>,
     command_epoch: Option<u64>,
+    project_epoch: Option<u64>,
+    project_shape: (Vec<(TrackId, Vec<LoopId>)>, Vec<BusId>),
+    unmatched_project: bool,
 }
 
 impl Runtime {
@@ -150,6 +167,7 @@ impl Runtime {
             client,
             delivery,
             scripts,
+            conversions: conversion::Conversions::default(),
             previous: ControlSnapshot::default(),
             startup: Some(startup),
             startup_ids: Vec::new(),
@@ -175,6 +193,9 @@ impl Runtime {
             controls_suspended: false,
             persistence_io: None,
             command_epoch: None,
+            project_epoch: None,
+            project_shape: Default::default(),
+            unmatched_project: false,
         };
         if connected {
             runtime.notify("Connected to the endpoint. Start scripts explicitly when needed.");
@@ -275,7 +296,7 @@ impl Runtime {
         if self.client.state() != State::Lost {
             self.notify(message);
         }
-        self.client.disconnect();
+        self.lost(Error::Disconnected);
     }
     pub fn notify(&mut self, message: impl Into<String>) {
         if self.notifications.len() == 64 {
@@ -304,6 +325,12 @@ impl Runtime {
                 self.lost(error);
             }
         }
+        let confirmed_audio_operation = self.audio_driver_operations.iter().any(|operation| {
+            matches!(
+                self.client.results().get(operation),
+                Some(Outcome::Confirmed { .. })
+            )
+        });
         if self.client.state() == State::Ready {
             self.audio_driver_operations
                 .retain(|operation| self.client.operation_in_flight(*operation));
@@ -319,17 +346,21 @@ impl Runtime {
         }
         if self.client.state() != State::Ready {
             if let Some(provider) = &mut self.persistence_io {
-                let session_scripts = self
-                    .scripts
-                    .states()
-                    .iter()
-                    .any(|script| script.kind == ScriptKind::Session);
-                provider.tick(&mut self.client, &mut *self.delivery, session_scripts);
+                provider.tick(&mut self.client, &mut *self.delivery, &mut self.scripts);
+                if let Some(epoch) = provider.take_installed_epoch() {
+                    self.project_epoch = Some(epoch);
+                    self.unmatched_project = false;
+                }
             }
             self.project();
             return;
         }
+        self.observe_project(confirmed_audio_operation);
         self.reconcile_results();
+        let epoch = self.client.snapshot().unwrap().persistence_epoch;
+        for error in self.conversions.poll(&mut self.scripts, epoch) {
+            self.notify(error);
+        }
         if self.controls_suspended {
             self.project();
             return;
@@ -419,7 +450,9 @@ impl Runtime {
                 self.notify(error.to_string());
             }
         }
-        self.advance_scripting(elapsed);
+        if !self.scripting_suspended() {
+            self.advance_scripting(elapsed);
+        }
         self.queue_script_operations();
         for _ in 0..MAX_MESSAGES_PER_TURN {
             let Some((epoch, command, creation)) = self.commands.front().cloned() else {
@@ -471,15 +504,59 @@ impl Runtime {
             }
         }
         if let Some(provider) = &mut self.persistence_io {
-            let session_scripts = self
-                .scripts
-                .states()
-                .iter()
-                .any(|script| script.kind == ScriptKind::Session);
-            provider.tick(&mut self.client, &mut *self.delivery, session_scripts);
+            provider.tick(&mut self.client, &mut *self.delivery, &mut self.scripts);
+            if let Some(epoch) = provider.take_installed_epoch() {
+                self.project_epoch = Some(epoch);
+                self.unmatched_project = false;
+            }
         }
         self.update_media();
         self.project();
+    }
+    fn observe_project(&mut self, confirmed_audio_operation: bool) {
+        let state = self.client.snapshot().unwrap();
+        let epoch = state.persistence_epoch;
+        let mut tracks: Vec<_> = state
+            .tracks
+            .iter()
+            .map(|track| {
+                let mut loops: Vec<_> = track.loops.iter().map(|entry| entry.id).collect();
+                loops.sort_unstable_by_key(|id| id.raw());
+                (track.id, loops)
+            })
+            .collect();
+        tracks.sort_unstable_by_key(|(id, _)| id.raw());
+        let mut buses: Vec<_> = state.buses.iter().map(|bus| bus.id).collect();
+        buses.sort_unstable_by_key(|id| id.raw());
+        let shape = (tracks, buses);
+        let same_owners = shape == self.project_shape
+            && (!shape.0.is_empty() || !shape.1.is_empty() || confirmed_audio_operation);
+        if self.project_epoch.is_some_and(|old| old != epoch)
+            && !same_owners
+            && self
+                .scripts
+                .states()
+                .iter()
+                .any(|script| script.kind == ScriptKind::Session)
+        {
+            self.unmatched_project = true;
+            let session_ids: Vec<_> = self
+                .scripts
+                .states()
+                .iter()
+                .filter(|script| script.kind == ScriptKind::Session)
+                .map(|script| script.id)
+                .collect();
+            for id in session_ids {
+                let _ = self.scripts.stop(id);
+            }
+            if !self.scripting_suspended() {
+                self.stop_scripts();
+                self.notify("The musical project was replaced; retained session scripts are inactive. Load a project or start a New Session before saving them with music.");
+            }
+        }
+        self.project_epoch = Some(epoch);
+        self.project_shape = shape;
     }
     fn stop_scripts(&mut self) {
         for script in self.scripts.states() {
@@ -493,6 +570,7 @@ impl Runtime {
                 "Session connection lost ({error:?}). Admitted work remains with its host."
             ));
             self.stop_scripts();
+            self.conversions.clear();
             self.loss_reported = true;
         }
         self.client.disconnect();
@@ -514,6 +592,21 @@ impl Runtime {
         let message = self.client.detach()?;
         self.stop_scripts();
         self.delivery.send(message)
+    }
+    pub fn reconnect(&mut self, delivery: Box<dyn Delivery>) -> Result<(), Error> {
+        if !matches!(self.client.state(), State::Lost | State::Detached) {
+            return Err(Error::Protocol);
+        }
+        self.stop_scripts();
+        self.conversions.clear();
+        self.intents.clear();
+        self.commands.clear();
+        self.explicitly_started_scripts.clear();
+        self.connected = true;
+        self.startup = None;
+        self.loss_reported = false;
+        self.delivery = delivery;
+        self.delivery.send(self.client.attach()?)
     }
     pub fn shutdown(&mut self) -> Result<OperationId, Error> {
         let message = self.client.shutdown()?;
@@ -568,7 +661,19 @@ impl Runtime {
         self.commands.push_back((epoch, command, creation));
         Ok(())
     }
+    fn scripting_suspended(&self) -> bool {
+        self.reset_queued
+            || self.reset_operation.is_some()
+            || self
+                .persistence_io
+                .as_ref()
+                .is_some_and(|provider| provider.scripting_suspended())
+    }
     fn queue_script_operations(&mut self) {
+        if self.scripting_suspended() {
+            self.scripts.take_control_operations();
+            return;
+        }
         for operation in self.scripts.take_control_operations() {
             if let Err(error) = self.queue(Command::Control(operation), None) {
                 self.notify(error.to_string());
@@ -576,14 +681,45 @@ impl Runtime {
         }
     }
     fn reconcile_results(&mut self) {
+        if let Some(operation) = self.reset_operation {
+            if self.client.state() == State::Ready
+                && self
+                    .client
+                    .authority()
+                    .is_some_and(|authority| authority.client != operation.client)
+                && self.client.snapshot().is_some_and(|state| {
+                    !state.pending.iter().any(|pending| pending.id == operation)
+                        && !state.results.iter().any(|result| result.id == operation)
+                })
+            {
+                self.reset_operation = None;
+                if let Some(task) = &mut self.io_task {
+                    task.status = IoTaskStatus::Failed;
+                    task.message = "Prior New Session outcome is unknown; retained scripts remain stopped. Load a project or explicitly start a new session.".into();
+                }
+            }
+        }
         if let Some(outcome) = self
             .reset_operation
-            .and_then(|id| self.client.results().get(&id))
+            .and_then(|id| {
+                self.client.results().get(&id).or_else(|| {
+                    self.client
+                        .snapshot()?
+                        .results
+                        .iter()
+                        .find(|result| result.id == id)
+                        .map(|result| &result.outcome)
+                })
+            })
             .cloned()
         {
             let state_ready = !matches!(outcome, Outcome::Confirmed { revision } | Outcome::AncestorsStopped { revision, .. }
                 if self.client.state() != State::Lost && self.client.snapshot().is_none_or(|state| state.revision < revision));
             if state_ready {
+                if matches!(outcome, Outcome::Confirmed { .. }) {
+                    self.scripts.clear_session_scripts();
+                    self.unmatched_project = false;
+                }
                 if let Some(task) = &mut self.io_task {
                     task.progress = 1.0;
                     task.status = if matches!(outcome, Outcome::Refused { .. }) {
@@ -1108,6 +1244,49 @@ impl Runtime {
         })
     }
     fn apply_intent(&mut self, intent: AppIntent) -> anyhow::Result<()> {
+        if self.unmatched_project
+            && !self
+                .scripts
+                .states()
+                .iter()
+                .any(|script| script.kind == ScriptKind::Session)
+        {
+            self.unmatched_project = false;
+        }
+        if self.unmatched_project {
+            let starts_old_session_script =
+                match &intent {
+                    AppIntent::RestartScript { script_id }
+                    | AppIntent::SetScriptEnabled {
+                        script_id,
+                        enabled: true,
+                    } => self.scripts.states().iter().any(|script| {
+                        script.id == *script_id && script.kind == ScriptKind::Session
+                    }),
+                    _ => false,
+                };
+            if matches!(intent, AppIntent::RequestSaveSession) || starts_old_session_script {
+                anyhow::bail!("The musical project was replaced. Load a project, start a New Session, or remove the old session inclusion before saving or starting retained scripts");
+            }
+        }
+        if self.scripting_suspended()
+            && matches!(
+                intent,
+                AppIntent::AddScriptSource { .. }
+                    | AppIntent::AddScriptFileSource { .. }
+                    | AppIntent::AddEphemeralScript { .. }
+                    | AppIntent::SetScriptEnabled { enabled: true, .. }
+                    | AppIntent::RestartScript { .. }
+                    | AppIntent::ReplaceScriptSource { .. }
+                    | AppIntent::ReconcileCatalogScripts { .. }
+                    | AppIntent::ConvertScriptKind { .. }
+                    | AppIntent::InvokeScriptDialogButton { .. }
+            )
+        {
+            anyhow::bail!(
+                "Finish the pending session replacement before changing or starting scripts"
+            );
+        }
         if matches!(
             intent,
             AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. }
@@ -1119,16 +1298,6 @@ impl Runtime {
             anyhow::bail!(BackendCapability::LoopTimingEdits.unavailable_reason());
         }
         if matches!(intent, AppIntent::RequestNewSession) {
-            if self
-                .scripts
-                .states()
-                .iter()
-                .any(|script| script.kind == ScriptKind::Session)
-            {
-                anyhow::bail!(
-                    "Remove or convert session-owned scripts before replacing the session (P16)"
-                );
-            }
             if self
                 .persistence_io
                 .as_ref()
@@ -1148,16 +1317,14 @@ impl Runtime {
         }
         if let Some(provider) = &mut self.persistence_io {
             if provider.handles(&intent) {
+                if self.reset_queued || self.reset_operation.is_some() {
+                    anyhow::bail!("A session reset is pending");
+                }
                 let state = self
                     .client
                     .snapshot()
                     .ok_or_else(|| anyhow::anyhow!("session is not ready"))?;
-                let session_scripts = self
-                    .scripts
-                    .states()
-                    .iter()
-                    .any(|script| script.kind == ScriptKind::Session);
-                return provider.apply(intent, state, session_scripts);
+                return provider.apply(intent, state, &mut self.scripts);
             }
         }
         if matches!(
@@ -1441,14 +1608,22 @@ impl Runtime {
             }
             AppIntent::ForgetScript { script_id } => {
                 self.allow_script_restart(script_id, false);
+                self.conversions.cancel(script_id);
                 self.scripts.forget(script_id)?;
                 return Ok(());
             }
             AppIntent::ConvertScriptKind { script_id, kind } => {
-                self.scripts.convert_kind(script_id, kind)?;
+                let epoch = self
+                    .client
+                    .snapshot()
+                    .ok_or_else(|| anyhow::anyhow!("session is not ready"))?
+                    .persistence_epoch;
+                self.conversions
+                    .start(&mut self.scripts, script_id, kind, epoch)?;
                 return Ok(());
             }
             AppIntent::RemoveSessionScript { script_id } => {
+                self.conversions.cancel(script_id);
                 self.scripts.remove_session_script(script_id)?;
                 return Ok(());
             }
@@ -1468,7 +1643,11 @@ impl Runtime {
                 let (name, source) = self.scripts.source(script_id)?;
                 self.outputs.push_back(ApplicationFileOutput {
                     task_id: TaskId::from_raw(self.next_notice),
-                    suggested_name: format!("{name}.lua"),
+                    suggested_name: if name.to_ascii_lowercase().ends_with(".lua") {
+                        name.to_owned()
+                    } else {
+                        format!("{name}.lua")
+                    },
                     mime_type: "text/x-lua".into(),
                     bytes: Arc::new(source.as_bytes().to_vec()),
                 });

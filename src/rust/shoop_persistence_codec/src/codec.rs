@@ -6,13 +6,15 @@ use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
 pub mod family;
 
-fn codec_limits() -> CodecLimits {
+pub fn codec_limits() -> CodecLimits {
     CodecLimits {
         file_bytes: MAX_SESSION_FILE_BYTES,
         metadata_bytes: MAX_SESSION_METADATA_BYTES,
-        expanded_bytes: MAX_SESSION_MEDIA_BYTES * 5 + MAX_SESSION_METADATA_BYTES,
+        expanded_bytes: MAX_SESSION_MEDIA_BYTES * 6 + MAX_SESSION_METADATA_BYTES,
         media_bytes: MAX_SESSION_MEDIA_BYTES,
-        entries: MAX_SESSION_OBJECTS as usize + 1,
+        entries: MAX_SESSION_OBJECTS as usize
+            + 1
+            + shoop_script_resources::session::MAX_SESSION_RESOURCE_FILES,
         midi_events: MAX_SESSION_MIDI_EVENTS,
         packet_bytes: 1024 * 1024,
         initial_packets: 16_384,
@@ -195,6 +197,10 @@ impl Decoded {
     }
 }
 pub enum Work {
+    EncodeSession {
+        image: Arc<image::Image>,
+        scripts: shoop_script_resources::session::SessionScripts,
+    },
     ConvertFamily {
         decoded: Decoded,
         base: Arc<image::Image>,
@@ -234,6 +240,10 @@ pub enum Work {
     },
 }
 pub enum Value {
+    PreparedSession {
+        image: Arc<image::Image>,
+        scripts: shoop_script_resources::session::SessionScripts,
+    },
     Inspected {
         decoded: Decoded,
         conversion_required: bool,
@@ -257,6 +267,18 @@ impl Work {
     }
     fn run_cancelled(self, mut cancelled: &mut dyn FnMut() -> bool) -> Result<Value> {
         match self {
+            Self::EncodeSession { image, scripts } => {
+                let mut bundle = document::to_bundle(&image)?;
+                crate::scripts::attach(&mut bundle, scripts)?;
+                let bytes =
+                    encode_session_bounded(&bundle, env!("CARGO_PKG_VERSION"), codec_limits())?;
+                Ok(Value::File {
+                    name: "session.shoop".into(),
+                    mime: "application/x-shoop-session".into(),
+                    bytes: Arc::new(bytes),
+                    warning: String::new(),
+                })
+            }
             Self::ConvertFamily { decoded, base } => {
                 family::convert(decoded, base, &mut cancelled).map(Value::Image)
             }
@@ -425,11 +447,18 @@ impl Work {
                 update_length,
             } => {
                 decoded.bytes()?;
+                let mut scripts = None;
                 let image = match decoded {
                     Decoded::Remote(_) => {
                         anyhow::bail!("decoded input belongs to the browser codec worker")
                     }
-                    Decoded::Session(b) => document::from_bundle(b)?,
+                    Decoded::Session(mut bundle) => {
+                        let additions = crate::scripts::take(&mut bundle)?;
+                        if !additions.0.is_empty() {
+                            scripts = Some(additions);
+                        }
+                        document::from_bundle(bundle)?
+                    }
                     Decoded::Audio(audio) => {
                         ensure!(!mapping.is_empty(), "no destination audio channels");
                         let mut payloads = Vec::new();
@@ -524,7 +553,10 @@ impl Work {
                     .validate()
                     .map_err(|r| anyhow!("invalid or oversized media: {r:?}"))?;
                 validate_initials(&image)?;
-                Ok(Value::Image(image))
+                Ok(match scripts {
+                    Some(scripts) => Value::PreparedSession { image, scripts },
+                    None => Value::Image(image),
+                })
             }
             Self::Encode {
                 image,

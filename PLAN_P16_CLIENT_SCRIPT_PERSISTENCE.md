@@ -1,6 +1,6 @@
 # P16: client-owned script persistence
 
-Status: planning only; no feature implementation completed. The ownership contract
+Status: implementation in progress; draft PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
 was revised with user approval on 2026-11-12. P16 remains OPEN.
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
@@ -89,7 +89,9 @@ crash recovery, arbitrary Lua dependency discovery and directory-bundle export.
 5. Keep current resource limits (16 MiB/file, 64 MiB/script, 256 MiB aggregate,
    10,000 resources/script, 100,000 scan entries), 8 MiB archive metadata and
    512 MiB encoded-file ceilings. Define explicit archive-wide script/resource/entry
-   count limits before implementation. Account for resources in the expanded-byte
+   count limits before implementation. The implementation pins 256 session scripts,
+   65,536 total resource files and 4096-byte names/paths, independently of musical
+   transfer objects. Account for resources in the expanded-byte
    ceiling and peak old/candidate/codec ownership separately from the 256 MiB audio/
    MIDI budget. Do not apply the service's 4096-object limit to client additions,
    silently lower resource limits, or use the reference codec's 16 GiB defaults.
@@ -119,16 +121,16 @@ crash recovery, arbitrary Lua dependency discovery and directory-bundle export.
 
 ### Stage 1 — Establish client data contracts and acceptance fixtures
 
-- [ ] Create `feat/p16-client-script-persistence` from the current upstream branch,
+- [x] Create `feat/p16-client-script-persistence` from the current upstream branch,
   carrying these approved documentation changes; do not merge unrelated master work.
-- [ ] Define the client additions value, frozen-save input, prepared-load/install
+- [x] Define the client additions value, frozen-save input, prepared-load/install
   handoffs and unknown-outcome handling in the runtime/provider boundary. Pin the
   concrete archive-wide count limits and peak memory accounting described above.
-- [ ] Port the three named production reference scenarios to appropriate production
+- [x] Port the three named production reference scenarios to appropriate production
   test fixtures, preserving exact-byte/resource assertions while replacing their
   auto-run expectation with explicit-start behavior. Add the separate-client
   recovery/save scenario so ownership cannot drift back into the service.
-- [ ] Commit the first verified milestone; open a draft PR against
+- [x] Commit the first verified milestone; open a draft PR against
   `feat/backend-replacement` after the first useful push.
 
 Verification: focused fixtures for A1/A6/A7, compile the changed client interfaces,
@@ -139,11 +141,11 @@ new paths can preserve all additions. Later stages complete the end-to-end fixtu
 
 Depends on Stage 1.
 
-- [ ] Update `shoop_session/src/archive.rs` bounded encode/decode to charge every
+- [x] Update `shoop_session/src/archive.rs` bounded encode/decode to charge every
   script record/resource, entry and expanded byte before allocation; reuse existing
   path/hash/owner checks. Keep archive compatibility with existing script-bearing
   sessions and sessions without scripts.
-- [ ] Update `shoop_persistence_codec/src/{codec,document}.rs` to join additions to
+- [x] Update `shoop_persistence_codec/src/{codec,document}.rs` to join additions to
   captured music and return them separately from prepared musical images. Audit
   conversion and all convenience entry points to prevent silent stripping.
 - [ ] Extend `worker.rs` and browser worker glue with segmented client-only additions
@@ -160,13 +162,13 @@ boundaries. Run focused session/codec tests and portable/Node builds before proc
 
 Depends on Stage 1; can be developed independently of Stage 2's archive changes.
 
-- [ ] Adapt `ScriptManager` preparation/installation to retain enabled preferences
+- [x] Adapt `ScriptManager` preparation/installation to retain enabled preferences
   while constructing stopped records and reserving providers before commit. Preserve
   machine-local record identities and support inactive incompatible sources.
-- [ ] Restore bounded off-pump filesystem capture using `conversion_source`,
+- [x] Restore bounded off-pump filesystem capture using `conversion_source`,
   `capture_filesystem_bundle` and generation checks. Keep conversion/removal local;
   reuse captured bundles through repeated Session/Ephemeral conversion.
-- [ ] Fix source export filenames and retain exact bytes for every exportable source.
+- [x] Fix source export filenames and retain exact bytes for every exportable source.
   Clean up pending conversions, callbacks and provider registrations on removal or
   project change.
 
@@ -179,17 +181,17 @@ enabled scripts without executing callbacks or MIDI side effects.
 
 Depends on Stages 2 and 3.
 
-- [ ] Update `shoop_app_client/src/runtime.rs` and `shoopdaloop/src/persistence_io`
+- [x] Update `shoop_app_client/src/runtime.rs` and `shoopdaloop/src/persistence_io`
   to pass immutable additions into save/store jobs and retain prepared local load
   candidates. Cover every picker, URL/source, byte-input and empty-session route.
-- [ ] Freeze additions for each save task and fence project replacement during its
+- [x] Freeze additions for each save task and fence project replacement during its
   capture pairing. Keep later edits outside the task. Include scripts only in
   project archives; leave standalone audio/MIDI exports unchanged.
-- [ ] Integrate syntax/resource preflight, conversion consent and prepared local
+- [x] Integrate syntax/resource preflight, conversion consent and prepared local
   installation with `pump.rs::reconcile_commit` and New Session result handling.
   Stop old-session commands crossing the replacement boundary; distinguish refusal,
   confirmed success and unresolved admitted work. Finalize local records once.
-- [ ] Replace the P16 boolean refusal guards only after the complete paths work.
+- [x] Replace the P16 boolean refusal guards only after the complete paths work.
   Preserve task/output errors, browser handoff semantics and normal controls.
 
 Verification: A3/A4/A5/A7 against the public production runtime/provider, including
@@ -253,3 +255,32 @@ the selected platform plus browser/portable paths affected by P16.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Execution notes
+
+- 2026-11-12: committed the agreed contract as `6ed9ee10`, created the implementation
+  branch and opened draft PR #977 against `feat/backend-replacement`.
+- The existing Rust 1.100.0 / nextest 0.9.116 toolchain and native libraries are
+  activated with `/workspace/.setup/activate.sh` in this environment. Cargo 1.100
+  uses an extra crate directory in OUT_DIR; profile-directory discovery needed a
+  compatibility fix before the application could build.
+- Initial resource/codec tests: 15 resource tests and 24 codec tests passed,
+  including complete archive extraction, compile-only Lua preflight and separate
+  client-worker resource streaming. Full application acceptance is still pending.
+
+- Production persistence suite: 28 tests passed, including same-client accepted-load
+  reconciliation and a replacement client saving only its own additions. Additional
+  lost-delivery, evicted-result, incompatible-source and project-mismatch cases
+  were added for the final full-suite run.
+- Native packaged socket persistence probe passed with >32 MiB audio, exact MIDI,
+  source-directory deletion, archived script/Markdown/PNG bytes, stopped load,
+  explicit start/provider reads, exact resave and host-owned completion after UI
+  loss. The first runs exceeded readiness under compiler contention; the idle
+  retry passed without changing product startup deadlines.
+- Source preparation copies at most 256 KiB per client pump before backend staging.
+  Reconnect retains the existing client runtime and pending additions only against
+  the same verified host instance. Retained scripts cannot be silently paired with
+  a different musical project loaded by another client.
+- Rust 1.100 compilation passes for native and Wasm; the resource crate also passed
+  its five alloc-only tests. Full native, real-browser and CI validation remain
+  pending; P16 is not closed.

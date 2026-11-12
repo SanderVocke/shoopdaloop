@@ -349,6 +349,7 @@ mod native {
     }
     enum Message {
         Intent(AppIntent),
+        Reconnect(shoop_host::remote::Target, mpsc::Sender<Result<(), String>>),
         PrepareShutdown(mpsc::Sender<Result<shoop_app_protocol::ClientMessage, String>>),
         ResumeControls,
         Detach,
@@ -368,6 +369,16 @@ mod native {
         status: Arc<RwLock<ConnectionStatus>>,
     }
     impl ApplicationHandle {
+        pub fn reconnect(&self, entry: shoop_host::remote::Target) -> Result<()> {
+            let (sender, receiver) = mpsc::channel();
+            self.sender
+                .try_send(Message::Reconnect(entry, sender))
+                .map_err(|_| anyhow!("session client is busy; retry reconnect"))?;
+            receiver
+                .recv_timeout(Duration::from_secs(8))
+                .map_err(|_| anyhow!("session reconnect is still pending"))?
+                .map_err(anyhow::Error::msg)
+        }
         pub fn dispatch(&self, intent: AppIntent) -> Result<(), DispatchError> {
             let mut status = self
                 .status
@@ -540,7 +551,7 @@ mod native {
                     runtime.set_outputs(outputs);
                     let mut ready_tx = Some(ready_tx);
                     let mut last = Instant::now();
-                    let started = last;
+                    let mut started = last;
                     let mut pending_intent = None;
                     loop {
                         let mut processed_audio_intents = 0;
@@ -550,6 +561,18 @@ mod native {
                                 None => receiver.try_recv(),
                             };
                             match message {
+                                Ok(Message::Reconnect(entry, sender)) => {
+                                    let result = (|| -> Result<()> {
+                                        anyhow::ensure!(matches!(runtime, SessionRuntime::Remote(..)), "local clients cannot reconnect");
+                                        anyhow::ensure!(matches!(runtime.client().state(), shoop_app_client::State::Lost | shoop_app_client::State::Detached), "session client is still connected");
+                                        let observed = shoop_host::connection::describe(&entry.management, Duration::from_secs(3))?;
+                                        anyhow::ensure!(entry.instance != 0 && entry.instance == observed.instance, "Host instance changed; open a new connection and reload the project file. Previous client script data remains retained here.");
+                                        let connection = shoop_host::connection::connect(&entry, Duration::from_secs(3))?;
+                                        runtime.client_mut().reconnect(Box::new(RemoteDelivery(connection))).map_err(|error| anyhow!("could not reattach: {error:?}"))
+                                    })();
+                                    if result.is_ok() { started = Instant::now(); }
+                                    let _ = sender.send(result.map_err(|error| error.to_string()));
+                                }
                                 Ok(Message::Intent(intent)) => {
                                     let audio = shoop_app_client::runtime::writes_audio_preferences(
                                         &intent,

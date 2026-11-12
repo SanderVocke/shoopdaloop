@@ -5,3 +5,5 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 pub mod codec;
 mod document;
 pub mod worker;
+
+pub mod scripts;
