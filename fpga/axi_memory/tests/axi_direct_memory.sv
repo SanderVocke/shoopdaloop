@@ -60,32 +60,32 @@ module axi_direct_memory #(
     assign m_axi_rlast = held_last;
     assign m_axi_rvalid = response_read && !reset;
 
-    function automatic outside(input [31:0] start, input [7:0] len, input [2:0] bytes_log);
-        reg [63:0] stop;
+    function automatic outside(input [31:0] transfer_start, input [7:0] len, input [2:0] bytes_log);
+        reg [63:0] transfer_end;
         begin
-            stop = {32'b0,start}+((64'(len)+1) << bytes_log);
-            outside = start < BASE || stop > {32'b0,BASE}+64'(WORDS)*4;
+            transfer_end = {32'b0,transfer_start}+((64'(len)+1) << bytes_log);
+            outside = transfer_start < BASE || transfer_end > {32'b0,BASE}+64'(WORDS)*4;
         end
     endfunction
 
-    task automatic check_shape(input id, input [31:0] start, input [7:0] len,
+    task automatic check_shape(input id, input [31:0] transfer_start, input [7:0] len,
                                input [2:0] bytes_log, input [1:0] burst);
-        reg [63:0] stop;
+        reg [63:0] transfer_end;
         begin
-            stop = {32'b0,start}+((64'(len)+1) << bytes_log)-1;
+            transfer_end = {32'b0,transfer_start}+((64'(len)+1) << bytes_log)-1;
             if (id != 0 || burst != 1 || len > 15 || (32'd1 << bytes_log) > BYTES
-                || (start & ((32'd1 << bytes_log)-1)) != 0
-                || {32'b0,start >> 12} != (stop >> 12))
+                || (transfer_start & ((32'd1 << bytes_log)-1)) != 0
+                || {32'b0,transfer_start >> 12} != (transfer_end >> 12))
                 $fatal(1,"Unsupported direct-memory AXI transfer");
         end
     endtask
 
-    function automatic [DATA_WIDTH-1:0] read_bus(input [31:0] start);
+    function automatic [DATA_WIDTH-1:0] read_bus(input [31:0] transfer_start);
         reg signed [63:0] offset;
         begin
             read_bus = 0;
             for (integer lane=0; lane<BYTES; lane=lane+1) begin
-                offset = ({32'b0,start} & ~(64'(BYTES)-64'd1))-{32'b0,BASE}+64'(lane);
+                offset = ({32'b0,transfer_start} & ~(64'(BYTES)-64'd1))-{32'b0,BASE}+64'(lane);
                 if (offset >= 0 && offset < 64'(WORDS)*4)
                     read_bus[lane*8+:8] = samples[32'(offset >> 2)][32'(offset & 3)*8+:8];
             end
