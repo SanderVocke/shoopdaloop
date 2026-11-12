@@ -6,7 +6,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge, Timer, with_timeout
 from options import create_memory
-from test_continuous import drive_frames, edge, PERIOD, TICKS, P
+from test_continuous import drive_frames, edge, start_audio_clock, PERIOD, TICKS, P
 
 OUTPUT = Path(os.environ['AIO_OUTPUT'])
 
@@ -58,7 +58,7 @@ async def prepared_demo_and_recovery(d):
     d.frame_prepare.value = 0
     d.job_enable.value = 1
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     chunk = json.loads((OUTPUT/'scenario.json').read_text())['chunk_frames']
     pages = (256+14)//15+8*32+16
     words = ((256*chunk+15)//16)*16+2*((256+15)//16)*16+pages*16

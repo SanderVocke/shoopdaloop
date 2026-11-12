@@ -9,6 +9,7 @@ P = int(os.environ['AIO_P'])
 CHANNELS = int(os.environ['AIO_CHANNELS'])
 BANKS = int(os.environ['AIO_BANKS'])
 PERIOD = int(os.environ['AIO_AUDIO_PERIOD'])
+PHASE = int(os.environ.get('AIO_AUDIO_PHASE', '0'))
 TICKS = max(100, CHANNELS*8)
 
 
@@ -23,6 +24,12 @@ def sample(channel, frame):
 
 def packed(frame):
     return sum(sample(c, frame) << (32*c) for c in range(CHANNELS))
+
+
+async def start_audio_clock(d):
+    if PHASE:
+        await Timer(PHASE, units='ns')
+    await Clock(d.audio_clk, PERIOD, units='ns').start()
 
 
 async def edge(d, clock='clk'):
@@ -106,7 +113,7 @@ async def consumer(d, blocks, late=False, completion_gate=None, written=None):
 @cocotb.test()
 async def nominal_and_recoverable_miss(d):
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
     count = 8*Q+Q+P
     task = cocotb.start_soon(consumer(d, count//Q))
@@ -134,7 +141,7 @@ async def nominal_and_recoverable_miss(d):
 @cocotb.test()
 async def input_exhaustion_and_rearm(d):
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
     await frames(d, (BANKS+1)*Q, check=False)
     assert int(d.recovery_requested.value)
@@ -160,7 +167,7 @@ async def input_exhaustion_and_rearm(d):
 @cocotb.test()
 async def reset_in_flight_ownership(d):
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
     for placement in sorted({1, Q, Q+1, Q+P, 2*Q+P}):
         task = cocotb.start_soon(consumer(d, 20))
@@ -195,7 +202,7 @@ async def reset_in_flight_ownership(d):
 @cocotb.test()
 async def watchdog_and_core_fault(d):
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
     await frames(d, Q, check=False)
     while not int(d.process_valid.value):
@@ -230,7 +237,7 @@ async def publication_cutoff(d):
     if BANKS < 3:
         return
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
     for placement in ('before', 'at', 'after'):
         gate, written = Event(), Event()
@@ -282,7 +289,7 @@ async def consecutive_misses_and_catchup(d):
     if Q == 1 or BANKS < 3 or (P == Q and BANKS < 4):
         return
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
     count = 10*Q+Q+P
     task = cocotb.start_soon(consumer(d, count//Q, late='two'))

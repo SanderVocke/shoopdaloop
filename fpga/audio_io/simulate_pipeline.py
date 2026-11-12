@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare continuous 16-channel fabric audio with production Rust processing."""
 import argparse
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -26,6 +27,7 @@ def main():
     parser.add_argument('--routing', choices=['identity', 'reverse', 'fanout', 'sparse'], default='identity')
     parser.add_argument('--demo', action='store_true')
     parser.add_argument('--audio-period', type=int, default=13)
+    parser.add_argument('--audio-phase', type=int, default=0)
     parser.add_argument('--frame-cycles', type=int, default=512)
     parser.add_argument('--stalls', action='store_true')
     parser.add_argument('--overrun', action='store_true')
@@ -42,6 +44,11 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     subprocess.run(['cargo', 'build', '--locked', '-p', 'rt_backend_testbench'], cwd=ROOT, check=True)
     config = prepare(output, args.q, args.chunk, args.channels, args.monitoring, args.routing)
+    run = dict(arguments={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
+               seed=20261112, memory_environment=env,
+               revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+               verilator=subprocess.check_output(['verilator', '--version'], text=True).strip(), python=sys.version)
+    (output/'run.json').write_text(json.dumps(run, indent=2)+'\n')
     top = 'audio_demo' if args.demo else 'audio_loop_pipeline'
     if args.demo:
         parameters = dict(Q=args.q, P=p, CHUNK_FRAMES=args.chunk or args.q,
@@ -68,8 +75,8 @@ def main():
     sys.path[:0] = [str(path) for path in [HERE/'tests', ROOT/'scripts', ROOT/'fpga/loop_pipeline/tests',
                  ROOT/'fpga/transition_processor/tests', ROOT/'fpga/media_store/tests', ROOT/'fpga/verification/tests']]
     result = runner.test(hdl_toplevel=top, test_module='test_demo' if args.demo else 'test_continuous',
-                         test_dir=output, log_file=output/'simulation.log', extra_env={**env,
-                             'AIO_OUTPUT': str(output), 'AIO_AUDIO_PERIOD': str(args.audio_period),
+                         test_dir=output, seed=20261112, log_file=output/'simulation.log', extra_env={**env,
+                             'AIO_OUTPUT': str(output), 'AIO_AUDIO_PERIOD': str(args.audio_period), 'AIO_AUDIO_PHASE': str(args.audio_phase),
                              'AIO_FRAME_CYCLES': str(args.frame_cycles), 'AIO_P': str(p),
                              'AIO_STALLS': str(int(args.stalls)), 'AIO_OVERRUN': str(int(args.overrun)),
                              'LP_OUTPUT': str(output)})

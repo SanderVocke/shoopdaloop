@@ -13,6 +13,7 @@ from cocotb.utils import get_sim_time
 
 OUTPUT = Path(os.environ['AIO_OUTPUT'])
 PERIOD = int(os.environ['AIO_AUDIO_PERIOD'])
+PHASE = int(os.environ.get('AIO_AUDIO_PHASE', '0'))
 TICKS = int(os.environ['AIO_FRAME_CYCLES'])
 P = int(os.environ['AIO_P'])
 FRAME_TIMES = {}
@@ -26,6 +27,12 @@ class DebugPorts:
         if name.startswith('memory_') and not hasattr(self.dut, name):
             return getattr(self.dut.core, name)
         return getattr(self.dut, name)
+
+
+async def start_audio_clock(d):
+    if PHASE:
+        await Timer(PHASE, units='ns')
+    await Clock(d.audio_clk, PERIOD, units='ns').start()
 
 
 async def edge(d):
@@ -132,7 +139,7 @@ async def continuous_record_playback(d):
     d.reset.value = 1
     d.job_enable.value = 1
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
-    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    cocotb.start_soon(start_audio_clock(d))
     memory = LoopMemory(DebugPorts(d), (32, 256, scenario['chunk_frames']), 20261112)
     memory.stalls = os.environ['AIO_STALLS'] == '1'
     driver = Driver(Transport(d), (16, 128, 256), 20261112)

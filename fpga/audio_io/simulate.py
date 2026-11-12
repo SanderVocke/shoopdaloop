@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--banks', type=int, default=3)
     parser.add_argument('--channels', type=int, default=2)
     parser.add_argument('--audio-period', type=int, default=13)
+    parser.add_argument('--audio-phase', type=int, default=0)
     parser.add_argument('--output', type=Path, default=ROOT/'work/audio-io')
     args = parser.parse_args()
     output = args.output.resolve()
@@ -35,9 +36,9 @@ def main():
                  build_dir=output/'build', log_file=output/'build.log', always=True)
     sys.path.insert(0, str(HERE/'tests'))
     result = runner.test(hdl_toplevel=top, test_module='test_audio_control' if args.control else 'test_audio_io', testcase=args.test,
-                         test_dir=output, log_file=output/'simulation.log', extra_env={
+                         test_dir=output, seed=20261112, log_file=output/'simulation.log', extra_env={
                              'AIO_Q': str(args.q), 'AIO_P': str(p), 'AIO_BANKS': str(args.banks),
-                             'AIO_CHANNELS': str(args.channels), 'AIO_AUDIO_PERIOD': str(args.audio_period)})
+                             'AIO_CHANNELS': str(args.channels), 'AIO_AUDIO_PERIOD': str(args.audio_period), 'AIO_AUDIO_PHASE': str(args.audio_phase)})
     report = ET.parse(result).getroot()
     if any(list(report.iter(k)) for k in ('failure', 'error', 'skipped')):
         raise SystemExit(f'audio I/O failed: {output}')

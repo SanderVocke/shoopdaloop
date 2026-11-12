@@ -1,6 +1,6 @@
 # FPGA audio I/O implementation plan
 
-Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–5 complete; final synthesis, CI and delivery in progress.
+Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–6 complete; final validation and PR delivery in progress.
 
 Base: `proto/fpga-rust-reference`, inspected at `012ed6bd`. The current local
 `work` branch points to that base. Follow `.agents/prompts/write_plan.md` when
@@ -276,23 +276,23 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 6 — Extend continuous-audio verification and CI
 
-- [ ] Add a continuous harness that advances audio independently of processing
+- [x] Add a continuous harness that advances audio independently of processing
   and uses the actual full AXI pipeline. Collect traces through nonintrusive
   observations; pause or drain only after the finite stimulus ends.
-- [ ] Use production Q8.24 results for graph/audio/media semantics, existing
+- [x] Use production Q8.24 results for graph/audio/media semantics, existing
   reference comparisons for retained local contracts, and a small independent
   frame/deadline scoreboard for I/O scheduling. Neither Python nor new RTL may
   reimplement the processing algorithm as its expected-result oracle.
-- [ ] Add Q=16/32/64 full-core builds with compatible chunk sizes, Q greater than
+- [x] Add Q=16/32/64 full-core builds with compatible chunk sizes, Q greater than
   one chunk, 2Q and valid Q+P profiles, two/three-bank configurations and clock
   ratios. Local odd-Q tests remain separate from production profile restrictions.
-- [ ] Exercise instant/fixed/stalled memory, AXI32/64 and selected DRAMsim3
+- [x] Exercise instant/fixed/stalled memory, AXI32/64 and selected DRAMsim3
   record/playback/overrun cases. Include deterministic random seeds and replay
   artifacts identifying epoch, quantum, channel, frame, cutoff and failure cause.
-- [ ] Update `.github/workflows/fpga_simulation.yml` filters/jobs for AUDIO_IO,
+- [x] Update `.github/workflows/fpga_simulation.yml` filters/jobs for AUDIO_IO,
   new RTL and both relevant testbench paths. Keep fast deterministic coverage in
   each PR and a bounded representative DRAMsim3 campaign; retain existing gates.
-- [ ] Verification: run the new CI commands locally where supported and validate
+- [x] Verification: run the new CI commands locally where supported and validate
   artifacts and failure reporting with deliberately injected deadline/input faults.
 
 ### Stage 7 — Final end-to-end validation and delivery
@@ -404,3 +404,18 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
 - Artifacts: `work/audio-autonomous`, `work/audio-control`, `work/audio-catchup`,
   `work/audio-four`, `work/audio-local*`, `work/audio-sparse`, `work/audio-fanout`,
   `work/audio-q16`, `work/audio-q64-fixed`.
+
+### Stage 6
+
+- Added continuous-clock production comparisons with exact frame/deadline
+  scoreboarding, publication measurements, deterministic seed and saved replay
+  profile/versions. No DSP/sample oracle was duplicated in Python.
+- Q=16/P=8/two-bank/multi-chunk monitoring, Q=32/P=16/DDR3/AXI64/stalls, and
+  Q=64/P=32/reverse-routing/monitoring/fixed AXI64/stalls all pass exact outputs,
+  media and logical state. Standalone tests cover Q=1, odd Q, signed/extreme
+  words, unrelated periods and explicit phase offsets.
+- Added CI gates for ownership/control, short latency, real underrun recovery,
+  autonomous reload, prepared ROM drift and complete-top lint/synthesis. Existing
+  memory and reference gates remain. Artifacts include replay inputs and reports.
+- Complete main/demo tops pass generic inference, strict lint and ECP5 mapping;
+  reports are in `work/audio-synthesis` and `work/audio-demo-synthesis`.
