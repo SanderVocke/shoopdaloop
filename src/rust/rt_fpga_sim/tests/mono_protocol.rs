@@ -465,7 +465,7 @@ fn startup_and_live_edit_refusals_preserve_configuration_and_owners() {
             .iter()
             .any(|instruction| matches!(
                 instruction,
-                rt_fpga_adapter::image::Instruction::ProcessLogicalCapture { view: 0, .. }
+                rt_fpga_adapter::image::Instruction::ProcessLogicalCapture { view, .. } if image.initial_state.memory[*view as usize] == Value::Word(0)
             ))
     );
     assert!(
@@ -475,7 +475,7 @@ fn startup_and_live_edit_refusals_preserve_configuration_and_owners() {
             .iter()
             .any(|instruction| matches!(
                 instruction,
-                rt_fpga_adapter::image::Instruction::ProcessLogicalPlayback { view: 0, .. }
+                rt_fpga_adapter::image::Instruction::ProcessLogicalPlayback { view, .. } if image.initial_state.memory[*view as usize] == Value::Word(0)
             ))
     );
 }
