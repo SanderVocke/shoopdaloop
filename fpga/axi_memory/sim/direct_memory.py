@@ -15,6 +15,8 @@ class DirectMemory:
         self.image = Path('sim-memory.hex').resolve()
         self.loaded = False
         self.control = self.failure = 0
+        self.read_origin = int(dut.sim_reads.value)
+        self.write_origin = int(dut.sim_writes.value)
         self.memory = self
         dut.sim_image_request.value = 0
         dut.sim_control.value = 0
@@ -46,11 +48,11 @@ class DirectMemory:
 
     @property
     def reads(self):
-        return int(self.dut.sim_reads.value)
+        return int(self.dut.sim_reads.value)-self.read_origin
 
     @property
     def writes(self):
-        return int(self.dut.sim_writes.value)
+        return int(self.dut.sim_writes.value)-self.write_origin
 
     @property
     def requests(self):
@@ -121,7 +123,6 @@ class MemoryHost:
     pause_responses = native_field('pause_responses', control=True)
     fail_next = native_field('fail_next', control=True)
     pending = native_field('pending')
-    burst = native_field('burst')
     requests = native_field('requests')
 
     @property

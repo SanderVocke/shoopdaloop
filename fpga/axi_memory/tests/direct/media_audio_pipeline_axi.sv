@@ -1,0 +1,182 @@
+// Generated functional simulation top; do not edit by hand.
+// Generated integration wrapper; do not edit by hand.
+`include "state_processor_defs.svh"
+
+module media_audio_pipeline_axi #(
+parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
+    parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
+    parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
+    parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
+    parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
+    parameter integer AXI_DATA_WIDTH = 32,
+    parameter [31:0] PHYSICAL_BASE = 32'h01000000
+) (
+    input wire clk,
+    input wire reset,
+    input wire run_valid,
+    output wire run_ready,
+    input wire [31:0] run_instruction_count,
+    input wire [31:0] run_state_count,
+    input wire [31:0] run_quantum,
+    input wire [31:0] run_chunk_frames,
+    input wire [31:0] run_job_budget,
+    input wire [31:0] run_buffers,
+    input wire [31:0] run_inputs,
+    input wire [31:0] run_outputs,
+    input wire job_enable,
+    output wire busy,
+    output wire done,
+    output wire [7:0] error_code,
+    output wire [1:0] error_stage,
+    output wire state_busy,
+    output wire state_done,
+    output wire jobs_busy,
+    output wire jobs_done,
+    output wire [BUFFERS-1:0] buffer_ready,
+    input wire cfg_valid,
+    output wire cfg_ready,
+    input wire cfg_state,
+    input wire cfg_write,
+    input wire [15:0] cfg_address,
+    input wire [`SHOOP_SP_STATE_BITS-1:0] cfg_write_data,
+    output wire cfg_response_valid,
+    output wire cfg_response_error,
+    output wire [`SHOOP_SP_STATE_BITS-1:0] cfg_read_data,
+    input wire audio_cfg_valid,
+    output wire audio_cfg_ready,
+    input wire [1:0] audio_cfg_space,
+    input wire audio_cfg_write,
+    input wire [31:0] audio_cfg_address,
+    input wire [31:0] audio_cfg_write_data,
+    output wire audio_cfg_response_valid,
+    output wire audio_cfg_response_error,
+    output wire [31:0] audio_cfg_read_data,
+    output wire monitor_valid,
+    output wire monitor_ready,
+    output wire [`SHOOP_SP_JOB_BITS-1:0] monitor_data,
+    output wire [31:0] queued_jobs,
+    output wire drain_valid,
+    input wire drain_ready,
+    output wire loop_read_valid,
+    input wire loop_read_ready,
+    output wire [31:0] loop_read_slot,
+    input wire loop_response_valid,
+    input wire loop_response_error,
+    input wire [162:0] loop_response_data,
+    input wire run_external_jobs,
+    output wire external_job_valid,
+    input wire external_job_ready,
+    input wire external_done_valid,
+    output wire external_done_ready,
+    input wire [7:0] external_error,
+    input wire [63:0] arena_base,
+    input wire store_cmd_valid,
+    output wire store_cmd_ready,
+    input wire [2:0] store_cmd_opcode,
+    input wire [63:0] store_cmd_view,
+    input wire [63:0] store_cmd_start,
+    input wire [63:0] store_cmd_length,
+    input wire [31:0] store_cmd_count,
+    output wire store_busy,
+    output wire store_done,
+    output wire [7:0] store_error_code,
+    output wire [31:0] store_result_view,
+    output wire store_result_empty,
+    input wire store_write_valid,
+    output wire store_write_ready,
+    input wire [31:0] store_write_data,
+    output wire store_read_valid,
+    input wire store_read_ready,
+    output wire [31:0] store_read_data,
+    input wire store_cfg_valid,
+    output wire store_cfg_ready,
+    input wire store_cfg_write,
+    input wire [2:0] store_cfg_space,
+    input wire [31:0] store_cfg_address,
+    input wire [159:0] store_cfg_write_data,
+    output wire store_cfg_response_valid,
+    output wire store_cfg_response_error,
+    output wire [159:0] store_cfg_read_data,
+    output wire memory_fault,
+    output wire m_axi_awid,
+    output wire [31:0] m_axi_awaddr,
+    output wire [7:0] m_axi_awlen,
+    output wire [2:0] m_axi_awsize,
+    output wire [1:0] m_axi_awburst,
+    output wire m_axi_awvalid,
+    output wire m_axi_awready,
+    output wire [AXI_DATA_WIDTH-1:0] m_axi_wdata,
+    output wire [AXI_DATA_WIDTH/8-1:0] m_axi_wstrb,
+    output wire m_axi_wlast,
+    output wire m_axi_wvalid,
+    output wire m_axi_wready,
+    output wire m_axi_bid,
+    output wire [1:0] m_axi_bresp,
+    output wire m_axi_bvalid,
+    output wire m_axi_bready,
+    output wire m_axi_arid,
+    output wire [31:0] m_axi_araddr,
+    output wire [7:0] m_axi_arlen,
+    output wire [2:0] m_axi_arsize,
+    output wire [1:0] m_axi_arburst,
+    output wire m_axi_arvalid,
+    output wire m_axi_arready,
+    output wire m_axi_rid,
+    output wire [AXI_DATA_WIDTH-1:0] m_axi_rdata,
+    output wire [1:0] m_axi_rresp,
+    output wire m_axi_rlast,
+    output wire m_axi_rvalid,
+    output wire m_axi_rready,
+    input wire [1:0] sim_image_request,
+    output wire sim_image_done,
+    input wire [4:0] sim_control,
+    input wire [31:0] sim_fail_token,
+    output wire [31:0] sim_fail_seen,
+    output wire sim_busy, output wire sim_active, output wire sim_error, output wire sim_write,
+    output wire [31:0] sim_index,
+    output wire [63:0] sim_reads, output wire [63:0] sim_writes,
+    output wire [31:0] sim_capacity
+);
+    wire memory_valid;
+    wire memory_ready;
+    wire memory_write;
+    wire [63:0] memory_address;
+    wire [31:0] memory_write_data;
+    wire [63:0] memory_arena_base;
+    wire [31:0] memory_count;
+    wire memory_write_valid;
+    wire memory_write_ready;
+    wire memory_read_valid;
+    wire memory_read_ready;
+    wire memory_response_valid;
+    wire memory_response_ready;
+    wire memory_response_error;
+    wire [31:0] memory_read_data;
+    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
+    wire [31:0] physical_base = PHYSICAL_BASE;
+    media_audio_pipeline #(
+        .PROGRAM_DEPTH(PROGRAM_DEPTH),
+        .STATE_DEPTH(STATE_DEPTH),
+        .JOB_DEPTH(JOB_DEPTH),
+        .MAX_FRAMES(MAX_FRAMES),
+        .BUFFERS(BUFFERS),
+        .INPUT_PORTS(INPUT_PORTS),
+        .OUTPUT_PORTS(OUTPUT_PORTS),
+        .VIEWS(VIEWS),
+        .SLOTS(SLOTS),
+        .CHUNK_FRAMES(CHUNK_FRAMES),
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),
+        .READ_BUFFERS(READ_BUFFERS),
+        .WRITE_BUFFERS(WRITE_BUFFERS),
+        .BURST_MEMORY(BURST_MEMORY)) core (.*);
+    generate if (BURST_MEMORY != 0) begin : bursts
+        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+    end else begin : words
+        wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
+        assign memory_write_ready = 0;
+        assign memory_read_valid = 0;
+        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+    end endgenerate
+    axi_direct_memory #(.DATA_WIDTH(AXI_DATA_WIDTH),.WORDS(SLOTS*CHUNK_FRAMES),.BASE(PHYSICAL_BASE)) sim_memory (.*);
+endmodule

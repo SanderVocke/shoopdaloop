@@ -9,7 +9,7 @@ from cocotb.runner import get_runner
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE/"sim"))
-from options import add_options, environment
+from options import add_options, environment, direct_sources
 
 
 def main():
@@ -32,8 +32,8 @@ def main():
             output = args.output.resolve()/f"{top}-{width}"
             output.mkdir(parents=True, exist_ok=True)
             runner = get_runner("verilator")
-            runner.build(verilog_sources=[HERE/"rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv")],
-                         hdl_toplevel=top, parameters={"DATA_WIDTH": width},
+            runner.build(verilog_sources=direct_sources([HERE/"rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv")],top,args.memory_model),
+                         hdl_toplevel=top, parameters={"DATA_WIDTH": width, **({"SIM_PHYSICAL_BASE":args.physical_base} if args.memory_model == "instant" else {})},
                          build_args=["--Wall", "--timescale", "1ns/1ps"], build_dir=output/"build",
                          log_file=output/"build.log", always=True)
             result = runner.test(hdl_toplevel=top, test_module=module,

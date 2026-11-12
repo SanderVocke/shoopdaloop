@@ -1,6 +1,6 @@
 # Native SystemVerilog memory for direct simulation
 
-Status: in progress on `proto/fpga-native-sim-memory`; stages 1–2 verified.
+Status: in progress on `proto/fpga-native-sim-memory`; stages 1–3 verified.
 Investigated at `54c616cf` on `proto/fpga-rust-reference`.
 
 ## Goal and scope
@@ -106,18 +106,18 @@ Stages are sequential. Each stage depends on the preceding stage's verification.
 
 ### 3. Integrate direct mode and migrate image ownership
 
-- [ ] Add direct simulation wrappers, extending `generate_tops.py` where useful,
+- [x] Add direct simulation wrappers, extending `generate_tops.py` where useful,
   for endpoint/adapters and integrated tops. Select them only for `instant`.
   Ensure exactly one component drives AXI slave signals.
-- [ ] Add a small Python administration adapter for image exchange, occasional
+- [x] Add a small Python administration adapter for image exchange, occasional
   controls and counters. It must not emulate transactions or service clocks.
-- [ ] Update drivers' initialization, reset/reload, fences and snapshots to use
+- [x] Update drivers' initialization, reset/reload, fences and snapshots to use
   explicit image helpers. Remove direct-mode Python AXI servicing from manual
   tick functions and the free-running `LoopMemory.serve` path. Retain existing
   test observation hooks independently of memory servicing.
-- [ ] Update mode metadata, capability-based test selection and reports; keep
+- [x] Update mode metadata, capability-based test selection and reports; keep
   `dramsim3`, `fixed` and `legacy` routing intact. Avoid a second backend flag.
-- [ ] Verify a small Rust comparison after each integration boundary: chunk,
+- [x] Verify a small Rust comparison after each integration boundary: chunk,
   media, audio, then connected loop. Include a minimum-size chunk and dirty
   writeback followed by fence/readback. Rerun a realistic case after modifying
   shared driver/image code. Check generated wrappers for drift.
@@ -178,3 +178,15 @@ all supported beat sizes, 1/2/16 beats, independent AW/W, held R/B, local bounds
 errors, injected failures, image round-trip and reset preserving samples. The
 Python image-administration helper was developed with these tests; it performs
 no bus scheduling. Full driver integration remains stage 3.
+
+Stage 3: all ten endpoint/adapter tests pass in native mode at both widths;
+minimum-size chunk, standalone media, media/audio and connected-loop smoke
+suites pass against Rust. The small DRAMsim3 loop suite also passes after the
+shared driver changes. Generated simulation variants preserve DUT hierarchy
+and retain read-only AXI probes; production RTL files are unchanged.
+
+Native counters are relative to each Python administration instance, while SV
+reset preserves backing storage. Snapshot checks now explicitly read that
+storage. The short-job active-arithmetic fault-placement test is explicitly
+Python-only because it depends on responder latency; ordinary direct faults,
+reset and playback fault propagation remain checked.

@@ -9,7 +9,7 @@ class StorePorts:
         self.dut = dut
 
     def __getattr__(self, name):
-        shared = name in ('clk', 'reset', 'arena_base') or name.startswith(('memory_', 'm_axi_'))
+        shared = name in ('clk', 'reset', 'arena_base') or name.startswith(('memory_', 'm_axi_', 'sim_'))
         return getattr(self.dut, name if shared else 'store_' + name)
 
 
@@ -19,7 +19,7 @@ class LoopMemory(StoreDriver):
         self.raw = dut
         self.initial_override = None
         self.pause_responses = False
-        self.task = cocotb.start_soon(self.serve())
+        self.task = cocotb.start_soon(self.observe_clock() if self.native_memory else self.serve())
 
     async def reset(self):
         self.set(arena_base=self.base, cmd_valid=0, cmd_opcode=0, cmd_view=0,
@@ -95,6 +95,15 @@ class LoopMemory(StoreDriver):
                 self.write_requests += write
                 self.read_requests += 1 - write
                 self.request_cycle = self.cycles
+
+    async def observe_clock(self):
+        while True:
+            await FallingEdge(self.raw.clk)
+            await Timer(1, units='ns')
+            if self.before_clock is not None and not int(self.raw.reset.value):
+                self.before_clock()
+            await RisingEdge(self.raw.clk)
+            self.cycles += 1
 
     def close(self):
         self.task.kill()
