@@ -176,7 +176,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -560,10 +560,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxcar"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36f64beae40a84da1b4b26ff2761a5b895c12adc41dc25aaee1c4f2bbfe97a6e"
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+
+[[package]]
+name = "bytecount"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
 
 [[package]]
 name = "bytemuck"
@@ -628,6 +640,12 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
 ]
+
+[[package]]
+name = "camino"
+version = "1.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbad30e4b4c14a39e3cc8aed085a12a327257c316619c93581e017bc52be591"
 
 [[package]]
 name = "cast"
@@ -1030,6 +1048,20 @@ name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
+
+[[package]]
+name = "dashmap"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
 
 [[package]]
 name = "dasp_sample"
@@ -1562,6 +1594,16 @@ name = "fearless_simd"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
+
+[[package]]
+name = "file-guard"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21ef72acf95ec3d7dbf61275be556299490a245f017cf084bd23b4f68cf9407c"
+dependencies = [
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -2947,6 +2989,78 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
+name = "marlin"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb6c0bea955764a1bb02059db696c206d289db22b5b7485f6626750708e370c2"
+dependencies = [
+ "marlin-verilator",
+ "marlin-verilog",
+]
+
+[[package]]
+name = "marlin-verilator"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "649278d4af672cad9d1f0fd432ddc773071beb2458b9a85ca995f2ded613409d"
+dependencies = [
+ "boxcar",
+ "camino",
+ "dashmap",
+ "file-guard",
+ "libloading 0.8.9",
+ "marlin-verilator-stable",
+ "owo-colors",
+ "snafu",
+]
+
+[[package]]
+name = "marlin-verilator-stable"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72dbb7253c4a0564d2990e82f6430ed1654fb65df4fa39d984c326714b040a4e"
+dependencies = [
+ "libloading 0.8.9",
+ "snafu",
+]
+
+[[package]]
+name = "marlin-verilog"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8450e64ba51ec2846ff898a199d535417b17c25b3b87d087fd945fa075c7239a"
+dependencies = [
+ "libloading 0.8.9",
+ "marlin-verilator",
+ "marlin-verilog-macro",
+]
+
+[[package]]
+name = "marlin-verilog-macro"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da57c92180a8a352949d7e89e0b71f502b5d01db9b1b013d7644b6a6070b36f1"
+dependencies = [
+ "marlin-verilator",
+ "marlin-verilog-macro-builder",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "marlin-verilog-macro-builder"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdfc3885f980587da1ea69eb5c2b5752ff90b56401e0810be03c37f45e60cc4e"
+dependencies = [
+ "marlin-verilator",
+ "proc-macro2",
+ "quote",
+ "sv-parser",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3249,6 +3363,88 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "nom-greedyerror"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73f359007d505b20cd6e4974ff0d5c8e4565f0f9e15823937238221ccb74b516"
+dependencies = [
+ "nom 7.1.3",
+ "nom_locate",
+]
+
+[[package]]
+name = "nom-packrat"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec2613a0891d298a6dd6330d0eb7a2ff37f5b2e0f8b2656c89517f0c560602c1"
+dependencies = [
+ "nom-packrat-macros",
+ "nom_locate",
+]
+
+[[package]]
+name = "nom-packrat-macros"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "738db4817fcc69a720675cad108968ef14d72b9e4d9cc0d4eb90e52f4d15a392"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "nom-recursive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38dde6bfc697f9a5f19dd3afcc7e3d60367c0a00fe8f29a5aebb6fc9ca9aeb7a"
+dependencies = [
+ "nom-recursive-macros",
+ "nom_locate",
+]
+
+[[package]]
+name = "nom-recursive-macros"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e16984d78cb05a960e79cc03219e8fc2da932666d5cef7cbd7c55c9a1a4ef3ce"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "nom-tracable"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a39d3ec4e5bc9816ca540bd6b1e4885c0275536eb3293d317d984bb17f9a294"
+dependencies = [
+ "nom 7.1.3",
+ "nom-tracable-macros",
+ "nom_locate",
+]
+
+[[package]]
+name = "nom-tracable-macros"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9c68f5316254dae193b3ce083f6caf19ae1a58471e6585e89f0796b9e5bdf4a"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "nom_locate"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e3c83c053b0713da60c5b8de47fe8e494fe3ece5267b2f23090a07a053ba8f3"
+dependencies = [
+ "bytecount",
+ "memchr",
+ "nom 7.1.3",
 ]
 
 [[package]]
@@ -3785,6 +3981,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "owo-colors"
+version = "4.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c45bb4a6ae1280ec0803b1ef9d3455eb50f01efbbe1447ab020f1d54fba9d8"
 
 [[package]]
 name = "oxisynth"
@@ -4561,6 +4763,7 @@ name = "rt_backend_testbench"
 version = "0.3.0"
 dependencies = [
  "rt_audio_math",
+ "rt_fpga_adapter",
  "rt_runtime",
  "schemars",
  "serde",
@@ -4577,6 +4780,29 @@ dependencies = [
  "rt_runtime",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "rt_fpga_adapter"
+version = "0.3.0"
+dependencies = [
+ "rt_audio_math",
+ "rt_runtime",
+ "schemars",
+ "serde",
+ "shoop_rt_engine",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
+name = "rt_fpga_sim"
+version = "0.3.0"
+dependencies = [
+ "marlin",
+ "rt_audio_math",
+ "rt_backend_testbench",
+ "serde_json",
+ "shoop_wasm_test_support",
 ]
 
 [[package]]
@@ -5870,6 +6096,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "snafu"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e84b3f4eacbf3a1ce05eac6763b4d629d60cbc94d632e4092c54ade71f1e1a2"
+dependencies = [
+ "snafu-derive",
+]
+
+[[package]]
+name = "snafu-derive"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5898,6 +6145,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "str-concat"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3468939e48401c4fe3cdf5e5cef50951c2808ed549d1467fde249f1fcb602634"
+
+[[package]]
 name = "strength_reduce"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5914,6 +6167,80 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "sv-parser"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f79b1e8208e59152d004e716046dc81d58c51c9fc2936406f59a146667459052"
+dependencies = [
+ "nom 7.1.3",
+ "nom-greedyerror",
+ "sv-parser-error",
+ "sv-parser-parser",
+ "sv-parser-pp",
+ "sv-parser-syntaxtree",
+]
+
+[[package]]
+name = "sv-parser-error"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4906405c210df0f38e970d4386b9cea9e90b2eee817e713c8a6cbc5e672d5590"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "sv-parser-macros"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fde0ec4e5b1a94dcccb97d75a06c55dc766fcd4fadff0908a8118fd39dc230b"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "sv-parser-parser"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1102d43d61c115714a5145b3822e1caf40426d202033d1a25185dfa0cb54325c"
+dependencies = [
+ "nom 7.1.3",
+ "nom-greedyerror",
+ "nom-packrat",
+ "nom-recursive",
+ "nom-tracable",
+ "nom_locate",
+ "str-concat",
+ "sv-parser-macros",
+ "sv-parser-syntaxtree",
+]
+
+[[package]]
+name = "sv-parser-pp"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bcee0f8f15313780dd25fc8c80c66aab1fde7aee791351cc0dd20e26e10c73d"
+dependencies = [
+ "nom 7.1.3",
+ "nom-greedyerror",
+ "sv-parser-error",
+ "sv-parser-parser",
+ "sv-parser-syntaxtree",
+]
+
+[[package]]
+name = "sv-parser-syntaxtree"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fac54467c2b9e4e13c85dba6eebdf8b5227e3420bb5a832be9643cc46d136176"
+dependencies = [
+ "regex",
+ "sv-parser-macros",
+ "walkdir",
+]
 
 [[package]]
 name = "syn"

@@ -95,30 +95,30 @@ and descriptor double buffering. Explicitly reject unsupported operations.
 
 ### 1. Marlin simulation foundation
 
-- [ ] Create an implementation branch from latest `proto/fpga-rust-reference`.
+- [x] Create an implementation branch from latest `proto/fpga-rust-reference`.
   Add an optional native simulation crate/feature with pinned Marlin and recorded
   Rust/Verilator/C++ tool versions. Keep its dependencies out of native production
   and Wasm runtime paths.
-- [ ] Build a thin wrapper and Rust source manifest for the existing integrated
+- [x] Build a thin wrapper and Rust source manifest for the existing integrated
   TP/SP/JP pipeline with empty logical TP configuration. Add static bindings, clock/
   reset stepping and a bounded device-access driver for configuration, status
   and raw sample I/O. Preserve the synthesizable processing design.
-- [ ] Verify 129-bit state and wide TP/control packing, reset and stalled
+- [x] Verify 129-bit state and wide TP/control packing, reset and stalled
   ready/valid handshakes. Promote the scratch FIFO check into a reproducible smoke
   test where useful; include odd-depth wrap. Verify waveforms record clock edges
   and data, independent model lifetimes/reset, and cached model creation.
 
 ### 2. Standalone Rust/RTL gain demonstrator
 
-- [ ] Add a Rust executable/test that loads a loop-free gain graph into the
+- [x] Add a Rust executable/test that loads a loop-free gain graph into the
   existing pipeline through the stage-1 driver and steps Q=32 audio. Initially
   use the current Rust fixture/compiler APIs and production Q8.24 execution;
   no new queue adapter or graph-lowering rewrite is needed for this prerequisite.
-- [ ] Check every output word for signed inputs with nonzero low bits, silence
+- [x] Check every output word for signed inputs with nonzero low bits, silence
   and gain updates. Exercise deterministic configuration/sample stalls and bounded
   timeout/device-error reporting. Reuse production arithmetic rather than writing
   another gain executor for expected results.
-- [ ] Provide one Cargo command, replayable inputs, optional VCD output and a
+- [x] Provide one Cargo command, replayable inputs, optional VCD output and a
   short result report. Confirm build/run uses no Python, including source
   generation and packing. Gate the queue-adapter stages on this demonstrator
   passing; preserve it as a direct device-driver regression.
