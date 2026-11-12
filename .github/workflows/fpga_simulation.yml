@@ -98,6 +98,13 @@ jobs:
           python fpga/audio_io/simulate.py --q 1 --banks 2 --audio-period 10 --audio-phase 3 --output work/native-ci/audio-q1
           python fpga/audio_io/simulate.py --q 3 --p 1 --output work/native-ci/audio-odd
           python fpga/audio_io/simulate.py --control --output work/native-ci/audio-control
+      - name: Check autonomous ZedBoard measurement runner
+        run: |
+          python fpga/zedboard/generate.py --check
+          python fpga/zedboard/prepare.py --loops 4 --tracks 2 --record-quanta 2 --output work/native-ci/zedboard-workload
+          controls=()
+          if [ "${{ matrix.model }}" = instant ]; then controls+=(--control-tests); fi
+          python fpga/zedboard/simulate.py --workload work/native-ci/zedboard-workload --memory-model ${{ matrix.model }} "${controls[@]}" --output work/native-ci/zedboard-runner
       - name: Check continuous 16-channel audio
         run: |
           python fpga/audio_io/simulate_pipeline.py --p 16 --frame-cycles 1600 --memory-model ${{ matrix.model }} --axi-data-width 64 --stalls --output work/native-ci/audio-continuous
