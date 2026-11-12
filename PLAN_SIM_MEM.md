@@ -142,7 +142,7 @@ Stages are sequential. Each stage depends on the preceding stage's verification.
 
 ### 5. Deliver and validate CI/review
 
-- [ ] Push the implementation branch and open a PR targeting the FPGA branch,
+- [x] Push the implementation branch and open a PR targeting the FPGA branch,
   or update an explicitly designated existing PR rather than creating a duplicate.
 - [ ] Ensure CI covers a native direct smoke and a realistic record/playback
   smoke with the pinned DRAMsim3 dependency; add focused coverage if missing.
@@ -206,3 +206,11 @@ Direct mode works with a missing DDR library and has no per-cycle memory
 responder API. Reports label backend/purpose and omit direct-mode DDR counters.
 Generated wrappers pass drift checks; synthesis lists do not include the model.
 A focused GitHub Actions workflow now covers native and realistic smokes.
+
+Stage 5: pushed `proto/fpga-native-sim-memory` and opened
+[PR #970](https://github.com/SanderVocke/shoopdaloop/pull/970) against
+`proto/fpga-rust-reference`. The first CI attempt exposed missing `jsonschema`
+in the workflow and existing RTL width warnings under Ubuntu's Verilator
+5.020. CI now installs the fixture requirements and builds/caches the same
+pinned Verilator 5.032 revision used for local validation, without changing
+synthesizable RTL. CI/review validation remains in progress.
