@@ -917,7 +917,9 @@ impl ScriptManager {
                 .scripts
                 .values()
                 .find(|record| record.identity.as_deref() == Some(script.identity.as_str()));
-            if existing.is_some_and(|record| record.kind == ScriptKind::Session) {
+            if existing.is_some_and(|record| {
+                matches!(record.kind, ScriptKind::Session | ScriptKind::Ephemeral)
+            }) {
                 continue;
             }
             let changed = existing.is_none_or(|record| {
@@ -966,7 +968,10 @@ impl ScriptManager {
                 (record.identity.as_deref() == Some(script.identity.as_str())).then_some(record.id)
             });
             if let Some(id) = existing {
-                if self.scripts[&id].kind == ScriptKind::Session {
+                if matches!(
+                    self.scripts[&id].kind,
+                    ScriptKind::Session | ScriptKind::Ephemeral
+                ) {
                     continue;
                 }
                 let changed = {
@@ -3719,6 +3724,47 @@ mod p16_tests {
     use super::*;
     use shoop_script_resources::session::{SessionScriptData, SessionScripts, MAX_SESSION_SCRIPTS};
     use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn catalog_refresh_cannot_reclaim_or_run_converted_script_records() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_catalog_script(
+                "examples/portable.lua",
+                "return 1",
+                ScriptKind::Example,
+                false,
+                None,
+                None,
+            )
+            .unwrap();
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        let bundle = manager.conversion_source(id).unwrap().2.unwrap();
+        let changed = CatalogScriptSource {
+            identity: "examples/portable.lua".into(),
+            name: "portable.lua".into(),
+            source: Arc::from("error('refresh must not execute this source')"),
+            kind: ScriptKind::Example,
+            enabled: true,
+            source_path: None,
+            resource_bundle: None,
+        };
+        for kind in [ScriptKind::Session, ScriptKind::Ephemeral] {
+            if kind == ScriptKind::Ephemeral {
+                manager.convert_kind(id, kind).unwrap();
+            }
+            manager
+                .reconcile_catalog_scripts(std::slice::from_ref(&changed), &[])
+                .unwrap();
+            let state = &manager.states()[0];
+            assert_eq!(state.kind, kind);
+            assert_eq!(state.lifecycle, ScriptLifecycle::Inactive);
+            assert_eq!(manager.source(id).unwrap().1, "return 1");
+            assert!(Arc::ptr_eq(
+                &manager.conversion_source(id).unwrap().2.unwrap(),
+                &bundle
+            ));
+        }
+    }
     #[shoop_test]
     fn incremental_stopped_preparation_preserves_utf8_and_reserves_runtime_identities() {
         let source = format!("{}return 1", "-- 😀\n".repeat(1000));
