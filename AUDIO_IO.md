@@ -297,21 +297,21 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 7 — Final end-to-end validation and delivery
 
-- [ ] Run the 16x16 demo through both latency modes with monitoring and complete
+- [x] Run the 16x16 demo through both latency modes with monitoring and complete
   record/playback sessions. Verify every output and recorded word, expected
   startup silence and exact latency from the declared schedule, without aligning
   traces after observing results or dropping prefixes/tails.
-- [ ] Repeat with a recoverable processing overrun and with exhaustion followed
+- [x] Repeat with a recoverable processing overrun and with exhaustion followed
   by quiesce/reset/reload/rearm. Demonstrate that output returns at the configured
   latency and that no old bank or memory response crosses epochs.
-- [ ] Run targeted Rust/contract suites, all affected FPGA regressions, production
+- [x] Run targeted Rust/contract suites, all affected FPGA regressions, production
   comparisons and the existing 64-loop scale/timing workload. Complete repository
   mandated formatting, warning-denying builds and test gates for changed code.
-- [ ] Lint and synthesize the full 16x16 top and bank/quantum variants; report
+- [x] Lint and synthesize the full 16x16 top and bank/quantum variants; report
   BRAM/LUT/FF/DSP use and measured complete input-publication-to-output-eligibility
   cycles. Explain the selected P and clock assumptions. Synthesis/cycle simulation
   is evidence for the design, not a claim of routed board timing closure.
-- [ ] Document ports, channel mapping, parameters, clock/reset constraints,
+- [x] Document ports, channel mapping, parameters, clock/reset constraints,
   recovery/rearm ownership and exact replay commands in `fpga/audio_io/README.md`.
 - [ ] Push the implementation branch and create a PR targeting
   `proto/fpga-rust-reference`. Monitor CI to green; inspect automated reviews,
@@ -432,3 +432,22 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
   now also runs the upstream float accuracy/audit gate for every prepared case.
   Retired hardware-shaped reference models are not reintroduced. Goals and
   acceptance criteria are unchanged; final checks follow current runner APIs.
+
+### Stage 7 local validation
+
+- Both autonomous 16x16 modes pass exact record/playback sessions and four
+  coordinated recovery/restart events, including input exhaustion, memory fault
+  and a withheld accepted response that must retire before reset.
+- Revalidated the merged production base: 16 directed/seeded odd-capacity loop
+  scenarios, default/small arithmetic benches, small media bench, production
+  float audits and the current production 64-loop scale/timing case pass.
+  Merged-base Q=32 overrun and Q=16/P=8/two-bank monitoring comparisons pass
+  exact frames, loop state and canonical named-media exports.
+- Formatting, warning-denying production testbench build, Rust test-attribute
+  policy and relevant Rust/JSON contract suites pass. No source math changed in
+  this feature. Code-generation and prepared-ROM drift checks pass.
+- Main and demo synthesis, resource counts, measured publication bounds and
+  replay commands are recorded in `fpga/audio_io/measurements/validation.json`
+  and the README. Routed board timing/fit remains outside the agreed scope.
+- PR: https://github.com/SanderVocke/shoopdaloop/pull/973. Final CI/review checking
+  is in progress; the PR will remain unmerged.

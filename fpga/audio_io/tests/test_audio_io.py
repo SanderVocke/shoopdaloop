@@ -37,6 +37,25 @@ async def edge(d, clock='clk'):
     await Timer(1, units='ns')
 
 
+async def ownership_invariants(d):
+    while True:
+        await edge(d)
+        if int(d.reset.value) or int(d.session_reset.value):
+            continue
+        if int(d.busy.value):
+            rx_bank = int(d.process_bank.value)
+            tx_bank = int(d.produce_bank.value)
+            assert ((int(d.rx_request_sync.value) ^ int(d.rx_ack.value)) >> rx_bank) & 1
+            assert not (((int(d.tx_request.value) ^ int(d.tx_ack_sync.value)) >> tx_bank) & 1)
+            if int(d.output_write.value) and int(d.selected_valid.value):
+                assert tx_bank != int(d.selected_bank.value), 'processing overwrote the playing bank'
+        if int(d.selected_valid.value):
+            bank = int(d.selected_bank.value)
+            assert ((int(d.tx_request_sync.value) ^ int(d.tx_ack.value)) >> bank) & 1
+        if int(d.capture_write.value) and int(d.busy.value):
+            assert int(d.capture_bank.value) != int(d.process_bank.value), 'capture overwrote a processing bank'
+
+
 async def initialize(d):
     for name in ('enable', 'frame_tick', 'frame_prepare', 'rx_samples', 'process_ready',
                  'process_done', 'process_fault', 'input_read', 'input_address',
@@ -44,6 +63,7 @@ async def initialize(d):
         getattr(d, name).value = 0
     d.epoch.value = 7
     d.reset.value = 1
+    cocotb.start_soon(ownership_invariants(d))
     await Timer(100, units='ns')
     d.reset.value = 0
     await Timer(100, units='ns')
