@@ -61,7 +61,7 @@ module media_store #(
     localparam [63:0] BLOCK_FRAMES = 64'(CHUNK_FRAMES)*64'(BLOCK_CHUNKS);
     localparam [63:0] ARENA_BYTES = (((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(BLOCKS)+15)/16)*16 + 64'(TABLE_PAGES)*16)*4;
     typedef enum logic [5:0] {
-        IDLE, DESCRIPTOR_READ, DESCRIPTOR_RESULT, CHECK,
+        IDLE, DESCRIPTOR_READ, DESCRIPTOR_RESULT, CHECK, FREE_VIEW_READ, FREE_VIEW_RESULT,
         APPEND_END, APPEND_CHUNKS, APPEND_REQUIRED, APPEND_GROWTH, APPEND_EXTENT, APPEND_CHECK,
         SLICE_START, SLICE_END, SLICE_CHUNKS, SLICE_CHECK, RECLAIM_END, RECLAIM_FRAMES, RECLAIM_CHECK,
         TABLE_READ, TABLE_RESULT, REF_READ, REF_RESULT, UPDATE_REFERENCE,
@@ -80,6 +80,7 @@ module media_store #(
     reg [31:0] table_write_data, ref_write_data, free_write_data;
     wire [159:0] descriptor_data;
     reg [31:0] table_data, reference_data, free_data;
+    reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
     reg cfg_request_valid, cfg_request_write, cfg_request_in_range, cfg_request_value_valid;
@@ -344,7 +345,7 @@ module media_store #(
         descriptor_read = 0; descriptor_write = 0; table_read = 0; table_write = 0;
         ref_read = 0; ref_write = 0; free_read = 0; free_write = 0;
         descriptor_read_address = VIEW_BITS'(view_index);
-        descriptor_write_address = VIEW_BITS'(((opcode == CREATE) || (opcode == SLICE) || phase == BEGIN_CREATE) ? view_count : view_index);
+        descriptor_write_address = VIEW_BITS'(((opcode == CREATE) || (opcode == SLICE)) ? allocation_view : ((phase == BEGIN_CREATE) ? view_count : view_index));
         table_read_address = control_address;
         table_write_address = TABLE_BITS'((view_index << SLOT_BITS) | append_index);
         ref_read_address = SLOT_BITS'(chunk); ref_write_address = SLOT_BITS'(chunk);
@@ -354,6 +355,7 @@ module media_store #(
         table_write_data = chunk; ref_write_data = 1; free_write_data = chunk;
         case (phase)
             DESCRIPTOR_READ: descriptor_read = 1;
+            FREE_VIEW_READ: begin descriptor_read = allocation_view < view_count; descriptor_read_address = VIEW_BITS'(allocation_view); end
             TABLE_READ: table_read = 1;
             REF_READ: ref_read = chunk < slot_count;
             UPDATE_REFERENCE: begin
@@ -361,7 +363,7 @@ module media_store #(
                 if (opcode == SLICE) begin
                     ref_write_data = reference_data + 1;
                     table_write = 1;
-                    table_write_address = TABLE_BITS'((view_count << SLOT_BITS) | index);
+                    table_write_address = TABLE_BITS'((allocation_view << SLOT_BITS) | index);
                 end else begin
                     ref_write_data = reference_data - 1;
                     free_write = reference_data == 1;
@@ -408,7 +410,7 @@ module media_store #(
             error_code <= OK;
             result_view <= 0;
             result_empty <= 0;
-            view_count <= 0;
+            view_count <= 0; allocation_view <= 0;
             slot_count <= 0;
             free_count <= 0;
             slot_limit <= 32'(BLOCKS);
@@ -508,23 +510,24 @@ module media_store #(
                             phase <= BEGIN_CREATE;
                         end else phase <= DESCRIPTOR_READ;
                     end else if (cmd_opcode == CREATE) begin
-                        if (view_count == 32'(VIEWS)) begin
-                            error_code <= MEMORY_FULL;
-                            phase <= FINISH;
-                        end else begin
-                            new_valid <= 1;
-                            new_range <= 0;
-                            new_offset <= 0;
-                            new_frames <= 0;
-                            new_chunks <= 0;
-                            phase <= PUBLISH;
-                        end
+                        new_valid <= 1; new_range <= 0; new_offset <= 0; new_frames <= 0; new_chunks <= 0;
+                        allocation_view <= 0; phase <= FREE_VIEW_READ;
                     end else if (cmd_opcode == FENCE) begin
                             phase <= FENCE_REQUEST;
                     end else if (cmd_view >= {32'b0, view_count}) begin
                         error_code <= INVALID_VIEW;
                         phase <= FINISH;
                     end else phase <= DESCRIPTOR_READ;
+                end
+                FREE_VIEW_READ: begin
+                    if (allocation_view == view_count) begin
+                        if (view_count == 32'(VIEWS)) begin error_code <= MEMORY_FULL; phase <= FINISH; end
+                        else phase <= (opcode == CREATE || length == 0) ? PUBLISH : TABLE_READ;
+                    end else phase <= FREE_VIEW_RESULT;
+                end
+                FREE_VIEW_RESULT: begin
+                    if (!descriptor_data[0]) phase <= (opcode == CREATE || length == 0) ? PUBLISH : TABLE_READ;
+                    else begin allocation_view <= allocation_view+1; phase <= FREE_VIEW_READ; end
                 end
                 DESCRIPTOR_READ: begin
                     length_last <= length-1'b1;
@@ -592,12 +595,10 @@ module media_store #(
                 SLICE_CHECK: begin
                     if (slice_out_of_bounds || length > slice_available || range_chunks > 64'(BLOCKS)) begin
                         error_code <= INVALID_VIEW; phase <= FINISH;
-                    end else if (view_count == 32'(VIEWS)) begin
-                        error_code <= MEMORY_FULL; phase <= FINISH;
                     end else begin
                         new_range <= 1; new_offset <= range_offset; new_frames <= length;
                         new_chunks <= range_chunks[31:0]; first_chunk <= 32'(absolute_start >> UNIT_SHIFT);
-                        remaining <= range_chunks[31:0]; phase <= length == 0 ? PUBLISH : TABLE_READ;
+                        remaining <= range_chunks[31:0]; allocation_view <= 0; phase <= FREE_VIEW_READ;
                     end
                 end
                 RECLAIM_END: begin
@@ -644,8 +645,8 @@ module media_store #(
                 end
                 PUBLISH: begin
                     if ((opcode == CREATE) || (opcode == SLICE)) begin
-                        result_view <= view_count;
-                        view_count <= view_count + 1;
+                        result_view <= allocation_view;
+                        if (allocation_view == view_count) view_count <= view_count + 1;
                     end
                     phase <= FINISH;
                 end

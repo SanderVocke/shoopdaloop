@@ -108,14 +108,14 @@ claim or GUI integration requirement.
 - [x] Create a new working branch from latest `proto/fpga-rust-reference`; fetch
   and merge upstream at the start and between milestones. Push only that working
   branch. Read the current adapter and production loop preparation paths.
-- [ ] Define the supported operation/selection/timing and capacity profile using
+- [x] Define the supported operation/selection/timing and capacity profile using
   existing types. Factor immutable startup descriptions and loop-node accessors
   as needed; preserve native binding/generation checks and startup ownership.
-- [ ] Extend/reuse the common producer and production Q8.24 oracle to exercise
+- [x] Extend/reuse the common producer and production Q8.24 oracle to exercise
   queued initial commit, record/stop/play, state queries, gains, completed-media
   export/cursor/read/release and re-recording. Record exact observation cuts and
   admission/delivery/domain outcomes before implementing translation.
-- [ ] Verify this contract with focused native tests, including empty playback,
+- [x] Verify this contract with focused native tests, including empty playback,
   future aligned actions, same-boundary ordering and retained export behavior.
   Keep larger native/RTL runs for the later integration gate.
 
@@ -211,3 +211,18 @@ while retaining exact end-to-end checks for every supported looping operation.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Implementation notes
+
+The native contract probe confirms that State/Export queries complete at the
+settled pre-audio boundary. The integrated RTL previously exposed host access
+only after finishing the quantum. Add an explicit settle/pause command on the
+existing coordinator port, then resume with the normal run request. This keeps
+TP state authoritative and preserves native observation cuts without predicting
+loop state in Rust or introducing a second sample-processing path.
+
+Native contract tests cover pre-capture query cuts, immutable retained media,
+empty playback and future domain cancellation. The first queue-driven RTL case
+matches 12 quanta of audio, state, events, transitions and export metadata through
+two recordings. Removed media descriptors now reuse invalid slots, preserving
+bounded view capacity as recordings/exports are reclaimed.

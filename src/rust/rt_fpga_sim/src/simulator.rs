@@ -125,6 +125,21 @@ impl<'ctx> Simulator<'ctx> {
         self.model.debug_frame
     }
     pub fn command(&mut self, opcode: u8, index: u32, data: [u32; 20]) -> SimResult<[u32; 26]> {
+        let (error, value) = self.command_raw(opcode, index, data)?;
+        if error != 0 {
+            return Err(format!("TP command {opcode} error {error}").into());
+        }
+        Ok(value)
+    }
+    pub fn command_raw(
+        &mut self,
+        opcode: u8,
+        index: u32,
+        data: [u32; 20],
+    ) -> SimResult<(u8, [u32; 26])> {
+        self.model.command_opcode = opcode;
+        self.model.command_index = index;
+        self.model.command_data = WideIn::new(data);
         for _ in 0..self.timeout {
             self.model.eval();
             if self.model.command_ready != 0 {
@@ -135,9 +150,6 @@ impl<'ctx> Simulator<'ctx> {
         if self.model.command_ready == 0 {
             return Err("TP command ready timeout".into());
         }
-        self.model.command_opcode = opcode;
-        self.model.command_index = index;
-        self.model.command_data = WideIn::new(data);
         self.model.command_valid = 1;
         self.cycle();
         self.model.command_valid = 0;
@@ -164,10 +176,7 @@ impl<'ctx> Simulator<'ctx> {
         self.model.response_ready = 1;
         self.cycle();
         self.model.response_ready = 0;
-        if error != 0 {
-            return Err(format!("TP command {opcode} error {error}").into());
-        }
-        Ok(value)
+        Ok((error, value))
     }
     pub fn state(
         &mut self,
@@ -556,4 +565,90 @@ pub fn get<const N: usize>(words: &[u32; N], offset: usize, width: usize) -> u64
     (0..width).fold(0, |v, i| {
         v | u64::from((words[(offset + i) / 32] >> ((offset + i) % 32)) & 1) << i
     })
+}
+
+impl rt_fpga_adapter::looping::LoopDevice for Simulator<'_> {
+    fn tp(
+        &mut self,
+        opcode: u8,
+        index: u32,
+        words: [u32; 20],
+    ) -> std::result::Result<rt_fpga_adapter::looping::TpReply, rt_runtime::Error> {
+        self.command_raw(opcode, index, words)
+            .map(|(error, words)| rt_fpga_adapter::looping::TpReply { error, words })
+            .map_err(|e| {
+                self.last_error = Some(e.to_string());
+                rt_runtime::Error::Disconnected
+            })
+    }
+    fn chunk_limit(&mut self, limit: u32) -> std::result::Result<(), rt_runtime::Error> {
+        if limit == 0 || limit > 128 {
+            return Err(rt_runtime::Error::Capacity);
+        }
+        self.store_config(0, 3, Some([limit, 0, 0, 0, 0]))
+            .map(|_| ())
+            .map_err(|e| {
+                self.last_error = Some(e.to_string());
+                rt_runtime::Error::Disconnected
+            })
+    }
+    fn media(
+        &mut self,
+        command: rt_fpga_adapter::looping::MediaCommand,
+    ) -> std::result::Result<rt_fpga_adapter::looping::MediaResult, rt_runtime::Error> {
+        use rt_runtime::Error;
+        self.model.store_cmd_opcode = command.opcode;
+        self.model.store_cmd_view = u64::from(command.view);
+        self.model.store_cmd_start = command.start;
+        self.model.store_cmd_length = command.length;
+        self.model.store_cmd_count = command.count;
+        self.model.store_cmd_valid = 1;
+        let mut accepted = false;
+        for _ in 0..self.timeout {
+            self.model.eval();
+            let ready = self.model.store_cmd_ready != 0;
+            self.cycle();
+            if ready {
+                accepted = true;
+                break;
+            }
+        }
+        self.model.store_cmd_valid = 0;
+        if !accepted {
+            self.last_error = Some("media admission timeout".into());
+            return Err(Error::Disconnected);
+        }
+        let mut result = rt_fpga_adapter::looping::MediaResult::default();
+        for _ in 0..self.timeout {
+            if self.model.store_done != 0 {
+                break;
+            }
+            self.model.store_read_ready = u8::from(!self.stalls || self.cycles % 4 != 0);
+            self.model.eval();
+            if self.model.store_read_valid != 0 && self.model.store_read_ready != 0 {
+                result.samples.push(self.model.store_read_data as i32);
+            }
+            self.cycle();
+        }
+        self.model.store_read_ready = 0;
+        if self.model.store_done == 0 {
+            self.last_error = Some("media completion timeout".into());
+            return Err(Error::Disconnected);
+        }
+        let code = self.model.store_error_code;
+        result.view = self.model.store_result_view;
+        result.empty = self.model.store_result_empty != 0;
+        self.cycle();
+        match code {
+            0 => Ok(result),
+            1 => Err(Error::InvalidId),
+            2 => Err(Error::InvalidState),
+            3 => Err(Error::Capacity),
+            4 => Err(Error::InvalidShape),
+            _ => {
+                self.last_error = Some(format!("media fault {code}"));
+                Err(Error::Disconnected)
+            }
+        }
+    }
 }

@@ -56,6 +56,7 @@ mod monitoring;
 mod node;
 mod pool;
 mod preview;
+pub mod primitive;
 mod processors;
 mod profiling;
 mod queue;

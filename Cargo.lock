@@ -4788,6 +4788,7 @@ dependencies = [
  "rt_runtime",
  "schemars",
  "serde",
+ "shoop_loops",
  "shoop_rt_engine",
  "shoop_wasm_test_support",
 ]
@@ -4802,6 +4803,7 @@ dependencies = [
  "rt_fpga_adapter",
  "rt_runtime",
  "serde_json",
+ "shoop_loops",
  "shoop_rt_engine",
  "shoop_wasm_test_support",
 ]

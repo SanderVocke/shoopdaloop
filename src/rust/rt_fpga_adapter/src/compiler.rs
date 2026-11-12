@@ -234,3 +234,61 @@ pub fn lower(
     image.node_order = node_order;
     Ok(image)
 }
+
+pub fn transition_image(
+    topology: &shoop_loops::PreparedTopology,
+    quantum: u32,
+    repeats: impl Fn(shoop_loops::LoopId) -> bool,
+) -> Result<TransitionImage, rt_runtime::Error> {
+    use rt_runtime::{Error, Quantum};
+    topology
+        .validate_quantum(Quantum::new(quantum as usize)?)
+        .map_err(|_| Error::InvalidGraph)?;
+    let limits = topology.limits();
+    Ok(TransitionImage {
+        description: Description {
+            quantum,
+            loops: topology
+                .nodes()
+                .iter()
+                .map(|node| LoopSpec {
+                    id: Identity {
+                        slot: node.id.slot(),
+                        generation: node.id.generation(),
+                    },
+                    kind: match node.kind {
+                        shoop_loops::LoopKind::Primitive => "primitive",
+                        shoop_loops::LoopKind::Composite => "composite",
+                    }
+                    .into(),
+                    length: node.length,
+                    sync_source: node.sync_source.map(|id| Identity {
+                        slot: id.slot(),
+                        generation: id.generation(),
+                    }),
+                    repeat_sync: repeats(node.id),
+                    timeline: None,
+                })
+                .collect(),
+        },
+        limits: Limits {
+            loop_slots: u32::try_from(limits.loop_slots).map_err(|_| Error::Capacity)?,
+            pending_requests: u32::try_from(limits.pending_requests)
+                .map_err(|_| Error::Capacity)?,
+            events: u32::try_from(limits.journal_events).map_err(|_| Error::Capacity)?,
+        },
+        components: topology
+            .components()
+            .iter()
+            .map(|component| {
+                component
+                    .iter()
+                    .map(|id| Identity {
+                        slot: id.slot(),
+                        generation: id.generation(),
+                    })
+                    .collect()
+            })
+            .collect(),
+    })
+}
