@@ -12,6 +12,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
 import rt_backend_testbench as wire
+from rt_backend_testbench.accuracy import compare as compare_float
 
 
 def module(name, path):
@@ -73,6 +74,10 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
     image = wire.run_batch([scenario], executable=executable, command='compile')[0]
     expected = wire.run_batch([scenario], executable=executable)[0]
     floating = wire.run_batch([scenario], executable=executable, numeric='float')[0]
+    audit = wire.run_batch([scenario], executable=executable, command='audit')[0]
+    accuracy = compare_float(scenario, image, expected, floating, audit)
+    (output/'accuracy.json').write_text(json.dumps(accuracy, indent=2)+'\n')
+    (output/'audit.json').write_text(json.dumps(audit, indent=2)+'\n')
     for name, value in [('scenario', scenario), ('image', image), ('expected', expected), ('float', floating)]:
         (output/f'{name}.json').write_text(json.dumps(value, indent=2)+'\n')
     transition = image['transition']

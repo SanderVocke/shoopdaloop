@@ -2,6 +2,7 @@
 from functools import lru_cache
 import json
 import math
+import struct
 from pathlib import Path
 import subprocess
 from jsonschema import Draft202012Validator, FormatChecker, validators
@@ -50,6 +51,12 @@ def _constant(value):
 def loads(text, kind='scenario'):
     document = json.loads(text, object_pairs_hook=_object, parse_constant=_constant)
     validate(document, kind)
+    result=document['result'] if kind=='audit' else document
+    if kind in ('result','audit'):
+        samples=[q['outputs'] for q in result['quanta']]+[m['samples'] for m in result['media']]
+        for sample in samples:
+            if sample['encoding']=='float':
+                sample['channels']=[[struct.unpack('<f',struct.pack('<f',v))[0] for v in channel] for channel in sample['channels']]
     return document
 
 def dumps(document, kind='scenario'):
@@ -64,7 +71,7 @@ def dump(document, path, kind='scenario'):
     Path(path).write_text(json.dumps(document, indent=2, sort_keys=True, allow_nan=False)+'\n', encoding='utf-8')
 
 def run_batch(scenarios, *, executable, command='run', numeric='q824', kind='scenario'):
-    if command not in ('run', 'compile', 'validate', 'roundtrip') or numeric not in ('q824', 'float'):
+    if command not in ('run', 'compile', 'validate', 'roundtrip', 'audit', 'transition-run', 'transition-compile') or numeric not in ('q824', 'float'):
         raise ValueError('unsupported command/numeric profile')
     args = [str(executable), command]
     if command == 'run':
@@ -75,7 +82,7 @@ def run_batch(scenarios, *, executable, command='run', numeric='q824', kind='sce
                              text=True, capture_output=True, check=False)
     if process.returncode:
         raise RuntimeError(process.stderr.strip())
-    kind = {'run':'result', 'compile':'image', 'validate':'scenario', 'roundtrip':kind}[command]
+    kind = {'run':'result', 'compile':'image', 'validate':'scenario', 'roundtrip':kind, 'audit':'audit', 'transition-run':'transition_trace', 'transition-compile':'transition_image'}[command]
     results = [loads(line, kind) for line in process.stdout.splitlines()]
     if len(results) != len(scenarios):
         raise ValueError('runner returned an incorrect document count')

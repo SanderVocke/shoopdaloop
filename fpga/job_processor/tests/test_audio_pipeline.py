@@ -1,88 +1,85 @@
-"""Bit-exact combined state/job simulation against the actual Rust processors."""
+"""Arithmetic specifications and hardware stream/reset checks, without a Rust executor."""
 from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import random
 import cocotb
-import fpga_testbench as wire
-from audio_cases import directed, graph_case, make_case, ramp, randomized, samples, ONE, MIN, MAX
+from audio_cases import graph_case, make_case, ramp, samples, ONE, MIN, MAX
 from audio_driver import AudioDriver
 from cases import ins
 
-CAPACITIES = tuple(map(int, os.environ["AUDIO_CAPACITIES"].split(",")))
-SEED = int(os.environ["AUDIO_SEED"])
-OUTPUT = Path(os.environ["AUDIO_OUTPUT"])
-REFERENCE = Path(os.environ["AUDIO_REFERENCE"])
+CAPACITIES=tuple(map(int,os.environ['AUDIO_CAPACITIES'].split(',')))
+SEED=int(os.environ['AUDIO_SEED'])
+OUTPUT=Path(os.environ['AUDIO_OUTPUT'])
 
-
-def document(kind, value):
-    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
-
+def clip(value):return min(MAX,max(MIN,value))
+def trunc0(n,d):return (abs(n)//d)*(-1 if n<0 else 1)
+def product(a,b):return clip(trunc0(a*b,ONE))
+def curve(r,n):
+    return r['target'] if not r['duration'] else r['start']+trunc0((r['target']-r['start'])*min(r['elapsed']+n,r['duration']),r['duration'])
 
 def compile_graphs():
-    result = {}
-    for frames in sorted({1, min(3, CAPACITIES[3]), CAPACITIES[3]}):
-        graph = {"chunk_frames": 1, "quantum": frames, "nodes": [
-            {"kind": "input", "port": 0}, {"kind": "gain", "input": 0, "gain": ONE // 2},
-            {"kind": "input", "port": 1}, {"kind": "gain", "input": 2, "gain": ONE // 2},
-            {"kind": "mix", "left": 1, "right": 3}, {"kind": "output", "input": 4, "port": 0}]}
-        result[frames] = wire.run_reference("compile", document("graph", graph), executable=REFERENCE)["payload"]["value"]
-    return result
+    instructions=[ins('input',port=0,destination=0),ins('gain',ramp=0,source=0,destination=1),
+        ins('input',port=1,destination=2),ins('gain',ramp=1,source=2,destination=3),
+        ins('mix',left=1,right=3,destination=4),ins('output',source=4,port=0)]
+    return {n:dict(program=dict(instructions=instructions,quantum=n,chunk_frames=1,jobs_per_quantum=6),
+        initial_state=[ramp(ONE,ONE),ramp(ONE,ONE)],bindings=[dict(kind='gain',value=dict(ramp=i)) for i in range(2)])
+        for n in sorted({1,min(3,CAPACITIES[3]),CAPACITIES[3]})}
 
+def numeric_expect(case,shape='two'):
+    # Two explicit arithmetic fixtures. This does not interpret an instruction stream.
+    data=case['steps'][0]['inputs'];ramps=[v['value'] for v in case['initial_state']['memory']]
+    first=[product(x,curve(ramps[0],i)) for i,x in enumerate(data[0])]
+    if shape=='two':
+        second=[product(x,curve(ramps[1],i)) for i,x in enumerate(data[1])]
+        mixed=[clip(a+b) for a,b in zip(first,second)]
+        buffers={0:data[0],1:first,2:data[1],3:second,4:mixed}
+    else:
+        mixed=[clip(a+b) for a,b in zip(data[0],first)]
+        buffers={0:data[0],1:first,2:mixed}
+    return dict(outputs=[mixed]+[[0]*len(mixed) for _ in range(case['output_ports']-1)],buffers=buffers)
 
-async def compare(dut, case, *, seed, stalls=True):
-    trace = wire.run_reference("trace", document("audio_case", case), executable=REFERENCE)
-    driver = AudioDriver(dut, CAPACITIES, seed)
-    observed, timing = [], []
-    try:
-        await driver.load(case)
-        for step, expected in zip(case["steps"], trace["payload"]["value"]["results"]):
-            result = await driver.quantum_audio(step, stalls=stalls)
-            observed.append(result)
-            timing.append(driver.timing.copy())
-            wire.assert_audio_result_matches(expected, result)
-    except BaseException as error:
-        wire.dump(document("audio_case", case), OUTPUT / "failure.case.json")
-        wire.dump(trace, OUTPUT / "failure.expected.trace.json")
-        (OUTPUT / "failure.observed.json").write_text(json.dumps(
-            {"name": case["name"], "results": observed, "timing": timing, "error": str(error)}, indent=2) + "\n")
-        dut._log.error("failed case %s; replay data in %s", case["name"], OUTPUT)
-        raise
-    return observed, timing
-
+def assert_audio(expected,actual):
+    assert actual['status']==dict(kind='completed'),actual['status']
+    assert actual['outputs']==expected['outputs']
+    for buffer,samples in expected['buffers'].items():assert actual['buffers'][buffer]==samples
 
 @cocotb.test()
 async def directed_audio(dut):
-    replay = os.environ.get("AUDIO_CASE")
-    if replay:
-        payload = wire.load(replay)["payload"]
-        case = payload["value"]["case"] if payload["kind"] == "audio_trace" else payload["value"]
-        _, timing = await compare(dut, case, seed=SEED)
-        (OUTPUT / "replay-timing.json").write_text(json.dumps(timing, indent=2) + "\n")
-        return
-    summary, quanta, sample_count = {}, 0, 0
-    for index, case in enumerate(directed(compile_graphs(), CAPACITIES)):
-        results, timing = await compare(dut, case, seed=SEED + index,
-                                        stalls=not case["name"].startswith("milestone"))
-        summary[case["name"]] = timing
-        quanta += len(results)
-        sample_count += sum(sum(len(buffer) for buffer in result["buffers"] if buffer is not None)
-                            + sum(map(len, result["outputs"])) for result in results)
-    (OUTPUT / "directed-summary.json").write_text(json.dumps(
-        {"cases": len(summary), "quanta": quanta, "compared_samples": sample_count, "timing": summary}, indent=2) + "\n")
-    dut._log.info("directed audio: %d cases, %d quanta, %d sample comparisons", len(summary), quanta, sample_count)
-
+    comparisons=0
+    settings=[ramp(0,target) for target in (0,1,-1,ONE,-ONE,ONE//2,MIN,MAX)]
+    settings += [ramp(MIN,MAX,2**32-1,2**32-17),ramp(MAX,MIN,2**32-1,1234567890),
+                 ramp(-ONE,ONE,1),ramp(ONE,-ONE,17,15),ramp(MIN,MAX,0,2**32-1)]
+    for frames,compiled in compile_graphs().items():
+        for i,setting in enumerate(settings):
+            case=graph_case(compiled,CAPACITIES,frames,ramps=[setting,settings[-i-1]],steps=1)
+            driver=AudioDriver(dut,CAPACITIES,SEED+i)
+            await driver.load(case)
+            assert_audio(numeric_expect(case),await driver.quantum_audio(case['steps'][0]))
+            comparisons+=frames
+        for bad,expected in [(ins('input',port=65535,destination=0),1),
+                             (ins('mix',left=0,right=65535,destination=2),1),
+                             (ins('output',source=65535,port=0),1),
+                             (ins('gain',ramp=0,source=1,destination=2),1)]:
+            case=make_case('invalid-job',[bad],[ramp(ONE,ONE)],CAPACITIES,frames=frames,steps=1)
+            driver=AudioDriver(dut,CAPACITIES,SEED)
+            await driver.load(case)
+            actual=await driver.execute_audio(case['steps'][0]['inputs'])
+            assert actual==(2,expected),(bad,actual,expected)
+    (OUTPUT/'directed-summary.json').write_text(json.dumps(dict(exact_arithmetic_samples=comparisons))+'\n')
 
 @cocotb.test()
 async def randomized_audio(dut):
-    count = int(os.environ["AUDIO_RANDOM_CASES"])
-    quanta = 0
-    for index, case in enumerate(randomized(compile_graphs(), CAPACITIES, SEED, count)):
-        results, _ = await compare(dut, case, seed=SEED + index + 1000)
-        quanta += len(results)
-    (OUTPUT / "random-summary.json").write_text(json.dumps({"cases": count, "quanta": quanta, "seed": SEED}, indent=2) + "\n")
-    dut._log.info("random audio: %d cases, %d quanta", count, quanta)
-
+    rng=random.Random(SEED)
+    for index in range(int(os.environ['AUDIO_RANDOM_CASES'])):
+        frames=rng.choice(list(compile_graphs()))
+        settings=[ramp(rng.randint(MIN,MAX),rng.randint(MIN,MAX),rng.getrandbits(32),rng.getrandbits(32)) for _ in range(2)]
+        case=graph_case(compile_graphs()[frames],CAPACITIES,frames,ramps=settings,steps=1)
+        case['steps'][0]['inputs']=[[rng.randint(MIN,MAX) for _ in range(frames)] for _ in range(2)]
+        driver=AudioDriver(dut,CAPACITIES,SEED+index)
+        await driver.load(case)
+        assert_audio(numeric_expect(case),await driver.quantum_audio(case['steps'][0]))
 
 @cocotb.test()
 async def sample_protocol(dut):
@@ -97,8 +94,8 @@ async def sample_protocol(dut):
         await driver.audio_configure(space, size, expect_error=True)
     for frame in range(CAPACITIES[3]):
         await driver.audio_configure(1, CAPACITIES[3] + frame, MIN if frame % 2 else MAX)
-    expected = wire.run_reference("trace", document("audio_case", case), executable=REFERENCE)["payload"]["value"]["results"][0]
-    wire.assert_audio_result_matches(expected, await driver.quantum_audio(case["steps"][0]))
+    expected = numeric_expect(case)
+    assert_audio(expected, await driver.quantum_audio(case["steps"][0]))
 
     await driver.load(case)
     for port, data in enumerate(case["steps"][0]["inputs"]):
@@ -136,8 +133,8 @@ async def sample_protocol(dut):
     assert await driver.audio_configure(0, 0) == case["steps"][0]["inputs"][0][0], "blocked sample write changed RAM"
     resumed = deepcopy(case)
     resumed["initial_state"] = await driver.snapshot()
-    expected = wire.run_reference("trace", document("audio_case", resumed), executable=REFERENCE)["payload"]["value"]["results"][0]
-    wire.assert_audio_result_matches(expected, await driver.quantum_audio(resumed["steps"][0]))
+    expected = numeric_expect(resumed)
+    assert_audio(expected, await driver.quantum_audio(resumed["steps"][0]))
 
     unsupported = make_case("unsupported-capture", [ins("input", port=0, destination=0),
                            ins("loop_capture", view=0, enabled=1, source=0)],
@@ -154,7 +151,7 @@ async def arithmetic_stream_protocol(dut):
         ins('gain', ramp=0, source=0, destination=1), ins('mix', left=0, right=1, destination=2),
         ins('output', source=2, port=0)], [ramp(0, -ONE//2)], CAPACITIES,
         frames=frames, buffers=3, outputs=1, steps=1, inputs=[samples(frames)])
-    target = wire.run_reference('trace', document('audio_case', value), executable=REFERENCE)['payload']['value']['results'][0]
+    target = numeric_expect(value,'gain_mix')
     driver = AudioDriver(dut, CAPACITIES, SEED)
     core = dut.sample_engine
     writes = {'gain': [], 'mix': []}
@@ -169,7 +166,7 @@ async def arithmetic_stream_protocol(dut):
 
     driver.sample_observer = observe
     await driver.load(value)
-    wire.assert_audio_result_matches(target, await driver.quantum_audio(value['steps'][0]))
+    assert_audio(target, await driver.quantum_audio(value['steps'][0]))
     for kind, interval, destination in (('gain', 1, 1), ('mix', 2, 2)):
         assert len(writes[kind]) == frames
         assert [address for _,address in writes[kind]] == list(range(destination*frames, (destination+1)*frames))
@@ -205,5 +202,5 @@ async def arithmetic_stream_protocol(dut):
                     await driver.tick()
                     assert not int(core.scratch_write.value) and not int(core.stream_store_valid.value), 'stale pipeline write after reset'
                 reset_case['initial_state'] = await driver.snapshot()
-                expected = wire.run_reference('trace', document('audio_case', reset_case), executable=REFERENCE)['payload']['value']['results'][0]
-                wire.assert_audio_result_matches(expected, await driver.quantum_audio(reset_case['steps'][0]))
+                expected = numeric_expect(reset_case,'gain_mix')
+                assert_audio(expected, await driver.quantum_audio(reset_case['steps'][0]))

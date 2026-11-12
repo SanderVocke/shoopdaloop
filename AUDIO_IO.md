@@ -419,3 +419,16 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
   memory and reference gates remain. Artifacts include replay inputs and reports.
 - Complete main/demo tops pass generic inference, strict lint and ECP5 mapping;
   reports are in `work/audio-synthesis` and `work/audio-demo-synthesis`.
+
+### Upstream integration during final delivery
+
+- The target advanced to `fa6d9f55` during implementation. Merged its production
+  accuracy gates and subsystem-runner migration, preserving those new benches
+  and the audio-I/O changes. Historical baseline commands above refer to the
+  original `012ed6bd` runner interfaces. Current loop checks use
+  `--config odd --directed --random-cases 2`; the scale check uses
+  `--benchmark64 --config 8x8`.
+- Audio I/O continues to use the same ordinary production graph compilation and
+  now also runs the upstream float accuracy/audit gate for every prepared case.
+  Retired hardware-shaped reference models are not reintroduced. Goals and
+  acceptance criteria are unchanged; final checks follow current runner APIs.

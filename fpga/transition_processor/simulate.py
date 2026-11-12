@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare transition-processor RTL, Rust hardware model and native resolver."""
+"""Compare transition-processor RTL with the production resolver."""
 import argparse
 import os
 from pathlib import Path
@@ -23,9 +23,9 @@ def main():
     args = parser.parse_args()
     if args.random_cases < 0 or (args.case and args.config == "all"):
         parser.error("use nonnegative --random-cases and one --config for --case")
-    executable = Path(os.environ.get("SHOOP_FPGA_REFERENCE", ROOT / "target/debug/fpga-reference")).resolve()
-    if "SHOOP_FPGA_REFERENCE" not in os.environ:
-        subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
+    executable = Path(os.environ.get("SHOOP_PRODUCTION_ORACLE", ROOT / "target/debug/rt-backend-testbench")).resolve()
+    if "SHOOP_PRODUCTION_ORACLE" not in os.environ:
+        subprocess.run(["cargo", "build", "--locked", "-p", "rt_backend_testbench"], cwd=ROOT, check=True)
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)

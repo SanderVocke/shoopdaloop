@@ -419,13 +419,14 @@ impl<S: Sample> AudioRenderer<S> {
                     channels,
                     &mut self.window_bytes[..span.frames * channels * 4],
                 )?;
+                let window_gain = S::from_f32(f32::from_bits(window.gain_bits));
                 for local in 0..span.frames {
                     let offset = (local * channels + channel) * 4;
                     let sample = S::from_le_bytes(
                         self.window_bytes[offset..offset + 4]
                             .try_into()
                             .expect("audio sample"),
-                    ) * S::from_f32(f32::from_bits(window.gain_bits));
+                    ) * window_gain;
                     let byte = ((span.offset + local) * channels + channel) * 4;
                     self.bytes[byte..byte + 4].copy_from_slice(&sample.to_le_bytes());
                 }

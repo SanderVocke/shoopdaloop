@@ -54,8 +54,59 @@ same physical/memory options. `--memory-model fixed|dramsim3`, `--word-transfers
 `--axi-data-width`, buffer counts and deterministic stalls use the existing AXI
 services. Instant mode preserves the upstream native SystemVerilog memory.
 
-The initial gates cover Q=32 recording/stopping/playback/wrap, explicit silence,
-and gain ramps. Further supported-profile adapters and directed/seeded coverage
-are the next plan stage. The old standalone reference and its tests remain until
-replacement coverage is complete. Full-session float error budgets/statistics
-remain an additional required gate; they do not relax exact fixed/RTL equality.
+The directed corpus covers ordering, clipping, stereo recording/retakes, retained
+exports, sync chains/self-sync/cycles, repeat waits, scheduling/conflicts,
+cancellation, stale identities, completion credits, shared ranges and reuse.
+Seeded sessions include capture and playback. Long sessions check 1,024 playback
+quanta and 256 consecutive ramp interruptions. Alternate Q/chunk geometries and
+host-buffer partitions have separate gates. Run the common corpus with:
+
+```sh
+python fpga/verification/simulate.py --directed --random-cases 30 --faults
+python fpga/verification/simulate.py --long-sessions
+python fpga/verification/simulate.py --benchmark64 --config 8x8 \
+  --read-buffers 128 --memory-model dramsim3
+```
+
+Every scenario also runs through production float. `float-accuracy.json` reports
+maximum absolute/RMS error, signed bias, first-to-last quantum drift, and a checked
+error budget propagated through the actual compiled arithmetic order. Conversion
+error, each fixed truncation and float rounding contribute to the bound; repeated
+read-only playback does not accumulate a fictitious error per iteration. Ramp
+interruption carries its boundary error into the next ramp. Media bounds follow
+captures and retained exports. The audited Q8.24 policy delegates to the same
+arithmetic and records actual saturation counts and their first operation ordinal
+per quantum. Undeclared saturation fails; explicitly intentional saturation is
+reported separately. The audit must itself match ordinary production Q8.24 exactly.
+The float budget never relaxes the raw Q8.24/RTL comparison. Contract tests inject
+both a one-bit fixed mismatch and an above-budget float mismatch to prove these
+gates detect errors. `accuracy-gates.json` records campaign evidence.
+
+TP can admit a future timestamp before the runtime schedule delivers it. Common
+`delivered` means the first eligible audio boundary, and common pending requests
+are observed after delivery. Raw TP acceptance/refusal frames remain in each
+`.ingress.json` diagnostic. Both transports retain completion credits; TP's
+`capacity` admission refusal maps to runtime `full` in this profile. Hardware
+memory/descriptor exhaustion and bus faults are fatal, unlike graceful native
+resource refusals, and have separate sticky-silence/reset checks.
+
+`timing.json` records TP, SP, JP, job kinds and memory wait phases per quantum.
+DRAMsim3 adds actual data/command bus utilization over the active processing
+window, excluding host setup and observation. These are simulator measurements,
+not board-level deadline guarantees.
+
+Standalone TP transport cases use `transition-run` / `transition-compile` and
+versioned `transition_case`, `transition_image`, `transition_trace` documents.
+They execute the production resolver directly and expose hardware request-slot
+observations; the common runner still compares semantic action names. These
+fixtures contain no parallel transition executor or ordering algorithm.
+
+Exports use explicit cuts: `recording` selects a live immutable prefix;
+`playback`/`latest` select a completed take outside active recording. Exporting
+a prior playback binding during an active retake is outside this milestone and
+is rejected explicitly, as are exports at the same cut as a transition for that
+loop. Retain the old take before beginning the retake to compare its lifetime.
+Streaming/mixed scale inputs are available with `--benchmark64 --scale-workload
+streaming|mixed`; their node/arithmetic order is the production order. The mixed
+case ends recording to compare final media and therefore differs from historical
+hardware-shaped timing inputs. No old case format is accepted with changed meaning.

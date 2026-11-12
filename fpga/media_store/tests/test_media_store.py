@@ -1,82 +1,106 @@
-"""Bit-exact RTL/Rust store comparison, including allocator metadata and DDR stalls."""
+"""Logical media/lifetime properties and independent ownership/protocol checks."""
 from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import random
 import cocotb
-import fpga_testbench as wire
-from media_cases import directed, randomized, case, command, MAX
+from media_cases import case, command, MAX, MIN
 from media_driver import Driver
 
-CAPACITIES = tuple(map(int, os.environ["MEDIA_CAPACITIES"].split(",")))
-SEED = int(os.environ["MEDIA_SEED"])
-OUTPUT = Path(os.environ["MEDIA_OUTPUT"])
-REFERENCE = Path(os.environ["MEDIA_REFERENCE"])
+CAPACITIES=tuple(map(int,os.environ['MEDIA_CAPACITIES'].split(',')))
+SEED=int(os.environ['MEDIA_SEED'])
+OUTPUT=Path(os.environ['MEDIA_OUTPUT'])
 
+async def completed(driver,kind,**fields):
+    before=driver.sample_transactions
+    result=await driver.command(command(kind,**fields))
+    assert result['status']==dict(kind='completed'),(kind,fields,result['status'])
+    if kind not in ('append','read'):assert driver.sample_transactions==before,'metadata operation touched samples'
+    return result
 
-def document(kind, value):
-    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
-
-
-async def compare(dut, value, *, seed, stalls=True):
-    expected = wire.run_reference("trace", document("media_case", value), executable=REFERENCE)
-    driver = Driver(dut, CAPACITIES, seed)
-    observed, timing = [], []
-    try:
-        await driver.load(value["media"])
-        assert await driver.snapshot() == value["media"]
-        for step, result in zip(value["steps"], expected["payload"]["value"]["results"]):
-            requests = driver.sample_transactions
-            actual = await driver.command(step, stalls=stalls)
-            observed.append(actual)
-            timing.append(driver.timing)
-            wire.assert_media_result_matches(result, actual)
-            if step["kind"] not in ("append", "read"):
-                assert driver.sample_transactions == requests, "metadata command accessed sample memory"
-    except BaseException as error:
-        wire.dump(document("media_case", value), OUTPUT / "failure.case.json")
-        wire.dump(expected, OUTPUT / "failure.expected.trace.json")
-        (OUTPUT / "failure.observed.json").write_text(json.dumps(
-            {"name": value["name"], "results": observed, "timing": timing, "error": str(error)}, indent=2) + "\n")
-        dut._log.error("failed case %s; replay artifacts in %s", value["name"], OUTPUT)
-        raise
-    finally:
-        driver.close()
-    return expected, timing
-
+async def read_equals(driver,view,values,*,position=0,count=None):
+    count=len(values)*2+3 if count is None else count
+    result=await completed(driver,'read',view=view,position=position,length=len(values),frames=count)
+    assert result['value']==dict(kind='samples',value=[values[(position+i)%len(values)] for i in range(count)])
 
 @cocotb.test()
 async def directed_media(dut):
-    replay = os.environ.get("MEDIA_CASE")
-    if replay:
-        payload = wire.load(replay)["payload"]
-        value = payload["value"]["case"] if payload["kind"] == "media_trace" else payload["value"]
-        await compare(dut, value, seed=SEED)
-        return
-    summary = []
-    for index, value in enumerate(directed(CAPACITIES)):
-        trace, timing = await compare(dut, value, seed=SEED+index, stalls=index != 0)
-        summary.append({"name": value["name"], "commands": len(timing), "cycles": timing})
-        if index < 2:
-            value = deepcopy(value)
-            # Restore shared ownership, holes, free-stack order and partial tails.
-            value["name"] += "-resumed"
-            value["media"] = trace["payload"]["value"]["results"][3]["media"]
-            value["steps"] = value["steps"][4:]
-            _, timing = await compare(dut, value, seed=SEED+index+100)
-            summary.append({"name": value["name"], "commands": len(timing), "cycles": timing})
-    (OUTPUT / "directed-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    cf=CAPACITIES[2]
+    driver=Driver(dut,CAPACITIES,SEED)
+    empty=case('ownership',cf,CAPACITIES[1],[])['media']
+    try:
+        await driver.load(empty)
+        assert (await completed(driver,'create'))['value']==dict(kind='view',value=0)
+        values=list(range(1,3*cf+1))
+        await completed(driver,'append',view=0,samples=values)
+        retained=values[cf-1:2*cf]
+        assert (await completed(driver,'slice',source=0,start=cf-1,frames=cf+1))['value']==dict(kind='view',value=1)
+        saved=await driver.snapshot()
+        await completed(driver,'slice',source=1,start=1,frames=cf-1)
+        await read_equals(driver,2,retained[1:cf])
+        await completed(driver,'remove',view=2)
+        await completed(driver,'clear',view=0)
+        await completed(driver,'append',view=0,samples=[MIN,MAX,-3,3]*(cf//4))
+        await read_equals(driver,1,retained,position=cf)
+        for bad in [command('read',view=2**32-1,position=0,length=1,frames=1),
+                    command('slice',source=0,start=2**64-1,frames=2**64-1),
+                    command('append',view=1,samples=[])]:
+            before=await driver.snapshot();result=await driver.command(bad)
+            assert result['status']['kind']=='failed'
+            assert result['media']==before,'refused operation changed ownership'
+        # Restore logical ownership through the configuration ports, not private cache state.
+        await driver.load(saved)
+        await read_equals(driver,0,values)
+        await read_equals(driver,1,retained)
+        while not (await completed(driver,'reclaim',view=1))['value']['value']:pass
+        await completed(driver,'remove',view=0)
+        await completed(driver,'remove',view=1)
+        snapshot=await driver.snapshot()
+        assert sorted(snapshot['free_chunks'])==list(range(3))
+        assert snapshot['views']==[None,None]
 
+        # A shared tail pins the only slot; refusal must be atomic.
+        single=deepcopy(empty);single['chunk_limit']=1
+        await driver.load(single)
+        await completed(driver,'create')
+        await completed(driver,'append',view=0,samples=list(range(cf-1)))
+        await completed(driver,'slice',source=0,start=1,frames=cf-2)
+        await completed(driver,'append',view=0,samples=[MAX])
+        before=await driver.snapshot()
+        result=await driver.command(command('append',view=0,samples=[MIN]))
+        assert result['status']==dict(kind='failed',value=dict(error='memory_full'))
+        assert result['media']==before
+        await completed(driver,'clear',view=0)
+        assert (await driver.command(command('append',view=0,samples=[MIN])))['status']['kind']=='failed'
+        await read_equals(driver,1,list(range(1,cf-1)))
+        await completed(driver,'remove',view=1)
+        await completed(driver,'append',view=0,samples=[MIN])
+        await read_equals(driver,0,[MIN])
+    finally:driver.close()
 
 @cocotb.test()
 async def randomized_media(dut):
-    count = int(os.environ["MEDIA_RANDOM_CASES"])
-    commands = 0
-    for index, value in enumerate(randomized(CAPACITIES, SEED, count)):
-        _, timing = await compare(dut, value, seed=SEED+index+1000)
-        commands += len(timing)
-    (OUTPUT / "random-summary.json").write_text(json.dumps({"seed": SEED, "cases": count, "commands": commands}, indent=2) + "\n")
-
+    cf=CAPACITIES[2];rng=random.Random(SEED)
+    for seed in range(int(os.environ['MEDIA_RANDOM_CASES'])):
+        driver=Driver(dut,CAPACITIES,SEED+seed)
+        try:
+            await driver.load(case('retained-random',cf,CAPACITIES[1],[])['media'])
+            await completed(driver,'create')
+            data=[rng.randint(MIN,MAX) for _ in range(2*cf+1)]
+            await completed(driver,'append',view=0,samples=data)
+            start=rng.randrange(cf);length=rng.randrange(1,cf+1)
+            await completed(driver,'slice',source=0,start=start,frames=length)
+            await completed(driver,'clear',view=0)
+            replacement=[rng.randint(MIN,MAX) for _ in range(cf)]
+            await completed(driver,'append',view=0,samples=replacement)
+            await read_equals(driver,1,data[start:start+length],position=rng.randrange(length))
+            await read_equals(driver,0,replacement)
+            await completed(driver,'remove',view=1)
+            await completed(driver,'clear',view=0)
+            await completed(driver,'append',view=0,samples=list(reversed(replacement)))
+            await read_equals(driver,0,list(reversed(replacement)))
+        finally:driver.close()
 
 @cocotb.test()
 async def media_protocol(dut):

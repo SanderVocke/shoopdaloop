@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a BRAM audio pipeline with the Rust state and job processors."""
+"""Check BRAM arithmetic vectors and hardware stream/reset protocols."""
 import argparse
 import os
 from pathlib import Path
@@ -24,7 +24,6 @@ def main():
     args = parser.parse_args()
     if args.random_cases < 0 or (args.case and args.config == "all"):
         parser.error("use nonnegative --random-cases and one --config for --case")
-    subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "fpga/state_processor/tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
@@ -47,7 +46,6 @@ def main():
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"AUDIO_CAPACITIES": ",".join(map(str, capacities)),
                                         "AUDIO_SEED": str(args.seed), "AUDIO_RANDOM_CASES": str(args.random_cases),
-                                        "AUDIO_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
                                         "AUDIO_OUTPUT": str(output), "AUDIO_CASE": str(args.case.resolve()) if args.case else ""})
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")

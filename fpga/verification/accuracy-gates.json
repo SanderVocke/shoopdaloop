@@ -1,0 +1,970 @@
+{
+  "format_version": 1,
+  "scope": "Stage 5 differential campaigns; repeated scenarios counted per campaign",
+  "campaigns": [
+    {
+      "name": "unify-stalled",
+      "scenarios": 44,
+      "quanta": 835,
+      "exact_output_samples": 27072,
+      "exact_media_samples": 10432,
+      "float_accuracy": [
+        {
+          "name": "mono-record-stop-play-wrap-q32",
+          "classification": "bounded",
+          "samples": 352,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 3.5942953178616e-08,
+          "signed_bias": -1.3546510176225142e-09,
+          "drift_first_to_last_quantum": -3.725290298461914e-09,
+          "max_derived_error_budget": 5.960464477539063e-08,
+          "worst": {
+            "path": "quanta[3].outputs.channels[0][0]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "ordered-fan-in-saturating",
+          "classification": "intentional_clipping",
+          "samples": 96,
+          "max_abs": 72.00000005960464,
+          "rms": 72.00000005960464,
+          "signed_bias": -72.00000005960464,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 5.102157876990532e-05,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 72.00000005960464
+          },
+          "saturating_operations": 96,
+          "clipping_quanta": [
+            {
+              "counts": {
+                "clipped_mixes": 32,
+                "clipped_negations": 0,
+                "clipped_products": 0,
+                "clipped_subtractions": 0,
+                "first_clip_operation": 32,
+                "mixes": 96,
+                "negations": 0,
+                "products": 0,
+                "subtractions": 0
+              },
+              "frame": 0
+            },
+            {
+              "counts": {
+                "clipped_mixes": 32,
+                "clipped_negations": 0,
+                "clipped_products": 0,
+                "clipped_subtractions": 0,
+                "first_clip_operation": 32,
+                "mixes": 96,
+                "negations": 0,
+                "products": 0,
+                "subtractions": 0
+              },
+              "frame": 32
+            },
+            {
+              "counts": {
+                "clipped_mixes": 32,
+                "clipped_negations": 0,
+                "clipped_products": 0,
+                "clipped_subtractions": 0,
+                "first_clip_operation": 32,
+                "mixes": 96,
+                "negations": 0,
+                "products": 0,
+                "subtractions": 0
+              },
+              "frame": 64
+            }
+          ],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "ordered-fan-in-cancelling",
+          "classification": "bounded",
+          "samples": 96,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 5.102157876990532e-05,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "successive-gains-keep-intermediate-rounding",
+          "classification": "bounded",
+          "samples": 160,
+          "max_abs": 7.82310962677002e-08,
+          "rms": 5.526556704506658e-08,
+          "signed_bias": -1.7412821762263774e-08,
+          "drift_first_to_last_quantum": -6.1409082263708115e-09,
+          "max_derived_error_budget": 8.10597616724768e-08,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][7]",
+            "absolute_error": 7.82310962677002e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "stereo-capture-retake-retains-old-export",
+          "classification": "bounded",
+          "samples": 1088,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "live-recording-prefix-is-immutable",
+          "classification": "bounded",
+          "samples": 384,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "shared-initial-ranges-survive-retake-and-slot-reuse",
+          "classification": "bounded",
+          "samples": 448,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.436467300663935e-08,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "absolute-time-rounding-and-same-frame-supersession",
+          "classification": "bounded",
+          "samples": 448,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "cancel-before-absolute-delivery",
+          "classification": "bounded",
+          "samples": 320,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "source-chain-clock-order-is-independent-of-audio-order",
+          "classification": "bounded",
+          "samples": 608,
+          "max_abs": 1.1920928955078125e-07,
+          "rms": 3.142473808973898e-08,
+          "signed_bias": -4.8036638059114155e-09,
+          "drift_first_to_last_quantum": -1.4901161193847656e-08,
+          "max_derived_error_budget": 5.847451513970845e-07,
+          "worst": {
+            "path": "quanta[2].outputs.channels[0][12]",
+            "absolute_error": 1.1920928955078125e-07
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "self-sync",
+          "classification": "bounded",
+          "samples": 512,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "legal-sync-cycle",
+          "classification": "bounded",
+          "samples": 640,
+          "max_abs": 1.1920928955078125e-07,
+          "rms": 1.2467205919833117e-08,
+          "signed_bias": -7.450580596923829e-10,
+          "drift_first_to_last_quantum": 1.4901161193847656e-08,
+          "max_derived_error_budget": 5.847451513970845e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][12]",
+            "absolute_error": 1.1920928955078125e-07
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "unread-completions-retain-admission-credit",
+          "classification": "bounded",
+          "samples": 224,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "stale-loop-generation-is-refused",
+          "classification": "bounded",
+          "samples": 128,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-0",
+          "classification": "bounded",
+          "samples": 832,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-1",
+          "classification": "bounded",
+          "samples": 896,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-2",
+          "classification": "bounded",
+          "samples": 800,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-3",
+          "classification": "bounded",
+          "samples": 800,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-4",
+          "classification": "bounded",
+          "samples": 1088,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 7.177042959938262e-09,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-5",
+          "classification": "bounded",
+          "samples": 1568,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-6",
+          "classification": "bounded",
+          "samples": 928,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-7",
+          "classification": "bounded",
+          "samples": 1088,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 2.491689065932701e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-8",
+          "classification": "bounded",
+          "samples": 832,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-9",
+          "classification": "bounded",
+          "samples": 1600,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 2.3444387385508235e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-10",
+          "classification": "bounded",
+          "samples": 1088,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 1.8070312219584954e-09,
+          "signed_bias": -5.478368085973403e-11,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.2459164366873665e-07,
+          "worst": {
+            "path": "quanta[19].outputs.channels[0][12]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-11",
+          "classification": "bounded",
+          "samples": 896,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 1.9912514233024746e-09,
+          "signed_bias": -6.652304104396275e-11,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.2442776409216094e-07,
+          "worst": {
+            "path": "quanta[18].outputs.channels[0][31]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-12",
+          "classification": "bounded",
+          "samples": 896,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.1735701832549239e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-13",
+          "classification": "bounded",
+          "samples": 1152,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 7.024474751815672e-09,
+          "signed_bias": 1.034802860683865e-10,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 3.500311007560529e-07,
+          "worst": {
+            "path": "quanta[7].outputs.channels[0][3]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-14",
+          "classification": "bounded",
+          "samples": 1024,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 1.1175870895385742e-08,
+          "signed_bias": 2.3283064365386963e-10,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 3.500311007560529e-07,
+          "worst": {
+            "path": "quanta[7].outputs.channels[0][7]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-15",
+          "classification": "bounded",
+          "samples": 896,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-16",
+          "classification": "bounded",
+          "samples": 1344,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 7.1338561724587635e-09,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-17",
+          "classification": "bounded",
+          "samples": 864,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 1.2824877587316489e-08,
+          "signed_bias": -1.655684577094184e-09,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 2.3457894826606207e-07,
+          "worst": {
+            "path": "quanta[9].outputs.channels[0][2]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-18",
+          "classification": "bounded",
+          "samples": 1120,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.1735701832549239e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-19",
+          "classification": "bounded",
+          "samples": 864,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-20",
+          "classification": "bounded",
+          "samples": 864,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.1735701832549239e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-21",
+          "classification": "bounded",
+          "samples": 1152,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-22",
+          "classification": "bounded",
+          "samples": 1600,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.1558722690097056e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-23",
+          "classification": "bounded",
+          "samples": 896,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.1722192994056968e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-24",
+          "classification": "bounded",
+          "samples": 1056,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 6.613324318815727e-09,
+          "signed_bias": -5.6443792400938093e-11,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 3.503012775420021e-07,
+          "worst": {
+            "path": "quanta[20].outputs.channels[0][9]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-25",
+          "classification": "bounded",
+          "samples": 1280,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 7.1698451620250125e-09,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-26",
+          "classification": "bounded",
+          "samples": 992,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 1.1735701832549239e-07,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-27",
+          "classification": "bounded",
+          "samples": 1280,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-28",
+          "classification": "bounded",
+          "samples": 1280,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "seed-20261112-29",
+          "classification": "bounded",
+          "samples": 1024,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 7.1698451620250125e-09,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        }
+      ]
+    },
+    {
+      "name": "unify-long",
+      "scenarios": 3,
+      "quanta": 1289,
+      "exact_output_samples": 41248,
+      "exact_media_samples": 576,
+      "float_accuracy": [
+        {
+          "name": "mono-record-stop-play-wrap-q32",
+          "classification": "bounded",
+          "samples": 352,
+          "max_abs": 5.960464477539063e-08,
+          "rms": 3.5942953178616e-08,
+          "signed_bias": -1.3546510176225142e-09,
+          "drift_first_to_last_quantum": -3.725290298461914e-09,
+          "max_derived_error_budget": 5.960464477539063e-08,
+          "worst": {
+            "path": "quanta[3].outputs.channels[0][0]",
+            "absolute_error": 5.960464477539063e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "long-readonly-playback-and-interrupted-ramps",
+          "classification": "bounded",
+          "samples": 33280,
+          "max_abs": 1.1920928955078125e-07,
+          "rms": 3.076807565402231e-08,
+          "signed_bias": 4.2492456049540825e-10,
+          "drift_first_to_last_quantum": -9.313225746154785e-10,
+          "max_derived_error_budget": 1.8317284407445293e-06,
+          "worst": {
+            "path": "quanta[155].outputs.channels[0][2]",
+            "absolute_error": 1.1920928955078125e-07
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        },
+        {
+          "name": "long-repeated-ramp-interruption",
+          "classification": "bounded",
+          "samples": 8192,
+          "max_abs": 6.53672032058239e-08,
+          "rms": 3.3055085815613926e-08,
+          "signed_bias": -5.854893680989903e-09,
+          "drift_first_to_last_quantum": -1.3437784218695015e-09,
+          "max_derived_error_budget": 4.03703278456909e-07,
+          "worst": {
+            "path": "quanta[248].outputs.channels[0][27]",
+            "absolute_error": 6.53672032058239e-08
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        }
+      ]
+    },
+    {
+      "name": "unify-odd",
+      "scenarios": 1,
+      "quanta": 10,
+      "exact_output_samples": 320,
+      "exact_media_samples": 64,
+      "float_accuracy": [
+        {
+          "name": "alternate-geometry-q32-chunk8",
+          "classification": "bounded",
+          "samples": 384,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        }
+      ]
+    },
+    {
+      "name": "unify-tiny-word",
+      "scenarios": 1,
+      "quanta": 10,
+      "exact_output_samples": 10,
+      "exact_media_samples": 2,
+      "float_accuracy": [
+        {
+          "name": "alternate-geometry-q1-chunk1",
+          "classification": "bounded",
+          "samples": 12,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        }
+      ]
+    },
+    {
+      "name": "unify-q16",
+      "scenarios": 1,
+      "quanta": 10,
+      "exact_output_samples": 160,
+      "exact_media_samples": 32,
+      "float_accuracy": [
+        {
+          "name": "alternate-geometry-q16-chunk16",
+          "classification": "bounded",
+          "samples": 192,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        }
+      ]
+    },
+    {
+      "name": "unify-q64",
+      "scenarios": 1,
+      "quanta": 10,
+      "exact_output_samples": 640,
+      "exact_media_samples": 128,
+      "float_accuracy": [
+        {
+          "name": "alternate-geometry-q64-chunk32",
+          "classification": "bounded",
+          "samples": 768,
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "signed_bias": 0.0,
+          "drift_first_to_last_quantum": 0.0,
+          "max_derived_error_budget": 0.0,
+          "worst": {
+            "path": "quanta[0].outputs.channels[0][0]",
+            "absolute_error": 0.0
+          },
+          "saturating_operations": 0,
+          "clipping_quanta": [],
+          "float_samples_outside_fixed_range": []
+        }
+      ]
+    }
+  ]
+}

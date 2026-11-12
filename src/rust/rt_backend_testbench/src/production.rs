@@ -34,6 +34,8 @@ pub trait OracleSample: Sample {
     const NUMERIC: wire::Numeric;
     fn from_raw(value: i32) -> Self;
     fn samples(channels: Vec<Vec<Self>>) -> wire::Samples;
+    fn begin_quantum(_frame: u64) {}
+    fn end_quantum() {}
 }
 impl OracleSample for Q824 {
     const NUMERIC: wire::Numeric = wire::Numeric::Q824;
@@ -491,12 +493,23 @@ fn state(value: loops::State) -> wire::LoopState {
         repeat_sync: value.repeat_sync,
     }
 }
+fn error_name(error: impl std::fmt::Debug) -> String {
+    let source = format!("{error:?}");
+    let mut result = String::new();
+    for (i, c) in source.chars().enumerate() {
+        if c.is_uppercase() && i != 0 {
+            result.push('_');
+        }
+        result.push(c.to_ascii_lowercase());
+    }
+    result
+}
 fn outcome(value: loops::Outcome) -> String {
     match value {
         loops::Outcome::Applied { .. } => "applied".into(),
         loops::Outcome::Superseded { .. } => "superseded".into(),
         loops::Outcome::Cancelled { .. } => "cancelled".into(),
-        loops::Outcome::Failed { reason, .. } => format!("failed:{reason:?}"),
+        loops::Outcome::Failed { reason, .. } => format!("failed:{}", error_name(reason)),
     }
 }
 struct Observer<S: OracleSample> {
@@ -518,12 +531,30 @@ impl<S: OracleSample> Observer<S> {
                 Err(error) => format!("rejected:{error:?}"),
                 Ok(()) => match execution.operation_result {
                     Some(domain::Reply::Transition(c)) => outcome(c.outcome),
-                    Some(domain::Reply::Failed(error)) => format!("failed:{error:?}"),
+                    Some(domain::Reply::Failed(error)) => format!(
+                        "failed:{}",
+                        match error {
+                            domain::Failure::Timeline(e) => error_name(e),
+                            domain::Failure::Runtime(e) => error_name(e),
+                        }
+                    ),
                     Some(domain::Reply::Export { media, .. }) => {
                         self.exports.push((name.clone(), media));
                         "applied".into()
                     }
-                    Some(domain::Reply::Cancelled { .. }) => "applied".into(),
+                    Some(domain::Reply::Cancelled { .. }) => {
+                        if matches!(
+                            execution.action,
+                            rt_runtime::schedule::Action::Planner {
+                                operation: domain::Operation::Cancel { .. },
+                                ..
+                            }
+                        ) {
+                            "applied".into()
+                        } else {
+                            "cancelled".into()
+                        }
+                    }
                     Some(domain::Reply::Done) | None => "applied".into(),
                     Some(reply) => return Err(format!("unexpected production reply {reply:?}")),
                 },
@@ -560,9 +591,25 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
         media: Vec::new(),
     };
     for step in &scenario.steps {
+        let mut admissions = Vec::new();
         while let Some(completion) = control.try_completion() {
             if let rt_runtime::transport::Outcome::Rejected(error) = completion.outcome {
-                return Err(format!("production command admission rejected: {error:?}"));
+                let name = observer
+                    .names
+                    .get(&completion.sequence.0)
+                    .ok_or("unknown rejected command")?
+                    .clone();
+                let requested = match completion.request {
+                    rt_runtime::executor::Command::Schedule { at, .. } => at.0,
+                    _ => return Err("unexpected admission refusal".into()),
+                };
+                admissions.push(wire::ActionResult {
+                    name,
+                    requested,
+                    delivered: None,
+                    terminal: completion.frame.0,
+                    outcome: format!("rejected:{}", error_name(error)),
+                });
             }
         }
         let mut outcomes = if step.collect_completed {
@@ -570,8 +617,23 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
         } else {
             Vec::new()
         };
+        outcomes.extend(admissions);
         let frame = runtime.next_frame();
         for action in &step.actions {
+            if let wire::Action::Export {
+                target, selection, ..
+            } = action
+            {
+                let state = checked(runtime.planner().resolver().state(loop_id(*target)?))?;
+                if (state.mode == loops::Mode::Recording)
+                    != matches!(selection, wire::Selection::Recording)
+                {
+                    return Err("unsupported export cut: use recording selection while recording, and playback/latest at a completed-take boundary".into());
+                }
+                if state.mode != loops::Mode::Recording && state.content_length == 0 {
+                    return Err("unsupported export cut: no published content".into());
+                }
+            }
             let (name, command) = match action {
                 wire::Action::Transition {
                     name,
@@ -656,6 +718,7 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
             .collect();
         let mut outputs =
             vec![vec![S::ZERO; scenario.quantum as usize]; scenario.output_ports as usize];
+        S::begin_quantum(frame.0);
         checked(
             runtime.process(
                 AudioBlock {
@@ -673,6 +736,7 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
                 },
             ),
         )?;
+        S::end_quantum();
         let states = scenario
             .loops
             .iter()
@@ -759,7 +823,9 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
         if checked(planner.resolver().state(target))?.mode == loops::Mode::Recording {
             continue;
         }
-        if let Some(id) = checked(planner.media_ledger().latest(target))? {
+        let media = checked(planner.media_ledger().latest(target))?
+            .or(checked(planner.media_ledger().playback(target))?);
+        if let Some(id) = media {
             let view = checked(planner.media_ledger().view(id))?;
             if let Some(source) = view.audio {
                 result.media.push(read_media::<S>(
@@ -772,7 +838,22 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
     }
     // A final collection is an explicit host observation after the final quantum;
     // it cannot affect any processing/admission in the scenario.
-    let final_outcomes = observer.collect(&mut control)?;
+    let mut final_outcomes = observer.collect(&mut control)?;
+    while let Some(completion) = control.try_completion() {
+        if let rt_runtime::transport::Outcome::Rejected(error) = completion.outcome {
+            let requested = match completion.request {
+                rt_runtime::executor::Command::Schedule { at, .. } => at.0,
+                _ => return Err("unexpected final admission refusal".into()),
+            };
+            final_outcomes.push(wire::ActionResult {
+                name: observer.names[&completion.sequence.0].clone(),
+                requested,
+                delivered: None,
+                terminal: completion.frame.0,
+                outcome: format!("rejected:{}", error_name(error)),
+            });
+        }
+    }
     if let Some(last) = result.quanta.last_mut() {
         last.outcomes.extend(final_outcomes);
         last.outcomes.sort_by(|a, b| a.name.cmp(&b.name));
@@ -785,6 +866,7 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
         }
     }
     checked(planner.cleanup(&mut resources))?;
+    result.media.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(result)
 }
 fn read_media<S: OracleSample>(

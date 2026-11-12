@@ -100,3 +100,45 @@ fn schema_documents_roundtrip_and_reject_unknown_duplicate_or_lossy_inputs() {
     bad.nodes.pop();
     assert!(bad.validate().is_err());
 }
+
+#[shoop_test]
+fn audit_policy_is_bit_exact_and_counts_real_saturations_without_another_executor() {
+    let scenario = scenario();
+    let plain = production::run::<rt_runtime::Q824>(&scenario).unwrap();
+    let audited = crate::audit::run(&scenario).unwrap();
+    assert_eq!(audited.result, plain);
+    assert_eq!(audited.quanta.len(), scenario.steps.len());
+    assert!(audited
+        .quanta
+        .iter()
+        .all(|q| q.counts.first_clip_operation.is_none()));
+    let mut clip: Scenario = serde_json::from_str(include_str!(
+        "../../../../fpga/verification/scenarios/gain-ramps.json"
+    ))
+    .unwrap();
+    clip.nodes[0].operation = NodeKind::Gain {
+        channels: 1,
+        initial: 2 << 24,
+    };
+    for step in &mut clip.steps {
+        step.actions.clear();
+        step.inputs[0].fill(100 << 24);
+    }
+    let plain = production::run::<rt_runtime::Q824>(&clip).unwrap();
+    let audited = crate::audit::run(&clip).unwrap();
+    assert_eq!(audited.result, plain);
+    for (i, q) in audited.quanta.iter().enumerate() {
+        assert_eq!(q.frame, i as u64 * 32);
+        assert_eq!(q.counts.clipped_products, 32);
+        assert!(q.counts.first_clip_operation.is_some());
+    }
+}
+
+#[shoop_test]
+fn float_result_codec_refuses_nonfinite_and_overflowing_samples() {
+    let invalid = Samples::Float(vec![vec![f32::INFINITY]]);
+    assert!(serde_json::to_string(&invalid).is_err());
+    assert!(
+        serde_json::from_str::<Samples>(r#"{"encoding":"float","channels":[[1e39]]}"#).is_err()
+    );
+}
