@@ -23,8 +23,8 @@ The agreed [P16 contract](docs/native_session_recovery/p16-client-scripts.md) ke
 script source, resources and execution client-owned. The client composes the saved
 project file from a backend musical capture and its own script additions, and sends
 only musical data on load. Backend reattachment recovers music, not another
-client's scripts. This ownership decision is accepted; P16 file/resource workflows
-remain unimplemented.
+client's scripts. Bounded client archive workers and prepared, stopped installation
+implement this boundary; P16 qualification is tracked in the implementation plan.
 
 The RT engine is the sole production stack. Old application/engine/worklet code is
 isolated as development/reference evidence. Temporary feature gaps and their retained

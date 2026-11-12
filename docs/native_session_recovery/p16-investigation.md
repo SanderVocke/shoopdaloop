@@ -4,7 +4,8 @@ Investigation baseline: `origin/feat/backend-replacement` at `9aee7496`;
 production comparison: `origin/master` at `9134eb20`. Updated on 2026-11-12 after
 the user approved client ownership of both script data and execution. This
 supersedes the original service-owned data proposal and its implementation steps.
-No feature implementation or Rust/browser acceptance was performed. P16 stays OPEN.
+This document records the pre-implementation investigation. The implementation
+now exists; its current verification and remaining gates are recorded in the plan.
 
 The agreed requirements are in the [P16 contract](p16-client-scripts.md); execution
 is tracked in [PLAN_P16_CLIENT_SCRIPT_PERSISTENCE.md](../../PLAN_P16_CLIENT_SCRIPT_PERSISTENCE.md).
@@ -25,7 +26,7 @@ crash recovery and backend attachment storage are separate work.
 
 Paths below are relative to `src/rust/` on the replacement branch unless noted.
 
-| Area | Existing code and required adaptation |
+| Area | Investigation baseline and required adaptation |
 | --- | --- |
 | Production oracle | `origin/master:src/rust/shoop_app/src/lib.rs` contains `scripts_export_exact_source_and_convert_session_ownership`, `filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal`, and `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`. Retained in `shoop_app_reference/src/lib.rs`. Port resource and preservation assertions, replacing automatic load execution with explicit starts. |
 | Conversion | Reference `convert_script_kind` captures companions off the actor and checks source/resource generation before completion. Replacement `shoop_app_client/src/runtime.rs` calls `ScriptManager::convert_kind` directly, which can change local ownership and create a source-only bundle without the complete filesystem capture workflow. Restore bounded local capture, not a service command. |

@@ -14,7 +14,8 @@ before staging a musical load. The service owns neither a script catalog nor
 script-resource storage. Reattachment does not transfer scripts from the previous
 client; their unsaved recovery is outside backend recovery. See the
 [P16 contract](p16-client-scripts.md) for confirmed-load reconciliation and the
-explicit-start rule. This is a contract change; P16 implementation remains open.
+explicit-start rule. The client implementation follows this boundary; completion
+qualification is tracked in the P16 plan.
 
 The output-bus restoration follows this ownership split: the service retains bus,
 channel and port identities, logical order, display order and admitted results

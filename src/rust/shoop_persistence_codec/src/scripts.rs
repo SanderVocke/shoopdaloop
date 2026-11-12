@@ -1,23 +1,31 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Result};
 use shoop_script_resources::session::{SessionScriptData, SessionScripts};
 use shoop_session::{ScriptDocument, SessionBundle};
 
 pub fn take(bundle: &mut SessionBundle) -> Result<SessionScripts> {
+    ensure!(
+        bundle.scripts.len() == bundle.document.scripts.len(),
+        "script resource owners do not match the document"
+    );
     let scripts = SessionScripts(
         bundle
             .document
             .scripts
             .iter()
             .map(|script| {
+                let resources = bundle
+                    .scripts
+                    .get(&script.id)
+                    .ok_or_else(|| anyhow!("missing script resource bundle"))?;
+                ensure!(
+                    resources.entrypoint.as_str() == script.entrypoint,
+                    "script entrypoint does not match its resource bundle"
+                );
                 Ok(SessionScriptData {
                     document_id: script.id,
                     name: script.name.clone(),
                     enabled: script.enabled,
-                    bundle: bundle
-                        .scripts
-                        .get(&script.id)
-                        .cloned()
-                        .ok_or_else(|| anyhow!("missing script resource bundle"))?,
+                    bundle: resources.clone(),
                 })
             })
             .collect::<Result<Vec<_>>>()?,
@@ -44,6 +52,10 @@ pub fn validate(scripts: &SessionScripts) -> Result<()> {
 }
 
 pub fn attach(bundle: &mut SessionBundle, scripts: SessionScripts) -> Result<()> {
+    ensure!(
+        bundle.document.scripts.is_empty() && bundle.scripts.is_empty(),
+        "musical capture already contains script additions"
+    );
     scripts.validate().map_err(|error| anyhow!(error))?;
     for script in scripts.0 {
         bundle.document.scripts.push(ScriptDocument {
@@ -114,6 +126,20 @@ pub(crate) mod tests {
                 .unwrap(),
             ),
         }])
+    }
+    #[shoop_test]
+    fn direct_split_refuses_orphaned_resources_or_a_mismatched_entrypoint() {
+        let mut bundle = SessionBundle::new(SessionDocument::empty(1000));
+        attach(&mut bundle, fixture()).unwrap();
+        bundle
+            .scripts
+            .insert(999, Arc::clone(bundle.scripts.get(&77).unwrap()));
+        assert!(take(&mut bundle).is_err());
+        assert_eq!(bundle.scripts.len(), 2);
+        bundle.scripts.remove(&999);
+        bundle.document.scripts[0].entrypoint = "different.lua".into();
+        assert!(take(&mut bundle).is_err());
+        assert_eq!(bundle.document.scripts.len(), 1);
     }
     #[shoop_test]
     fn complete_archives_split_scripts_without_executing_or_uploading_them() {

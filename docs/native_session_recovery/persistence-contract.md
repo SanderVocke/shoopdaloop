@@ -48,7 +48,7 @@ uses fresh identities and stopped loops; old exports retain their original data.
 | Core composites | Preserve authored identities, original timing basis, frozen geometry, nested references, explicit sync and repeat intent; load stopped with fresh runtime identities | See the [composite contract](composites.md) and [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md); captures exclude pending candidates and refuse active/scheduled/future recording |
 | Built-in FX/OxiSynth, External dry/wet, bus FX and dependent composite events | Preserve processor state/mappings, recorded settings, role media and authored modes | Supported under P03/P06/P08/P17 and the built-in portion of P07; prepare privately and publish atomically, without flattening or dropping state |
 | Carla and general latency/take controls | Refuse complete documents requiring unavailable capabilities | Remaining storage, capture, load and applicable export work belongs to P07/P09/P10 |
-| Session-owned scripts/resources | Production file workflows currently refuse these documents; P16 restores client-side archive composition and extraction | [P16 contract](p16-client-scripts.md): source, resources and preferences stay client-owned; only musical data reaches the service; loaded scripts remain stopped |
+| Session-owned scripts/resources | Bounded client archive composition and extraction preserve source and supported Markdown/PNG resources | [P16 contract](p16-client-scripts.md): source, resources and preferences stay client-owned; only musical data reaches the service; loaded scripts remain stopped |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
 
@@ -58,7 +58,7 @@ The agreed [P16 contract](p16-client-scripts.md) distinguishes the live musical
 session from the saved file. The client combines an immutable musical capture with
 a fixed copy of its script definitions/resources for save/store, and validates and
 retains those additions locally on load. Only the musical portion enters service
-staging. Existing production refusals remain until this client path is implemented.
+staging. Archive workers compile Lua for syntax validation without executing it.
 
 Prepare local script replacements before submitting musical commit; install them
 stopped only after confirmed success, preserving machine-owned scripts. Failed or
@@ -83,6 +83,10 @@ for archive, worker and client workflow changes.
 | Input/output file | 512 MiB compressed/encoded bytes; reject before decoding/output allocation beyond this budget |
 | Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; zero-or-more ordinary buses within the negotiated pool (at most eight buses of eight channels), and supported routes |
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
+| Client script records/resources | 256 scripts, 65,536 resources total, 4096-byte names/paths and 8 MiB script descriptor/path accounting. These resources do not consume musical transfer objects |
+| Script bytes | 16 MiB/file, 64 MiB/script, 256 MiB aggregate; 10,000 files/script and 100,000 filesystem scan entries |
+| Local script preparation | Copy at most 256 KiB of UTF-8 source per client poll. Reserve record identities before musical staging; install prepared records stopped after exact confirmation |
+| Script conversion workers | Two process-wide native workers and eight queued jobs; at most eight pending conversions/client. Cancellation and source generation/project fences discard stale results |
 | Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
@@ -93,15 +97,16 @@ for archive, worker and client workflow changes.
 | Engine upload window | At most 64 queued writes when WIDE_CONTENT_UPLOAD is advertised, otherwise eight; cap the window by reliable credits. Both use a fixed pool of 32 prepared runtime buffers. Chunks divide a resource page and are at most 1024 bytes. Preparation adds at most 32 KiB of upload copy allowance per callback, separately from existing render/read reservations, and reserves validation for one MIDI chunk. Queue depth alone does not change these finite budgets |
 | Adapter preparation | Validate ≤256 KiB per pump before issuing engine preparation; one ≤1 MiB MIDI packet is atomic. Cache byte counts only with a proof retaining the immutable content. Capture checks remaining aggregate capacity before allocating each medium |
 | Browser progression | Main-thread service/client pump on engine replies, every 4 ms and on UI turns, sharing one elapsed-time clock. Each turn retains the existing record/media work bounds; dropping the runtime clears the interval |
-| Browser codec transport | Sixteen in-flight worker envelopes, each ≤64 KiB. Image envelopes contain at most sixteen bounded persistence parts; send/receive media totals at most 256 KiB per poll. Cooperative image validation and assembly each step at most 256 KiB; codecs remain in the dedicated worker |
+| Browser codec transport | Sixteen in-flight worker envelopes, each ≤64 KiB. Image envelopes contain at most sixteen bounded persistence parts; client-only resource chunks are at most 16 KiB. Send/receive media totals at most 256 KiB per poll. Cooperative image validation and assembly each step at most 256 KiB; codecs remain in the dedicated worker |
 | Concurrent host persistence work | One staging or capture job; normal controls/snapshots continue with bounded pump work |
 | Media-read handoff | Bulk reads wait for all previously queued read cancellations to finish. Ordinary commands continue while cancellation retires old exports; a later cancellation cannot consume a new view's read |
 | Client file input | One platform reader plus one queued raw input, each ≤512 MiB; one codec task. Cancellation fences callbacks and checks file chunks. Browser URL cancellation wakes the pending future; a native reader keeps its slot until it exits or the HTTP timeout fires. A new input refuses while that slot is closing |
-| Archive expansion | At most 4097 entries and `5 × 256 MiB + 8 MiB` expanded bytes; metadata manifests remain 8 MiB. The factor allows decimal MIDI JSON overhead. Check declarations before extraction and actual shapes/counts while decoding |
+| Archive expansion | At most 69,633 entries (4096 musical objects, one manifest and 65,536 client resources) and `6 × 256 MiB + 8 MiB` expanded bytes; metadata manifests remain 8 MiB. Five byte allowances cover musical encoding/decimal MIDI JSON, and one covers client resources. Check declarations before extraction and actual shapes/counts while decoding |
 | Native codec lifetime | One active task per client; process-wide pool of two workers with eight queued jobs. Dropped clients cancel queued work and discard draining results. Overload refuses explicitly |
 | Platform output | One outstanding writer/download per UI root, retained across runtime changes; task IDs remain unique across client runtimes and completion is client-local even after backend loss |
 | Mutation completion | Connected load/import/New Session tasks wait for the confirmed state revision before reporting readiness. A known committed result remains successful after connection loss, with a reconnect diagnostic; an unconfirmed operation is never replayed |
 | Codec scratch | Per codec job: Retain at most one 512 MiB input/output, 256 MiB decoded image, 256 MiB conversion image and the expanded-byte ceiling of encoded payload scratch. Exact MIDI JSON streams from ZIP into charged packet/event builders; JSON strings are capped at 8 MiB. PCM extraction uses at most one additional 256 MiB entry; WAV deinterleaves directly into its final channels |
+| Client script memory at replacement | Old records and prepared candidate each retain at most 256 MiB immutable resources, 256 MiB source strings and 256 MiB derived header help, separately from codec/media scratch and running VMs. Arc sharing avoids copying retained bundles on save. Browser worker handoff may temporarily retain another bounded resource copy in each realm; these are explicit finite per-owner allowances, not a single 256 MiB process-wide limit |
 | Source audio shape | At most 256 channels before mapping to the current core; empty and wider sources refuse explicitly. Source labels/roles share the metadata budget |
 | MIDI file decoding | Packet ≤1 MiB, event ≤1 million, initial packets ≤16,384 per channel, all charged before vector growth. Lazy SMF parsing also bounds source tracks and meta events; tempo lookups use a sorted cumulative map |
 | RT content and activation | Preflight currently free pages/leases/indexes, logical/physical slots, graph/topology candidates and reliable receipts; count retained old content and capture pins |
@@ -166,8 +171,8 @@ normal service work or silently restart against newer content.
   mutation. They are not omitted from save or stripped during load. P16's client
   section is retained separately from musical data, rather than discarded because
   it is absent from the service schema. Unsupported script execution does not
-  justify dropping a valid supported-format bundle. Script persistence remains
-  open under the client-owned contract above. Audio/MIDI click generation
+  justify dropping a valid supported-format bundle. Script persistence follows
+  the client-owned contract above. Audio/MIDI click generation
   and insertion use the restored bounded import path. System/Master audio preview
   is complete under P15; see the [preview contract](preview.md).
 

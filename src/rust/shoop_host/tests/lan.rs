@@ -31,7 +31,20 @@ impl Drop for Host {
 fn host(ip: IpAddr) -> Host {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("config.json");
-    std::fs::write(&config, b"{}").unwrap();
+    let settings = shoop_host::config::HostConfig {
+        settings: shoop_host::config::HostSettings {
+            processors: shoop_app_api::ProcessorSettings::disabled(),
+            pools: shoop_app_api::NewEnginePools {
+                tracks: 3,
+                loops: 20,
+                loop_memory_mb: 16,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    std::fs::write(&config, serde_json::to_vec(&settings).unwrap()).unwrap();
 
     let path = root.path().join("profile.json");
     let mut child = Command::new(env!("CARGO_BIN_EXE_shoop_host"))

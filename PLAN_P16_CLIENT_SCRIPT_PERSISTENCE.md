@@ -148,7 +148,7 @@ Depends on Stage 1.
 - [x] Update `shoop_persistence_codec/src/{codec,document}.rs` to join additions to
   captured music and return them separately from prepared musical images. Audit
   conversion and all convenience entry points to prevent silent stripping.
-- [ ] Extend `worker.rs` and browser worker glue with segmented client-only additions
+- [x] Extend `worker.rs` and browser worker glue with segmented client-only additions
   transfer, cancellation, stale-handle fencing and cleanup. Keep Lua validation and
   VM installation at their client owners.
 
@@ -284,3 +284,11 @@ the selected platform plus browser/portable paths affected by P16.
 - Rust 1.100 compilation passes for native and Wasm; the resource crate also passed
   its five alloc-only tests. Full native, real-browser and CI validation remain
   pending; P16 is not closed.
+
+- Implementation milestone `d6bd336e` is pushed. Documentation and a defensive
+  direct-codec owner/entrypoint check follow during final qualification.
+- A 10-trial baseline of the existing LAN startup test failed six times and passed
+  four times. Transport/recovery fixtures now reserve three tracks and twenty
+  loops; LAN fixtures disable unused DSP. Product defaults and deadlines remain
+  unchanged. This qualification adjustment avoids allocating a default-sized host
+  for transport scenarios that create at most one extra track.

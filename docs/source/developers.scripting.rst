@@ -13,11 +13,11 @@ connections, queued output, and script-owned dialogs.
 
 Script source, resources and execution belong to the client. A script included in
 a session is embedded in that client's saved project file; it is not stored on
-the backend or transferred to another client on attachment. The agreed P16
-contract in ``docs/native_session_recovery/p16-client-scripts.md`` restores the
-file/resource workflows below, which remain open on the replacement backend.
-The client will combine its scripts with a backend musical capture when saving,
-and retain scripts locally while sending only musical data when loading. Loaded
+the backend or transferred to another client on attachment. The P16
+contract in ``docs/native_session_recovery/p16-client-scripts.md`` defines the
+file/resource workflows below.
+The client combines its scripts with a backend musical capture when saving,
+and retains scripts locally while sending only musical data when loading. Loaded
 scripts remain stopped until explicitly started, even when saved as enabled.
 
 Every script must make ``shoop_announce_api_version(major, minor)`` its first
@@ -49,7 +49,15 @@ example, user, or run-once script can be included in the session; this transfers
 the current source plus supported Markdown/PNG companions to atomic session-bundle ownership. A session script can instead be converted to run once or removed from the session; converting it back reuses the in-memory bundle.
 
 Built-ins are discovered recursively by normalized relative identity. New identities are disabled until explicitly enabled. The Scripts tab can rescan after additions, changes, removals, or a location change. Persistent changes apply after **Save**; runtime Stop,
-Restart, and Reload do not alter the settings draft. Bundled scripts in a ``.shoop`` session are resource/hash/syntax-checked before transactional session commit and round-trip without machine paths.
+Restart, and Reload do not alter the settings draft. Bundled scripts in a ``.shoop`` session are resource/hash/syntax-checked before musical session commit and round-trip without machine paths. Local replacement records are prepared before that commit and installed stopped after its exact success is confirmed.
+
+A surviving client reconnects to the same host with its script data and pending
+load candidate retained. An unknown outcome keeps scripts inactive and never
+replays the load. If another client replaces the musical project, retained session
+scripts cannot be started or saved with that project until the user loads a
+project, starts a New Session, or removes their old session inclusion. Closing
+the client process loses its unsaved additions; recovering the backend restores
+music, without recovering another client's scripts.
 
 Browser builds target ``wasm32-unknown-unknown`` and run the same pure-Rust
 omniLua scripting manager cooperatively. Version checks, script-owned dialogs,
