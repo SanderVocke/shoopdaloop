@@ -513,6 +513,237 @@ fn normal_clear_then_copy_supports_both_kind_changes() {
 }
 
 #[shoop_test]
+fn cross_kind_copy_matches_normal_clear_then_copy() {
+    for encoded in [false, true] {
+        for composite_source in [false, true] {
+            for manual in [false, true] {
+                let (mut f, mut client, track, loops) = setup(encoded);
+                run(
+                    &mut f,
+                    &mut client,
+                    append(loops[2], vec![loops[0]]),
+                    encoded,
+                );
+                let (source, target) = if composite_source {
+                    (loops[2], loops[1])
+                } else {
+                    (loops[0], loops[2])
+                };
+                let before = view(&f, source);
+                let media = (!composite_source).then(|| audio(&mut f, &client, source));
+                let plan = composite_source.then(|| definition(&f, source));
+                let outcome = if manual {
+                    clear_then_copy(&mut f, &mut client, track, source, target, encoded)
+                } else {
+                    run(
+                        &mut f,
+                        &mut client,
+                        action(track, source, LoopAction::DuplicateTo(target)),
+                        encoded,
+                    )
+                };
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+                let copied = view(&f, target);
+                assert_eq!(
+                    (copied.id, copied.mode, copied.position),
+                    (target, LoopMode::Stopped, 0.)
+                );
+                assert_eq!(
+                    (
+                        copied.name,
+                        copied.length_frames,
+                        copied.gain,
+                        copied.balance
+                    ),
+                    (
+                        before.name,
+                        before.length_frames,
+                        before.gain,
+                        before.balance
+                    )
+                );
+                if let Some(media) = media {
+                    assert_eq!(audio(&mut f, &client, target), media);
+                }
+                if let Some(plan) = plan {
+                    copied_definition(&plan, &definition(&f, target));
+                }
+                assert_eq!(f.clear_requests.get(), 1);
+                assert!(f.service.snapshot().pending.is_empty());
+            }
+        }
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_clear_and_apply_failures_have_distinct_outcomes_without_replay() {
+    for failure in [
+        CopyFailure::Clear,
+        CopyFailure::ClearDisconnect,
+        CopyFailure::Apply,
+        CopyFailure::Gain,
+        CopyFailure::Disconnect,
+    ] {
+        let (mut f, mut client, track, loops) = setup(true);
+        run(&mut f, &mut client, append(loops[2], vec![loops[1]]), true);
+        f.refuse_copy.set(Some(failure));
+        let result = run(
+            &mut f,
+            &mut client,
+            action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+            true,
+        );
+        let Outcome::Refused { message, .. } = result else {
+            panic!("{result:?}")
+        };
+        assert_eq!(f.clear_requests.get(), 1);
+        match failure {
+            CopyFailure::Clear | CopyFailure::ClearDisconnect => {
+                assert_eq!(f.content_applies.get(), 0);
+                assert!(
+                    message.contains("clear") && message.contains("copy was not started"),
+                    "{message}"
+                );
+            }
+            _ => {
+                assert_eq!(f.content_applies.get(), 1);
+                assert!(message.contains("Destination cleared"), "{message}");
+                if matches!(failure, CopyFailure::Apply) {
+                    assert!(view(&f, loops[2]).empty);
+                }
+                if matches!(failure, CopyFailure::Gain) {
+                    assert!(
+                        !view(&f, loops[2]).empty && message.contains("content copied"),
+                        "{message}"
+                    );
+                }
+            }
+        }
+        for _ in 0..5 {
+            f.service.tick(STEP);
+        }
+        assert_eq!(f.clear_requests.get(), 1);
+        assert!(f.service.snapshot().pending.is_empty());
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_waits_for_clear_and_finishes_once_after_ui_loss() {
+    let (mut f, mut client, track, loops) = setup(true);
+    run(&mut f, &mut client, append(loops[2], vec![loops[1]]), true);
+    f.advance.set(false);
+    let id = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+    );
+    for _ in 0..10 {
+        f.service.tick(STEP);
+    }
+    assert_eq!(f.content_applies.get(), 0);
+    assert!(!f.service.snapshot().pending.is_empty());
+    f.service.detach(ConnectionId(1));
+    f.advance.set(true);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+    }
+    let mut reattached = attach(&mut f.service, 2, ConnectionId(2), true);
+    drain(&mut f.service, &mut reattached, ConnectionId(2), true);
+    let state = f.service.snapshot();
+    assert!(matches!(
+        state.results.iter().find(|r| r.id == id).unwrap().outcome,
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(state.results.iter().filter(|r| r.id == id).count(), 1);
+    assert_eq!((f.clear_requests.get(), f.content_applies.get()), (1, 1));
+    assert!(state.pending.is_empty());
+}
+
+#[shoop_test]
+fn cross_kind_copy_awaits_parent_restoration_and_uses_its_terminal_outcome() {
+    for fail_restore in [false, true] {
+        let (mut f, mut client, track, loops) = setup(true);
+        run(&mut f, &mut client, append(loops[2], vec![loops[1]]), true);
+        run(&mut f, &mut client, append(loops[3], vec![loops[2]]), true);
+        let parent = definition(&f, loops[3]);
+        if fail_restore {
+            f.refuse_composite_after.set(Some(0));
+        }
+        let result = run(
+            &mut f,
+            &mut client,
+            action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+            true,
+        );
+        if fail_restore {
+            assert!(matches!(result, Outcome::Refused { .. }), "{result:?}");
+            assert_eq!(f.content_applies.get(), 0);
+            assert!(view(&f, loops[2]).empty);
+        } else {
+            assert!(
+                matches!(result, Outcome::AncestorsStopped { .. }),
+                "{result:?}"
+            );
+            assert_eq!(f.content_applies.get(), 1);
+            assert_eq!(definition(&f, loops[3]).document, parent.document);
+            assert_eq!(definition(&f, loops[3]).prepared, parent.prepared);
+            assert_eq!(
+                audio(&mut f, &client, loops[2]),
+                audio(&mut f, &client, loops[0])
+            );
+        }
+        assert!(f.service.snapshot().pending.is_empty());
+        assert_eq!(f.clear_requests.get(), 1);
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_reattaches_between_clear_and_payload_application() {
+    let (mut f, mut client, track, loops) = setup(false);
+    run(&mut f, &mut client, append(loops[2], vec![loops[1]]), false);
+    let id = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+    );
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.clear_requests.get() == 1 && view(&f, loops[2]).composite_kind == CompositeKind::None {
+            break;
+        }
+    }
+    assert!(view(&f, loops[2]).empty);
+    assert_eq!((f.clear_requests.get(), f.content_applies.get()), (1, 0));
+    f.service.detach(ConnectionId(1));
+    let mut client = attach(&mut f.service, 2, ConnectionId(2), true);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(2), true);
+        if f.service
+            .snapshot()
+            .results
+            .iter()
+            .any(|result| result.id == id)
+        {
+            break;
+        }
+    }
+    assert!(matches!(
+        f.service
+            .snapshot()
+            .results
+            .iter()
+            .find(|result| result.id == id)
+            .unwrap()
+            .outcome,
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!((f.clear_requests.get(), f.content_applies.get()), (1, 1));
+}
+
+#[shoop_test]
 fn p17_copies_processed_modes_and_nested_definitions_without_cloning_children() {
     for encoded in [false, true] {
         for mode in [
@@ -600,6 +831,7 @@ fn p17_copies_processed_modes_and_nested_definitions_without_cloning_children() 
                 copied_definition(&pinned, &definition(&f, target));
                 assert_eq!(view(&f, target).mode, LoopMode::Stopped);
             }
+            assert_eq!(f.clear_requests.get(), 0);
             let copied = definition(&f, loops[4]);
             let event = definition(&f, loops[2]).document.instances[0].instance_id;
             run(
@@ -774,24 +1006,10 @@ fn p03_replacement_stops_children_preserves_old_definitions_on_failure_and_survi
 }
 
 #[shoop_test]
-fn composite_copy_refuses_cross_kind_cycles_and_preserves_shadowed_p17_events() {
+fn composite_copy_refuses_cycles_and_preserves_shadowed_p17_events() {
     let (mut f, mut client, track, loops) = setup(false);
     run(&mut f, &mut client, append(loops[2], vec![loops[0]]), false);
     let old = definition(&f, loops[2]);
-    let media = audio(&mut f, &client, loops[1]);
-    for (source, target) in [(loops[0], loops[2]), (loops[2], loops[1])] {
-        assert!(matches!(
-            run(
-                &mut f,
-                &mut client,
-                action(track, source, LoopAction::DuplicateTo(target)),
-                false
-            ),
-            Outcome::Refused { .. }
-        ));
-    }
-    assert_eq!(definition(&f, loops[2]), old);
-    assert_eq!(audio(&mut f, &client, loops[1]), media);
     f.advance.set(false);
     let edit = submit(
         &mut f.service,

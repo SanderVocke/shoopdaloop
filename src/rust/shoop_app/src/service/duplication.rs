@@ -2,6 +2,8 @@ use super::*;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Stage {
+    Clear,
+    Clearing,
     Capture,
     Rows,
     Stop,
@@ -28,6 +30,7 @@ pub(super) struct Job {
     annotations: Vec<(bool, u32, Option<String>)>,
     stage: Stage,
     committed: bool,
+    cleared: bool,
     step: &'static str,
 }
 
@@ -188,6 +191,29 @@ impl Service {
         Ok(())
     }
 
+    fn copy_payload(&mut self, source: LoopId) -> Result<Payload, CommandError> {
+        let payload = if let Some(active) = self
+            .composites
+            .get(&source)
+            .and_then(|owner| owner.active.clone())
+        {
+            let mut active = active;
+            let mut ids = BTreeMap::new();
+            for event in &mut active.document.instances {
+                let id = self.next_instance()?;
+                ids.insert(event.instance_id, id);
+                event.instance_id = id;
+            }
+            for event in &mut active.prepared.instances {
+                event.instance_id = ids[&event.instance_id];
+            }
+            Payload::Definition(active)
+        } else {
+            Payload::Media(None)
+        };
+        Ok(payload)
+    }
+
     pub(super) fn duplicate_loop(
         &mut self,
         source: LoopId,
@@ -228,43 +254,23 @@ impl Service {
                 .copied()
                 .find(|id| self.loops[id].view.empty && !self.composites.contains_key(id))
         });
+        let mut clear = false;
         if let Some(target) = target {
             if target == source || self.loop_entry(target)?.track != track {
                 return Err(CommandError::invalid(
                     "copy requires a compatible distinct slot on the same track",
                 ));
             }
-            let source_composite = self.composites.contains_key(&source);
-            let target_composite = self.composites.contains_key(&target);
-            if source_composite != target_composite
-                && (!source_composite || !self.loops[&target].view.empty)
-            {
-                return Err(CommandError::invalid(
-                    "occupied primitive/composite conversion is not supported by Clone into",
-                ));
-            }
+            clear = self.composites.contains_key(&source) != self.composites.contains_key(&target)
+                && (self.composites.contains_key(&target) || !self.loops[&target].view.empty);
             self.copy_destination_ready(target)?;
             self.validate_copy_dependencies(source, target)?;
         }
         let previous = order.len();
-        let payload = if let Some(active) = self
-            .composites
-            .get(&source)
-            .and_then(|owner| owner.active.clone())
-        {
-            let mut active = active;
-            let mut ids = BTreeMap::new();
-            for event in &mut active.document.instances {
-                let id = self.next_instance()?;
-                ids.insert(event.instance_id, id);
-                event.instance_id = id;
-            }
-            for event in &mut active.prepared.instances {
-                event.instance_id = ids[&event.instance_id];
-            }
-            Payload::Definition(active)
-        } else {
+        let payload = if clear {
             Payload::Media(None)
+        } else {
+            self.copy_payload(source)?
         };
         let rows: VecDeque<_> = if target.is_none() {
             let max = self
@@ -313,8 +319,9 @@ impl Service {
                         .then(|| (*midi, *channel, value.clone()))
                 })
                 .collect(),
-            stage: Stage::Capture,
+            stage: if clear { Stage::Clear } else { Stage::Capture },
             committed: false,
+            cleared: false,
             step: "capturing the source",
         };
         self.backend.cancel_media_reads();
@@ -332,6 +339,13 @@ impl Service {
         else {
             return;
         };
+        if self
+            .composite_structure
+            .as_ref()
+            .is_some_and(|job| job.operation == Some(id) && !job.done())
+        {
+            return;
+        }
         let pending = &self.pending[&id];
         if pending.completed.len() as u64
             != pending.last.checked_sub(pending.first).map_or(0, |n| n + 1)
@@ -348,7 +362,7 @@ impl Service {
         let before = self.backend.mutation_cursor();
         let finishing = job.stage == Stage::Done;
         let track_receipts = !matches!(job.stage, Stage::Capture | Stage::Apply);
-        let result = self.step_duplication(&mut job);
+        let result = self.step_duplication(id, &mut job);
         let after = self.backend.mutation_cursor();
         let pending = self.pending.get_mut(&id).unwrap();
         pending.first = if track_receipts {
@@ -368,8 +382,9 @@ impl Service {
         }
     }
 
-    fn step_duplication(&mut self, job: &mut Job) -> Result<(), CommandError> {
+    fn step_duplication(&mut self, id: OperationId, job: &mut Job) -> Result<(), CommandError> {
         job.step = match job.stage {
+            Stage::Clear | Stage::Clearing => "clearing the destination",
             Stage::Capture => "capturing the source",
             Stage::Rows => "adding destination rows",
             Stage::Stop | Stage::Stopped => "stopping the destination",
@@ -378,6 +393,41 @@ impl Service {
             Stage::Done => "copying metadata",
         };
         match job.stage {
+            Stage::Clear => {
+                let target = job.target.unwrap();
+                self.copy_destination_ready(target)?;
+                self.clear_composite_slots(vec![target])?;
+                if let Some(lifecycle) = self.composite_structure.as_mut() {
+                    lifecycle.operation = Some(id);
+                }
+                job.stage = Stage::Clearing;
+            }
+            Stage::Clearing => {
+                job.cleared = true;
+                let target = job.target.unwrap();
+                if !self.loops[&target].view.empty || self.composites.contains_key(&target) {
+                    return Err(CommandError::invalid(
+                        "clear did not confirm an empty primitive destination",
+                    ));
+                }
+                self.copy_target_ready(job.source)?;
+                if self.composites.contains_key(&job.source) {
+                    self.copy_closure(job.source, &mut BTreeSet::new())?;
+                }
+                self.validate_copy_dependencies(job.source, target)?;
+                job.payload = self.copy_payload(job.source)?;
+                job.view = self.loops[&job.source].view.clone();
+                job.sync = self.copy_sync(job.source);
+                job.annotations = self
+                    .channel_annotations
+                    .iter()
+                    .filter_map(|((loop_id, midi, channel), (revision, value))| {
+                        (*loop_id == job.source && *revision == job.view.content_revision)
+                            .then(|| (*midi, *channel, value.clone()))
+                    })
+                    .collect();
+                job.stage = Stage::Capture;
+            }
             Stage::Capture => {
                 self.copy_target_ready(job.source)?;
                 if let Payload::Media(content) = &mut job.payload {
@@ -530,7 +580,15 @@ impl Service {
             error.message = alloc::format!(
                 "{} while {}: {}",
                 if job.committed {
-                    "Content copied; remaining controls or metadata failed"
+                    if job.cleared {
+                        "Destination cleared and content copied; remaining controls or metadata failed"
+                    } else {
+                        "Content copied; remaining controls or metadata failed"
+                    }
+                } else if job.cleared {
+                    "Destination cleared; copy failed and previous content was not restored; application outcome may be unknown"
+                } else if matches!(job.stage, Stage::Clear | Stage::Clearing) {
+                    "Destination clear failed; its outcome may be unknown; copy was not started"
                 } else if job.stage == Stage::Apply {
                     "Copy application failed; its outcome may be unknown"
                 } else {

@@ -170,25 +170,25 @@ remain green. Commit this stage independently of Stage 3.
 
 ## Stage 3 — Compose Clear and Copy for cross-kind destinations
 
-- [ ] Add a clear-needed decision only for occupied differing kinds. Keep the
+- [x] Add a clear-needed decision only for occupied differing kinds. Keep the
   existing same-kind and empty-slot routes unchanged.
-- [ ] Compose the normal clear lifecycle into the duplication job using shared
+- [x] Compose the normal clear lifecycle into the duplication job using shared
   helpers and one owning service operation. Track clear progress/error without
   allowing copy advancement or premature operation completion.
-- [ ] After full clear confirmation, re-read confirmed state and enter the normal
+- [x] After full clear confirmation, re-read confirmed state and enter the normal
   copy path, including ordinary source capture/definition preparation and any
   required existing empty-slot conversion. Revalidate mappings and dependencies.
-- [ ] Use existing lifecycle locks/admission to prevent conflicting edits between
+- [x] Use existing lifecycle locks/admission to prevent conflicting edits between
   phases. Preserve ordinary Stop behavior and UI detach/reattach reconciliation.
-- [ ] Track whether clear was confirmed so terminal messages distinguish clear
+- [x] Track whether clear was confirmed so terminal messages distinguish clear
   failure/unknown outcome, cleared-but-copy-failed, and copied-content-with-later-
   failure. Preserve same-kind error guarantees. Apply existing cancellation rules
   without adding a new cancellation workflow or restoring pre-clear content.
-- [ ] Add manual-sequence comparisons for both directions, Direct and eligible
+- [x] Add manual-sequence comparisons for both directions, Direct and eligible
   processed tracks, empty/timing-only cases and supported parent references.
   Match existing manual-sequence refusal where references prevent conversion;
   do not add a new graph rewrite to make those cases succeed.
-- [ ] Delay/fail clear admission and lifecycle completion, source capture, copy
+- [x] Delay/fail clear admission and lifecycle completion, source capture, copy
   preparation/application and controls. Assert no copy before clear confirmation,
   no copy after clear failure/unknown outcome, no rollback of a confirmed clear,
   no replay, and no added clear for same-kind copies.
