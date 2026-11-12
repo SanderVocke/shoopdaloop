@@ -82,6 +82,8 @@ copying are outside this plan. P11 remains open for its deferred MIDI requiremen
   submit top-level Clear/Copy commands that conflict with their own busy guards.
   Route completion/error receipts to the owning duplication operation and wait for
   terminal lifecycle success, not merely command admission or a reset receipt.
+  After clear acknowledgement, wait for periodic loop telemetry to project the
+  empty destination; a stale projection is not a clear failure.
 - Definition duplication copies the definition, not its child loops or processors.
   Keep ordinary role-aware primitive copying separate from definition copying.
 - Preserve current capability gates, finite capacities and RT scheduling/ownership
@@ -199,20 +201,20 @@ finish its outer operation. Commit the stage with before/after-clear fault evide
 
 ## Stage 4 — Verify integration, persistence and detach behavior
 
-- [ ] Exercise the public UI Clone/Clone into actions and existing Lua route
+- [x] Exercise the public UI Clone/Clone into actions and existing Lua read/edit route
   against the production service, confirming one accepted operation and accurate
   progress/results for P17 and both cross-kind directions.
-- [ ] Detach and reattach before clear confirmation, between phases, during copy
+- [x] Detach and reattach before clear confirmation, between phases, during copy
   application and after commit. Verify the same retained operation settles once
   and neither mutation phase is resubmitted.
-- [ ] Save/load supported copied definitions and primitive role media, checking
+- [x] Save/load supported copied definitions and primitive role media, checking
   authored modes, frozen geometry, fresh loaded identities, shared child references
   and supported recorded processor state. Reuse current persistence fixtures;
   retain existing MIDI limits.
-- [ ] Recheck ordinary primitive/P03 copies, first-empty-slot/aligned-row behavior,
+- [x] Recheck ordinary primitive/P03 copies, first-empty-slot/aligned-row behavior,
   source preservation and unrelated recording. Verify refused identity/capability/
   cycle/busy cases retain their established effects.
-- [ ] Update the persistence contract and parity ledger with clear-then-copy
+- [x] Update the persistence contract and parity ledger with clear-then-copy
   failure semantics and duplication evidence. Keep P11's deferred MIDI requirements
   explicitly open and align the investigation with the final implementation.
 

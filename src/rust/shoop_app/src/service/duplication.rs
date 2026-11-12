@@ -322,7 +322,11 @@ impl Service {
             stage: if clear { Stage::Clear } else { Stage::Capture },
             committed: false,
             cleared: false,
-            step: "capturing the source",
+            step: if clear {
+                "clearing the destination"
+            } else {
+                "capturing the source"
+            },
         };
         self.backend.cancel_media_reads();
         self.media_loop = None;
@@ -406,9 +410,7 @@ impl Service {
                 job.cleared = true;
                 let target = job.target.unwrap();
                 if !self.loops[&target].view.empty || self.composites.contains_key(&target) {
-                    return Err(CommandError::invalid(
-                        "clear did not confirm an empty primitive destination",
-                    ));
+                    return Ok(());
                 }
                 self.copy_target_ready(job.source)?;
                 if self.composites.contains_key(&job.source) {

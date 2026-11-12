@@ -831,6 +831,26 @@ fn p17_copies_processed_modes_and_nested_definitions_without_cloning_children() 
                 copied_definition(&pinned, &definition(&f, target));
                 assert_eq!(view(&f, target).mode, LoopMode::Stopped);
             }
+            let image = capture_image(&mut f.service, &mut client, 10, encoded);
+            let epoch = client.snapshot().unwrap().persistence_epoch;
+            release_image(&mut f.service, &mut client, 10, epoch, encoded);
+            let key = stage_image(&mut f.service, &mut client, 11, image, encoded);
+            let result = run(
+                &mut f,
+                &mut client,
+                Command::CommitPersistence(key),
+                encoded,
+            );
+            assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+            let loaded: Vec<_> = client.snapshot().unwrap().tracks[1]
+                .loops
+                .iter()
+                .map(|state| state.id)
+                .collect();
+            assert_ne!(loaded[0], loops[0]);
+            let loops = loaded;
+            copied_definition(&definition(&f, loops[2]), &definition(&f, loops[4]));
+            copied_definition(&definition(&f, loops[3]), &definition(&f, loops[5]));
             assert_eq!(f.clear_requests.get(), 0);
             let copied = definition(&f, loops[4]);
             let event = definition(&f, loops[2]).document.instances[0].instance_id;
@@ -1094,6 +1114,24 @@ fn composite_copy_refuses_cycles_and_preserves_shadowed_p17_events() {
         .iter()
         .all(|span| span.mode != LoopMode::Replacing));
     let pinned = definition(&f, target);
+    let unsupported = run(
+        &mut f,
+        &mut client,
+        Command::Composite(Edit::Mode {
+            target,
+            event,
+            mode: LoopMode::PlayingDryThroughWet,
+        }),
+        false,
+    );
+    assert!(matches!(
+        unsupported,
+        Outcome::Refused {
+            reason: Refusal::Unsupported,
+            ..
+        }
+    ));
+    assert_eq!(definition(&f, target), pinned);
     let outcome = run(
         &mut f,
         &mut client,

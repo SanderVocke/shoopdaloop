@@ -29,6 +29,18 @@ this change does not promise that every dependency configuration is accepted.
 - This document records source inspection. Implementation and validation follow
   [the duplication plan](../../PLAN_LOOP_DUPLICATION.md); results belong in its PR.
 
+## Implementation outcome
+
+The duplication work is implemented on `feat/p11-loop-duplication` using the
+existing service job, authored-event validator and clear lifecycle. Cross-kind
+copy waits for lifecycle success and the empty projection, then enters ordinary
+copy with current mappings. The baseline Clear/Copy oracle also exposed a narrow
+empty-slot conversion bug: historical capture frames remained nonzero after
+Clear. Conversion now checks stopped mode and current content length; capture
+resource preflight is retained. No protocol or file-format change was needed.
+The parity ledger keeps the MIDI requirement open. See the
+[execution plan](../../PLAN_LOOP_DUPLICATION.md) and its linked PR for validation.
+
 ## Finding
 
 P11 contains duplication and MIDI history work. Only duplication is in the current
@@ -42,9 +54,9 @@ authored definitions, and the loop planner continues owning musical timing and
 media publication. No legacy production dependency, host-specific semantics,
 second musical clock or client-owned copy executor is needed.
 
-## What P11 still requires
+## Requirements identified at the investigation base
 
-The [current parity row][parity] explicitly leaves open:
+At the inspected replacement commit, the [parity row][parity] left open:
 
 1. Copying primitive content over a composite and a composite definition over an
    occupied primitive, on compatible same-track destinations.
