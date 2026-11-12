@@ -1,6 +1,6 @@
 # Native SystemVerilog memory for direct simulation
 
-Status: in progress on `proto/fpga-native-sim-memory`; stage 1 verified.
+Status: in progress on `proto/fpga-native-sim-memory`; stages 1–2 verified.
 Investigated at `54c616cf` on `proto/fpga-rust-reference`.
 
 ## Goal and scope
@@ -96,12 +96,12 @@ Stages are sequential. Each stage depends on the preceding stage's verification.
 
 ### 2. Build the standalone functional SV memory
 
-- [ ] Add a simulation-only module under `fpga/axi_memory/tests/` implementing
+- [x] Add a simulation-only module under `fpga/axi_memory/tests/` implementing
   the bounded RAM, AXI subset, reset and bulk image interface above.
-- [ ] Add focused tests for both widths: image round-trip, reads/writes, strobes,
+- [x] Add focused tests for both widths: image round-trip, reads/writes, strobes,
   upper lanes, single/multi-beat bursts, AW/W ordering, R/B backpressure and
   reset during a transfer. Verify retained contents and reject invalid bounds.
-- [ ] Verify warning-clean Verilator compilation and those small tests. Keep
+- [x] Verify warning-clean Verilator compilation and those small tests. Keep
   elaborate fault scenarios on the existing Python model.
 
 ### 3. Integrate direct mode and migrate image ownership
@@ -171,3 +171,10 @@ and a clocked load/dump request/acknowledgement. Simple pause, response-pause,
 channel-hold and next-transaction-error controls stay available in direct mode;
 Python-only mid-beat injection/native timing statistics stay on the realistic
 or diagnostic backend. Direct service uses no random memory delays.
+
+Stage 2: standalone native RAM passes warning-clean Verilator builds and the
+functional/protocol suite at 32 and 64 bits. Tests cover partial byte writes,
+all supported beat sizes, 1/2/16 beats, independent AW/W, held R/B, local bounds
+errors, injected failures, image round-trip and reset preserving samples. The
+Python image-administration helper was developed with these tests; it performs
+no bus scheduling. Full driver integration remains stage 3.
