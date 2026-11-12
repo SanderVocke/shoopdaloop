@@ -4,6 +4,56 @@ Validation date: 2026-11-12. Workload: the default 64-loop deployment, Q=32,
 64-bit AXI3, four read buffers, four write buffers, eight metadata cache lines,
 four reference cache lines, 100 MHz requested fabric clock.
 
+## Fresh Vivado 2021.1 build
+
+Removed the Vivado 2024.1 installation, its Docker runtimes and all previous FPGA
+build intermediates. Regenerated the workload and board wrapper at RTL revision
+`9386dffd14408df52b87179e834b1bdc383bf07c`, then built from source with
+**Vivado 2021.1 for Linux x86_64, SW Build 3247384**. No old IP outputs or
+checkpoints were reused.
+
+The tool source is `siliconbootcamp/xilinx-vivado:stable`, pinned to
+`sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f`.
+All image-layer hashes were verified. The complete vendor layer,
+`sha256:187ac31317b800d0b7782a3aff7fdedd200a27303a22121d7c3a6a623b36bf26`,
+was extracted without trimming or patching its files and mounted read-only.
+Later image overlays, including a replacement `base.tcl`, were excluded.
+The runtime uses the image's original base OS and dependency layers, without
+the `/sys` masking workaround used during the 2024.1 experiments.
+
+Results:
+
+- The tiny counter passes physical DRC and generates a bitstream. Its one DRC
+  warning is the absent PS7 block in this diagnostic design.
+- The complete configured `zedboard_bench` RTL, including the autonomous runner,
+  statistics and processing pipeline, synthesizes with zero errors and zero
+  critical warnings in out-of-context mode on `xc7z020clg484-1`.
+- The benchmark is **fully routed: 39,744 / 39,744 routable nets, zero routing
+  errors**. Post-route DRC has **zero errors, zero critical warnings and eight
+  warnings**. These comprise six DSP pipeline suggestions, an output with no
+  routable loads and the intentionally omitted PS7. The invalid-site errors
+  from the 2024.1 runs did not reproduce in this build.
+- The full board build is blocked earlier: this image has no Vivado IP catalog.
+  PS7 5.5, proc_sys_reset 5.0, xlconstant 1.1, VIO 3.0 and ILA 6.2 are all absent.
+  The other image layers contain no replacement catalog. The build now checks
+  these dependencies explicitly and accepts a matching external repository
+  through `SHOOP_IP_REPO`.
+
+The routed RTL diagnostic excludes PS7, ILA and VIO. It does not establish full
+board connectivity, DDR operation or board timing closure. Its out-of-context
+clock has no physical clock-source assignment. No deployable benchmark bitstream
+was produced; `canary.bit` is only the small toolchain diagnostic.
+
+Retained evidence: [provenance and outcomes](validation/2021.1/provenance.json),
+[source hashes](validation/2021.1/source-manifest.json),
+[measured diagnostic script](validation/2021.1/core.tcl),
+[DRC](validation/2021.1/core_drc.rpt) and
+[route status](validation/2021.1/core_route_status.rpt).
+The script is a snapshot using the container's absolute paths and the prepared
+manifest; it reads RTL and regenerates synthesis/placement/routing results.
+Local checkpoints are in `work/zedboard/core2021`; tool and board logs are in
+`work/vivado-2021`.
+
 ## Retry after timing MR #975
 
 Merged `proto/fpga-rust-reference` at `a29e1999`, including timing improvements

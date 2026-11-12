@@ -31,12 +31,15 @@ the software-only PS initialization file does not configure this deployment.
 Run from the repository root. Python requires the existing
 `fpga/axi_memory/requirements.txt` and `scripts/rt_backend_testbench/requirements.txt`.
 Rust builds only the workload compiler. Vivado needs the Digilent ZedBoard board
-files and support for the actual XC7Z020 silicon. The build scripts have been
-exercised with Vivado 2024.1; hardware qualification is pending.
+files and support for the actual XC7Z020 silicon. RTL validation uses Vivado
+2021.1, SW Build 3247384; hardware qualification is pending.
 For a board repository outside the Vivado installation, set `SHOOP_BOARD_REPO`
 to its `new/board_files` directory. Both Avnet `zed` and Digilent `zedboard`
 board identifiers are accepted. Build scratch files stay in the output directory,
 so the RTL source tree can be mounted read-only in a container.
+The installation must include PS7, proc_sys_reset, xlconstant, VIO and ILA IPs.
+For an external matching IP repository, set `SHOOP_IP_REPO` to its directory;
+the build checks the required definitions before creating the block design.
 
 ```sh
 python fpga/zedboard/prepare.py --output work/zedboard/workload

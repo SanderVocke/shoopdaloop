@@ -10,6 +10,21 @@ if {[info exists ::env(SHOOP_BOARD_REPO)]} {
     set_param board.repoPaths [concat [get_param board.repoPaths] [list [file normalize $::env(SHOOP_BOARD_REPO)]]]
 }
 create_project zedboard_timing [file join $bench_output project] -part xc7z020clg484-1 -force
+if {[info exists ::env(SHOOP_IP_REPO)]} {
+    set ip_repo [file normalize $::env(SHOOP_IP_REPO)]
+    if {![file isdirectory $ip_repo]} {error "SHOOP_IP_REPO is not a directory: $ip_repo"}
+    set_property ip_repo_paths [list $ip_repo] [current_project]
+    if {[catch {update_ip_catalog} detail]} {
+        error "Cannot load SHOOP_IP_REPO $ip_repo. Supply a complete IP repository matching Vivado [version -short]. $detail"
+    }
+}
+set missing_ips {}
+foreach ip {processing_system7:5.5 proc_sys_reset:5.0 xlconstant:1.1 vio:3.0 ila:6.2} {
+    if {[llength [get_ipdefs -quiet xilinx.com:ip:$ip]] == 0} {lappend missing_ips $ip}
+}
+if {[llength $missing_ips]} {
+    error "Vivado [version -short] lacks required catalog IPs: [join $missing_ips {, }]. Install the matching IP catalog or set SHOOP_IP_REPO to its directory."
+}
 if {$argc == 2} {
     set board [lindex $argv 1]
 } else {
