@@ -17,6 +17,9 @@ module audio_loop_pipeline #(
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
+    parameter integer RETIRED_TABLES = 256,
+    parameter integer RECLAIM_BLOCKS = 20, parameter integer RECLAIM_CYCLES = 10000,
+    parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
@@ -27,6 +30,16 @@ module audio_loop_pipeline #(
 ) (
     input wire clk,
     input wire reset,
+    output wire [31:0] reclaim_pending,
+    output wire [31:0] reclaim_high_water,
+    output wire [63:0] reclaim_references,
+    output wire reclaim_active,
+    output wire reclaim_released,
+    output wire [31:0] reclaim_block,
+    output wire [63:0] reclaim_blocks,
+    output wire [63:0] reclaim_freed,
+    output wire [63:0] reclaim_cycles,
+    output wire reclaim_quiescent,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
     input wire [31:0] run_state_count,
@@ -160,6 +173,7 @@ module audio_loop_pipeline #(
     wire [31:0] sample_output_address;
     wire [31:0] sample_output_data;
     wire core_reset;
+    wire core_maintenance_enable;
     wire core_run_valid;
     wire core_cfg_valid;
     wire core_cfg_ready;
@@ -226,6 +240,10 @@ module audio_loop_pipeline #(
         .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),
         .BLOCK_CHUNKS(BLOCK_CHUNKS),
+        .RETIRED_TABLES(RETIRED_TABLES),
+        .RECLAIM_BLOCKS(RECLAIM_BLOCKS),
+        .RECLAIM_CYCLES(RECLAIM_CYCLES),
+        .RECLAIM_GUARD(RECLAIM_GUARD),
         .TABLE_PAGES(TABLE_PAGES),
         .TABLE_LINES(TABLE_LINES),
         .REF_LINES(REF_LINES),
@@ -243,6 +261,17 @@ module audio_loop_pipeline #(
         .sample_output_data(sample_output_data),
         .clk(clk),
         .reset(core_reset),
+        .maintenance_enable(core_maintenance_enable),
+        .reclaim_pending(reclaim_pending),
+        .reclaim_high_water(reclaim_high_water),
+        .reclaim_references(reclaim_references),
+        .reclaim_active(reclaim_active),
+        .reclaim_released(reclaim_released),
+        .reclaim_block(reclaim_block),
+        .reclaim_blocks(reclaim_blocks),
+        .reclaim_freed(reclaim_freed),
+        .reclaim_cycles(reclaim_cycles),
+        .reclaim_quiescent(reclaim_quiescent),
         .run_valid(core_run_valid),
         .run_ready(run_ready),
         .run_instruction_count(run_instruction_count),
@@ -371,6 +400,7 @@ module audio_loop_pipeline #(
     assign session_reset_ready = quiesce && memory_quiescent && !enable;
     wire accepted_reset = session_reset && session_reset_ready;
     assign core_reset = reset || accepted_reset;
+    assign core_maintenance_enable = enable && !quiesce && !recovery_requested;
     assign core_run_valid = io_process_valid && fenced && enable && !quiesce;
     assign io_process_ready = run_ready && fenced && enable && !quiesce;
     assign core_command_valid = enable ? queued_command_valid : command_valid;
@@ -424,14 +454,14 @@ module audio_loop_pipeline #(
 
     reg [15:0] outstanding_reads, outstanding_writes;
     reg ar_exposed, aw_exposed;
-    wire isolate = quiesce || recovery_requested;
+    wire isolate = (quiesce && reclaim_quiescent) || recovery_requested;
     assign m_axi_arvalid = core_m_axi_arvalid && (!isolate || ar_exposed);
     assign core_m_axi_arready = m_axi_arready && (!isolate || ar_exposed);
     assign m_axi_awvalid = core_m_axi_awvalid && (!isolate || aw_exposed);
     assign core_m_axi_awready = m_axi_awready && (!isolate || aw_exposed);
     assign m_axi_wvalid = core_m_axi_wvalid && outstanding_writes != 0;
     assign core_m_axi_wready = m_axi_wready && outstanding_writes != 0;
-    assign memory_quiescent = outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
+    assign memory_quiescent = reclaim_quiescent && outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
     always @(posedge clk) begin
         if (reset) begin outstanding_reads<=0; outstanding_writes<=0; ar_exposed<=0; aw_exposed<=0; end
         else begin

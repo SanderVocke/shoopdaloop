@@ -45,7 +45,7 @@ def direct_top(source, endpoint=False):
     body = source[match.end():].rsplit('endmodule',1)[0]
     width, words, base = ('DATA_WIDTH','SIM_WORDS','SIM_PHYSICAL_BASE') if endpoint else ('AXI_DATA_WIDTH',"32'(STORAGE_WORDS)" if 'parameter integer TABLE_PAGES'  in source else 'SLOTS*CHUNK_FRAMES','PHYSICAL_BASE')
     if not endpoint and 'parameter integer TABLE_PAGES' in source and 'localparam [63:0] STORAGE_WORDS' not in source:
-        body += "    localparam integer STORAGE_WORDS = ((SLOTS*CHUNK_FRAMES+15)/16)*16 + 2*((SLOTS/BLOCK_CHUNKS+15)/16)*16 + TABLE_PAGES*16;\n"
+        body += "    localparam integer STORAGE_WORDS = ((SLOTS*CHUNK_FRAMES+15)/16)*16 + 2*((SLOTS/BLOCK_CHUNKS+15)/16)*16 + TABLE_PAGES*16 + RETIRED_TABLES*16;\n"
     body += f'    axi_direct_memory #(.DATA_WIDTH({width}),.WORDS({words}),.BASE({base})) sim_memory (.*);\nendmodule\n'
     return '// Generated functional simulation top; do not edit by hand.\n'+text+body
 
@@ -84,7 +84,7 @@ def generate():
 endmodule
 """
         else:
-            text += "    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16;\n"
+            text += "    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;\n"
             text += "    initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,\"DDR arena exceeds AXI address range\");\n"
             text += "    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);\nendmodule\n"
         result[HERE/"rtl"/f"{name}_axi.sv"] = text

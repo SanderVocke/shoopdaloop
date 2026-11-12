@@ -33,7 +33,7 @@ def configure(workload, output, fabric_mhz=100, physical_base=0x01000000,
                   WRITE_BUFFERS=write_buffers, TABLE_LINES=metadata_lines, REF_LINES=reference_lines)
     blocks = params['SLOTS']//params['BLOCK_CHUNKS']
     pages = (blocks+14)//15+8*params['VIEWS']+16
-    arena_bytes = 4*(((params['SLOTS']*params['CHUNK_FRAMES']+15)//16)*16+2*((blocks+15)//16)*16+pages*16)
+    arena_bytes = 4*(((params['SLOTS']*params['CHUNK_FRAMES']+15)//16)*16+2*((blocks+15)//16)*16+pages*16+int(params.get("RETIRED_TABLES",256))*16)
     if physical_base < 0 or physical_base % 8 or physical_base+arena_bytes > 512*1024*1024:
         raise ValueError('eight-byte aligned benchmark arena must fit inside ZedBoard DDR')
     if fabric_mhz <= 0 or min(read_buffers, write_buffers, metadata_lines, reference_lines) < 1:

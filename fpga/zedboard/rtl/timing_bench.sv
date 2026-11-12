@@ -17,6 +17,9 @@ module timing_bench #(
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
+    parameter integer RETIRED_TABLES = 256,
+    parameter integer RECLAIM_BLOCKS = 20, parameter integer RECLAIM_CYCLES = 10000,
+    parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
@@ -71,6 +74,17 @@ module timing_bench #(
     wire [31:0] sample_output_address;
     wire [31:0] sample_output_data;
     wire core_reset;
+    wire maintenance_enable;
+    wire [31:0] reclaim_pending;
+    wire [31:0] reclaim_high_water;
+    wire [63:0] reclaim_references;
+    wire reclaim_active;
+    wire reclaim_released;
+    wire [31:0] reclaim_block;
+    wire [63:0] reclaim_blocks;
+    wire [63:0] reclaim_freed;
+    wire [63:0] reclaim_cycles;
+    wire reclaim_quiescent;
     wire run_valid;
     wire run_ready;
     wire [31:0] run_instruction_count;
@@ -202,6 +216,10 @@ module timing_bench #(
         .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),
         .BLOCK_CHUNKS(BLOCK_CHUNKS),
+        .RETIRED_TABLES(RETIRED_TABLES),
+        .RECLAIM_BLOCKS(RECLAIM_BLOCKS),
+        .RECLAIM_CYCLES(RECLAIM_CYCLES),
+        .RECLAIM_GUARD(RECLAIM_GUARD),
         .TABLE_PAGES(TABLE_PAGES),
         .TABLE_LINES(TABLE_LINES),
         .REF_LINES(REF_LINES),
@@ -219,6 +237,17 @@ module timing_bench #(
         .sample_output_data(sample_output_data),
         .clk(clk),
         .reset(core_reset),
+        .maintenance_enable(maintenance_enable),
+        .reclaim_pending(reclaim_pending),
+        .reclaim_high_water(reclaim_high_water),
+        .reclaim_references(reclaim_references),
+        .reclaim_active(reclaim_active),
+        .reclaim_released(reclaim_released),
+        .reclaim_block(reclaim_block),
+        .reclaim_blocks(reclaim_blocks),
+        .reclaim_freed(reclaim_freed),
+        .reclaim_cycles(reclaim_cycles),
+        .reclaim_quiescent(reclaim_quiescent),
         .run_valid(run_valid),
         .run_ready(run_ready),
         .run_instruction_count(run_instruction_count),

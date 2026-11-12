@@ -110,6 +110,7 @@ class Driver(MemoryHost):
         return before, self.sample()
 
     async def reset(self, samples=None):
+        self.set(retire_valid=0,retire_chunk=0)
         self.set(reset=1, cmd_valid=0, cmd_opcode=0, cmd_id=0, cmd_chunk=0, cmd_offset=0, cmd_count=0,
                  write_valid=0, write_data=0, read_ready=0, response_ready=0,
                  prefetch_valid=0, prefetch_chunk=0, arena_base=self.base)

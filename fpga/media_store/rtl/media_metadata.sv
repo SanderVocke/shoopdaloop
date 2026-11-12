@@ -13,6 +13,7 @@ module media_metadata #(
     output wire response_valid, input wire response_ready,
     output reg [31:0] response_data, output reg [7:0] response_error, output wire fault,
     output reg [31:0] retired_count, output reg [31:0] retired_high_water,
+    output reg [31:0] retired_head, output reg [31:0] retired_tail,
     output reg [63:0] retired_references,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data, output wire [31:0] memory_count,
@@ -39,7 +40,7 @@ module media_metadata #(
     reg [31:0] high_water, free_head, free_pages;
     reg [31:0] allocated, parent_page, cached_leaf, cached_index;
     reg [31:0] new_count;
-    reg [31:0] retired_head, retired_tail, gc_root, gc_used;
+    reg [31:0] gc_root, gc_used;
     reg gc_loaded;
     reg [63:0] required_nodes, existing_nodes, unallocated_pages, additional, available;
     reg capacity_grow;

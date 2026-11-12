@@ -23,7 +23,7 @@ def generate():
                          ('VIEWS', 32), ('SLOTS', 1024)]:
         params = re.sub(rf'(parameter integer {field} = )\d+', rf'\g<1>{value}', params)
     params += ',\n    parameter integer P = MAX_FRAMES, RX_BANKS = 3, TX_BANKS = 3,\n    parameter integer WATCHDOG_CYCLES = 1000000, CONTROL_DEPTH = 128'
-    removed = {'run_valid', 'sample_input_read', 'sample_input_address', 'sample_input_data',
+    removed = {'maintenance_enable', 'run_valid', 'sample_input_read', 'sample_input_address', 'sample_input_data',
                'sample_output_write', 'sample_output_address', 'sample_output_data'}
     public = [(p, n) for p, n in ports if n not in removed]
     extra = '''input wire audio_clk, input wire session_reset, input wire enable,
@@ -41,7 +41,7 @@ def generate():
     text = '// Generated continuous-audio AXI wrapper; do not edit by hand.\n`include "state_processor_defs.svh"\n\n'
     text += 'module audio_loop_pipeline #(\n    '+params+'\n) (\n'
     text += ',\n'.join('    '+p+n for p, n in public)+',\n    '+extra+'\n);\n'
-    internal = {'reset', 'run_valid', 'command_valid', 'command_ready', 'command_opcode', 'command_index',
+    internal = {'maintenance_enable', 'reset', 'run_valid', 'command_valid', 'command_ready', 'command_opcode', 'command_index',
                 'command_data', 'response_valid', 'response_ready', 'response_error', 'response_data',
                 'cfg_valid', 'cfg_ready', 'cfg_state', 'cfg_write', 'cfg_address', 'cfg_write_data',
                 'cfg_response_valid', 'cfg_response_error', 'cfg_read_data'}

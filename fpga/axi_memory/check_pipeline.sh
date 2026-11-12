@@ -7,7 +7,7 @@ output_dir=$(cd -- "$output_dir" && pwd)
 cd "$repo_root"
 python3 fpga/axi_memory/generate_tops.py --check
 sources=()
-for item in state_processor:sp_ram,sp_job_fifo,sp_engine,state_processor job_processor:jp_sample_ram,jp_divider,job_processor,audio_pipeline transition_processor:tp_ram,tp_priority,transition_processor chunk_memory:chunk_ram,chunk_memory media_store:media_ram,metadata_cache,media_metadata,media_prefetch_resolver,media_store,memory_delay,media_audio_pipeline loop_pipeline:loop_pipeline axi_memory:axi_master,chunk_dma,word_dma,axi_burst_mux,shared_axi,word_axi,chunk_axi,chunk_memory_axi,media_store_axi,media_audio_pipeline_axi,loop_pipeline_axi; do
+for item in state_processor:sp_ram,sp_job_fifo,sp_engine,state_processor job_processor:jp_sample_ram,jp_divider,job_processor,audio_pipeline transition_processor:tp_ram,tp_priority,transition_processor chunk_memory:chunk_ram,chunk_memory media_store:media_ram,metadata_cache,media_metadata,media_reclaimer,media_prefetch_resolver,media_store,memory_delay,media_audio_pipeline loop_pipeline:loop_pipeline axi_memory:axi_master,chunk_dma,word_dma,axi_burst_mux,shared_axi,word_axi,chunk_axi,chunk_memory_axi,media_store_axi,media_audio_pipeline_axi,loop_pipeline_axi; do
     IFS=: read -r directory modules <<< "$item"
     IFS=, read -ra names <<< "$modules"
     for module in "${names[@]}"; do sources+=("fpga/$directory/rtl/$module.sv"); done

@@ -11,6 +11,7 @@
     assign session_reset_ready = quiesce && memory_quiescent && !enable;
     wire accepted_reset = session_reset && session_reset_ready;
     assign core_reset = reset || accepted_reset;
+    assign core_maintenance_enable = enable && !quiesce && !recovery_requested;
     assign core_run_valid = io_process_valid && fenced && enable && !quiesce;
     assign io_process_ready = run_ready && fenced && enable && !quiesce;
     assign core_command_valid = enable ? queued_command_valid : command_valid;
@@ -64,14 +65,14 @@
 
     reg [15:0] outstanding_reads, outstanding_writes;
     reg ar_exposed, aw_exposed;
-    wire isolate = quiesce || recovery_requested;
+    wire isolate = (quiesce && reclaim_quiescent) || recovery_requested;
     assign m_axi_arvalid = core_m_axi_arvalid && (!isolate || ar_exposed);
     assign core_m_axi_arready = m_axi_arready && (!isolate || ar_exposed);
     assign m_axi_awvalid = core_m_axi_awvalid && (!isolate || aw_exposed);
     assign core_m_axi_awready = m_axi_awready && (!isolate || aw_exposed);
     assign m_axi_wvalid = core_m_axi_wvalid && outstanding_writes != 0;
     assign core_m_axi_wready = m_axi_wready && outstanding_writes != 0;
-    assign memory_quiescent = outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
+    assign memory_quiescent = reclaim_quiescent && outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
     always @(posedge clk) begin
         if (reset) begin outstanding_reads<=0; outstanding_writes<=0; ar_exposed<=0; aw_exposed<=0; end
         else begin

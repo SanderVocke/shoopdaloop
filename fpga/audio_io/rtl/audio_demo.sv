@@ -74,6 +74,16 @@ module audio_demo #(
     input wire m_axi_rvalid,
     output wire m_axi_rready
 );
+    wire [31:0] reclaim_pending;
+    wire [31:0] reclaim_high_water;
+    wire [63:0] reclaim_references;
+    wire reclaim_active;
+    wire reclaim_released;
+    wire [31:0] reclaim_block;
+    wire [63:0] reclaim_blocks;
+    wire [63:0] reclaim_freed;
+    wire [63:0] reclaim_cycles;
+    wire reclaim_quiescent;
     wire run_ready;
     wire [31:0] run_instruction_count;
     wire [31:0] run_state_count;
@@ -231,5 +241,5 @@ module audio_demo #(
             default: begin end
         endcase
     end
-    wire unused_status = &{1'b0,run_ready,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,cfg_ready,cfg_response_valid,cfg_response_error,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,audio_cfg_response_error,audio_cfg_read_data,queued_jobs,drain_valid,command_ready,response_valid,response_error,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,store_cfg_ready,store_cfg_response_valid,store_cfg_response_error,store_cfg_read_data,memory_fault,session_reset_ready,control_ready};
+    wire unused_status = &{1'b0,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,reclaim_quiescent,run_ready,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,cfg_ready,cfg_response_valid,cfg_response_error,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,audio_cfg_response_error,audio_cfg_read_data,queued_jobs,drain_valid,command_ready,response_valid,response_error,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,store_cfg_ready,store_cfg_response_valid,store_cfg_response_error,store_cfg_read_data,memory_fault,session_reset_ready,control_ready};
 endmodule

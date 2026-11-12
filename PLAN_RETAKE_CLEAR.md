@@ -118,31 +118,31 @@ Verification:
 
 Depends on Stage 1.
 
-- [ ] Add `fpga/media_store/rtl/media_reclaimer.sv` with a configurable DDR record queue and one active context.
-- [ ] Add coherent queue-record access, bounded admission and explicit queue-full reporting.
-- [ ] Include the active collector record in queue capacity accounting.
-- [ ] Replace the table-walking CLEAR/REMOVE path in `fpga/media_store/rtl/media_store.sv` with the ownership-transfer transaction.
-- [ ] Route automatic BeginCapture through the same mechanism.
-- [ ] Ensure queue records become eligible for cleanup only after the live root/descriptor transfer commits.
-- [ ] Preserve pre-mutation state on capacity refusal; use existing sticky-fault handling for post-mutation memory faults.
+- [x] Add `fpga/media_store/rtl/media_reclaimer.sv` with a configurable DDR record queue and one active context.
+- [x] Add coherent queue-record access, bounded admission and explicit queue-full reporting.
+- [x] Include the active collector record in queue capacity accounting.
+- [x] Replace the table-walking CLEAR/REMOVE path in `fpga/media_store/rtl/media_store.sv` with the ownership-transfer transaction.
+- [x] Route automatic BeginCapture through the same mechanism.
+- [x] Ensure queue records become eligible for cleanup only after the live root/descriptor transfer commits.
+- [x] Preserve pre-mutation state on capacity refusal; use existing sticky-fault handling for post-mutation memory faults.
 
 Verification:
 
-- [ ] Exercise queue wraparound, queue exhaustion, empty clears and repeated clears of the same view.
-- [ ] Verify that queued roots survive live-view reuse without consuming extra live view IDs.
+- [x] Exercise queue wraparound, queue exhaustion, empty clears and repeated clears of the same view.
+- [x] Verify that queued roots survive live-view reuse without consuming extra live view IDs.
 - [ ] Inject faults around transfer publication and verify that no old table becomes silently unowned.
-- [ ] Compare foreground operation counts across recording lengths.
+- [x] Compare foreground operation counts across recording lengths.
 
 ### Stage 3: Implement resumable reference and metadata reclamation
 
 Depends on Stages 1 and 2.
 
-- [ ] Consume detached tables from their tails.
-- [ ] Reuse the existing per-block ownership and reusable-ID stack mechanisms through a shared serialized arbiter.
-- [ ] Make count updates indivisible with respect to competing foreground ownership changes.
-- [ ] Track each entry through lookup, reference release, retirement, table trimming and checkpoint completion.
-- [ ] Make leaf/directory unlinking and free-page linking resumable.
-- [ ] Recycle queue records after all table metadata has been released.
+- [x] Consume detached tables from their tails.
+- [x] Reuse the existing per-block ownership and reusable-ID stack mechanisms through a shared serialized arbiter.
+- [x] Make count updates indivisible with respect to competing foreground ownership changes.
+- [x] Track each entry through lookup, reference release, retirement, table trimming and checkpoint completion.
+- [x] Make leaf/directory unlinking and free-page linking resumable.
+- [x] Recycle queue records after all table metadata has been released.
 - [ ] Ensure cleanup can progress without allocating new table pages, including when both sample and metadata pools are full.
 
 Verification:
@@ -157,34 +157,34 @@ Verification:
 
 Depends on Stage 3.
 
-- [ ] Add a background retirement request/completion path in `fpga/chunk_memory/rtl/chunk_memory.sv`.
-- [ ] Keep a retiring block unavailable for allocation while matching dirty writes and accepted transfers finish.
-- [ ] Allow foreground commands for unrelated blocks to proceed while retirement waits.
-- [ ] Cancel queued hints/fills and prevent new stale work from repopulating a retiring block.
+- [x] Add a background retirement request/completion path in `fpga/chunk_memory/rtl/chunk_memory.sv`.
+- [x] Keep a retiring block unavailable for allocation while matching dirty writes and accepted transfers finish.
+- [x] Allow foreground commands for unrelated blocks to proceed while retirement waits.
+- [x] Cancel queued hints/fills and prevent new stale work from repopulating a retiring block.
 - [ ] Extend `fpga/media_store/rtl/media_prefetch_resolver.sv` and its bridge with cancellation and generation-tagged outstanding lookup responses.
-- [ ] Prevent responses from an old view mapping being accepted against its replacement table.
-- [ ] Preserve fault propagation and the coordinated reset epoch.
+- [x] Prevent responses from an old view mapping being accepted against its replacement table.
+- [x] Preserve fault propagation and the coordinated reset epoch.
 
 Verification:
 
-- [ ] Hold old writebacks and prefetch responses across several audio iterations while unrelated playback continues.
-- [ ] Verify cache invalidation, delayed response handling and reuse of the retired block.
-- [ ] Inject retirement/writeback errors and verify existing containment behavior.
+- [x] Hold old writebacks and prefetch responses across several audio iterations while unrelated playback continues.
+- [x] Verify cache invalidation, delayed response handling and reuse of the retired block.
+- [x] Inject retirement/writeback errors and verify existing containment behavior.
 - [ ] Test reset with active cleanup and old traffic.
 
 ### Stage 5: Add maintenance scheduling and separate completion signals
 
 Depends on Stages 3 and 4.
 
-- [ ] Update `fpga/media_store/rtl/media_audio_pipeline.sv` and `fpga/loop_pipeline/rtl/loop_pipeline.sv` so foreground completion does not require an empty cleanup queue.
-- [ ] Expose separate foreground-busy, cleanup-pending, cleanup-active and memory-quiescent observations.
-- [ ] Integrate maintenance grants into continuous audio scheduling and the relevant audio/AXI wrappers.
-- [ ] Add configurable per-iteration block and cycle budgets. Use 20 block releases as an initial configurable ceiling, subject to timing measurements.
-- [ ] Charge all queue, metadata, retirement and page-reclamation work to the maintenance budget.
-- [ ] Give foreground requests priority at safe transaction boundaries while measuring whether sufficient cleanup progress remains available.
-- [ ] Reserve a guard interval for the declared worst-case completion time of an already accepted, non-preemptible memory transaction.
-- [ ] Preserve pending collector context when its grant expires.
-- [ ] Stop new maintenance work during quiescence and include outstanding maintenance transfers in memory-quiescent reporting.
+- [x] Update `fpga/media_store/rtl/media_audio_pipeline.sv` and `fpga/loop_pipeline/rtl/loop_pipeline.sv` so foreground completion does not require an empty cleanup queue.
+- [x] Expose separate foreground-busy, cleanup-pending, cleanup-active and memory-quiescent observations.
+- [x] Integrate maintenance grants into continuous audio scheduling and the relevant audio/AXI wrappers.
+- [x] Add configurable per-iteration block and cycle budgets. Use 20 block releases as an initial configurable ceiling, subject to timing measurements.
+- [x] Charge all queue, metadata, retirement and page-reclamation work to the maintenance budget.
+- [x] Give foreground requests priority at safe transaction boundaries while measuring whether sufficient cleanup progress remains available.
+- [x] Reserve a guard interval for the declared worst-case completion time of an already accepted, non-preemptible memory transaction.
+- [x] Preserve pending collector context when its grant expires.
+- [x] Stop new maintenance work during quiescence and include outstanding maintenance transfers in memory-quiescent reporting.
 
 Verification:
 
@@ -203,10 +203,10 @@ Depends on Stages 2 through 5.
 - [ ] Account for live and retired metadata pages together; add documented free-space watermarks/admission checks for new recordings.
 - [ ] Do not treat a just-detached recording's blocks as immediately available to its replacement.
 - [ ] Expose pending-table count, pending-reference count, queue high-water mark, blocks freed, metadata pages freed, cleanup cycles and capacity failures.
-- [ ] Keep ordinary Fence as a memory-ordering operation.
-- [ ] Add an explicit offline cleanup-drain operation for physical snapshots and diagnostics.
-- [ ] Update ownership audits to count live views, unprocessed retired entries and active transaction state.
-- [ ] Preserve logical production comparisons separately from deferred physical allocator observations.
+- [x] Keep ordinary Fence as a memory-ordering operation.
+- [x] Add an explicit offline cleanup-drain operation for physical snapshots and diagnostics.
+- [x] Update ownership audits to count live views, unprocessed retired entries and active transaction state.
+- [x] Preserve logical production comparisons separately from deferred physical allocator observations.
 - [ ] Update `BLOCK_ALLOCATION.md`, `DDR_METADATA.md`, subsystem READMEs and the hardware verification contract.
 
 Verification:
@@ -254,3 +254,10 @@ The final evidence must distinguish bounded foreground work, budgeted maintenanc
 - Initial metadata milestone: coherent fixed-size DDR retired-root records, independent detached access, incremental tail trimming and queue-capacity refusal. No live media command uses deferred cleanup yet.
 - `python fpga/media_store/simulate_metadata.py`: eight AXI32/64 cache/table configurations passed, including small and three-level metadata tables, queue wraparound/full refusal, view reuse, unchanged reference counts and complete metadata-page recovery. The additional no-table-walk assertion is checked in the focused rerun before committing.
 - Warning-denying `cargo build --locked -p rt_backend_testbench` passed.
+
+- Integrated milestone: deferred CLEAR/REMOVE/BeginCapture, resumable tail release, serialized ownership updates, asynchronous grouped sample retirement, maintenance grants, explicit offline drain and pending-owner audits.
+- `python fpga/media_store/simulate.py --config small --block-chunks 32 --output work/reclaim-smoke`: existing block-ownership, snapshot restore, nested ranges and reuse passed.
+- `python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --deferred --output work/deferred-tests`: three directed gates passed. One-block and 17-block clears both took 62 accepted-to-done cycles and performed zero block-table lookups; a three-block grant released exactly three entries.
+- `python fpga/chunk_memory/simulate.py --config small --retire-chunks 32 --output work/background-retirement`: legacy and asynchronous retirement gates passed, including stalled dirty transfers, unrelated cached reads, safe reuse, writeback failure and reset recovery.
+- `python fpga/verification/simulate.py --directed --random-cases 2 --block-chunks 32 --output work/reclaim-production`: 18 production/RTL scenarios passed exactly.
+- Implementation detail: root/count checkpoints live in each 64-byte DDR queue record; active block/progress and bounded traversal state stay on chip across iteration boundaries. Extra record words remain reserved. A separate stored epoch is unnecessary for the existing destructive coordinated arena-reset contract; queue indices and collector state reset together with metadata and endpoints. This does not provide reset-time collector recovery.
