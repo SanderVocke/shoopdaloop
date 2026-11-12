@@ -59,6 +59,8 @@ def main():
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
     configs = {name: CONFIGS[name] for name in ("default", "small", "odd")} if args.config == "all" else {args.config: CONFIGS[args.config]}
     for name, capacities in configs.items():
+        if args.block_chunks > 1:
+            capacities=(capacities[0],capacities[1]*args.block_chunks,capacities[2])
         output = args.output.resolve() / name
         output.mkdir(parents=True, exist_ok=True)
         runner = get_runner("verilator")
@@ -66,7 +68,7 @@ def main():
         sources = [ROOT / "fpga/chunk_memory/rtl/chunk_ram.sv", ROOT / "fpga/chunk_memory/rtl/chunk_memory.sv",
                    HERE / "rtl/media_ram.sv", HERE / "rtl/metadata_cache.sv", HERE / "rtl/media_metadata.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
         parameters = dict(zip(("VIEWS", "SLOTS", "CHUNK_FRAMES"), capacities))
-        parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        parameters.update(BLOCK_CHUNKS=args.block_chunks,TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
         if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers, WRITE_BUFFERS=args.write_buffers)
         audio = (32, 16, 32, 32, 16, 2, 2) if name == "default" else (16, 8, 16, capacities[2], 8, 2, 2)
@@ -92,7 +94,10 @@ def main():
                      build_dir=output / "build", always=True, waves=args.waves, log_file=output / "build.log")
         testcase = "memory_timing" if args.timing else (("directed_pipeline" if args.pipeline else "directed_media") if args.case else
                    ["directed_pipeline", "randomized_pipeline", "pipeline_protocol", "playback_stream_protocol"] if args.pipeline else None)
-        result = runner.test(hdl_toplevel=top, test_module="test_media_pipeline" if args.pipeline else "test_media_store",
+        block_test=args.block_chunks>1 and not args.case and not args.timing
+        if block_test:testcase=None
+        module=('test_block_audio' if args.pipeline else 'test_block_media') if block_test else ('test_media_pipeline' if args.pipeline else 'test_media_store')
+        result = runner.test(hdl_toplevel=top, test_module=module,
                              testcase=testcase, seed=args.seed,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"MEDIA_CAPACITIES": ",".join(map(str, capacities)),
@@ -107,7 +112,7 @@ def main():
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.case or args.timing else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (1 if args.case or args.timing or block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

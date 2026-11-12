@@ -28,8 +28,21 @@ async def benchmark64(dut):
     verify=os.environ.get('LP_TIMING_VERIFY')=='1'
     workload=os.environ.get('LP_TIMING_WORKLOAD','original')
     value={'original':playback64,'streaming':streaming64,'mixed':mixed64}[workload](reference)
+    block_chunks=int(os.environ.get('AXI_BLOCK_CHUNKS','1'))
+    unblocked=value
+    if block_chunks!=1:
+        from block_images import reblock
+        value=deepcopy(value)
+        value['media']=reblock(value['media'],block_chunks,media[1])
     wire.dump(document('pipeline_case', value), output/'benchmark.case.json')
     expected = wire.run_reference('trace', document('pipeline_case', value), executable=reference)
+    if block_chunks!=1:
+        before=wire.run_reference('trace',document('pipeline_case',unblocked),executable=reference)
+        for old,new in zip(before['payload']['value']['results'],expected['payload']['value']['results']):
+            old=deepcopy(old);new=deepcopy(new)
+            old['audio']['media']=new['audio']['media']=None
+            assert old==new,'blocking changed benchmark audio, jobs, state or transition behavior'
+        (output/'allocation-equivalence.json').write_text(json.dumps(dict(quanta=len(value['steps']),result='passed',block_chunks=block_chunks,physical_slots=media[1]))+'\n')
     wire.run_reference('check', expected, executable=reference)
     image = wire.run_reference('compile', document('transition_plan', value['plan']), executable=reference)['payload']['value']
     driver = BenchmarkDriver(dut, depths, 20261110)

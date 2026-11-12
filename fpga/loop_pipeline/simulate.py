@@ -65,9 +65,13 @@ def main():
         media_capacities=MEDIA_CONFIGS[name]
         if args.timing and args.timing_workload=='streaming':media_capacities=(64,4096,32)
         if args.timing and args.timing_workload=='mixed':media_capacities=(72,2048,32)
+        if args.block_chunks > 1:
+            if args.timing:
+                media_capacities=(media_capacities[0], {'original':2048,'streaming':4096,'mixed':2304}[args.timing_workload],media_capacities[2])
+            else:media_capacities=(media_capacities[0],media_capacities[1]*args.block_chunks,media_capacities[2])
         parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),media_capacities))
         parameters['MEMORY_RESPONSE_CYCLES']=args.response_cycles
-        parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        parameters.update(BLOCK_CHUNKS=args.block_chunks,TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
         if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers)
         top='loop_pipeline_axi_tb' if axi else 'loop_pipeline_tb'
@@ -77,7 +81,7 @@ def main():
         runner.build(verilog_sources=direct_sources([*sources,*(axi_sources if axi else []),test_top],top,args.memory_model),includes=[ROOT/'fpga/state_processor/rtl'],
             hdl_toplevel=top,parameters=parameters,build_args=['--Wall','--timing','--timescale','1ns/1ps'],
             build_dir=output/'build',always=True,waves=args.waves,log_file=output/'build.log')
-        results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_media_loop_pipeline',seed=20261110,
+        results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_block_loop' if args.block_chunks>1 and not args.case else 'test_media_loop_pipeline',seed=20261110,
             testcase='directed_against_rust' if args.case else None,
             test_dir=output,waves=args.waves,log_file=output/'simulation.log',extra_env={
                 'LP_TIMING_VERIFY':str(int(args.timing_verify)),'LP_TIMING_WORKLOAD':args.timing_workload,'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),
@@ -87,7 +91,7 @@ def main():
                 'LP_READ_BUFFERS':str(args.read_buffers),
                 'LP_CASE':str(args.case.resolve()) if args.case else '',**memory_env})
         report=ET.parse(results).getroot()
-        if len(list(report.iter('testcase')))!=(1 if args.case or args.timing else 3) or any(list(report.iter(t)) for t in ['failure','error','skipped']):
+        if len(list(report.iter('testcase')))!=(1 if args.case or args.timing or args.block_chunks>1 else 3) or any(list(report.iter(t)) for t in ['failure','error','skipped']):
             raise SystemExit(f'{name}: failed, see {output}')
         print(f'{name}: connected pipeline comparisons passed')
 

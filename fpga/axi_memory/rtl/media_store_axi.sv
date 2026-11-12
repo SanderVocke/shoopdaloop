@@ -3,14 +3,15 @@
 
 module media_store_axi #(
     parameter integer VIEWS = 32,
-    parameter integer SLOTS = 32,
+    parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
-    parameter integer TABLE_PAGES = (SLOTS+14)/15 + 8*VIEWS + 16,
+    parameter integer BLOCK_CHUNKS = 32,
+    parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4,
     parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
     parameter integer VIEW_BITS = (VIEWS < 2) ? 1 : $clog2(VIEWS),
-    parameter integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS),
+    parameter integer SLOT_BITS = (SLOTS/BLOCK_CHUNKS < 2) ? 1 : $clog2(SLOTS/BLOCK_CHUNKS),
     parameter integer TABLE_BITS = VIEW_BITS + SLOT_BITS,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000
@@ -117,6 +118,7 @@ module media_store_axi #(
         .VIEWS(VIEWS),
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
+        .BLOCK_CHUNKS(BLOCK_CHUNKS),
         .TABLE_PAGES(TABLE_PAGES),
         .TABLE_LINES(TABLE_LINES),
         .REF_LINES(REF_LINES),
@@ -127,7 +129,7 @@ module media_store_axi #(
         .VIEW_BITS(VIEW_BITS),
         .SLOT_BITS(SLOT_BITS),
         .TABLE_BITS(TABLE_BITS)) core (.*);
-    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS)+15)/16)*16 + 64'(TABLE_PAGES)*16;
+    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16;
     initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
     shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);
 endmodule

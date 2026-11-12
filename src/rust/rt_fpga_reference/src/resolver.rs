@@ -24,9 +24,6 @@ impl ReadIntent {
 }
 
 pub fn resolve(intent: ReadIntent, media: &MediaStore, mut sink: impl FnMut(ChunkId)) {
-    let Ok(ids) = media.chunk_ids(intent.view) else {
-        return;
-    };
     let Ok(frames) = media.frames(intent.view) else {
         return;
     };
@@ -53,7 +50,7 @@ pub fn resolve(intent: ReadIntent, media: &MediaStore, mut sink: impl FnMut(Chun
         let Ok(ordinal) = usize::try_from(at / cf as u64) else {
             return;
         };
-        let Some(&chunk) = ids.get(ordinal) else {
+        let Ok(chunk) = media.chunk_at(intent.view, ordinal) else {
             return;
         };
         sink(chunk);
