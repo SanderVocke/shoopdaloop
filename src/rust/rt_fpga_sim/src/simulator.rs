@@ -656,3 +656,27 @@ impl rt_fpga_adapter::looping::LoopDevice for Simulator<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn failed_host_settlement_retains_fault_diagnostics_and_reset_recovers() {
+        let cache =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-tests");
+        let rt = runtime(&cache).unwrap();
+        let mut sim = Simulator::new(&rt, None, true).unwrap();
+        let (error, _) = sim.command_raw(16, 0, [0; 20]).unwrap();
+        assert_ne!(error, 0);
+        assert_eq!(sim.model.faulted, 1);
+        assert_eq!(sim.model.error_stage, 1);
+        assert_eq!(sim.model.error_code, error);
+        assert_eq!(sim.model.run_ready, 0);
+        sim.reset();
+        assert_eq!(sim.model.faulted, 0);
+        assert_eq!(sim.model.error_stage, 0);
+        assert_eq!(sim.model.error_code, 0);
+    }
+}

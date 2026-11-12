@@ -98,7 +98,8 @@ trace versions fail before they can manufacture a successful comparison.
 Checked-in fixtures cover retained takes across re-recording and wraps,
 unaligned byte reads/EOF, release/stale handles and storage reuse; empty playback
 and supersession; unread-result pressure; pending/export/read-buffer capacities;
-and distinct latest/playback media after recording restarts. Two seeded traces
+distinct latest/playback media after recording restarts; and delivered cancellation
+with recovery/normal ordering. Two seeded traces
 exercise 48 additional quanta each. Small device protocol tests gate settlement
 acknowledgement and inject failures without implementing any DSP. Physical RTL
 fault and arena exhaustion tests check sticky fault/receipt behavior separately

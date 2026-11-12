@@ -511,7 +511,7 @@ pub fn run(trace: &Trace, sim: Simulator<'_>) -> SimResult<Report> {
             }
             let sent = a.send(&mut native.control, &native.client, command.clone(), frame)?;
             let peer = b.send(&mut control, &native.client, command, frame)?;
-            equal(&sent, &peer, "submission")?;
+            equal(&sent, &peer, &format!("submission quantum {index}"))?;
             submissions.push(sent);
         }
         let expected = native.step(&step.input)?;
@@ -534,17 +534,17 @@ pub fn run(trace: &Trace, sim: Simulator<'_>) -> SimResult<Report> {
                 .resolver()
                 .state(mono::loop_id())
                 .map_err(|e| format!("{e:?}"))?,
-            "post-quantum state",
+            &format!("post-quantum state {index}"),
         )?;
         equal(
             &hardware.events(),
             &native.runtime.planner().resolver().events(),
-            "events",
+            &format!("events quantum {index}"),
         )?;
         equal(
             &(hardware.frame(), hardware.epoch()),
             &(native.runtime.next_frame(), native.runtime.epoch()),
-            "clock/epoch",
+            &format!("clock/epoch quantum {index}"),
         )?;
         let (completions, executions) = if step.hold_results {
             (vec![], vec![])

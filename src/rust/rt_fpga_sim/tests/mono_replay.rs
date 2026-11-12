@@ -11,6 +11,7 @@ fn queued_loop_replays_cover_exports_partial_reads_eof_retirement_and_storage_re
         include_str!("../fixtures/mono-pressure.json"),
         include_str!("../fixtures/mono-capacity.json"),
         include_str!("../fixtures/mono-media-roles.json"),
+        include_str!("../fixtures/mono-ordering.json"),
     ] {
         let trace: mono_trace::Trace = serde_json::from_str(source).unwrap();
         let sim = Simulator::new(&rt, None, true).unwrap();

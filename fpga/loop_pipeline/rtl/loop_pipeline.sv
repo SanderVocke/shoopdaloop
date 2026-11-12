@@ -227,7 +227,10 @@ module loop_pipeline #(
                 error_code <= 8; error_stage <= 3; fault_report_pending <= 1; output_valid <= 0; phase <= FAULT;
             end else case (phase)
                 HOST_SETTLE_WAIT: if (tp_response_valid && response_ready) begin
-                    phase <= tp_response_error == 0 ? BOUNDARY : FAULT;
+                    if (tp_response_error != 0) begin
+                        error_stage <= 1; error_code <= {4'b0,tp_response_error};
+                        output_valid <= 0; done <= 1; phase <= FAULT;
+                    end else phase <= BOUNDARY;
                 end
                 IDLE, BOUNDARY: if (run_valid && run_ready) begin
                     error_code <= 0; error_stage <= 0; output_valid <= 0;
