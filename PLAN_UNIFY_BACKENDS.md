@@ -265,23 +265,23 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 
 ### 5. Establish full supported-loop differential coverage
 
-- [ ] Run each shared supported session through production float as well as
+- [x] Run each shared supported session through production float as well as
   production Q8.24. Enforce the justified per-scenario arithmetic error budget
   and exact discrete outcomes, publish maximum/RMS/bias metrics, and include long
   playback/capture, ramps, interruptions and fan-in cases to detect drift. Keep
   intentional saturation cases explicit. Float error allowances never relax the
   separate exact Q8.24/RTL gate.
-- [ ] Extend directed common scenarios to all matrix rows: seek/retrigger;
+- [x] Extend directed common scenarios to all matrix rows: seek/retrigger;
   absolute/tick-delayed transitions; repeat waits; sync chains, self-sync and
   legal cycles; simultaneous/conflicting commands; supersession/cancellation;
   unread completions; retakes and retained prior content; aligned multi-chunk
   playback/wrap and read/write/read dependencies. Include gain/ramp/mix edge
   cases with every output sample checked, and unrelated playback preservation.
-- [ ] Exercise supported preparation refusal/capture-unavailable behavior with
+- [x] Exercise supported preparation refusal/capture-unavailable behavior with
   explicit comparable limits and outcomes. Test rejected/stale identities and
   matching logical revision behavior without equating allocator IDs. Unsupported
   features must fail profile validation visibly.
-- [ ] Add deterministic randomized sessions within the supported contract,
+- [x] Add deterministic randomized sessions within the supported contract,
   several graph connection orders/fan-ins and valid quantum/chunk profiles.
   Include interrupted ramps and callback partition tests where the same command
   admission timeline can be maintained. Keep audio and transition orders distinct.
@@ -436,3 +436,14 @@ checks pass. Regenerating upstream's stale direct-memory tops restores their
 current single-bank/fatal-fault ports. A silence opcode lowers production's empty
 input/output case without inventing a host audio source. Further action adapters,
 profile coverage and retirement are still pending stages 5–8.
+
+Stage 5 coverage milestone: the common corpus includes 30 seeded sessions plus
+14 directed/base sessions under stalled fixed-latency AXI64, and 1,280 long-session
+quanta under instant memory. Q8.24 output/media/state/event/outcome comparisons
+are exact. Checked float error budgets and actual clipping-operation diagnostics
+are enforced for every session. Alternate Q/chunk profiles (1/1, 16/16, 32/8,
+64/32), odd cache capacities, word-only AXI64 and host callback partitioning pass.
+Hardware allocation and late-response fault containment pass; graceful native
+resource refusal is not equated to fatal hardware failure. The live DRAMsim3
+64-loop gate is running; its final stage-5 item remains unchecked until it passes.
+Evidence and float metrics: `fpga/verification/accuracy-gates.json`.

@@ -276,6 +276,14 @@ pub fn compile(scenario: &Scenario) -> Checked<Image> {
         }
         loop_views.push(LoopViews { id: l.id, views });
     }
+    let referenced: std::collections::BTreeSet<_> = media
+        .views
+        .iter()
+        .flat_map(|v| v.chunks.iter().copied())
+        .collect();
+    media.free_chunks = (0..media.samples.len() as u32 / scenario.chunk_frames)
+        .filter(|id| !referenced.contains(id))
+        .collect();
     let mut b = Builder {
         instructions: Vec::new(),
         memory: Vec::new(),

@@ -8,6 +8,8 @@ pub const FORMAT_VERSION: u32 = 1;
 pub struct Scenario {
     pub format_version: u32,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Arithmetic::is_default")]
+    pub arithmetic: Arithmetic,
     pub quantum: u32,
     pub chunk_frames: u32,
     pub input_ports: u16,
@@ -144,7 +146,13 @@ pub enum Numeric {
     deny_unknown_fields
 )]
 pub enum Samples {
-    Float(Vec<Vec<f32>>),
+    Float(
+        #[serde(
+            deserialize_with = "finite_channels",
+            serialize_with = "serialize_finite_channels"
+        )]
+        Vec<Vec<f32>>,
+    ),
     Q824(Vec<Vec<i32>>),
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -224,4 +232,36 @@ pub struct PendingRequest {
     pub requested: u64,
     pub effective: u64,
     pub remaining_ticks: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Arithmetic {
+    #[default]
+    Bounded,
+    IntentionalClipping,
+}
+impl Arithmetic {
+    pub fn is_default(&self) -> bool {
+        *self == Self::Bounded
+    }
+}
+
+fn finite_channels<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<Vec<f32>>, D::Error> {
+    let values = Vec::<Vec<f32>>::deserialize(deserializer)?;
+    if values.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(serde::de::Error::custom("nonfinite float sample"));
+    }
+    Ok(values)
+}
+fn serialize_finite_channels<S: serde::Serializer>(
+    values: &Vec<Vec<f32>>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    if values.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(serde::ser::Error::custom("nonfinite float sample"));
+    }
+    values.serialize(serializer)
 }
