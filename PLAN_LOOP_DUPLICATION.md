@@ -1,6 +1,6 @@
 # P17 duplication and cross-kind clear-then-copy
 
-Status: implementation in progress on `feat/p11-loop-duplication`.
+Status: implementation in progress on `feat/p17-clear-then-copy`.
 
 Written using [.agents/prompts/write_plan.md](.agents/prompts/write_plan.md).
 Basis: the [P11 investigation](docs/investigations/p11-backend-parity.md) and the
@@ -132,7 +132,7 @@ both. Stage 5 validates and delivers the integrated result.
 
 - [x] Preserve this plan and existing investigation, fetch
   `origin/feat/backend-replacement`, and create an implementation branch such as
-  `feat/p11-loop-duplication` from it. Read the branch's AGENTS/index/mandates,
+  `feat/p17-clear-then-copy` from it. Read the branch's AGENTS/index/mandates,
   style, build and test guidance. Record the base SHA here; do not implement on
   the master-based planning checkout.
 - [x] Refresh the entry-point review and identify the normal user Clear route,

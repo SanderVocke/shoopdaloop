@@ -25,13 +25,13 @@ this change does not promise that every dependency configuration is accepted.
   `9134eb20b7d1ee34e71b5745927645c9c2bd8d2a`.
 - The investigation used replacement sources pinned to that commit and the local
   production reference. The later implementation fetch succeeded and work is on
-  `feat/p11-loop-duplication`, based on the replacement commit above.
+  `feat/p17-clear-then-copy`, based on the replacement commit above.
 - This document records source inspection. Implementation and validation follow
   [the duplication plan](../../PLAN_LOOP_DUPLICATION.md); results belong in its PR.
 
 ## Implementation outcome
 
-The duplication work is implemented on `feat/p11-loop-duplication` using the
+The duplication work is implemented on `feat/p17-clear-then-copy` using the
 existing service job, authored-event validator and clear lifecycle. Cross-kind
 copy waits for lifecycle success and the empty projection, then enters ordinary
 copy with current mappings. The baseline Clear/Copy oracle also exposed a narrow
