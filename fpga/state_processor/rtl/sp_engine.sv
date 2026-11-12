@@ -216,8 +216,7 @@ module sp_engine #(
                         done <= 1;
                         phase <= IDLE;
                     end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
-                        if (loop_response_data[33+:2] == 1 && (loop_response_data[35+:64] >> chunk_shift) != 0
-                            && (loop_response_data[99+:64] >> chunk_shift) < (loop_response_data[35+:64] >> chunk_shift)) begin
+                        if (loop_response_data[33+:2] == 1) begin
                             position <= loop_response_data[99+:64] >> chunk_shift;
                             length <= loop_response_data[35+:64] >> chunk_shift;
                             operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
@@ -231,7 +230,11 @@ module sp_engine #(
                     end else phase <= NEXT;
                 end
                 READ_REQUEST: begin
-                    if (!operand_in_range) begin
+                    if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK && operand == VIEW
+                        && (length == 0 || position >= length)) begin
+                        job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
+                        phase <= EMIT;
+                    end else if (!operand_in_range) begin
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1;
                         phase <= IDLE;

@@ -45,9 +45,10 @@ def generate():
         text += "    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;\n"
         text += "    wire [31:0] physical_base = PHYSICAL_BASE;\n"
         text += f"    {name} #(\n        "+",\n        ".join(f".{p}({p})" for p in param_names)+") core (.*);\n"
-        text += """    generate if (BURST_MEMORY != 0) begin : bursts
-        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
-    end else begin : words
+        limit = ", .MAX_WORDS(32'(CHUNK_FRAMES))" if name in ("chunk_memory", "media_store", "loop_pipeline") else ""
+        text += "    generate if (BURST_MEMORY != 0) begin : bursts\n"
+        text += f"        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH){limit}) memory_endpoint (.arena_base(memory_arena_base),.*);\n"
+        text += """    end else begin : words
         wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
         assign memory_write_ready = 0;
         assign memory_read_valid = 0;

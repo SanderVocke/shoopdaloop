@@ -108,7 +108,7 @@ module media_store_axi #(
         .SLOT_BITS(SLOT_BITS),
         .TABLE_BITS(TABLE_BITS)) core (.*);
     generate if (BURST_MEMORY != 0) begin : bursts
-        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
+        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH), .MAX_WORDS(32'(CHUNK_FRAMES))) memory_endpoint (.arena_base(memory_arena_base),.*);
     end else begin : words
         wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
         assign memory_write_ready = 0;

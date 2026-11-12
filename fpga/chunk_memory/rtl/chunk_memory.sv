@@ -30,6 +30,8 @@ module chunk_memory #(
     localparam [7:0] INVALID_CHUNK = 1, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
     localparam integer RADDR_BITS = (READ_BUFFERS*CHUNK_FRAMES < 2) ? 1 : $clog2(READ_BUFFERS*CHUNK_FRAMES);
     localparam integer WADDR_BITS = (WRITE_BUFFERS*CHUNK_FRAMES < 2) ? 1 : $clog2(WRITE_BUFFERS*CHUNK_FRAMES);
+    localparam integer READ_LINE_BITS = READ_BUFFERS < 2 ? 1 : $clog2(READ_BUFFERS);
+    localparam integer WRITE_LINE_BITS = WRITE_BUFFERS < 2 ? 1 : $clog2(WRITE_BUFFERS);
     localparam [63:0] ARENA_BYTES = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     typedef enum logic [3:0] { IDLE, CHECK, LOOKUP, WAIT_LINE, READ_STREAM,
         WRITE_DATA, COMMIT, FLUSH, RETIRING, RESPONSE } phase_t;
@@ -49,7 +51,9 @@ module chunk_memory #(
     reg [READ_BUFFERS-1:0] read_present, read_loaded;
     reg [31:0] write_tag [0:WRITE_BUFFERS-1];
     reg [WRITE_BUFFERS-1:0] write_present, write_loaded, dirty;
-    reg [31:0] next_read, next_write, quiet;
+    reg [READ_LINE_BITS-1:0] next_read;
+    reg [WRITE_LINE_BITS-1:0] next_write;
+    reg [31:0] quiet;
     reg hint_pending;
     reg [31:0] hint_chunk;
     reg dma_write, dma_write_pool;
@@ -59,7 +63,7 @@ module chunk_memory #(
     reg [31:0] read_hit_line, write_hit_line, read_victim_line, write_victim_line, flush_line, fill_line;
     reg fill_write_pool, hint_hit, incoming_write_space;
     reg [31:0] dirty_count;
-    integer i, candidate;
+    integer i;
     wire dma_active = dma_phase != D_IDLE;
     wire read_pinned = !use_write_pool && (phase == WAIT_LINE || phase == READ_STREAM);
     wire write_claimed = opcode == WRITE && phase != IDLE && phase != RESPONSE;
@@ -117,7 +121,7 @@ module chunk_memory #(
         read_hit = 0; write_hit = 0; read_hit_line = 0; write_hit_line = 0;
         read_victim = 0; write_victim = 0; read_victim_line = 0; write_victim_line = 0;
         flush_found = 0; flush_line = 0; fill_found = 0; fill_line = 0; fill_write_pool = 0;
-        hint_hit = 0; dirty_count = 0; candidate = 0; incoming_write_space = 0;
+        hint_hit = 0; dirty_count = 0; incoming_write_space = 0;
         for (i = 0; i < READ_BUFFERS; i = i+1) begin
             if (read_present[i] && read_tag[i] == chunk) begin read_hit = 1; read_hit_line = 32'(i); end
             if (read_present[i] && read_tag[i] == hint_chunk) hint_hit = 1;
@@ -126,11 +130,15 @@ module chunk_memory #(
             if (read_present[i] && !read_loaded[i]) begin fill_found = 1; fill_line = 32'(i); end
         end
         for (i = 0; i < READ_BUFFERS; i = i+1) begin
-            candidate = 32'(next_read) + i;
-            if (candidate >= READ_BUFFERS) candidate = candidate - READ_BUFFERS;
-            if (!read_victim && !(read_pinned && line == 32'(candidate))
-                && !(dma_active && !dma_write_pool && dma_line == 32'(candidate))) begin
-                read_victim = 1; read_victim_line = 32'(candidate);
+            if (READ_LINE_BITS'(i) >= next_read && !read_victim && !(read_pinned && line == 32'(i))
+                && !(dma_active && !dma_write_pool && dma_line == 32'(i))) begin
+                read_victim = 1; read_victim_line = 32'(i);
+            end
+        end
+        for (i = 0; i < READ_BUFFERS; i = i+1) begin
+            if (!read_victim && !(read_pinned && line == 32'(i))
+                && !(dma_active && !dma_write_pool && dma_line == 32'(i))) begin
+                read_victim = 1; read_victim_line = 32'(i);
             end
         end
         for (i = 0; i < WRITE_BUFFERS; i = i+1) begin
@@ -144,15 +152,25 @@ module chunk_memory #(
             if (write_present[i] && !write_loaded[i]) begin fill_found = 1; fill_line = 32'(i); fill_write_pool = 1; end
         end
         for (i = 0; i < WRITE_BUFFERS; i = i+1) begin
-            candidate = 32'(next_write) + i;
-            if (candidate >= WRITE_BUFFERS) candidate = candidate - WRITE_BUFFERS;
-            if (!write_victim && write_loaded[candidate] && !dirty[candidate]
-                && !(dma_active && dma_write_pool && dma_line == 32'(candidate))) begin
-                write_victim = 1; write_victim_line = 32'(candidate);
+            if (WRITE_LINE_BITS'(i) >= next_write) begin
+                if (!write_victim && write_loaded[i] && !dirty[i]
+                    && !(dma_active && dma_write_pool && dma_line == 32'(i))) begin
+                    write_victim = 1; write_victim_line = 32'(i);
+                end
+                if (!flush_found && dirty[i] && write_loaded[i]
+                    && !(write_claimed && write_tag[i] == chunk)) begin
+                    flush_found = 1; flush_line = 32'(i);
+                end
             end
-            if (!flush_found && dirty[candidate] && write_loaded[candidate]
-                && !(write_claimed && write_tag[candidate] == chunk)) begin
-                flush_found = 1; flush_line = 32'(candidate);
+        end
+        for (i = 0; i < WRITE_BUFFERS; i = i+1) begin
+            if (!write_victim && write_loaded[i] && !dirty[i]
+                && !(dma_active && dma_write_pool && dma_line == 32'(i))) begin
+                write_victim = 1; write_victim_line = 32'(i);
+            end
+            if (!flush_found && dirty[i] && write_loaded[i]
+                && !(write_claimed && write_tag[i] == chunk)) begin
+                flush_found = 1; flush_line = 32'(i);
             end
         end
     end
@@ -242,14 +260,14 @@ module chunk_memory #(
                         line <= read_victim_line; use_write_pool <= 0;
                         read_present[read_victim_line] <= 1; read_loaded[read_victim_line] <= 0;
                         read_tag[read_victim_line] <= chunk;
-                        next_read <= read_victim_line + 1 == 32'(READ_BUFFERS) ? 0 : read_victim_line+1;
+                        next_read <= READ_LINE_BITS'(read_victim_line + 1 == 32'(READ_BUFFERS) ? 0 : read_victim_line+1);
                         phase <= WAIT_LINE;
                     end else if (opcode == WRITE && write_victim) begin
                         line <= write_victim_line; use_write_pool <= 1;
                         write_present[write_victim_line] <= 1; write_tag[write_victim_line] <= chunk;
                         dirty[write_victim_line] <= 0;
                         write_loaded[write_victim_line] <= count == 32'(CHUNK_FRAMES);
-                        next_write <= write_victim_line + 1 == 32'(WRITE_BUFFERS) ? 0 : write_victim_line+1;
+                        next_write <= WRITE_LINE_BITS'(write_victim_line + 1 == 32'(WRITE_BUFFERS) ? 0 : write_victim_line+1);
                         for (integer r = 0; r < READ_BUFFERS; r = r+1)
                             if (read_present[r] && read_tag[r] == chunk) begin read_present[r] <= 0; read_loaded[r] <= 0; end
                         phase <= count == 32'(CHUNK_FRAMES) ? WRITE_DATA : WAIT_LINE;
@@ -313,7 +331,7 @@ module chunk_memory #(
                             dma_write_pool <= 0; dma_write <= 0;
                             dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_READ_REQUEST;
                             dma_speculative <= 1; dma_obsolete <= 0;
-                            next_read <= read_victim_line + 1 == 32'(READ_BUFFERS) ? 0 : read_victim_line+1;
+                            next_read <= READ_LINE_BITS'(read_victim_line + 1 == 32'(READ_BUFFERS) ? 0 : read_victim_line+1);
                             hint_pending <= 0;
                         end
                     end

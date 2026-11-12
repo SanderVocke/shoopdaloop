@@ -118,7 +118,8 @@ be mistaken for a new transaction. Reset begins a new store epoch.
 ## Metadata configuration
 
 The idle-only configuration port transfers on `cfg_valid && cfg_ready`; responses
-pulse in the following cycle. Data is 160 bits, with zeros above bit 31 in scalar
+pulse after the request/validation, RAM-read and registered-result stages. Sample data on
+`cfg_response_valid`. Data is 160 bits, with zeros above bit 31 in scalar
 spaces. Write/error responses return zero. Full 32-bit addresses are checked before
 narrowing. Load only trusted, Rust-validated images while execution is stopped;
 this debug/loading port does not implement the complete snapshot validator.

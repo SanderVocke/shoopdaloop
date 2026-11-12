@@ -128,7 +128,13 @@ class Driver:
         else:
             raise AssertionError("configuration timed out")
         self.set(cfg_valid=0)
-        assert after["cfg_response_valid"] and bool(after["cfg_response_error"]) == expect_error
+        for _ in range(100):
+            if after["cfg_response_valid"]:
+                break
+            _, after = await self.tick()
+        else:
+            raise AssertionError("configuration response timed out")
+        assert bool(after["cfg_response_error"]) == expect_error
         result = after["cfg_read_data"]
         if expect_error or value is not None:
             assert result == 0

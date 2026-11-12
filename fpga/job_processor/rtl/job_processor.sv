@@ -77,24 +77,21 @@ module job_processor #(
     reg [15:0] source_a, source_b, destination, port_index;
     reg [31:0] sample_a, result_sample;
     reg [31:0] stream_frame, gain_read_gain;
-    reg gain_read_valid, gain_product_valid, stream_store_valid;
+    reg gain_read_valid, gain_operand_valid, gain_product_valid, stream_store_valid;
     reg mix_second, mix_read_valid, mix_read_second;
     reg [31:0] current_gain, ramp_start, ramp_target, duration, elapsed;
-    reg [31:0] magnitude, fraction, step_quotient, step_remainder, delta_magnitude;
+    reg [31:0] fraction, step_gain, step_gain_extra, step_remainder, delta_magnitude;
     reg ramp_negative, constant_gain;
     wire signed [32:0] delta = $signed({packet[127], packet[127:96]})
         - $signed({packet[95], packet[95:64]});
     wire [32:0] fraction_sum = {1'b0, fraction} + {1'b0, step_remainder};
     wire carry_fraction = fraction_sum >= {1'b0, duration};
-    wire [31:0] next_magnitude = magnitude + step_quotient + 32'(carry_fraction);
     reg [63:0] product;
     reg product_negative;
     reg hint_pending, hinted_head;
     assign media_hint_valid = (ENABLE_MEDIA != 0) && hint_pending && !media_fault && !reset;
-    wire [31:0] multiply_a = (phase == RAMP_MULTIPLY) ? delta_magnitude
-        : (scratch_data[31] ? -scratch_data : scratch_data);
-    wire [31:0] multiply_b = (phase == RAMP_MULTIPLY) ? elapsed
-        : (gain_read_gain[31] ? -gain_read_gain : gain_read_gain);
+    reg [31:0] multiply_a, multiply_b;
+    reg multiply_negative;
     wire [63:0] multiplied = multiply_a * multiply_b;
     wire divide_done;
     wire [63:0] divide_quotient;
@@ -264,16 +261,16 @@ module job_processor #(
             sample_a <= 0;
             result_sample <= 0;
             stream_frame <= 0; gain_read_gain <= 0;
-            gain_read_valid <= 0; gain_product_valid <= 0; stream_store_valid <= 0;
+            gain_read_valid <= 0; gain_operand_valid <= 0; gain_product_valid <= 0; stream_store_valid <= 0;
+            multiply_a <= 0; multiply_b <= 0; multiply_negative <= 0;
             mix_second <= 0; mix_read_valid <= 0; mix_read_second <= 0;
             current_gain <= 0;
             ramp_start <= 0;
             ramp_target <= 0;
             duration <= 0;
             elapsed <= 0;
-            magnitude <= 0;
             fraction <= 0;
-            step_quotient <= 0;
+            step_gain <= 0; step_gain_extra <= 0;
             step_remainder <= 0;
             delta_magnitude <= 0;
             ramp_negative <= 0;
@@ -282,7 +279,7 @@ module job_processor #(
             product_negative <= 0;
         end else begin
             done <= 0;
-            gain_read_valid <= 0; gain_product_valid <= 0; mix_read_valid <= 0; stream_store_valid <= 0;
+            gain_read_valid <= 0; gain_operand_valid <= 0; gain_product_valid <= 0; mix_read_valid <= 0; stream_store_valid <= 0;
             if ((ENABLE_MEDIA != 0) && media_fault && phase != IDLE) begin
                 error_code <= 8; done <= 1; phase <= IDLE;
             end else if ((ENABLE_MEDIA != 0) && media_done && (phase >= MEDIA_COMMAND)) begin
@@ -442,6 +439,8 @@ module job_processor #(
                     elapsed <= packet[191:160];
                     ramp_negative <= delta[32];
                     delta_magnitude <= delta[32] ? 32'(-delta) : delta[31:0];
+                    multiply_a <= delta[32] ? 32'(-delta) : delta[31:0];
+                    multiply_b <= packet[191:160];
                     if ((packet[159:128] == 0) || (packet[191:160] >= packet[159:128]) || (delta == 0)) begin
                         current_gain <= packet[127:96];
                         constant_gain <= 1;
@@ -457,21 +456,23 @@ module job_processor #(
                 end
                 INITIAL_DIVIDE: phase <= INITIAL_WAIT;
                 INITIAL_WAIT: if (divide_done) begin
-                    magnitude <= divide_quotient[31:0];
                     fraction <= divide_remainder;
                     current_gain <= ramp_value(ramp_start, ramp_negative, divide_quotient[31:0]);
                     phase <= STEP_DIVIDE;
                 end
                 STEP_DIVIDE: phase <= STEP_WAIT;
                 STEP_WAIT: if (divide_done) begin
-                    step_quotient <= divide_quotient[31:0];
+                    step_gain <= ramp_value(0, ramp_negative, divide_quotient[31:0]);
+                    step_gain_extra <= ramp_value(ramp_negative ? 32'hffffffff : 32'd1,
+                        ramp_negative, divide_quotient[31:0]);
                     step_remainder <= divide_remainder;
                     phase <= GAIN_STREAM;
                 end
                 GAIN_STREAM, MIX_STREAM: begin
                     if (phase == GAIN_STREAM) begin
                         gain_read_valid <= stream_read;
-                        gain_product_valid <= gain_read_valid;
+                        gain_operand_valid <= gain_read_valid;
+                        gain_product_valid <= gain_operand_valid;
                         stream_store_valid <= gain_product_valid;
                         if (stream_read) begin
                             gain_read_gain <= current_gain;
@@ -481,15 +482,19 @@ module job_processor #(
                                 if ({1'b0,elapsed}+1 >= {1'b0,duration}) begin
                                     current_gain <= ramp_target; constant_gain <= 1;
                                 end else begin
-                                    magnitude <= next_magnitude;
                                     fraction <= carry_fraction ? 32'(fraction_sum-{1'b0,duration}) : fraction_sum[31:0];
-                                    current_gain <= ramp_value(ramp_start, ramp_negative, next_magnitude);
+                                    current_gain <= carry_fraction ? current_gain+step_gain_extra : current_gain+step_gain;
                                 end
                             end
                         end
                         if (gain_read_valid) begin
+                            multiply_a <= scratch_data[31] ? -scratch_data : scratch_data;
+                            multiply_b <= gain_read_gain[31] ? -gain_read_gain : gain_read_gain;
+                            multiply_negative <= scratch_data[31] ^ gain_read_gain[31];
+                        end
+                        if (gain_operand_valid) begin
                             product <= multiplied;
-                            product_negative <= scratch_data[31] ^ gain_read_gain[31];
+                            product_negative <= multiply_negative;
                         end
                         if (gain_product_valid)
                             result_sample <= scaled_product(product[63:24], product_negative);
