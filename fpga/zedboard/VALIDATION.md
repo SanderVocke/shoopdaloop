@@ -4,6 +4,11 @@ Validation date: 2026-11-12. Workload: the default 64-loop deployment, Q=32,
 64-bit AXI3, four read buffers, four write buffers, eight metadata cache lines,
 four reference cache lines, 100 MHz requested fabric clock.
 
+Outcome: block-design/IP generation, full synthesis and placement completed.
+The implementation wrote a routed checkpoint, but physical DRC errors blocked
+bitstream generation. `bench_synth.dcp` and `ps7_init.tcl` were exported;
+`bench.bit`, `bench.ltx` and `bench.xsa` were not produced.
+
 ## Tool and board inputs
 
 - Public image: `gusanagy/xilinx-vivado:2024.1-x11`, pinned to
@@ -69,6 +74,28 @@ critical warnings and 148 warnings. The three critical warnings are
 They refer to existing core RTL and remain unresolved; this build does not
 qualify that RAM inference for hardware measurements. No core rewrite or
 resource/timing optimization was performed as part of this integration work.
+The linked synthesized checkpoint retains a block RAM in each of these three
+cache banks.
+
+Placement completed successfully. The implementation reports timing violations
+at the requested 100 MHz; this integration exercise leaves those violations to
+the separate timing work. A generated bitstream must not be treated as a
+timing-qualified 100 MHz deployment.
+
+The bitstream attempt reached `write_bitstream` and stopped at physical DRC:
+the routed report contains 1,119 `PDIL-1` invalid-site-configuration errors,
+and the route-status report contains unresolved routing conflicts. The tool
+also reported `Route 35-557` pin-assignment failures. The routed checkpoint is
+a diagnostic artifact, not a successfully routed deployment.
+
+A separate 32-bit counter/XOR design, using only a clock input and LED output
+on the same XC7Z020, reproduced invalid-site-programming failures at bitgen
+(`RTSTAT-11` on the clock input, clock buffer and output sites), plus incorrect
+LUT-pin-equation warnings. It uses no benchmark, AXI, cache or debug RTL.
+The physical build failure therefore also occurs outside this deployment.
+Its cause has not been isolated between the public tool installation, the
+trimmed runtime and the cloud host. Recheck implementation/bitgen with a known
+working Vivado installation before relying on any exported hardware image.
 
 Tool checks found and fixed missing project include files, the module-reference
 requirement for a Verilog entry module, incomplete address metadata from manual
