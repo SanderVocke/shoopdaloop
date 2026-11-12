@@ -2,7 +2,7 @@
 import os
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import FallingEdge, RisingEdge, Timer, with_timeout
+from cocotb.triggers import FallingEdge, RisingEdge, Timer, Event, with_timeout
 
 Q = int(os.environ['AIO_Q'])
 P = int(os.environ['AIO_P'])
@@ -13,7 +13,12 @@ TICKS = max(100, CHANNELS*8)
 
 
 def sample(channel, frame):
-    return (channel+1)*100000+frame*37+1
+    if frame % 7 == 0:
+        return 0x80000000 | channel
+    if frame % 7 == 1:
+        return 0x7fffffff-channel
+    value = (channel+1)*100000+frame*37+1
+    return value ^ (0x80000000 if frame % 2 else 0)
 
 
 def packed(frame):
@@ -65,7 +70,7 @@ async def frames(d, count, missed=(), check=True):
     return outputs
 
 
-async def consumer(d, blocks, late=False):
+async def consumer(d, blocks, late=False, completion_gate=None, written=None):
     for n in range(blocks):
         while not int(d.process_valid.value):
             await edge(d)
@@ -86,8 +91,12 @@ async def consumer(d, blocks, late=False):
                 d.output_data.value = value
                 await edge(d)
                 d.output_write.value = 0
+        if written is not None:
+            written.set()
+        if completion_gate is not None:
+            await completion_gate.wait()
         if late and n == 0:
-            while int(d.session_frame.value) < Q+P+1:
+            while int(d.session_frame.value) < Q+P+1+(Q if late == "two" else 0):
                 await edge(d)
         d.process_done.value = 1
         await edge(d)
@@ -181,3 +190,104 @@ async def reset_in_flight_ownership(d):
         await Timer(100, units='ns')
         d.enable.value = 1
         await Timer(100, units='ns')
+
+
+@cocotb.test()
+async def watchdog_and_core_fault(d):
+    cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
+    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    await initialize(d)
+    await frames(d, Q, check=False)
+    while not int(d.process_valid.value):
+        await edge(d)
+    d.process_ready.value = 1
+    await edge(d)
+    d.process_ready.value = 0
+    await with_timeout(RisingEdge(d.recovery_requested), 1100000, 'ns')
+    await edge(d)
+    assert int(d.recovery_reason.value) == 2
+    d.session_reset.value = 1
+    d.enable.value = 0
+    await Timer(200, units='ns')
+    d.session_reset.value = 0
+    d.enable.value = 1
+    await Timer(100, units='ns')
+    await frames(d, Q, check=False)
+    while not int(d.process_valid.value):
+        await edge(d)
+    d.process_ready.value = 1
+    await edge(d)
+    d.process_ready.value = 0
+    d.process_fault.value = 1
+    await edge(d)
+    assert int(d.recovery_requested.value)
+    assert int(d.recovery_reason.value) == 3
+    assert int(d.failure_sequence.value) == 0
+
+
+@cocotb.test()
+async def publication_cutoff(d):
+    if BANKS < 3:
+        return
+    cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
+    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    await initialize(d)
+    for placement in ('before', 'at', 'after'):
+        gate, written = Event(), Event()
+        task = cocotb.start_soon(consumer(d, 1, completion_gate=gate, written=written))
+        await frames(d, Q+P, check=False)
+        d._log.info('cutoff %s frame=%d busy=%d fault=%d', placement, int(d.session_frame.value), int(d.busy.value), int(d.recovery_requested.value))
+        await with_timeout(written.wait(), 100000, 'ns')
+        if placement == 'after':
+            await FallingEdge(d.audio_clk)
+            d.frame_prepare.value = 1
+            await edge(d, 'audio_clk')
+            d.frame_prepare.value = 0
+            gate.set()
+        else:
+            gate.set()
+            signal = d.tx_request_meta if placement == 'at' else d.tx_request_sync
+            for _ in range(100):
+                await edge(d, 'audio_clk')
+                if int(signal.value) & 1:
+                    break
+            else:
+                raise AssertionError(('publication did not cross', int(d.process_done.value), int(d.busy.value), int(d.tx_request.value)))
+            await FallingEdge(d.audio_clk)
+            d.frame_prepare.value = 1
+            await edge(d, 'audio_clk')
+            d.frame_prepare.value = 0
+        await Timer(4*PERIOD, units='ns')
+        await FallingEdge(d.audio_clk)
+        d.frame_tick.value = 1
+        d.rx_samples.value = packed(Q+P)
+        await edge(d, 'audio_clk')
+        expected = packed(0) if placement == 'before' else 0
+        assert int(d.tx_samples.value) == expected, placement
+        assert int(d.missed_deadlines.value) == int(placement != 'before')
+        d.frame_tick.value = 0
+        task.kill()
+        d.enable.value = 0
+        d.session_reset.value = 1
+        await Timer(200, units='ns')
+        d.session_reset.value = 0
+        d.epoch.value = int(d.epoch.value)+1
+        await Timer(100, units='ns')
+        d.enable.value = 1
+        await Timer(100, units='ns')
+
+
+@cocotb.test()
+async def consecutive_misses_and_catchup(d):
+    if Q == 1 or BANKS < 3 or (P == Q and BANKS < 4):
+        return
+    cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
+    cocotb.start_soon(Clock(d.audio_clk, PERIOD, units='ns').start())
+    await initialize(d)
+    count = 10*Q+Q+P
+    task = cocotb.start_soon(consumer(d, count//Q, late='two'))
+    await frames(d, count, missed=(0, 1))
+    assert not int(d.recovery_requested.value)
+    assert int(d.missed_deadlines.value) == 2
+    assert int(d.discarded_quanta.value) == 2
+    task.kill()

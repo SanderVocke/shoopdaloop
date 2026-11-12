@@ -10,7 +10,8 @@ path between synchronizer stages normally. Apply asynchronous-input exceptions
 only to the first stage's D pin, not to every register in the destination domain.
 This keeps accidental cross-domain paths visible to CDC analysis.
 
-The `rx_sequence`/`rx_epoch` and `tx_sequence`/`tx_epoch` arrays are bundled
+The `rx_sequence`/`rx_epoch`, `tx_sequence`/`tx_epoch` and audio-fault reason/
+sequence fields are bundled
 mailbox data, held from publication through acknowledgement. Constrain their
 source-register-to-destination-consumer paths to less than one destination-clock
 period, including skew, so that they settle before the request traverses the two

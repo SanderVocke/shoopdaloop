@@ -10,7 +10,6 @@ from pipeline_driver import Transport, sp
 from loop_memory import LoopMemory
 from media_results import logical_media
 from cocotb.utils import get_sim_time
-import codec as tp
 
 OUTPUT = Path(os.environ['AIO_OUTPUT'])
 PERIOD = int(os.environ['AIO_AUDIO_PERIOD'])

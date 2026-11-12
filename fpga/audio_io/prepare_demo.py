@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -28,7 +29,7 @@ def packet(sequence=0, kind=0, opcode=0, index=0, data=0):
     return sequence << 682 | kind << 680 | opcode << 672 | index << 640 | data
 
 
-def make_scenario(q=32, chunk=None, channels=16, monitoring=False):
+def make_scenario(q=32, chunk=None, channels=16, monitoring=False, routing="identity"):
     identity = lambda slot: dict(slot=slot, generation=1)
     endpoint = lambda node, port=0: dict(node=node, port=port)
     loops = [dict(id=identity(c), channels=1, sync_source=None, repeat_sync=False, content=None)
@@ -36,12 +37,14 @@ def make_scenario(q=32, chunk=None, channels=16, monitoring=False):
     nodes, connections = [], []
     for c in range(channels):
         playback, capture = identity(2*c), identity(2*c+1)
+        input_port = channels-1-c if routing == "reverse" else 0 if routing == "fanout" else c
         nodes += [dict(id=playback, operation=dict(kind='playback', target=identity(c))),
                   dict(id=capture, operation=dict(kind='capture', target=identity(c)))]
-        connections += [dict(source=endpoint(None, c), destination=endpoint(capture)),
-                        dict(source=endpoint(playback), destination=endpoint(None, c))]
-        if monitoring:
-            connections.append(dict(source=endpoint(None, c), destination=endpoint(None, c)))
+        connections.append(dict(source=endpoint(None, input_port), destination=endpoint(capture)))
+        if routing != 'sparse' or c != channels-1:
+            connections.append(dict(source=endpoint(playback), destination=endpoint(None, c)))
+        if monitoring and (routing != 'sparse' or c != channels-1):
+            connections.append(dict(source=endpoint(None, input_port), destination=endpoint(None, c)))
     steps = []
     for n in range(18):
         actions = []
@@ -62,10 +65,10 @@ def make_scenario(q=32, chunk=None, channels=16, monitoring=False):
                 request_capacity=128, loops=loops, nodes=nodes, connections=connections, media=[], steps=steps)
 
 
-def prepare(output, q=32, chunk=None, channels=16, monitoring=False):
+def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="identity"):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    scenario = make_scenario(q, chunk, channels, monitoring)
+    scenario = make_scenario(q, chunk, channels, monitoring, routing)
     executable = ROOT/'target/debug/rt-backend-testbench'
     image = wire.run_batch([scenario], executable=executable, command='compile')[0]
     expected = wire.run_batch([scenario], executable=executable)[0]
@@ -115,14 +118,25 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true')
     parser.add_argument('--output', type=Path, default=HERE/'examples/default')
     parser.add_argument('--q', type=int, default=32)
     parser.add_argument('--chunk', type=int)
     parser.add_argument('--channels', type=int, default=16)
     parser.add_argument('--monitoring', action='store_true')
+    parser.add_argument('--routing', choices=['identity', 'reverse', 'fanout', 'sparse'], default='identity')
     args = parser.parse_args()
     subprocess.run(['cargo', 'build', '--locked', '-p', 'rt_backend_testbench'], cwd=ROOT, check=True)
-    print(json.dumps(prepare(args.output, args.q, args.chunk, args.channels, args.monitoring), indent=2))
+    if args.check:
+        (ROOT/'work').mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='audio-rom-', dir=ROOT/'work') as temporary:
+            prepare(temporary, args.q, args.chunk, args.channels, args.monitoring, args.routing)
+            for name in ('boot.hex', 'events.hex', 'config.json'):
+                if (Path(temporary)/name).read_bytes() != (args.output/name).read_bytes():
+                    raise SystemExit(f'stale prepared demo: {name}')
+        print('prepared audio ROMs match production compilation')
+    else:
+        print(json.dumps(prepare(args.output, args.q, args.chunk, args.channels, args.monitoring, args.routing), indent=2))
 
 
 if __name__ == '__main__':

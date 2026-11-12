@@ -1,6 +1,6 @@
 # FPGA audio I/O implementation plan
 
-Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–3 complete; recovery/demo integration in progress.
+Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–5 complete; final synthesis, CI and delivery in progress.
 
 Base: `proto/fpga-rust-reference`, inspected at `012ed6bd`. The current local
 `work` branch points to that base. Follow `.agents/prompts/write_plan.md` when
@@ -250,10 +250,10 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 4 — Implement deterministic scheduling and recovery
 
-- [ ] Implement fixed L scheduling, quantum publication/cutoff, expired-output
+- [x] Implement fixed L scheduling, quantum publication/cutoff, expired-output
   reclamation, ordered catch-up and bounded command/control admission.
-- [ ] Add diagnostics, queue/watchdog limits and memory-safe recovery/rearm.
-- [ ] Verification: on-time, just-before/exactly-at/just-after cutoff; a single
+- [x] Add diagnostics, queue/watchdog limits and memory-safe recovery/rearm.
+- [x] Verification: on-time, just-before/exactly-at/just-after cutoff; a single
   miss with uninterrupted recording; several misses followed by catch-up;
   two-bank pressure; input exhaustion; a hung run; core and late AXI faults;
   reset/reload with pending traffic and stale epoch descriptors. Prove all-channel
@@ -261,16 +261,16 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 5 — Add the 16-channel graph and synthesizable loopback demo
 
-- [ ] Build/export prepared programs and routing metadata using existing graph
+- [x] Build/export prepared programs and routing metadata using existing graph
   compilation. Add 16 independent mono loops with stable per-loop views and
   distinct deterministic input patterns; implement a synthesizable generator,
   observable sink and prepared command/session loader.
-- [ ] Exercise monitoring, record/stop/play/wrap, retakes, independent controls,
+- [x] Exercise monitoring, record/stop/play/wrap, retakes, independent controls,
   and simultaneous recording on some lanes with playback on others. Use a
   bounded command sequence, not a second RTL graph compiler or sample oracle.
-- [ ] Verify channel permutations, channel 15, unused outputs, fan-out and an
+- [x] Verify channel permutations, channel 15, unused outputs, fan-out and an
   explicit ordered mix. Keep channel maps and loop IDs outside I/O ownership logic.
-- [ ] Verification: inspect emitted jobs and compare all recorded/playback sample
+- [x] Verification: inspect emitted jobs and compare all recorded/playback sample
   words and loop states with the existing semantic oracles. Show continuous
   operation without per-quantum sample loading or host approval.
 
@@ -382,3 +382,25 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
   loop/media regressions pass (directed plus two seeded cases per profile).
   Canonical/generated tops pass strict Verilator compilation.
 - Artifacts: `work/audio-connected`, `work/audio-overrun`, `work/audio-regression`.
+
+### Stages 4 and 5
+
+- Recovery notification now latches reason/sequence atomically. Verified the
+  prefetch cutoff before/at/after publication, processing watchdog, malformed
+  command sequence and control fences that hold future writes behind queued work.
+- One- and two-quantum output underruns recover without dropping input or
+  changing latency; two consecutive misses pass in Q=3/P=1/three-bank and
+  Q=3/P=3/four-bank profiles. Transport also preserves signed/extreme sample bits.
+- Added production-compiled boot/event ROMs, synthesizable source/core/sink demo
+  and an autonomous quiesce/reset/load/rearm controller with retained diagnostics.
+  No host samples or execution approvals are needed after startup.
+- Full 16-channel demo passes input exhaustion, injected memory fault and reset
+  with a deliberately withheld accepted memory response. It stays silent and
+  does not reset until that response retires, then returns to exact playback.
+- Production comparisons pass identity, reverse, fan-out, sparse-output and
+  monitoring/mix graphs, including independent recording/retakes while other
+  lanes continue playback. The prepared default needs 64 instructions, 32 state
+  entries/buffers and 80 worst-case jobs.
+- Artifacts: `work/audio-autonomous`, `work/audio-control`, `work/audio-catchup`,
+  `work/audio-four`, `work/audio-local*`, `work/audio-sparse`, `work/audio-fanout`,
+  `work/audio-q16`, `work/audio-q64-fixed`.

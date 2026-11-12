@@ -14,4 +14,3 @@ def logical_media(snapshot,views,states):
         if channels and channels[0]:
             result.append(dict(name=f"loop:{row['id']['slot']}:{row['id']['generation']}",frames=len(channels[0]),samples=dict(encoding='q824',channels=channels)))
     return result
-

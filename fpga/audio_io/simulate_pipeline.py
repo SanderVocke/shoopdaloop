@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Compare continuous 16-channel fabric audio with production Rust processing."""
 import argparse
-import json
 from pathlib import Path
 import subprocess
 import sys
@@ -24,6 +23,7 @@ def main():
     parser.add_argument('--banks', type=int, default=3)
     parser.add_argument('--channels', type=int, default=16)
     parser.add_argument('--monitoring', action='store_true')
+    parser.add_argument('--routing', choices=['identity', 'reverse', 'fanout', 'sparse'], default='identity')
     parser.add_argument('--demo', action='store_true')
     parser.add_argument('--audio-period', type=int, default=13)
     parser.add_argument('--frame-cycles', type=int, default=512)
@@ -32,14 +32,19 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT/'work/audio-pipeline')
     add_options(parser)
     args = parser.parse_args()
+    p = args.p if args.p is not None else args.q
+    if args.q < 1 or not 1 <= p <= args.q or args.banks < 2 or not 1 <= args.channels <= 16:
+        parser.error('require positive Q, 1 <= P <= Q, at least two banks and 1..16 channels')
+    if args.frame_cycles < 4 or args.audio_period < 2:
+        parser.error('require at least four audio-clock cycles per frame and an audio period >= 2 ns')
     env = environment(args)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     subprocess.run(['cargo', 'build', '--locked', '-p', 'rt_backend_testbench'], cwd=ROOT, check=True)
-    config = prepare(output, args.q, args.chunk, args.channels, args.monitoring)
+    config = prepare(output, args.q, args.chunk, args.channels, args.monitoring, args.routing)
     top = 'audio_demo' if args.demo else 'audio_loop_pipeline'
     if args.demo:
-        parameters = dict(Q=args.q, P=args.p or args.q, CHUNK_FRAMES=args.chunk or args.q,
+        parameters = dict(Q=args.q, P=p, CHUNK_FRAMES=args.chunk or args.q,
                           CHANNELS=args.channels, RX_BANKS=args.banks, TX_BANKS=args.banks,
                           AXI_DATA_WIDTH=args.axi_data_width, BOOT_WORDS=config['boot_words'],
                           EVENT_WORDS=config['event_words'], BOOT_FILE='"'+str(output/'boot.hex')+'"',
@@ -47,7 +52,7 @@ def main():
                           STATES=config['states'], BUFFERS=config['buffers'], JOB_BUDGET=config['jobs'])
     else:
         parameters = dict(MAX_FRAMES=args.q, CHUNK_FRAMES=args.chunk or args.q,
-                          P=args.p or args.q, INPUT_PORTS=args.channels, OUTPUT_PORTS=args.channels,
+                          P=p, INPUT_PORTS=args.channels, OUTPUT_PORTS=args.channels,
                           RX_BANKS=args.banks, TX_BANKS=args.banks, REQUEST_DEPTH=128, EVENT_DEPTH=256,
                           AXI_DATA_WIDTH=args.axi_data_width, PHYSICAL_BASE=args.physical_base)
     manifest = sources(args.demo)
@@ -65,7 +70,7 @@ def main():
     result = runner.test(hdl_toplevel=top, test_module='test_demo' if args.demo else 'test_continuous',
                          test_dir=output, log_file=output/'simulation.log', extra_env={**env,
                              'AIO_OUTPUT': str(output), 'AIO_AUDIO_PERIOD': str(args.audio_period),
-                             'AIO_FRAME_CYCLES': str(args.frame_cycles), 'AIO_P': str(args.p or args.q),
+                             'AIO_FRAME_CYCLES': str(args.frame_cycles), 'AIO_P': str(p),
                              'AIO_STALLS': str(int(args.stalls)), 'AIO_OVERRUN': str(int(args.overrun)),
                              'LP_OUTPUT': str(output)})
     report = ET.parse(result).getroot()

@@ -6,6 +6,7 @@ import cocotb
 import rt_backend_testbench as wire
 from pipeline_driver import PipelineDriver
 from loop_memory import LoopMemory
+from media_results import logical_media
 import codec as tp
 from pipeline_driver import sp
 
@@ -33,8 +34,6 @@ async def collect(driver,names,submitted,q):
             assert row['result']['kind']=='accepted'
             result.append(completion(row['result']['value'],names,submitted,q))
     return result
-
-from media_results import logical_media
 
 @cocotb.test()
 async def production_scenarios(dut):

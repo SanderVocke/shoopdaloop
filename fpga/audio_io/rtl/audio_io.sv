@@ -84,12 +84,12 @@ module audio_io #(
         audio_reset_sync<={audio_reset_sync[0],reset_session};
     wire audio_reset = audio_reset_sync[1];
     wire audio_halt = audio_fault || fault_sync;
-    assign recovery_requested = core_fault || audio_fault_sync;
+    assign recovery_requested = core_fault;
     assign process_epoch = epoch;
     wire rx_available = rx_request_sync[process_bank] != rx_ack[process_bank];
     wire tx_available = tx_request[produce_bank] == tx_ack_sync[produce_bank];
     assign process_valid = enable && !reset_session && !recovery_requested && !busy
-        && rx_available && tx_available;
+        && !audio_fault_sync && rx_available && tx_available;
     wire start = process_valid && process_ready;
     wire capture_free = rx_request[capture_bank] == rx_ack_sync[capture_bank];
     wire capture_write = frame_tick && enable_sync && !audio_reset && !audio_halt && capture_free;
@@ -185,7 +185,7 @@ module audio_io #(
             if (busy) begin
                 if (process_done) begin
                     busy<=0;
-                    if (!process_fault && !recovery_requested) begin
+                    if (!process_fault && !recovery_requested && !audio_fault_sync) begin
                         rx_ack[process_bank] <= rx_request_sync[process_bank];
                         tx_sequence[produce_bank]<=process_sequence; tx_epoch[produce_bank]<=epoch;
                         tx_request[produce_bank]<=!tx_request[produce_bank];

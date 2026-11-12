@@ -1,0 +1,13 @@
+{
+  "q": 32,
+  "channels": 16,
+  "boot_words": 166,
+  "event_words": 74,
+  "instructions": 64,
+  "states": 32,
+  "buffers": 32,
+  "jobs": 80,
+  "loop_slots": 16,
+  "requests": 128,
+  "events": 160
+}
