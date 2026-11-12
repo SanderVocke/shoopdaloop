@@ -20,7 +20,7 @@ pub mod pipeline;
 pub mod resolver;
 pub mod transitions;
 
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "u32", into = "u32")]

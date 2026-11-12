@@ -565,6 +565,16 @@ fn chunk_count(frames: usize, chunk_frames: usize) -> usize {
 }
 
 impl crate::jobs::Memory for MediaStore {
+    fn begin_capture(&mut self, view: ViewId) -> Result<(), Error> {
+        if view.0 > self.views.len() {
+            return Err(Error::InvalidView);
+        }
+        if view.0 == self.views.len() {
+            self.create_recording()?;
+        }
+        self.clear(view)
+    }
+
     fn chunk_frames(&self) -> usize {
         self.chunk_frames
     }

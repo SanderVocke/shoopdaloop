@@ -1,179 +1,76 @@
 # Logical transition processor RTL
 
-A synthesizable, single-issue SystemVerilog implementation of the primitive-loop
-`rt_fpga_reference::transitions::TransitionProcessor`. It owns logical loop clocks,
-request arbitration and sync propagation. The existing state/job RTL executes
-signal programs independently. `fpga/loop_pipeline` coordinates them through
-preflight, commit, shared loop reads, job completion and finish.
+This synthesizable primitive-loop controller matches the standalone Rust
+`transitions::TransitionProcessor`. The connected
+[loop pipeline](../loop_pipeline/README.md) adds state, jobs and media execution.
 
-The control owner compiles a `transition_plan` using `fpga-reference compile`,
-loads the resulting loop specifications/component membership, and prepares the
-processor. No signal-graph traversal or SCC compilation happens in hardware.
+## Processing contract
 
-## Supported behavior
+One `PROCESS` operation resolves commands, synchronization, natural wraps,
+arbitration and ordered events, then advances clocks by one quantum. Supported
+quanta are 1, 16, 32, 64 and 128 frames. IDs carry full 32-bit slots/generations;
+requests retain completion records until collected. Absolute and source-delayed
+timing, self-sync, canonical sync cycles, repeat waiting, stop cancellation,
+record/play/seek and checked counters retain their normal semantics. Composite
+kinds/timelines remain reserved and unsupported.
 
-- Stop, play, record, seek and retrigger for primitive loops.
-- Absolute scheduling (rounded up to the quantum), delayed source pulses, repeat
-  alignment and holding the playback endpoint while waiting for a source.
-- Stable slot/generation loop IDs, retained request slots, sequence arbitration,
-  cancellation/completion collection, and retirement of exhausted generations.
-- Canonical timing components, legal sync cycles and self-sync, and at most one
-  delivered pulse per loop per boundary.
-- Transactional preview/retry, capture-unavailable and request-refused feedback,
-  guarded commit/finish and checked 64-bit musical counters.
-- Ordered transition/wrap/pulse journal, complete decisions and request readback.
+Loop, request and event tables each have one authoritative bank. Prepared
+follower links, per-loop pending lists and ready masks preserve canonical ordering
+without whole-table request searches. Each quantum clears only transient fields,
+settles in place and advances clocks. There are no observation memories,
+candidate copies, serial tokens, retry, or atomic bank switch. Ordinary reads
+occur between processing operations. A required processing failure latches the
+first fault; partial tables/events may be read for diagnostics, but execution
+cannot resume until reset and configuration reload. Admission refusals remain
+separate from processing faults.
 
-Supported quanta are 1, 16, 32, 64 and 128 frames. Primitive content lengths and
-play/seek positions are quantum aligned. Record means logical capture state;
-media reservation and sample storage belong to the surrounding pipeline.
-Composite kind and timeline-presence fields are explicitly refused with
-`unsupported`. Triggers, program execution, request batches, media ownership,
-capture monitoring and live topology replacement remain outside the profile.
+For `INTEGRATED=1`, the loop coordinator privately separates settlement from
+advancement so the state processor can consume stable settled records while jobs
+execute. Command 9 settles and private command 11 advances after successful jobs.
+The public loop-pipeline interface provides one run/completion operation.
+`INTEGRATED=0` is the standalone default and command 9 performs both phases.
 
-## Structure
+## Command and shared-read interface
 
-Loop state and request records each have two banks. Their pending-request
-indexes share those banks: per-loop heads and per-request next/previous links
-are copied with the musical state. A pair of pending-absolute masks is published
-with the shared bank selector. Terminal requests are unlinked immediately while
-retaining their record slots for completion collection. Reused slots are inserted
-in slot order under their new target and timing kind.
-
-Prepare tags component membership and builds canonical, component-local follower
-chains from the uploaded specs and member order. These immutable links remove
-follower discovery from quantum execution. Cross-component source pulses are
-observed when visiting the later component.
-
-Preview copies committed records into the candidate bank and clears boundary
-scratch. Loop and request copies stream concurrently through their separate RAMs,
-each reading the next row while the previous row is written. It then:
-
-1. Pops pending absolute requests from a priority mask and offers those due now.
-2. Applies intents and natural boundaries in canonical component/member order,
-   then reacts to source pulses already delivered by earlier components.
-3. Selects the lowest ready loop ID with a balanced priority encoder, delivers
-   its pulse and walks its prepared follower chain. Each follower visits only
-   its own pending source-timed request list.
-
-The pending lists use storage linear in loop/request capacity; there is no
-loop-by-request matrix. Stop cancellation walks the target's two lists. Indexed
-refusal maps handle both feedback lookup and duplicate detection. Empty lists
-bypass request matching, and singleton components reuse their loaded state for
-source reaction. Newly ready lower IDs retain canonical priority; each loop can
-deliver only one pulse per boundary.
-
-The FSM preflights clock advancement before declaring the candidate valid. A
-retry restores the committed indexes and musical state. Commit switches banks
-atomically. Finish advances committed positions/capture lengths once and retains
-playback endpoints as `position == length`; the next preview resolves wrap/repeat
-waiting. The full linear copy/preflight/finish passes remain. Admission still
-checks retained sequence IDs and finds a free request slot.
-
-Wide synchronous RAM rows favor a simple implementation. The active and candidate
-banks share each table's read/write ports. Reads and writes to the same address
-never overlap; simulation asserts that property. The RAM's `no_rw_check` attribute
-avoids collision emulation. A separate dispatch edge flushes state writes before
-list-head read/modify/write. Small pulse/delivery/eligibility masks and refusal
-reasons remain prepared scratch. No divider, multiplier or DSP block is required.
-
-Singleton components reuse the member entry already fetched during component
-discovery. A loop with no pending intent and no natural boundary bypasses the
-apply/natural dispatch states; source inheritance and pulse handling still run
-in their canonical order. The same no-boundary bypass follows an applied intent.
-
-Final validation and Finish also stream one loop row per clock after pipeline
-fill. Registered copy/Finish writes drain before settlement or the completion
-response. Validation checks rows in slot order, preserving the first error when
-multiple rows are invalid. Reset clears the stream-valid flags, and speculative
-read-ahead cannot change committed state.
-
-For L logical loop slots and R logical request slots, the copy pass takes
-`max(L, R) + 2` clocks, and validation/Finish each take `L + 2` clocks. These pass
-counts exclude command/coordinator handshakes. Tables retain the same RAM layout,
-two banks, read/write ports and packed interfaces; there is one resolver.
-The Rust reference keeps its bulk slice copies and existing traversal: these
-optimizations hide synchronous RAM latency and remove RTL dispatch cycles without
-changing musical behavior.
-
-Defaults are 64 loop slots, 64 request slots and 192 events per journal bank.
-Logical capacities can be smaller, including holes in the loop slot table.
-Event capacity must be at least `2 * loop_slots + request_slots`: one pulse and
-one wrap per loop plus one transition per request. Runtime errors invalidate only
-the candidate; the committed tables remain readable. Reset aborts work and
-invalidates the configuration; reload a complete plan afterward.
-
-## Command interface
-
-The shared loop read port transfers `loop_read_valid && loop_read_ready` with a
-32-bit slot. It borrows the existing RAM port while the engine is idle in the
-committed phase, with no outstanding command/response. Commands have priority.
-The following cycle pulses `loop_response_valid`; `loop_response_error` reports
-an out-of-range logical slot without accessing a truncated address. Successful
-data packs valid at bit 0, generation u32 at 1, mode at 33, length u64 at 35 and
-position u64 at 99. The state consumer checks presence and full generation.
-No response backpressure is required for this synchronous read port.
-
-The coordinator prevents transition commands and Finish during state/job
-execution, so every node reads the same committed loop bank. `configured_quantum`
-reports the prepared quantum, or zero before configuration. The standalone
-comparison wrapper ties the shared request port inactive.
-
-One request/response may be outstanding. A command transfers when
-`command_valid && command_ready`. Capture all inputs at that edge. While the FSM
-runs, `busy=1` and no further command transfers. A response holds `response_valid`,
-`response_error` and `response_data` stable until `response_ready=1` accepts it.
-The response must retire before another command transfers. Errors return zero
-data. Reset is synchronous, active high, and suppresses command acceptance.
-
-The prototype uses an 8-bit opcode, 32-bit index, 640-bit command payload and
-832-bit response payload. These are internal FPGA signals, not a board pinout or
-an AXI peripheral. A bus bridge or the eventual pipeline coordinator can drive
-this interface. Integers are unsigned, little field first, without sample data.
+One request/response may be outstanding. A command transfers on
+`command_valid && command_ready`; all inputs latch at that edge. While busy no
+new command transfers. Response data/error/valid remain stable until
+`response_ready` accepts them. Reset is synchronous, active high. Inputs use an
+8-bit opcode, 32-bit index, 640-bit payload and 832-bit response; these are fabric
+signals, not a finalized ARM register map. Errors return zero payload.
 
 | Opcode | Command | Index / payload | Successful response |
 | --- | --- | --- | --- |
 | 0 | Status | Ignored | Status row |
-| 1 | Write spec | Loop slot / 192-bit spec | Zero |
-| 2 | Write member | Membership index / slot at bit 0, component-end bit 32 | Zero |
-| 3 | Prepare | Five u32 fields: loop slots, request slots, event capacity, member count, quantum | Zero |
-| 4 | Submit | Command fields in request-row layout | Request slot at bit 0, generation at bit 32 |
-| 5 | Cancel | Request slot / generation in low u32 | Boolean cancelled in bit 0 |
-| 6 | Collect | Request slot / generation in low u32 | Terminal request row, or zero if still pending |
-| 7 | Clear observations | Ignored | Zero |
-| 8 | Add observation | Observation row | Zero |
-| 9 | Preview | Ignored | Frame at bit 0, serial at bit 64 |
-| 10 | Commit | Frame/serial token | Zero |
-| 11 | Finish | Frame/serial token | Zero |
-| 12 | Read state | Loop slot | Committed loop row |
-| 13 | Read request | Request slot | Committed request row, including empty-slot generation |
-| 14 | Read decision | Loop slot / frame/serial token | Latest candidate row, or committed decision before finish |
-| 15 | Read event | Journal index / candidate selector in bit 0 | Event row |
+| 1 | Write spec | Slot / 192-bit spec | Zero |
+| 2 | Write member | Index / slot at 0, component-end at 32 | Zero |
+| 3 | Prepare | Five u32: loops, requests, events, members, quantum | Zero |
+| 4 | Submit | Request-row command fields | Slot u32 at 0, generation u32 at 32 |
+| 5 | Cancel | Slot / generation low u32 | Cancelled bit at 0 |
+| 6 | Collect | Slot / generation low u32 | Terminal request, or zero |
+| 9 | Process | Ignored | Zero |
+| 12 | Read state | Loop slot | Current loop row |
+| 13 | Read request | Request slot | Current request, including empty generation |
+| 15 | Read event | Journal index | Current event row |
 
-Write every logical spec slot, including zero rows for holes, and every member
-entry before prepare. Prepare validates IDs, quantum alignment, sync-source IDs,
-member bounds/uniqueness/coverage, final component termination and capacities.
-The host must supply the canonical component order from the Rust compiler;
-hardware does not independently reconstruct or validate the SCC partition.
-Configuration writes and another prepare are refused after activation.
+Opcodes 7, 8, 10 and 14 are unsupported. Opcode 11 is private to integrated use
+and refused in standalone mode. Configuration loads all spec slots (including
+holes) and canonical membership entries before Prepare. Prepare validates bounds,
+IDs, alignment, sources and membership coverage; it does not reconstruct the SCC
+partition. Submit/cancel/collect require idle phase. A fault prevents control
+mutation; status/readback remain available. Reset is required to reconfigure.
 
-Submit/cancel/collect are allowed only between quanta. The first preview freezes
-those inputs until successful finish, including after a failed preview. Load a
-replacement observation list using clear/add, then preview again at the same
-frame. Only the newest successful token can commit; only its committed token can
-finish. Duplicate commit/finish and stale decision tokens are refused. State,
-request and committed-journal reads remain available between commands. A stale
-candidate's table bytes are inaccessible through the decision interface.
+Codes: 0 success, 1 invalid_config, 2 capacity, 3 invalid_id, 4 duplicate_id,
+5 invalid_state, 6 invalid_frame, 7 missing_sync, 8 exhausted, 9 empty_content,
+10 unsupported. Bounds checks precede RAM address narrowing.
 
-The observation buffer has `LOOP_DEPTH + REQUEST_DEPTH + 1` rows. Overlong input
-sets a sticky overflow flag; preview returns `capacity` until observations are
-cleared. This preserves whole-list rejection instead of applying a truncated list.
-The logical profile allows at most `loop_slots + request_slots` observations.
-
-Error codes are 0 success, 1 invalid_config, 2 capacity, 3 invalid_id,
-4 duplicate_id, 5 invalid_state, 6 invalid_frame, 7 missing_sync, 8 exhausted,
-9 empty_content and 10 unsupported. Loop/request IDs retain full 32-bit slot and
-generation values on the command boundary; range checks precede RAM addressing.
-Reserved payload fields should be zero.
+The synchronous shared port transfers on `loop_read_valid && loop_read_ready`
+only while settled, with no outstanding command/response. A response pulses in
+the following cycle without backpressure. The **164-bit** record packs valid at
+0, generation u32 at 1, mode at 33, length u64 at 35, position u64 at 99, and
+capture-start at 163 (`capture_frames == 0`). The consumer validates generation
+and mode. The coordinator prevents transition mutation while state/jobs use this
+port. `configured_quantum` is zero until Prepare succeeds.
 
 ## Packed rows
 
@@ -190,9 +87,7 @@ revision, revision watermark, last-pulse frame. Boundary metadata starts at bit
 576: intent-present, intent slot u32 at 577, intent sequence u64 at 609,
 protected-present at 673, protected sequence u64 at 674, origin-present at 738,
 origin slot/generation u32 at 739/771, and discontinuity at 803. Other bits are
-reserved except for private pending-list heads described below. A decision's
-playback-discontinuity is that bit AND active playback;
-waiting-repeat means playing with nonzero content and position equal to length.
+reserved except for private pending-list heads described below.
 
 A request row has valid at bit 0, generation u32 at bit 1, after-ticks at bit 33,
 operation at bits 34–35 (0 stop, 1 play, 2 record, 3 seek), retrigger at bit 36,
@@ -207,7 +102,7 @@ The architectural request response remains 640 bits. Internal records append
 next/previous pointers at offsets `640` and `640 + H`, where
 `H = max(1, ceil(log2(REQUEST_DEPTH))) + 1`. Each pointer uses H bits; all ones means
 no entry. Per-loop absolute/source-timed heads use H bits at offsets 37/804 in the
-existing 832-bit loop row. Those heads survive preview's transient-field clearing.
+existing 832-bit loop row. Those heads survive per-quantum transient-field clearing.
 They are private metadata, like the intent/protected fields, and do not appear in
 JSON snapshots.
 
@@ -218,90 +113,42 @@ Component ID follows at `192 + 2*L`, using `max(1, ceil(log2(LOOP_DEPTH)))` bits
 These links are derived at preparation, so the upload protocol and compiled-plan
 JSON image remain unchanged.
 
-An observation row has kind at bit 0 (0 capture-unavailable, 1 request-refused),
-ID at bit 1 and error code at bit 65. An event row has frame u64 at bit 0, loop ID
-at bit 64, operation position u64 at bit 128, operation at bits 192–193, retrigger
-at bit 194, and kind at bits 254–255 (0 transition, 1 wrap, 2 pulse).
+An event row has frame u64 at bit 0, loop ID at bit 64, operation position u64
+at bit 128, operation at bits 192–193, retrigger at bit 194, and kind at bits
+254–255 (0 transition, 1 wrap, 2 pulse).
 
-Status has frame/serial at bits 0/64, phase at bits 128–129 (0 idle, 1 preparing,
-2 preview, 3 committed), configured at 136, active bank at 137, active/candidate
-event counts u32 at 192/224, and loop/request/event/member/quantum counts u32 at
-256/288/320/352/384. Candidate count is meaningful only in preview/committed phase;
-it equals committed count after commit.
-Three u32 diagnostic counts at offsets 416/448/480 report request-matching
-checks, component-local follower visits and delivered pulses for the latest
-preview. Request matching excludes bulk copying and command admission. These
-counts remain separate from musical state and JSON comparison values.
-`tests/codec.py` translates architectural rows into the existing JSON types.
+Status has frame u64 at 0, fault code at 64 (4 bits), phase at 128 (2 bits:
+0 idle, 1 executing, 2 settled, 3 faulted), configured at 136, event count u32 at
+192, and loop/request/event/member/quantum counts u32 at 256/288/320/352/384.
+Three u32 diagnostics at 416/448/480 report request checks, follower visits and
+pulse deliveries for the latest process operation. There is no serial or bank
+selector. Reserved fields return zero. `tests/codec.py` decodes these rows.
 
 ## Reproduce checks
 
-Use the repository's development environment, Yosys and Verilator on PATH, and
-Python dependencies from `requirements.txt` in a virtual environment:
-
 ```sh
-cargo build --locked -p rt_fpga_testbench
-python fpga/transition_processor/simulate.py --config default --random-cases 100
-python fpga/transition_processor/simulate.py --config small --random-cases 10
-python fpga/transition_processor/simulate.py --config minimum --random-cases 10
-python fpga/transition_processor/simulate.py --config wide --random-cases 10
+cargo test --locked -p rt_fpga_reference -p rt_fpga_testbench
+python fpga/transition_processor/simulate.py --config all --random-cases 10
 python fpga/transition_processor/simulate.py --config default \
   --case fpga/transition_processor/examples/wide_ids.json
 bash fpga/transition_processor/check.sh
 ```
 
-`--case` replays one `transition_case`/`transition_trace` with a single configuration.
-`--waves` enables wave capture. Logs, failure documents, results XML and cycle
-summaries go under `work/fpga-transition-sim`. The simulation-only wrapper uses
-an internal timed clock to avoid Python callbacks on every idle engine cycle;
-it is excluded from synthesis.
+The bench compares exact post-process state, requests, completions and ordered
+events with Rust and the independent native resolver for successful cases.
+Directed/seeded tests cover scheduling, canonical cycles, repeat waiting, wide
+IDs, cancellation and request reuse. Protocol tests cover held responses,
+changed/busy command inputs, unsupported obsolete commands, checked exhaustion,
+sticky fault and reset during work. Default/small/minimum/wide profiles include
+non-power-of-two sizes and priority masks crossing word boundaries. Public
+64-loop workloads report process cycles and indexed work separately from musical
+state. Hierarchical counter injection is test-only.
 
-`examples/eight_tracks.json` saves the 8×8 workload. `examples/wide_ids.json`
-additionally checks loop generations near u32::MAX and command sequences near
-u64::MAX through recording, delayed playback, retriggered seek and stop.
+## Historical measurements before simplification
 
-The bench asks the Rust model for a trace, checks it against the native resolver,
-and compares RTL decisions, state, retained requests, completions, ordered events
-and post-quantum state exactly. It checks committed snapshots after every preview
-and discarded retry. Directed coverage includes all supported modes/quanta,
-arbitration, refusal, cancellation, slot reuse, off-grid scheduling, wide integers,
-self-sync, legal cycles, repeat waiting, invalid IDs and observation overflow.
-Protocol tests cover held responses, changed/busy command inputs, stale tokens,
-phase guards, invalid configuration, reset during work and counter/generation
-exhaustion. Exhaustion uses simulation-only hierarchical fault injection; no
-production test-write interface exists.
-Streaming-specific tests exercise unequal loop/request counts, terminal records
-at the request-table tail, last-loop validation failures, first-error ordering,
-and reset with a read or registered write pending during copy, validation and
-Finish. Reload/readback checks verify recovery after every reset. A cycle budget
-guards against stalls between Finish rows.
-
-The default seeded generator uses the same 100 graphs × 80 quanta as the Rust
-regression. Small (7/11/25), minimum (1/1/3), and wide (130/130/390) configurations
-additionally exercise non-power-of-two depths, the single-slot case, high
-request-slot reuse, and sparse ready IDs across priority-word boundaries. The workload test
-runs only where 64 loop/request slots fit and reports omissions explicitly.
-The wide profile also runs the 64-loop cycle with 130 logical request slots;
-empty queues must still report zero matching checks and 64 follower visits.
-Linked-list head/middle removal, slot reuse, arbitration and discarded retries
-have explicit directed cases.
-`check.sh` runs warning-clean lint and generic no-latch/no-multiply/no-divide checks
-for all four configurations, plus default ECP5 mapping and a resource JSON file.
-
-Before streaming, the commands above passed with Verilator 5.032 and cocotb 1.9.2: 216 cases and
-11,081 quantum boundaries across the four configurations and wide-ID replay,
-including 130 seeded graphs × 80 quanta. Transport/negative tests also passed.
-The corresponding Rust tests (50) and Python tests (14) passed.
-
-The streaming checkpoint passed 30 seeded graphs per configuration: 205 directed,
-seeded and public workload cases / 10,274 quantum boundaries across default,
-small, minimum and wide. Every profile passed all five cocotb tests, including
-the tail/error/reset checks above. The connected media regression passed 58 cases
-/ 629 quanta with seven-cycle memory responses, and the connected control
-regression passed 119 cases / 2,919 quanta across default/small/odd. An identical
-18-quantum 64-loop media replay also matched Rust, with unchanged state/job cycle
-counts and sample-memory traffic. All lint/generic/ECP5 checks and the 17 Python
-contract tests passed. Rust behavior and serialization remain unchanged.
+The following results describe earlier transactional implementations through
+`23887b00`. Current processing has no preview/commit/retry protocol; matched
+simplification measurements are in [SIMPLIFY.md](../../SIMPLIFY.md).
 
 ## Measurements
 

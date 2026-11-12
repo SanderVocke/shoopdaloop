@@ -8,7 +8,7 @@ only. Transitions, logical clocks, sample processing, view storage, and the host
 transport are outside this block.
 
 `fpga/loop_pipeline` connects it to transition processing and sample/job execution.
-Its logical instructions read the committed loop RAM directly while view handles
+Its logical instructions read the settled loop RAM directly while view handles
 and ramps remain in node-state RAM. The raw-state instruction ABI remains usable
 for isolated fixtures.
 
@@ -59,7 +59,7 @@ may be smaller than the physical RAM. Only the first `run_instruction_count`
 program entries execute. Counts exceeding physical capacities are rejected.
 
 Admission first requires an empty FIFO and at least `run_job_budget` free entries,
-matching the Rust preflight. Use the compiled `Program::jobs_per_quantum` as the
+matching Rust queue-capacity admission. Use the compiled `Program::jobs_per_quantum` as the
 budget. A budget understated by a hand-written program can also cause a queue-full
 error during execution. Such a failure retains earlier jobs and state writes.
 The quantum must be positive and an integral number of chunks. The RTL chunk
@@ -96,7 +96,7 @@ Each accepted read-job enqueue also pulses `read_intent_valid` with
 and cannot stall state execution. The combined pipeline buffers these intents
 and resolves them while state execution continues.
 
-## Packed ABI, version 2
+## Packed ABI (format-version-3 bench)
 
 Bit positions below describe packed integers, independent of a host transport's
 byte order. A byte-oriented transport should encode the least significant byte
@@ -171,12 +171,14 @@ or source buffer respectively. The bounded slot/address/buffer fields remain
 instructions without allocating mode, position or length words in node state.
 
 The `loop_read_valid/ready/slot` port requests one record. A transferred request
-gets one `loop_response_valid` pulse with `loop_response_error` and 163-bit data:
+gets one `loop_response_valid` pulse with `loop_response_error` and 164-bit data:
 valid at bit 0, generation u32 at 1, mode at 33, length u64 at 35 and position u64
-at 99. The RAM owner admits these requests only in its committed phase. The
+at 99, and capture-start at 163 (`capture_frames == 0`). The RAM owner admits
+these requests only in its settled phase. The
 engine checks presence and generation, then reads the view operand when needed.
 Playback uses the same `plays()` predicate as Rust, including silence at a held
-repeat endpoint. Capture emits only in recording mode. The state processor never
+repeat endpoint. Capture emits only in recording mode. On a new take it first emits BeginCapture,
+then Capture; include the extra preparation job in the static queue budget. The state processor never
 writes this port or advances the loop clock. A standalone shared-memory client
 must supply responses; backpressure pauses the engine.
 
@@ -201,6 +203,7 @@ must supply responses; backpressure pauses the engine.
 | `0x04` | Mix | Left | Right | Destination, zero-extended | 0 | 0 |
 | `0x05` | Capture | Source | 0 | View | 0 | 0 |
 | `0x06` | Output | Source | Port | 0 | 0 | 0 |
+| `0x07` | BeginCapture | 0 | 0 | View | 0 | 0 |
 
 Gain's payload 0 is `{target[31:0], start[31:0]}` and payload 1 is
 `{elapsed[31:0], duration[31:0]}`. Every unused job field is zero.

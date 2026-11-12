@@ -5,7 +5,7 @@ from cases import case, spec, step, command, play
 
 
 def document(kind, value):
-    return dict(format_version=2, payload=dict(kind=kind, value=value))
+    return dict(format_version=3, payload=dict(kind=kind, value=value))
 
 
 def playback64(reference, seed=20261110):

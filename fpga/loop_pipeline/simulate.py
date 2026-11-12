@@ -67,7 +67,7 @@ def main():
         runner.build(verilog_sources=[*sources,*(axi_sources if axi else []),test_top],includes=[ROOT/'fpga/state_processor/rtl'],
             hdl_toplevel=top,parameters=parameters,build_args=['--Wall','--timing','--timescale','1ns/1ps'],
             build_dir=output/'build',always=True,waves=args.waves,log_file=output/'build.log')
-        results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_media_loop_pipeline' if args.media else 'test_loop_pipeline',seed=20261110,
+        results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_media_loop_pipeline',seed=20261110,
             testcase='directed_against_rust' if args.case else None,
             test_dir=output,waves=args.waves,log_file=output/'simulation.log',extra_env={
                 'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),

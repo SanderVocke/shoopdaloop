@@ -5,7 +5,8 @@ ERRORS = [None, "invalid_config", "capacity", "invalid_id", "duplicate_id",
 OPS = ["stop", "play", "record", "seek"]
 MODES = ["stopped", "playing", "recording"]
 OUTCOMES = [None, "applied", "superseded", "cancelled", "failed"]
-STATUS, WRITE_SPEC, WRITE_MEMBER, PREPARE, SUBMIT, CANCEL, COLLECT, OBS_CLEAR, OBS_ADD, PREVIEW, COMMIT, FINISH, READ_STATE, READ_REQUEST, READ_DECISION, READ_EVENT = range(16)
+STATUS, WRITE_SPEC, WRITE_MEMBER, PREPARE, SUBMIT, CANCEL, COLLECT = range(7)
+PROCESS, READ_STATE, READ_REQUEST, READ_EVENT = 9, 12, 13, 15
 
 
 def bits(value, offset, width):
@@ -43,12 +44,6 @@ def encode_command(command):
             | (timing.get("skip", 0) << 320) | (op.get("position", 0) << 384))
 
 
-def encode_observation(observation):
-    refused = observation["kind"] == "refused"
-    return (int(refused) | (identity(observation["request" if refused else "target"]) << 1)
-            | (ERRORS.index(observation["reason"]) << 65))
-
-
 def decode_operation(kind, position, retrigger):
     result = {"kind": OPS[kind]}
     if kind in (1, 3):
@@ -66,16 +61,6 @@ def decode_state(value, slot):
                                    "content_revision", "capture_revision", "revision_watermark"), 1):
         result[field] = bits(value, 64 * offset, 64)
     return result
-
-
-def decode_decision(value, slot):
-    state = decode_state(value, slot)
-    playing = state["mode"] == "playing" and 0 <= state["position"] < state["content_length"]
-    return {"state": state, "playback_discontinuity": playing and bool(bits(value, 803, 1)),
-            "origin": {"slot": bits(value, 739, 32), "generation": bits(value, 771, 32)}
-            if bits(value, 738, 1) else None,
-            "waiting_repeat": state["mode"] == "playing" and state["content_length"] != 0
-            and state["position"] == state["content_length"]}
 
 
 def decode_request(value, slot):

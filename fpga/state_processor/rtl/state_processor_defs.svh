@@ -21,6 +21,7 @@
 `define SHOOP_SP_JOB_MIX      8'h04
 `define SHOOP_SP_JOB_CAPTURE  8'h05
 `define SHOOP_SP_JOB_OUTPUT   8'h06
+`define SHOOP_SP_JOB_BEGIN_CAPTURE 8'h07
 
 `define SHOOP_SP_OK              8'h00
 `define SHOOP_SP_QUEUE_FULL      8'h01

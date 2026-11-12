@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "payload": {
     "kind": "pipeline_case",
     "value": {
@@ -105,7 +105,7 @@
             "source": 1
           }
         ],
-        "jobs_per_quantum": 6,
+        "jobs_per_quantum": 8,
         "quantum": 16,
         "chunk_frames": 1
       },
@@ -152,15 +152,31 @@
                   }
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []
@@ -170,15 +186,31 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []
@@ -226,15 +258,31 @@
                   }
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []
@@ -244,15 +292,31 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []
@@ -262,15 +326,31 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []
@@ -295,15 +375,31 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []
@@ -313,15 +409,31 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
-            "kind": "external",
+            "kind": "audio",
             "value": {
-              "kind": "completed"
+              "inputs": [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              ]
             }
           },
           "writes": []

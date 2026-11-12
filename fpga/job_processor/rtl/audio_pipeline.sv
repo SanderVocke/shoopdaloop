@@ -62,15 +62,9 @@ module audio_pipeline #(
     output wire [31:0] loop_read_slot,
     input wire loop_response_valid,
     input wire loop_response_error,
-    input wire [162:0] loop_response_data,
-    input wire run_external_jobs,
-    output wire external_job_valid,
-    input wire external_job_ready,
-    input wire external_done_valid,
-    output wire external_done_ready,
-    input wire [7:0] external_error,
+    input wire [163:0] loop_response_data,
     output wire media_cmd_valid, input wire media_cmd_ready,
-    output wire [2:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
+    output wire [3:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
     output wire [63:0] media_cmd_start, output wire [63:0] media_cmd_length,
     output wire [31:0] media_cmd_count,
     input wire media_done, input wire [7:0] media_error, input wire media_fault,
@@ -80,7 +74,7 @@ module audio_pipeline #(
     output wire [63:0] media_hint_view, output wire [63:0] media_hint_position, output wire [63:0] media_hint_length,
     output wire [31:0] media_hint_count
 );
-    typedef enum logic [2:0] {IDLE, STATE_WAIT, JOB_START, JOB_WAIT, EXTERNAL_WAIT} phase_t;
+    typedef enum logic [2:0] {IDLE, STATE_WAIT, JOB_START, JOB_WAIT} phase_t;
     reg [5:0] chunk_shift;
     function automatic [5:0] shift_for(input [31:0] frames);
         begin
@@ -95,7 +89,6 @@ module audio_pipeline #(
     wire [7:0] state_error, job_error;
     wire job_accept;
     wire sample_busy, sample_done;
-    reg external_jobs;
     reg [31:0] quantum, buffers, inputs, outputs;
     wire unused_pc;
     wire [31:0] state_pc;
@@ -126,13 +119,10 @@ module audio_pipeline #(
     assign run_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
     assign cfg_ready = (phase == IDLE) && state_cfg_ready;
     assign audio_cfg_ready = (phase == IDLE) && job_cfg_ready;
-    assign monitor_ready = job_accept || ((phase == IDLE) && drain_ready && !reset)
-        || ((phase == EXTERNAL_WAIT) && external_job_ready && !reset);
+    assign monitor_ready = job_accept || ((phase == IDLE) && drain_ready && !reset);
     assign drain_valid = (phase == IDLE) && monitor_valid && !reset;
-    assign external_job_valid = phase == EXTERNAL_WAIT && monitor_valid && !reset;
-    assign external_done_ready = phase == EXTERNAL_WAIT && queued_jobs == 0 && !reset;
-    assign jobs_busy = sample_busy || phase == EXTERNAL_WAIT;
-    assign jobs_done = sample_done || (external_done_valid && external_done_ready);
+    assign jobs_busy = sample_busy;
+    assign jobs_done = sample_done;
 
     state_processor #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH)
@@ -180,7 +170,6 @@ module audio_pipeline #(
             buffers <= 0;
             inputs <= 0;
             outputs <= 0;
-            external_jobs <= 0;
         end else begin
             done <= 0;
             if ((ENABLE_MEDIA != 0) && media_fault && phase != IDLE) begin
@@ -191,7 +180,6 @@ module audio_pipeline #(
                     buffers <= run_buffers;
                     inputs <= run_inputs;
                     outputs <= run_outputs;
-                    external_jobs <= run_external_jobs;
                     error_code <= 0;
                     error_stage <= 0;
                     phase <= STATE_WAIT;
@@ -203,17 +191,11 @@ module audio_pipeline #(
                         done <= 1;
                         phase <= IDLE;
                     end else
-                        phase <= external_jobs ? EXTERNAL_WAIT : JOB_START;
+                        phase <= JOB_START;
                 end
                 JOB_START: if (job_run_ready) phase <= JOB_WAIT;
                 JOB_WAIT: if (jobs_done) begin
                     error_code <= job_error;
-                    error_stage <= 2;
-                    done <= 1;
-                    phase <= IDLE;
-                end
-                EXTERNAL_WAIT: if (external_done_valid && external_done_ready) begin
-                    error_code <= external_error;
                     error_stage <= 2;
                     done <= 1;
                     phase <= IDLE;

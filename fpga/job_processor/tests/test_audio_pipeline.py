@@ -16,7 +16,7 @@ REFERENCE = Path(os.environ["AUDIO_REFERENCE"])
 
 
 def document(kind, value):
-    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
 
 
 def compile_graphs():

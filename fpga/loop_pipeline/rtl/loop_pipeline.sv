@@ -31,6 +31,7 @@ module loop_pipeline #(
     input wire [31:0] run_outputs,
     input wire job_enable,
     output wire busy,
+    output wire faulted,
     output reg done,
     output reg [7:0] error_code,
     output reg [1:0] error_stage,
@@ -63,12 +64,6 @@ module loop_pipeline #(
     output wire [31:0] queued_jobs,
     output wire drain_valid,
     input wire drain_ready,
-    input wire run_external_jobs,
-    output wire external_job_valid,
-    input wire external_job_ready,
-    input wire external_done_valid,
-    output wire external_done_ready,
-    input wire [7:0] external_error,
     input wire command_valid,
     output wire command_ready,
     input wire [7:0] command_opcode,
@@ -78,14 +73,9 @@ module loop_pipeline #(
     input wire response_ready,
     output wire [3:0] response_error,
     output wire [831:0] response_data,
-    output wire preflight_valid,
-    input wire preflight_ready,
-    input wire preflight_retry,
-    output reg [3:0] preflight_error,
-    output reg [127:0] boundary_token,
     output wire transition_busy,
     input wire [63:0] arena_base,
-    input wire store_cmd_valid, output wire store_cmd_ready, input wire [2:0] store_cmd_opcode,
+    input wire store_cmd_valid, output wire store_cmd_ready, input wire [3:0] store_cmd_opcode,
     input wire [63:0] store_cmd_view, input wire [63:0] store_cmd_start, input wire [63:0] store_cmd_length,
     input wire [31:0] store_cmd_count,
     output wire store_busy, output wire store_done, output wire [7:0] store_error_code,
@@ -105,13 +95,13 @@ module loop_pipeline #(
     input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire memory_fault
 );
-    typedef enum logic [3:0] { IDLE, PREVIEW_SEND, PREVIEW_WAIT, PREFLIGHT,
-        COMMIT_SEND, COMMIT_WAIT, AUDIO_START, AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT } phase_t;
+    typedef enum logic [2:0] { IDLE, SETTLE_SEND, SETTLE_WAIT, AUDIO_START,
+        AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT } phase_t;
     phase_t phase;
-    wire host_access = phase == IDLE || phase == PREFLIGHT || phase == FAULT;
-    wire coordinator_send = (phase == PREVIEW_SEND || phase == COMMIT_SEND || phase == FINISH_SEND) && !memory_fault;
-    wire coordinator_wait = phase == PREVIEW_WAIT || phase == COMMIT_WAIT || phase == FINISH_WAIT;
-    wire reserved_command = command_opcode == 9 || command_opcode == 10 || command_opcode == 11;
+    wire host_access = phase == IDLE || phase == FAULT;
+    wire coordinator_send = (phase == SETTLE_SEND || phase == FINISH_SEND) && !memory_fault;
+    wire coordinator_wait = phase == SETTLE_WAIT || phase == FINISH_WAIT;
+    wire reserved_command = command_opcode == 9 || command_opcode == 11;
     wire tp_command_ready, tp_response_valid;
     wire [3:0] tp_response_error;
     wire [831:0] tp_response_data;
@@ -119,7 +109,7 @@ module loop_pipeline #(
     wire [31:0] configured_quantum;
     wire loop_read_valid, loop_read_ready, loop_response_valid, loop_response_error;
     wire [31:0] loop_read_slot;
-    wire [162:0] loop_response_data;
+    wire [163:0] loop_response_data;
     wire audio_run_ready, audio_done, audio_busy, state_cfg_ready, sample_cfg_ready;
     wire [7:0] audio_error;
     wire [1:0] audio_error_stage;
@@ -127,15 +117,16 @@ module loop_pipeline #(
     wire host_store_write_ready, host_store_read_valid;
     reg [63:0] quantum_arena;
     reg [31:0] instructions, states, quantum, chunk_frames, budget, buffers, inputs, outputs;
-    reg external_jobs;
     reg fault_report_pending;
-    wire configure = phase == IDLE || phase == PREFLIGHT || phase == FAULT;
+    wire configure = phase == IDLE || phase == FAULT;
+    reg output_valid, response_is_output;
+    wire [31:0] sample_read_data;
+    assign faulted = phase == FAULT;
+    assign audio_cfg_read_data = response_is_output && !output_valid ? 32'b0 : sample_read_data;
     assign transition_busy = tp_busy;
 
     assign busy = (phase != IDLE && phase != FAULT) || audio_busy;
     assign run_ready = phase == IDLE && audio_run_ready && tp_command_ready && !command_valid && !reset;
-    assign preflight_valid = phase == PREFLIGHT && audio_run_ready && tp_command_ready
-        && !command_valid && !cfg_valid && !audio_cfg_valid && !store_cmd_valid && !store_cfg_valid && !reset;
     assign command_ready = host_access && !reserved_command && tp_command_ready && !reset;
     assign response_valid = host_access && tp_response_valid && !reset;
     assign response_error = tp_response_error;
@@ -147,13 +138,13 @@ module loop_pipeline #(
     assign store_write_ready = configure && host_store_write_ready;
     assign store_read_valid = configure && host_store_read_valid;
 
-    transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH)) timing (
+    transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH), .INTEGRATED(1)) timing (
         .clk(clk), .reset(reset),
         .command_valid(coordinator_send || (host_access && command_valid && !reserved_command)),
         .command_ready(tp_command_ready),
-        .command_opcode(coordinator_send ? (phase == PREVIEW_SEND ? 8'd9 : phase == COMMIT_SEND ? 8'd10 : 8'd11) : command_opcode),
+        .command_opcode(coordinator_send ? (phase == SETTLE_SEND ? 8'd9 : 8'd11) : command_opcode),
         .command_index(coordinator_send ? 32'b0 : command_index),
-        .command_data(coordinator_send ? {512'b0,boundary_token} : command_data),
+        .command_data(coordinator_send ? 640'b0 : command_data),
         .response_valid(tp_response_valid), .response_ready(coordinator_wait || (host_access && response_ready)),
         .response_error(tp_response_error), .response_data(tp_response_data), .busy(tp_busy),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
@@ -167,8 +158,6 @@ module loop_pipeline #(
         .clk(clk), .reset(reset), .run_valid(phase == AUDIO_START), .run_ready(audio_run_ready),
         .run_instruction_count(instructions), .run_state_count(states), .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_job_budget(budget),
         .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs), .job_enable(job_enable),
-        .run_external_jobs(external_jobs), .external_job_valid(external_job_valid), .external_job_ready(external_job_ready),
-        .external_done_valid(external_done_valid), .external_done_ready(external_done_ready), .external_error(external_error),
         .busy(audio_busy), .done(audio_done), .error_code(audio_error), .error_stage(audio_error_stage),
         .state_busy(state_busy), .state_done(state_done), .jobs_busy(jobs_busy), .jobs_done(jobs_done), .buffer_ready(buffer_ready),
         .cfg_valid(cfg_valid && configure), .cfg_ready(state_cfg_ready), .cfg_state(cfg_state), .cfg_write(cfg_write),
@@ -176,7 +165,7 @@ module loop_pipeline #(
         .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
         .audio_cfg_valid(audio_cfg_valid && configure), .audio_cfg_ready(sample_cfg_ready), .audio_cfg_space(audio_cfg_space),
         .audio_cfg_write(audio_cfg_write), .audio_cfg_address(audio_cfg_address), .audio_cfg_write_data(audio_cfg_write_data),
-        .audio_cfg_response_valid(audio_cfg_response_valid), .audio_cfg_response_error(audio_cfg_response_error), .audio_cfg_read_data(audio_cfg_read_data),
+        .audio_cfg_response_valid(audio_cfg_response_valid), .audio_cfg_response_error(audio_cfg_response_error), .audio_cfg_read_data(sample_read_data),
         .monitor_valid(monitor_valid), .monitor_ready(monitor_ready), .monitor_data(monitor_data), .queued_jobs(queued_jobs),
         .drain_valid(drain_valid), .drain_ready(drain_ready),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
@@ -206,17 +195,18 @@ module loop_pipeline #(
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE; done <= 0; error_code <= 0; error_stage <= 0;
-            preflight_error <= 0; boundary_token <= 0;
+            output_valid <= 0; response_is_output <= 0;
             instructions <= 0; states <= 0; quantum <= 0; chunk_frames <= 0; budget <= 0;
-            buffers <= 0; inputs <= 0; outputs <= 0; external_jobs <= 0; quantum_arena <= 0;
+            buffers <= 0; inputs <= 0; outputs <= 0; quantum_arena <= 0;
             fault_report_pending <= 0;
         end else begin
             done <= 0;
+            if (audio_cfg_valid && audio_cfg_ready) response_is_output <= audio_cfg_space == 1 && !audio_cfg_write;
             if (memory_fault && phase != FAULT) begin
-                error_code <= 8; error_stage <= 3; fault_report_pending <= 1; phase <= FAULT;
+                error_code <= 8; error_stage <= 3; fault_report_pending <= 1; output_valid <= 0; phase <= FAULT;
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
-                    error_code <= 0; error_stage <= 0;
+                    error_code <= 0; error_stage <= 0; output_valid <= 0;
                     if (configured_quantum == 0 || run_quantum != configured_quantum) begin
                         error_code <= 1; error_stage <= 1; done <= 1;
                     end else if (run_instruction_count > PROGRAM_DEPTH || run_state_count > STATE_DEPTH
@@ -226,21 +216,11 @@ module loop_pipeline #(
                     end else begin
                         instructions <= run_instruction_count; states <= run_state_count; quantum <= run_quantum; chunk_frames <= run_chunk_frames;
                         budget <= run_job_budget; buffers <= run_buffers; inputs <= run_inputs; outputs <= run_outputs;
-                        external_jobs <= run_external_jobs; quantum_arena <= arena_base; phase <= PREVIEW_SEND;
+                        quantum_arena <= arena_base; phase <= SETTLE_SEND;
                     end
                 end
-                PREVIEW_SEND: if (tp_command_ready) phase <= PREVIEW_WAIT;
-                PREVIEW_WAIT: if (tp_response_valid) begin
-                    boundary_token <= tp_response_data[127:0]; preflight_error <= tp_response_error; phase <= PREFLIGHT;
-                end
-                PREFLIGHT: if (preflight_valid && preflight_ready) begin
-                    if (preflight_retry) phase <= PREVIEW_SEND;
-                    else if (preflight_error != 0) begin
-                        error_stage <= 1; error_code <= {4'b0,preflight_error}; done <= 1; phase <= IDLE;
-                    end else phase <= COMMIT_SEND;
-                end
-                COMMIT_SEND: if (tp_command_ready) phase <= COMMIT_WAIT;
-                COMMIT_WAIT: if (tp_response_valid) begin
+                SETTLE_SEND: if (tp_command_ready) phase <= SETTLE_WAIT;
+                SETTLE_WAIT: if (tp_response_valid) begin
                     if (tp_response_error != 0) begin
                         error_stage <= 1; error_code <= {4'b0,tp_response_error}; done <= 1; phase <= FAULT;
                     end else phase <= AUDIO_START;
@@ -256,6 +236,7 @@ module loop_pipeline #(
                 FINISH_WAIT: if (tp_response_valid) begin
                     error_stage <= tp_response_error == 0 ? 2'd0 : 2'd1;
                     error_code <= {4'b0,tp_response_error}; done <= 1;
+                    output_valid <= tp_response_error == 0;
                     phase <= tp_response_error == 0 ? IDLE : FAULT;
                 end
                 FAULT: if (fault_report_pending && !audio_busy) begin done <= 1; fault_report_pending <= 0; end

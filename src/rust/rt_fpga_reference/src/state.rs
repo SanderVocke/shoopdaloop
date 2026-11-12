@@ -4,7 +4,7 @@ use crate::{
     fixed::Ramp,
     jobs::{BufferId, Job, JobQueue},
     storage::ViewId,
-    transitions::{CommittedLoops, LoopId, Mode},
+    transitions::{LoopId, Mode, SettledLoops},
     Error,
 };
 use alloc::vec::Vec;
@@ -155,19 +155,11 @@ impl StateProcessor {
     ) -> Result<(), Error> {
         self.run_inner(program, queue, None, &mut sink)
     }
-    pub fn run_with_loops(
+    pub(crate) fn run_with_loops_and_intents(
         &mut self,
         program: &Program,
         queue: &mut JobQueue,
-        loops: CommittedLoops<'_>,
-    ) -> Result<(), Error> {
-        self.run_inner(program, queue, Some(loops), &mut |_| {})
-    }
-    pub fn run_with_loops_and_intents(
-        &mut self,
-        program: &Program,
-        queue: &mut JobQueue,
-        loops: CommittedLoops<'_>,
+        loops: SettledLoops<'_>,
         mut sink: impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
         self.run_inner(program, queue, Some(loops), &mut sink)
@@ -176,7 +168,7 @@ impl StateProcessor {
         &mut self,
         program: &Program,
         queue: &mut JobQueue,
-        loops: Option<CommittedLoops<'_>>,
+        loops: Option<SettledLoops<'_>>,
         sink: &mut impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
@@ -240,6 +232,11 @@ impl StateProcessor {
                         .read(loop_id)
                         .map_err(|_| Error::InvalidState)?;
                     if state.mode == Mode::Recording {
+                        if state.capture_frames == 0 {
+                            emit(Job::BeginCapture {
+                                view: self.view(view)?,
+                            })?;
+                        }
                         emit(Job::Capture {
                             source,
                             view: self.view(view)?,

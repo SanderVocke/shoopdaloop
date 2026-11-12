@@ -38,7 +38,7 @@ module sp_engine #(
     output wire [31:0] loop_read_slot,
     input wire loop_response_valid,
     input wire loop_response_error,
-    input wire [162:0] loop_response_data
+    input wire [163:0] loop_response_data
 );
     typedef enum logic [3:0] {
         IDLE, FETCH, DECODE, READ_REQUEST, READ_RESULT, EMIT, NEXT, LOOP_REQUEST, LOOP_RESULT
@@ -61,6 +61,8 @@ module sp_engine #(
     reg [PC_BITS-1:0] run_count;
     reg [31:0] run_state_count;
     reg [31:0] run_quantum;
+    reg begin_capture;
+    reg [255:0] capture_job;
     reg [7:0] opcode;
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
     reg [15:0] operand_address;
@@ -114,7 +116,7 @@ module sp_engine #(
             pc <= 0;
             run_count <= 0;
             run_state_count <= 0;
-            run_quantum <= 0; chunk_shift <= 0;
+            run_quantum <= 0; begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
             opcode <= 0;
             arg0 <= 0;
             arg1 <= 0;
@@ -224,6 +226,7 @@ module sp_engine #(
                             phase <= EMIT;
                         end
                     end else if (loop_response_data[33+:2] == 2) begin
+                        begin_capture <= loop_response_data[163];
                         operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
                     end else phase <= NEXT;
                 end
@@ -278,9 +281,14 @@ module sp_engine #(
                             VIEW: begin
                                 if (opcode == `SHOOP_SP_PROCESS_PLAYBACK || opcode == `SHOOP_SP_LOGICAL_PLAYBACK)
                                     job_data <= pack_job(`SHOOP_SP_JOB_READ, arg4, 0, word_value, position, length);
-                                else
-                                    job_data <= pack_job(`SHOOP_SP_JOB_CAPTURE,
+                                else begin
+                                    capture_job <= pack_job(`SHOOP_SP_JOB_CAPTURE,
                                         opcode == `SHOOP_SP_LOGICAL_CAPTURE ? arg4 : arg2, 0, word_value, 0, 0);
+                                    if (opcode == `SHOOP_SP_LOGICAL_CAPTURE && begin_capture)
+                                        job_data <= pack_job(`SHOOP_SP_JOB_BEGIN_CAPTURE, 0, 0, word_value, 0, 0);
+                                    else job_data <= pack_job(`SHOOP_SP_JOB_CAPTURE,
+                                        opcode == `SHOOP_SP_LOGICAL_CAPTURE ? arg4 : arg2, 0, word_value, 0, 0);
+                                end
                                 phase <= EMIT;
                             end
                             RAMP: begin
@@ -306,7 +314,9 @@ module sp_engine #(
                         done <= 1;
                         phase <= IDLE;
                     end else if (job_ready) begin
-                        phase <= NEXT;
+                        if (job_data[7:0] == `SHOOP_SP_JOB_BEGIN_CAPTURE) begin
+                            job_data <= capture_job; begin_capture <= 0;
+                        end else phase <= NEXT;
                     end
                 end
                 NEXT: begin

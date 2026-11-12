@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "payload": {
     "kind": "pipeline_case",
     "value": {
@@ -92,10 +92,7 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
             "kind": "audio",
@@ -129,10 +126,7 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
             "kind": "audio",
@@ -166,10 +160,7 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
             "kind": "audio",
@@ -203,10 +194,7 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
             "kind": "audio",

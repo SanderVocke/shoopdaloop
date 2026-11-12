@@ -91,6 +91,9 @@ def decode_job(value):
     if opcode == 6:
         assert (p0, p1, p2) == (0, 0, 0)
         return {"kind": "output", "source": id0, "port": id1}
+    if opcode == 7:
+        assert (id0,id1,p1,p2) == (0,0,0,0)
+        return {"kind": "begin_capture", "view": p0}
     raise AssertionError(f"unknown RTL job opcode: {opcode:#x}")
 
 

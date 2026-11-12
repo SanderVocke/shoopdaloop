@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "payload": {
     "kind": "pipeline_case",
     "value": {
@@ -21,16 +21,7 @@
         "chunk_limit": 32,
         "free_chunks": [],
         "samples": [],
-        "views": [
-          {
-            "chunks": [],
-            "frames": 0
-          },
-          {
-            "chunks": [],
-            "frames": 0
-          }
-        ]
+        "views": []
       },
       "name": "actual-record-play-retake-q16",
       "output_ports": 1,
@@ -88,7 +79,7 @@
             "source": 1
           }
         ],
-        "jobs_per_quantum": 4,
+        "jobs_per_quantum": 5,
         "quantum": 32,
         "chunk_frames": 32
       },
@@ -114,10 +105,6 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              [],
-              []
             ]
           },
           "work": {
@@ -185,9 +172,6 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
@@ -238,10 +222,7 @@
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
             "kind": "audio",
@@ -308,9 +289,6 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
@@ -376,9 +354,6 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
@@ -444,9 +419,6 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
@@ -490,15 +462,7 @@
               ]
             }
           },
-          "writes": [
-            {
-              "address": 1,
-              "value": {
-                "kind": "word",
-                "value": 1
-              }
-            }
-          ]
+          "writes": []
         },
         {
           "transition": {
@@ -522,9 +486,6 @@
                   "kind": "at"
                 }
               }
-            ],
-            "previews": [
-              []
             ]
           },
           "work": {
@@ -568,25 +529,14 @@
               ]
             }
           },
-          "writes": [
-            {
-              "address": 0,
-              "value": {
-                "kind": "word",
-                "value": 1
-              }
-            }
-          ]
+          "writes": []
         },
         {
           "transition": {
             "cancel": [],
             "collect": [],
             "collect_completed": true,
-            "commands": [],
-            "previews": [
-              []
-            ]
+            "commands": []
           },
           "work": {
             "kind": "audio",

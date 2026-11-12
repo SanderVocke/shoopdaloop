@@ -12,7 +12,7 @@ OUTPUT = Path(os.environ["CHUNK_OUTPUT"])
 
 
 def document(kind, value):
-    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
 
 
 async def compare(dut, operations, seed, case=None):

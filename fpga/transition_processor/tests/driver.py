@@ -97,12 +97,10 @@ class Driver:
 
     async def status(self):
         raw = await self.ok(abi.STATUS)
-        return {"frame": abi.bits(raw, 0, 64), "serial": abi.bits(raw, 64, 64),
-                "phase": abi.bits(raw, 128, 2), "configured": bool(abi.bits(raw, 136, 1)),
-                "events": abi.bits(raw, 192, 32), "candidate_events": abi.bits(raw, 224, 32),
-                "request_checks": abi.bits(raw, 416, 32),
-                "follower_visits": abi.bits(raw, 448, 32),
-                "pulse_deliveries": abi.bits(raw, 480, 32)}
+        return dict(frame=abi.bits(raw,0,64), fault=abi.bits(raw,64,4), phase=abi.bits(raw,128,2),
+                    configured=bool(abi.bits(raw,136,1)), events=abi.bits(raw,192,32),
+                    request_checks=abi.bits(raw,416,32), follower_visits=abi.bits(raw,448,32),
+                    pulse_deliveries=abi.bits(raw,480,32))
 
     async def states(self):
         return [abi.decode_state(await self.ok(abi.READ_STATE, i["slot"]), i["slot"]) for i in self.ids]
@@ -111,71 +109,31 @@ class Driver:
         return [abi.decode_request(await self.ok(abi.READ_REQUEST, i), i)
                 for i in range(self.limits["pending_requests"])]
 
-    async def events(self, *, candidate=False):
-        status = await self.status()
-        count = status["candidate_events" if candidate else "events"]
-        return [abi.decode_event(await self.ok(abi.READ_EVENT, i, int(candidate))) for i in range(count)]
+    async def events(self):
+        status=await self.status()
+        return [abi.decode_event(await self.ok(abi.READ_EVENT,i)) for i in range(status['events'])]
 
     async def collect(self, request):
         error, value = await self.command(abi.COLLECT, request["slot"], request["generation"])
         return {"request": request, "result": abi.response(error, abi.decode_completion(value, request["slot"]) if not error else None)}
 
     async def step(self, step):
-        frame = (await self.status())["frame"]
-        collected = []
-        if step["collect_completed"]:
+        frame=(await self.status())['frame']
+        collected=[]
+        if step['collect_completed']:
             for request in await self.requests():
-                if request and request["outcome"]:
-                    collected.append(await self.collect(request["id"]))
-        for request in step["collect"]:
-            collected.append(await self.collect(request))
-        cancelled = []
-        for request in step["cancel"]:
-            error, value = await self.command(abi.CANCEL, request["slot"], request["generation"])
-            cancelled.append(abi.response(error, bool(value)))
-        submitted = []
-        for command in step["commands"]:
-            error, value = await self.command(abi.SUBMIT, data=abi.encode_command(command))
-            submitted.append(abi.response(error, abi.decode_identity(value)))
-        previews = []
-        preview_cycles = []
-        preview_work = []
-        token = None
-        # Each replacement must leave the entire committed state untouched.
-        before_states, before_requests, before_events = await self.states(), await self.requests(), await self.events()
-        for observations in step["previews"]:
-            await self.ok(abi.OBS_CLEAR)
-            for observation in observations:
-                await self.ok(abi.OBS_ADD, data=abi.encode_observation(observation))
-            error, value = await self.command(abi.PREVIEW)
-            preview_cycles.append(self.last_cycles)
-            token = value if not error else None
-            work = await self.status()
-            preview_work.append({key: work[key] for key in ("request_checks", "follower_visits", "pulse_deliveries")})
-            assert work["request_checks"] <= 3*self.limits["pending_requests"], "request matching revisited unrelated slots"
-            assert work["follower_visits"] <= len(self.ids), "pulse delivery searched unrelated members"
-            assert work["pulse_deliveries"] <= len(self.ids), "loop pulse delivered twice"
-            decisions = None
-            if not error:
-                decisions = [abi.decode_decision(await self.ok(abi.READ_DECISION, i["slot"], token), i["slot"])
-                             for i in self.ids]
-            previews.append(abi.response(error, decisions))
-            assert await self.states() == before_states, "preview published loop state"
-            assert await self.requests() == before_requests, "preview published request outcomes"
-            assert await self.events() == before_events, "preview published journal"
-        committed = token is not None
-        commit_cycles = finish_cycles = None
-        if committed:
-            await self.ok(abi.COMMIT, data=token)
-            commit_cycles = self.last_cycles
-        states, requests, events = await self.states(), await self.requests(), await self.events()
-        if committed:
-            await self.ok(abi.FINISH, data=token)
-            finish_cycles = self.last_cycles
-        after_finish = await self.states()
-        next_frame = (await self.status())["frame"]
-        self.phase_cycles.append({"preview": preview_cycles, "commit": commit_cycles, "finish": finish_cycles,
-                                  "preview_work": preview_work})
-        return dict(frame=frame, collected=collected, cancelled=cancelled, submitted=submitted,
-                    previews=previews, committed=committed, states=states, requests=requests,
-                    events=events, after_finish=after_finish, next_frame=next_frame)
+                if request and request['outcome']: collected.append(await self.collect(request['id']))
+        for request in step['collect']: collected.append(await self.collect(request))
+        cancelled=[]
+        for request in step['cancel']:
+            error,value=await self.command(abi.CANCEL,request['slot'],request['generation'])
+            cancelled.append(abi.response(error,bool(value)))
+        submitted=[]
+        for command in step['commands']:
+            error,value=await self.command(abi.SUBMIT,data=abi.encode_command(command))
+            submitted.append(abi.response(error,abi.decode_identity(value)))
+        error,_=await self.command(abi.PROCESS)
+        self.phase_cycles.append(dict(process=self.last_cycles))
+        return dict(frame=frame,collected=collected,cancelled=cancelled,submitted=submitted,
+                    processed=abi.response(error,None),states=await self.states(),requests=await self.requests(),
+                    events=await self.events(),next_frame=(await self.status())['frame'])

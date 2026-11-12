@@ -357,3 +357,14 @@ Validation with Verilator 5.032, cocotb 1.9.2 and Yosys 0.52:
   93 DP16KD blocks and four MULT18X18D blocks. This is the default capacity
   profile, not the 64-loop timing profile; it includes neither a DDR controller
   nor placement/routed timing.
+
+## Simplified engine interface
+
+Generated media/loop wrappers carry the four-bit media opcode bus, including
+internal BeginCapture command 8. `loop_pipeline_axi` exposes one run/completion
+operation plus sticky `faulted`; the preflight/retry and external-job ports have
+been removed. Failed output readback returns silence. A host aggregating quanta
+must withhold and silence the whole failed block, and coordinate reset with
+outstanding AXI traffic. AXI buffering, ordering, retirement, bounds checks and
+late writeback-fault handling are unchanged. Regenerate wrappers with
+`python3 fpga/axi_memory/generate_tops.py`; `--check` verifies checked-in outputs.

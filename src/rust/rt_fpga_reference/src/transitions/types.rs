@@ -138,35 +138,6 @@ impl LoopState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct Decision {
-    pub state: LoopState,
-    pub playback_discontinuity: bool,
-    pub origin: Option<RequestId>,
-    pub waiting_repeat: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "serde",
-    serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)
-)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub enum Observation {
-    CaptureUnavailable {
-        target: LoopId,
-        reason: TransitionError,
-    },
-    Refused {
-        request: RequestId,
-        reason: TransitionError,
-    },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(
     feature = "serde",
     serde(
@@ -191,15 +162,6 @@ pub struct Event {
     pub frame: u64,
     pub target: LoopId,
     pub kind: EventKind,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct BoundaryId {
-    pub frame: u64,
-    pub serial: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

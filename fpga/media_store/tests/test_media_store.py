@@ -15,7 +15,7 @@ REFERENCE = Path(os.environ["MEDIA_REFERENCE"])
 
 
 def document(kind, value):
-    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
 
 
 async def compare(dut, value, *, seed, stalls=True):

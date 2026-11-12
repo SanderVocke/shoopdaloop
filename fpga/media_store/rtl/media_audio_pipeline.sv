@@ -28,11 +28,9 @@ module media_audio_pipeline #(
     output wire monitor_valid, output wire monitor_ready, output wire [`SHOOP_SP_JOB_BITS-1:0] monitor_data,
     output wire [31:0] queued_jobs, output wire drain_valid, input wire drain_ready,
     output wire loop_read_valid, input wire loop_read_ready, output wire [31:0] loop_read_slot,
-    input wire loop_response_valid, input wire loop_response_error, input wire [162:0] loop_response_data,
-    input wire run_external_jobs, output wire external_job_valid, input wire external_job_ready,
-    input wire external_done_valid, output wire external_done_ready, input wire [7:0] external_error,
+    input wire loop_response_valid, input wire loop_response_error, input wire [163:0] loop_response_data,
     input wire [63:0] arena_base,
-    input wire store_cmd_valid, output wire store_cmd_ready, input wire [2:0] store_cmd_opcode,
+    input wire store_cmd_valid, output wire store_cmd_ready, input wire [3:0] store_cmd_opcode,
     input wire [63:0] store_cmd_view, input wire [63:0] store_cmd_start, input wire [63:0] store_cmd_length,
     input wire [31:0] store_cmd_count,
     output wire store_busy, output wire store_done, output wire [7:0] store_error_code,
@@ -56,7 +54,7 @@ module media_audio_pipeline #(
     wire pipeline_done;
     reg completion_pending;
     wire job_cmd_valid, job_cmd_ready, job_write_valid, job_write_ready, job_read_valid, job_read_ready;
-    wire [2:0] job_opcode;
+    wire [3:0] job_opcode;
     wire [63:0] job_view, job_start, job_length;
     wire [31:0] job_count, job_write_data, store_sample;
     wire internal_ready, internal_done, internal_cfg_ready, internal_write_ready, internal_read_valid;
@@ -110,8 +108,6 @@ module media_audio_pipeline #(
         .queued_jobs(queued_jobs), .drain_valid(drain_valid), .drain_ready(drain_ready),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
-        .run_external_jobs(run_external_jobs), .external_job_valid(external_job_valid), .external_job_ready(external_job_ready),
-        .external_done_valid(external_done_valid), .external_done_ready(external_done_ready), .external_error(external_error),
         .media_cmd_valid(job_cmd_valid), .media_cmd_ready(job_cmd_ready), .media_cmd_opcode(job_opcode),
         .media_cmd_view(job_view), .media_cmd_start(job_start), .media_cmd_length(job_length), .media_cmd_count(job_count),
         .media_done(internal_done), .media_error(store_error_code), .media_fault(memory_fault),

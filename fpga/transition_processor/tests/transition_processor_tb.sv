@@ -20,7 +20,7 @@ module transition_processor_tb #(
     initial clk=0;
     always #5 clk<=~clk;
     wire unused_loop_read_ready, unused_loop_response_valid, unused_loop_response_error;
-    wire [162:0] unused_loop_response_data;
+    wire [163:0] unused_loop_response_data;
     wire [31:0] unused_configured_quantum;
     transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH),
                            .EVENT_DEPTH(EVENT_DEPTH)) core (
