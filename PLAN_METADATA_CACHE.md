@@ -1,6 +1,6 @@
 # DDR-backed media metadata and caches
 
-Status: in progress on `proto/fpga-metadata-cache`; stage 1 baseline captured.
+Status: in progress on `proto/fpga-metadata-cache`; stages 1–5 verified; final validation/benchmark/delivery in progress.
 Investigated at `e0a91815` on `proto/fpga-native-sim-memory`.
 
 ## Goal and scope
@@ -321,3 +321,26 @@ adapter. The late-writeback test prepares reusable slots and hot allocator
 metadata before pausing DDR: pausing cold metadata would intentionally block
 allocation rather than isolate a completed capture. Its fault/silence/clock
 assertions are retained. No Rust implementation changes were needed.
+
+Stage 6 progress: the original and streaming 64-loop DRAMsim3 workloads match
+Rust, including per-quantum jobs/state/samples and final media. The longer-table
+case runs 24 quanta and seeks twice. A separate verification replay retains full
+intermediate snapshots; measured runs never inspect/flush metadata between quanta.
+
+The first mixed retake measured 81,281 clocks. Profiling exposed directory-empty
+scans during trimming. Lists now enforce contiguous-prefix writes, allowing tail
+release to identify empty parent nodes from the index digits; sparse debug writes
+are refused. Unit tests cover nonzero parent indexes, multi-level trimming and
+reuse without high-water growth. A final mixed measurement will record the gain.
+
+Metadata cache tags use offsets within the arena, and only the transport adds
+the logical arena base. This preserves the existing four-byte logical-base and
+eight-byte physical-base alignment contracts without zeroing neighboring regions.
+Alignment tests pass with logical base +0x1004 and physical base +8.
+
+All eight cache/service test configurations pass, including 32-/64-bit buses,
+multiple bursts per cache line, dirty eviction, read/writeback faults in all
+banks, and reset during outstanding traffic. Connected tests now explicitly
+exercise a cold metadata-prefetch error and two views sharing one stereo loop.
+The former directory scan and a multi-burst early-write-error hang were corrected
+before delivery. Native/realistic small-loop tests and the odd stereo case pass.

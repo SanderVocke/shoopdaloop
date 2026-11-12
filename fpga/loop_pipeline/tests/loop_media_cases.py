@@ -55,6 +55,22 @@ def directed(depths, capacities, executable):
     n = min(depths[0], depths[1], (depths[2] - 1) // 2, (depths[3] - 2) // 2, depths[4] // 2, (depths[5] - 2) // 2, depths[7] - 1, capacities[0], capacities[1] // (max(16, capacities[2]) // capacities[2]))
     q = max((q for q in (1, 16, 32) if q <= min(depths[6], capacities[2])))
     yield audio(case('actual-all-loop-slots-record-and-play', [spec(i, 0) for i in range(n)], [step([command(i, i + 1, dict(kind='record')) for i in range(n)]), step([command(i, n + i + 1) for i in range(n)]), step(), step([command(i, 2 * n + i + 1, seek(0, True)) for i in range(n)]), step([command(i, 3 * n + i + 1, dict(kind='stop')) for i in range(n)])], q=q, requests=n), depths, capacities)
+    q=max(16,capacities[2])
+    if min(depths[8],depths[9])>=2 and depths[7]>=8 and 4*(q//capacities[2])<=capacities[1]:
+        value=audio(case('stereo-views-share-one-logical-loop',[spec(0,0)],[
+            step([command(0,1,dict(kind='record'))]),step(),step([command(0,2)]),step(),
+            step([command(0,3,dict(kind='stop'))]),step([command(0,4,dict(kind='record'))]),step([command(0,5)])
+        ],q=q,requests=2),depths,capacities,views=0)
+        loop=spec(0,0)['id']
+        nodes=[dict(kind='input',port=i) for i in range(2)]
+        nodes += [dict(kind='logical_playback',loop_id=loop,view=i) for i in range(2)]
+        nodes += [dict(kind='logical_capture',loop_id=loop,view=i,input=i) for i in range(2)]
+        nodes += [dict(kind='output',input=i+2,port=i) for i in range(2)]
+        compiled=wire.run_reference('compile',document('graph',dict(quantum=q,chunk_frames=capacities[2],nodes=nodes)),executable=executable)['payload']['value']
+        value.update(program=compiled['program'],initial_state=dict(memory=compiled['initial_state']),buffers=8,output_ports=2)
+        for index,row in enumerate(value['steps']):
+            row['work']['value']['inputs']=[[20000*(index+1)+f*31 for f in range(q)],[-50000-index*101-f*13 for f in range(q)]]
+        yield value
     for q in (1, 16, 32):
         if q > depths[6] or 2 * ((q + capacities[2] - 1) // capacities[2]) > capacities[1]:
             continue

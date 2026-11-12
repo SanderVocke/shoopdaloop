@@ -1,4 +1,4 @@
-module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer LINE_WORDS = 16) (
+module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer LINE_WORDS = 16, parameter integer LARGE = 0) (
     input wire clk, input wire reset,
     input wire request_valid, output wire request_ready, input wire [3:0] request_opcode,
     input wire [31:0] request_view, input wire [31:0] request_index, input wire [31:0] request_data,
@@ -61,7 +61,7 @@ module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     wire [31:0] memory_read_data;
     wire [31:0] memory_meta_read_data;
     wire unused_sample = &{1'b0,memory_ready,memory_write_ready,memory_read_valid,memory_response_valid,memory_response_error,memory_read_data};
-    media_metadata #(.VIEWS(4),.SLOTS(256),.CHUNK_FRAMES(1),.TABLE_PAGES(8),.TABLE_LINES(2),.REF_LINES(1),.STACK_LINES(1)) metadata (
+    media_metadata #(.VIEWS(4),.SLOTS(LARGE != 0 ? 512 : 256),.CHUNK_FRAMES(1),.TABLE_PAGES(LARGE != 0 ? 32 : 8),.TABLE_LINES(2),.REF_LINES(1),.STACK_LINES(1)) metadata (
         .clk(clk),
         .reset(reset),
         .arena_base(64'h01000000),

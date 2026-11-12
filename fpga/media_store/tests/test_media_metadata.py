@@ -1,4 +1,5 @@
 import cocotb
+import os
 from cocotb.clock import Clock
 from cocotb.triggers import Timer, RisingEdge
 from direct_memory import DirectMemory
@@ -31,12 +32,14 @@ async def indexed_metadata_reuse_and_limits(dut):
         return value
     await request(7,0,0)
     await request(0,0,0,error=1)
-    await request(1,0,256,123,error=1)
+    await request(1,0,int(os.environ.get('METADATA_SERVICE_SLOTS','256')),123,error=1)
+    slots=int(os.environ.get('METADATA_SERVICE_SLOTS','256'))
+    levels=((slots-1).bit_length()+3)//4
     for i in range(32):await request(1,0,i,100+i)
     for i in range(16):await request(1,1,i,200+i)
     high=int(dut.metadata.high_water.value)
-    await request(7,2,64,error=3)
-    await request(1,2,63,123,error=3)
+    await request(7,2,slots,error=3)
+    await request(1,2,slots-1,123,error=3)
     assert int(dut.metadata.high_water.value)==high
     for view,count in [(0,32),(1,16)]:
         for i in reversed(range(count)):assert await request(0,view,i)==100*(view+1)+i
@@ -51,14 +54,27 @@ async def indexed_metadata_reuse_and_limits(dut):
     await request(6,0,16)
     assert int(dut.metadata.free_pages.value)==1
     await request(6,0,0)
-    assert int(dut.metadata.free_pages.value)==3
+    assert int(dut.metadata.free_pages.value)==levels+1
     for i in range(32):await request(1,2,i,300+i)
     assert int(dut.metadata.high_water.value)==high
     for i in range(32):assert await request(0,2,i)==300+i
+    if slots>256:
+        for i in range(272):await request(1,3,i,400+i)
+        for i in (0,15,16,255,256,271):assert await request(0,3,i)==400+i
+        before=int(dut.metadata.free_pages.value)
+        high=int(dut.metadata.high_water.value)
+        await request(6,3,256)
+        assert int(dut.metadata.free_pages.value)==before+2
+        assert await request(0,3,255)==655
+        await request(6,3,240)
+        assert int(dut.metadata.free_pages.value)==before+3
+        await request(6,3,0)
+        for i in range(16):await request(1,3,i,700+i)
+        assert int(dut.metadata.high_water.value)==high
     await request(9)
     image=await memory.read_words(tick)
-    assert image[256:326]==list(range(1,71))
-    assert image[512:582]==list(reversed(range(70)))
+    assert image[slots:slots+70]==list(range(1,71))
+    assert image[2*slots:2*slots+70]==list(reversed(range(70)))
     memory.fail_next=True
     await request(0,2,0,error=5)
     assert int(dut.fault.value)

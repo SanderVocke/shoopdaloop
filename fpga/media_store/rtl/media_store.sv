@@ -52,7 +52,7 @@ module media_store #(
     localparam [7:0] OK = 0, INVALID_VIEW = 1, INVALID_STATE = 2,
         MEMORY_FULL = 3, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
     localparam integer SHIFT = $clog2(CHUNK_FRAMES);
-    localparam [63:0] ARENA_BYTES = 64'(SLOTS) * 64'(CHUNK_FRAMES) * 4;
+    localparam [63:0] ARENA_BYTES = (((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS)+15)/16)*16 + 64'(TABLE_PAGES)*16)*4;
     typedef enum logic [5:0] {
         IDLE, DESCRIPTOR_READ, DESCRIPTOR_RESULT, CHECK,
         TABLE_READ, TABLE_RESULT, REF_READ, REF_RESULT, UPDATE_REFERENCE,
@@ -651,6 +651,9 @@ module media_store #(
                 if (phase == IDLE) begin
                     cfg_pending <= cfg_accept; cfg_response_error <= 1; cfg_was_write <= cfg_write;
                 end else phase <= FINISH;
+            end
+            if (memory_meta_valid && memory_meta_ready && !arena_bound) begin
+                base <= arena_base; arena_bound <= 1;
             end
             if (memory_fault) begin
                 faulted <= 1; error_code <= MEMORY_FAULT;

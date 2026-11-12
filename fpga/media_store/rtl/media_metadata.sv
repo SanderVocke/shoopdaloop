@@ -38,8 +38,8 @@ module media_metadata #(
     reg [63:0] parent_address;
     reg [31:0] path_page [0:LEVELS-1];
     reg [63:0] path_address [0:LEVELS-1];
-    reg [31:0] trim_count, trim_start, scan_index;
-    reg any_child, root_exists, checked;
+    reg [31:0] trim_count, trim_start;
+    reg root_exists, checked;
     reg [3:0] opcode;
     reg [1:0] bank, cache_opcode;
     reg [63:0] cache_address;
@@ -56,14 +56,14 @@ module media_metadata #(
     assign response_valid = phase == RESPONSE && !reset;
     assign memory_valid = bank < 3 && bus_valid[bank];
     assign memory_write = bus_write[bank];
-    assign memory_address = bus_address[bank*64+:64];
+    assign memory_address = arena_base+bus_address[bank*64+:64];
     assign memory_write_data = bus_write_data[bank*32+:32];
     assign memory_count = bus_count[bank*32+:32];
     assign memory_write_valid = bank < 3 && bus_write_valid[bank];
     assign memory_read_ready = bank < 3 && bus_read_ready[bank];
     assign memory_response_ready = bank < 3 && bus_response_ready[bank];
     function automatic [63:0] page_address(input [31:0] id);
-        page_address = arena_base+PAGE_BASE+(64'(id)-1)*64;
+        page_address = PAGE_BASE+(64'(id)-1)*64;
     endfunction
     function automatic [63:0] nodes(input [31:0] count);
         reg [63:0] n, total;
@@ -114,7 +114,7 @@ module media_metadata #(
             phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
             allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
-            scan_index <= 0; any_child <= 0; root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
+            root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
             cache_opcode <= 0; cache_address <= 0; cache_data <= 0; value <= 0; cache_invalidate <= 0;
             response_data <= 0; response_error <= 0;
             directory_reads <= 0; table_reads <= 0;
@@ -139,7 +139,7 @@ module media_metadata #(
                     else if (opcode >= 2 && opcode <= 5) begin
                         if (ordinal >= 32'(SLOTS)) begin response_error <= 1; phase <= RESPONSE; end
                         else access_cache(opcode < 4 ? 2'd1 : 2'd2, {1'b0,opcode[0]},
-                            arena_base+(opcode < 4 ? REF_BASE : STACK_BASE)+64'(ordinal)*4,payload,ACCESS_DONE);
+                            (opcode < 4 ? REF_BASE : STACK_BASE)+64'(ordinal)*4,payload,ACCESS_DONE);
                     end else begin
                         level <= 32'(LEVELS-1); parent_page <= 0;
                         page <= root_exists ? root_data[31:0] : 0;
@@ -227,20 +227,14 @@ module media_metadata #(
                     free_head <= page; free_pages <= free_pages+1;
                     if (level+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_NEXT; end
                     else begin
-                        page <= path_page[level+1]; level <= level+1; scan_index <= 0; any_child <= 0;
-                        access_cache(0,1,path_address[level+1],0,SCAN_RESULT);
+                        page <= path_page[level+1]; level <= level+1;
+                        if (((ordinal >> ((level+1)*4)) & 15) == 0) phase <= FREE_PAGE;
+                        else access_cache(0,1,path_address[level+1],0,SCAN_RESULT);
                     end
                 end
-                SCAN_RESULT: begin
-                    if (scan_index == 16) begin
-                        if (any_child) begin used <= trim_start; phase <= TRIM_NEXT; end
-                        else phase <= FREE_PAGE;
-                    end else access_cache(0,0,page_address(page)+64'(scan_index)*4,0,FLUSH_NEXT);
-                end
+                SCAN_RESULT: begin used <= trim_start; phase <= TRIM_NEXT; end
                 FLUSH_NEXT: begin
-                    if (opcode == 6) begin
-                        any_child <= any_child || value != 0; scan_index <= scan_index+1; phase <= SCAN_RESULT;
-                    end else if (bank == 3) phase <= RESPONSE;
+                    if (bank == 3) phase <= RESPONSE;
                     else access_cache(bank,3,0,0,SCAN_WORD);
                 end
                 default: begin response_error <= 2; phase <= RESPONSE; end

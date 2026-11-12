@@ -51,7 +51,8 @@ module metadata_cache #(
     assign memory_count = BURST_MEMORY != 0 ? 32'(LINE_WORDS) : 32'd1;
     assign memory_write_valid = BURST_MEMORY != 0 && phase == WRITE_DATA && !reset;
     assign memory_read_ready = BURST_MEMORY != 0 && phase == FILL_DATA && !reset;
-    assign memory_response_ready = phase == FILL_ACK || phase == WRITE_ACK || phase == FILL_DATA;
+    assign memory_response_ready = phase == FILL_ACK || phase == WRITE_ACK || phase == FILL_DATA
+        || phase == WRITE_REQUEST || phase == WRITE_READ || phase == WRITE_DATA;
     chunk_ram #(.DEPTH(LINES*LINE_WORDS),.ADDR_BITS(ADDRESS_BITS)) data_ram (
         .clk(clk),.a_enable(read_ram),.a_write(1'b0),
         .a_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+(phase == ACCESS ? word_index : index))),
@@ -144,6 +145,10 @@ module metadata_cache #(
                 end
                 default: begin fault <= 1; response_error <= 1; phase <= RESPONSE; end
             endcase
+            if ((phase == WRITE_REQUEST || phase == WRITE_READ || phase == WRITE_DATA)
+                && memory_response_valid && memory_response_error) begin
+                response_error <= 1; fault <= 1; phase <= RESPONSE;
+            end
         end
     end
 endmodule

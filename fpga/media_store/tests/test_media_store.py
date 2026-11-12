@@ -95,7 +95,7 @@ async def media_protocol(dut):
     driver.set(hint_valid=0)
     for _ in range(20):
         await driver.tick()
-    driver.base += 0x1000
+    driver.base += 0x1004
     driver.set(arena_base=driver.base)
     result = await driver.command(command("append", view=0, samples=[117]*CAPACITIES[2]))
     assert result["status"]["kind"] == "completed", "ignored hint bound the old arena"

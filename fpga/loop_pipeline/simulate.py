@@ -28,6 +28,8 @@ def main():
     parser.add_argument('--response-cycles',type=int,default=1)
     parser.add_argument('--read-buffers',type=int,default=4)
     parser.add_argument('--write-buffers',type=int,default=4)
+    parser.add_argument('--timing-verify',action='store_true')
+    parser.add_argument('--timing-workload',choices=('original','streaming','mixed'),default='original')
     parser.add_argument('--timing',action='store_true',help='profile the coordinated 64-loop benchmark (--media --config 8x8)')
     add_options(parser,legacy=True)
     args=parser.parse_args()
@@ -56,8 +58,14 @@ def main():
     for name,depths in configs.items():
         output=args.output.resolve()/name;output.mkdir(parents=True,exist_ok=True)
         runner=get_runner('verilator')
+        if args.timing and args.timing_workload=='mixed':
+            depths=tuple(384 if i in (3,5,7) else n for i,n in enumerate(depths))
         parameters=dict(zip(PARAMS,depths))
         parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),MEDIA_CONFIGS[name]))
+        media_capacities=MEDIA_CONFIGS[name]
+        if args.timing and args.timing_workload=='streaming':media_capacities=(64,4096,32)
+        if args.timing and args.timing_workload=='mixed':media_capacities=(72,2048,32)
+        parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),media_capacities))
         parameters['MEMORY_RESPONSE_CYCLES']=args.response_cycles
         parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
         if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
@@ -72,9 +80,9 @@ def main():
         results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_media_loop_pipeline',seed=20261110,
             testcase='directed_against_rust' if args.case else None,
             test_dir=output,waves=args.waves,log_file=output/'simulation.log',extra_env={
-                'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),
+                'LP_TIMING_VERIFY':str(int(args.timing_verify)),'LP_TIMING_WORKLOAD':args.timing_workload,'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),
                 'LP_OUTPUT':str(output),'LP_REFERENCE':str(ROOT/'target/debug/fpga-reference'),
-                'LP_MEDIA_CAPACITIES':','.join(map(str,MEDIA_CONFIGS[name])),
+                'LP_MEDIA_CAPACITIES':','.join(map(str,media_capacities)),
                 'LP_WRITE_BUFFERS':str(args.write_buffers),
                 'LP_READ_BUFFERS':str(args.read_buffers),
                 'LP_CASE':str(args.case.resolve()) if args.case else '',**memory_env})
