@@ -238,6 +238,9 @@ module media_store #(
     wire [31:0] metadata_result;
     wire [7:0] metadata_result_error;
     wire metadata_ready, metadata_valid;
+    wire [31:0] retired_count, retired_high_water;
+    wire [63:0] retired_references;
+    wire unused_retired = &{1'b0,retired_count,retired_high_water,retired_references};
     wire metadata_request_ready;
     reg metadata_request_valid;
     reg [3:0] metadata_request_opcode;
@@ -292,6 +295,7 @@ module media_store #(
         .request_view(metadata_request_view),.request_index(metadata_request_index),.request_data(metadata_request_data),
         .response_valid(metadata_valid),.response_ready(metadata_pending),
         .response_data(metadata_result),.response_error(metadata_result_error),.fault(metadata_fault),
+        .retired_count(retired_count),.retired_high_water(retired_high_water),.retired_references(retired_references),
         .memory_valid(memory_meta_valid),.memory_ready(memory_meta_ready),.memory_write(memory_meta_write),
         .memory_address(memory_meta_address),.memory_write_data(memory_meta_write_data),.memory_count(memory_meta_count),
         .memory_write_valid(memory_meta_write_valid),.memory_write_ready(memory_meta_write_ready),

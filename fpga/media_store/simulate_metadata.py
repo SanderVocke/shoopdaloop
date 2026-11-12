@@ -13,11 +13,13 @@ ROOT = HERE.parents[1]
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',type=Path,default=ROOT/'work/metadata-units')
+    p.add_argument('--unit',choices=('all','cache','tables'),default='all')
     args=p.parse_args()
     sys.path[:0]=[str(HERE/"tests"),str(ROOT/"fpga/axi_memory/sim")]
     if sys.prefix != sys.base_prefix:os.environ.setdefault("VIRTUAL_ENV",sys.prefix)
     for width in (32,64):
         for words in (16,64,0,-1):
+            if (args.unit=='tables' and words>0) or (args.unit=='cache' and words<=0):continue
             top='media_metadata_tb' if words<=0 else 'metadata_cache_tb'
             out=args.output.resolve()/f'{width}-{words}';out.mkdir(parents=True,exist_ok=True)
             runner=get_runner('verilator')

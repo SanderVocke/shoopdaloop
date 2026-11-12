@@ -4,6 +4,8 @@ module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     input wire [31:0] request_view, input wire [31:0] request_index, input wire [31:0] request_data,
     output wire response_valid, input wire response_ready,
     output wire [31:0] response_data, output wire [7:0] response_error, output wire fault,
+    output wire [31:0] retired_count, output wire [31:0] retired_high_water,
+    output wire [63:0] retired_references,
     input wire [1:0] sim_image_request, output wire sim_image_done, input wire [4:0] sim_control,
     input wire [31:0] sim_fail_token, output wire [31:0] sim_fail_seen,
     output wire sim_busy, output wire sim_active, output wire sim_error, output wire sim_write,
@@ -61,7 +63,7 @@ module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     wire [31:0] memory_read_data;
     wire [31:0] memory_meta_read_data;
     wire unused_sample = &{1'b0,memory_ready,memory_write_ready,memory_read_valid,memory_response_valid,memory_response_error,memory_read_data};
-    media_metadata #(.VIEWS(4),.SLOTS(LARGE != 0 ? 512 : 256),.CHUNK_FRAMES(1),.TABLE_PAGES(LARGE != 0 ? 32 : 8),.TABLE_LINES(2),.REF_LINES(1),.STACK_LINES(1)) metadata (
+    media_metadata #(.VIEWS(4),.SLOTS(LARGE != 0 ? 512 : 256),.CHUNK_FRAMES(1),.TABLE_PAGES(LARGE != 0 ? 32 : 8),.RETIRED_TABLES(2),.TABLE_LINES(2),.REF_LINES(1),.STACK_LINES(1)) metadata (
         .clk(clk),
         .reset(reset),
         .arena_base(64'h01000000),
@@ -76,6 +78,7 @@ module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
         .response_data(response_data),
         .response_error(response_error),
         .fault(fault),
+        .retired_count(retired_count),.retired_high_water(retired_high_water),.retired_references(retired_references),
         .memory_valid(memory_meta_valid),
         .memory_ready(memory_meta_ready),
         .memory_write(memory_meta_write),

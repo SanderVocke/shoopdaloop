@@ -93,3 +93,78 @@ async def indexed_metadata_reuse_and_limits(dut):
             await request(op,index=0,error=5)
         assert int(dut.fault.value)
     clock.kill()
+
+
+@cocotb.test()
+async def detached_tables_survive_reuse_and_recover_pages(dut):
+    def set(**values):
+        for name,value in values.items():getattr(dut,name).value=value
+    async def tick():
+        await Timer(1,units='ns');await RisingEdge(dut.clk);await Timer(1,units='ns')
+    set(reset=1,request_valid=0,request_opcode=0,request_view=0,request_index=0,request_data=0,response_ready=0)
+    clock=cocotb.start_soon(Clock(dut.clk,10,units='ns').start())
+    memory=DirectMemory(dut,[0]*8192)
+    await tick();set(reset=0);await tick();await memory.load_words([0]*8192,tick)
+    async def request(op,view=0,index=0,data=0,error=0):
+        set(request_valid=1,request_opcode=op,request_view=view,request_index=index,request_data=data,response_ready=0)
+        for _ in range(100000):
+            await Timer(1,units='ns');ready=int(dut.request_ready.value);await tick()
+            if ready:break
+        else:raise AssertionError('metadata admission timeout')
+        set(request_valid=0)
+        for _ in range(100000):
+            if int(dut.response_valid.value):break
+            await tick()
+        else:raise AssertionError(f'metadata timeout op={op}')
+        assert int(dut.response_error.value)==error,(op,int(dut.response_error.value),error)
+        value=int(dut.response_data.value)
+        set(response_ready=1);await tick();set(response_ready=0)
+        return value
+    try:
+        await request(12,error=2)
+        await request(11,error=2)
+        await request(10,view=4,error=1)
+        await request(10)
+        assert int(dut.retired_count.value)==0
+        for view,count,base in ((0,32,100),(1,16,200)):
+            for i in range(count):
+                await request(1,view,i,base+i)
+                await request(3,index=base+i,data=1)
+        high=await request(14,index=0)
+        free=await request(14,index=1)
+        walks=(int(dut.metadata.directory_reads.value),int(dut.metadata.table_reads.value))
+        assert await request(10,0)==32
+        assert await request(10,1)==16
+        assert (int(dut.metadata.directory_reads.value),int(dut.metadata.table_reads.value))==walks
+        assert int(dut.retired_count.value)==2
+        assert int(dut.retired_references.value)==48
+        assert await request(14,index=0)==high
+        assert await request(14,index=1)==free
+        for i in range(32):assert await request(2,index=100+i)==1
+        await request(0,0,0,error=1)
+        await request(1,0,0,250)
+        await request(10,0,error=3)
+        assert await request(0,0,0)==250
+        for view,count,base in ((0,32,100),(1,16,200)):
+            for i in reversed(range(count)):
+                assert await request(11,view=999)==base+i
+                await request(11,error=2)
+                assert await request(0,0,0)==250
+                assert await request(12)==i
+                await request(12,error=2)
+        assert int(dut.retired_count.value)==0
+        assert int(dut.retired_references.value)==0
+        await request(10,0)
+        assert await request(11)==250
+        await request(12)
+        assert await request(14,index=1)==await request(14,index=0)
+        for _ in range(6):
+            await request(1,0,0,17)
+            await request(10,0)
+            assert await request(11)==17
+            await request(12)
+            assert int(dut.retired_count.value)==0
+        assert int(dut.retired_high_water.value)==2
+        assert await request(14,index=1)==await request(14,index=0)
+    finally:
+        memory.close();clock.kill()
