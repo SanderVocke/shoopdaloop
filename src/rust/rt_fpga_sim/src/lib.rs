@@ -6,3 +6,5 @@ pub use simulator::*;
 pub mod differential;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod mono;
+#[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
+pub mod mono_trace;

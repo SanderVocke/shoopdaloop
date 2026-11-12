@@ -4802,6 +4802,7 @@ dependencies = [
  "rt_backend_testbench",
  "rt_fpga_adapter",
  "rt_runtime",
+ "serde",
  "serde_json",
  "shoop_loops",
  "shoop_rt_engine",

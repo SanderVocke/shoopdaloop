@@ -1,4 +1,5 @@
 module media_store #(
+    parameter integer REUSE_VIEWS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -511,7 +512,7 @@ module media_store #(
                         end else phase <= DESCRIPTOR_READ;
                     end else if (cmd_opcode == CREATE) begin
                         new_valid <= 1; new_range <= 0; new_offset <= 0; new_frames <= 0; new_chunks <= 0;
-                        allocation_view <= 0; phase <= FREE_VIEW_READ;
+                        allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; phase <= FREE_VIEW_READ;
                     end else if (cmd_opcode == FENCE) begin
                             phase <= FENCE_REQUEST;
                     end else if (cmd_view >= {32'b0, view_count}) begin
@@ -598,7 +599,7 @@ module media_store #(
                     end else begin
                         new_range <= 1; new_offset <= range_offset; new_frames <= length;
                         new_chunks <= range_chunks[31:0]; first_chunk <= 32'(absolute_start >> UNIT_SHIFT);
-                        remaining <= range_chunks[31:0]; allocation_view <= 0; phase <= FREE_VIEW_READ;
+                        remaining <= range_chunks[31:0]; allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; phase <= FREE_VIEW_READ;
                     end
                 end
                 RECLAIM_END: begin

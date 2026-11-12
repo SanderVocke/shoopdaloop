@@ -547,7 +547,11 @@ impl rt_fpga_adapter::adapter::Device for Simulator<'_> {
         let result = self.run(image, inputs);
         result.map_err(|e| {
             self.last_error = Some(e.to_string());
-            rt_runtime::Error::InvalidState
+            if self.model.error_stage == 3 && self.model.error_code == 6 {
+                rt_runtime::Error::Capacity
+            } else {
+                rt_runtime::Error::InvalidState
+            }
         })
     }
 }

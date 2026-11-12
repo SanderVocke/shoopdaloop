@@ -3,7 +3,8 @@
 `include "state_processor_defs.svh"
 
 module media_store_axi #(
-parameter integer VIEWS = 32,
+parameter integer REUSE_VIEWS = 0,
+    parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer BLOCK_CHUNKS = 32,
@@ -126,6 +127,7 @@ parameter integer VIEWS = 32,
     wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     wire [31:0] physical_base = PHYSICAL_BASE;
     media_store #(
+        .REUSE_VIEWS(REUSE_VIEWS),
         .VIEWS(VIEWS),
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),

@@ -12,6 +12,7 @@ module loop_pipeline #(
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
     parameter integer OUTPUT_PORTS = 2,
+    parameter integer REUSE_VIEWS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -169,7 +170,7 @@ module loop_pipeline #(
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .configured_quantum(configured_quantum)
     );
-    media_audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+    media_audio_pipeline #(.REUSE_VIEWS(REUSE_VIEWS), .EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) audio (

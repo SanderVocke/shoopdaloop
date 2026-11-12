@@ -55,7 +55,8 @@ The integration tests also cover silence, reset, backpressure, bounded timeouts,
 record/stop/playback/wrap fixture runs directly through Marlin, checking audio,
 loop state and captured media against production Q8.24. The direct media loader
 supports initially empty views for this regression; importing arbitrary stored
-media and routing loop commands through the queue adapter remain outside scope.
+media remains outside scope for this profile. The separate mono queue profile
+below routes loop commands and media operations through the runtime transport.
 
 Each model owns a separate Verilator context. A small vendored patch to the
 pinned bridge fixes stale trace callbacks retained by the default context; see
@@ -67,3 +68,51 @@ runtime/model tests verify this ownership; no test serialization is required.
 [Validation measurements](VALIDATION.md) distinguish C++ build/load, runtime graph
 validation/lowering, configuration and clock counts. Ordinary CPU/Wasm dependency
 trees contain no Marlin; normal app code still uses its native runtime.
+
+## Queue-driven mono looper
+
+```sh
+cargo run -p rt_fpga_sim --features sim --bin fpga-mono-demo
+cargo test -p rt_fpga_sim --features sim --test mono_native --test mono_protocol --test mono_rtl --test mono_replay
+```
+
+The default trace is `fixtures/mono-loop.json`. Optional arguments are the trace,
+C++ cache/output directory, and VCD path:
+
+```sh
+cargo run -p rt_fpga_sim --features sim --bin fpga-mono-demo -- \
+  src/rust/rt_fpga_sim/fixtures/mono-loop.json work/marlin-mono work/mono.vcd
+```
+
+Each version-1 JSON step provides exactly 32 signed raw Q8.24 input words and a
+list of named commands. Both backends receive the same producer's production
+preparation, initial queued graph commit, loop/gain commands and owning reads.
+No expected image, jobs, state or samples are supplied to the hardware adapter.
+Operations include record/stop/play, gain, state, export, cursor, read, release,
+domain cancel and pre-dequeue ticket cancellation. `at` is an optional absolute
+frame, `recovery` selects the recovery lane, and `hold_results` leaves completions
+unread to exercise queue pressure. Reads/cursors/releases reference earlier
+named results. The final step must drain results. Unknown references or unsupported
+trace versions fail before they can manufacture a successful comparison.
+
+Checked-in fixtures cover retained takes across re-recording and wraps,
+unaligned byte reads/EOF, release/stale handles and storage reuse; empty playback
+and supersession; unread-result pressure; pending/export/read-buffer capacities;
+and distinct latest/playback media after recording restarts. Two seeded traces
+exercise 48 additional quanta each. Small device protocol tests gate settlement
+acknowledgement and inject failures without implementing any DSP. Physical RTL
+fault and arena exhaustion tests check sticky fault/receipt behavior separately
+from native elastic-storage comparisons.
+
+The runner checks every output word, exported byte, post-quantum state, query cut,
+revision, event, completion, execution receipt, epoch and requested/effective/
+terminal frame. Scoped opaque handles use a checked bijective correspondence.
+It writes canonical outcomes and counters to `result.json`; the first mismatch
+includes quantum/operation context. The CLI prints a replay command with a VCD
+path on failure. Every trace asserts one compilation/activation and stable
+bindings across transitions/gains. Deterministic job/response stalls are enabled.
+
+The new path uses Rust, Marlin/Verilator and C++ only. Existing Python RTL gates
+are independent regressions, not dependencies of this runner. Supported protocol
+and capacity details are in the adapter README; local results and separate model,
+graph/configuration measurements are in [mono validation](MONO_VALIDATION.md).

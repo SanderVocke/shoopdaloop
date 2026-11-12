@@ -352,6 +352,9 @@ impl<D: LoopDevice> LoopAdapter<D> {
                                 &mut self.device,
                             )
                         });
+                        if result == Err(Error::Disconnected) {
+                            self.fault = Some(Error::Disconnected);
+                        }
                         result
                     }
                     Request::Install { .. } | Request::Remove { .. } => Err(Error::Busy),
@@ -445,9 +448,15 @@ impl<D: LoopDevice> LoopAdapter<D> {
                             delivery.token,
                             Ok(Reply::Failed(Failure::Timeline(error))),
                         )?,
-                        Err(Failure::Runtime(error)) => delivery
-                            .receipts
-                            .complete(delivery.token, Ok(Reply::Failed(Failure::Runtime(error))))?,
+                        Err(Failure::Runtime(error)) => {
+                            delivery.receipts.complete(
+                                delivery.token,
+                                Ok(Reply::Failed(Failure::Runtime(error))),
+                            )?;
+                            if error == Error::Disconnected {
+                                return Err(error);
+                            }
+                        }
                     }
                 }
                 _ => return Err(Error::InvalidParameter),
@@ -460,6 +469,8 @@ impl<D: LoopDevice> LoopAdapter<D> {
         self.state = self.hardware_state()?;
         self.media
             .observe(self.state, self.frame, &mut self.device)?;
+        self.pending
+            .sort_by_key(|pending| u8::from(pending.lane == Lane::Recovery));
         let mut completed = vec![];
         for pending in &self.pending {
             let result = match pending.kind {
@@ -478,20 +489,26 @@ impl<D: LoopDevice> LoopAdapter<D> {
                     Ok(Reply::Transition(completion))
                 }
                 PendingKind::Query(op) => match op {
+                    LoopOperation::State { target } | LoopOperation::Export { target, .. }
+                        if target != self.state.id =>
+                    {
+                        Err(Failure::Timeline(loops::Error::InvalidId))
+                    }
                     LoopOperation::State { .. } => self
                         .media
                         .cut(self.state, self.frame, self.epoch)
-                        .map(Reply::State),
+                        .map(Reply::State)
+                        .map_err(Failure::Runtime),
                     LoopOperation::Export { selection, .. } => self
                         .media
-                        .export(self.state, self.frame, self.epoch, selection),
-                    _ => Err(Error::InvalidParameter),
+                        .export(self.state, self.frame, self.epoch, selection)
+                        .map_err(Failure::Runtime),
+                    _ => Err(Failure::Runtime(Error::InvalidParameter)),
                 },
             };
-            self.scheduler.receipts(self.frame).complete(
-                pending.token,
-                Ok(result.unwrap_or_else(|error| Reply::Failed(Failure::Runtime(error)))),
-            )?;
+            self.scheduler
+                .receipts(self.frame)
+                .complete(pending.token, Ok(result.unwrap_or_else(Reply::Failed)))?;
         }
         self.pending.clear();
         let output = self
@@ -619,16 +636,6 @@ fn deliver_planner(
     requested: Frame,
 ) -> Result<Option<Reply<Q824>>, Failure> {
     match operation {
-        LoopOperation::Transition { target, .. }
-        | LoopOperation::State { target }
-        | LoopOperation::Export { target, .. }
-            if target != startup.binding.target =>
-        {
-            return Err(Failure::Timeline(loops::Error::InvalidId));
-        }
-        _ => {}
-    }
-    match operation {
         LoopOperation::Transition {
             target,
             timing,
@@ -638,6 +645,9 @@ fn deliver_planner(
                 >= if lane == Lane::Normal { 4 } else { 1 }
             {
                 return Err(Error::Capacity.into());
+            }
+            if target != startup.binding.target {
+                return Err(Failure::Timeline(loops::Error::InvalidId));
             }
             let words = command(
                 device,

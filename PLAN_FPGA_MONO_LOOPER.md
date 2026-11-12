@@ -121,59 +121,59 @@ claim or GUI integration requirement.
 
 ### 2. Compile and configure the loop-aware pipeline
 
-- [ ] Extend the adapter's closed processor set and runtime command types to the
+- [x] Extend the adapter's closed processor set and runtime command types to the
   production loop planner operation/reply family. Accept prepared loop nodes at
   startup and keep queued gain-install coverage intact.
-- [ ] Extract/share initial TP topology and media-binding assembly with existing
+- [x] Extract/share initial TP topology and media-binding assembly with existing
   fixtures. Lower the actual ordered plan plus checked production topology and
   bindings into persistent SP state/program and TP configuration. Validate the
   three-node graph and device capacities before loading.
-- [ ] Extend `Device` and the existing Marlin driver with the required typed TP,
+- [x] Extend `Device` and the existing Marlin driver with the required typed TP,
   state and media operations, reusing current packing and ports. Retain separate
   C++ build/load and graph compile/configuration measurements.
-- [ ] Verify compiler/binding contracts and configuration traffic with a recording
+- [x] Verify compiler/binding contracts and configuration traffic with a recording
   device, then reuse the direct recording regression to check the physical ports.
 
 ### 3. Translate queued transitions and observations
 
-- [ ] Implement supported `LoopClient` transition/state commands and instant gain
+- [x] Implement supported `LoopClient` transition/state commands and instant gain
   delivery using existing scheduling semantics. Correlate TP requests, cancellation,
   terminal domain outcomes and runtime receipts; preserve lane/credit rules.
-- [ ] Publish production-shaped state/query results and events at the cuts fixed
+- [x] Publish production-shaped state/query results and events at the cuts fixed
   in stage 1. Track graph/topology epochs and logical media revisions without
   executing a CPU loop-state machine on the hardware path.
-- [ ] Test through a recording/stalling device: no early acknowledgements, stale
+- [x] Test through a recording/stalling device: no early acknowledgements, stale
   loop/planner identities, future actions, same-boundary actions, ticket and domain
   cancellation, unread results, pressure, unsupported timing and injected faults.
   Assert that transitions/gains never reload the program or reset the timeline.
 
 ### 4. Bridge completed-media ownership and reads
 
-- [ ] Map supported planner `Export`, mono `Cursor`, `Release` and resource `Read`
+- [x] Map supported planner `Export`, mono `Cursor`, `Release` and resource `Read`
   onto checked host handles and FPGA views. Support completed `Latest`/`Playback`
   selection; reject recording-selection and unrelated resource operations.
-- [ ] Retain an immutable view using existing media-store operations. Return
+- [x] Retain an immutable view using existing media-store operations. Return
   metadata/cursors and queued read-buffer replies using production codecs and
   ownership rules. Define cursor use after release from native evidence.
-- [ ] Verify partial reads/EOF, stale generations, refused requests, export-table
+- [x] Verify partial reads/EOF, stale generations, refused requests, export-table
   exhaustion and returned buffers with focused protocol tests. Retain an export
   across re-recording, release it, and verify chunk/reference reclamation and safe
   reuse without promising unbounded FPGA storage or general resource emulation.
 
 ### 5. Run queue-driven native/RTL looping comparisons
 
-- [ ] Extend the existing Marlin differential runner to use the stage-1 producer
+- [x] Extend the existing Marlin differential runner to use the stage-1 producer
   and actual queued plans/startup descriptions. Observe state and retrieve media
   through supported queued operations, rather than substituting debug-only reads.
-- [ ] Add replayable traces covering recording several quanta, stop, play through
+- [x] Add replayable traces covering recording several quanta, stop, play through
   multiple wraps, signed/low-bit gain changes, stopped silence, and a second
   recording of a different length. Read both the retained first export and the
   new recording, then release them and exercise storage reuse.
-- [ ] Compare raw samples, logical state/revisions/events, public media metadata,
+- [x] Compare raw samples, logical state/revisions/events, public media metadata,
   read bytes and supported completions/receipts at identical boundaries. Include
   deterministic stalls and small queue limits. Report the first mismatch with
   quantum/operation context and a reproducible VCD command.
-- [ ] Assert one initial compilation/activation, stable bindings and no rebuilds
+- [x] Assert one initial compilation/activation, stable bindings and no rebuilds
   for transitions/gains. Preserve existing gain-chain/fan-in and direct-loop tests.
 
 ### 6. Final validation and delivery
@@ -224,5 +224,8 @@ loop state in Rust or introducing a second sample-processing path.
 Native contract tests cover pre-capture query cuts, immutable retained media,
 empty playback and future domain cancellation. The first queue-driven RTL case
 matches 12 quanta of audio, state, events, transitions and export metadata through
-two recordings. Removed media descriptors now reuse invalid slots, preserving
-bounded view capacity as recordings/exports are reclaimed.
+two recordings. The generation-checked host media registry opts into physical view reuse,
+preserving bounded view capacity as recordings/exports are reclaimed; raw-ID
+clients retain append-only view identities by default. Directed and seeded
+queue replays compare playback/latest ownership separately, partial byte reads,
+EOF, stale handles, retained exports and many recordings in an eight-chunk arena.

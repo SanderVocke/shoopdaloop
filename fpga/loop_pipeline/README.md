@@ -20,8 +20,9 @@ in place; state instructions read its stable settled records through the shared
 RAM port while jobs execute. Successful completion advances logical clocks once.
 Read ordinary state between quanta. A fault can leave partial diagnostic state,
 media writes, jobs and events; it never establishes a resumable session snapshot.
-There is no resource preflight, observation list, continuation, boundary token,
-commit, rollback, replay, or selectable external job executor in the public flow.
+There is no resource preflight, rollback, replay or selectable external job
+executor in the public flow. An optional host settlement pause exposes the
+pre-audio observation cut without predicting state on the host.
 
 Recording starts emit `BeginCapture` before `Capture`. The media store creates
 the configured view if it is the next descriptor, or clears/reuses that writable
@@ -60,9 +61,16 @@ succeed and silence the whole block if any fails. Native resource refusals are c
 
 Host traffic is blocked during processing. Program/media/debug ports remain
 available between runs or for fault diagnostics subject to subsystem guards.
-The transition coordinator reserves opcodes 9 and 11 internally: settlement and
-clock advancement are ordered implementation phases, with no public token or
-acknowledgement. `INTEGRATED=1` selects this private transition interface.
+The transition coordinator reserves opcodes 9 and 11 internally. Host command
+16 requests settlement and returns the ordinary retained TP response once that
+phase completes. It leaves the coordinator at a pre-audio boundary: TP queries,
+media operations and configuration are available, while the logical frame has
+not advanced. The next `run_valid && run_ready` resumes with audio execution and
+clock advancement, skipping a second settlement. Command 16 is admitted only
+from idle; after its response, resume the run before requesting another boundary.
+Ordinary runs without command 16 still perform all phases automatically.
+`INTEGRATED=1` selects this coordinated transition interface. The pause provides
+an observation cut, not a commit/rollback or resumable fault protocol.
 
 `monitor_*`, queue counts and failed-queue draining support verification. The
 `job_enable` input permits controlled stalls. The production executor always

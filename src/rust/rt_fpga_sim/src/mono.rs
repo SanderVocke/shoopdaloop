@@ -101,7 +101,9 @@ pub struct Preparation {
     pub resources: ResourceStore<Q824>,
 }
 pub fn prepare() -> SimResult<Preparation> {
-    let config = config();
+    prepare_with(config())
+}
+pub fn prepare_with(config: PreparedConfig) -> SimResult<Preparation> {
     let quantum = Quantum::new(32)?;
     let mut resources = ResourceStore::<Q824>::with_capture_groups(
         config,
@@ -187,22 +189,25 @@ pub struct Native {
 }
 impl Native {
     pub fn new() -> SimResult<Self> {
+        Self::with_config(config())
+    }
+    pub fn with_config(config: PreparedConfig) -> SimResult<Self> {
         let Preparation {
             nodes,
             planner,
             client,
             resources,
             ..
-        } = prepare()?;
+        } = prepare_with(config)?;
         let plan = graph::compile(
             &Catalog::new(
-                config(),
+                config,
                 &nodes.iter().map(Prepared::spec).collect::<Vec<_>>(),
             )?,
             &graph(),
         )?;
         let (mut control, runtime) = Runtime::prepare_with_planner_and_resources(
-            config(),
+            config,
             Quantum::new(32)?,
             nodes,
             planner,

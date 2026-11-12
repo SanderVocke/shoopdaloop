@@ -203,3 +203,96 @@ fn queued_mono_loop_matches_native_at_settled_queries_and_after_each_quantum() {
     }
     assert_eq!(hardware.metrics.compilations, 1);
 }
+
+#[shoop_test]
+fn actual_rtl_fault_and_arena_exhaustion_surface_without_losing_future_receipts() {
+    for exhaust in [false, true] {
+        let cache =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-tests");
+        let rt = runtime(&cache).unwrap();
+        let sim = Simulator::new(&rt, None, true).unwrap();
+        let mut p = mono::prepare().unwrap();
+        if exhaust {
+            p.startup.max_chunks = 1;
+        }
+        let plan = graph::compile(
+            &Catalog::new(
+                mono::config(),
+                &p.nodes.iter().map(|n| n.spec()).collect::<Vec<_>>(),
+            )
+            .unwrap(),
+            &mono::graph(),
+        )
+        .unwrap();
+        let (mut c, mut a) = LoopAdapter::prepare(mono::config(), p.startup, p.nodes, sim).unwrap();
+        c.submit(Lane::Normal, Request::commit(Epoch(0), plan))
+            .map_err(|e| e.error)
+            .unwrap();
+        a.service().unwrap();
+        assert_eq!(
+            c.try_completion().unwrap().outcome,
+            rt_runtime::transport::Outcome::Applied
+        );
+        let planner = rt_runtime::PlannerId::from_parts(0, 1).unwrap();
+        if exhaust {
+            c.submit(
+                Lane::Normal,
+                Request::Schedule {
+                    at: Frame(0),
+                    action: rt_runtime::schedule::Action::Planner {
+                        planner,
+                        operation: Operation::Transition {
+                            target: mono::loop_id(),
+                            timing: Timing::At,
+                            transition: Transition::Record {
+                                monitor_previous: false,
+                            },
+                        },
+                    },
+                    payload: Box::new([]),
+                },
+            )
+            .map_err(|e| e.error)
+            .unwrap();
+            a.process(&[vec![12345; 32]]).unwrap();
+            while c.try_execution().is_some() {}
+            while c.try_completion().is_some() {}
+        } else {
+            a.device_mut()
+                .state(0, Some([255, 0, 0, 0, 0]), true)
+                .unwrap();
+        }
+        c.submit(
+            Lane::Normal,
+            Request::Schedule {
+                at: Frame(96),
+                action: rt_runtime::schedule::Action::Planner {
+                    planner,
+                    operation: Operation::State {
+                        target: mono::loop_id(),
+                    },
+                },
+                payload: Box::new([]),
+            },
+        )
+        .map_err(|e| e.error)
+        .unwrap();
+        let error = if exhaust {
+            rt_runtime::Error::Capacity
+        } else {
+            rt_runtime::Error::InvalidState
+        };
+        assert_eq!(a.process(&[vec![12345; 32]]), Err(error));
+        assert_eq!(a.fault(), Some(error));
+        assert!(
+            matches!(c.try_execution().unwrap().operation_result,Some(Reply::Failed(failure)) if failure==shoop_loops::runtime::Failure::Runtime(error))
+        );
+        assert!(
+            a.device()
+                .last_error
+                .as_ref()
+                .unwrap()
+                .contains("pipeline fault stage")
+        );
+    }
+}

@@ -22,11 +22,13 @@ struct Slot<T> {
     generation: u32,
     value: Option<T>,
 }
+#[derive(Clone, Copy)]
 struct Capture {
     revision: Revision,
     bank: usize,
     base: u64,
     start: Frame,
+    frames: u64,
 }
 pub struct Media {
     ids: media::IdentityScope,
@@ -34,6 +36,7 @@ pub struct Media {
     contents: Vec<Slot<Content>>,
     exports: Vec<Slot<media::MediaId>>,
     latest: Option<media::MediaId>,
+    playback: Option<media::MediaId>,
     banks: [u64; 2],
     next_bank: usize,
     capture: Option<Capture>,
@@ -56,6 +59,7 @@ impl Media {
                 })
                 .collect(),
             latest: None,
+            playback: None,
             banks: [0; 2],
             next_bank: 0,
             capture: None,
@@ -74,47 +78,26 @@ impl Media {
         frame: Frame,
         device: &mut impl LoopDevice,
     ) -> Result<(), Error> {
-        if state.mode == Mode::Recording
-            && self
-                .capture
-                .as_ref()
-                .is_none_or(|c| c.revision != state.capture_revision)
-        {
-            let bank = self.next_bank;
-            let base = self.banks[bank].checked_add(1).ok_or(Error::Exhausted)?;
-            self.banks[bank] = base;
-            self.capture = Some(Capture {
-                revision: state.capture_revision,
-                bank,
-                base,
-                start: frame,
-            });
-            self.next_bank ^= 1;
-        }
-        if let Some(capture) = &self.capture {
+        if let Some(capture) = &mut self.capture {
             if capture.revision == state.capture_revision {
+                capture.frames = state.capture_frames;
                 self.banks[capture.bank] = capture
                     .base
-                    .checked_add(state.capture_frames / 32)
+                    .checked_add(capture.frames / 32)
                     .ok_or(Error::Exhausted)?;
             }
         }
-        if state.content_length != 0
-            && self.latest.is_none_or(|id| {
-                self.content(id)
-                    .is_ok_and(|c| c.description.revision != state.content_revision)
-            })
+        if self
+            .capture
+            .as_ref()
+            .is_some_and(|c| state.mode != Mode::Recording || c.revision != state.capture_revision)
         {
+            let capture = self.capture.take().ok_or(Error::InvalidState)?;
             let slot = self
                 .contents
                 .iter()
                 .position(|s| s.value.is_none())
                 .ok_or(Error::Capacity)?;
-            let capture = self
-                .capture
-                .as_ref()
-                .filter(|c| c.revision == state.content_revision)
-                .ok_or(Error::InvalidState)?;
             let id = self
                 .ids
                 .media(slot as u32, self.contents[slot].generation)?;
@@ -127,8 +110,8 @@ impl Media {
                 revision: Revision(self.banks[capture.bank]),
                 description: Description {
                     format: Format::Audio { channels: 1 },
-                    frames: state.content_length,
-                    bytes: usize::try_from(state.content_length)
+                    frames: capture.frames,
+                    bytes: usize::try_from(capture.frames)
                         .ok()
                         .and_then(|n| n.checked_mul(4))
                         .ok_or(Error::Capacity)?,
@@ -145,7 +128,7 @@ impl Media {
                 opcode: 1,
                 view: 0,
                 start: 0,
-                length: state.content_length,
+                length: capture.frames,
                 count: 0,
             })?;
             let source = media::Source {
@@ -158,17 +141,57 @@ impl Media {
                 source,
                 description: media::Description {
                     owner: state.id,
-                    revision: state.content_revision,
-                    frames: state.content_length,
+                    revision: capture.revision,
+                    frames: capture.frames,
                     channels: 1,
                     auxiliary_channels: 0,
                     midi: false,
                 },
                 references: 0,
             });
-            if let Some(old) = self.latest.replace(id) {
-                self.retire(old, device)?;
-            }
+            self.latest = Some(id);
+        }
+        self.playback = if state.content_revision == Revision(0) {
+            None
+        } else {
+            Some(
+                self.contents
+                    .iter()
+                    .filter_map(|s| s.value.as_ref())
+                    .find(|c| c.description.revision == state.content_revision)
+                    .ok_or(Error::InvalidState)?
+                    .id,
+            )
+        };
+        if state.mode == Mode::Recording
+            && self
+                .capture
+                .as_ref()
+                .is_none_or(|c| c.revision != state.capture_revision)
+        {
+            let bank = self.next_bank;
+            let base = self.banks[bank].checked_add(1).ok_or(Error::Exhausted)?;
+            self.banks[bank] = base;
+            self.capture = Some(Capture {
+                revision: state.capture_revision,
+                bank,
+                base,
+                start: frame,
+                frames: state.capture_frames,
+            });
+            self.next_bank ^= 1;
+        }
+        let retired = self
+            .contents
+            .iter()
+            .filter_map(|s| s.value.as_ref())
+            .filter(|c| {
+                Some(c.id) != self.latest && Some(c.id) != self.playback && c.references == 0
+            })
+            .map(|c| c.id)
+            .collect::<Vec<_>>();
+        for id in retired {
+            self.retire(id, device)?;
         }
         Ok(())
     }
@@ -180,7 +203,7 @@ impl Media {
             .ok_or(Error::InvalidId)?;
         let slot = &mut self.contents[index];
         let content = slot.value.as_ref().ok_or(Error::InvalidId)?;
-        if Some(id) != self.latest && content.references == 0 {
+        if Some(id) != self.latest && Some(id) != self.playback && content.references == 0 {
             let generation = slot.generation.checked_add(1).ok_or(Error::Exhausted)?;
             device.media(MediaCommand {
                 opcode: 3,
@@ -201,7 +224,7 @@ impl Media {
         epoch: rt_runtime::Epoch,
     ) -> Result<Cut<Q824>, Error> {
         let frames = self
-            .latest
+            .playback
             .map(|id| self.content(id).map(|c| c.description.frames))
             .transpose()?
             .unwrap_or(0);
@@ -214,7 +237,7 @@ impl Media {
             graph_epoch: epoch,
             topology_epoch: rt_runtime::Epoch(0),
             state,
-            playback: Some(self.latest.unwrap_or(self.ids.media(u32::MAX, 1)?)),
+            playback: Some(self.playback.unwrap_or(self.ids.media(u32::MAX, 1)?)),
             latest: self.latest,
             gain: Q824(1 << 24),
             balance: Q824(0),
@@ -233,7 +256,11 @@ impl Media {
         if selection == Selection::Recording {
             return Err(Error::InvalidParameter);
         }
-        let media = self.latest.ok_or(Error::InvalidState)?;
+        let media = match selection {
+            Selection::Playback => self.playback.unwrap_or(self.ids.media(u32::MAX, 1)?),
+            Selection::Latest => self.latest.ok_or(Error::InvalidState)?,
+            Selection::Recording => return Err(Error::InvalidParameter),
+        };
         let slot = self
             .exports
             .iter()
@@ -243,21 +270,40 @@ impl Media {
             .ids
             .export(slot as u32, self.exports[slot].generation)?;
         let cut = self.cut(state, frame, epoch)?;
-        let content = self.content(media)?;
-        let view = media::View {
-            windows: Some(Windows::default()),
-            description: content.description,
-            audio: Some(content.source),
-            auxiliary: None,
-            midi: None,
+        let view = if media != self.ids.media(u32::MAX, 1)? {
+            let content = self.content(media)?;
+            media::View {
+                windows: Some(Windows::default()),
+                description: content.description,
+                audio: Some(content.source),
+                auxiliary: None,
+                midi: None,
+            }
+        } else {
+            media::View {
+                windows: None,
+                description: media::Description {
+                    owner: state.id,
+                    revision: Revision(0),
+                    frames: 0,
+                    channels: 1,
+                    auxiliary_channels: 0,
+                    midi: false,
+                },
+                audio: None,
+                auxiliary: None,
+                midi: None,
+            }
         };
         self.exports[slot].value = Some(media);
-        self.contents
-            .iter_mut()
-            .filter_map(|s| s.value.as_mut())
-            .find(|c| c.id == media)
-            .ok_or(Error::InvalidId)?
-            .references += 1;
+        if media != self.ids.media(u32::MAX, 1)? {
+            self.contents
+                .iter_mut()
+                .filter_map(|s| s.value.as_mut())
+                .find(|c| c.id == media)
+                .ok_or(Error::InvalidId)?
+                .references += 1;
+        }
         Ok(Reply::Export {
             id,
             cut,
@@ -280,9 +326,11 @@ impl Media {
         slot.value.ok_or(Error::InvalidId)
     }
     pub fn cursor(&self, id: media::ExportId) -> Result<Cursor, Error> {
-        Ok(self
-            .reads
-            .cursor(self.content(self.exported(id)?)?.source.snapshot.id))
+        let content = self.exported(id)?;
+        if content == self.ids.media(u32::MAX, 1)? {
+            return Err(Error::InvalidShape);
+        }
+        Ok(self.reads.cursor(self.content(content)?.source.snapshot.id))
     }
     pub fn release(
         &mut self,
@@ -294,13 +342,16 @@ impl Media {
         let generation = slot.generation.checked_add(1).ok_or(Error::Exhausted)?;
         slot.value = None;
         slot.generation = generation;
-        self.contents
-            .iter_mut()
-            .filter_map(|s| s.value.as_mut())
-            .find(|c| c.id == content)
-            .ok_or(Error::InvalidId)?
-            .references -= 1;
-        self.retire(content, device)
+        if content != self.ids.media(u32::MAX, 1)? {
+            self.contents
+                .iter_mut()
+                .filter_map(|s| s.value.as_mut())
+                .find(|c| c.id == content)
+                .ok_or(Error::InvalidId)?
+                .references -= 1;
+            self.retire(content, device)?;
+        }
+        Ok(())
     }
     pub fn read(
         &self,
