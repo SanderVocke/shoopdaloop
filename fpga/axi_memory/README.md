@@ -40,7 +40,13 @@ operations require quiescence; reset cancels protocol state and preserves sample
 Separate test directories keep parallel runs independent. Do not inspect a
 live Python shadow list as if it were the SV store; use the async image helpers.
 
+Use Verilator 5.032 (the version pinned in CI), a C++ compiler, Make and Cargo.
+Install both the simulator and Rust fixture helper's Python requirements in
+your environment. Realistic runs additionally need the native timing library
+built as described below.
+
 ```sh
+python -m pip install -r fpga/axi_memory/requirements.txt -r scripts/fpga_testbench/requirements.txt
 python fpga/axi_memory/simulate_direct.py
 python fpga/chunk_memory/simulate.py --config all --axi-data-width 64
 python fpga/loop_pipeline/simulate.py --media --config small

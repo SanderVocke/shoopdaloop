@@ -1,6 +1,7 @@
 # Native SystemVerilog memory for direct simulation
 
-Status: in progress on `proto/fpga-native-sim-memory`; stages 1–4 verified; CI/review delivery pending.
+Status: complete on `proto/fpga-native-sim-memory`; stages 1–5 verified.
+Delivered in [PR #970](https://github.com/SanderVocke/shoopdaloop/pull/970), open for review.
 Investigated at `54c616cf` on `proto/fpga-rust-reference`.
 
 ## Goal and scope
@@ -144,12 +145,12 @@ Stages are sequential. Each stage depends on the preceding stage's verification.
 
 - [x] Push the implementation branch and open a PR targeting the FPGA branch,
   or update an explicitly designated existing PR rather than creating a duplicate.
-- [ ] Ensure CI covers a native direct smoke and a realistic record/playback
+- [x] Ensure CI covers a native direct smoke and a realistic record/playback
   smoke with the pinned DRAMsim3 dependency; add focused coverage if missing.
   Check relevant CI results and fix failures until required checks are green.
-- [ ] Check for automated review feedback, address actionable findings, and
+- [x] Check for automated review feedback, address actionable findings, and
   repeat review/CI checks until the automated reviewer approves, if present.
-- [ ] Leave the PR ready for review. Do not autonomously merge it.
+- [x] Leave the PR ready for review. Do not autonomously merge it.
 
 ## Execution contract
 
@@ -215,5 +216,12 @@ in the workflow and existing RTL width warnings under Ubuntu's Verilator
 pinned Verilator 5.032 revision used for local validation, without changing
 synthesizable RTL. The compiler build also requires Ubuntu's separate
 `libfl-dev` header package, now included. The retained legacy connected-loop
-smoke passes its three tests against Rust. CI/review validation remains in
-progress.
+smoke passes its three tests against Rust.
+
+The implementation at `ef2fae12` passes both native and realistic jobs in
+[FPGA simulation memory run #3](https://github.com/SanderVocke/shoopdaloop/actions/runs/43180998723),
+plus all checks in
+[Hosted track processors run #172](https://github.com/SanderVocke/shoopdaloop/actions/runs/43180998725).
+Review submissions and the PR discussion were checked after CI passed: no
+automated reviewer or actionable feedback is present. The PR is ready for
+review and remains open and unmerged.
