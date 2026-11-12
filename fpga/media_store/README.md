@@ -126,7 +126,9 @@ be mistaken for a new transaction. Reset begins a new store epoch.
 ## Metadata configuration
 
 The idle-only configuration port transfers on `cfg_valid && cfg_ready`; responses
-pulse after the variable-latency metadata operation. Data is 160 bits, with zeros above bit 31 in scalar
+pulse after request/validation, the variable-latency metadata operation and a
+registered result stage. Sample data on `cfg_response_valid`. Data is 160 bits,
+with zeros above bit 31 in scalar
 spaces. Write/error responses return zero. Full 32-bit addresses are checked before
 narrowing. Load only trusted, checked images while execution is stopped;
 this debug/loading port does not implement the complete snapshot validator.

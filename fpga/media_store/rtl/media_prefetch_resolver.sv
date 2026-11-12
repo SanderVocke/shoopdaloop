@@ -21,11 +21,15 @@ module media_prefetch_resolver #(
     phase_t phase;
     reg [31:0] view_index, remaining, first_offset, chunk;
     reg [63:0] cursor, length;
+    reg [63:0] until_wrap;
+    reg [31:0] span_contiguous, span;
+    reg wraps;
     wire unused_descriptor = &{1'b0,descriptor_data[159:128],descriptor_data[31:1]};
     wire [63:0] absolute_sample = {32'b0,first_offset} + cursor;
     wire [31:0] chunk_left = 32'(CHUNK_FRAMES) - (absolute_sample[31:0] & 32'(CHUNK_FRAMES-1));
     wire [31:0] contiguous = remaining < chunk_left ? remaining : chunk_left;
-    wire [31:0] span = length-cursor < {32'b0,contiguous} ? 32'(length-cursor) : contiguous;
+    wire [31:0] planned_span = until_wrap < {32'b0,span_contiguous}
+        ? until_wrap[31:0] : span_contiguous;
     assign hint_ready = phase == IDLE && !reset;
     assign descriptor_valid = phase == DESCRIPTOR_REQUEST && !reset;
     assign descriptor_address = view_index;
@@ -38,6 +42,7 @@ module media_prefetch_resolver #(
         if (reset) begin
             phase <= IDLE; view_index <= 0; remaining <= 0;
             first_offset <= 0; chunk <= 0; cursor <= 0; length <= 0;
+            until_wrap <= 0; span_contiguous <= 0; span <= 0; wraps <= 0;
         end else case (phase)
             IDLE: if (hint_valid && hint_ready && hint_view < {32'b0,view_count}
                 && hint_length != 0 && hint_position < hint_length && hint_count != 0) begin
@@ -49,13 +54,19 @@ module media_prefetch_resolver #(
                 first_offset <= descriptor_data[63:32];
                 phase <= descriptor_data[0] && length <= descriptor_data[127:64] ? TABLE_REQUEST : IDLE;
             end
-            TABLE_REQUEST: if (table_ready) phase <= TABLE_WAIT;
+            TABLE_REQUEST: begin
+                until_wrap <= length-cursor;
+                span_contiguous <= contiguous;
+                if (table_ready) phase <= TABLE_WAIT;
+            end
             TABLE_WAIT: if (table_response) begin
                 chunk <= (table_data << BLOCK_SHIFT) | (32'(absolute_sample >> SHIFT) & 32'(BLOCK_CHUNKS-1));
+                span <= planned_span;
+                wraps <= until_wrap <= {32'b0,span_contiguous};
                 phase <= table_data < slot_count ? SEND : IDLE;
             end
             SEND: if (prefetch_ready) begin
-                cursor <= cursor+{32'b0,span} == length ? 64'b0 : cursor+{32'b0,span};
+                cursor <= wraps ? 64'b0 : cursor+{32'b0,span};
                 remaining <= remaining-span;
                 phase <= remaining <= span ? IDLE : TABLE_REQUEST;
             end
