@@ -4,7 +4,7 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Control, GraphRuntime, PreparedNode},
     graph::{self, GraphDescription, PortCounts, PortType},
-    processor::{OperationContext, ProcessBlock, Processor, ProcessorOperation},
+    processor::{OperationContext, ProcessBlock, Processor},
     resource::{self, ResourceStore},
     transport::Lane,
     Config, Frame, NodeId, PlannerId, Quantum, Sample, Q824,
@@ -14,7 +14,8 @@ use shoop_loops::{
     audio::Smoothing,
     runtime::{self as domain, LoopNode, LoopPlanner},
 };
-use shoop_rt_engine::dsp::{Gains, Ramp};
+pub use shoop_rt_engine::dsp::GainOperation;
+use shoop_rt_engine::dsp::GainProcessor;
 use std::collections::BTreeMap;
 
 fn checked<T, E: std::fmt::Debug>(v: std::result::Result<T, E>) -> Checked<T> {
@@ -61,29 +62,17 @@ impl OracleSample for f32 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct GainOperation<S: Sample> {
-    pub target: S,
-    pub duration: u32,
-}
-impl<S: Sample> ProcessorOperation for GainOperation<S> {
-    type Result = ();
-}
 pub enum Node<S: Sample> {
     Loop(LoopNode<S>),
-    Gain {
-        channels: usize,
-        controls: Gains<S>,
-        scale: Ramp<S>,
-    },
+    Gain(GainProcessor<S>),
 }
 impl<S: Sample> Processor<LoopPlanner<S>, GainOperation<S>, S> for Node<S> {
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
-            Self::Gain { channels, .. } => PortCounts {
-                audio_inputs: *channels,
-                audio_outputs: *channels,
+            Self::Gain(node) => PortCounts {
+                audio_inputs: node.channels(),
+                audio_outputs: node.channels(),
                 ..Default::default()
             },
         }
@@ -104,25 +93,7 @@ impl<S: Sample> Processor<LoopPlanner<S>, GainOperation<S>, S> for Node<S> {
     ) -> std::result::Result<(), rt_runtime::Error> {
         match self {
             Self::Loop(node) => node.process(block),
-            Self::Gain {
-                channels,
-                controls,
-                scale,
-            } => {
-                controls.fill(block.frames, scale);
-                for channel in 0..*channels {
-                    let (source, target) = block
-                        .audio
-                        .pair(channel, channel)
-                        .ok_or(rt_runtime::Error::InvalidShape)?;
-                    rt_audio_math::gain_each(
-                        source,
-                        target,
-                        &controls.channel(channel, false)[..block.frames],
-                    );
-                }
-                Ok(())
-            }
+            Self::Gain(node) => node.process(block),
         }
     }
     fn operation(
@@ -131,8 +102,8 @@ impl<S: Sample> Processor<LoopPlanner<S>, GainOperation<S>, S> for Node<S> {
         _: OperationContext<'_, S>,
     ) -> std::result::Result<(), rt_runtime::Error> {
         match self {
-            Self::Gain { controls, .. } => {
-                controls.gain.set(operation.target, operation.duration);
+            Self::Gain(node) => {
+                node.apply(operation);
                 Ok(())
             }
             _ => Err(rt_runtime::Error::InvalidEvent),
@@ -353,15 +324,13 @@ pub fn prepare<S: OracleSample>(scenario: &wire::Scenario) -> Checked<Prepared<S
         .collect();
     for node in &scenario.nodes {
         if let wire::NodeKind::Gain { channels, initial } = node.operation {
-            let mut controls = Gains::new(scenario.quantum as usize);
-            controls.gain = Ramp::at(raw::<S>(initial));
             nodes.push(PreparedNode::new(
                 node_id(node.id)?,
-                Node::Gain {
-                    channels: channels as usize,
-                    controls,
-                    scale: Ramp::at(S::ONE),
-                },
+                Node::Gain(GainProcessor::new(
+                    channels as usize,
+                    scenario.quantum as usize,
+                    raw::<S>(initial),
+                )),
             ));
         }
     }

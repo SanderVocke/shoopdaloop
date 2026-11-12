@@ -45,6 +45,12 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             marker: PhantomData,
         }
     }
+    pub fn processor(&self) -> &P {
+        &self.processor
+    }
+    pub fn into_processor(self) -> P {
+        self.processor
+    }
     pub fn spec(&self) -> NodeSpec {
         NodeSpec {
             id: self.id,
@@ -139,6 +145,45 @@ pub struct Control<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: 
     config: PreparedConfig,
 }
 impl<P, L: Planner<S>, Q: ProcessorOperation, S: Sample> Control<P, L, Q, S> {
+    /// Construct the existing owning queues and receipt scheduler for another consumer.
+    pub fn channel(
+        config: PreparedConfig,
+        quantum: crate::Quantum,
+        operation_bytes: usize,
+        planner_operations: bool,
+    ) -> Result<
+        (
+            Self,
+            Ingress<P, L, Q, S>,
+            Scheduler<L::Operation, L::Result, Q, Q::Result>,
+        ),
+        Error,
+    > {
+        if quantum.frames() > config.limits().max_frames {
+            return Err(Error::InvalidConfig);
+        }
+        let limits = config.limits();
+        let (transport, ingress) = transport::channel(TransportConfig {
+            normal_slots: limits.command_slots,
+            recovery_slots: 1,
+            telemetry_slots: 3,
+            operations_per_cycle: limits.budgets.commands,
+            recovery_per_cycle: 1,
+            publications_per_cycle: limits.budgets.publications,
+        })?;
+        let (executions, mut scheduler) =
+            schedule::typed_scheduler(config, operation_bytes, planner_operations)?;
+        scheduler.set_quantum(quantum);
+        Ok((
+            Self {
+                transport,
+                executions,
+                config,
+            },
+            ingress,
+            scheduler,
+        ))
+    }
     pub fn prepare_submissions(&mut self) -> Result<(), Error> {
         self.transport.prepare_submissions()
     }
@@ -195,7 +240,7 @@ impl<P, L: Planner<S>, Q: ProcessorOperation, S: Sample> Control<P, L, Q, S> {
         self.transport.connected()
     }
 }
-type Ingress<P, L, Q, S> = RenderEndpoint<Command<P, L, Q, S>, Retired<P>, Diagnostics>;
+pub type Ingress<P, L, Q, S> = RenderEndpoint<Command<P, L, Q, S>, Retired<P>, Diagnostics>;
 
 struct Buffers<S: Sample = f32> {
     input_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
@@ -527,23 +572,14 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                 buffers,
             });
         }
-        let (control, ingress) = transport::channel(TransportConfig {
-            normal_slots: limits.command_slots,
-            recovery_slots: 1,
-            telemetry_slots: 3,
-            operations_per_cycle: limits.budgets.commands,
-            recovery_per_cycle: 1,
-            publications_per_cycle: limits.budgets.publications,
-        })?;
-        let (executions, mut scheduler) =
-            schedule::typed_scheduler(config, operation_bytes, planner_authority.is_some())?;
-        scheduler.set_quantum(quantum);
+        let (control, ingress, scheduler) = Control::channel(
+            config,
+            quantum,
+            operation_bytes,
+            planner_authority.is_some(),
+        )?;
         Ok((
-            Control {
-                transport: control,
-                executions,
-                config,
-            },
+            control,
             Self {
                 audio_arena,
                 host_sequences: vec![

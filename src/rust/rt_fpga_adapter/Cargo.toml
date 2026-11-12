@@ -1,0 +1,18 @@
+[package]
+name = "rt_fpga_adapter"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rt_audio_math = { path = "../rt_audio_math" }
+rt_runtime = { path = "../rt_runtime" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+serde = { workspace = true, features = ["derive", "std"] }
+schemars = "1"
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
