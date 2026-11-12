@@ -2,12 +2,15 @@ if {$argc < 1 || $argc > 2} {
     error "usage: vivado -mode batch -source fpga/zedboard/build.tcl -tclargs BUILD_DIRECTORY ?BOARD_PART?"
 }
 source [file join [file normalize [lindex $argv 0]] manifest.tcl]
-cd $bench_root
+cd $bench_output
+if {[info exists ::env(SHOOP_BOARD_REPO)]} {
+    set_param board.repoPaths [concat [get_param board.repoPaths] [list [file normalize $::env(SHOOP_BOARD_REPO)]]]
+}
 create_project zedboard_timing [file join $bench_output project] -part xc7z020clg484-1 -force
 if {$argc == 2} {
     set board [lindex $argv 1]
 } else {
-    set board [lindex [lsort [get_board_parts -quiet *zedboard*]] end]
+    set board [lindex [lsort -dictionary [concat [get_board_parts -quiet *:zed:part0:*] [get_board_parts -quiet *:zedboard:part0:*]]] end]
 }
 if {$board eq ""} {error "Install the Digilent ZedBoard board files, or specify its BOARD_PART"}
 set_property board_part $board [current_project]

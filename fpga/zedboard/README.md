@@ -33,6 +33,10 @@ Run from the repository root. Python requires the existing
 Rust builds only the workload compiler. Vivado needs the Digilent ZedBoard board
 files and support for the actual XC7Z020 silicon. The Tcl workflow targets the
 Vivado/Vitis 2023.2 command interfaces; hardware qualification is pending.
+For a board repository outside the Vivado installation, set `SHOOP_BOARD_REPO`
+to its `new/board_files` directory. Both Avnet `zed` and Digilent `zedboard`
+board identifiers are accepted. Build scratch files stay in the output directory,
+so the RTL source tree can be mounted read-only in a container.
 
 ```sh
 python fpga/zedboard/prepare.py --output work/zedboard/workload
