@@ -4801,7 +4801,10 @@ dependencies = [
  "marlin",
  "rt_audio_math",
  "rt_backend_testbench",
+ "rt_fpga_adapter",
+ "rt_runtime",
  "serde_json",
+ "shoop_rt_engine",
  "shoop_wasm_test_support",
 ]
 

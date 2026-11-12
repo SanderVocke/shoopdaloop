@@ -21,14 +21,7 @@ pub struct Scenario {
     pub media: Vec<Media>,
     pub steps: Vec<Step>,
 }
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, JsonSchema,
-)]
-#[serde(deny_unknown_fields)]
-pub struct Identity {
-    pub slot: u32,
-    pub generation: u32,
-}
+pub use rt_fpga_adapter::image::Identity;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Loop {
@@ -57,13 +50,7 @@ pub struct Node {
     pub id: Identity,
     pub operation: NodeKind,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum NodeKind {
-    Playback { target: Identity },
-    Capture { target: Identity },
-    Gain { channels: u16, initial: i32 },
-}
+pub use rt_fpga_adapter::image::NodeKind;
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Endpoint {

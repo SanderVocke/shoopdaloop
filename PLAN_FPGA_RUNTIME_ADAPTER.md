@@ -91,6 +91,13 @@ and descriptor double buffering. Explicitly reject unsupported operations.
   simulation speed is not an audio deadline guarantee. Compile/cache the RTL
   model separately from runtime graph lowering: gain updates must trigger neither.
 
+The native runtime requires declared stable slots before startup. The demonstrator
+therefore prepares matching slots on both sides, then queues ordinary `Remove`
+and next-generation `Install` before its initial `Commit`. Startup removal is
+supported only before activation; this exercises the existing ownership protocol
+without adding dynamic slot allocation or live graph replacement. Initial commit
+is accepted at frame zero; unsupported later activation is rejected explicitly.
+
 ## Stages
 
 ### 1. Marlin simulation foundation
@@ -125,28 +132,28 @@ and descriptor double buffering. Explicitly reject unsupported operations.
 
 ### 3. Reusable queue plumbing and supported processor
 
-- [ ] Factor endpoint/receipt construction just enough to attach an alternative
+- [x] Factor endpoint/receipt construction just enough to attach an alternative
   consumer while retaining the native `GraphRuntime` path and public commands.
-- [ ] Extract the gain processor/typed operation and its description. Add the
+- [x] Extract the gain processor/typed operation and its description. Add the
   adapter's registry, generation checks and supported-operation profile. Verify
   native gain behavior and queue ownership/credits with focused Rust tests.
 
 ### 4. Runtime graph lowering
 
-- [ ] Extract the existing compiler into reusable Rust code accepting the actual
+- [x] Extract the existing compiler into reusable Rust code accepting the actual
   ordered plan, supported-node registry and hardware limits. Produce program,
   initial state, bindings and empty TP configuration. Keep oracle fixtures using
   the same lowerer.
-- [ ] Verify chain, parallel fan-in and silent-output images, including exact
+- [x] Verify chain, parallel fan-in and silent-output images, including exact
   arithmetic grouping, identities and refusal before device writes.
   Instrument validation/lowering time, instruction/state counts and image bytes.
 
 ### 5. Adapter command and result flow
 
-- [ ] Implement initial `Install`/`Commit` handling and queued duration-zero gain
+- [x] Implement initial `Install`/`Commit` handling and queued duration-zero gain
   operations. Use existing scheduling/receipt machinery where practical; match
   native admission/delivery/terminal reporting. Keep address mappings stable.
-- [ ] Test translation with a recording/stalling device double that executes no
+- [x] Test translation with a recording/stalling device double that executes no
   DSP. Cover unsupported requests, stale IDs/epochs, pressure, unread results,
   pre-dequeue cancellation and device errors. Assert gain changes update state
   without compiling/reloading the program.
