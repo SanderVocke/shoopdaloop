@@ -334,7 +334,7 @@ module chunk_memory #(
                         dma_write_pool <= 1; dma_write <= 1;
                         dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_RAM_REQUEST;
                     end else if (hint_pending && phase != CHECK && phase != LOOKUP && phase != WAIT_LINE
-                        && phase != FLUSH && phase != RETIRING && !(cmd_valid && cmd_ready)) begin
+                        && phase != FLUSH && phase != RETIRING && !(phase == IDLE && cmd_valid)) begin
                         if (hint_hit) hint_pending <= 0;
                         else if (read_victim) begin
                             read_tag[read_victim_line] <= hint_chunk;

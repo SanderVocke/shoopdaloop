@@ -122,6 +122,7 @@ module transition_processor #(
     reg [1:0] source_mode;
     reg loop_source_read, loop_with_spec;
     reg [31:0] cursor, request_cursor;
+    reg prepare_member_last;
     reg [31:0] component_start, component_end, member_cursor;
     reg [SA-1:0] prepare_component;
     reg [LH-1:0] follow_cursor, follow_next;
@@ -405,6 +406,7 @@ module transition_processor #(
             loop_slots <= 0; request_slots <= 0; event_limit <= 0; member_count <= 0; quantum <= 0;
             quantum_mask <= 0; submit_frame <= 0; submit_sum <= 0;
             prepare_events <= 0;
+            prepare_member_last <= 0;
             op_result <= 0;
             planned_event <= 0; planned_stop <= 0; planned_pulse <= 0;
             request_eligible <= 0;
@@ -539,7 +541,10 @@ module transition_processor #(
                 end
                 S_S_WAIT: state <= S_S_GET;
                 S_S_GET: begin spec_row <= sr_data; state <= read_return; end
-                S_M_WAIT: state <= S_M_GET;
+                S_M_WAIT: begin
+                    prepare_member_last <= cursor+1'b1 == member_count;
+                    state <= S_M_GET;
+                end
                 S_M_GET: begin member_row <= mr_data; state <= read_return; end
                 S_E_WAIT: state <= S_E_GET;
                 S_E_GET: begin event_row <= er_data; state <= read_return; end
@@ -596,7 +601,7 @@ module transition_processor #(
                 S_PREP_MEMBER_CHECK: begin
                     if (member_row[31:0] >= loop_slots) reply(INVALID_ID, 0);
                     else if (seen_members[member_row[SA-1:0]]) reply(DUPLICATE_ID, 0);
-                    else if (cursor+1'b1 == member_count && !member_row[32]) reply(INVALID_CONFIG, 0);
+                    else if (prepare_member_last && !member_row[32]) reply(INVALID_CONFIG, 0);
                     else read_loop(member_row[31:0], 0, 0, S_PREP_MEMBER_LOOP);
                 end
                 S_PREP_MEMBER_LOOP: begin
