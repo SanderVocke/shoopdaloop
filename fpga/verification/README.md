@@ -15,6 +15,13 @@ scenario and production Rust results stay unchanged. The adapter preserves share
 initial ranges, and runtime allocation and reclamation execute entirely in RTL.
 Each run saves the actual configured media image beside the production image.
 
+For setup, use Rust, Verilator 5.032, a C++ compiler and Make, then install
+`fpga/axi_memory/requirements.txt` and
+`scripts/rt_backend_testbench/requirements.txt` in a Python virtual environment.
+The commands below build the production helper themselves; no retired executable
+or prior generated simulation directory is needed. See [RESULTS.md](RESULTS.md)
+for the completed migration's evidence and remaining environment limitations.
+
 ```sh
 cargo build -p rt_backend_testbench
 target/debug/rt-backend-testbench run < fpga/verification/scenarios/mono-record.json
@@ -63,7 +70,9 @@ The directed corpus covers ordering, clipping, stereo recording/retakes, retaine
 exports, sync chains/self-sync/cycles, repeat waits, scheduling/conflicts,
 cancellation, stale identities, completion credits, shared ranges and reuse.
 Seeded sessions include capture and playback. Long sessions check 1,024 playback
-quanta and 256 consecutive ramp interruptions. Alternate Q/chunk geometries and
+quanta, 256 consecutive ramp interruptions, and 128 capture quanta followed by
+200 playback quanta with an immutable retained prefix. Stereo gain/fan-out checks
+that channels share ramp time. Alternate Q/chunk geometries and
 host-buffer partitions have separate gates. Run the common corpus with:
 
 ```sh
@@ -73,6 +82,19 @@ python fpga/verification/simulate.py --long-sessions
 python fpga/verification/simulate.py --benchmark64 --config 8x8 \
   --read-buffers 128 --memory-model dramsim3
 ```
+
+The separate continuous fabric-I/O gate uses the same production oracle, with
+the explicitly configured Q+P startup latency:
+
+```sh
+python fpga/audio_io/simulate_pipeline.py --q 32 --p 17 --channels 16 \
+  --routing fanout --monitoring --memory-model fixed --axi-data-width 64 --stalls
+```
+
+To replay a failure, pass the saved `N.scenario.json` to `--case` with the same
+configuration, block size, cache capacities and memory options. The saved image,
+physical media image, results, ingress trace and timing report identify the
+configuration and first differing field; no automatic time alignment is applied.
 
 `--directed --block-chunks 32` also records stereo across an allocation-block
 boundary, retains the old take, and records/plays a replacement. Exhaustion checks

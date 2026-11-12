@@ -224,12 +224,16 @@ async def watchdog_and_core_fault(d):
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
     cocotb.start_soon(start_audio_clock(d))
     await initialize(d)
-    await frames(d, Q, check=False)
-    while not int(d.process_valid.value):
+    async def accept():
+        while not int(d.process_valid.value):
+            await edge(d)
+        await FallingEdge(d.clk)
+        d.process_ready.value = 1
         await edge(d)
-    d.process_ready.value = 1
-    await edge(d)
-    d.process_ready.value = 0
+        d.process_ready.value = 0
+        assert int(d.busy.value), 'core request was not accepted'
+    await frames(d, Q, check=False)
+    await accept()
     await with_timeout(RisingEdge(d.recovery_requested), 1100000, 'ns')
     await edge(d)
     assert int(d.recovery_reason.value) == 2
@@ -240,11 +244,7 @@ async def watchdog_and_core_fault(d):
     d.enable.value = 1
     await Timer(100, units='ns')
     await frames(d, Q, check=False)
-    while not int(d.process_valid.value):
-        await edge(d)
-    d.process_ready.value = 1
-    await edge(d)
-    d.process_ready.value = 0
+    await accept()
     d.process_fault.value = 1
     await edge(d)
     assert int(d.recovery_requested.value)

@@ -1,6 +1,10 @@
 # Unify production Rust and FPGA behavioral verification
 
-Status: implementation in progress, starting from upstream `e5c015be`.
+Status: executed, starting from upstream `e5c015be`; final evidence and validation
+limitations are in `fpga/verification/RESULTS.md`. Subsequent upstream metadata,
+block allocation and fabric-I/O changes are incorporated. The repeated 64-loop
+benchmark was explicitly waived by the user, and one native readiness timeout
+reproduces with the original host; neither is represented as a green new run.
 
 Upstream adjustment: `e5c015be` implements `SIMPLIFY.md`. The RTL now has one
 authoritative transition bank, automatic BeginCapture/view reuse, one run operation
@@ -334,27 +338,34 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 
 ### 8. Final end-to-end validation and delivery
 
-- [ ] Run arithmetic/schema tests, affected production runtime/loop/engine tests,
+- [x] Incorporate upstream `da6f9ebe` block allocation while preserving reference
+  retirement. Keep sample/state ranges chunk-sized; physical allocation groups
+  32 chunks. Retain grouped-retirement, blocked media/audio, packing and boundary
+  tests, and compare common sessions in legacy and blocked configurations.
+  Reuse upstream's unchanged block-area reports; the user's instruction to skip
+  the repeated 64-loop benchmark still applies.
+
+- [x] Run arithmetic/schema tests, affected production runtime/loop/engine tests,
   the complete common differential suite and preserved subsystem protocol tests.
   Run formatting, warning-denying workspace build and the repository's complete
   native Rust test gate; run `scripts/check_shoop_test_usage.py` after Rust test
   changes and dependency-boundary checks where affected. Build relevant Wasm
   production/worklet targets when the toolchain is available; document limitations.
-- [ ] Run RTL lint/generic synthesis and relevant ECP5 estimates. Validate instant
+- [x] Run RTL lint/generic synthesis and relevant ECP5 estimates. Validate instant
   and delayed AXI behavior, then representative live DRAMsim3 sessions including
   the 64-loop Q=32 workload with actual TP/SP/JP. Report comparison counts, seeds,
   assumptions, stage timing and DDR traffic/utilization separately from host
   preflight pauses. Reuse unchanged expensive checks unless later edits invalidate
   their evidence.
-- [ ] Repeat paired release CPU/heap measurements for the default float backend
+- [x] Repeat paired release CPU/heap measurements for the default float backend
   and measure production Q8.24. Compare identical workloads/settings, explain the
   deliberate ramp change, and resolve repeatable regressions. Record code/resource
   costs without claiming monomorphization proves performance or synthesis proves
   physical timing/deadline guarantees.
-- [ ] Publish the float-versus-Q8.24 accuracy report alongside exact RTL results,
+- [x] Publish the float-versus-Q8.24 accuracy report alongside exact RTL results,
   including error budgets, clipping cases, long-session drift and exact logical
   state comparisons. Preserve float as the production default and ultimate oracle.
-- [ ] Demonstrate clean-checkout setup, one-command directed/randomized comparison
+- [x] Demonstrate clean-checkout setup, one-command directed/randomized comparison
   and failure replay without the old model. Publish final coverage/removal and
   performance reports with exact commands/revisions. Commit and push milestones;
   open/update the PR, check for incoming automated reviews and address applicable
@@ -488,3 +499,59 @@ deleted. The warnings-denying workspace build passes. New production CPU tooling
 measures actual process scopes under heap guards; `cpu-final.json` records no
 material default-float regression and the production fixed-point cost. Full
 native/Wasm and final synthesis gates remain running for stage 8.
+
+Upstream integration update: `da6f9ebe` (#972) groups allocation/refcount/table IDs
+into 32-chunk blocks without changing sample transfer size or logical behavior.
+It was rebased in. Its common-runner physical-image repacking and new standalone
+block ownership/audio/retirement tests are preserved. Modify/delete conflicts
+were resolved by keeping the old Rust FPGA crates/schema deleted; no allocator
+model is reintroduced. Remaining steps add blocked regression coverage and update
+storage documentation. Native Rust execution is unchanged by this upstream work.
+
+Additional upstream integration: `354305d4` (#973) adds a separate fabric audio
+I/O/bank wrapper and optional synchronous external sample I/O on JP. It was
+rebased in; its production-derived loader, float/audit checks and continuous
+comparison remain independent of the retired model. The new 16-channel path
+passes a Q32/P17 run with fan-out, monitoring, AXI64 stalls and exact media/state
+checks. Startup is compared with the declared Q+P latency, not aligned by audio
+correlation. Local unit coverage exposed a same-edge stimulus race in the
+watchdog test under the alternate clock phase; driving ready on the falling edge
+fixes the fixture without changing RTL. Remaining gates record this new I/O
+coverage and isolate native timing failures; no 64-loop benchmark repeat is added.
+
+Final integration evidence: blocked allocation passes 18 common Q8.24/RTL
+sessions and checked float accuracy, including stereo allocation-boundary retake.
+Grouped retirement (queued/in-flight/dirty/fault/reset), blocked ownership and
+standalone blocked sample jobs pass. New 16-channel I/O passes its continuous
+production comparison with fan-out/monitoring, AXI64 stalls and explicit Q+P
+latency. The watchdog stimulus was corrected to hold ready across a processing
+clock edge; the focused alternate-clock case passes. Longer capture/playback
+with retained prefix passes 328 quanta and 16,640 exact samples, with maximum
+float error 5.78e-8 inside its derived 6.23e-8 budget. The new stereo gain/fan-out
+case also passes, checking that all channels share the correct ramp time.
+
+The broad native run executed 3,200 tests: 3,180 passed, 20 failed, 11 skipped.
+Fourteen failures passed serial rerun. Remaining startup/file-workflow timeouts
+are being compared against the original revision. An isolated alternating startup
+comparison confirms that pre-change `e5c015be` also exceeds the host tests'
+10/15-second readiness deadlines (16.3–27.6 seconds observed); debugger stacks
+show unchanged MIDI checkpoint initialization. These measurements do not indicate
+a default-float callback regression; the paired release/heap gate remains clean.
+
+Stage 8 completed: all numeric, common-session, subsystem, CPU/heap and build
+reports are published under `fpga/verification/`. The 328-quantum capture case,
+stereo ramp/fan-out case, blocked integration and continuous I/O coverage are
+included. Native workspace and relevant Wasm builds, dependency boundaries,
+formatting, generated tops, test policy and retired-symbol searches pass.
+Fresh output-directory comparisons pass with the old executable removed; setup
+and replay commands no longer depend on retired artifacts.
+
+Nineteen of the broad native run's 20 failures passed focused reruns. The one
+remaining LAN profile-publication timeout also reproduces with the original
+`e5c015be` host in the same unchanged test. No test deadline or production MIDI
+behavior was altered to hide this environment limitation. The full native run
+remains explicitly non-green in the final report. Existing live DRAMsim3 and
+synthesis evidence retains its actual revision/configuration; later integration
+uses the recorded stalled-AXI/block/I/O gates. The user-waived 64-loop repeat is
+not claimed as a new measurement. PR comments/reviews were checked (none), without
+inspecting CI. Milestone commits and the updated PR deliver the completed work.

@@ -46,6 +46,13 @@ def directed():
     value['connections']=[edge(ep(),ep(0)),edge(ep(0),ep(1)),edge(ep(1),ep())]
     value['steps']=[step(ordinal=i) for i in range(5)]
     yield value
+    value=base('stereo-gain-fanout-preserves-ramp-time',loops=0,inputs=2,outputs=4)
+    value['nodes']=[dict(id=lid(0),operation=dict(kind='gain',channels=2,initial=8388608))]
+    value['connections']=[edge(ep(None,c),ep(0,c)) for c in range(2)]
+    value['connections'] += [edge(ep(0,c%2),ep(None,c)) for c in range(4)]
+    settings={0:(15100001,33),1:(-8388609,1),3:(0,0),4:(-1,129)}
+    value['steps']=[step(ports=2,ordinal=i,actions=[dict(kind='gain',name=f'gain-{i}',node=lid(0),at=i*32,target=settings[i][0],duration=settings[i][1])] if i in settings else []) for i in range(8)]
+    yield value
     value=base('stereo-capture-retake-retains-old-export',channels=2)
     controls={0:[action('record',0,0,'record')],2:[action('stop',0,64,'stop')],3:[action('play',0,96,'play')],
               4:[dict(kind='export',name='old-take',target=lid(0),selection='playback')],5:[action('retake',0,160,'record')],
@@ -146,6 +153,17 @@ def long_sessions():
         target=15100001 if i%2 else -12582913
         value['steps'].append(step(ordinal=i,actions=[dict(kind='gain',name=f'gain-{i}',node=lid(0),at=i*32,target=target,duration=129)]))
     yield value
+
+    value=base('long-capture-then-playback-with-retained-prefix')
+    value['nodes'].append(dict(id=lid(2),operation=dict(kind='gain',channels=1,initial=5592405)))
+    value['connections']=[edge(ep(),ep(2)),edge(ep(2),ep(1)),edge(ep(0),ep())]
+    for i in range(328):
+        actions=[action('record',0,0,'record')] if i==0 else []
+        if i==64:actions=[dict(kind='export',name='half-take',target=lid(0),selection='recording')]
+        if i==128:actions=[action('play',0,4096,'play')]
+        value['steps'].append(step(ordinal=i,actions=actions))
+    yield value
+
 
 def geometry_cases():
     for q,cf in [(1,1),(16,16),(32,8),(64,32)]:

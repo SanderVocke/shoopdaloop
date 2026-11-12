@@ -1,8 +1,8 @@
 # Reference retirement coverage ledger
 
-Baseline: `e5c015be` on `proto/fpga-rust-reference`. The active plan is
-`PLAN_UNIFY_BACKENDS.md`. Entries below are migration destinations, not completed
-validation claims. Preserve each behavior before removing its previous evidence.
+Baseline: `e5c015be` on `proto/fpga-rust-reference`. The completed plan is
+`PLAN_UNIFY_BACKENDS.md`. Entries below record migration destinations; validation
+is summarized in [RESULTS.md](RESULTS.md) and its linked machine-readable reports.
 
 | Existing source/tool | Destination / disposition | Coverage required before removal |
 | --- | --- | --- |
@@ -94,3 +94,17 @@ Active guides link to the new contract; old benchmark notes explicitly say their
 commands/tools are historical. Fresh comparisons pass after deleting the old
 executable. The concurrent DDR metadata implementation and its standalone cache
 checks remain intact.
+
+## Final integration
+
+All listed retirement destinations are implemented. Block allocation from #972
+and fabric audio I/O from #973 remain integrated, with blocked logical comparisons,
+grouped-retirement/ownership checks and a continuous 16-channel production-backed
+comparison. Physical image packing is a control-side adapter, not another media
+allocator or execution oracle. Historical progress sections above identify when
+replacement coverage became available; no retired crate remains executable.
+
+The default production backend remains floating point. Q8.24 shares production
+execution and has a separate checked float-accuracy gate. Local native startup
+timeouts and the user-waived repeated 64-loop benchmark are recorded explicitly
+in the final report, rather than represented as successful new measurements.

@@ -58,21 +58,19 @@ from BLOCKS. Spaces 3/4 contain block reference counts/free block IDs. Global
 high-water, free-count and limit values count blocks. Host configuration and
 snapshots use the same coherent service as execution.
 
-The Rust store offers `MediaStore::with_block_chunks(chunk_frames, block_chunks)`.
-`MediaStore::new` retains one-chunk compatibility. Snapshots add optional
-`block_chunks` (default 1); their view IDs and free IDs remain expanded physical
-chunk IDs. Free blocks are complete aligned groups with ascending chunk IDs inside
-each group, and groups follow LIFO stack order. Logical `chunk_limit` and slot-count
-APIs continue to count physical chunks. The existing `reclaim_chunk` entry point
-releases one allocation block in blocked mode.
+The production Rust oracle keeps its native resource/page storage. It has no
+physical FPGA allocation blocks or cache model. Common source scenarios/results
+stay independent of allocation geometry; control-side fixture packing expands
+the compiler's logical image into blocks before loading RTL.
 
-For blocked snapshots, sample bytes outside all published view ranges are
-unspecified physical storage and serialize canonically as zero. Rust and simulator
-snapshot conversion use the same logical boundary; simulator live samples always
-come from actual fenced DDR/SV storage. Restore reconstructs block tables and
-counts through hardware config. Legacy one-chunk snapshots preserve their exact
-representation, including unpublished bytes. Format version 3 remains compatible
-because the new geometry field is optional and legacy output omits its default.
+Physical simulator snapshots may contain `block_chunks` (default 1); their view
+and free IDs are expanded physical chunk IDs. Free groups are complete aligned
+blocks, ascending within each group and in LIFO group order. Restore reconstructs
+hardware block tables/counts through coherent configuration. Bytes outside all
+published ranges are unspecified in blocked mode and serialize canonically as
+zero. Published samples always come from actual fenced DDR/SV storage; no oracle
+sample values are used for readback. This private physical fixture is distinct
+from the versioned common logical scenario/result schema.
 
 ## Cost and validation
 

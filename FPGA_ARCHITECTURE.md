@@ -195,7 +195,9 @@ settlement, state/job execution, clock advancement and sticky fault silencing.
 VLIW issue remains a possible later extension.
 
 `fpga/media_store` owns bounded hardware allocation, shared read-only ranges,
-reference counts and deterministic reuse. Compact view descriptors/roots stay
+reference counts and deterministic reuse. Physical ownership uses allocation
+blocks of 32 chunks, while state/job time and sample transfers remain chunk-sized.
+Compact view descriptors/roots stay
 on chip. Chunk-ID vectors, reference counts and reusable IDs live in DDR behind
 persistent caches; samples use the chunk-memory cache. Samples and metadata share
 one synthesizable AXI endpoint. See [metadata layout](fpga/media_store/DDR_METADATA.md).
@@ -203,3 +205,10 @@ The production CPU path keeps its prepared resource/page storage and does not
 model BRAM caches or DMA. Physical allocator identities are not common results.
 The parallel FPGA-reference Rust backend and its app mode have been retired.
 Board/DDR-controller integration remains future work.
+
+`fpga/audio_io` adds a 16-lane audio frame/bank adapter around that pipeline.
+Input/output bank ownership crosses the audio and processing clocks explicitly;
+JP can use synchronous external sample reads/writes. The adapter declares Q+P
+startup latency and publishes complete output quanta or silence. Its prepared
+program still comes from production compilation. See [fabric audio I/O](fpga/audio_io/README.md).
+This does not define a physical audio protocol or ARM control transport.
