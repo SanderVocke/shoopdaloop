@@ -3,8 +3,24 @@
 #![forbid(unsafe_code)]
 
 use core::fmt::Debug;
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
-pub trait Sample: Copy + Default + Debug + PartialEq + PartialOrd + Send + Sync + 'static {
+pub trait Sample:
+    Copy
+    + Default
+    + Debug
+    + PartialEq
+    + PartialOrd
+    + Send
+    + Sync
+    + 'static
+    + Add<Output = Self>
+    + AddAssign
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + MulAssign
+    + Neg<Output = Self>
+{
     const ZERO: Self;
     const ONE: Self;
     fn mix(self, other: Self) -> Self;
@@ -15,6 +31,12 @@ pub trait Sample: Copy + Default + Debug + PartialEq + PartialOrd + Send + Sync 
     fn to_bits(self) -> u32;
     fn interpolate(start: Self, target: Self, duration: u32, elapsed: u32) -> Self;
     fn fill_ramp(start: Self, target: Self, duration: u32, elapsed: u32, output: &mut [Self]);
+    fn ratio(numerator: i64, denominator: u64) -> Self;
+    fn divide(self, denominator: u32) -> Self;
+    fn is_finite(self) -> bool;
+    fn min(self, other: Self) -> Self;
+    fn max(self, other: Self) -> Self;
+    fn peak_key(self) -> u32;
 
     fn from_le_bytes(bytes: [u8; 4]) -> Self {
         Self::from_bits(u32::from_le_bytes(bytes))
@@ -27,6 +49,24 @@ pub trait Sample: Copy + Default + Debug + PartialEq + PartialOrd + Send + Sync 
 impl Sample for f32 {
     const ZERO: Self = 0.;
     const ONE: Self = 1.;
+    fn ratio(numerator: i64, denominator: u64) -> Self {
+        numerator as f32 / denominator as f32
+    }
+    fn divide(self, denominator: u32) -> Self {
+        self / denominator as f32
+    }
+    fn is_finite(self) -> bool {
+        self.is_finite()
+    }
+    fn min(self, other: Self) -> Self {
+        self.min(other)
+    }
+    fn max(self, other: Self) -> Self {
+        self.max(other)
+    }
+    fn peak_key(self) -> u32 {
+        self.to_bits() & 0x7fff_ffff
+    }
     #[inline]
     fn mix(self, other: Self) -> Self {
         self + other
@@ -82,6 +122,25 @@ impl Q824 {
 impl Sample for Q824 {
     const ZERO: Self = Self::ZERO;
     const ONE: Self = Self::ONE;
+    fn ratio(numerator: i64, denominator: u64) -> Self {
+        let value = i128::from(numerator) * i128::from(Self::ONE.0) / i128::from(denominator);
+        Self(value.clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i32)
+    }
+    fn divide(self, denominator: u32) -> Self {
+        Self((i64::from(self.0) / i64::from(denominator)) as i32)
+    }
+    fn is_finite(self) -> bool {
+        true
+    }
+    fn min(self, other: Self) -> Self {
+        core::cmp::min(self, other)
+    }
+    fn max(self, other: Self) -> Self {
+        core::cmp::max(self, other)
+    }
+    fn peak_key(self) -> u32 {
+        self.0.unsigned_abs().min(i32::MAX as u32)
+    }
     #[inline]
     fn mix(self, other: Self) -> Self {
         Self::from_wide(i64::from(self.0) + i64::from(other.0))
@@ -139,6 +198,41 @@ impl Sample for Q824 {
             }
         }
         output[active..].fill(target);
+    }
+}
+
+impl Add for Q824 {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        self.mix(other)
+    }
+}
+impl AddAssign for Q824 {
+    fn add_assign(&mut self, other: Self) {
+        *self = self.mix(other);
+    }
+}
+impl Sub for Q824 {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        Self::from_wide(i64::from(self.0) - i64::from(other.0))
+    }
+}
+impl Mul for Q824 {
+    type Output = Self;
+    fn mul(self, other: Self) -> Self {
+        self.multiply(other)
+    }
+}
+impl MulAssign for Q824 {
+    fn mul_assign(&mut self, other: Self) {
+        *self = self.multiply(other);
+    }
+}
+impl Neg for Q824 {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self(self.0.saturating_neg())
     }
 }
 

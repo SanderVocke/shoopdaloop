@@ -1,12 +1,13 @@
 use super::*;
+use rt_runtime::Sample;
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     pub(super) fn append_node_pair(
         &mut self,
         id: NodePairStageId,
         previous: Option<LoopId>,
-        initial: Option<NodePairInitial>,
-        io: &mut ResourceIo<'_>,
+        initial: Option<NodePairInitial<S>>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         if initial.is_some_and(|i| i.frames % self.resolver.quantum().frames() as u64 != 0) {
             return Err(Error::InvalidFrame);
@@ -35,7 +36,7 @@ impl LoopPlanner {
         topology_epoch: Epoch,
         replace_all: bool,
         graphs: &mut rt_runtime::graph::activation::GraphAccess<'_>,
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<(Epoch, Epoch), Failure> {
         if self.resolver.epoch() != topology_epoch {
             return Err(crate::Error::InvalidState.into());

@@ -20,7 +20,7 @@ fn transition(index: usize, mode: LoopMode) -> Request {
 }
 
 fn main() {
-    let mut mode = AudioRenderMode::FpgaReference;
+    let mut mode = AudioRenderMode::Current;
     let mut voices = 4usize;
     let mut callbacks = 1024usize;
     let mut phase = String::from("play");
@@ -35,10 +35,7 @@ fn main() {
             _ => panic!("usage: --mode current|fpga-reference --voices N --callbacks N --phase play|record-play|record|clear"),
         }
     }
-    assert!(matches!(
-        mode,
-        AudioRenderMode::Current | AudioRenderMode::FpgaReference
-    ));
+    assert!(matches!(mode, AudioRenderMode::Current));
     assert!((1..=16).contains(&voices) && (1..=4096).contains(&callbacks));
     let mut d = audio_description(mode);
     d.sample_rate = 48_000;

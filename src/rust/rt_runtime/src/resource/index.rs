@@ -1,5 +1,6 @@
 //! Append-maintained page index. Every index node lives in its data-page slot.
 use super::*;
+use crate::Sample;
 use core::num::NonZeroU32;
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -48,7 +49,7 @@ pub struct IndexWork {
     pub render_steps: usize,
     pub counter_overflow: bool,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn index_work(&self) -> IndexWork {
         self.index_work
     }
@@ -180,11 +181,7 @@ impl ResourceStore {
         if offset == lease.snapshot.description.bytes {
             return Ok(cursor);
         }
-        if lease.audio.is_some()
-            || lease.shared_midi.is_some()
-            || lease.indexed_midi.is_some()
-            || version.elastic.is_some()
-        {
+        if lease.audio.is_some() || lease.shared_midi.is_some() || lease.indexed_midi.is_some() {
             return Ok(cursor);
         }
         let ordinal = (offset / self.config.limits().page_bytes) as u32;

@@ -1,5 +1,6 @@
 //! Shared MIDI revisions behind ordinary resource and immutable snapshot IDs.
 use super::*;
+use crate::Sample;
 use crate::{buffer::MidiBuffer, midi_state::MidiState};
 use core::ops::Range;
 
@@ -34,7 +35,7 @@ pub struct MidiImportId {
     import: shared_midi::ImportId,
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn midi_store_capacity(&mut self, id: MidiStoreId) -> Result<shared_midi::Capacity, Error> {
         self.with_midi(id, |_, midi| Ok(midi.capacity()))
     }
@@ -91,7 +92,10 @@ impl ResourceStore {
     pub(super) fn with_midi<T>(
         &mut self,
         id: MidiStoreId,
-        operation: impl FnOnce(&mut ResourceStore, &mut shared_midi::MidiStore) -> Result<T, Error>,
+        operation: impl FnOnce(
+            &mut ResourceStore<S>,
+            &mut shared_midi::MidiStore<S>,
+        ) -> Result<T, Error>,
     ) -> Result<T, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
@@ -154,7 +158,6 @@ impl ResourceStore {
             index: VersionIndex::default(),
             midi: None,
             audio: None,
-            elastic: None,
             shared_midi: Some(take),
             indexed_midi: None,
         });
@@ -220,7 +223,7 @@ impl ResourceStore {
     }
 }
 
-impl RenderIo<'_> {
+impl<S: Sample> RenderIo<'_, S> {
     pub fn progress_midi_import(
         &mut self,
         id: MidiImportId,
@@ -322,7 +325,7 @@ impl RenderIo<'_> {
         Ok(id.revision)
     }
 }
-impl ResourceIo<'_> {
+impl<S: Sample> ResourceIo<'_, S> {
     pub fn cancel_midi_edit(&mut self, id: MidiEditId) -> Result<(), Error> {
         self.store.cancel_midi_edit(id)
     }

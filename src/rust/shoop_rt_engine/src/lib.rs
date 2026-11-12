@@ -44,6 +44,7 @@ mod history;
 mod input;
 pub use history::HistoryCapacity;
 mod description;
+pub mod dsp;
 mod endpoint;
 mod family;
 mod global_midi;
@@ -515,7 +516,7 @@ fn prepare_complete(
                 playback: pool.playback(slot),
                 capture: pool.capture(slot),
                 channels,
-                midi: description.audio_render_mode != AudioRenderMode::FpgaReference,
+                midi: true,
                 gain: 1.,
                 smoothing,
                 midi_events,
@@ -681,15 +682,11 @@ fn prepare_complete(
             full
         },
         plans: {
-            let mut plans = [
+            let plans = [
                 PreparedPlan::with_capacity(config)?,
                 PreparedPlan::with_capacity(config)?,
             ];
-            if description.audio_render_mode == AudioRenderMode::FpgaReference {
-                for plan in &mut plans {
-                    plan.prepare_fpga_program_storage();
-                }
-            }
+
             plans.map(Some)
         },
     };
@@ -753,7 +750,6 @@ fn prepare_complete(
         },
         cells: cells.clone(),
         settings: Settings {
-            fpga_reference: description.audio_render_mode == AudioRenderMode::FpgaReference,
             external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,

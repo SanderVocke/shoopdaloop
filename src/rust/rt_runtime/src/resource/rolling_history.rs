@@ -8,6 +8,7 @@ use super::{
     shared_pages::{LeaseId, SharedPages},
     slots, ResourceStore, Slot, WorkClass,
 };
+use crate::Sample;
 use crate::{Error, Frame};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
@@ -48,7 +49,7 @@ impl Window {
     }
 }
 
-pub(super) struct RollingHistory {
+pub(super) struct RollingHistory<S: Sample = f32> {
     scope: u32,
     store_scope: u32,
     origin: Frame,
@@ -62,13 +63,13 @@ pub(super) struct RollingHistory {
     retained_limit: usize,
     debt: usize,
     reserved: usize,
-    pages: SharedPages,
+    pages: SharedPages<S>,
     cleanup: Option<usize>,
 }
 
-impl RollingHistory {
+impl<S: Sample> RollingHistory<S> {
     pub fn prepare(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
     ) -> Result<Self, Error> {
@@ -144,7 +145,7 @@ impl RollingHistory {
         })
     }
 
-    fn check_store(&self, store: &ResourceStore) -> Result<(), Error> {
+    fn check_store(&self, store: &ResourceStore<S>) -> Result<(), Error> {
         if store.scope != self.store_scope {
             return Err(Error::InvalidId);
         }
@@ -164,7 +165,7 @@ impl RollingHistory {
         Ok(Frame(self.origin.0 + first * self.page_frames as u64)..self.next)
     }
 
-    fn insert(&mut self, store: &mut ResourceStore, samples: &[f32]) -> Result<LeaseId, Error> {
+    fn insert(&mut self, store: &mut ResourceStore<S>, samples: &[S]) -> Result<LeaseId, Error> {
         if self.reserved == 0 {
             return Err(Error::Capacity);
         }
@@ -182,9 +183,9 @@ impl RollingHistory {
 
     pub fn append(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.check_store(store)?;
         self.check_open()?;
@@ -240,7 +241,7 @@ impl RollingHistory {
 
     pub fn lease_window(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         range: Range<Frame>,
     ) -> Result<WindowId, Error> {
         self.check_store(store)?;
@@ -295,10 +296,10 @@ impl RollingHistory {
     /// to the window. Required reads do not spend background transfer credits.
     pub fn read_audio(
         &self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         id: WindowId,
         offset: u64,
-        output: &mut [f32],
+        output: &mut [S],
     ) -> Result<usize, Error> {
         self.check_store(store)?;
         let window = self.window(id)?;
@@ -326,7 +327,7 @@ impl RollingHistory {
             .iter_mut()
             .zip(bytes[within * 4..(within + count) * 4].chunks_exact(4))
         {
-            *sample = f32::from_le_bytes(bytes.try_into().expect("one complete sample"));
+            *sample = S::from_le_bytes(bytes.try_into().expect("one complete sample"));
         }
         Ok(count)
     }
@@ -341,7 +342,7 @@ impl RollingHistory {
         Ok(())
     }
 
-    fn reclaim(&mut self, store: &mut ResourceStore, lease: LeaseId) -> Result<(), Error> {
+    fn reclaim(&mut self, store: &mut ResourceStore<S>, lease: LeaseId) -> Result<(), Error> {
         if self.pages.reclaim_lease(store, lease)? {
             self.reserved += 1;
             store.reserved_pages += 1;
@@ -349,7 +350,7 @@ impl RollingHistory {
         Ok(())
     }
 
-    pub fn maintain(&mut self, store: &mut ResourceStore) -> Result<usize, Error> {
+    pub fn maintain(&mut self, store: &mut ResourceStore<S>) -> Result<usize, Error> {
         self.check_store(store)?;
         let mut work = 0;
         for slot in 0..self.windows.len() {

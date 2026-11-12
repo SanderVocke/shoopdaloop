@@ -5,6 +5,7 @@ use super::{
     midi_packets::{self, Packets, RecordId},
     RenderIo, ResourceStore, WorkClass,
 };
+use crate::Sample;
 use crate::{
     buffer::MidiBuffer,
     midi::Message,
@@ -149,8 +150,8 @@ impl Core {
             .filter(|&bytes| bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)
     }
-    pub fn prepare(
-        resources: &mut ResourceStore,
+    pub fn prepare<S: Sample>(
+        resources: &mut ResourceStore<S>,
         q: Quantum,
         config: Config,
     ) -> Result<Self, Error> {
@@ -379,7 +380,7 @@ impl Core {
                 .saturating_add(256),
         )
     }
-    fn account(&self, io: &mut RenderIo<'_>) {
+    fn account<S: Sample>(&self, io: &mut RenderIo<'_, S>) {
         let (pages, trees) = self.indexes.work();
         let mut overflow = pages.counter_overflow || trees.iter().any(|tree| tree.counter_overflow);
         let mut steps = 0usize;
@@ -486,9 +487,9 @@ impl Core {
         self.release_credit(&media);
         Ok(())
     }
-    pub fn stage(
+    pub fn stage<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         staged: &mut Staging,
         frame: Frame,
         input: &MidiBuffer,
@@ -546,9 +547,9 @@ impl Core {
         Ok(())
     }
     /// One packet per call supports bounded import jobs; the owned view is private.
-    pub fn import_packet(
+    pub fn import_packet<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &mut Media,
         frame: u64,
         order: u64,
@@ -602,9 +603,9 @@ impl Core {
         self.account(io);
         result
     }
-    pub fn pin_import(
+    pub fn pin_import<S: Sample>(
         &mut self,
-        resources: &mut ResourceStore,
+        resources: &mut ResourceStore<S>,
         snapshot: super::SnapshotId,
     ) -> Result<midi_packets::BaseId, Error> {
         self.packets.pin_base(resources, snapshot)
@@ -612,9 +613,9 @@ impl Core {
     pub fn release_import(&mut self, base: midi_packets::BaseId) -> Result<(), Error> {
         self.packets.release_base(base)
     }
-    pub fn import_reference(
+    pub fn import_reference<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &mut Media,
         base: midi_packets::BaseId,
         frame: u64,
@@ -662,9 +663,9 @@ impl Core {
         self.account(io);
         result
     }
-    pub fn import_writer_reference(
+    pub fn import_writer_reference<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         writer: &mut Writer,
         prefix_frames: u64,
         base: midi_packets::BaseId,
@@ -757,9 +758,9 @@ impl Core {
             ready,
         })
     }
-    pub fn progress_writer(
+    pub fn progress_writer<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         admission: &mut Admission,
         budget: usize,
     ) -> Result<bool, Error> {
@@ -845,9 +846,9 @@ impl Core {
         writer.position = position;
         Ok(())
     }
-    pub fn writer_totals(
+    pub fn writer_totals<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         writer: &Writer,
     ) -> Result<Totals, Error> {
         self.totals(io, &writer.media)
@@ -872,9 +873,9 @@ impl Core {
         }
         writer.media
     }
-    pub fn write_tick(
+    pub fn write_tick<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         writer: &mut Writer,
         before_input: &MidiState,
         staged: &Staging,
@@ -889,9 +890,9 @@ impl Core {
         };
         self.write_span(io, writer, before_input, staged, span)
     }
-    pub fn write_window_tick(
+    pub fn write_window_tick<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         writer: &mut Writer,
         before_input: &MidiState,
         staged: &Staging,
@@ -902,9 +903,9 @@ impl Core {
         }
         self.write_span(io, writer, before_input, staged, span)
     }
-    fn write_span(
+    fn write_span<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         writer: &mut Writer,
         before_input: &MidiState,
         staged: &Staging,
@@ -1139,7 +1140,11 @@ impl Core {
         }
         Ok(())
     }
-    pub fn totals(&mut self, io: &mut RenderIo<'_>, media: &Media) -> Result<Totals, Error> {
+    pub fn totals<S: Sample>(
+        &mut self,
+        io: &mut RenderIo<'_, S>,
+        media: &Media,
+    ) -> Result<Totals, Error> {
         self.indexes.reset_work();
         let result = self.indexes.totals(
             media.root,
@@ -1150,9 +1155,9 @@ impl Core {
         self.account(io);
         result
     }
-    pub fn first(
+    pub fn first<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &Media,
         after: Option<Packet>,
     ) -> Result<Option<Packet>, Error> {
@@ -1180,27 +1185,27 @@ impl Core {
             }
         }))
     }
-    pub fn read_packet(
+    pub fn read_packet<S: Sample>(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         packet: Packet,
         offset: usize,
         output: &mut [u8],
     ) -> Result<usize, Error> {
         self.packets.read(io, packet.value, offset, output)
     }
-    pub fn read_bytes(
+    pub fn read_bytes<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &Media,
         offset: usize,
         output: &mut [u8],
     ) -> Result<usize, Error> {
         self.read_bytes_with(io, media, offset, output, WorkClass::Render)
     }
-    pub fn read_bytes_with(
+    pub fn read_bytes_with<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &Media,
         offset: usize,
         output: &mut [u8],
@@ -1227,9 +1232,9 @@ impl Core {
         self.packets
             .read_with(io, value, within - 12, output, class)
     }
-    pub fn byte_before(
+    pub fn byte_before<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &Media,
         frame: u64,
     ) -> Result<usize, Error> {
@@ -1246,9 +1251,9 @@ impl Core {
         self.account(io);
         Ok(result?.bytes)
     }
-    pub fn state(
+    pub fn state<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         media: &Media,
         frame: u64,
     ) -> Result<MidiState, Error> {
@@ -1265,7 +1270,11 @@ impl Core {
         self.account(io);
         Ok(result)
     }
-    pub fn maintain(&mut self, io: &mut RenderIo<'_>, budget: usize) -> Result<usize, Error> {
+    pub fn maintain<S: Sample>(
+        &mut self,
+        io: &mut RenderIo<'_, S>,
+        budget: usize,
+    ) -> Result<usize, Error> {
         self.indexes.reset_work();
         let mut work = 0;
         for _ in 0..budget {
@@ -1300,10 +1309,13 @@ impl Core {
         self.account(io);
         Ok(work)
     }
-    pub fn begin_cleanup(&mut self, io: &mut RenderIo<'_>) -> Result<(), Error> {
+    pub fn begin_cleanup<S: Sample>(&mut self, io: &mut RenderIo<'_, S>) -> Result<(), Error> {
         self.packets.begin_cleanup(io)
     }
-    pub fn finish_cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+    pub fn finish_cleanup<S: Sample>(
+        &mut self,
+        resources: &mut ResourceStore<S>,
+    ) -> Result<(), Error> {
         if self.indexes.leases() != 0 {
             return Err(Error::Busy);
         }

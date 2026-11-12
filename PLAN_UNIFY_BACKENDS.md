@@ -11,6 +11,15 @@ do not recreate them. Admission refusals remain common comparisons; fatal
 hardware allocation/bus failures retain hardware-specific containment checks.
 The goals and acceptance criteria are unchanged.
 
+Migration ordering adjustment: the app-only FpgaReference adapter and its
+reference-backed resource branches are tightly coupled to f32 processor contexts.
+Retire those branches as part of stage 3's production numeric refactor, with their
+app tests moved to the production paths. Retain the standalone reference crates
+and RTL comparisons until stages 5/6 establish replacement coverage. This avoids
+adding a temporary generic version of the backend being removed. Upstream
+`efe20591` also adds native SV memory simulation; preserve it alongside AXI/DDR
+verification, rather than reverting the newer simulator selection.
+
 ## Goal and scope
 
 Make the production Rust backend the behavioral oracle for the looping features
@@ -136,6 +145,16 @@ comparison profile must remain available in the normal floating-point backend.
 
 ### One behavioral contract, independent execution
 
+- Production float remains the ultimate behavioral/numerical reference. Run the
+  same common sessions through float and Q8.24 and measure their numerical
+  agreement separately from mandatory bit-exact Q8.24/RTL equality. Report maximum
+  absolute and RMS error, signed bias and long-session/ramp drift. Establish
+  checked error budgets from input/control conversion, operation order, gain depth,
+  fan-in and floating-point rounding; do not choose an unexplained global epsilon.
+  Normal non-clipping scenarios must meet those budgets with identical discrete
+  behavior. Full-range saturation is a separately labeled numeric-policy case:
+  float need not clip, but every Q8.24/RTL sample must still match exactly. Report
+  clipping locations/counts and explain divergences rather than excluding them.
 - Define a versioned Rust-owned scenario/result schema, generated for Python,
   in a new production-backed testbench package (for example
   `rt_backend_testbench` plus Python helpers). Include strict validation, bounded
@@ -209,17 +228,17 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 
 ### 3. Parameterize the real production audio path
 
-- [ ] Thread the policy through `rt_runtime` buffers/host-buffer abstraction,
+- [x] Thread the policy through `rt_runtime` buffers/host-buffer abstraction,
   routing/mixing, production resource audio storage/codecs, `Processor` contexts,
   `shoop_loops` capture/playback, and the engine's supported control/gain/ramp DSP.
   Keep float defaults and unsupported fixed processors explicit. Do not implement
   numeric substitution by selecting `FpgaReference` internally.
-- [ ] Replace the production quantum-stretched/increment-first ramp convention
+- [x] Replace the production quantum-stretched/increment-first ramp convention
   with the agreed convention in both instantiations. Update precise affected
   expectations and documentation without weakening unrelated production tests.
   Audit gain composition, balances and intermediate rounding throughout the
   supported path; eliminate hidden float calculations in the fixed instantiation.
-- [ ] Exercise the same production entry points with float and Q8.24 for raw
+- [x] Exercise the same production entry points with float and Q8.24 for raw
   input/output, capture, media readback, constant/ramped gains and ordered mixes.
   Use heap guards and adversarial nonassociative arithmetic cases. Verify default
   float package/host builds, existing render-mode regressions and paired release
@@ -246,6 +265,12 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 
 ### 5. Establish full supported-loop differential coverage
 
+- [ ] Run each shared supported session through production float as well as
+  production Q8.24. Enforce the justified per-scenario arithmetic error budget
+  and exact discrete outcomes, publish maximum/RMS/bias metrics, and include long
+  playback/capture, ramps, interruptions and fan-in cases to detect drift. Keep
+  intentional saturation cases explicit. Float error allowances never relax the
+  separate exact Q8.24/RTL gate.
 - [ ] Extend directed common scenarios to all matrix rows: seek/retrigger;
   absolute/tick-delayed transitions; repeat waits; sync chains, self-sync and
   legal cycles; simultaneous/conflicting commands; supersession/cancellation;
@@ -326,6 +351,9 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
   deliberate ramp change, and resolve repeatable regressions. Record code/resource
   costs without claiming monomorphization proves performance or synthesis proves
   physical timing/deadline guarantees.
+- [ ] Publish the float-versus-Q8.24 accuracy report alongside exact RTL results,
+  including error budgets, clipping cases, long-session drift and exact logical
+  state comparisons. Preserve float as the production default and ultimate oracle.
 - [ ] Demonstrate clean-checkout setup, one-command directed/randomized comparison
   and failure replay without the old model. Publish final coverage/removal and
   performance reports with exact commands/revisions. Commit and push milestones;
@@ -370,3 +398,20 @@ environment limits; successful compilation is not execution evidence.
 The user's instruction not to check PR CI overrides the plan template's default
 CI-monitoring guidance. Local required checks and automated-review follow-up are
 included; autonomous PR merging is not.
+
+Stage 3 completed: production runtime/buffers/typed processor contexts, media
+storage/codecs and loop planner/playback/capture now use a static sample policy
+with float defaults. Production engine gain controls share the duration-based
+ramps; reference render modes materialize curves their endpoint descriptors
+cannot express. Their regression now compares every sample. Fixed capture tests
+preserve raw low bits through media and playback, and routing tests verify the
+production compiler's canonical connection order under nonassociative saturation.
+Float/fixed control tests include partitioning and interrupted ramps.
+
+Validation: full runtime/loop/engine tests passed: 665 passed, 0 failed, 1 existing ignored, native
+host warnings-denying build passed, and test-attribute policy passed. Paired
+release CPU/heap results are in `fpga/verification/production-numeric.json` and
+explained in `PRODUCTION_NUMERICS.md`: median ratios 1.012/0.985/0.938/1.010 for
+play/record-play/record/clear, with zero callback heap operations. Only the native
+target is installed; Wasm validation remains in the final delivery gate. Stages
+4–8, including full-session float accuracy reports, are still outstanding.

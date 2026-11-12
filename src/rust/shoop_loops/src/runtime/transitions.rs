@@ -1,26 +1,27 @@
 //! Logical transition/timing settlement, independent of signal-node order.
 //! State preparation can refuse a preview; observations are fed back before commit.
 use super::*;
+use rt_runtime::Sample;
 
 pub(super) struct TransitionProcessor;
 impl TransitionProcessor {
-    pub(super) fn settle(
-        owner: &mut LoopPlanner,
-        context: PlanContext<'_, Operation, Reply>,
+    pub(super) fn settle<S: Sample>(
+        owner: &mut LoopPlanner<S>,
+        context: PlanContext<'_, Operation<S>, Reply<S>, S>,
     ) -> Result<Frame, Error> {
         owner.settle_boundary(context)
     }
-    pub(super) fn finish(
-        owner: &mut LoopPlanner,
-        context: &mut FinishContext<'_, Operation, Reply>,
+    pub(super) fn finish<S: Sample>(
+        owner: &mut LoopPlanner<S>,
+        context: &mut FinishContext<'_, Operation<S>, Reply<S>, S>,
     ) -> Result<(), Error> {
         owner.finish_boundary(context)
     }
 }
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     pub(super) fn settle_boundary(
         &mut self,
-        mut context: PlanContext<'_, Operation, Reply>,
+        mut context: PlanContext<'_, Operation<S>, Reply<S>, S>,
     ) -> Result<Frame, Error> {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
@@ -145,7 +146,7 @@ impl LoopPlanner {
     }
     pub(super) fn finish_boundary(
         &mut self,
-        context: &mut FinishContext<'_, Operation, Reply>,
+        context: &mut FinishContext<'_, Operation<S>, Reply<S>, S>,
     ) -> Result<(), Error> {
         self.resolver.finish().map_err(runtime_error)?;
         self.collect_automatic_finishes()?;

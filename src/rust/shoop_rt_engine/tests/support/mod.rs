@@ -157,8 +157,7 @@ impl Harness {
             midi: Vec::new(),
             midi_input: Vec::new(),
             callback_heap: Vec::new(),
-            elastic_audio: description.audio_render_mode
-                == shoop_rt_engine::AudioRenderMode::FpgaReference,
+            elastic_audio: false,
         };
         assert_no_heap(|| harness.host.connect()).unwrap();
         harness.pump();

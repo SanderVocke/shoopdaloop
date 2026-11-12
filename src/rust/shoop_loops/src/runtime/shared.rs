@@ -1,6 +1,7 @@
 use super::*;
 use core::sync::atomic::{AtomicU32, Ordering};
 use rt_runtime::buffer::{AudioPorts, MidiBuffer};
+use rt_runtime::Sample;
 
 mod writer;
 use writer::LiveSlot;
@@ -89,7 +90,7 @@ pub struct SharedCapacity {
     pub candidates: usize,
     pub writers: usize,
 }
-struct History {
+struct History<S: Sample = f32> {
     committed_graph: Option<Epoch>,
     startup_origin: Option<Frame>,
     started: bool,
@@ -99,8 +100,8 @@ struct History {
     midi: Option<MidiStoreId>,
     indexed_midi: Option<indexed_midi::SourceId>,
     tracker: Option<midi::MidiCapture>,
-    audio_scratch: Box<[f32]>,
-    wet_scratch: Box<[f32]>,
+    audio_scratch: Box<[S]>,
+    wet_scratch: Box<[S]>,
     token: Option<u64>,
     midi_token: Option<u64>,
     generation: u64,
@@ -139,9 +140,9 @@ struct Job {
     generation: u32,
     value: Option<Candidate>,
 }
-pub(super) struct Shared {
+pub(super) struct Shared<S: Sample = f32> {
     scope: u32,
-    histories: Vec<History>,
+    histories: Vec<History<S>>,
     audio_pool: Option<(AudioStoreId, bool)>,
     midi_pool: Option<(indexed_midi::StoreId, bool)>,
     lookup: Box<[Option<usize>]>,
@@ -156,7 +157,7 @@ pub(super) struct Shared {
     callback: Option<Frame>,
     allowance: usize,
     remaining: usize,
-    audio_patch: Box<[f32]>,
+    audio_patch: Box<[S]>,
     bytes: Box<[u8]>,
     midi_patch: MidiBuffer,
     work: SharedWork,
@@ -164,8 +165,11 @@ pub(super) struct Shared {
     capacity: SharedCapacity,
 }
 
-impl Shared {
-    pub fn prepare(resources: &mut ResourceStore, settings: SharedSettings) -> Result<Self, Error> {
+impl<S: Sample> Shared<S> {
+    pub fn prepare(
+        resources: &mut ResourceStore<S>,
+        settings: SharedSettings,
+    ) -> Result<Self, Error> {
         let c = resources.config().limits();
         if settings.histories.len() > c.max_nodes
             || settings.candidates > c.resource_slots
@@ -257,7 +261,7 @@ impl Shared {
             }
             if histories
                 .iter()
-                .any(|h: &History| h.settings.source == setting.source)
+                .any(|h: &History<S>| h.settings.source == setting.source)
                 || (setting.audio.is_none() && setting.midi.is_none())
             {
                 return Err(Error::InvalidConfig);
@@ -323,8 +327,8 @@ impl Shared {
                 midi,
                 indexed_midi,
                 tracker,
-                audio_scratch: vec![0.; samples].into_boxed_slice(),
-                wet_scratch: vec![0.; samples].into_boxed_slice(),
+                audio_scratch: vec![S::ZERO; samples].into_boxed_slice(),
+                wet_scratch: vec![S::ZERO; samples].into_boxed_slice(),
                 token: None,
                 midi_token: None,
                 generation: 1,
@@ -369,7 +373,7 @@ impl Shared {
             callback: None,
             allowance: settings.edit_steps_per_callback,
             remaining: 0,
-            audio_patch: vec![0.; samples].into_boxed_slice(),
+            audio_patch: vec![S::ZERO; samples].into_boxed_slice(),
             bytes: vec![0; (samples * 4).max(packet)].into_boxed_slice(),
             midi_patch: MidiBuffer::new(events, bytes)?,
             work: SharedWork::default(),
@@ -394,7 +398,7 @@ impl Shared {
             Ok(())
         };
         for (count, bytes) in [
-            (result.histories.capacity(), size_of::<History>()),
+            (result.histories.capacity(), size_of::<History<S>>()),
             (result.lookup.len(), size_of::<Option<usize>>()),
             (result.jobs.len(), size_of::<Job>()),
             (result.live.len(), size_of::<LiveSlot>()),
@@ -402,7 +406,7 @@ impl Shared {
                 result.owned.len(),
                 size_of::<Option<rt_runtime::ResourceId>>(),
             ),
-            (result.audio_patch.len(), size_of::<f32>()),
+            (result.audio_patch.len(), size_of::<S>()),
             (result.bytes.len(), 1),
             (result.midi_patch.prepared_bytes(), 1),
         ] {
@@ -412,7 +416,7 @@ impl Shared {
             add(
                 &mut capacity.coordinator_bytes,
                 history.audio_scratch.len(),
-                2 * size_of::<f32>(),
+                2 * size_of::<S>(),
             )?;
             if history.tracker.is_some() {
                 add(&mut capacity.coordinator_bytes, 1, size_of::<MidiState>())?;
@@ -427,7 +431,7 @@ impl Shared {
                 add(
                     &mut capacity.store_metadata_bytes,
                     1,
-                    size_of::<shared_audio::AudioStore>(),
+                    size_of::<shared_audio::AudioStore<S>>(),
                 )?;
                 add(
                     &mut capacity.reserved_payload_bytes,
@@ -490,7 +494,7 @@ impl Shared {
         }
         Ok(result)
     }
-    fn source(&self, key: u32) -> Result<&History, Error> {
+    fn source(&self, key: u32) -> Result<&History<S>, Error> {
         if self.closed {
             return Err(Error::InvalidState);
         }
@@ -510,7 +514,7 @@ impl Shared {
         &self,
         key: u32,
         graph: Epoch,
-        io: &ResourceIo<'_>,
+        io: &ResourceIo<'_, S>,
     ) -> Result<HistoryStatus, Error> {
         let h = self.source(key)?;
         let eligible = h.committed_graph == Some(graph);
@@ -561,9 +565,9 @@ impl Shared {
         midi_token: u64,
         frame: Frame,
         q: usize,
-        ports: &mut AudioPorts<'_>,
+        ports: &mut AudioPorts<'_, S>,
         midi: Option<&MidiBuffer>,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         if self.closed {
             return Err(Error::InvalidState);
@@ -691,7 +695,7 @@ impl Shared {
         &mut self,
         end: Frame,
         graph: Epoch,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         for h in &mut self.histories {
             if h.staged.take() == Some(end) {
@@ -754,7 +758,7 @@ impl Shared {
         start: Frame,
         end: Frame,
         q: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<SharedTake, Error> {
         let status = self.status(id.source, id.graph, io)?;
         if status.id != id {
@@ -804,7 +808,7 @@ impl Shared {
         id: HistoryId,
         window: &crate::grab::Window,
         q: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<SharedTake, Error> {
         let status = self.status(id.source, id.graph, io)?;
         if status.id != id {
@@ -885,7 +889,7 @@ impl Shared {
         fence: Fence,
         source: SharedTake,
         packet_bytes: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         frame: Frame,
     ) -> Result<CandidateId, Error> {
         if source.indexed_midi_store.is_some() {
@@ -918,7 +922,7 @@ impl Shared {
             .map(|id| io.info(id).map(|i| i.revision))
             .transpose()?;
         let fork_audio =
-            |io: &mut ResourceIo<'_>| -> Result<Option<rt_runtime::ResourceId>, Error> {
+            |io: &mut ResourceIo<'_, S>| -> Result<Option<rt_runtime::ResourceId>, Error> {
                 match (source.audio_store, source.audio) {
                     (Some(store), Some(resource)) => {
                         let snap = io.snapshot(resource, frame)?;
@@ -997,7 +1001,7 @@ impl Shared {
         offset: u64,
         frames: usize,
         q: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let job = self.candidate(id)?;
         if self.candidate_status(id)? != CandidateStatus::Ready {
@@ -1045,7 +1049,7 @@ impl Shared {
         }
         for i in 0..count {
             self.audio_patch[i] =
-                f32::from_le_bytes(self.bytes[i * 4..i * 4 + 4].try_into().expect("four bytes"));
+                S::from_le_bytes(self.bytes[i * 4..i * 4 + 4].try_into().expect("four bytes"));
         }
         io.render().replace_audio(
             resource,
@@ -1067,7 +1071,7 @@ impl Shared {
         id: CandidateId,
         position: u64,
         input: SnapshotId,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let mut job = self.candidate(id)?;
         if self.candidate_status(id)? != CandidateStatus::Ready {
@@ -1113,7 +1117,7 @@ impl Shared {
         self.jobs[id.slot as usize].value = Some(job);
         Ok(())
     }
-    pub fn progress(&mut self, callback: Frame, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub fn progress(&mut self, callback: Frame, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         if self.callback != Some(callback) {
             self.callback = Some(callback);
             self.remaining = self.allowance;
@@ -1190,7 +1194,7 @@ impl Shared {
     pub fn capacity(&self) -> SharedCapacity {
         self.capacity
     }
-    pub fn validate_original(job: Candidate, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub fn validate_original(job: Candidate, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         for (resource, revision) in [
             (job.original.audio, job.original_audio),
             (job.original.midi, job.original_midi),
@@ -1213,7 +1217,7 @@ impl Shared {
             .unwrap_or(0);
         Ok(value)
     }
-    pub fn cancel(&mut self, id: CandidateId, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub fn cancel(&mut self, id: CandidateId, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         let job = self.candidate(id)?;
         if let Some(edit) = job.midi_edit {
             io.cancel_midi_edit(edit)?;
@@ -1233,7 +1237,7 @@ impl Shared {
             self.owned[resource.slot() as usize] = Some(resource);
         }
     }
-    pub fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+    pub fn cleanup(&mut self, resources: &mut ResourceStore<S>) -> Result<(), Error> {
         self.cancel_all_live(&mut resources.io())?;
         for slot in 0..self.jobs.len() {
             if self.jobs[slot].value.is_some() {
@@ -1305,14 +1309,14 @@ impl Shared {
     }
 }
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     pub(super) fn shared_operation(
         &mut self,
-        operation: Operation,
+        operation: Operation<S>,
         frame: Frame,
         graph: Epoch,
-        io: &mut ResourceIo<'_>,
-    ) -> Result<Reply, Failure> {
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<Reply<S>, Failure> {
         let q = self.resolver.quantum().frames();
         match operation {
             Operation::SharedCapacity => Ok(Reply::SharedCapacity(
@@ -1720,8 +1724,8 @@ impl LoopPlanner {
         id: CandidateId,
         frame: Frame,
         graph: Epoch,
-        io: &mut ResourceIo<'_>,
-    ) -> Result<Reply, Failure> {
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<Reply<S>, Failure> {
         let shared = self.shared.as_ref().ok_or(Error::InvalidState)?;
         if shared.candidate_status(id)? != CandidateStatus::Ready {
             return Err(Error::Busy.into());
@@ -1750,7 +1754,7 @@ impl LoopPlanner {
         }
         Shared::validate_original(job, io)?;
         let revision = state.revision_watermark.checked_next()?;
-        let source = |io: &mut ResourceIo<'_>,
+        let source = |io: &mut ResourceIo<'_, S>,
                       resource: Option<rt_runtime::ResourceId>|
          -> Result<Option<media::Source>, Error> {
             resource
@@ -1838,7 +1842,7 @@ impl LoopPlanner {
     /// Host preparation only, before ownership transfers to the fixed runtime.
     pub fn prepare_shared(
         &mut self,
-        resources: &mut ResourceStore,
+        resources: &mut ResourceStore<S>,
         settings: SharedSettings,
     ) -> Result<(), Error> {
         if self.shared.is_some() {
@@ -1857,7 +1861,11 @@ impl LoopPlanner {
             .stores(source)
     }
     /// Inspect only committed coverage, including after a terminal render fault.
-    pub fn history_status(&self, source: u32, io: &ResourceIo<'_>) -> Result<HistoryStatus, Error> {
+    pub fn history_status(
+        &self,
+        source: u32,
+        io: &ResourceIo<'_, S>,
+    ) -> Result<HistoryStatus, Error> {
         self.shared
             .as_ref()
             .ok_or(Error::InvalidState)?
@@ -1871,9 +1879,9 @@ impl LoopPlanner {
         midi_token: u64,
         frame: Frame,
         q: usize,
-        ports: &mut AudioPorts<'_>,
+        ports: &mut AudioPorts<'_, S>,
         midi: Option<&MidiBuffer>,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         if let Some(shared) = &mut self.shared {
             shared.observe(source, token, midi_token, frame, q, ports, midi, io)?;

@@ -1,13 +1,14 @@
 use super::*;
+use crate::Sample;
 use edit::Edit;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ImportId(EditId);
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
     pub(super) fn drop_base(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         slot: usize,
     ) -> Result<(), Error> {
         let base = self.bases[slot].as_mut().expect("owned immutable base");
@@ -23,7 +24,7 @@ impl MidiStore {
     /// are prepared; packet bodies remain in the retained original resource.
     pub fn prepare_import(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         snapshot: crate::resource::SnapshotId,
     ) -> Result<ImportId, Error> {
         self.check(io.store)?;
@@ -115,7 +116,7 @@ impl MidiStore {
             generation: self.edits[slot].generation,
         })))
     }
-    fn flush_import(&mut self, store: &mut ResourceStore, slot: usize, edit: &mut Edit) {
+    fn flush_import(&mut self, store: &mut ResourceStore<S>, slot: usize, edit: &mut Edit) {
         let records = edit.records;
         let count = edit.count;
         self.flush_edit(store, slot, edit);
@@ -128,7 +129,7 @@ impl MidiStore {
     }
     pub(super) fn progress_import(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: EditId,
         quantum: usize,
     ) -> Result<EditStatus, Error> {
@@ -191,7 +192,7 @@ impl MidiStore {
     }
     pub fn progress_imported(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: ImportId,
         quantum: usize,
     ) -> Result<EditStatus, Error> {
