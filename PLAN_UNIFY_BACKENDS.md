@@ -246,19 +246,19 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 
 ### 4. Build the common runner and production-plan RTL lowering
 
-- [ ] Implement the versioned schema, checked Rust/Python serialization and a
+- [x] Implement the versioned schema, checked Rust/Python serialization and a
   batch Rust CLI that runs production Q8.24 scenarios through `GraphRuntime` and
   the production loop planner/processors. Reuse or factor production DSP; do not
   write toy equivalents in the runner. Keep the package headless and independent
   of device/UI startup. Preserve native no_std/float API compatibility.
-- [ ] Implement export/lowering from the production ordered plan and explicit
+- [x] Implement export/lowering from the production ordered plan and explicit
   supported-node definitions to RTL program/state/buffer bindings and TP setup.
   Add only necessary read-only compiler exports; do not copy a second resolver
   or graph-ordering algorithm. Check bounded operands and hardware capacities.
-- [ ] Adapt the existing cocotb drivers to load that image and run the common
+- [x] Adapt the existing cocotb drivers to load that image and run the common
   scenario through `loop_pipeline_axi`, including real media preflight, cache
   and AXI. Implement semantic result collection and raw fixed media readback.
-- [ ] Gate with schema roundtrip/rejection tests and one complete mono Q=32
+- [x] Gate with schema roundtrip/rejection tests and one complete mono Q=32
   record -> stop -> play -> wrap session. Both executions must independently
   produce identical audio, captured content, states and action outcomes. Inject
   a deliberate output mismatch to verify useful failure/replay diagnostics.
@@ -415,3 +415,24 @@ explained in `PRODUCTION_NUMERICS.md`: median ratios 1.012/0.985/0.938/1.010 for
 play/record-play/record/clear, with zero callback heap operations. Only the native
 target is installed; Wasm validation remains in the final delivery gate. Stages
 4–8, including full-session float accuracy reports, are still outstanding.
+
+Stage 4 completed: `rt_backend_testbench` and `scripts/rt_backend_testbench` define
+strict versioned common sessions, batch execution and Rust-derived schemas. The
+runner uses production graph/timing compilation, runtime, loop nodes, codecs and
+shared gain DSP; RTL receives a static generated image and common actions/audio,
+never oracle decisions/jobs. Read-only owner observations expose settled timing
+and media; initial repeat policy is prepared before processing. Selective slot
+collection stays in standalone transport tests because production uses a FIFO.
+
+The full AXI32 pipeline exactly matches production Q8.24 for mono Q=32 record /
+stop / play / wrap, explicit silent output, and interrupted duration-based gains:
+22 quanta, 704 output samples and 64 captured media samples, including boundary
+events, pending state and collected outcomes. `initial-gates.json` records this
+initial evidence and observed float error (maximum about 6.15e-8); full checked
+accuracy budgets, clipping diagnostics and long-session drift remain in stage 5.
+Strict Rust/Python contract tests pass, including a deliberate one-bit mismatch
+with an exact sample path. Native host warnings-denying build and generated-top
+checks pass. Regenerating upstream's stale direct-memory tops restores their
+current single-bank/fatal-fault ports. A silence opcode lowers production's empty
+input/output case without inventing a host audio source. Further action adapters,
+profile coverage and retirement are still pending stages 5–8.

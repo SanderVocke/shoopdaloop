@@ -1252,9 +1252,11 @@ impl LoopFader {
                         }
                     }
                     None => {
-                        for i in 0..frames {
-                            output[i] = input[i] * self.levels[i];
-                        }
+                        rt_audio_math::gain_each(
+                            &input[..frames],
+                            &mut output[..frames],
+                            &self.levels[..frames],
+                        );
                     }
                 }
             }

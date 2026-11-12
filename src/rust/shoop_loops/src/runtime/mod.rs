@@ -1162,6 +1162,21 @@ impl<S: Sample> LoopPlanner<S> {
         }
         Ok(())
     }
+    /// Initial repeat policy before processing begins.
+    pub fn prepare_repeat_sync(&mut self, target: LoopId, enabled: bool) -> Result<(), Failure> {
+        if self.resolver.frame() != Frame(0) || self.pending.iter().any(Option::is_some) {
+            return Err(Error::InvalidState.into());
+        }
+        self.resolver.set_repeat_sync(target, enabled)?;
+        Ok(())
+    }
+    /// Settled timing and retained logical media, borrowed between callbacks.
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
+    pub fn media_ledger(&self) -> &media::Ledger {
+        &self.ledger
+    }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer
     }

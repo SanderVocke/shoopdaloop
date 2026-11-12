@@ -611,6 +611,10 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         (self.planner, self.resources)
     }
 
+    /// Borrow settled domain state between callbacks from the runtime owner.
+    pub fn planner(&self) -> &L {
+        &self.planner
+    }
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }

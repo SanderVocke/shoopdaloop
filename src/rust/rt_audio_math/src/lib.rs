@@ -290,6 +290,13 @@ pub fn gain<S: Sample>(source: &[S], target: &mut [S], value: S) {
     }
 }
 
+#[inline]
+pub fn gain_each<S: Sample>(source: &[S], target: &mut [S], gains: &[S]) {
+    for ((&source, target), &gain) in source.iter().zip(target).zip(gains) {
+        *target = source.multiply(gain);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

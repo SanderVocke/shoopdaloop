@@ -1,6 +1,7 @@
 """Convert architectural JSON values to the version-2 packed RTL ABI."""
 
 INSTRUCTIONS = {
+    "process_silence": (8, ("destination",)),
     "process_input": (0, ("port", "destination")),
     "process_loop_playback": (1, ("view", "position", "length", "enabled", "destination")),
     "process_gain": (2, ("ramp", "source", "destination")),
