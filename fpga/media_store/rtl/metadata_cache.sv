@@ -39,8 +39,7 @@ module metadata_cache #(
         || (BURST_MEMORY == 0 && phase == FILL_ACK && memory_response_valid && !memory_response_error);
     wire [31:0] ram_index = phase == ACCESS ? word_index : index;
     wire [31:0] ram_data = phase == ZERO ? 32'b0 : phase == ACCESS ? payload : memory_read_data;
-    wire [31:0] unused_ram;
-    wire unused_bits = &{1'b0,unused_ram,address[1:0]};
+    wire unused_bits = &{1'b0,address[1:0]};
     assign request_ready = phase == IDLE && !reset && !fault;
     assign response_valid = phase == RESPONSE && !reset;
     assign memory_valid = !reset && (phase == FILL_REQUEST || phase == WRITE_REQUEST
@@ -53,12 +52,11 @@ module metadata_cache #(
     assign memory_read_ready = BURST_MEMORY != 0 && phase == FILL_DATA && !reset;
     assign memory_response_ready = phase == FILL_ACK || phase == WRITE_ACK || phase == FILL_DATA
         || phase == WRITE_REQUEST || phase == WRITE_READ || phase == WRITE_DATA;
-    chunk_ram #(.DEPTH(LINES*LINE_WORDS),.ADDR_BITS(ADDRESS_BITS)) data_ram (
-        .clk(clk),.a_enable(read_ram),.a_write(1'b0),
-        .a_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+(phase == ACCESS ? word_index : index))),
-        .a_write_data(32'b0),.a_read_data(ram_read),
-        .b_enable(ram_write),.b_write(1'b1),.b_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+ram_index)),
-        .b_write_data(ram_data),.b_read_data(unused_ram)
+    media_ram #(.DEPTH(LINES*LINE_WORDS),.ADDR_BITS(ADDRESS_BITS)) data_ram (
+        .clk(clk),.read_enable(read_ram),
+        .read_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+(phase == ACCESS ? word_index : index))),
+        .read_data(ram_read),.write_enable(ram_write),
+        .write_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+ram_index)),.write_data(ram_data)
     );
     always @* begin
         hit = 0; hit_line = 0;
