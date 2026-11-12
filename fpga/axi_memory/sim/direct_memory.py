@@ -87,6 +87,7 @@ class DirectMemory:
 
     async def load_words(self, words, tick):
         assert len(words) == self.capacity
+        assert self.capacity == int(self.dut.sim_capacity.value), 'image and SV memory dimensions differ'
         self.image.write_text(''.join(f'{word & 0xffffffff:08x}\n' for word in words))
         await self.exchange(1, tick)
         self.loaded = True

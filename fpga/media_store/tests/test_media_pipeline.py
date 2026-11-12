@@ -433,7 +433,7 @@ async def pipeline_protocol(dut):
     await driver.load(value)
     wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0],
                                     await driver.quantum_audio(value["steps"][0]))
-    if driver.media.axi is not None and not driver.media.native_memory:
+    if driver.media.axi is not None and not driver.media.native_memory and CAPACITIES[3] >= 16:
         frames, cf = CAPACITIES[3], MEDIA[2]
         graph = {"quantum": frames, "chunk_frames": cf, "nodes": [
             {"kind": "input", "port": 0}, {"kind": "gain", "input": 0, "gain": 8388608},
@@ -481,6 +481,6 @@ async def pipeline_protocol(dut):
         await driver.load(value)
         wire.assert_audio_result_matches(trace["payload"]["value"]["results"][0],
                                         await driver.quantum_audio(value["steps"][0]))
-    elif driver.media.native_memory:
-        dut._log.info('Active-arithmetic fault placement uses the Python memory backend; run fixed or dramsim3 mode')
+    elif driver.media.axi is not None:
+        dut._log.info('Active-arithmetic fault placement needs a Python backend and >=16 frames; short jobs can finish before burst drain reports a fault')
     driver.media.close()

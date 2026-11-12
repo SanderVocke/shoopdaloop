@@ -1,0 +1,71 @@
+name: FPGA simulation memory
+
+on:
+  pull_request:
+    paths:
+      - 'fpga/**'
+      - 'PLAN_SIM_MEM.md'
+      - 'scripts/fpga_testbench/**'
+      - 'src/rust/rt_fpga_reference/**'
+      - 'src/rust/rt_fpga_testbench/**'
+      - '.github/workflows/fpga_simulation.yml'
+  push:
+    branches: [master, proto/fpga-rust-reference]
+    paths:
+      - 'fpga/**'
+      - '.github/workflows/fpga_simulation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fpga-memory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  memory:
+    name: FPGA ${{ matrix.model }} memory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [instant, dramsim3]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fpga-reference
+      - name: Install simulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes verilator g++ cmake patch python3-venv
+          python3 -m venv .venv
+          .venv/bin/pip install -r fpga/axi_memory/requirements.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Build the realistic timing model
+        if: matrix.model == 'dramsim3'
+        run: python fpga/axi_memory/build_dramsim3.py
+      - name: Check generated wrappers
+        run: python fpga/axi_memory/generate_tops.py --check
+      - name: Check native memory independently
+        if: matrix.model == 'instant'
+        run: |
+          python fpga/axi_memory/simulate_direct.py --output work/native-ci/model
+          python fpga/chunk_memory/simulate.py --config minimum --random-cases 1 --axi-data-width 64 --dram-library /missing/not-required.so --output work/native-ci/chunks
+      - name: Check endpoints and Rust pipeline comparisons
+        run: |
+          python fpga/axi_memory/simulate.py --memory-model ${{ matrix.model }} --output work/native-ci/endpoints
+          python fpga/media_store/simulate.py --pipeline --config small --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/audio
+          python fpga/loop_pipeline/simulate.py --media --config small --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/loops
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fpga-memory-${{ matrix.model }}
+          path: |
+            work/native-ci/**/*.log
+            work/native-ci/**/results.xml
+            work/native-ci/**/*summary.json
+          if-no-files-found: warn

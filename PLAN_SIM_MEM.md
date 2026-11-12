@@ -1,6 +1,6 @@
 # Native SystemVerilog memory for direct simulation
 
-Status: in progress on `proto/fpga-native-sim-memory`; stages 1–3 verified.
+Status: in progress on `proto/fpga-native-sim-memory`; stages 1–4 verified; CI/review delivery pending.
 Investigated at `54c616cf` on `proto/fpga-rust-reference`.
 
 ## Goal and scope
@@ -124,20 +124,20 @@ Stages are sequential. Each stage depends on the preceding stage's verification.
 
 ### 4. Validate end to end and document the result
 
-- [ ] Run the direct functional FPGA suites over normal, small/odd and minimum
+- [x] Run the direct functional FPGA suites over normal, small/odd and minimum
   applicable capacities. Cover 32-/64-bit buses, burst and word paths,
   recording/playback, shared ranges, wrapping, cache forwarding and slot reuse.
   Reuse existing Rust fixtures instead of inventing another expected model.
-- [ ] Run the Python-specific AXI/fault tests on DRAMsim3, including reset and
+- [x] Run the Python-specific AXI/fault tests on DRAMsim3, including reset and
   failures during processing, plus connected record/playback Rust comparisons.
   Keep unsupported direct cases explicitly routed to these checks.
-- [ ] Run the same four-quantum 64-loop fixture in direct and realistic modes.
+- [x] Run the same four-quantum 64-loop fixture in direct and realistic modes.
   Compare each to Rust; do not require their cycle counts to match. Confirm no
   Python AXI responder is active in direct mode and no native DDR dependency is
   loaded. Record host simulation time separately from simulated cycles/time.
-- [ ] Verify wrapper consistency and that synthesis manifests exclude the new
+- [x] Verify wrapper consistency and that synthesis manifests exclude the new
   model. No repeated full device synthesis is needed for testbench-only changes.
-- [ ] Update simulation documentation with commands, functional/realistic mode
+- [x] Update simulation documentation with commands, functional/realistic mode
   distinctions, supported direct controls and the observed wall-time comparison.
 
 ### 5. Deliver and validate CI/review
@@ -190,3 +190,19 @@ reset preserves backing storage. Snapshot checks now explicitly read that
 storage. The short-job active-arithmetic fault-placement test is explicitly
 Python-only because it depends on responder latency; ordinary direct faults,
 reset and playback fault propagation remain checked.
+
+Stage 4: native direct endpoint, chunk (both widths and all capacities), media,
+audio (including single-buffer multi-chunk), and connected suites pass. Direct
+connected coverage is 102 cases / 808 quanta. Realistic endpoint, audio (37 /
+93), and connected (39 / 254) suites also pass. The short-job scripted arithmetic
+fault check is restricted to >=16 frames: DDR burst drain can legitimately
+outlast shorter jobs. Both gain/mix fault placements remain checked in the
+full-size realistic profile; ordinary faults remain checked in all profiles.
+
+Four 64-loop quanta match Rust in native direct, Python zero-delay diagnostic,
+and realistic modes. Host simulation times excluding compilation are 21.19 s,
+33.33 s and 36.05 s in one local observation; these are not guaranteed speedups.
+Direct mode works with a missing DDR library and has no per-cycle memory
+responder API. Reports label backend/purpose and omit direct-mode DDR counters.
+Generated wrappers pass drift checks; synthesis lists do not include the model.
+A focused GitHub Actions workflow now covers native and realistic smokes.
