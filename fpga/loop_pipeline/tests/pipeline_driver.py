@@ -73,7 +73,7 @@ class PipelineDriver(Driver):
             await self.media.load(initial)
         else:
             assert case['media'] is None,'media-bearing cases require a sample-memory slave'
-    async def step(self, step):
+    async def step(self, step, *, snapshot_media=True):
         control=step['transition'];frame=(await self.status())['frame']
         collected=[]
         if control['collect_completed']:
@@ -140,5 +140,5 @@ class PipelineDriver(Driver):
         outputs=[[await self.sample(1,i*self.capacities[6]+f) for f in range(q)] for i in range(self.case['output_ports'])]
         audio=dict(jobs=emitted,remaining_jobs=remaining,state=state,buffers=buffers,outputs=outputs,
             stage='jobs',status={'kind':'completed'} if error is None else {'kind':'failed','value':{'error':error['error']}},media=None)
-        if self.case['media'] is not None and not (stage==3 and code==8): audio['media']=await self.media.snapshot()
+        if snapshot_media and self.case['media'] is not None and not (stage==3 and code==8): audio['media']=await self.media.snapshot()
         return dict(transition=transition,jobs=emitted,state=state,error=error,audio=audio)

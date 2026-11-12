@@ -64,7 +64,7 @@ async def resolver_conformance(dut):
                         data = 0 if view is None else (1 | (int("range" in view) << 1)
                             | view["frames"] << 64 | len(view["chunks"]) << 128)
                     else:
-                        view, ordinal = divmod(packet, slots)
+                        view, ordinal = divmod(packet, 1 << max(1,(slots-1).bit_length()))
                         data = metadata[view]["chunks"][ordinal]
                     pending[port] = [rng.randrange(4), data]
             if held.get("prefetch") is not None:

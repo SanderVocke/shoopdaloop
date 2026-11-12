@@ -29,10 +29,14 @@ async def indexed_metadata_reuse_and_limits(dut):
         value=int(dut.response_data.value)
         set(response_ready=1);await tick();set(response_ready=0)
         return value
+    await request(7,0,0)
+    await request(0,0,0,error=1)
+    await request(1,0,256,123,error=1)
     for i in range(32):await request(1,0,i,100+i)
     for i in range(16):await request(1,1,i,200+i)
     high=int(dut.metadata.high_water.value)
     await request(7,2,64,error=3)
+    await request(1,2,63,123,error=3)
     assert int(dut.metadata.high_water.value)==high
     for view,count in [(0,32),(1,16)]:
         for i in reversed(range(count)):assert await request(0,view,i)==100*(view+1)+i
@@ -58,4 +62,14 @@ async def indexed_metadata_reuse_and_limits(dut):
     memory.fail_next=True
     await request(0,2,0,error=5)
     assert int(dut.fault.value)
+    for op in (2,4,3,5):
+        set(reset=1);await tick();set(reset=0);await tick()
+        if op in (3,5):
+            await request(op,index=0,data=123)
+            memory.fail_next=True
+            await request(8,error=5)
+        else:
+            memory.fail_next=True
+            await request(op,index=0,error=5)
+        assert int(dut.fault.value)
     clock.kill()

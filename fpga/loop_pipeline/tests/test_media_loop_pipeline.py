@@ -148,6 +148,10 @@ async def fatal_resources_silence_and_reset(dut):
     image=wire.run_reference('compile',document('transition_plan',value['plan']),executable=REFERENCE)['payload']['value']
     driver=PipelineDriver(dut,DEPTHS);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
     try:
+        initial=empty(MEDIA,1)
+        initial['samples']=[0]*q
+        initial['free_chunks']=list(range(q//MEDIA[2]))
+        memory.initial_override=initial
         await driver.initialize(value,image)
         memory.pause_responses=True;memory.fail_next=True
         first=await driver.step(value['steps'][0])

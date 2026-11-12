@@ -8,6 +8,8 @@ parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer TABLE_PAGES = (SLOTS+14)/15 + 8*VIEWS + 16,
+    parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000
@@ -147,6 +149,20 @@ parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     wire memory_response_ready;
     wire memory_response_error;
     wire [31:0] memory_read_data;
+    wire memory_meta_valid;
+    wire memory_meta_ready;
+    wire memory_meta_write;
+    wire [63:0] memory_meta_address;
+    wire [31:0] memory_meta_write_data;
+    wire [31:0] memory_meta_count;
+    wire memory_meta_write_valid;
+    wire memory_meta_write_ready;
+    wire memory_meta_read_valid;
+    wire memory_meta_read_ready;
+    wire memory_meta_response_valid;
+    wire memory_meta_response_ready;
+    wire memory_meta_response_error;
+    wire [31:0] memory_meta_read_data;
     wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     wire [31:0] physical_base = PHYSICAL_BASE;
     media_audio_pipeline #(
@@ -161,16 +177,14 @@ parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),
+        .TABLE_PAGES(TABLE_PAGES),
+        .TABLE_LINES(TABLE_LINES),
+        .REF_LINES(REF_LINES),
+        .STACK_LINES(STACK_LINES),
         .READ_BUFFERS(READ_BUFFERS),
         .WRITE_BUFFERS(WRITE_BUFFERS),
         .BURST_MEMORY(BURST_MEMORY)) core (.*);
-    generate if (BURST_MEMORY != 0) begin : bursts
-        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
-    end else begin : words
-        wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
-        assign memory_write_ready = 0;
-        assign memory_read_valid = 0;
-        word_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
-    end endgenerate
-    axi_direct_memory #(.DATA_WIDTH(AXI_DATA_WIDTH),.WORDS(SLOTS*CHUNK_FRAMES),.BASE(PHYSICAL_BASE)) sim_memory (.*);
+    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS)+15)/16)*16 + 64'(TABLE_PAGES)*16;
+    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);
+    axi_direct_memory #(.DATA_WIDTH(AXI_DATA_WIDTH),.WORDS(32'(STORAGE_WORDS)),.BASE(PHYSICAL_BASE)) sim_memory (.*);
 endmodule

@@ -30,8 +30,26 @@ class ExecutionTiming:
         self.phases, self.jp_phases, self.tp_states = Counter(), Counter(), Counter()
         self.state_cycles = self.job_cycles = self.fill_wait = self.dma_cycles = 0
         self.jobs = []
+        self.completions = {}
+        self.metadata_start = self.metadata_snapshot()
         self.segment = None
         self.bus_segments = []
+
+    def metadata_snapshot(self):
+        if not hasattr(self.core.audio.media,'metadata'):return None
+        meta=self.core.audio.media.metadata
+        transport=self.dut.core.memory_endpoint.scheduler
+        result={}
+        for i,name in enumerate(('sample','metadata')):
+            for metric in ('reads','writes','bytes','wait_cycles'):
+                result[name+'_'+metric]=int(getattr(transport,metric)[i].value)
+        for i,name in enumerate(('table','reference','stack')):
+            cache=meta.banks[i].cache
+            for metric in ('hits','misses','fills','writebacks'):
+                result[name+'_'+metric]=int(getattr(cache,metric).value)
+        result['directory_reads']=int(meta.directory_reads.value)
+        result['table_reads']=int(meta.table_reads.value)
+        return result
 
     def snapshot(self):
         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
@@ -46,6 +64,9 @@ class ExecutionTiming:
                 self.start = cycle+1
             return
         time = cycle-self.start
+        for signal,label in (('state_done','state_done'),('jobs_done','jobs_done')):
+            if int(getattr(self.dut,signal).value):self.completions.setdefault(label,time)
+        if self.labels[int(self.core.phase.value)] == 'AUDIO_START':self.completions.setdefault('transition_settle_done',time)
         phase = self.labels[int(self.core.phase.value)]
         if self.segment is None:
             self.segment = (phase, self.snapshot())
@@ -53,6 +74,7 @@ class ExecutionTiming:
             self.bus_segments.append((self.segment[0], self.segment[1], self.snapshot()))
             self.segment = (phase, self.snapshot())
         if int(self.dut.done.value):
+            self.completions["finish_done"]=time
             self.total = time
             self.enabled = False
             return
@@ -94,7 +116,9 @@ class ExecutionTiming:
             group['cycles'] += row['end']-row['start']
         tp_cycles = sum(value for name,value in self.phases.items() if name.startswith(('SETTLE_', 'FINISH_')))
         active = self.total
-        return dict(raw_cycles=self.total,
+        metadata_end=self.metadata_snapshot()
+        delta={key:metadata_end[key]-self.metadata_start[key] for key in metadata_end} if metadata_end else None
+        return dict(completion_cycles=self.completions,metadata_statistics=delta,raw_cycles=self.total,
                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,
                     coordinator_phases=dict(self.phases), job_phases=dict(self.jp_phases),

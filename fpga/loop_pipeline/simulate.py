@@ -50,7 +50,7 @@ def main():
         ('job_processor',['jp_sample_ram.sv','jp_divider.sv','job_processor.sv','audio_pipeline.sv']),
         ('transition_processor',['tp_ram.sv','tp_priority.sv','transition_processor.sv']),
         ('chunk_memory',['chunk_ram.sv','chunk_memory.sv']),
-        ('media_store',['media_ram.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
+        ('media_store',['media_ram.sv','metadata_cache.sv','media_metadata.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
         ('loop_pipeline',['loop_pipeline.sv'])] for s in names]
     configs={name:CONFIGS[name] for name in ('default','small','odd')} if args.config=='all' else {args.config:CONFIGS[args.config]}
     for name,depths in configs.items():
@@ -59,9 +59,11 @@ def main():
         parameters=dict(zip(PARAMS,depths))
         parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),MEDIA_CONFIGS[name]))
         parameters['MEMORY_RESPONSE_CYCLES']=args.response_cycles
+        parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers)
         top='loop_pipeline_axi_tb' if axi else 'loop_pipeline_tb'
-        axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
+        axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','axi_burst_mux.sv','shared_axi.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
         test_top=ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv' if axi else HERE/'tests/loop_pipeline_tb.sv'
         if axi:parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
         runner.build(verilog_sources=direct_sources([*sources,*(axi_sources if axi else []),test_top],top,args.memory_model),includes=[ROOT/'fpga/state_processor/rtl'],

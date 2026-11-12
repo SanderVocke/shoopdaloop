@@ -143,37 +143,37 @@ Stages are sequential; each depends on the preceding stage's verification.
 
 ### 4. Add persistent metadata caches and stack buffering
 
-- [ ] Implement shared table/directory caching, pending-fill handling and append
+- [x] Implement shared table/directory caching, pending-fill handling and append
   updates; avoid deterministic conflicts among simultaneously active views.
-- [ ] Add the reference-count cache and free-stack top blocks, including dirty
+- [x] Add the reference-count cache and free-stack top blocks, including dirty
   eviction, burst write combining, cross-block push/pop and fresh-slot allocation.
-- [ ] Implement coherent debug access, explicit drain/invalidation, late-error
+- [x] Implement coherent debug access, explicit drain/invalidation, late-error
   propagation and reset handling. Counters distinguish table/directory/count/stack
   traffic, hits/misses, fills, evictions and writebacks.
-- [ ] Verify dirty forwarding, repeated count updates, partial writes, duplicate
+- [x] Verify dirty forwarding, repeated count updates, partial writes, duplicate
   prefetch/demand lookup, cache conflicts, cache smaller than working set, and
   mutations/page reuse during outstanding fills. Check cross-quantum reuse with
   no mutation avoids redundant DDR reads; do not promise hits after eviction.
 
 ### 5. Connect media, audio, full-loop execution and simulators
 
-- [ ] Replace metadata RAM accesses in `media_store` and
+- [x] Replace metadata RAM accesses in `media_store` and
   `media_prefetch_resolver` with service handshakes; adapt host configuration.
   Preserve append/read/range/reclaim semantics and retirement-before-free ordering.
-- [ ] Extend Fence and fault containment across metadata caches, sample caches
+- [x] Extend Fence and fault containment across metadata caches, sample caches
   and accepted transfers. Preserve automatic BeginCapture and idle configuration interlocks.
   Use existing bounded Reclaim for incremental cleanup; retain command semantics.
-- [ ] Wire standalone media, media/audio and loop tops, generated AXI/direct tops,
+- [x] Wire standalone media, media/audio and loop tops, generated AXI/direct tops,
   source lists, runners and the legacy word diagnostic path. Keep chunk-only and
   non-media tops working without an active metadata client.
-- [ ] Expand native-SV and Python/DRAMsim3 backing images and arena validation to
+- [x] Expand native-SV and Python/DRAMsim3 backing images and arena validation to
   cover all regions. Update initialization, restore, logical snapshot conversion
   and timeouts for variable latency; read actual RTL/DDR contents, not a shadow.
   Native mode must continue without Python per-cycle memory service or a DDR library.
-- [ ] Keep Rust's logical semantics and wire snapshots as the oracle. Add logical
+- [x] Keep Rust's logical semantics and wire snapshots as the oracle. Add logical
   fixtures/trace instrumentation only where coverage needs them; do not emulate
   hardware caching in Rust or alter outcomes to match a faulty physical layout.
-- [ ] At each boundary run a small Rust comparison: standalone media, audio,
+- [x] At each boundary run a small Rust comparison: standalone media, audio,
   then connected loops, followed by a realistic record/play/reuse smoke.
 
 ### 6. Validate end to end, synthesize and benchmark
@@ -305,3 +305,19 @@ readback and faults. Integrated small native media directed/random/protocol test
 match Rust after replacing the RAMs with the service. Debug table addresses now
 pack view above SLOT_BITS and ordinal below it, avoiding hardware division for
 odd capacities; logical snapshots retain their existing representation.
+
+The table service also retains one leaf translation per view in bounded root RAM,
+so sequential lookups reuse the leaf page without rereading every radix directory.
+Explicit invalidation clears these translations; trim invalidates the affected
+view. Small native media/audio and realistic standalone media comparisons pass.
+The baseline default AXI32 top maps to 24,691 LUT4, 13,716 FF, 91 DP16KD and four
+MULT18X18D; full counts are in `measurements/resources-baseline.json`.
+
+Stage 5: native standalone media, media/audio and coordinated small-loop tests
+pass, including fatal resource/bus errors, sticky silence, coordinated reset and
+late writeback faults. Realistic standalone and connected default/small runs
+also pass. Legacy scalar media remains usable through a second backing-port
+adapter. The late-writeback test prepares reusable slots and hot allocator
+metadata before pausing DDR: pausing cold metadata would intentionally block
+allocation rather than isolate a completed capture. Its fault/silence/clock
+assertions are retained. No Rust implementation changes were needed.

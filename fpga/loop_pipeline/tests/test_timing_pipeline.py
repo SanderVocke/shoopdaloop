@@ -1,5 +1,6 @@
 """Profile the complete 64-loop pipeline while comparing its full trace with Rust."""
 import json
+from copy import deepcopy
 import os
 from pathlib import Path
 import time
@@ -40,10 +41,15 @@ async def benchmark64(dut):
     started = time.perf_counter()
     try:
         await driver.initialize(value, image)
+        await memory.fence()
+        if hasattr(dut.core,'memory_endpoint') and hasattr(dut.core.memory_endpoint,'scheduler'):
+            await memory.configure(5,0,1)
         for index, (row, target) in enumerate(zip(value['steps'], expected['payload']['value']['results'])):
             reads, writes = memory.read_requests, memory.write_requests
             probe.begin()
-            actual = await driver.step(row)
+            actual = await driver.step(row,snapshot_media=False)
+            target=deepcopy(target)
+            target['audio']['media']=None
             if actual != target:
                 (output/'failure.observed.json').write_text(json.dumps(actual, indent=2)+'\n')
                 wire.dump(expected, output/'failure.expected.trace.json')
@@ -58,11 +64,17 @@ async def benchmark64(dut):
             dut._log.info('quantum %s: %s active cycles, TP=%s SP=%s JP=%s',
                           index, result['active_cycles'], result['transition_cycles'], result['state_cycles'],
                           result['job_cycles'])
+        fence_started=memory.cycles
+        await memory.fence()
+        fence_cycles=memory.cycles-fence_started
+        final_media=await memory.snapshot()
+        assert final_media==expected['payload']['value']['results'][-1]['audio']['media']
         statistics = memory.axi.report(final=True) if memory.axi is not None else None
         (output/'execution-timing.json').write_text(json.dumps(dict(configuration=metadata(),
             seed=20261110, random_stalls=False,
             loop_slots=64, request_slots=128, quantum_frames=32, chunk_frames=32,
             read_buffers=int(os.environ['LP_READ_BUFFERS']), write_buffers=int(os.environ['LP_WRITE_BUFFERS']),
+            final_fence_cycles=fence_cycles,observation="no intermediate media snapshots; cold metadata and sample caches",
             simulation_seconds=time.perf_counter()-started, results=results, memory_statistics=statistics), indent=2)+'\n')
     finally:
         memory.close()

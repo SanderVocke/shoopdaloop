@@ -43,7 +43,9 @@ def direct_top(source, endpoint=False):
     text = source[:match.start()]+f'module {match[1]} #(\n'+params+'\n) (\n'
     text += ',\n'.join('    '+p+n for p,n in ports)+',\n    '+ADMIN+'\n);'
     body = source[match.end():].rsplit('endmodule',1)[0]
-    width, words, base = ('DATA_WIDTH','SIM_WORDS','SIM_PHYSICAL_BASE') if endpoint else ('AXI_DATA_WIDTH','SLOTS*CHUNK_FRAMES','PHYSICAL_BASE')
+    width, words, base = ('DATA_WIDTH','SIM_WORDS','SIM_PHYSICAL_BASE') if endpoint else ('AXI_DATA_WIDTH',"32'(STORAGE_WORDS)" if 'parameter integer TABLE_PAGES'  in source else 'SLOTS*CHUNK_FRAMES','PHYSICAL_BASE')
+    if not endpoint and 'parameter integer TABLE_PAGES' in source and 'localparam [63:0] STORAGE_WORDS' not in source:
+        body += "    localparam integer STORAGE_WORDS = ((SLOTS*CHUNK_FRAMES+15)/16)*16 + 2*((SLOTS+15)/16)*16 + TABLE_PAGES*16;\n"
     body += f'    axi_direct_memory #(.DATA_WIDTH({width}),.WORDS({words}),.BASE({base})) sim_memory (.*);\nendmodule\n'
     return '// Generated functional simulation top; do not edit by hand.\n'+text+body
 
@@ -70,7 +72,8 @@ def generate():
         text += "    wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;\n"
         text += "    wire [31:0] physical_base = PHYSICAL_BASE;\n"
         text += f"    {name} #(\n        "+",\n        ".join(f".{p}({p})" for p in param_names)+") core (.*);\n"
-        text += """    generate if (BURST_MEMORY != 0) begin : bursts
+        if name == 'chunk_memory':
+            text += """    generate if (BURST_MEMORY != 0) begin : bursts
         chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH)) memory_endpoint (.arena_base(memory_arena_base),.*);
     end else begin : words
         wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
@@ -80,6 +83,9 @@ def generate():
     end endgenerate
 endmodule
 """
+        else:
+            text += "    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS)+15)/16)*16 + 64'(TABLE_PAGES)*16;\n"
+            text += "    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);\nendmodule\n"
         result[HERE/"rtl"/f"{name}_axi.sv"] = text
     original = (FPGA/"loop_pipeline/tests/loop_pipeline_tb.sv").read_text()
     match, ports = header(original)
@@ -88,7 +94,7 @@ endmodule
     text += ",\n    parameter integer AXI_DATA_WIDTH = 32,\n    parameter [31:0] PHYSICAL_BASE = 32'h01000000\n) (\n"
     text += ",\n".join("    "+p+n for p, n in public+axi_ports)+"\n);"
     body = original[match.end():].replace("    loop_pipeline #(", "    loop_pipeline_axi #(")
-    body = body.replace(".BURST_MEMORY(BURST_MEMORY)) core", ".BURST_MEMORY(BURST_MEMORY),\n        .AXI_DATA_WIDTH(AXI_DATA_WIDTH),.PHYSICAL_BASE(PHYSICAL_BASE)) core")
+    body = body.replace(".STACK_LINES(STACK_LINES)) core", ".STACK_LINES(STACK_LINES),\n        .AXI_DATA_WIDTH(AXI_DATA_WIDTH),.PHYSICAL_BASE(PHYSICAL_BASE)) core")
     body = re.sub(r"\bcore\.", "core.core.", body)
     private = [(p, n) for p, n in ports if n.startswith("memory_") and n != "memory_fault"]
     for prefix, name in private:

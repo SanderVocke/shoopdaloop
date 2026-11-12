@@ -27,12 +27,14 @@ module media_metadata #(
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
         TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT} phase_t;
     phase_t phase, resume;
-    reg [VIEWS-1:0] root_valid;
-    wire [63:0] root_data;
-    wire [31:0] unused_root = root_data[63:32];
+    reg [VIEWS-1:0] root_valid, leaf_valid;
+    wire [127:0] root_data;
     reg [31:0] view, ordinal, payload, root, used, page, level;
     reg [31:0] high_water, free_head, free_pages;
-    reg [31:0] allocated, parent_page;
+    reg [31:0] allocated, parent_page, cached_leaf, cached_index;
+    reg [63:0] operations [0:9];
+    reg [63:0] directory_reads, table_reads;
+    wire unused_operations = &{1'b0,directory_reads,table_reads,operations[0],operations[1],operations[2],operations[3],operations[4],operations[5],operations[6],operations[7],operations[8],operations[9]};
     reg [63:0] parent_address;
     reg [31:0] path_page [0:LEVELS-1];
     reg [63:0] path_address [0:LEVELS-1];
@@ -49,8 +51,6 @@ module media_metadata #(
     wire [2:0] bus_read_valid, bus_read_ready, bus_response_valid, bus_response_ready, bus_response_error;
     wire [191:0] bus_address;
     wire [95:0] bus_write_data, bus_count, bus_read_data;
-    wire [31:0] unused_roots = unused_root;
-    wire unused_bits = &{1'b0,unused_roots};
     assign fault = |cache_fault;
     assign request_ready = phase == IDLE && !reset && !fault;
     assign response_valid = phase == RESPONSE && !reset;
@@ -77,9 +77,9 @@ module media_metadata #(
     wire [63:0] additional = new_count > used ? nodes(new_count)-nodes(used) : 64'b0;
     wire [63:0] available = 64'(TABLE_PAGES)-{32'b0,high_water}+{32'b0,free_pages};
     wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (level*4)) & 64'd15)*4;
-    media_ram #(.WIDTH(64),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
-        .clk(clk),.read_enable(request_valid && request_ready),.read_address(VIEW_BITS'(request_view)),.read_data(root_data),
-        .write_enable(phase == PUBLISH),.write_address(VIEW_BITS'(view)),.write_data({used,root})
+    media_ram #(.WIDTH(128),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
+        .clk(clk),.read_enable(request_valid && request_ready && request_view < 32'(VIEWS)),.read_address(VIEW_BITS'(request_view)),.read_data(root_data),
+        .write_enable(phase == PUBLISH),.write_address(VIEW_BITS'(view)),.write_data({cached_leaf,cached_index,used,root})
     );
     generate for (genvar i=0; i<3; i=i+1) begin : banks
         wire [63:0] hits, misses, fills, writebacks;
@@ -111,15 +111,18 @@ module media_metadata #(
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; resume <= IDLE; root_valid <= 0; view <= 0; ordinal <= 0; payload <= 0;
+            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
-            allocated <= 0; parent_page <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
+            allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             scan_index <= 0; any_child <= 0; root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
             cache_opcode <= 0; cache_address <= 0; cache_data <= 0; value <= 0; cache_invalidate <= 0;
             response_data <= 0; response_error <= 0;
+            directory_reads <= 0; table_reads <= 0;
+            for (integer i=0; i<10; i=i+1) operations[i] <= 0;
         end else begin
             case (phase)
                 IDLE: if (request_valid && request_ready) begin
+                    if (request_opcode < 10) operations[request_opcode] <= operations[request_opcode]+1;
                     view <= request_view; ordinal <= request_index; payload <= request_data; opcode <= request_opcode;
                     root_exists <= request_view < 32'(VIEWS) && root_valid[VIEW_BITS'(request_view)];
                     checked <= 0; response_error <= 0; response_data <= 0; cache_invalidate <= request_opcode == 9;
@@ -128,6 +131,10 @@ module media_metadata #(
                 ROOT: begin
                     root <= root_exists ? root_data[31:0] : 0;
                     used <= root_exists ? root_data[63:32] : 0;
+                    cached_leaf <= root_exists && leaf_valid[VIEW_BITS'(view)] ? root_data[127:96] : 0;
+                    cached_index <= root_data[95:64];
+                    if (opcode == 9) leaf_valid <= 0;
+                    if (opcode == 6) begin leaf_valid[VIEW_BITS'(view)] <= 0; cached_leaf <= 0; end
                     if (opcode >= 8) phase <= FLUSH_NEXT;
                     else if (opcode >= 2 && opcode <= 5) begin
                         if (ordinal >= 32'(SLOTS)) begin response_error <= 1; phase <= RESPONSE; end
@@ -147,13 +154,19 @@ module media_metadata #(
                         response_error <= 3; phase <= RESPONSE;
                     end else if (opcode == 7) phase <= RESPONSE;
                     else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_NEXT; end
-                    else if (page == 0) begin
+                    else if (!checked && cached_leaf != 0 && cached_index == (ordinal >> 4)) begin
+                        page <= cached_leaf; level <= 0;
+                    end else if (page == 0) begin
                         if (opcode == 0) begin response_error <= 1; phase <= RESPONSE; end
                         else phase <= ALLOCATE;
                     end else begin
                         path_page[level] <= page; path_address[level] <= entry_address;
-                        if (level == 0) access_cache(0,opcode == 1 ? 2'd1 : 2'd0,entry_address,payload,ACCESS_DONE);
-                        else access_cache(0,0,entry_address,0,CHILD);
+                        if (level == 0) begin
+                            table_reads <= table_reads+64'(opcode == 0);
+                            access_cache(0,opcode == 1 ? 2'd1 : 2'd0,entry_address,payload,ACCESS_DONE);
+                        end else begin
+                            directory_reads <= directory_reads+1; access_cache(0,0,entry_address,0,CHILD);
+                        end
                     end
                 end
                 CHILD: begin
@@ -178,10 +191,16 @@ module media_metadata #(
                 end
                 ACCESS_DONE: begin
                     response_data <= value;
-                    if (opcode == 1) begin if (ordinal >= used) used <= ordinal+1; phase <= PUBLISH; end
-                    else phase <= RESPONSE;
+                    if (opcode < 2) begin
+                        cached_leaf <= page; cached_index <= ordinal >> 4;
+                        if (opcode == 1 && ordinal >= used) used <= ordinal+1;
+                        phase <= PUBLISH;
+                    end else phase <= RESPONSE;
                 end
-                PUBLISH: begin root_valid[VIEW_BITS'(view)] <= 1; phase <= RESPONSE; end
+                PUBLISH: begin
+                    root_valid[VIEW_BITS'(view)] <= 1;
+                    leaf_valid[VIEW_BITS'(view)] <= opcode < 2; phase <= RESPONSE;
+                end
                 RESPONSE: if (response_ready) phase <= IDLE;
                 CACHE_SEND: if (cache_ready[bank]) phase <= CACHE_WAIT;
                 CACHE_WAIT: if (cache_valid[bank]) begin

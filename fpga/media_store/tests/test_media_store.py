@@ -26,13 +26,13 @@ async def compare(dut, value, *, seed, stalls=True):
         await driver.load(value["media"])
         assert await driver.snapshot() == value["media"]
         for step, result in zip(value["steps"], expected["payload"]["value"]["results"]):
-            requests = driver.requests
+            requests = driver.sample_transactions
             actual = await driver.command(step, stalls=stalls)
             observed.append(actual)
             timing.append(driver.timing)
             wire.assert_media_result_matches(result, actual)
             if step["kind"] not in ("append", "read"):
-                assert driver.requests == requests, "metadata command accessed sample memory"
+                assert driver.sample_transactions == requests, "metadata command accessed sample memory"
     except BaseException as error:
         wire.dump(document("media_case", value), OUTPUT / "failure.case.json")
         wire.dump(expected, OUTPUT / "failure.expected.trace.json")
@@ -100,11 +100,13 @@ async def media_protocol(dut):
     result = await driver.command(command("append", view=0, samples=[117]*CAPACITIES[2]))
     assert result["status"]["kind"] == "completed", "ignored hint bound the old arena"
     await driver.load(case("empty", CAPACITIES[2], CAPACITIES[1], [])["media"])
-    for space, size in ((0, 4), (1, CAPACITIES[0]), (2, CAPACITIES[0]*CAPACITIES[1]),
+    for space, size in ((0, 4), (1, CAPACITIES[0]), (2, driver.table_address(CAPACITIES[0],0)),
                         (3, CAPACITIES[1]), (4, CAPACITIES[1]), (7, 0)):
         await driver.configure(space, size, 123, expect_error=True)
         await driver.configure(space, size, expect_error=True)
         await driver.configure(space, (1 << 32)-1, expect_error=True)
+    if CAPACITIES[1] & (CAPACITIES[1]-1):
+        await driver.configure(2,driver.table_address(0,CAPACITIES[1]),expect_error=True)
     await driver.configure(0, 0, CAPACITIES[0]+1, expect_error=True)
     for index in range(CAPACITIES[0]):
         result = await driver.command(command("create"))

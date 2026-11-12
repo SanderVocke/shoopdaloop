@@ -2,11 +2,13 @@ module media_store #(
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
+    parameter integer TABLE_PAGES = (SLOTS+14)/15 + 8*VIEWS + 16,
+    parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4,
     parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0,
     parameter integer VIEW_BITS = (VIEWS < 2) ? 1 : $clog2(VIEWS),
     parameter integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS),
-    parameter integer TABLE_BITS = (VIEWS * SLOTS < 2) ? 1 : $clog2(VIEWS * SLOTS)
+    parameter integer TABLE_BITS = VIEW_BITS + SLOT_BITS
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base,
@@ -31,6 +33,14 @@ module media_store #(
     input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_meta_valid, input wire memory_meta_ready,
+    output wire memory_meta_write, output wire [63:0] memory_meta_address,
+    output wire [31:0] memory_meta_write_data,
+    output wire [31:0] memory_meta_count,
+    output wire memory_meta_write_valid, input wire memory_meta_write_ready,
+    input wire memory_meta_read_valid, output wire memory_meta_read_ready,
+    input wire memory_meta_response_valid, output wire memory_meta_response_ready,
+    input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
     input wire cfg_valid, output wire cfg_ready, input wire cfg_write,
     input wire [2:0] cfg_space, input wire [31:0] cfg_address,
     input wire [159:0] cfg_write_data,
@@ -60,7 +70,7 @@ module media_store #(
     reg [159:0] descriptor_write_data;
     reg [31:0] table_write_data, ref_write_data, free_write_data;
     wire [159:0] descriptor_data;
-    wire [31:0] table_data, reference_data, free_data;
+    reg [31:0] table_data, reference_data, free_data;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
     reg cfg_pending, faulted, cfg_was_write;
     reg [2:0] cfg_response_space;
@@ -93,14 +103,15 @@ module media_store #(
     wire cfg_accept = cfg_valid && cfg_ready;
     wire cfg_in_range = (cfg_space == 0) ? cfg_address < 4
         : (cfg_space == 1) ? cfg_address < 32'(VIEWS)
-        : (cfg_space == 2) ? cfg_address < 32'(VIEWS*SLOTS)
+        : (cfg_space == 2) ? ((cfg_address >> SLOT_BITS) < 32'(VIEWS) && (cfg_address & ((32'd1 << SLOT_BITS)-1)) < 32'(SLOTS))
+        : (cfg_space == 5) ? cfg_address == 0 && cfg_write
         : ((cfg_space == 3) || (cfg_space == 4)) && (cfg_address < 32'(SLOTS));
     wire cfg_value_valid = !cfg_write || (cfg_space == 1)
         || ((cfg_write_data[159:32] == 0)
             && ((cfg_space != 0) || (cfg_write_data[31:0] <= ((cfg_address == 0) ? 32'(VIEWS) : 32'(SLOTS)))));
     wire [31:0] control_ordinal = (opcode == SLICE) ? first_chunk + index : index;
-    wire [TABLE_BITS-1:0] control_address = TABLE_BITS'(view_index * 32'(SLOTS) + control_ordinal);
-    wire [TABLE_BITS-1:0] sample_address = TABLE_BITS'(view_index * 32'(SLOTS) + 32'(absolute_sample >> SHIFT));
+    wire [TABLE_BITS-1:0] control_address = TABLE_BITS'((view_index << SLOT_BITS) | control_ordinal);
+    wire [TABLE_BITS-1:0] sample_address = TABLE_BITS'((view_index << SLOT_BITS) | 32'(absolute_sample >> SHIFT));
     wire [31:0] word_offset = (phase == ZERO_REQUEST) ? zero_index : absolute_sample[31:0] & 32'(CHUNK_FRAMES-1);
     wire [31:0] samples_left = count-sample_index;
     wire [31:0] chunk_left = 32'(CHUNK_FRAMES) - (absolute_sample[31:0] & 32'(CHUNK_FRAMES-1));
@@ -115,12 +126,12 @@ module media_store #(
     wire unused_resolver_addresses = &{1'b0,resolver_descriptor_address,resolver_table_address};
     wire resolver_descriptor_valid, resolver_table_valid;
     wire descriptor_grant = resolver_descriptor_valid && !descriptor_read && !reset;
-    wire table_grant = resolver_table_valid && !table_read && !reset;
+    wire table_grant;
+    wire [31:0] resolver_table_data;
     wire [VIEW_BITS-1:0] descriptor_ram_address = descriptor_read ? descriptor_read_address
         : resolver_descriptor_address[VIEW_BITS-1:0];
-    wire [TABLE_BITS-1:0] table_ram_address = table_read ? table_read_address
-        : resolver_table_address[TABLE_BITS-1:0];
-    reg descriptor_response, table_response;
+    reg descriptor_response;
+    reg table_response;
     wire hint_base_valid = arena_base[1:0] == 0 && arena_base <= 64'hffffffffffffffff-ARENA_BYTES
         && (!arena_bound || arena_base == base);
     wire hint_admission = !faulted && !reset && (arena_bound || (phase == IDLE && !cmd_valid));
@@ -131,7 +142,11 @@ module media_store #(
     wire cm_command = phase == ZERO_REQUEST || phase == SAMPLE_REQUEST || phase == RETIRE_REQUEST || phase == FENCE_REQUEST;
     wire [2:0] cm_opcode = phase == FENCE_REQUEST ? 3'd3 : phase == RETIRE_REQUEST ? 3'd4
         : phase == ZERO_REQUEST || opcode == APPEND ? 3'd1 : 3'd0;
-    assign unused_cm_status = &{1'b0,cm_read_last,cm_response_id,cm_busy};
+    assign unused_cm_status = &{1'b0,cm_read_last,cm_response_id,cm_busy,cm_arena_base};
+    wire cm_fault, metadata_fault;
+    wire [63:0] cm_arena_base;
+    assign memory_fault = cm_fault || metadata_fault;
+    assign memory_arena_base = arena_bound ? base : arena_base;
 
     function automatic [159:0] pack_view(input valid, input range_view,
         input [31:0] first_offset, input [63:0] frame_count, input [31:0] chunk_count);
@@ -139,16 +154,16 @@ module media_store #(
     endfunction
 
     initial begin
-        if ((VIEWS < 1) || (VIEWS > 65536) || (SLOTS < 1) || (SLOTS > 65536)
-            || (CHUNK_FRAMES < 1) || (CHUNK_FRAMES > 65536)
+        if ((VIEWS < 1) || (VIEWS > 65536) || (SLOTS < 1)
+            || (TABLE_BITS > 32) || (CHUNK_FRAMES < 1) || (CHUNK_FRAMES > 65536)
             || ((CHUNK_FRAMES & (CHUNK_FRAMES-1)) != 0)
-            || (64'(VIEWS) * 64'(SLOTS) > 64'hffffffff))
+           )
             $fatal(1, "Invalid media store capacities");
     end
     assign busy = phase != IDLE;
     assign cmd_ready = !busy && !cfg_pending && !cfg_valid && !faulted && !reset;
     assign hint_ready = resolver_ready && hint_admission;
-    assign cfg_ready = !busy && !cfg_pending && !reset;
+    assign cfg_ready = !busy && !cfg_pending && !reset && advance;
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_read_data = (cfg_response_error || cfg_was_write) ? 160'b0
         : (cfg_response_space == 0) ? cfg_globals_data
@@ -167,11 +182,11 @@ module media_store #(
         .write_valid((phase == ZERO_DATA || (cm_data_write && write_valid)) && !reset),
         .write_ready(cm_write_ready), .write_data(phase == ZERO_DATA ? 32'b0 : write_data),
         .read_valid(cm_read_valid), .read_ready(cm_data_read && read_ready), .read_data(cm_read_data), .read_last(cm_read_last),
-        .response_valid(cm_response_valid), .response_ready(cm_response_ready), .response_id(cm_response_id), .response_error(cm_response_error),
+        .response_valid(cm_response_valid), .response_ready(cm_response_ready && advance), .response_id(cm_response_id), .response_error(cm_response_error),
         .prefetch_valid(resolver_prefetch_valid && prefetch_admission), .prefetch_ready(cm_prefetch_ready), .prefetch_chunk(resolver_prefetch_chunk),
-        .busy(cm_busy), .fault(memory_fault),
+        .busy(cm_busy), .fault(cm_fault),
         .memory_valid(memory_valid), .memory_ready(memory_ready), .memory_write(memory_write),
-        .memory_address(memory_address), .memory_write_data(memory_write_data), .memory_arena_base(memory_arena_base),
+        .memory_address(memory_address), .memory_write_data(memory_write_data), .memory_arena_base(cm_arena_base),
         .memory_count(memory_count), .memory_write_valid(memory_write_valid),
         .memory_write_ready(memory_write_ready), .memory_read_valid(memory_read_valid),
         .memory_read_ready(memory_read_ready),
@@ -187,32 +202,109 @@ module media_store #(
         .descriptor_valid(resolver_descriptor_valid), .descriptor_ready(descriptor_grant),
         .descriptor_address(resolver_descriptor_address), .descriptor_response(descriptor_response), .descriptor_data(descriptor_data),
         .table_valid(resolver_table_valid), .table_ready(table_grant), .table_address(resolver_table_address),
-        .table_response(table_response), .table_data(table_data),
+        .table_response(table_response), .table_data(resolver_table_data),
         .prefetch_valid(resolver_prefetch_valid), .prefetch_ready(cm_prefetch_ready && prefetch_admission), .prefetch_chunk(resolver_prefetch_chunk)
     );
     always @(posedge clk) begin
-        if (reset) begin descriptor_response <= 0; table_response <= 0; end
-        else begin descriptor_response <= descriptor_grant; table_response <= table_grant; end
+        if (reset) begin descriptor_response <= 0; end
+        else begin descriptor_response <= descriptor_grant; end
     end
 
     media_ram #(.WIDTH(160), .DEPTH(VIEWS), .ADDR_BITS(VIEW_BITS)) descriptors (
         .clk(clk), .read_enable((descriptor_read || descriptor_grant) && !reset),
         .read_address(descriptor_ram_address), .read_data(descriptor_data),
-        .write_enable(descriptor_write && !reset), .write_address(descriptor_write_address), .write_data(descriptor_write_data)
+        .write_enable(descriptor_write && advance && !reset), .write_address(descriptor_write_address), .write_data(descriptor_write_data)
     );
-    media_ram #(.DEPTH(VIEWS*SLOTS), .ADDR_BITS(TABLE_BITS)) tables (
-        .clk(clk), .read_enable((table_read || table_grant) && !reset),
-        .read_address(table_ram_address), .read_data(table_data),
-        .write_enable(table_write && !reset), .write_address(table_write_address), .write_data(table_write_data)
+    reg [3:0] metadata_done;
+    reg metadata_pending, metadata_prefetch, metadata_writing;
+    reg [1:0] metadata_slot;
+    reg [7:0] metadata_error;
+    reg [31:0] hint_table_data;
+    wire [31:0] metadata_result;
+    wire [7:0] metadata_result_error;
+    wire metadata_ready, metadata_valid;
+    reg [3:0] metadata_opcode;
+    reg [31:0] metadata_view, metadata_index, metadata_data;
+    reg [1:0] metadata_selected;
+    wire checking = phase == CHECK && ((opcode == APPEND && count != 0 && !descriptor[1]
+        && append_chunks <= {32'b0,slot_limit} && {32'b0,slot_count}+growth <= {32'b0,slot_limit})
+        || (opcode == SLICE && start <= frames && length <= frames-start && range_chunks <= 64'(SLOTS) && view_count < 32'(VIEWS)));
+    wire trimming = phase == PUBLISH && (opcode == CLEAR || opcode == REMOVE || opcode == RECLAIM);
+    wire draining = phase == FENCE_WAIT && cm_response_valid && cm_response_error == 0;
+    wire debug_drain = phase == IDLE && cfg_valid && !cfg_pending && cfg_space == 5 && cfg_in_range && cfg_value_valid;
+    wire [3:0] metadata_required = {checking || trimming || draining || debug_drain,
+        free_read || free_write, ref_read || ref_write, table_read || table_write};
+    wire advance = (metadata_required & ~metadata_done) == 0;
+    wire foreground_metadata = !advance;
+    wire issue_metadata = !metadata_pending && !reset && (foreground_metadata ||
+        (resolver_table_valid && !cfg_valid && !faulted));
+    wire is_prefetch = !foreground_metadata;
+    assign table_grant = issue_metadata && is_prefetch && metadata_ready;
+    assign resolver_table_data = hint_table_data;
+    always @* begin
+        metadata_opcode = 0; metadata_view = resolver_table_address >> SLOT_BITS;
+        metadata_index = resolver_table_address & ((32'd1 << SLOT_BITS)-1); metadata_data = 0; metadata_selected = 0;
+        if (foreground_metadata) begin
+            if (metadata_required[0] && !metadata_done[0]) begin
+                metadata_selected = 0; metadata_opcode = {3'b0,table_write};
+                metadata_view = 32'(table_write ? table_write_address : table_read_address) >> SLOT_BITS;
+                metadata_index = 32'(table_write ? table_write_address : table_read_address) & ((32'd1 << SLOT_BITS)-1);
+                metadata_data = table_write_data;
+            end else if (metadata_required[1] && !metadata_done[1]) begin
+                metadata_selected = 1; metadata_opcode = ref_write ? 4'd3 : 4'd2;
+                metadata_index = 32'(ref_write ? ref_write_address : ref_read_address); metadata_data = ref_write_data;
+            end else if (metadata_required[2] && !metadata_done[2]) begin
+                metadata_selected = 2; metadata_opcode = free_write ? 4'd5 : 4'd4;
+                metadata_index = 32'(free_write ? free_write_address : free_read_address); metadata_data = free_write_data;
+            end else begin
+                metadata_selected = 3;
+                metadata_opcode = checking ? 4'd7 : trimming ? 4'd6 : debug_drain ? 4'd9 : 4'd8;
+                metadata_view = opcode == SLICE ? view_count : view_index;
+                metadata_index = checking ? (opcode == SLICE ? range_chunks[31:0] : append_chunks[31:0]) : new_chunks;
+            end
+        end
+    end
+    media_metadata #(.VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),.TABLE_PAGES(TABLE_PAGES),
+        .TABLE_LINES(TABLE_LINES),.REF_LINES(REF_LINES),.STACK_LINES(STACK_LINES),.BURST_MEMORY(BURST_MEMORY)) metadata (
+        .clk(clk),.reset(reset),.arena_base(memory_arena_base),
+        .request_valid(issue_metadata),.request_ready(metadata_ready),.request_opcode(metadata_opcode),
+        .request_view(metadata_view),.request_index(metadata_index),.request_data(metadata_data),
+        .response_valid(metadata_valid),.response_ready(metadata_pending),
+        .response_data(metadata_result),.response_error(metadata_result_error),.fault(metadata_fault),
+        .memory_valid(memory_meta_valid),.memory_ready(memory_meta_ready),.memory_write(memory_meta_write),
+        .memory_address(memory_meta_address),.memory_write_data(memory_meta_write_data),.memory_count(memory_meta_count),
+        .memory_write_valid(memory_meta_write_valid),.memory_write_ready(memory_meta_write_ready),
+        .memory_read_valid(memory_meta_read_valid),.memory_read_ready(memory_meta_read_ready),
+        .memory_response_valid(memory_meta_response_valid),.memory_response_ready(memory_meta_response_ready),
+        .memory_response_error(memory_meta_response_error),.memory_read_data(memory_meta_read_data)
     );
-    media_ram #(.DEPTH(SLOTS), .ADDR_BITS(SLOT_BITS)) counts (
-        .clk(clk), .read_enable(ref_read && !reset), .read_address(ref_read_address), .read_data(reference_data),
-        .write_enable(ref_write && !reset), .write_address(ref_write_address), .write_data(ref_write_data)
-    );
-    media_ram #(.DEPTH(SLOTS), .ADDR_BITS(SLOT_BITS)) free_ids (
-        .clk(clk), .read_enable(free_read && !reset), .read_address(free_read_address), .read_data(free_data),
-        .write_enable(free_write && !reset), .write_address(free_write_address), .write_data(free_write_data)
-    );
+    always @(posedge clk) begin
+        if (reset) begin
+            metadata_done <= 0; metadata_pending <= 0; metadata_prefetch <= 0; metadata_writing <= 0; metadata_slot <= 0;
+            metadata_error <= 0; table_data <= 0; reference_data <= 0; free_data <= 0;
+            hint_table_data <= 0; table_response <= 0;
+        end else begin
+            table_response <= 0;
+            if (advance) begin metadata_done <= 0; metadata_error <= 0; end
+            if (issue_metadata && metadata_ready) begin
+                metadata_pending <= 1; metadata_prefetch <= is_prefetch; metadata_slot <= metadata_selected; metadata_writing <= metadata_opcode[0];
+            end
+            if (metadata_valid && metadata_pending) begin
+                metadata_pending <= 0;
+                if (metadata_prefetch) begin
+                    hint_table_data <= metadata_result_error == 0 ? metadata_result : 32'hffffffff; table_response <= 1;
+                end else begin
+                    metadata_done[metadata_slot] <= 1; metadata_error <= metadata_result_error;
+                    if (!metadata_writing) case (metadata_slot)
+                        0: table_data <= metadata_result;
+                        1: reference_data <= metadata_result;
+                        2: free_data <= metadata_result;
+                        default: begin end
+                    endcase
+                end
+            end
+        end
+    end
 
     always @* begin
         descriptor_read = 0; descriptor_write = 0; table_read = 0; table_write = 0;
@@ -220,7 +312,7 @@ module media_store #(
         descriptor_read_address = VIEW_BITS'(view_index);
         descriptor_write_address = VIEW_BITS'(((opcode == CREATE) || (opcode == SLICE) || phase == BEGIN_CREATE) ? view_count : view_index);
         table_read_address = control_address;
-        table_write_address = TABLE_BITS'(view_index * 32'(SLOTS) + append_index);
+        table_write_address = TABLE_BITS'((view_index << SLOT_BITS) | append_index);
         ref_read_address = SLOT_BITS'(chunk); ref_write_address = SLOT_BITS'(chunk);
         free_read_address = SLOT_BITS'(free_count-1); free_write_address = SLOT_BITS'(free_count);
         descriptor_write_data = ((opcode == CREATE) || (opcode == SLICE) || new_valid)
@@ -235,7 +327,7 @@ module media_store #(
                 if (opcode == SLICE) begin
                     ref_write_data = reference_data + 1;
                     table_write = 1;
-                    table_write_address = TABLE_BITS'(view_count * 32'(SLOTS) + index);
+                    table_write_address = TABLE_BITS'((view_count << SLOT_BITS) | index);
                 end else begin
                     ref_write_data = reference_data - 1;
                     free_write = reference_data == 1;
@@ -248,7 +340,7 @@ module media_store #(
             SAMPLE_TABLE_READ: begin table_read = 1; table_read_address = sample_address; end
             default: begin end
         endcase
-        if (cfg_accept && cfg_in_range && cfg_value_valid) begin
+        if (cfg_valid && !cfg_pending && phase == IDLE && cfg_in_range && cfg_value_valid) begin
             case (cfg_space)
                 1: begin
                     descriptor_read = !cfg_write; descriptor_write = cfg_write;
@@ -316,7 +408,8 @@ module media_store #(
             fresh <= 0;
             arena_bound <= 0;
         end else begin
-            done <= 0;
+            done <= 0; cfg_pending <= 0;
+            if (advance && metadata_error == 0) begin
             if (cm_command && cm_cmd_ready) arena_bound <= 1;
             if (hint_valid && hint_ready && hint_base_valid) begin
                 if (!arena_bound) base <= arena_base;
@@ -553,6 +646,12 @@ module media_store #(
                 FINISH: begin done <= 1; phase <= IDLE; end
                 default: begin error_code <= INVALID_STATE; faulted <= 1; phase <= FINISH; end
             endcase
+            end else if (advance && metadata_error != 0) begin
+                error_code <= metadata_error;
+                if (phase == IDLE) begin
+                    cfg_pending <= cfg_accept; cfg_response_error <= 1; cfg_was_write <= cfg_write;
+                end else phase <= FINISH;
+            end
             if (memory_fault) begin
                 faulted <= 1; error_code <= MEMORY_FAULT;
                 if (phase != IDLE && phase != FINISH) phase <= FINISH;

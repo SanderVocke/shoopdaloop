@@ -63,7 +63,13 @@ async def coherent_cache_and_transport(dut):
             image[index]=value
             assert await request(client,0,memory.base+4*index)==value
         await request(client,3)
-    await Combine(cocotb.start_soon(stream(0)),cocotb.start_soon(stream(1)))
+    async def stalls():
+        for flag in ('hold_ar','hold_aw','hold_w','pause_responses'):
+            setattr(memory,flag,True)
+            for _ in range(15):await tick()
+            setattr(memory,flag,False)
+            for _ in range(7):await tick()
+    await Combine(cocotb.start_soon(stream(0)),cocotb.start_soon(stream(1)),cocotb.start_soon(stalls()))
     assert await memory.read_words(tick)==image
     fills=int(dut.c0_fills.value)
     for _ in range(5):assert await request(0,0,memory.base+4*(7*words))==image[7*words]
@@ -79,4 +85,19 @@ async def coherent_cache_and_transport(dut):
     assert not int(dut.c0_fault.value)
     assert await request(0,0,memory.base)==0
     assert await memory.read_words(tick)==image
+    memory.pause_responses=True
+    set(c1_request_valid=1,c1_request_opcode=0,c1_request_address=memory.base+4*3000)
+    for _ in range(1000):
+        await tick()
+        if int(dut.sim_busy.value):break
+    else:raise AssertionError('no active transfer for reset')
+    set(c1_request_valid=0,reset=1);await tick();set(reset=0)
+    memory.pause_responses=False
+    for _ in range(5):await tick()
+    assert not int(dut.sim_busy.value)
+    assert await request(1,0,memory.base+4*3000)==image[3000]
+    await request(1,1,memory.base+4*3000,123)
+    memory.fail_next=True
+    await request(1,3,error=True)
+    assert int(dut.c1_fault.value)
     clock.kill()
