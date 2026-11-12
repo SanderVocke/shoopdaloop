@@ -81,7 +81,7 @@ def main():
             parameters.update(zip(("PROGRAM_DEPTH", "STATE_DEPTH", "JOB_DEPTH", "MAX_FRAMES", "BUFFERS", "INPUT_PORTS", "OUTPUT_PORTS"), audio))
             parameters["MEMORY_RESPONSE_CYCLES"] = args.response_cycles
         if axi:
-            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "chunk_dma.sv", "word_dma.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
             top += "_axi"
             parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
         runner.build(verilog_sources=direct_sources(sources,top,args.memory_model), includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,

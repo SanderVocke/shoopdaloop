@@ -61,7 +61,7 @@ def main():
         parameters['MEMORY_RESPONSE_CYCLES']=args.response_cycles
         parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers)
         top='loop_pipeline_axi_tb' if axi else 'loop_pipeline_tb'
-        axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
+        axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
         test_top=ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv' if axi else HERE/'tests/loop_pipeline_tb.sv'
         if axi:parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
         runner.build(verilog_sources=direct_sources([*sources,*(axi_sources if axi else []),test_top],top,args.memory_model),includes=[ROOT/'fpga/state_processor/rtl'],

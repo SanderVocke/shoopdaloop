@@ -102,20 +102,20 @@ Stages are sequential; each depends on the preceding stage's verification.
 
 ### 1. Establish the branch, baseline and physical contracts
 
-- [ ] Fetch upstream, inspect local work and create a dedicated implementation
+- [x] Fetch upstream, inspect local work and create a dedicated implementation
   branch. Preserve the native-SV simulation work when selecting/merging the base;
   do not assume it has already reached `proto/fpga-rust-reference`.
-- [ ] Save the exact original `playback64` fixture, revision and DRAMsim3 timing
+- [x] Save the exact original `playback64` fixture, revision and DRAMsim3 timing
   JSON using the command below. Run one small record/play/reuse Rust comparison.
-- [ ] Freeze the burst-client handshake, address map, paged-vector format/index
+- [x] Freeze the burst-client handshake, address map, paged-vector format/index
   depth, cache parameters, metadata-page allocation and capacity-refusal rules.
   Cover every metadata user: media FSM, resolver, config, snapshots and restores.
-- [ ] Audit the existing 65,536-slot guard and address widths. Account for the
+- [x] Audit the existing 65,536-slot guard and address widths. Account for the
   reference case of 64 stereo loops, 30 s at 48 kHz: 5.76 million 32-frame chunks
   and 703.125 MiB of samples. The current DDR profile is only 512 MiB; distinguish
   architecture/address-sizing checks from that profile's physical capacity.
   A full-duration behavioral simulation is not required.
-- [ ] Verify layout arithmetic and limits, including metadata exhaustion before
+- [x] Verify layout arithmetic and limits, including metadata exhaustion before
   mutation. Record baseline resources and the selected arbitration/cache policy.
 
 ### 2. Add the common DDR burst transport
@@ -291,3 +291,9 @@ count additional radix nodes before mutation. Table/reference/stack caches are
 separate; serial foreground ownership provides coherent read/modify/write.
 The common endpoint arbitrates at complete AXI burst boundaries, round-robin
 between sample and metadata clients, with one transaction outstanding.
+
+Stage 2: all existing endpoint/adapter suites pass at both widths after the DMA
+extraction. Shared two-client cache/transport tests pass AXI32/64 with 16-/64-word
+lines, forcing multi-burst interleaving, dirty eviction, held responses, zeroing,
+fences, cache hits, error propagation and coordinated reset. The small realistic
+record/play/reuse regression passes after integrating upstream.

@@ -32,7 +32,7 @@ def main():
             output = args.output.resolve()/f"{top}-{width}"
             output.mkdir(parents=True, exist_ok=True)
             runner = get_runner("verilator")
-            runner.build(verilog_sources=direct_sources([HERE/"rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv")],top,args.memory_model),
+            runner.build(verilog_sources=direct_sources([HERE/"rtl"/name for name in ("axi_master.sv", "chunk_dma.sv", "word_dma.sv", "word_axi.sv", "chunk_axi.sv")],top,args.memory_model),
                          hdl_toplevel=top, parameters={"DATA_WIDTH": width, **({"SIM_PHYSICAL_BASE":args.physical_base} if args.memory_model == "instant" else {})},
                          build_args=["--Wall", "--timescale", "1ns/1ps"], build_dir=output/"build",
                          log_file=output/"build.log", always=True)
