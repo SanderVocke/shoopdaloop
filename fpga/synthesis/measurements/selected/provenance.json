@@ -1,0 +1,13 @@
+{
+  "revision": "bb885ddad1bbaa6a69c229cd0deddcc898d5b84b",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/synthesis/run.py",
+    "--vivado",
+    "/workspace/shoopdaloop/work/vivado-zynq/tool-root/tools/Xilinx/Vivado/2021.1/bin/vivado",
+    "--output",
+    "work/vivado-zynq/merged-r4"
+  ],
+  "part": "xc7z020clg400-1",
+  "clock_mhz": 100
+}

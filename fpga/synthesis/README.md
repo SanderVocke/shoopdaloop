@@ -24,8 +24,48 @@ master. It excludes PS7, its DDR controller, the ARM control adapter and audio I
 There is no bitstream or physical board signoff. Integration must re-close timing.
 The context's register/LUT overhead is reported separately from core utilization.
 
-Before upstream integration, the optimized 64-loop core met 100 MHz with +0.010 ns
-setup and +0.005 ns hold slack in Vivado 2021.1. That run used the earlier on-chip
-metadata design, 1,024 sample chunks and 256 program/job entries; it is not a
-measurement of the current DDR-backed metadata design. Post-integration results
-will be recorded here after the pull request is pushed and remeasured.
+See [measured results](measurements/RESULTS.md) for the routed timing, utilization,
+source hashes and validation evidence for the integrated DDR-backed design.
+
+## Pipeline choices
+
+Most added stages are at command or job boundaries. Existing RAM waits are used
+for work that can be prepared early. No additional per-sample cycles are added.
+
+| Area | Work moved or simplified | Extra cycles |
+| --- | --- | --- |
+| Transition processor | Stage timestamp rounding, transition decisions and Finish accumulation. Cache quantum masks and checks during existing RAM waits. | Submit +2; evaluated transition intent +1; whole-quantum Finish +1. |
+| Media store | Stage append/slice/reclaim planning and configuration. Prepare sample spans and offsets during table waits. | Nonempty Append +6; Slice +4; Reclaim +3; configuration +2 plus its metadata wait. |
+| Metadata | Separate node counting, capacity arithmetic and comparison; register requests; narrow cache word counters. Use a RAM template with one read port and one write port. | Write/capacity-check +1; request boundary +1 per operation. |
+| AXI | Stage address mapping and validation; bound chunk transfer counters. | +1 per chunk command, independent of beats or later bursts. |
+| Gain | Register multiplier operands and precompute signed ramp steps. | +1 fill/drain cycle per Gain job; sample cadence unchanged. |
+| State processor | Compare captured playback position and length during the existing request phase. | Playing-but-empty/finished silence +1; active playback unchanged. |
+| Prefetch/cache | Convert hints before FIFO storage; prepare spans during table waits; use fixed priority scans and separate demand priority from command validation. | None. |
+
+The hint FIFO stores frame positions/lengths and an overflow-valid bit. Its chunk
+shift is constant within a quantum, and a new run resets the FIFO. Preparing the
+conversion on the write side preserves hint order, latency and range checks.
+
+Speculative fills yield to a pending command while the cache is idle. If the
+command is a write blocked by full buffers, an outstanding buffer fill or a dirty
+writeback already takes priority. This removes command-shape arithmetic from
+prefetch arbitration while preserving demand priority.
+
+## Functional verification
+
+The common runner compares production Rust and RTL processing, output/media
+samples, loop state, events and outcomes. Useful targeted checks are:
+
+```sh
+python fpga/verification/simulate.py --config odd --block-chunks 32 \
+  --directed --random-cases 3 --stalls --faults --axi-data-width 64
+python fpga/verification/simulate.py --config 8x8 --benchmark64 \
+  --block-chunks 32 --axi-data-width 64
+python fpga/media_store/simulate_metadata.py
+python fpga/audio_io/simulate_pipeline.py --p 16 --frame-cycles 1600 \
+  --axi-data-width 64 --stalls
+python fpga/axi_memory/generate_tops.py --check
+```
+
+The scenario runners build the production oracle automatically. See
+[verification setup](../verification/README.md) for simulator dependencies.

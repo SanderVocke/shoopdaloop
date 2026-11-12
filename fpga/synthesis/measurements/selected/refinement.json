@@ -1,0 +1,11 @@
+{
+  "base_run": "merged-r4",
+  "base_checkpoint_sha256": "98dc33ac4ed705a34a58f8a2fb0e0be031f62a7a19b7d9a5dabd6b4bfdc14bea",
+  "commands": [
+    "phys_opt_design -directive AggressiveExplore",
+    "route_design"
+  ],
+  "clock_mhz": 100,
+  "user_uncertainty_ns": 0.2,
+  "summary_export": "Parsed from completed Vivado timing report after correcting the one-off script summary formatter (missing part variable). The tracked full flow defines part."
+}
