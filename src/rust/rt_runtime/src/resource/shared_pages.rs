@@ -4,6 +4,7 @@
 
 use super::{get, index, release, slots, Page, ResourceStore, Slot, WorkClass};
 use crate::Error;
+use crate::Sample;
 use alloc::{boxed::Box, vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -13,7 +14,8 @@ pub(super) struct LeaseId {
     generation: u32,
 }
 
-pub(super) struct SharedPages {
+pub(super) struct SharedPages<S: Sample = f32> {
+    sample: core::marker::PhantomData<S>,
     scope: u32,
     store_scope: u32,
     references: Box<[usize]>,
@@ -21,8 +23,8 @@ pub(super) struct SharedPages {
     free_leases: Vec<usize>,
 }
 
-impl SharedPages {
-    pub fn prepare(store: &ResourceStore, leases: usize) -> Result<Self, Error> {
+impl<S: Sample> SharedPages<S> {
+    pub fn prepare(store: &ResourceStore<S>, leases: usize) -> Result<Self, Error> {
         if leases == 0 {
             return Err(Error::InvalidConfig);
         }
@@ -49,6 +51,7 @@ impl SharedPages {
             };
         }
         Ok(Self {
+            sample: core::marker::PhantomData,
             scope: index::new_scope()?,
             store_scope: store.scope,
             references,
@@ -57,7 +60,7 @@ impl SharedPages {
         })
     }
 
-    fn check_store(&self, store: &ResourceStore) -> Result<(), Error> {
+    fn check_store(&self, store: &ResourceStore<S>) -> Result<(), Error> {
         if self.store_scope != store.scope {
             return Err(Error::InvalidId);
         }
@@ -82,7 +85,7 @@ impl SharedPages {
         }
     }
 
-    fn reserve_page(&self, store: &mut ResourceStore) -> Result<(), Error> {
+    fn reserve_page(&self, store: &mut ResourceStore<S>) -> Result<(), Error> {
         self.check_store(store)?;
         if self.free_leases.is_empty() || store.free_pages.len() == store.reserved_pages {
             return Err(Error::Capacity);
@@ -90,7 +93,7 @@ impl SharedPages {
         store.charge_external(store.config.limits().page_bytes, 0)
     }
 
-    fn publish(&mut self, store: &mut ResourceStore, page: usize) -> LeaseId {
+    fn publish(&mut self, store: &mut ResourceStore<S>, page: usize) -> LeaseId {
         store.pages[page] = Page {
             used: store.config.limits().page_bytes,
             ..Page::default()
@@ -100,12 +103,12 @@ impl SharedPages {
 
     pub fn insert_audio(
         &mut self,
-        store: &mut ResourceStore,
-        samples: &[f32],
+        store: &mut ResourceStore<S>,
+        samples: &[S],
     ) -> Result<LeaseId, Error> {
         self.check_store(store)?;
         let page_bytes = store.config.limits().page_bytes;
-        if samples.len() != page_bytes / size_of::<f32>() {
+        if samples.len() != page_bytes / size_of::<S>() {
             return Err(Error::InvalidShape);
         }
         self.reserve_page(store)?;
@@ -121,7 +124,7 @@ impl SharedPages {
 
     pub(super) fn insert_bytes_render(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         bytes: &[u8],
     ) -> Result<LeaseId, Error> {
         self.check_store(store)?;
@@ -140,7 +143,7 @@ impl SharedPages {
 
     pub(super) fn reclaim_render(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         lease: LeaseId,
     ) -> Result<bool, Error> {
         self.check_store(store)?;
@@ -183,9 +186,9 @@ impl SharedPages {
     /// exposing the new contents. Shared pages must instead be forked.
     pub fn replace_audio(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         lease: LeaseId,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<LeaseId, Error> {
         self.check_store(store)?;
         let page = self.page(lease)?;
@@ -215,7 +218,7 @@ impl SharedPages {
     /// return the page immediately. No retirement queue is scanned.
     pub fn reclaim_lease(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         lease: LeaseId,
     ) -> Result<bool, Error> {
         self.check_store(store)?;
@@ -234,7 +237,11 @@ impl SharedPages {
         Ok(remaining == 0)
     }
 
-    pub fn bytes<'a>(&self, store: &'a ResourceStore, lease: LeaseId) -> Result<&'a [u8], Error> {
+    pub fn bytes<'a>(
+        &self,
+        store: &'a ResourceStore<S>,
+        lease: LeaseId,
+    ) -> Result<&'a [u8], Error> {
         self.check_store(store)?;
         let page = self.page(lease)?;
         let page_bytes = store.config.limits().page_bytes;
@@ -245,10 +252,10 @@ impl SharedPages {
     /// original lease and every other reader remain unchanged on success or failure.
     pub fn fork_with_patch(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         source: LeaseId,
         first_sample: usize,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<LeaseId, Error> {
         self.check_store(store)?;
         let source = self.page(source)?;
@@ -280,7 +287,7 @@ impl SharedPages {
         Ok(self.publish(store, page))
     }
 
-    pub fn release(&mut self, store: &mut ResourceStore, lease: LeaseId) -> Result<(), Error> {
+    pub fn release(&mut self, store: &mut ResourceStore<S>, lease: LeaseId) -> Result<(), Error> {
         self.check_store(store)?;
         let page = self.page(lease)?;
         let remaining = self.references[page]

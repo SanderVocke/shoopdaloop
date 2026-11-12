@@ -1,6 +1,7 @@
 //! All-member interval reservation, staging, and publication.
 use super::*;
 use crate::buffer::MidiBuffer;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureTickId {
@@ -15,7 +16,7 @@ pub(super) struct TickReservation {
     bytes: usize,
     events: usize,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub(in crate::resource) fn capture_tick_end(
         &self,
         interval: CaptureTickId,
@@ -203,7 +204,7 @@ impl ResourceStore {
         &mut self,
         interval: CaptureTickId,
         ordinal: usize,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
         let (_, mut member) = self.tick_member(interval, ordinal)?;

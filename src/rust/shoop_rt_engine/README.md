@@ -229,6 +229,12 @@ cargo test -p shoop_rt_engine --release
 
 ## Limits of this milestone
 
+Gain/balance DSP uses the shared [audio arithmetic](../rt_audio_math/README.md)
+and sample-duration ramps: sample zero retains the start value, sample D reaches
+the target, and a short ramp holds its target through the rest of the block.
+The application engine remains float; the runtime, loop library and shared DSP
+can separately instantiate Q8.24 processing at compile time.
+
 Pools are fixed after preparation (`GROWABLE_LIMITS` is not announced). As in
 the legacy engine, turning monitoring off releases the notes the monitoring feed
 passed through, while MIDI disconnects and output mute send no note cleanup.

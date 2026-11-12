@@ -44,6 +44,7 @@ mod history;
 mod input;
 pub use history::HistoryCapacity;
 mod description;
+pub mod dsp;
 mod endpoint;
 mod family;
 mod global_midi;

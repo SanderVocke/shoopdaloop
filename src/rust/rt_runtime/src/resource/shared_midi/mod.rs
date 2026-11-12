@@ -4,6 +4,7 @@ use super::{
     shared_pages::{LeaseId, SharedPages},
     RenderIo, ResourceStore, Slot, WorkClass,
 };
+use crate::Sample;
 use crate::{buffer::MidiBuffer, midi::Message, midi_state::MidiState, Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
@@ -173,7 +174,7 @@ struct Job {
     owner: usize,
 }
 
-pub struct MidiStore {
+pub struct MidiStore<S: Sample = f32> {
     scope: u32,
     store_scope: u32,
     config: Config,
@@ -198,7 +199,7 @@ pub struct MidiStore {
     views: Vec<Slot<View>>,
     initial: Box<[MidiState]>,
     free_views: Vec<usize>,
-    pages: SharedPages,
+    pages: SharedPages<S>,
     reserved: usize,
     debt: usize,
     owners: usize,
@@ -244,9 +245,9 @@ fn jobs(count: usize) -> Vec<Job> {
     result
 }
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
     pub fn prepare(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
         initial: &MidiState,
@@ -348,7 +349,7 @@ impl MidiStore {
             free_bases: (0..base_slots).rev().collect(),
         })
     }
-    fn check(&self, store: &ResourceStore) -> Result<(), Error> {
+    fn check(&self, store: &ResourceStore<S>) -> Result<(), Error> {
         if store.scope != self.store_scope {
             return Err(Error::InvalidId);
         }
@@ -517,12 +518,12 @@ impl MidiStore {
         self.drop_root(root, self.views.len(), false);
         Ok(())
     }
-    pub fn maintain(&mut self, store: &mut ResourceStore) -> Result<usize, Error> {
+    pub fn maintain(&mut self, store: &mut ResourceStore<S>) -> Result<usize, Error> {
         self.maintain_limit(store, usize::MAX)
     }
     pub(super) fn maintain_limit(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         limit: usize,
     ) -> Result<usize, Error> {
         if store.scope != self.store_scope {

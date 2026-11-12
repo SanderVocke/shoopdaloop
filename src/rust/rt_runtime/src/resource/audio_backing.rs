@@ -1,5 +1,6 @@
 //! Shared audio behind the ordinary resource/snapshot ownership boundary.
 use super::*;
+use crate::Sample;
 use core::ops::Range;
 
 /// Prepared for the lifetime of its resource store; never serialized.
@@ -39,7 +40,7 @@ pub struct AudioWrite {
     write: shared_audio::Write,
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn audio_store_capacity(
         &mut self,
         id: AudioStoreId,
@@ -95,7 +96,10 @@ impl ResourceStore {
     pub(super) fn with_audio<T>(
         &mut self,
         id: AudioStoreId,
-        operation: impl FnOnce(&mut ResourceStore, &mut shared_audio::AudioStore) -> Result<T, Error>,
+        operation: impl FnOnce(
+            &mut ResourceStore<S>,
+            &mut shared_audio::AudioStore<S>,
+        ) -> Result<T, Error>,
     ) -> Result<T, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
@@ -113,7 +117,7 @@ impl ResourceStore {
     pub fn audio_coverage(&self, id: AudioStoreId) -> Result<Range<Frame>, Error> {
         self.audio(id)?.coverage()
     }
-    fn audio(&self, id: AudioStoreId) -> Result<&shared_audio::AudioStore, Error> {
+    fn audio(&self, id: AudioStoreId) -> Result<&shared_audio::AudioStore<S>, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
@@ -435,7 +439,7 @@ impl ResourceStore {
     }
 }
 
-impl RenderIo<'_> {
+impl<S: Sample> RenderIo<'_, S> {
     pub fn audio_source_discontinuity(
         &mut self,
         id: AudioHistoryId,
@@ -449,7 +453,7 @@ impl RenderIo<'_> {
         &mut self,
         id: AudioHistoryId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.store.with_audio(id.store, |store, audio| {
             audio.append_history(&mut store.render_io(), id.history, frame, samples)
@@ -468,7 +472,7 @@ impl RenderIo<'_> {
         &mut self,
         id: AudioStoreId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.store.with_audio(id, |store, audio| {
             audio.append(&mut store.render_io(), frame, samples)
@@ -479,7 +483,7 @@ impl RenderIo<'_> {
         &mut self,
         resource: ResourceId,
         expected: Revision,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         let mut owner = self.store.check_writer(resource, None)?;
         if owner.revision != expected {
@@ -511,7 +515,7 @@ impl RenderIo<'_> {
         resource: ResourceId,
         expected: Revision,
         position: Option<u64>,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<AudioWrite, Error> {
         let owner = self.store.check_writer(resource, None)?;
         if owner.revision != expected {
@@ -541,7 +545,7 @@ impl RenderIo<'_> {
         &mut self,
         resource: ResourceId,
         expected: Revision,
-        samples: &[f32],
+        samples: &[S],
         spans: &[shared_audio::ChannelWrite],
     ) -> Result<AudioWrite, Error> {
         let owner = self.store.check_writer(resource, None)?;
@@ -614,7 +618,7 @@ impl RenderIo<'_> {
         resource: ResourceId,
         expected: Revision,
         position: u64,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         let mut owner = self.store.check_writer(resource, None)?;
         if owner.revision != expected {
@@ -645,7 +649,7 @@ impl RenderIo<'_> {
         expected: Revision,
         channel: usize,
         position: u64,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         let mut owner = self.store.check_writer(resource, None)?;
         if owner.revision != expected {
@@ -676,7 +680,7 @@ impl RenderIo<'_> {
     }
 }
 
-impl ResourceIo<'_> {
+impl<S: Sample> ResourceIo<'_, S> {
     pub fn empty_audio(&mut self, store: AudioStoreId) -> Result<ResourceId, Error> {
         self.store.empty_audio(store)
     }

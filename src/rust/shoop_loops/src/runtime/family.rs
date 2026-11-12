@@ -1,4 +1,5 @@
 use super::*;
+use rt_runtime::Sample;
 
 pub const CONTENT_FAMILY_RECORD_BYTES: usize = 64;
 
@@ -119,13 +120,13 @@ fn descendant(
     Err(crate::Error::InvalidState)
 }
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     pub(super) fn select_family(
         &mut self,
         root: LoopId,
         expected: Epoch,
         payload: &[u8],
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<(), Failure> {
         if expected != self.resolver.epoch()
             || payload.is_empty()

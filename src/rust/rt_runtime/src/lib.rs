@@ -1,5 +1,11 @@
 //! Generic, bounded audio/MIDI processing primitives.
 //!
+//! Audio uses a static [`Sample`] policy, defaulting to f32 throughout buffers,
+//! processors and media. [`Q824`] selects raw fixed-point processing; it does not
+//! change the application's float device or persistence formats. Adapters must
+//! convert those formats explicitly. Typed processor/planner operations preserve
+//! raw fixed controls; the legacy float parameter action is an external boundary.
+//!
 //! This crate always uses `no_std` with `alloc`. Hosts supply allocation and panic
 //! handling; targets need pointer-width and 32-bit atomic operations.
 //!
@@ -39,6 +45,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub use rt_profiling as profiling;
 
+pub use rt_audio_math::{Sample, Q824};
 pub mod buffer;
 pub mod config;
 pub mod error;

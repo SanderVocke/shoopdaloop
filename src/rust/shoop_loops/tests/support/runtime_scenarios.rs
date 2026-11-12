@@ -1486,8 +1486,8 @@ fn integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts() {
                     * 4.
                     * if channel == 0 { 1. } else { 10. }
                     * if frame >= 4 { -0.5 } else { 1. };
-                elapsed = (elapsed + 1).min(3);
                 let weight = elapsed as f32 / 3.;
+                elapsed = (elapsed + 1).min(3);
                 last = anchor * (1. - weight) + raw * weight;
                 expected[channel][frame] = last * 0.5;
                 position += 1;
@@ -1566,8 +1566,8 @@ fn stereo_balance_follows_decisions_and_is_reported_in_the_cut() {
                     * 4.
                     * if channel == 0 { 1. } else { 10. }
                     * if channel == 1 && frame >= 4 { 0.5 } else { 1. };
-                elapsed = (elapsed + 1).min(3);
                 let weight = elapsed as f32 / 3.;
+                elapsed = (elapsed + 1).min(3);
                 last = anchor * (1. - weight) + raw * weight;
                 expected[channel][frame] = last * 0.5;
                 position += 1;
@@ -1779,8 +1779,8 @@ fn smoothing_operations_apply_from_the_next_restart_and_are_reported() {
                     length = if frame == 0 { 3 } else { 2 };
                 }
                 let raw = (position + 1) as f32 * 4. * if channel == 0 { 1. } else { 10. };
-                elapsed = (elapsed + 1).min(length);
                 let weight = elapsed as f32 / length as f32;
+                elapsed = (elapsed + 1).min(length);
                 last = anchor * (1. - weight) + raw * weight;
                 expected[channel][frame] = last * 0.5;
                 position += 1;

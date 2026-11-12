@@ -1,4 +1,5 @@
 use super::*;
+use rt_runtime::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LiveWriterId {
@@ -53,7 +54,7 @@ pub(super) struct LiveSlot {
     pub reservation: Option<LoopId>,
     pub value: Option<LiveJob>,
 }
-impl Shared {
+impl<S: Sample> Shared<S> {
     pub(in crate::runtime) fn reserve_autonomous(&mut self, target: LoopId) -> Result<(), Error> {
         if self
             .live
@@ -74,7 +75,7 @@ impl Shared {
     pub(in crate::runtime) fn release_unused_reservations(
         &mut self,
         needed: impl Fn(LoopId) -> bool,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         for index in 0..self.live.len() {
             let slot = &self.live[index];
@@ -129,7 +130,7 @@ impl Shared {
         windows: Windows,
         channels: usize,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if job.wet.is_some() && job.active
@@ -188,7 +189,7 @@ impl Shared {
     pub(in crate::runtime) fn cancel_orphaned_autonomous(
         &mut self,
         live_target: impl Fn(LoopId) -> bool,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         for index in 0..self.live.len() {
             let slot = &self.live[index];
@@ -251,7 +252,7 @@ impl Shared {
         growth_owners: usize,
         windows: Windows,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<LiveWriterId, Error> {
         let mut snapshots = [None; 2];
         let result = (|| {
@@ -288,7 +289,7 @@ impl Shared {
         growth_owners: usize,
         windows: Windows,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         unobserved_source: bool,
     ) -> Result<LiveWriterId, Error> {
         if self.live_for(fence.target).is_some() {
@@ -454,7 +455,7 @@ impl Shared {
         windows: Windows,
         midi: Option<Snapshot>,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<LiveWriterId, Error> {
         if self.live_for(fence.target).is_some() {
             return Err(Error::Busy);
@@ -549,7 +550,7 @@ impl Shared {
         id: LiveWriterId,
         snapshot: Option<Snapshot>,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if !job.ready || job.following_recording.is_none() {
@@ -595,7 +596,7 @@ impl Shared {
         job: &mut LiveJob,
         frame: Frame,
         steps: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         if job.ready || job.active && job.following_recording.is_none() || job.failure.is_some() {
             return Ok(());
@@ -634,7 +635,7 @@ impl Shared {
         job.ready = true;
         Ok(())
     }
-    pub fn progress_live(&mut self, frame: Frame, io: &mut ResourceIo<'_>) {
+    pub fn progress_live(&mut self, frame: Frame, io: &mut ResourceIo<'_, S>) {
         if self.live_building == 0 {
             return;
         }
@@ -673,7 +674,7 @@ impl Shared {
         &mut self,
         id: LiveWriterId,
         position: u64,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if job.active && job.following_recording.is_none() || !job.ready {
@@ -712,7 +713,7 @@ impl Shared {
         source: u32,
         frame: Frame,
         q: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         self.write_live_targets(source, frame, q, None, io)
     }
@@ -722,8 +723,8 @@ impl Shared {
         id: LiveWriterId,
         frame: Frame,
         q: usize,
-        ports: &AudioPorts<'_>,
-        io: &mut ResourceIo<'_>,
+        ports: &AudioPorts<'_, S>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if !job.processed {
@@ -753,7 +754,7 @@ impl Shared {
         frame: Frame,
         q: usize,
         target: Option<LoopId>,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let h = self.source(source)?;
         let generation = h.generation;
@@ -947,7 +948,7 @@ impl Shared {
         id: LiveWriterId,
         fence: Fence,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<LiveWriterId, Error> {
         let job = self.live_job(id)?;
         if !job.active || !matches!(job.kind, indexed_midi::WriteKind::Growing { .. }) {
@@ -989,7 +990,7 @@ impl Shared {
         &mut self,
         id: LiveWriterId,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<[Option<Snapshot>; 3], Error> {
         let job = self.live_job(id)?;
         if !job.active {
@@ -1036,7 +1037,7 @@ impl Shared {
         &mut self,
         id: LiveWriterId,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(u64, [Option<Snapshot>; 3]), Error> {
         let mut job = self.live_job(id)?;
         if !job.active {
@@ -1079,7 +1080,11 @@ impl Shared {
             },
         ))
     }
-    pub fn cancel_live(&mut self, id: LiveWriterId, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub fn cancel_live(
+        &mut self,
+        id: LiveWriterId,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if let Some(wet) = job.wet {
             if let Some(export) = wet.export {
@@ -1105,7 +1110,7 @@ impl Shared {
         slot.generation = slot.generation.checked_add(1).unwrap_or(0);
         Ok(())
     }
-    pub fn cancel_all_live(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub fn cancel_all_live(&mut self, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         for index in 0..self.live.len() {
             if self.live[index].value.is_some() {
                 self.cancel_live(
@@ -1123,13 +1128,13 @@ impl Shared {
     }
 }
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     pub(in crate::runtime) fn refresh_wet_reservation(
         &mut self,
         slot: usize,
         decision: Decision,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
@@ -1191,7 +1196,7 @@ impl LoopPlanner {
         id: LiveWriterId,
         decision: Decision,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let view = self.ledger.view(
@@ -1253,7 +1258,7 @@ impl LoopPlanner {
         &mut self,
         slot: usize,
         decision: Decision,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<Option<Take>, Error> {
         if decision.state.mode == Mode::Replacing {
             let row = self.rows[slot].ok_or(Error::InvalidId)?;

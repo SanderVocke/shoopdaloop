@@ -3,6 +3,7 @@
 //! Raw resource/snapshot IDs require same-store caller discipline. Scoped indexes
 //! additionally check instance and lease generation; copying either acquires no lease.
 
+use crate::Sample;
 mod reservation;
 pub use reservation::ReservedSnapshotId;
 mod boundary;
@@ -167,7 +168,7 @@ impl Cursor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SnapshotReservation(SnapshotId);
 
-pub struct ResourceStore {
+pub struct ResourceStore<S: Sample = f32> {
     quantum: Quantum,
     scope: u32,
     config: PreparedConfig,
@@ -192,9 +193,9 @@ pub struct ResourceStore {
     midi_indexes: MidiPool,
     capture_groups: CapturePool,
     control_phase: bool,
-    audio_stores: Vec<Option<Box<shared_audio::AudioStore>>>,
+    audio_stores: Vec<Option<Box<shared_audio::AudioStore<S>>>>,
     audio_maintenance: usize,
-    midi_stores: Vec<Option<Box<shared_midi::MidiStore>>>,
+    midi_stores: Vec<Option<Box<shared_midi::MidiStore<S>>>>,
     midi_maintenance: usize,
     indexed_midi_stores: Vec<Option<Box<indexed_midi::Store>>>,
     indexed_midi_maintenance: usize,
@@ -231,10 +232,20 @@ fn release<T: Copy>(slots: &mut [Slot<T>], free: &mut Vec<usize>, index: usize) 
     }
 }
 
-impl ResourceStore {
+impl ResourceStore<f32> {
     pub fn new(config: PreparedConfig, quantum: Quantum) -> Result<Self, Error> {
+        Self::new_numeric(config, quantum)
+    }
+}
+
+impl<S: Sample> ResourceStore<S> {
+    /// Prepare media whose audio bytes are little-endian `S` samples. For f32
+    /// these are IEEE-754 bits; Q824 uses signed raw i32 bits. Upload/export byte
+    /// APIs preserve this encoding. Convert device/persistence floats explicitly
+    /// with `Sample::from_f32` / `to_f32` at the owning adapter boundary.
+    pub fn new_numeric(config: PreparedConfig, quantum: Quantum) -> Result<Self, Error> {
         let limits = config.limits();
-        if quantum.frames() > limits.max_frames {
+        if quantum.frames() > limits.max_frames || size_of::<S>() != 4 {
             return Err(Error::InvalidConfig);
         }
         for (count, size) in [
