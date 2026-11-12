@@ -8,9 +8,11 @@ ELF, operating system, application integration or audio hardware is required.
 The goal is processing-time measurement. There is no expected-output comparison.
 An unverified rolling output digest keeps the arithmetic results observable.
 Faults, workload completion and watchdog expiry remain visible so that a stalled
-or failed run cannot be mistaken for a fast successful run. Resource evaluation
+or failed run cannot be mistaken for a fast successful run. Resource optimization
 and timing closure are outside this workflow; the selected fabric clock is an
 input, rather than a frequency-search result.
+See [routed resource usage](RESOURCES.md) for totals and the subsystem breakdown
+of the existing 64-loop benchmark RTL checkpoint.
 
 ## AXI connection
 
