@@ -17,15 +17,16 @@ def main():
     sys.path[:0]=[str(HERE/"tests"),str(ROOT/"fpga/axi_memory/sim")]
     if sys.prefix != sys.base_prefix:os.environ.setdefault("VIRTUAL_ENV",sys.prefix)
     for width in (32,64):
-        for words in (16,64):
+        for words in (16,64,0):
+            top='media_metadata_tb' if words==0 else 'metadata_cache_tb'
             out=args.output.resolve()/f'{width}-{words}';out.mkdir(parents=True,exist_ok=True)
             runner=get_runner('verilator')
             sources=[ROOT/'fpga/axi_memory/rtl'/f'{name}.sv' for name in ('axi_master','chunk_dma','word_dma','axi_burst_mux','shared_axi')]
-            sources += [ROOT/'fpga/chunk_memory/rtl/chunk_ram.sv',HERE/'rtl/metadata_cache.sv',
-                        ROOT/'fpga/axi_memory/tests/axi_direct_memory.sv',HERE/'tests/metadata_cache_tb.sv']
-            runner.build(verilog_sources=sources,hdl_toplevel='metadata_cache_tb',parameters=dict(DATA_WIDTH=width,LINE_WORDS=words),
+            sources += [ROOT/'fpga/chunk_memory/rtl/chunk_ram.sv',HERE/'rtl/media_ram.sv',HERE/'rtl/metadata_cache.sv',HERE/'rtl/media_metadata.sv',
+                        ROOT/'fpga/axi_memory/tests/axi_direct_memory.sv',HERE/'tests'/f'{top}.sv']
+            runner.build(verilog_sources=sources,hdl_toplevel=top,parameters=dict(DATA_WIDTH=width,LINE_WORDS=words or 16),
                          build_args=['--Wall','--timescale','1ns/1ps'],build_dir=out/'build',log_file=out/'build.log')
-            result=runner.test(hdl_toplevel='metadata_cache_tb',test_module='test_metadata_cache',test_dir=out,
+            result=runner.test(hdl_toplevel=top,test_module='test_media_metadata' if words==0 else 'test_metadata_cache',test_dir=out,
                 log_file=out/'simulation.log',extra_env={'PYTHONPATH':':'.join(map(str,(HERE/'tests',ROOT/'fpga/axi_memory/sim'))),
                     'METADATA_LINE_WORDS':str(words)})
             tree=ET.parse(result)

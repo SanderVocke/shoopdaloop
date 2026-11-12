@@ -120,24 +120,24 @@ Stages are sequential; each depends on the preceding stage's verification.
 
 ### 2. Add the common DDR burst transport
 
-- [ ] Separate sample burst preparation/packing from `axi_master`, introduce
+- [x] Separate sample burst preparation/packing from `axi_master`, introduce
   sample/metadata clients and a shared scheduler, and retain sample-only tops.
-- [ ] Implement owner tracking, fair demand/writeback service, advisory priority,
+- [x] Implement owner tracking, fair demand/writeback service, advisory priority,
   errors and reset. Never wait for another client's request while retaining a grant.
-- [ ] Verify both widths with independent client scoreboards: mixed reads/writes,
+- [x] Verify both widths with independent client scoreboards: mixed reads/writes,
   prolonged R/B and AW/W stalls, competing requests, multi-burst fairness, 4 KiB
   boundaries, errors and reset. Rerun the existing sample endpoint/chunk smokes.
 
 ### 3. Build compact DDR metadata storage
 
-- [ ] Implement paged lists, directory lookup/growth/release and a bounded metadata
+- [x] Implement paged lists, directory lookup/growth/release and a bounded metadata
   page allocator. Keep only descriptor roots/counts and small control on chip.
-- [ ] Add DDR-indexed reference and free-stack storage behind latency-tolerant
+- [x] Add DDR-indexed reference and free-stack storage behind latency-tolerant
   interfaces. Preflight sample slots and metadata space before publishing growth;
   make refused allocation preserve logical state as required by Rust.
-- [ ] Provide logical metadata load/readback operations for tests and host config.
+- [x] Provide logical metadata load/readback operations for tests and host config.
   Derive reference-count expectations independently from logical view ownership.
-- [ ] Verify empty/partial/multi-page lists, random ordinal access, directory/page
+- [x] Verify empty/partial/multi-page lists, random ordinal access, directory/page
   boundaries, shared ranges, exhaustion, page release/reuse and address bounds.
   Test with small capacities so failures and reuse occur quickly.
 
@@ -297,3 +297,11 @@ extraction. Shared two-client cache/transport tests pass AXI32/64 with 16-/64-wo
 lines, forcing multi-burst interleaving, dirty eviction, held responses, zeroing,
 fences, cache hits, error propagation and coordinated reset. The small realistic
 record/play/reuse regression passes after integrating upstream.
+
+Stages 3/4: standalone paged metadata passes AXI32/64 with two table lines and
+one reference/stack line, including exhaustion without mutation, random indexed
+reads, dirty eviction, cross-block stack access, trim and page reuse, physical
+readback and faults. Integrated small native media directed/random/protocol tests
+match Rust after replacing the RAMs with the service. Debug table addresses now
+pack view above SLOT_BITS and ordinal below it, avoiding hardware division for
+odd capacities; logical snapshots retain their existing representation.
