@@ -140,7 +140,7 @@ impl Service {
             instances: Vec::new(),
         })
     }
-    fn next_instance(&mut self) -> core::result::Result<u64, CommandError> {
+    pub(super) fn next_instance(&mut self) -> core::result::Result<u64, CommandError> {
         let id = self.next_composite_event;
         self.next_composite_event = id
             .checked_add(1)
@@ -368,7 +368,7 @@ impl Service {
         self.submit_composite_geometry(target, document, &geometry, unit)
     }
 
-    fn submit_composite_geometry(
+    pub(super) fn submit_composite_geometry(
         &mut self,
         target: LoopId,
         document: Document,
@@ -713,7 +713,7 @@ impl Service {
     }
 
     pub(super) fn refresh_natural_composites(&mut self) {
-        if self.composite_structure.is_some() {
+        if self.composite_structure.is_some() || self.duplication.is_some() {
             return;
         }
         let refresh = self

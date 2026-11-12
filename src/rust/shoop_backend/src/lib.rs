@@ -1669,6 +1669,15 @@ pub trait Backend {
         self.replace_loop_content(loop_id, update)
             .map(BackendAsyncResult::Ready)
     }
+    /// Applies a complete captured payload, replacing absent media and recorded state too.
+    /// Repeated calls poll the same operation until completion, as with content import.
+    fn load_loop_content_async(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _content: &BackendLoopContent,
+    ) -> Result<BackendAsyncResult<()>> {
+        Err(anyhow!("complete loop content loading is unavailable"))
+    }
     fn replace_loop_family_async(
         &mut self,
         update: &BackendLoopFamilyUpdate,

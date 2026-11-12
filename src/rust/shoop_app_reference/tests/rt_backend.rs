@@ -165,6 +165,7 @@ fn core_workflow_runs_on_the_new_engine_backend() {
             .with(BackendCapability::SessionCapture, true)
             .with(BackendCapability::SessionContentLoad, true)
             .with(BackendCapability::LoopContentImport, true)
+            .with(BackendCapability::LoopDuplication, true)
             .with(BackendCapability::LoopTimingEdits, true)
             .with(BackendCapability::BusManagement, true)
             .with(BackendCapability::CompositeLoops, true)

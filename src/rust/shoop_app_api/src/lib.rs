@@ -2143,7 +2143,7 @@ impl BackendCapability {
                 "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
             }
             Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
-            Self::LoopDuplication => "The session engine does not yet support loop duplication.",
+            Self::LoopDuplication => "The active host does not support loop copying.",
             Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
         }
     }
