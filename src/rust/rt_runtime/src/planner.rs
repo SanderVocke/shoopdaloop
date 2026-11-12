@@ -1,5 +1,6 @@
 //! Render-owned domain lifecycle, independent of signal ports and domain semantics.
 
+use crate::Sample;
 use crate::{Error, Frame, NodeId, PlannerId, Quantum};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -9,13 +10,13 @@ pub struct Interval {
 }
 
 /// One tick cannot renew callback-wide ingress, validation or recovery allowances.
-pub struct PlanContext<'a, O = (), R = ()> {
+pub struct PlanContext<'a, O = (), R = (), S: Sample = f32> {
     pub graph_epoch: crate::Epoch,
     pub graphs: crate::graph::activation::GraphAccess<'a>,
     pub callback_start: Frame,
     pub frame: Frame,
     pub ceiling: Frame,
-    pub resources: crate::resource::PlannerResourceIo<'a>,
+    pub resources: crate::resource::PlannerResourceIo<'a, S>,
     pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
@@ -26,7 +27,7 @@ pub enum Disposition<R> {
     Pending,
 }
 
-pub struct OperationContext<'a, O, R> {
+pub struct OperationContext<'a, O, R, S: Sample = f32> {
     pub graph_epoch: crate::Epoch,
     pub graphs: crate::graph::activation::GraphAccess<'a>,
     pub callback_start: Frame,
@@ -35,19 +36,19 @@ pub struct OperationContext<'a, O, R> {
     pub frame: Frame,
     pub recovery: bool,
     pub payload: &'a [u8],
-    pub resources: crate::resource::PlannerResourceIo<'a>,
+    pub resources: crate::resource::PlannerResourceIo<'a, S>,
     pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
-pub struct FinishContext<'a, O = (), R = ()> {
+pub struct FinishContext<'a, O = (), R = (), S: Sample = f32> {
     pub interval: Interval,
-    pub resources: crate::resource::PlannerResourceIo<'a>,
+    pub resources: crate::resource::PlannerResourceIo<'a, S>,
     pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
 }
 
 /// Callback methods obey the processor nonblocking/no-heap contract.
 /// Same-frame settlement must terminate within prepared work bounds.
-pub trait Planner: Send {
+pub trait Planner<S: Sample = f32>: Send {
     type Operation: Copy + Send + 'static;
     type Result: Copy + Send + 'static;
 
@@ -62,13 +63,13 @@ pub trait Planner: Send {
     }
     fn begin_tick(
         &mut self,
-        _context: PlanContext<'_, Self::Operation, Self::Result>,
+        _context: PlanContext<'_, Self::Operation, Self::Result, S>,
     ) -> Result<(), Error> {
         Ok(())
     }
     fn finish_tick(
         &mut self,
-        _context: FinishContext<'_, Self::Operation, Self::Result>,
+        _context: FinishContext<'_, Self::Operation, Self::Result, S>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -78,7 +79,7 @@ pub trait Planner: Send {
     fn operation(
         &mut self,
         _operation: Self::Operation,
-        _context: OperationContext<'_, Self::Operation, Self::Result>,
+        _context: OperationContext<'_, Self::Operation, Self::Result, S>,
     ) -> Result<Disposition<Self::Result>, Error> {
         Err(Error::InvalidEvent)
     }
@@ -92,7 +93,7 @@ pub trait Planner: Send {
 
 #[derive(Default)]
 pub struct NoPlanner;
-impl Planner for NoPlanner {
+impl<S: Sample> Planner<S> for NoPlanner {
     type Operation = ();
     type Result = ();
 }

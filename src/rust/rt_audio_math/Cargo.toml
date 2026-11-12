@@ -1,0 +1,18 @@
+[package]
+name = "rt_audio_math"
+version.workspace = true
+edition = "2021"
+description = "Static audio arithmetic and sample-duration ramps"
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[lints]
+workspace = true
+
+[features]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

@@ -1,5 +1,6 @@
 use super::*;
 use core::sync::atomic::{AtomicU32, Ordering};
+use rt_runtime::Sample;
 
 #[cfg(test)]
 #[path = "node_pairs_tests.rs"]
@@ -53,7 +54,7 @@ pub enum NodePairStatus {
     Taken,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct NodePairInitial {
+pub struct NodePairInitial<S: Sample = f32> {
     pub target: LoopId,
     pub frames: u64,
     pub audio: Option<NodePairSourceId>,
@@ -63,16 +64,16 @@ pub struct NodePairInitial {
     /// Logical primary and auxiliary widths within the prepared port banks.
     pub audio_widths: Option<[u8; 2]>,
     pub midi: Option<NodePairSourceId>,
-    pub gain: f32,
-    pub balance: f32,
+    pub gain: S,
+    pub balance: S,
     pub preserve_input: bool,
 }
 #[derive(Clone, Copy)]
-pub(super) struct Edit {
+pub(super) struct Edit<S: Sample = f32> {
     pub previous: Option<LoopId>,
-    pub initial: Option<NodePairInitial>,
+    pub initial: Option<NodePairInitial<S>>,
 }
-impl Edit {
+impl<S: Sample> Edit<S> {
     pub(super) fn slot(self) -> Result<usize, Error> {
         match (self.previous, self.initial) {
             (Some(old), Some(new)) if old.slot() != new.target.slot() => Err(Error::InvalidShape),
@@ -91,23 +92,23 @@ struct SourceSlot {
     max_packet: usize,
     failure: Option<Error>,
 }
-pub(super) struct Bank {
+pub(super) struct Bank<S: Sample = f32> {
     generation: u32,
     status: NodePairStatus,
-    pub edits: Vec<Edit>,
+    pub edits: Vec<Edit<S>>,
     pub changes: Vec<media::OwnerChange>,
 }
-pub(super) struct NodePairs {
+pub(super) struct NodePairs<S: Sample = f32> {
     scope: u32,
     loops: usize,
-    banks: Box<[Bank]>,
+    banks: Box<[Bank<S>]>,
     sources: Box<[SourceSlot]>,
     settings: NodePairSettings,
     callback: Option<Frame>,
     steps: usize,
 }
-impl NodePairs {
-    pub(super) fn prepared_initial(&self, target: LoopId) -> Option<NodePairInitial> {
+impl<S: Sample> NodePairs<S> {
+    pub(super) fn prepared_initial(&self, target: LoopId) -> Option<NodePairInitial<S>> {
         self.banks
             .iter()
             .filter(|bank| bank.status == NodePairStatus::Ready)
@@ -135,8 +136,8 @@ impl NodePairs {
             .filter(|n| *n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
         let bytes = loops
-            .checked_mul(size_of::<Edit>() + size_of::<media::OwnerChange>())
-            .and_then(|n| n.checked_add(size_of::<Bank>()))
+            .checked_mul(size_of::<Edit<S>>() + size_of::<media::OwnerChange>())
+            .and_then(|n| n.checked_add(size_of::<Bank<S>>()))
             .and_then(|n| n.checked_mul(settings.candidates))
             .and_then(|n| {
                 settings
@@ -247,7 +248,7 @@ impl NodePairs {
     pub(super) fn validate_source(
         &mut self,
         id: NodePairSourceId,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<NodePairSourceStatus, Error> {
         self.source(id)?;
         let slot = &mut self.sources[id.slot as usize];
@@ -284,7 +285,7 @@ impl NodePairs {
         &mut self,
         resource: rt_runtime::ResourceId,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(NodePairSourceId, Snapshot), Error> {
         let index = self
             .sources
@@ -331,7 +332,7 @@ impl NodePairs {
     pub(super) fn release_source(
         &mut self,
         id: NodePairSourceId,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let source = self.source(id)?;
         if io.render().snapshot(source.index)? != source.snapshot {
@@ -412,7 +413,7 @@ impl NodePairs {
         midi: Option<NodePairSourceId>,
         packet_bytes: usize,
         ledger: &mut media::Ledger,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<media::MediaId, Error> {
         if audio.is_some() && (audio == midi || audio == auxiliary)
             || auxiliary.is_some() && auxiliary == midi
@@ -442,7 +443,7 @@ impl NodePairs {
         }
         Ok(media)
     }
-    pub(super) fn bank(&self, id: NodePairStageId) -> Result<&Bank, Error> {
+    pub(super) fn bank(&self, id: NodePairStageId) -> Result<&Bank<S>, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
@@ -451,7 +452,7 @@ impl NodePairs {
             .filter(|s| s.generation == id.generation)
             .ok_or(Error::InvalidId)
     }
-    pub(super) fn bank_mut(&mut self, id: NodePairStageId) -> Result<&mut Bank, Error> {
+    pub(super) fn bank_mut(&mut self, id: NodePairStageId) -> Result<&mut Bank<S>, Error> {
         self.bank(id)?;
         Ok(&mut self.banks[id.slot as usize])
     }
@@ -484,10 +485,10 @@ impl NodePairs {
     pub(super) fn append(
         &mut self,
         id: NodePairStageId,
-        edit: Edit,
-        binding: Binding,
+        edit: Edit<S>,
+        binding: Binding<S>,
         ledger: &mut media::Ledger,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let bank = self.bank(id)?;
         let NodePairStatus::Receiving { received, expected } = bank.status else {
@@ -508,7 +509,7 @@ impl NodePairs {
             if (initial.dry_wet && binding.auxiliary_channels == 0)
                 || (!initial.dry_wet && initial.auxiliary.is_some())
                 || !initial.gain.is_finite()
-                || !(-1.0..=1.0).contains(&initial.balance)
+                || !(-S::ONE..=S::ONE).contains(&initial.balance)
                 || (initial.audio.is_some()
                     && (initial.audio == initial.midi || initial.audio == initial.auxiliary))
                 || (initial.auxiliary.is_some() && initial.auxiliary == initial.midi)
@@ -591,7 +592,7 @@ impl NodePairs {
     pub(super) fn cancel(
         &mut self,
         id: NodePairStageId,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let bank = self.bank_mut(id)?;
         if matches!(bank.status, NodePairStatus::Taken | NodePairStatus::Idle) {
@@ -632,7 +633,7 @@ impl NodePairs {
         bank.status = NodePairStatus::Idle;
         Ok(())
     }
-    pub(super) fn cleanup(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub(super) fn cleanup(&mut self, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         for index in 0..self.banks.len() {
             let bank = &self.banks[index];
             let id = NodePairStageId {

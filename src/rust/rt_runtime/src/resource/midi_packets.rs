@@ -1,6 +1,7 @@
 //! Immutable packet ranges in append-only slabs shared by ordered MIDI records.
 
 use super::{index, Page, RenderIo, ResourceStore, WorkClass};
+use crate::Sample;
 use crate::{
     midi::Message,
     midi_state::{
@@ -154,7 +155,10 @@ fn retired(count: usize) -> Vec<NonZeroU32> {
     queue
 }
 impl Packets {
-    pub fn prepare(resources: &mut ResourceStore, config: Config) -> Result<Self, Error> {
+    pub fn prepare<S: Sample>(
+        resources: &mut ResourceStore<S>,
+        config: Config,
+    ) -> Result<Self, Error> {
         config.metadata_bytes()?;
         if config.pages > resources.free_pages.len() - resources.reserved_pages {
             return Err(Error::Capacity);
@@ -191,7 +195,7 @@ impl Packets {
         resources.reserved_pages += config.pages;
         Ok(result)
     }
-    fn check_store(&self, resources: &ResourceStore) -> Result<(), Error> {
+    fn check_store<S: Sample>(&self, resources: &ResourceStore<S>) -> Result<(), Error> {
         if self.store_scope != resources.scope {
             return Err(Error::InvalidId);
         }
@@ -238,9 +242,9 @@ impl Packets {
             .filter(|base| base.references > 0)
             .ok_or(Error::InvalidId)
     }
-    pub fn pin_base(
+    pub fn pin_base<S: Sample>(
         &mut self,
-        resources: &mut ResourceStore,
+        resources: &mut ResourceStore<S>,
         snapshot: super::SnapshotId,
     ) -> Result<BaseId, Error> {
         self.check_store(resources)?;
@@ -284,9 +288,9 @@ impl Packets {
         }
     }
     /// The caller supplies a validated record boundary from this immutable body.
-    pub fn reference_packet(
+    pub fn reference_packet<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: BaseId,
         offset: usize,
         bytes: usize,
@@ -395,7 +399,7 @@ impl Packets {
         }
         Ok(())
     }
-    fn allocate_slab(&mut self, resources: &mut ResourceStore) -> NonZeroU32 {
+    fn allocate_slab<S: Sample>(&mut self, resources: &mut ResourceStore<S>) -> NonZeroU32 {
         let id = self.free_slabs.pop().expect("preflighted packet slab");
         self.reserved -= 1;
         resources.reserved_pages -= 1;
@@ -415,7 +419,7 @@ impl Packets {
         });
         id
     }
-    fn release_slab(&mut self, resources: &mut ResourceStore, id: NonZeroU32) {
+    fn release_slab<S: Sample>(&mut self, resources: &mut ResourceStore<S>, id: NonZeroU32) {
         let slab = self.slabs[slot(id)].as_mut().expect("owned packet slab");
         slab.references -= 1;
         if slab.references == 0 {
@@ -428,7 +432,11 @@ impl Packets {
             resources.reserved_pages += 1;
         }
     }
-    pub fn append(&mut self, io: &mut RenderIo<'_>, bytes: &[u8]) -> Result<BodyId, Error> {
+    pub fn append<S: Sample>(
+        &mut self,
+        io: &mut RenderIo<'_, S>,
+        bytes: &[u8],
+    ) -> Result<BodyId, Error> {
         self.check_store(io.store)?;
         let packet = Event::from_message(
             Point {
@@ -540,9 +548,9 @@ impl Packets {
             .expect("owned packet body")
             .bytes
     }
-    fn read_body(
+    fn read_body<S: Sample>(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         body: Body,
         offset: usize,
         output: &mut [u8],
@@ -607,18 +615,18 @@ impl Packets {
         }
         Ok(count)
     }
-    pub fn read(
+    pub fn read<S: Sample>(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         value: NonZeroU32,
         offset: usize,
         output: &mut [u8],
     ) -> Result<usize, Error> {
         self.read_with(io, value, offset, output, WorkClass::Render)
     }
-    pub fn read_with(
+    pub fn read_with<S: Sample>(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         value: NonZeroU32,
         offset: usize,
         output: &mut [u8],
@@ -637,16 +645,20 @@ impl Packets {
             class,
         )
     }
-    pub fn read_retained_body(
+    pub fn read_retained_body<S: Sample>(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: BodyId,
         offset: usize,
         output: &mut [u8],
     ) -> Result<usize, Error> {
         self.read_body(io, self.body(id)?, offset, output, WorkClass::Render)
     }
-    pub fn maintain(&mut self, io: &mut RenderIo<'_>, budget: usize) -> Result<usize, Error> {
+    pub fn maintain<S: Sample>(
+        &mut self,
+        io: &mut RenderIo<'_, S>,
+        budget: usize,
+    ) -> Result<usize, Error> {
         self.check_store(io.store)?;
         let mut reclaimed = 0;
         while reclaimed < budget {
@@ -720,7 +732,7 @@ impl Packets {
         }
         Ok(reclaimed)
     }
-    pub fn begin_cleanup(&mut self, io: &mut RenderIo<'_>) -> Result<(), Error> {
+    pub fn begin_cleanup<S: Sample>(&mut self, io: &mut RenderIo<'_, S>) -> Result<(), Error> {
         self.check_store(io.store)?;
         self.closed = true;
         if let Some(tail) = self.tail.take() {
@@ -729,7 +741,10 @@ impl Packets {
         }
         Ok(())
     }
-    pub fn finish_cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+    pub fn finish_cleanup<S: Sample>(
+        &mut self,
+        resources: &mut ResourceStore<S>,
+    ) -> Result<(), Error> {
         self.check_store(resources)?;
         if !self.closed || self.body_count != 0 || self.record_count != 0 || self.base_count != 0 {
             return Err(Error::Busy);

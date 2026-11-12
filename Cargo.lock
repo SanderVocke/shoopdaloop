@@ -4530,6 +4530,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_audio_math"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
@@ -4555,6 +4562,7 @@ name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
  "loom",
+ "rt_audio_math",
  "rt_profiling",
  "rtrb",
  "shoop_wasm_test_support",
@@ -5341,6 +5349,7 @@ name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
  "profiling_protocol",
+ "rt_audio_math",
  "rt_buffered",
  "rt_profiling",
  "rt_runtime",

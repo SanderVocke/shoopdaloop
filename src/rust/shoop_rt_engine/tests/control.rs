@@ -158,7 +158,9 @@ fn jack_buffer_changes_keep_controls_one_server_period_ahead() {
             .iter()
             .all(|sample| *sample == previous));
         assert!(!harness.results.contains_key(&request));
-        harness.run(4, 1);
+        // A duration-four ramp starts at its prior value and reaches the
+        // target at offset four, the fifth rendered sample.
+        harness.run(5, 1);
         previous = gain * 0.5;
         assert_eq!(*harness.outputs[0].last().unwrap(), previous);
         assert_eq!(harness.results[&request], Outcome::Done);
