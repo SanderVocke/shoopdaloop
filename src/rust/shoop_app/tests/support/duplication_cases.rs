@@ -2,7 +2,22 @@ use super::*;
 use shoop_app_protocol::composite::{Edit, Versioned};
 
 fn run(f: &mut Fixture, client: &mut Client, command: Command, encoded: bool) -> Outcome {
-    let id = submit(&mut f.service, client, ConnectionId(1), command);
+    let id = if encoded {
+        let message = client.command(command, None).unwrap();
+        let ClientMessage::Submit { operation, .. } = &message else {
+            panic!()
+        };
+        let id = *operation;
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let used = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+        let WireMessage::Client(message) = codec::decode(&bytes[..used]).unwrap() else {
+            panic!()
+        };
+        f.service.handle(ConnectionId(1), message).unwrap();
+        id
+    } else {
+        submit(&mut f.service, client, ConnectionId(1), command)
+    };
     complete(&mut f.service, client, ConnectionId(1), id, encoded)
 }
 fn action(track: TrackId, loop_id: LoopId, action: LoopAction) -> Command {
@@ -498,6 +513,110 @@ fn normal_clear_then_copy_supports_both_kind_changes() {
 }
 
 #[shoop_test]
+fn p17_copies_processed_modes_and_nested_definitions_without_cloning_children() {
+    for encoded in [false, true] {
+        for mode in [
+            LoopMode::Replacing,
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+        ] {
+            let mut f = fixture_with_dry_wet(2, true);
+            let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+            run(
+                &mut f,
+                &mut client,
+                Command::Global(GlobalControlAction::SetSync(false)),
+                encoded,
+            );
+            let (track, loops) = created(run(
+                &mut f,
+                &mut client,
+                Command::AddTrack(TrackSpec {
+                    name: "P17 copies".into(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 2,
+                        dry_midi: true,
+                        processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                        default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: Vec::new(),
+                    creation_request_id: None,
+                }),
+                encoded,
+            ));
+            for action_ in [LoopAction::RecordClicked, LoopAction::StopClicked] {
+                let result = run(
+                    &mut f,
+                    &mut client,
+                    action(track, loops[0], action_),
+                    encoded,
+                );
+                assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+                f.service.tick(STEP);
+            }
+            run(
+                &mut f,
+                &mut client,
+                append(loops[2], vec![loops[0]]),
+                encoded,
+            );
+            let event = definition(&f, loops[2]).document.instances[0].instance_id;
+            for edit in [
+                Edit::Kind {
+                    target: loops[2],
+                    kind: CompositeKind::Script,
+                },
+                Edit::Mode {
+                    target: loops[2],
+                    event,
+                    mode,
+                },
+                Edit::Duration {
+                    target: loops[2],
+                    event,
+                    n_cycles: Some(10_000),
+                },
+            ] {
+                let result = run(&mut f, &mut client, Command::Composite(edit), encoded);
+                assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+            }
+            run(
+                &mut f,
+                &mut client,
+                append(loops[3], vec![loops[2]]),
+                encoded,
+            );
+            for (source, target) in [(loops[2], loops[4]), (loops[3], loops[5])] {
+                let pinned = definition(&f, source);
+                let result = run(
+                    &mut f,
+                    &mut client,
+                    action(track, source, LoopAction::DuplicateTo(target)),
+                    encoded,
+                );
+                assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+                copied_definition(&pinned, &definition(&f, target));
+                assert_eq!(view(&f, target).mode, LoopMode::Stopped);
+            }
+            let copied = definition(&f, loops[4]);
+            let event = definition(&f, loops[2]).document.instances[0].instance_id;
+            run(
+                &mut f,
+                &mut client,
+                Command::Composite(Edit::Delete {
+                    target: loops[2],
+                    events: vec![event],
+                }),
+                encoded,
+            );
+            assert_eq!(definition(&f, loops[4]), copied);
+        }
+    }
+}
+
+#[shoop_test]
 fn p03_copies_empty_regular_script_and_nested_definitions_with_independent_ids() {
     for kind in 0..4 {
         let (mut f, mut client, track, loops) = setup(true);
@@ -655,7 +774,7 @@ fn p03_replacement_stops_children_preserves_old_definitions_on_failure_and_survi
 }
 
 #[shoop_test]
-fn composite_copy_refuses_cross_kind_cycles_and_shadowed_p17_events_before_mutation() {
+fn composite_copy_refuses_cross_kind_cycles_and_preserves_shadowed_p17_events() {
     let (mut f, mut client, track, loops) = setup(false);
     run(&mut f, &mut client, append(loops[2], vec![loops[0]]), false);
     let old = definition(&f, loops[2]);
@@ -756,15 +875,16 @@ fn composite_copy_refuses_cross_kind_cycles_and_shadowed_p17_events_before_mutat
         .spans
         .iter()
         .all(|span| span.mode != LoopMode::Replacing));
-    let Outcome::Refused { message, .. } = run(
+    let pinned = definition(&f, target);
+    let outcome = run(
         &mut f,
         &mut client,
-        action(track, target, LoopAction::Duplicate),
+        action(track, target, LoopAction::DuplicateTo(loops[4])),
         false,
-    ) else {
-        panic!()
-    };
-    assert!(message.contains("Play, Stop and Record"), "{message}");
+    );
+    assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+    let copy = definition(&f, loops[4]);
+    copied_definition(&pinned, &copy);
 }
 
 #[shoop_test]

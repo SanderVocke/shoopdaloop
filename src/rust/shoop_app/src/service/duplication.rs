@@ -130,30 +130,13 @@ impl Service {
             return Ok(());
         }
         self.copy_target_ready(root)?;
-        if !matches!(
-            self.tracks[&self.loops[&root].track].view.topology,
-            TrackTopology::Direct
-        ) {
-            return Err(CommandError::invalid(
-                "composite copying requires Direct tracks",
-            ));
-        }
         if let Some(owner) = self.composites.get(&root) {
             let active = owner
                 .active
                 .as_ref()
                 .ok_or_else(|| CommandError::invalid("composite has no confirmed definition"))?;
+            self.validate_composite_events(&active.document)?;
             for event in &active.document.instances {
-                if event.mode.is_some_and(|mode| {
-                    !matches!(
-                        mode,
-                        LoopMode::Playing | LoopMode::Stopped | LoopMode::Recording
-                    )
-                }) {
-                    return Err(CommandError::invalid(
-                        "composite copying supports only Play, Stop and Record events",
-                    ));
-                }
                 self.copy_closure(event.loop_id, seen)?;
             }
         }

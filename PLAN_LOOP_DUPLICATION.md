@@ -150,16 +150,16 @@ clear completion. Commit the completed preparation/test milestone.
 
 ## Stage 2 — Enable P17 definition copying
 
-- [ ] Share authored-event validation with ordinary composite submission and
+- [x] Share authored-event validation with ordinary composite submission and
   replace the copy-only topology/mode allowlists. Preserve nested readiness,
   capability, recording/future-write and cycle checks.
-- [ ] Reuse definition cloning, fresh event IDs/prepared versions and frozen
+- [x] Reuse definition cloning, fresh event IDs/prepared versions and frozen
   geometry. Keep child references and explicit versus dynamic-default modes.
-- [ ] Extend production fixtures for Replacing, dry playback and wet rerecord on
+- [x] Extend production fixtures for Replacing, dry playback and wet rerecord on
   supported track topologies, regular/scripted nesting, empty-slot cloning and
   composite-to-composite replacement. Verify independent definition edits and
   shared-child behavior.
-- [ ] Update the old combined cross-kind/P17-refusal fixture: retain valid busy,
+- [x] Update the old combined cross-kind/P17-refusal fixture: retain valid busy,
   cycle and unsupported-capability assertions; replace obsolete blanket mode
   refusals with supported-copy cases. Keep an unsupported authored event hidden
   by overlapping spans to prove validation examines the authored document.
