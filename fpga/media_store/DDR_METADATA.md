@@ -1,5 +1,11 @@
 # DDR media metadata
 
+Allocation now uses [32-chunk blocks](BLOCK_ALLOCATION.md). In the layout and
+ownership descriptions below, table IDs, counts and the reusable-ID stack refer
+to allocation blocks; sample addresses remain physical chunks. Replace SLOTS by
+`BLOCKS=SLOTS/BLOCK_CHUNKS` for metadata-region sizes, table geometry and config
+indices. The original measurements describe one-chunk allocation at `676093aa`.
+
 The media store owns sample allocation, view chunk-ID vectors, reference counts
 and deterministic LIFO reuse. Its compact view descriptors and vector roots stay
 on chip. Sample payloads and the three recording-capacity-sized metadata arrays

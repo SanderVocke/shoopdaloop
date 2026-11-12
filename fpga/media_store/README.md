@@ -1,5 +1,10 @@
 # Bounded RTL media store
 
+The current allocator owns groups of 32 chunks; see
+[block allocation, sharing and interfaces](BLOCK_ALLOCATION.md). Sample transfers
+remain chunk-sized. The sections below retain one-chunk baseline measurements;
+blocked regression runs select `--block-chunks 32`.
+
 This prototype mirrors Rust `MediaStore`: mono fixed-point chunks, shared read-only
 ranges, per-slot references and deterministic LIFO reuse. Samples pass through
 [chunk memory](../chunk_memory/README.md) to the external memory port. Small

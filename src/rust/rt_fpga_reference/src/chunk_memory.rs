@@ -93,6 +93,18 @@ impl ChunkMemory {
         Ok(())
     }
 
+    pub fn retire_range(&mut self, first: ChunkId, chunks: usize) -> Result<(), Error> {
+        if chunks == 0
+            || first
+                .0
+                .checked_add(chunks)
+                .is_none_or(|end| end > self.slot_count())
+        {
+            return Err(Error::InvalidView);
+        }
+        Ok(())
+    }
+
     /// The caller has removed all logical references. Payload is retained for slot reuse.
     pub fn retire(&mut self, chunk: ChunkId) -> Result<(), Error> {
         self.span(chunk, 0, 0).map(|_| ())

@@ -3,7 +3,8 @@ module chunk_memory #(
     parameter integer CHUNK_FRAMES = 32,
     parameter integer READ_BUFFERS = 4,
     parameter integer WRITE_BUFFERS = 4,
-    parameter integer BURST_MEMORY = 0
+    parameter integer BURST_MEMORY = 0,
+    parameter integer RETIRE_CHUNKS = 1
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base,
@@ -26,6 +27,7 @@ module chunk_memory #(
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data
 );
+    localparam integer RETIRE_SHIFT = $clog2(RETIRE_CHUNKS);
     localparam [2:0] READ = 0, WRITE = 1, PREFETCH = 2, FENCE = 3, RETIRE = 4;
     localparam [7:0] INVALID_CHUNK = 1, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
     localparam integer RADDR_BITS = (READ_BUFFERS*CHUNK_FRAMES < 2) ? 1 : $clog2(READ_BUFFERS*CHUNK_FRAMES);
@@ -59,6 +61,7 @@ module chunk_memory #(
     reg [31:0] read_hit_line, write_hit_line, read_victim_line, write_victim_line, flush_line, fill_line;
     reg fill_write_pool, hint_hit, incoming_write_space;
     reg [31:0] dirty_count;
+    reg retiring_dirty;
     integer i, candidate;
     wire dma_active = dma_phase != D_IDLE;
     wire read_pinned = !use_write_pool && (phase == WAIT_LINE || phase == READ_STREAM);
@@ -89,6 +92,7 @@ module chunk_memory #(
     assign response_id = request_id;
     assign prefetch_ready = !hint_pending && !fault && !reset && phase != FLUSH && phase != RETIRING
         && (base_bound || (phase == IDLE && !cmd_valid))
+        && !(phase == CHECK && opcode == RETIRE)
         && !(cmd_valid && (cmd_opcode == PREFETCH || cmd_opcode == FENCE || cmd_opcode == RETIRE));
     assign busy = phase != IDLE || dma_active || hint_pending || (dirty_count != 0);
     assign memory_valid = !fault && !reset && (BURST_MEMORY != 0 ? dma_phase == D_TRANSFER
@@ -107,9 +111,10 @@ module chunk_memory #(
         : (dma_phase == D_READ_WAIT && (!fill_blocked || memory_response_error)) || dma_phase == D_WRITE_WAIT);
 
     initial begin
-        if (SLOTS < 1 || SLOTS > 65536 || CHUNK_FRAMES < 1 || CHUNK_FRAMES > 65536
+        if (SLOTS < 1 || CHUNK_FRAMES < 1 || CHUNK_FRAMES > 65536
             || (CHUNK_FRAMES & (CHUNK_FRAMES-1)) != 0 || READ_BUFFERS < 1 || WRITE_BUFFERS < 1
-            || READ_BUFFERS > 65536 || WRITE_BUFFERS > 65536)
+            || READ_BUFFERS > 65536 || WRITE_BUFFERS > 65536
+            || RETIRE_CHUNKS < 1 || RETIRE_CHUNKS > SLOTS || (RETIRE_CHUNKS & (RETIRE_CHUNKS-1)) != 0)
             $fatal(1,"Invalid chunk-memory capacities");
     end
 
@@ -117,7 +122,7 @@ module chunk_memory #(
         read_hit = 0; write_hit = 0; read_hit_line = 0; write_hit_line = 0;
         read_victim = 0; write_victim = 0; read_victim_line = 0; write_victim_line = 0;
         flush_found = 0; flush_line = 0; fill_found = 0; fill_line = 0; fill_write_pool = 0;
-        hint_hit = 0; dirty_count = 0; candidate = 0; incoming_write_space = 0;
+        hint_hit = 0; dirty_count = 0; retiring_dirty = 0; candidate = 0; incoming_write_space = 0;
         for (i = 0; i < READ_BUFFERS; i = i+1) begin
             if (read_present[i] && read_tag[i] == chunk) begin read_hit = 1; read_hit_line = 32'(i); end
             if (read_present[i] && read_tag[i] == hint_chunk) hint_hit = 1;
@@ -141,6 +146,7 @@ module chunk_memory #(
             if (write_present[i] && write_tag[i] == hint_chunk) hint_hit = 1;
             if (!write_present[i] && !write_victim) begin write_victim = 1; write_victim_line = 32'(i); end
             if (dirty[i]) dirty_count = dirty_count + 1;
+            if (write_present[i] && dirty[i] && (write_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT)) retiring_dirty = 1;
             if (write_present[i] && !write_loaded[i]) begin fill_found = 1; fill_line = 32'(i); fill_write_pool = 1; end
         end
         for (i = 0; i < WRITE_BUFFERS; i = i+1) begin
@@ -151,7 +157,8 @@ module chunk_memory #(
                 write_victim = 1; write_victim_line = 32'(candidate);
             end
             if (!flush_found && dirty[candidate] && write_loaded[candidate]
-                && !(write_claimed && write_tag[candidate] == chunk)) begin
+                && !(write_claimed && write_tag[candidate] == chunk)
+                && (phase != RETIRING || (write_tag[candidate] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT))) begin
                 flush_found = 1; flush_line = 32'(candidate);
             end
         end
@@ -210,6 +217,9 @@ module chunk_memory #(
                         response_error <= INVALID_SHAPE; phase <= RESPONSE;
                     end else if (opcode != FENCE && chunk >= 32'(SLOTS)) begin
                         response_error <= INVALID_CHUNK; phase <= RESPONSE;
+                    end else if (opcode == RETIRE && ((chunk & 32'(RETIRE_CHUNKS-1)) != 0
+                        || {32'b0,chunk}+64'(RETIRE_CHUNKS) > 64'(SLOTS))) begin
+                        response_error <= INVALID_SHAPE; phase <= RESPONSE;
                     end else if ((opcode == READ || opcode == WRITE)
                         && (offset > 32'(CHUNK_FRAMES) || count > 32'(CHUNK_FRAMES)-offset)) begin
                         response_error <= INVALID_SHAPE; phase <= RESPONSE;
@@ -217,7 +227,7 @@ module chunk_memory #(
                         active_base <= requested_base; base_bound <= 1;
                         if (opcode == FENCE) begin hint_pending <= 0; phase <= FLUSH; end
                         else if (opcode == RETIRE) begin
-                            if (hint_pending && hint_chunk == chunk) hint_pending <= 0;
+                            if (hint_pending && (hint_chunk >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT)) hint_pending <= 0;
                             phase <= RETIRING;
                         end else if (opcode == PREFETCH) begin
                             if (!hint_pending) begin hint_pending <= 1; hint_chunk <= chunk; end
@@ -278,12 +288,12 @@ module chunk_memory #(
                     hint_pending <= 0;
                     if (!dma_active && dirty_count == 0) phase <= RESPONSE;
                 end
-                RETIRING: if (!(dma_active && dma_chunk == chunk)
-                    && !(write_hit && dirty[write_hit_line])) begin
+                RETIRING: if (!(dma_active && (dma_chunk >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT))
+                    && !retiring_dirty) begin
                     for (integer r = 0; r < READ_BUFFERS; r = r+1)
-                        if (read_present[r] && read_tag[r] == chunk) begin read_present[r] <= 0; read_loaded[r] <= 0; end
+                        if (read_present[r] && (read_tag[r] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT)) begin read_present[r] <= 0; read_loaded[r] <= 0; end
                     for (integer w = 0; w < WRITE_BUFFERS; w = w+1)
-                        if (write_present[w] && write_tag[w] == chunk) begin write_present[w] <= 0; write_loaded[w] <= 0; end
+                        if (write_present[w] && (write_tag[w] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT)) begin write_present[w] <= 0; write_loaded[w] <= 0; end
                     phase <= RESPONSE;
                 end
                 RESPONSE: if (response_ready) phase <= IDLE;
@@ -293,7 +303,8 @@ module chunk_memory #(
             if (!fault) case (dma_phase)
                 D_IDLE: begin
                     dma_index <= 0;
-                    if (fill_found) begin
+                    if (fill_found && !(phase == RETIRING &&
+                        ((fill_write_pool ? write_tag[fill_line] : read_tag[fill_line]) >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT))) begin
                         dma_line <= fill_line; dma_write_pool <= fill_write_pool; dma_write <= 0;
                         dma_speculative <= 0; dma_obsolete <= 0;
                         dma_chunk <= fill_write_pool ? write_tag[fill_line] : read_tag[fill_line];

@@ -1,6 +1,7 @@
 module media_prefetch_resolver #(
     parameter integer SLOTS = 32,
-    parameter integer CHUNK_FRAMES = 32
+    parameter integer CHUNK_FRAMES = 32,
+    parameter integer BLOCK_CHUNKS = 1
 ) (
     input wire clk, input wire reset,
     input wire hint_valid, output wire hint_ready,
@@ -13,6 +14,7 @@ module media_prefetch_resolver #(
     output wire prefetch_valid, input wire prefetch_ready, output wire [31:0] prefetch_chunk
 );
     localparam integer SHIFT = $clog2(CHUNK_FRAMES);
+    localparam integer BLOCK_SHIFT = $clog2(BLOCK_CHUNKS);
     localparam integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS);
     typedef enum logic [2:0] { IDLE, DESCRIPTOR_REQUEST, DESCRIPTOR_WAIT,
         TABLE_REQUEST, TABLE_WAIT, SEND } phase_t;
@@ -28,7 +30,7 @@ module media_prefetch_resolver #(
     assign descriptor_valid = phase == DESCRIPTOR_REQUEST && !reset;
     assign descriptor_address = view_index;
     assign table_valid = phase == TABLE_REQUEST && !reset;
-    assign table_address = (view_index << SLOT_BITS) | 32'(absolute_sample >> SHIFT);
+    assign table_address = (view_index << SLOT_BITS) | 32'(absolute_sample >> (SHIFT+BLOCK_SHIFT));
     assign prefetch_valid = phase == SEND && !reset;
     assign prefetch_chunk = chunk;
 
@@ -49,7 +51,7 @@ module media_prefetch_resolver #(
             end
             TABLE_REQUEST: if (table_ready) phase <= TABLE_WAIT;
             TABLE_WAIT: if (table_response) begin
-                chunk <= table_data;
+                chunk <= (table_data << BLOCK_SHIFT) | (32'(absolute_sample >> SHIFT) & 32'(BLOCK_CHUNKS-1));
                 phase <= table_data < slot_count ? SEND : IDLE;
             end
             SEND: if (prefetch_ready) begin

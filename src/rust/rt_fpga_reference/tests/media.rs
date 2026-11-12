@@ -538,3 +538,102 @@ fn seeded_growth_reclamation_and_wrapped_reads_match_independent_sample_vectors(
         }
     }
 }
+
+#[shoop_test]
+fn allocation_blocks_share_ranges_and_reclaim_once_per_block() {
+    let mut media = MediaStore::with_block_chunks(4, 32).unwrap();
+    let a = media
+        .insert(&samples(&(0..140).collect::<Vec<_>>()))
+        .unwrap();
+    assert_eq!(media.slot_count(), 64);
+    let b = media.slice(a, 123, 10).unwrap();
+    let c = media.slice(b, 2, 6).unwrap();
+    assert_eq!(read(&media, b), samples(&(123..133).collect::<Vec<_>>()));
+    assert_eq!(read(&media, c), samples(&(125..131).collect::<Vec<_>>()));
+    assert_eq!(media.chunk_references(ChunkId(0)), Ok(3));
+    assert_eq!(media.chunk_references(ChunkId(32)), Ok(3));
+    let restored = MediaStore::from_snapshot(media.snapshot()).unwrap();
+    assert_eq!(restored.snapshot(), media.snapshot());
+    media.clear(a).unwrap();
+    assert_eq!(media.free_chunk_count(), 0);
+    media.remove(b).unwrap();
+    assert!(!media.reclaim_chunk(c).unwrap());
+    assert_eq!(media.frames(c), Ok(3));
+    assert_eq!(media.free_chunk_count(), 32);
+    assert!(media.reclaim_chunk(c).unwrap());
+    assert_eq!(media.free_chunk_count(), 64);
+    let d = media.insert(&samples(&[901, 902, 903])).unwrap();
+    assert_eq!(media.chunk_ids(d).unwrap(), [ChunkId(0)]);
+    assert_eq!(read(&media, d), samples(&[901, 902, 903]));
+}
+
+#[shoop_test]
+fn blocked_append_keeps_grabbed_prefix_and_refuses_growth_before_mutation() {
+    let mut media = MediaStore::with_block_chunks(4, 32).unwrap();
+    let a = media.insert(&samples(&[1, 2, 3])).unwrap();
+    let b = media.slice(a, 1, 2).unwrap();
+    media
+        .append(a, &samples(&(4..=128).collect::<Vec<_>>()))
+        .unwrap();
+    assert_eq!(media.slot_count(), 32);
+    assert_eq!(media.chunk_references(ChunkId(31)), Ok(2));
+    assert_eq!(read(&media, b), samples(&[2, 3]));
+    let mut image = media.snapshot();
+    image.chunk_limit = Some(32);
+    let mut limited = MediaStore::from_snapshot(image).unwrap();
+    let before = limited.snapshot();
+    assert_eq!(limited.append(a, &samples(&[129])), Err(Error::MemoryFull));
+    assert_eq!(limited.snapshot(), before);
+    media.append(a, &samples(&[129])).unwrap();
+    assert_eq!(media.slot_count(), 64);
+    media.clear(a).unwrap();
+    assert_eq!(read(&media, b), samples(&[2, 3]));
+    assert_eq!(media.free_chunk_count(), 32);
+    let restored = MediaStore::from_snapshot(media.snapshot()).unwrap();
+    assert_eq!(restored.snapshot(), media.snapshot());
+}
+
+#[shoop_test]
+fn blocked_snapshots_reject_misaligned_tables_and_incomplete_free_blocks() {
+    assert!(matches!(
+        MediaStore::with_block_chunks(4, 3),
+        Err(Error::InvalidShape)
+    ));
+    let mut media = MediaStore::with_block_chunks(4, 32).unwrap();
+    media
+        .insert(&samples(&(0..129).collect::<Vec<_>>()))
+        .unwrap();
+    let image = media.snapshot();
+    let mut invalid = image.clone();
+    invalid.views[0].as_mut().unwrap().chunks[1] = ChunkId(33);
+    assert!(matches!(
+        MediaStore::from_snapshot(invalid),
+        Err(Error::InvalidState)
+    ));
+    let mut invalid = image.clone();
+    invalid.views.push(image.views[0].clone());
+    assert!(matches!(
+        MediaStore::from_snapshot(invalid),
+        Err(Error::InvalidState)
+    ));
+    let mut invalid = image;
+    invalid.free_chunks = (0..32).map(ChunkId).collect();
+    assert!(matches!(
+        MediaStore::from_snapshot(invalid),
+        Err(Error::InvalidState)
+    ));
+    media.clear(ViewId(0)).unwrap();
+    let image = media.snapshot();
+    let mut invalid = image.clone();
+    invalid.free_chunks.remove(0);
+    assert!(matches!(
+        MediaStore::from_snapshot(invalid),
+        Err(Error::InvalidState)
+    ));
+    let mut invalid = image;
+    invalid.free_chunks.drain(..32);
+    assert!(matches!(
+        MediaStore::from_snapshot(invalid),
+        Err(Error::InvalidState)
+    ));
+}

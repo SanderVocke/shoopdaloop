@@ -11,11 +11,12 @@ from cocotb.runner import get_runner
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'fpga/axi_memory/sim')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'fpga/axi_memory/sim'),str(ROOT/'fpga/media_store/tests')]
 import rt_backend_testbench as wire
 from rt_backend_testbench.accuracy import compare as compare_float
-from rt_backend_testbench.cases import directed,seeded,benchmark64,long_sessions,scale_workload
+from rt_backend_testbench.cases import directed,seeded,long_sessions,scale_workload,allocation_boundary
 from options import add_options,environment,direct_sources
+from block_images import reblock
 
 CONFIGS={'default':(8,16,32,64,32,64,32,32,4,4,32,128,32),
          'odd':(7,11,25,128,128,128,32,61,4,4,7,11,8),
@@ -47,7 +48,10 @@ def main():
     subprocess.run(['cargo','build','-p','rt_backend_testbench'],cwd=ROOT,check=True)
     executable=ROOT/'target/debug/rt-backend-testbench'
     scenarios=[wire.load(p) for p in (args.case or ([] if args.benchmark64 else [HERE/'scenarios/mono-record.json']))]
-    if args.directed:scenarios.extend(directed())
+    if args.directed:
+        scenarios.extend(directed())
+        if args.block_chunks>1:
+            scenarios.append(allocation_boundary(args.block_chunks,scenarios[0]['chunk_frames'],scenarios[0]['quantum']))
     scenarios.extend(seeded(args.random_cases))
     if args.benchmark64:scenarios.append(scale_workload(args.scale_workload))
     if args.long_sessions:scenarios.extend(long_sessions())
@@ -75,18 +79,23 @@ def main():
     depths=list(CONFIGS[args.config])
     if args.benchmark64 and args.scale_workload=='streaming':depths[11]=4096
     if args.benchmark64 and args.scale_workload=='mixed':depths[11]=2048
+    if args.block_chunks>1:
+        if args.benchmark64 and args.config=='8x8' and args.block_chunks==32:
+            depths[11]={'original':2048,'streaming':4096,'mixed':2304}[args.scale_workload]
+        else:depths[11]*=args.block_chunks
     depths[12]=scenarios[0]['chunk_frames']
-    parameters=dict(zip(PARAMS,depths));parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,
+    parameters=dict(zip(PARAMS,depths));parameters.update(BLOCK_CHUNKS=args.block_chunks,READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,
         AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
     parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
     if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
     for image in images:
+        physical=reblock(image['media'],args.block_chunks,parameters['SLOTS'])
         needs={'LOOP_DEPTH':image['transition']['limits']['loop_slots'],'REQUEST_DEPTH':image['transition']['limits']['pending_requests'],
             'EVENT_DEPTH':image['transition']['limits']['events'],'PROGRAM_DEPTH':len(image['program']['instructions']),
             'STATE_DEPTH':len(image['initial_state']['memory']),'JOB_DEPTH':image['program']['jobs_per_quantum'],
             'MAX_FRAMES':image['program']['quantum'],'BUFFERS':image['buffers'],'INPUT_PORTS':image['input_ports'],
             'OUTPUT_PORTS':image['output_ports'],'VIEWS':len(image['media']['views']),
-            'SLOTS':len(image['media']['samples'])//image['media']['chunk_frames']}
+            'SLOTS':len(physical['samples'])//physical['chunk_frames']}
         for field,value in needs.items():
             if value>parameters[field]:parser.error(f'{image["name"]}: {field} needs {value}, has {parameters[field]}')
         if image['media']['chunk_frames']!=parameters['CHUNK_FRAMES']:parser.error('scenario chunk size differs from physical configuration')
