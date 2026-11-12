@@ -6,9 +6,9 @@ out=${1:-work/metadata-capacity}
 mkdir -p "$out"
 for slots in 4096 5760000; do
   sources="fpga/chunk_memory/rtl/chunk_ram.sv fpga/media_store/rtl/media_ram.sv fpga/media_store/rtl/metadata_cache.sv fpga/media_store/rtl/media_metadata.sv"
-  command="read_verilog -sv $sources; chparam -set VIEWS 128 -set SLOTS $slots media_metadata; hierarchy -check -top media_metadata; proc; opt; memory -nomap; opt; check -assert; select -assert-none t:\$dlatch t:\$adlatch t:\$div t:\$mod; stat; write_json $out/$slots-generic.json"
+  command="read_verilog -sv $sources; chparam -set VIEWS 128 -set SLOTS $slots media_metadata; hierarchy -check -top media_metadata; proc; opt; memory -nomap; opt; check -assert; select -assert-none t:\$dlatch t:\$adlatch t:\$div t:\$mod; stat; write_json \"$out/$slots-generic.json\""
   yosys -Q -T -q -l "$out/$slots-generic.log" -p "$command"
-  yosys -Q -T -q -l "$out/$slots-ecp5.log" -p "read_verilog -sv $sources; chparam -set VIEWS 128 -set SLOTS $slots media_metadata; synth_ecp5 -top media_metadata -json $out/$slots-ecp5.json; check -assert; stat"
+  yosys -Q -T -q -l "$out/$slots-ecp5.log" -p "read_verilog -sv $sources; chparam -set VIEWS 128 -set SLOTS $slots media_metadata; synth_ecp5 -top media_metadata -json \"$out/$slots-ecp5.json\"; check -assert; stat"
 done
 python3 - "$out" <<'PY'
 from collections import Counter

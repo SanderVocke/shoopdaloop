@@ -75,6 +75,12 @@ count additional radix nodes before mutating a view and refuse insufficient page
 space with MemoryFull. Sample slots, issued view IDs and page capacity remain
 separate limits. Deleted view IDs remain holes until reset.
 
+For the measured 64-loop mixed workload, 32 reference lines (2 KiB) retain the
+strided ownership working set and reduce the simultaneous-retake cost from
+738.05 to 430.68 us at an assumed 100 MHz. Four lines remain the small default;
+size this cache for active recording/release traffic. Playback does not need it.
+See the measurement report for both results and deadline limitations.
+
 The 64-stereo-loop, 30-second, 48 kHz example needs 5,760,000 sample chunk IDs
 at 32 frames/chunk: 703.125 MiB of samples, approximately 22 MiB each for
 chunk-ID words, reference counts and reusable IDs, plus directory/page slack.
@@ -91,6 +97,9 @@ cache as demand; jobs still resolve their current mapping. Trim invalidates the
 affected leaf translation; explicit invalidate clears all translations.
 
 `shared_axi.sv` connects separate sample/metadata DMA clients to one AXI master.
+The core's `memory_meta_*` port mirrors the sample descriptor/stream handshake:
+64-bit byte addresses, counts in 32-bit words, a word stream and a held aggregate
+completion. Scalar diagnostics select `BURST_MEMORY=0` for both clients.
 The scheduler alternates competing clients at completed burst boundaries. Each
 burst is at most 16 beats, cannot cross 4 KiB, and retains its owner through the
 last read beat or write response, including errors. There is one outstanding

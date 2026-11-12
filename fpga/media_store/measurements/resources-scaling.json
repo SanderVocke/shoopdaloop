@@ -1,0 +1,45 @@
+{
+  "revision": "b8687cfc2692ec63894c5383d3ffc3e21691f120",
+  "results": [
+    {
+      "views": 128,
+      "slots": 4096,
+      "chunk_frames": 32,
+      "table_lines": 8,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "generic_memory_bits": 24736,
+      "cells": {
+        "$specify2": 19,
+        "TRELLIS_FF": 2676,
+        "PFUMX": 689,
+        "LUT4": 5404,
+        "L6MUX21": 49,
+        "$scopeinfo": 7,
+        "DP16KD": 7,
+        "CCU2C": 857,
+        "TRELLIS_DPR16X4": 40
+      }
+    },
+    {
+      "views": 128,
+      "slots": 5760000,
+      "chunk_frames": 32,
+      "table_lines": 8,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "generic_memory_bits": 25024,
+      "cells": {
+        "$specify2": 19,
+        "TRELLIS_FF": 2676,
+        "PFUMX": 799,
+        "LUT4": 5765,
+        "$scopeinfo": 7,
+        "DP16KD": 7,
+        "CCU2C": 915,
+        "L6MUX21": 123,
+        "TRELLIS_DPR16X4": 40
+      }
+    }
+  ]
+}

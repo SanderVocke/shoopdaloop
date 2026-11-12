@@ -1,6 +1,6 @@
 # DDR-backed media metadata and caches
 
-Status: in progress on `proto/fpga-metadata-cache`; stages 1–5 verified; final validation/benchmark/delivery in progress.
+Status: implementation and local validation complete on `proto/fpga-metadata-cache`; delivered in draft PR #971, targeting `proto/fpga-rust-reference`. Final CI/review follow-up is deferred at the user’s request.
 Investigated at `e0a91815` on `proto/fpga-native-sim-memory`.
 
 ## Goal and scope
@@ -186,42 +186,44 @@ Stages are sequential; each depends on the preceding stage's verification.
   faults, including speculative reads and failures after buffered completion.
   Check sticky fault propagation, no further unsafe reuse, draining and coordinated
   reset/restore. Exercise contention and eventual completion under backpressure.
-- [ ] Check generated wrappers and warning-clean lint. Run generic/ECP5 synthesis
+- [x] Check generated wrappers and warning-clean lint. Run generic/ECP5 synthesis
   for affected blocks and the integrated top. Report LUT/FF/BRAM/DSP deltas with
   exact capacities; confirm larger slot/list capacities do not grow metadata BRAM
   as `SLOTS` or `VIEWS*SLOTS`. Exclude simulation RAM from synthesis manifests.
-- [ ] Repeat the saved four-quantum 64-mono-loop benchmark with identical graph,
+- [x] Repeat the saved four-quantum 64-mono-loop benchmark with identical graph,
   seed, Q=32, chunk size 32, gains/mixes, read/write buffers, bus width, fabric
   clock and pinned DDR profile. Compare the fresh baseline with DDR metadata.
-- [ ] Add a longer-table 64-loop replay with metadata exceeding cache capacity.
+- [x] Add a longer-table 64-loop replay with metadata exceeding cache capacity.
   Start positions around line/page boundaries, run through sequential reuse and
   eviction, and include nonresident seeks/wrap. The old 16-ID-per-view fixture
   alone fits one 64-byte table line and cannot establish streaming behavior.
-- [ ] Add a 64-loop mixed playback/recording scenario exercising new-slot and
-  free-stack allocation, shared references, and bounded release/reuse between
-  quanta. Measure preparation/reclaim cost separately rather than hiding it.
-- [ ] Compare measured per-quantum samples/state/jobs and final fenced media with
+- [x] Add a 64-loop mixed playback/recording scenario exercising new-slot and
+  free-stack allocation, shared references, and automatic retake/reuse in jobs.
+  Measure bounded host Reclaim after the sequence separately rather than hiding it;
+  this follows upstream automatic BeginCapture without reintroducing host preparation.
+- [x] Compare measured per-quantum samples/state/jobs and final fenced media with
   Rust. Keep full intermediate snapshot comparisons in a separate verification
   replay or use passive observation: debug table walks and fences must not warm,
   flush or evict measured caches between quanta. State cold/warm conditions and
   retain sample-only baseline measurements under the same observation policy.
-- [ ] Extend `execution-timing.json` with the reporting fields below; save cases,
+- [x] Extend `execution-timing.json` with the reporting fields below; save cases,
   seeds, configurations, revisions and replay commands. Investigate cache thrash,
   transport starvation or exposed lookup latency before finalizing the results.
-- [ ] Update architecture/protocol documentation and publish baseline/new timing,
+- [x] Update architecture/protocol documentation and publish baseline/new timing,
   traffic and resource tables, including limitations and remaining bottlenecks.
 
 ### 7. Deliver, check CI and resolve review
 
-- [ ] Commit each completed stage, push the implementation branch and open a PR
+- [x] Commit each completed stage, push the implementation branch and open a PR
   targeting the FPGA branch, or update an explicitly designated existing PR.
-- [ ] Extend FPGA CI with focused scheduler/cache tests and small native and
+- [x] Extend FPGA CI with focused scheduler/cache tests and small native and
   realistic allocation/reuse pipeline smokes. Keep long benchmarks opt-in with
   stored reports; check CI and fix relevant failures until required checks pass.
-- [ ] Check for automated review feedback; address actionable findings and repeat
-  review/CI checks until the reviewer approves, if an automated reviewer is present.
-- [ ] Update this plan with evidence and leave the PR ready for review. Do not
-  autonomously merge it.
+- [ ] Final review follow-up deferred at the user’s request: check for automated
+  feedback and address actionable findings until approval, if a reviewer is present.
+- [ ] Final delivery follow-up deferred at the user’s request: check publication-head
+  CI and mark the draft PR ready for review. Do not autonomously merge it.
+- [x] Update this plan with evidence, commit and push, then stop as requested.
 
 ## Benchmark procedure and required reporting
 
@@ -331,7 +333,7 @@ The first mixed retake measured 81,281 clocks. Profiling exposed directory-empty
 scans during trimming. Lists now enforce contiguous-prefix writes, allowing tail
 release to identify empty parent nodes from the index digits; sparse debug writes
 are refused. Unit tests cover nonzero parent indexes, multi-level trimming and
-reuse without high-water growth. A final mixed measurement will record the gain.
+reuse without high-water growth. Final mixed measurements record the gain below.
 
 Metadata cache tags use offsets within the arena, and only the transport adds
 the logical arena base. This preserves the existing four-byte logical-base and
@@ -361,3 +363,38 @@ ordinary steady recording quantum. No asynchronous reclamation is added.
 Final reports add logical metadata operation/byte counts, foreground metadata
 stalls, service busy time, initialization/cold-preparation and final snapshot
 costs. These overlap other execution and are not added to processor totals.
+
+Stage 6 complete: all three realistic workloads pass per-quantum jobs/state/sample
+checks and final fenced media/reference readback (52 quanta). A further 24-quantum
+reference-cache sizing experiment also passes. Separate native replays compare
+complete intermediate media for all 52 primary quanta. The original benchmark
+fixture is unchanged; the matched-observation baseline and its three-file harness
+patch are retained. See `fpga/media_store/measurements/README.md` for replay
+commands, processor completion timestamps, traffic/stall/DDR data, cold/warm
+conditions, host/preparation/fence costs, capacities and provenance. Validation
+coverage is recorded in `measurements/validation.json`. No Rust semantics changed.
+
+The primary original playback finishes in 166.53 us cold and 131.74 us warm at
+the assumed 100 MHz, versus 139.55/123.83 us before DDR metadata. Warm playback
+needs zero metadata DDR reads. The four-line reference cache causes 384 fills
+and writebacks on the simultaneous retake; 32 lines (2 KiB data) eliminate these
+and reduce its time from 738.05 to 430.68 us. That tuned sequence fits the
+666.67 us budget, without claiming a bound for arbitrary long-take cleanup.
+The default four-line result and its deadline overrun remain published.
+
+Both-width warning-clean lint and affected-block/integrated generic/ECP5 checks
+pass. The default AXI32 integrated top uses 29,265 LUT4, 16,142 FF, 94 DP16KD
+and four DSPs, versus 24,691/13,716/91/four before. This is the eight-loop synthesis
+profile, not the larger timing profile. Standalone metadata with 128 views and
+fixed 8/4/2 cache lines uses seven DP16KD at both 4,096 and 5,760,000 slots;
+only bounded traversal storage/logic grows with tree depth. The 30-second stereo
+capacity audit does not fit the unchanged 512 MiB DDR timing profile.
+
+Stage 7 delivery: PR https://github.com/SanderVocke/shoopdaloop/pull/971. Focused
+cache/transport checks and native/realistic pipeline smokes are in FPGA CI. Both
+FPGA simulation and hosted-processor workflows pass on implementation commit
+`2842301f` (runs 43215254806 and 43215254979). The user subsequently requested stopping after committing and pushing, leaving
+CI and review for later. Publication-head CI is therefore not inspected; the PR
+remains draft and unmerged. Earlier review checks found no comments/submissions
+or automated reviewer. Stages 1–6 are complete; the remaining stage-7 follow-up
+is explicitly deferred under this latest instruction.

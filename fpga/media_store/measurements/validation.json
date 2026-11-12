@@ -1,0 +1,108 @@
+{
+  "note": "Counts are cocotb test functions; each bundles directed/random/protocol requests or multiple Rust cases. Targeted runs at successive verified milestones are retained.",
+  "suites": [
+    {
+      "scope": "cache/page/shared transport AXI32/64",
+      "artifact_directory": "work/metadata-units-final",
+      "configurations": 8,
+      "test_functions": 8,
+      "result": "passed"
+    },
+    {
+      "scope": "native audio AXI64, all profiles",
+      "artifact_directory": "work/metadata-audio64",
+      "configurations": 3,
+      "test_functions": 12,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic connected loops AXI64, all profiles",
+      "artifact_directory": "work/metadata-loop64-ddr",
+      "configurations": 3,
+      "test_functions": 9,
+      "result": "passed"
+    },
+    {
+      "scope": "native connected loops AXI32, all profiles",
+      "artifact_directory": "work/metadata-final-native32",
+      "configurations": 3,
+      "test_functions": 9,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic audio AXI32, all profiles",
+      "artifact_directory": "work/metadata-final-audio32",
+      "configurations": 3,
+      "test_functions": 12,
+      "result": "passed"
+    },
+    {
+      "scope": "legacy scalar connected loops",
+      "artifact_directory": "work/metadata-final-legacy",
+      "configurations": 1,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic odd/stereo connected loops",
+      "artifact_directory": "work/metadata-guard-stereo",
+      "configurations": 1,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "isolated resolver, all profiles",
+      "artifact_directory": "work/metadata-resolver-final",
+      "configurations": 3,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic minimum-buffer AXI32 chunks",
+      "artifact_directory": "work/metadata-chunk-final",
+      "configurations": 1,
+      "test_functions": 4,
+      "result": "passed"
+    },
+    {
+      "scope": "standalone SV backing memory AXI32/64",
+      "artifact_directory": "work/metadata-final-direct",
+      "configurations": 2,
+      "test_functions": 2,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic word transport with one line per cache",
+      "artifact_directory": "work/metadata-word-minimum",
+      "configurations": 1,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic scalar AXI, odd cache lines, one read/write buffer",
+      "artifact_directory": "work/metadata-odd-cache-word",
+      "configurations": 1,
+      "test_functions": 4,
+      "result": "passed"
+    },
+    {
+      "scope": "non-line-aligned logical/physical bases",
+      "artifact_directory": "work/metadata-alignment",
+      "configurations": 1,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "cold metadata-prefetch and late-writeback fault containment",
+      "artifact_directory": "work/metadata-loop-ddr-final",
+      "configurations": 1,
+      "test_functions": 3,
+      "result": "passed"
+    }
+  ],
+  "rust": "cargo test --locked -p rt_audio_math -p rt_fpga_reference -p rt_fpga_testbench; passed",
+  "warning_denied_build": "RUSTFLAGS=-D warnings cargo build --locked -p rt_audio_math -p rt_fpga_reference -p rt_fpga_testbench; passed",
+  "wire_contract_tests": 19,
+  "format_and_test_attribute_policy": "passed",
+  "synthesis": "generic/ECP5 media_store, media_audio_pipeline, loop_pipeline_axi, and two metadata capacity profiles; both-width AXI lint; passed"
+}

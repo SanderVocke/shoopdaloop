@@ -8,13 +8,15 @@ The following defines the subsystem boundary and its logical contract.
 
 Introduce a chunk-memory subsystem separate from the job processor. It hides
 BRAM buffering, cache lookup, writeback, prefetch scheduling, arbitration and
-chunk-ID-to-address translation. DDR burst handling can be added internally later.
+chunk-ID-to-address translation. Its DMA splits chunk transfers into DDR bursts.
 The existing job scratch RAM continues to hold intermediate arithmetic results.
 
 Media metadata remains responsible for views, ranges, allocation and ownership.
 A media frontend resolves view/frame ranges into chunk spans before requesting
 sample access. The chunk service does not interpret graph topology or loop modes.
-Future DDR-backed metadata transfers must share the memory scheduler.
+DDR-backed metadata and sample DMA clients share one burst scheduler and AXI
+master. Their caches remain separate; see
+[metadata ownership and layout](fpga/media_store/DDR_METADATA.md).
 
 ## Logical interface
 
