@@ -57,7 +57,7 @@ class ExecutionTiming:
             self.enabled = False
             return
         self.phases[phase] += 1
-        if phase in ('PREVIEW_SEND', 'PREVIEW_WAIT', 'COMMIT_SEND', 'COMMIT_WAIT', 'FINISH_SEND', 'FINISH_WAIT'):
+        if phase in ('SETTLE_SEND', 'SETTLE_WAIT', 'FINISH_SEND', 'FINISH_WAIT'):
             self.tp_states[self.tp_labels[int(self.core.timing.state.value)]] += 1
         if int(self.dut.state_busy.value):
             self.state_cycles += 1
@@ -73,10 +73,10 @@ class ExecutionTiming:
         self.fill_wait += int(int(self.cm.phase.value) == 3 and int(self.cm.opcode.value) == 0)
         self.dma_cycles += int(int(self.cm.dma_phase.value) != 0)
 
-    def bus(self, include_preflight):
+    def bus(self):
         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
         segments = [(a, b) for phase, a, b in self.bus_segments
-                    if a is not None and (include_preflight or phase != 'PREFLIGHT')]
+                    if a is not None]
         if not segments:
             return None
         zero = {key: 0 for key in segments[0][0]}
@@ -92,12 +92,12 @@ class ExecutionTiming:
             group = grouped.setdefault(name, dict(count=0, cycles=0))
             group['count'] += 1
             group['cycles'] += row['end']-row['start']
-        tp_cycles = sum(value for name,value in self.phases.items() if name.startswith(('PREVIEW_', 'COMMIT_', 'FINISH_')))
-        active = self.total-self.phases['PREFLIGHT']
-        return dict(raw_cycles=self.total, preflight_wait_cycles=self.phases['PREFLIGHT'],
+        tp_cycles = sum(value for name,value in self.phases.items() if name.startswith(('SETTLE_', 'FINISH_')))
+        active = self.total
+        return dict(raw_cycles=self.total,
                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,
                     coordinator_phases=dict(self.phases), job_phases=dict(self.jp_phases),
                     transition_states=dict(self.tp_states), jobs=grouped,
                     demand_fill_wait_cycles=self.fill_wait, transfer_active_cycles=self.dma_cycles,
-                    raw_ddr_bus=self.bus(True), active_ddr_bus=self.bus(False))
+                    raw_ddr_bus=self.bus(), active_ddr_bus=self.bus())

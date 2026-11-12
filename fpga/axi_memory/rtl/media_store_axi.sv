@@ -24,7 +24,7 @@ module media_store_axi #(
     input wire [31:0] hint_count,
     input wire cmd_valid,
     output wire cmd_ready,
-    input wire [2:0] cmd_opcode,
+    input wire [3:0] cmd_opcode,
     input wire [63:0] cmd_view,
     input wire [63:0] cmd_start,
     input wire [63:0] cmd_length,

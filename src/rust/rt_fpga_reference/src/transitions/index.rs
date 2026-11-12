@@ -80,12 +80,6 @@ impl PendingRequests {
             absolute: SlotMask::new(requests),
         }
     }
-    pub fn copy_from(&mut self, other: &Self) {
-        self.heads.copy_from_slice(&other.heads);
-        self.next.copy_from_slice(&other.next);
-        self.previous.copy_from_slice(&other.previous);
-        self.absolute.copy_from(&other.absolute);
-    }
     pub fn first(&self, target: usize, absolute: bool) -> Option<usize> {
         index(self.heads[target][usize::from(absolute)])
     }

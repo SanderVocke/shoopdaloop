@@ -61,7 +61,7 @@ empty append and append after clear.
 Clear/remove release in table order. Reclaim releases from the tail and truncates
 logical length, accounting for the first-chunk offset. Only a zero reference count
 retires the allocation before returning its ID to the free stack. Allocation pops that stack before growing the slot
-high-water mark; storage does not shrink. Append preflights capacity before changing
+high-water mark; storage does not shrink. Append checks capacity before changing
 media. New slots are zeroed, including unpublished tails, matching Rust snapshots.
 Reused slots retain old unpublished samples. Descriptors/lengths publish at completion.
 Zero-word reads still validate the view, position and loop length.
@@ -155,15 +155,22 @@ popped; later jobs remain for drain. Earlier state/sample effects survive. Read
 destinations become ready only after the last sample. The ordinary BRAM-only top
 defaults to `ENABLE_MEDIA=0` and continues refusing media jobs with code 3.
 
-The wrapper forwards the shared loop-record read port and external-job completion
-ports. The standalone media tests use per-node playback/capture state.
-`fpga/loop_pipeline` instantiates this wrapper beneath the transition coordinator:
-logical playback/capture reads committed loop records, media preparation can run
-during preflight, and logical time advances only after actual sample completion.
+The wrapper forwards the shared settled loop-record read port and always uses
+its internal executor. Logical capture starts emit BeginCapture (job opcode 7),
+which uses internal media opcode 8 over the four-bit command bus. It creates only
+the next descriptor or clears/reuses an existing writable view; gaps are invalid,
+physical descriptor exhaustion reports MemoryFull, and shared slices retain their
+references. Clearing walks the old chunk list, so long takes require bounded
+reclamation work before making deadline claims.
+
+The standalone media tests use per-node playback/capture state.
+`fpga/loop_pipeline` owns fatal processing policy: any required media error latches
+a fault, suppresses output and requires reset/reload. Clock advancement follows
+successful jobs. There is no host preparation pause or external executor.
 
 ## Comparison and reproduction
 
-Format-version-1 `media_case`/`media_trace` payloads expose serial commands separately
+Format-version-3 `media_case`/`media_trace` payloads expose serial commands separately
 from the signal program. Cases contain `name`, initial `media`, and `steps`. Results
 contain `status`, tagged `value` (none, view, empty flag, samples), and complete
 `media`. Failed commands are recorded and subsequent commands execute; failed audio
@@ -324,7 +331,7 @@ after the RTL/testbench additions.
 | MULT18X18D | 0 | 4 |
 
 These synthesis estimates exclude external samples, a physical DDR controller,
-board mapping and placement/routing. They include the shared loop/external-job
+board mapping and placement/routing. They include the shared loop
 interfaces and use the default one-cycle response setting.
 
 With requests always accepted and responses on the next clock: a two-chunk slice

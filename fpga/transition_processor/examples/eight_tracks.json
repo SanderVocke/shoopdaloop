@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "payload": {
     "kind": "transition_case",
     "value": {
@@ -1880,9 +1880,6 @@
                 "kind": "record"
               }
             }
-          ],
-          "previews": [
-            []
           ]
         },
         {
@@ -3194,136 +3191,91 @@
                 "retrigger": true
               }
             }
-          ],
-          "previews": [
-            []
           ]
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         }
       ]
     }

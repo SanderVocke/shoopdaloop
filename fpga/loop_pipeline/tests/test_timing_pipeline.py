@@ -55,9 +55,9 @@ async def benchmark64(dut):
             assert sum(group['count'] for group in result['jobs'].values()) == 192
             assert min(result['transition_cycles'], result['state_cycles'], result['job_cycles']) > 0
             results.append(result)
-            dut._log.info('quantum %s: %s active cycles, TP=%s SP=%s JP=%s preflight=%s',
+            dut._log.info('quantum %s: %s active cycles, TP=%s SP=%s JP=%s',
                           index, result['active_cycles'], result['transition_cycles'], result['state_cycles'],
-                          result['job_cycles'], result['preflight_wait_cycles'])
+                          result['job_cycles'])
         statistics = memory.axi.report(final=True) if memory.axi is not None else None
         (output/'execution-timing.json').write_text(json.dumps(dict(configuration=metadata(),
             seed=20261110, random_stalls=False,

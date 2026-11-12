@@ -4,7 +4,8 @@ mod index;
 mod plan;
 mod signal;
 mod types;
-pub use engine::{CommittedLoops, TransitionProcessor};
+pub(crate) use engine::SettledLoops;
+pub use engine::TransitionProcessor;
 pub use plan::{
     LoopKind, LoopSpec, PlanDescription, TransitionLimits, TransitionPlan, TransitionPlanImage,
 };

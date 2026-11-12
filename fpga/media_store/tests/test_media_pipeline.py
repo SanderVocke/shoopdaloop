@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def document(kind, value):
-    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
 
 
 def record_case(frames, seed=0):
@@ -447,6 +447,8 @@ async def pipeline_protocol(dut):
             "media": {"chunk_frames": cf, "samples": list(range(frames)), "free_chunks": [],
                       "views": [{"chunks": list(range(frames//cf)), "frames": frames}]},
             "steps": [{"writes": [], "inputs": [[7*i-13 for i in range(frames)]]}]}
+        complete = wire.run_reference("trace", document("audio_case", abort_case), executable=REFERENCE)
+        complete_buffers = complete["payload"]["value"]["results"][0]["buffers"]
         core = dut.core.pipeline.sample_engine
         for kind, destination in (("gain", 1), ("mix", 2)):
             await driver.load(abort_case)
@@ -467,14 +469,21 @@ async def pipeline_protocol(dut):
                 raise AssertionError(f"{kind} did not start while the failing prefetch was held")
             assert driver.media.pending is not None and driver.media.pending[2]
             driver.media.pause_responses = False
+            ready_at_fault = None
             for _ in range(1000):
                 _, after = await driver.tick()
+                if int(core.media_fault.value) and ready_at_fault is None:
+                    ready_at_fault = after["buffer_ready"] & (1 << destination)
                 if after["done"]:
                     break
             else:
                 raise AssertionError("arithmetic stream did not abort on a memory fault")
             assert after["error_stage"] == 2 and after["error_code"] == 8
-            assert not (after["buffer_ready"] & (1 << destination))
+            assert ready_at_fault is not None
+            assert after["buffer_ready"] & (1 << destination) == ready_at_fault
+            if ready_at_fault:
+                buffers, _ = await driver.read_samples()
+                assert buffers[destination] == complete_buffers[destination]
             for _ in range(6):
                 await driver.tick()
                 assert not int(core.stream_store_valid.value) and not int(core.scratch_write.value)

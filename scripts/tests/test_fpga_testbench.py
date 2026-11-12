@@ -21,7 +21,7 @@ I32_MAX = 2**31 - 1
 
 
 def document(kind, value):
-    return {"format_version": 2, "payload": {"kind": kind, "value": value}}
+    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
 
 
 def word(value):
@@ -165,7 +165,7 @@ class CrossLanguageContract(unittest.TestCase):
         self.assertEqual(results[4]["states"][1]["mode"], "playing")
         self.assertEqual(results[4]["states"][1]["content_length"], 64)
         self.assertEqual(results[4]["states"][2]["last_pulse"], 64)
-        self.assertEqual(results[0]["previews"][0]["value"][1]["state"]["mode"], "stopped")
+        self.assertEqual(results[0]["processed"], {"kind": "accepted", "value": None})
         self.assertEqual(results[0]["states"][1]["mode"], "recording")
         for result in results:
             wire.assert_transition_result_matches(result, deepcopy(result))
@@ -436,14 +436,14 @@ class CrossLanguageContract(unittest.TestCase):
     def test_unknown_missing_and_wrongly_typed_fields_are_rejected_by_both(self):
         bad = [
             {"payload": {"kind": "jobs", "value": []}},
-            {"format_version": 2, "payload": {"kind": "mystery", "value": []}},
+            {"format_version": 3, "payload": {"kind": "mystery", "value": []}},
             document("status", {"kind": "completed", "extra": 1}),
             document("bindings", [{"kind": "none", "extra": 1}]),
             document("status", {"kind": "completed", "value": None}),
             document("bindings", [{"kind": "none", "value": None}]),
             document("status", {"kind": "failed", "value": {"error": "mystery"}}),
         ]
-        for version in [0, 1, True, 2.0, "2"]:
+        for version in [0, 1, 2, 4, True, 3.0, "3"]:
             value = document("jobs", [])
             value["format_version"] = version
             bad.append(value)
@@ -475,7 +475,7 @@ class CrossLanguageContract(unittest.TestCase):
 
     def test_duplicate_fields_and_nonfinite_numbers_are_rejected(self):
         for text in [
-            '{"format_version":2,"format_version":2,"payload":{"kind":"jobs","value":[]}}',
+            '{"format_version":3,"format_version":3,"payload":{"kind":"jobs","value":[]}}',
             '{"format_version":NaN,"payload":{"kind":"jobs","value":[]}}',
         ]:
             with self.subTest(text=text), self.assertRaises(ValueError):

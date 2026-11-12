@@ -63,7 +63,7 @@ fn fixture() -> PipelineCase {
         initial_state: StateSnapshot {
             memory: compiled.initial_state,
         },
-        queue_capacity: 4,
+        queue_capacity: 8,
         buffers: 4,
         output_ports: 1,
         media: Some(media.snapshot()),
@@ -74,7 +74,7 @@ fn fixture() -> PipelineCase {
                     collect_completed: true,
                     collect: vec![],
                     cancel: vec![],
-                    previews: vec![vec![], vec![]],
+
                     commands: if i == 0 || i == 2 {
                         vec![Command {
                             target: loop_id,
@@ -125,7 +125,7 @@ fn combined_trace_runs_all_processors_without_copied_loop_operands() {
 }
 
 #[shoop_test]
-fn combined_trace_stops_at_failed_state_with_committed_clock_unchanged() {
+fn combined_trace_reports_failed_state_without_advancing_clock() {
     let mut case = fixture();
     let rt_fpga_reference::state::Instruction::ProcessLogicalPlayback { loop_id, .. } =
         &mut case.program.instructions[0]
@@ -134,13 +134,16 @@ fn combined_trace_stops_at_failed_state_with_committed_clock_unchanged() {
     };
     loop_id.generation += 1;
     let trace = run_pipeline_case(case).unwrap();
-    assert_eq!(trace.results.len(), 1);
+    assert_eq!(trace.results.len(), 6);
     assert_eq!(
         trace.results[0].error,
         Some(PipelineError::State(Error::InvalidState))
     );
     assert_eq!(trace.results[0].transition.next_frame, 0);
-    assert!(trace.results[0].transition.committed);
+    assert!(matches!(
+        trace.results[0].transition.processed,
+        rt_fpga_testbench::transitions::Response::Accepted(())
+    ));
 }
 
 #[shoop_test]

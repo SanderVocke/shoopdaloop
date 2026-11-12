@@ -52,50 +52,36 @@ synchronization relationships, independently of audio routing. Future composite
 loop handling belongs here; it is not part of the initial prototype.
 
 At a processing boundary it resolves commands and timing events into settled
-loop decisions for the state processor. It advances logical clocks and produces
-wrap events at the following boundary. Preparing a recording can fail, so state
-preparation must be able to return feedback before a transition is committed.
+loop records for the state processor, executes state/jobs/media and advances
+logical clocks on success. Preparing a recording is ordinary internal work.
+Required allocation/processing failures latch an engine fault and silence output
+until reset/reload. There is no host preflight, resource-refusal feedback or retry.
+[SIMPLIFY.md](SIMPLIFY.md) defines the processing/publication contract.
 
-The Rust hardware model now uses prepared logical loop state, generation-checked
-request slots, canonical timing components, and preview/commit/finish transactions.
-The Rust traversal compiles follower lists and uses per-loop pending-request
-indexes and a ready-pulse priority mask. This keeps pulse processing tied to
-actual edges and pending requests while preserving canonical settlement order.
-Preflight feedback can replace a candidate without publishing state or consuming
-source delays twice. Logical playback/capture instructions read committed loop
-records directly; the transition processor alone advances logical clocks. Composite
-kinds/timeline references are reserved but explicitly unsupported in this first
-primitive-only version. Serialized boundary traces are checked against the native
-resolver. `fpga/transition_processor` implements this primitive profile as a
-multicycle RTL FSM with double-bank synchronous loop/request/journal memories.
-Prepared follower links, per-loop pending-request lists, and ready-pulse priority
-selection replace repeated table/member searches. Indexes share the candidate
-transaction. Preview writes a candidate bank; commit switches banks atomically; finish
-advances committed clocks. Loop/request bank copies stream concurrently; final
-validation and clock advancement process one loop per clock after pipeline fill.
-Singleton/no-work fast paths reduce dispatch overhead while settlement retains
-one resolver and its canonical ordering. Its README defines the command/response interface,
-packed rows, Rust/native/RTL comparison bench and synthesis/cycle measurements.
-`fpga/loop_pipeline` connects the three processors under one coordinator. Preview
-pauses for resource preparation/retry, commit publishes the selected loop bank,
-and state execution reads that bank through a multiplexed RAM port. Finish follows
-successful job completion. Node state retains view handles and ramps without
-duplicating logical loop clocks or modes. Its internal job processor connects
-through `media_audio_pipeline` to the bounded store and external sample-memory
-port, executing recording and playback alongside the BRAM scratch-buffer jobs.
-Host media preparation is available during preflight and commit waits for it to
-finish. An external executor/completion interface remains optional. Rust provides
-the same coordinated flow and serialized combined traces. The integrated bench
-compares decisions, jobs, samples and complete media snapshots. State/job failures
-retain partial effects and freeze clocks.
+The Rust model and SystemVerilog transition controller use one loop/request/event
+bank, generation-checked requests and canonical timing components. Prepared
+follower links, pending-request lists and priority masks preserve canonical order
+without speculative table copies. State instructions read stable settled records
+through a shared RAM port; only the transition processor advances logical clocks.
+Composites/timelines remain reserved. Successful musical cases are checked against
+the independent native resolver and exact Rust/RTL traces.
+
+`fpga/loop_pipeline` coordinates settlement, internal state/job/media execution and
+clock advancement under one public run/completion handshake. Node state retains
+view handles and ramps without duplicating logical modes/clocks. `BeginCapture`
+creates/reuses a recording view internally. Media ownership, reference counting,
+shared ranges, bounds checks and AXI backpressure/coherence remain necessary.
+Failed output is suppressed even after partial sample work; partial state is
+available only for diagnostics. Rust additionally silences an entire multi-quantum
+host block when any quantum fails. An app/ARM transport must use that same policy.
 
 ## State processor
 
 The state processor consumes settled loop decisions and executes operations on
 node state and metadata: gains, ramps, media-view handles, and ranges in chunk counts. It
-reads logical playback positions from the committed loop table and emits
-jobs describing work for the job processor. It owns physical capture preparation
-and publication, with feedback to transition processing when needed.
+reads logical playback positions from the settled loop table and emits
+jobs describing work for the job processor. It emits internal recording preparation and sample jobs; required failures fault
+the coordinator.
 
 The initial Rust reference uses single-issue instructions that process whole
 nodes against their live state and emit jobs. Programs remain unchanged across

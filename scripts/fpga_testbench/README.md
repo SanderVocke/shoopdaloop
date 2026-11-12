@@ -41,7 +41,7 @@ schema; saved documents with other versions are rejected.
 
 ## Values and representation
 
-Every document has `format_version: 2` and a `payload` with `kind` and `value`.
+Every document has `format_version: 3` and a `payload` with `kind` and `value`.
 Payload kinds are `graph`, `compiled`, `program`, `instructions`, `state`, `jobs`,
 `read_intents`, `resolver_case`, `resolver_trace`, `bindings`, `state_writes`, `on_wrap`, `status`, `case`, `trace`, `audio_case`,
 `audio_trace`, `media`, `media_case`, `media_trace`, `chunk_case`, `chunk_trace`, `transition_plan`, `transition_plan_image`,
@@ -160,9 +160,9 @@ media starts an empty store and keeps media fields absent from results. Output
 and scratch state persist between steps. Shape and execution errors preserve
 partial effects and stop the trace.
 
-Use `assert_audio_result_matches` for complete bit-exact comparison. The new
-payload variants are additive in format version 2; existing state traces are
-unchanged. See `fpga/job_processor/README.md` for the supported job subset,
+Use `assert_audio_result_matches` for complete bit-exact comparison. These payload
+variants are included in format version 3. See `fpga/job_processor/README.md` for
+the supported job subset,
 hardware interfaces, simulation commands, and measured results.
 
 ## Elastic media traces
@@ -175,7 +175,7 @@ read-only view additionally has `"range":{"offset":3}`, where the unsigned
 32-bit offset is within its first chunk. Its `frames` is the range's logical
 length; reads wrap within that length. Aligned and empty read-only ranges use
 offset zero. Empty ranges own no chunks. Writable views omit `range` entirely;
-explicit null is rejected. This optional field is additive in format version 2,
+explicit null is rejected. This optional field is included in format version 3,
 preserving existing writable-view documents.
 
 Optional `chunk_limit` bounds the number of slots for FPGA comparisons; omit it
@@ -232,35 +232,30 @@ as well as samples.
 
 ## Connected shared-loop traces
 
-`pipeline_case` / `pipeline_trace` connect the transition, state and job phases.
-A case contains a transition plan, signal program, node state, queue/buffer/I/O
-capacities, optional initial media (explicit null when absent), and steps. Each
-step supplies the existing `transition` step, node-state `writes` and `work`:
-`external` carries a completion status, while `audio` carries per-port input
-samples. The result includes the full transition result, ordered jobs, node
-state, an optional staged pipeline error and optional audio results.
+`pipeline_case` / `pipeline_trace` connect transition settlement, state, jobs and
+media through `pipeline::Pipeline::process`. A case supplies a plan, program,
+node state, queue/buffer/I/O capacities, initial media and steps. Each step has
+`transition` commands, node-state `writes`, and `work` of kind `audio` carrying
+per-port input samples. The old external completion mode is removed.
 
-The runner invokes `pipeline::Pipeline`. Logical playback/capture instructions
-read its committed transition records by ID, with no copied control operands.
-External steps drain descriptors and report a modeled completion. Audio steps
-run the actual Rust sample processor and media store. State/job failures stop
-the trace with partial effects retained and logical time unadvanced. A failed
-preview remains replaceable at the same frame. The additive variants retain
-format version 2 and the existing subsystem document shapes.
+Results contain post-process transition state, ordered jobs, node state,
+optional staged error and audio/media results. The overall pipeline error decides
+success; a transition-stage success alone does not imply completed sample work.
+Capture-start jobs create/reuse recording views internally. Failures preserve
+partial diagnostic state and silence output; subsequent steps verify sticky
+fault behavior rather than retrying. Fixture control writes are skipped once
+faulted. Recreate/reload the engine to recover. Multi-quantum host-block silencing
+is additionally covered directly by Rust tests.
 
 ```sh
 target/debug/fpga-reference trace \
-  < fpga/loop_pipeline/examples/record_play.json > work/pipeline.trace.json
+  < fpga/loop_pipeline/examples/record_play_samples.json > work/pipeline.trace.json
 target/debug/fpga-reference check < work/pipeline.trace.json > /dev/null
-target/debug/fpga-reference trace \
-  < fpga/loop_pipeline/examples/record_play_samples.json > work/pipeline-samples.trace.json
-target/debug/fpga-reference check < work/pipeline-samples.trace.json > /dev/null
 ```
 
-`fpga/loop_pipeline/README.md` describes the shared RAM interface, coordinator,
-external job acknowledgement, combined Rust/RTL comparison and limitations. Its
-internal RTL executor now includes the bounded media store: `simulate.py --media`
-compares complete transitions, jobs, recorded/replayed samples and media snapshots.
+See `fpga/loop_pipeline/README.md` for the single-run RTL contract and comparison
+bench. Format version 3 rejects old preview/observation/external-step fields;
+versions 1 and 2 are intentionally incompatible.
 
 ## Serial media commands
 
@@ -305,30 +300,23 @@ musical subset and runtime protocol. No sample jobs execute in these traces.
 
 Each step executes these actions in order:
 
-1. If `collect_completed` is true, collect all previously terminal requests in
-   slot order, followed by the explicit `collect` request IDs.
-2. Process explicit `cancel` IDs, then submit `commands` in list order.
-3. Run each observation list in `previews` against the same committed frame.
-   This list must contain at least one preview. A retry replaces the candidate
-   and recomputes source delays from the retained inputs.
-4. If the final preview succeeds, commit it and finish one quantum. Earlier
-   previews are never published. After a failed final preview, retry at the same
-   frame with corrected observations; new control mutations remain backpressured
-   in the hardware model.
+1. If `collect_completed` is true, collect terminal requests in slot order, then
+   the explicit `collect` IDs.
+2. Process `cancel` IDs and submit `commands` in order.
+3. Call `process()` exactly once, then report post-process state and next frame.
 
 Commands contain `target`, `sequence`, `at`, `timing` and `operation`. Timing is
-`at` or `after_ticks` with `source` and `skip`. Operations are `stop`, `record`,
-`play` or `seek`; the latter two include `position` and `retrigger`. Observations
-are `capture_unavailable` for a loop or `refused` for a request, with a reason.
-Control/preview replies use `accepted` or `rejected` with a `value`.
+`at` or `after_ticks` with `source` and `skip`; operations are `stop`, `record`,
+`play` or `seek` (the latter two carry position/retrigger). Control and `processed`
+responses use `accepted` / `rejected` with a `value`. There is no observation list,
+preview result, committed flag, separate after-finish snapshot or boundary token.
 
-Each result records the starting frame, collection/cancellation/submission
-replies, decisions for every preview, whether commit occurred, committed loop
-states, retained request slots, ordered events, states after finish, and next
-frame. Terminal requests keep their slots until collected. `remaining_ticks` is
-null for terminal or absolute-time requests. Decisions include playback
-discontinuity, request origin, and `waiting_repeat`; a waiting primitive remains
-at its content endpoint without advancing until a source pulse releases it.
+Results report starting frame, admission replies, `processed`, loop states,
+retained requests, ordered events and `next_frame`. Terminal requests retain
+slots until collected; remaining ticks are null for terminal/absolute requests.
+Processing failures latch and may expose partial diagnostic state. Successful
+cases also compare with the independent native resolver; its internal native
+transactions are outside the hardware contract.
 
 ```sh
 target/debug/fpga-reference trace \
@@ -337,18 +325,6 @@ target/debug/fpga-reference trace \
 target/debug/fpga-reference check < work/transition.trace.json > /dev/null
 ```
 
-The example uses three logical loops: a 64-frame master, a take initially being
-recorded, and a 16-frame follower. At frame 64 the master's second pulse changes
-the take from recording to playback and starts the follower at that same boundary.
-It also exercises discarded preflight refusals, seek and stop. The `check` command
-independently executes `shoop_loops::Resolver` for the supported primitive subset
-and compares every architectural result. Native-only fields and media operations
-are outside this profile; the standalone processor has no native resolver
-dependency. Rust regression tests add 100 seeded graphs over 8,000 quanta.
-
-Python/cocotb drivers can use `assert_transition_result_matches(expected,
-observed)` to compare complete boundary results. The RTL and packed command/table ABI
-are described in `fpga/transition_processor/README.md`. Boundary tokens are local
-runtime guards and are not serialized in JSON; internal settlement cycles remain
-implementation-dependent. The native oracle adapter applies the hardware
-profile's input-freeze and observation-capacity rules before calling the resolver.
+Python/cocotb uses `assert_transition_result_matches` for exact architectural
+comparison. RTL cycles remain implementation-dependent. See the transition
+processor README for packed fields, fault/reset semantics and workload checks.

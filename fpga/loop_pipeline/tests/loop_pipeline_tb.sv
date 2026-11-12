@@ -31,6 +31,7 @@ module loop_pipeline_tb #(
     input wire [31:0] run_outputs,
     input wire job_enable,
     output wire busy,
+    output wire faulted,
     output reg done,
     output reg [7:0] error_code,
     output reg [1:0] error_stage,
@@ -63,12 +64,6 @@ module loop_pipeline_tb #(
     output wire [31:0] queued_jobs,
     output wire drain_valid,
     input wire drain_ready,
-    input wire run_external_jobs,
-    output wire external_job_valid,
-    input wire external_job_ready,
-    input wire external_done_valid,
-    output wire external_done_ready,
-    input wire [7:0] external_error,
     input wire command_valid,
     output wire command_ready,
     input wire [7:0] command_opcode,
@@ -78,14 +73,9 @@ module loop_pipeline_tb #(
     input wire response_ready,
     output wire [3:0] response_error,
     output wire [831:0] response_data,
-    output wire preflight_valid,
-    input wire preflight_ready,
-    input wire preflight_retry,
-    output reg [3:0] preflight_error,
-    output reg [127:0] boundary_token,
     output wire transition_busy,
     input wire [63:0] arena_base,
-    input wire store_cmd_valid, output wire store_cmd_ready, input wire [2:0] store_cmd_opcode,
+    input wire store_cmd_valid, output wire store_cmd_ready, input wire [3:0] store_cmd_opcode,
     input wire [63:0] store_cmd_view, input wire [63:0] store_cmd_start, input wire [63:0] store_cmd_length,
     input wire [31:0] store_cmd_count,
     output wire store_busy, output wire store_done, output wire [7:0] store_error_code,
@@ -105,7 +95,6 @@ module loop_pipeline_tb #(
     input wire memory_response_error, input wire [31:0] memory_read_data,
     output wire memory_fault,
     output wire [63:0] debug_frame,
-    output wire debug_bank,
     output wire debug_shared_read
 );
     initial clk=0;
@@ -116,6 +105,5 @@ module loop_pipeline_tb #(
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) core (.*);
     assign debug_frame=core.timing.frame;
-    assign debug_bank=core.timing.active_bank;
     assign debug_shared_read=core.loop_read_valid && core.loop_read_ready;
 endmodule

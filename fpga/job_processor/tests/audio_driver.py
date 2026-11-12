@@ -57,7 +57,7 @@ class AudioDriver(Driver):
                  audio_cfg_valid=0, audio_cfg_space=0, audio_cfg_write=0, audio_cfg_address=0,
                  audio_cfg_write_data=0, job_enable=1, drain_ready=0,
                  loop_read_ready=0,loop_response_valid=0,loop_response_error=0,loop_response_data=0,
-                 run_external_jobs=0,external_job_ready=0,external_done_valid=0,external_error=0)
+                 )
         if hasattr(self.dut, "media_fault"):
             self.set(media_fault=0, media_hint_ready=0)
         await self.tick()

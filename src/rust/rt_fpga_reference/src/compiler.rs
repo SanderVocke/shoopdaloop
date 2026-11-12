@@ -283,6 +283,9 @@ fn lower(index: usize, node: &Node, compiled: &mut Compiled) -> Result<(), Error
             port,
         },
     };
+    if matches!(instruction, Instruction::ProcessLogicalCapture { .. }) {
+        compiled.program.jobs_per_quantum += 1;
+    }
     compiled.program.instructions.push(instruction);
     compiled.program.jobs_per_quantum += 1;
     Ok(())

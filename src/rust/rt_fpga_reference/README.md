@@ -9,8 +9,8 @@ This is not a cycle simulator, RTL generator, or hard real-time guarantee.
 Graphs/programs explicitly specify samples per chunk; their quantum covers an
 integral number of chunks. Media positions and lengths are chunk indices and
 counts. Arithmetic ramp durations and shared transition records retain samples;
-logical state instructions convert committed positions at their input boundary.
-The serialized contract is version 2, with explicit `position_chunks` and
+logical state instructions convert settled positions at their input boundary.
+The serialized contract is version 3, with explicit `position_chunks` and
 `length_chunks` fields; version-1 documents are rejected.
 
 `StateProcessor::run_with_intents` and `run_with_loops_and_intents` accept an
@@ -55,130 +55,46 @@ then verifies exact recorded playback without changing the program.
 
 ## Logical transition processor
 
-`transitions::TransitionProcessor` models the transaction boundary intended for
-hardware. Logical `LoopId` values are independent of signal nodes, media views,
-and instruction order. A loop can have separate playback and capture bindings,
-or eventually be a timing-only composite. The native app still uses its existing
-resolver; adopting this model in the app is a separate integration step.
+`transitions::TransitionProcessor` owns prepared primitive-loop state, retained
+request slots, canonical timing components and ordered events. `process()` settles
+and advances one quantum. There is one authoritative state/request/journal bank;
+no public preview, observations, boundary token, commit or finish API remains.
+Read state between calls. Processing errors latch, partial diagnostic state is
+allowed and recovery requires preparing a new engine.
 
-Compile a `TransitionPlan` once from loop IDs, initial content lengths, sync
-sources, repeat-sync flags, quantum, and storage limits. Compilation produces
-canonical dependency components: acyclic components run in source-first order,
-and legal sync cycles settle in stable ID order. Each loop can deliver at most
-one pulse per boundary. `LoopKind::Composite` and a timeline reference reserve
-the extension point; this version returns `Unsupported` for either.
-
-Compilation also prepares flat source-to-follower lists with per-source ranges
-and component membership. `TransitionPlan::followers` exposes the canonical
-outgoing sync edges. Pulse propagation walks those edges and filters by the
-current component. A hierarchical ready mask selects the lowest ready loop ID,
-including when a newly activated lower ID follows a higher ID's pulse.
-
-Pending requests use separate per-loop lists for absolute and source-timed
-requests, sorted by stable request slot. A global pending-absolute mask handles
-the initial due-request pass. Sync reactions visit only that target's pending
-source-timed requests; stop cancellation visits only that target's two lists.
-Terminal records leave the indexes immediately and retain their record slots
-until collected. Slot reuse relinks the new request under its target and timing.
-Refusal observations populate indexed scratch lookups during validation.
-
-All indexes are prepared with storage linear in loop/request capacity. They are
-copied with the candidate state, changed only in preview scratch, and published
-at commit. Preview retries restore the committed indexes as well as the musical
-state. The full linear state/request copy remains; repeated full request-table,
-component-member and ready-pulse searches are removed. Command admission still
-checks retained sequence IDs and searches for a free record slot.
-
-Work-count regressions check a 64-member sync cycle with both 64 and 1,024 request
-slots: after the startup requests finish, a wrap boundary visits zero request
-records and 64 actual follower edges, including while completions remain retained.
-The allocation guard also covers 130 loop/request slots across mask-word
-boundaries. These are Rust algorithm checks, not predicted RTL cycles.
-
-The public transaction API, compiled-plan JSON image and boundary trace format
-are unchanged. The RTL uses the same indexed traversal, representing follower
-lists and pending requests as prepared links and selecting ready pulses with a
-balanced priority encoder. Hardware preparation derives its private topology
-indexes from the unchanged upload format.
-
-The runtime protocol is:
-
-1. `submit(Command)` retains a request in a fixed slot with a generation-checked
-   ID. Stop, play, record, seek, retrigger, absolute frame scheduling, and delayed
-   source pulses are supported. Positions and lengths use the quantum grid;
-   scheduling frames round up. Supported quanta are 1, 16, 32, 64 and 128 frames.
-2. `preview(observations)` settles into prepared scratch. Inspect
-   `decisions(boundary)` to preflight media resources. `CaptureUnavailable` or
-   request-specific `Refused` observations can replace the preview at the same
-   frame. Every retry starts from committed state and retained inputs; it cannot
-   consume a delayed pulse twice. Preview does not publish state or completions.
-3. `commit(boundary)` publishes the candidate exactly once. Only the latest
-   successful boundary token is valid. `committed(boundary)` returns a borrowed,
-   read-only view of the active loop records. `StateProcessor::run_with_loops`
-   reads those records by slot and full generation through logical playback and
-   capture instructions. It does not copy mode/position/length into node state.
-4. After successful quantum execution, `finish_quantum(boundary)` advances logical
-   clocks exactly once. A playback endpoint remains `position == content_length`;
-   the next preview resolves wrap/repeat waiting against the source's pulse.
-   State execution reads a quantum's committed position without advancing it.
-5. Collect terminal requests with `take_completion`. Until collected, terminal
-   requests retain their slot and sequence. Reuse increments the generation;
-   exhausted generations retire the slot. A successful stop cancels older pending
-   commands for that loop, and the greatest eligible sequence wins arbitration.
-
-Submission, cancellation and collection are backpressured from the first preview
-until finish, including after a failed preview. Retry with corrected observations
-to obtain a valid candidate. Preview and commit can fail without publishing partial
-logical state; counters use checked arithmetic. State/job execution failures after
-commit require stopping the pipeline, rather than replaying that quantum.
-
-Preparation may allocate. Submission, cancellation, preview/retry, commit, finish,
-collection and shared-loop state execution use prepared storage without heap operations.
-Loop/request capacities are explicit; event storage reserves at least two events
-per loop plus one per request, covering pulse, wrap and transition events without
-silent truncation. Preparation currently bounds loop/request slots to 65,536 each
-and events to 196,608. This is a transaction-level model, not a cycle count or a
-promise that every configuration meets a hardware deadline.
-
-Composite execution, trigger actions, request batches, playback monitoring during
-recording, media ownership/admission and live topology replacement are deferred.
-The model exposes logical mode and published length/revision; a media adapter
-remains responsible for choosing recording views and reserving storage. Committed
-reads require the current committed token and validate slot/generation. The
-state processor reads the logical record once for each playback/capture node and
-keeps view handles in node state. It does not perform media preparation or enforce
-playback/capture exclusion in sample jobs.
-
-The testbench compares decisions, retained requests/completions, ordered events,
-and post-quantum state against `shoop_loops::Resolver` for this primitive subset.
-See `scripts/fpga_testbench/README.md` for replayable transition traces.
-The standalone RTL and Rust/native/RTL comparison bench live in
-`fpga/transition_processor`; the native app retains its existing resolver.
+Scheduling, repeat synchronization, source delays, request generations,
+arbitration and cancellation retain their normal semantics. Prepared follower
+lists, per-loop pending indexes and priority masks make work follow actual edges
+and pending requests. Composite/timeline fields remain reserved. Logical loop
+positions use frames; raw ReadView jobs use chunk counts. The state processor
+reads settled loop records internally and never advances clocks itself.
 
 ## Connected shared-loop pipeline
 
-`pipeline::Pipeline` connects transition resolution, node state execution and
-job completion. Compile `Node::LogicalPlayback` / `LogicalCapture` for the new
-flow. Their instructions contain a logical `LoopId`, view-state address and
-buffer ID. Gain ramps retain independent node state. Timing-only loops need no
-signal nodes. The raw-state instructions and `SignalTransitions` remain available
-for isolated standalone fixtures.
+`pipeline::Pipeline::process` executes one quantum of transitions, state, jobs and
+media, then advances clocks on success. `process_block` accepts host slices whose
+frame count is a multiple of the quantum. Required processing failures latch
+`PipelineError`; the **whole host block** becomes silence even if a preceding
+quantum succeeded. Later callbacks return the same fault and silence until the
+engine is recreated/reloaded. Admission errors such as malformed buffer shapes
+are refused without faulting an otherwise healthy engine.
 
-Use `preview` for a candidate, perform physical media preparation and retry if
-necessary, then `run_state` to commit and generate jobs from shared records.
-`run_jobs` executes the actual Rust job processor and finishes logical time only
-after success. `run` combines those phases when no external preparation callback
-is needed. External executors can drain with `pop_job` and report completion
-through `finish_jobs`. Emptying the FIFO alone cannot advance clocks. A stale
-token, duplicate completion or undrained FIFO is refused. State/job failure
-faults the coordinator and preserves partial effects with committed time frozen.
+Logical capture starts emit `Job::BeginCapture` before sample Capture. The store
+creates the configured next view or clears/reuses an existing writable view.
+Gapped/out-of-range IDs are rejected without allocating intervening descriptors.
+Shared slices retain ownership across retakes. Descriptor/chunk exhaustion and
+late memory faults take the fatal path, with no rollback or replay. Publication
+waits for successful completion; a later writeback failure cannot retract audio
+already published. `Memory::begin_capture` supplies the recording lifecycle hook;
+`Memory::fault` exposes delayed memory errors.
 
-`fpga/loop_pipeline` implements this flow in RTL. It multiplexes the existing
-transition loop RAM read port into state execution, retaining the bank selector
-for atomic publication. Its BRAM job processor executes the supported sample
-subset; external media work uses a separate descriptor/completion handshake.
-Combined `pipeline_case` / `pipeline_trace` documents compare both implementations.
-The native app renderer continues to use its existing resolver and ownership path.
+Apply commands and node controls between calls. Optional job tracing is diagnostic
+and does not supply an alternate external executor. Settlement/advance helpers
+are crate-private; callers cannot pause production processing for resource
+preparation. See [the RTL pipeline](../../../fpga/loop_pipeline/README.md) and
+[SIMPLIFY.md](../../../SIMPLIFY.md) for publication/reset requirements and
+verification. This change covers the standalone hardware model and RTL; the
+native app planner described below retains its separate transactions.
 
 ## Serialization and RTL comparison
 

@@ -26,8 +26,6 @@ pub struct TransitionStep {
     pub collect: Vec<RequestId>,
     pub cancel: Vec<RequestId>,
     pub commands: Vec<Command>,
-    /// Retries replace the candidate at the same frame; only the last can commit.
-    pub previews: Vec<Vec<Observation>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -64,12 +62,10 @@ pub struct TransitionResult {
     pub collected: Vec<Collection>,
     pub cancelled: Vec<Response<bool>>,
     pub submitted: Vec<Response<RequestId>>,
-    pub previews: Vec<Response<Vec<Decision>>>,
-    pub committed: bool,
+    pub processed: Response<()>,
     pub states: Vec<LoopState>,
     pub requests: Vec<Option<RequestSnapshot>>,
     pub events: Vec<Event>,
-    pub after_finish: Vec<LoopState>,
     pub next_frame: u64,
 }
 
@@ -88,17 +84,12 @@ trait Engine {
     fn submit(&mut self, command: Command) -> Result<RequestId, TransitionError>;
     fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError>;
     fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError>;
-    fn preview(&mut self, observations: &[Observation]) -> Result<Vec<Decision>, TransitionError>;
-    fn commit(&mut self);
-    fn finish(&mut self);
+    fn process(&mut self) -> Result<(), TransitionError>;
 }
 
 fn run(case: TransitionCase, mut engine: impl Engine) -> Result<TransitionTrace, TransitionError> {
     let mut results = Vec::with_capacity(case.steps.len());
     for step in &case.steps {
-        if step.previews.is_empty() {
-            return Err(TransitionError::InvalidConfig);
-        }
         let frame = engine.frame();
         let automatic: Vec<_> = if step.collect_completed {
             engine
@@ -129,32 +120,19 @@ fn run(case: TransitionCase, mut engine: impl Engine) -> Result<TransitionTrace,
             .iter()
             .map(|&command| engine.submit(command).into())
             .collect();
-        let previews: Vec<_> = step
-            .previews
-            .iter()
-            .map(|observations| engine.preview(observations).into())
-            .collect();
-        let committed = matches!(previews.last(), Some(Response::Accepted(_)));
-        if committed {
-            engine.commit();
-        }
+        let processed = engine.process().into();
         let states = engine.states();
         let requests = engine.requests();
         let events = engine.events();
-        if committed {
-            engine.finish();
-        }
         results.push(TransitionResult {
             frame,
             collected,
             cancelled,
             submitted,
-            previews,
-            committed,
+            processed,
             states,
             requests,
             events,
-            after_finish: engine.states(),
             next_frame: engine.frame(),
         });
     }
@@ -163,7 +141,6 @@ fn run(case: TransitionCase, mut engine: impl Engine) -> Result<TransitionTrace,
 
 struct Model {
     processor: TransitionProcessor,
-    boundary: Option<BoundaryId>,
 }
 impl Engine for Model {
     fn frame(&self) -> u64 {
@@ -187,21 +164,8 @@ impl Engine for Model {
     fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError> {
         self.processor.take_completion(id)
     }
-    fn preview(&mut self, observations: &[Observation]) -> Result<Vec<Decision>, TransitionError> {
-        self.boundary = None;
-        let id = self.processor.preview(observations)?;
-        self.boundary = Some(id);
-        Ok(self.processor.decisions(id)?.to_vec())
-    }
-    fn commit(&mut self) {
-        self.processor
-            .commit(self.boundary.expect("successful preview"))
-            .expect("commit");
-    }
-    fn finish(&mut self) {
-        self.processor
-            .finish_quantum(self.boundary.take().expect("committed boundary"))
-            .expect("finish");
+    fn process(&mut self) -> Result<(), TransitionError> {
+        self.processor.process()
     }
 }
 
@@ -211,7 +175,6 @@ pub fn run_transition_case(case: TransitionCase) -> Result<TransitionTrace, Tran
         case,
         Model {
             processor: TransitionProcessor::prepare(plan),
-            boundary: None,
         },
     )
 }
@@ -231,20 +194,6 @@ fn error(error: native::Error) -> TransitionError {
         E::InvalidProgram | E::InstantaneousDependencyCycle | E::RecursiveProgram => {
             TransitionError::Unsupported
         }
-    }
-}
-fn native_error(value: TransitionError) -> native::Error {
-    match value {
-        TransitionError::InvalidConfig => native::Error::InvalidConfig,
-        TransitionError::Capacity => native::Error::Capacity,
-        TransitionError::InvalidId => native::Error::InvalidId,
-        TransitionError::DuplicateId => native::Error::DuplicateId,
-        TransitionError::InvalidState => native::Error::InvalidState,
-        TransitionError::InvalidFrame => native::Error::InvalidFrame,
-        TransitionError::MissingSync => native::Error::MissingSync,
-        TransitionError::Exhausted => native::Error::Exhausted,
-        TransitionError::EmptyContent => native::Error::EmptyContent,
-        TransitionError::Unsupported => native::Error::InvalidProgram,
     }
 }
 fn loop_id(id: native::LoopId) -> LoopId {
@@ -355,8 +304,7 @@ struct Oracle {
     resolver: native::Resolver,
     ids: Vec<native::LoopId>,
     retained: Vec<Option<(RequestId, Command, u64)>>,
-    preparing: bool,
-    observation_limit: usize,
+    fault: Option<TransitionError>,
 }
 impl Engine for Oracle {
     fn frame(&self) -> u64 {
@@ -415,7 +363,7 @@ impl Engine for Oracle {
             .collect()
     }
     fn submit(&mut self, command: Command) -> Result<RequestId, TransitionError> {
-        if self.preparing {
+        if self.fault.is_some() {
             return Err(TransitionError::InvalidState);
         }
         let request = native::Request {
@@ -443,7 +391,7 @@ impl Engine for Oracle {
         Ok(id)
     }
     fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError> {
-        if self.preparing {
+        if self.fault.is_some() {
             return Err(TransitionError::InvalidState);
         }
         self.resolver
@@ -452,7 +400,7 @@ impl Engine for Oracle {
             .map_err(error)
     }
     fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError> {
-        if self.preparing {
+        if self.fault.is_some() {
             return Err(TransitionError::InvalidState);
         }
         let result = self
@@ -464,52 +412,19 @@ impl Engine for Oracle {
         }
         Ok(result.map(completion))
     }
-    fn preview(&mut self, observations: &[Observation]) -> Result<Vec<Decision>, TransitionError> {
-        // The hardware transport freezes control input across preflight retries.
-        self.preparing = true;
-        if observations.len() > self.observation_limit {
-            return Err(TransitionError::Capacity);
+    fn process(&mut self) -> Result<(), TransitionError> {
+        if let Some(error) = self.fault {
+            return Err(error);
         }
-        let observations: Result<Vec<_>, _> = observations
-            .iter()
-            .map(|o| {
-                Ok(match *o {
-                    Observation::CaptureUnavailable { target, reason } => {
-                        native::Observation::CaptureUnavailable {
-                            target: native_loop(target)?,
-                            reason: native_error(reason),
-                        }
-                    }
-                    Observation::Refused { request, reason } => native::Observation::Refused {
-                        request: native_request(request)?,
-                        reason: native_error(reason),
-                    },
-                })
-            })
-            .collect();
-        self.resolver.preview_tick(&observations?).map_err(error)?;
-        Ok(self
-            .resolver
-            .decisions()
-            .map_err(error)?
-            .iter()
-            .map(|d| {
-                let state = state(d.state);
-                Decision {
-                    state,
-                    playback_discontinuity: d.playback_discontinuity,
-                    origin: d.origin.map(request_id),
-                    waiting_repeat: state.at_end(),
-                }
-            })
-            .collect())
-    }
-    fn commit(&mut self) {
-        self.resolver.commit().expect("successful preview");
-    }
-    fn finish(&mut self) {
-        self.resolver.finish().expect("committed boundary");
-        self.preparing = false;
+        let result = (|| {
+            self.resolver.preview_tick(&[]).map_err(error)?;
+            self.resolver.commit().map_err(error)?;
+            self.resolver.finish().map_err(error)
+        })();
+        if let Err(error) = result {
+            self.fault = Some(error);
+        }
+        result
     }
 }
 
@@ -572,8 +487,7 @@ pub fn run_transition_oracle(case: TransitionCase) -> Result<TransitionTrace, Tr
             resolver,
             ids,
             retained: vec![None; limits.pending_requests as usize],
-            preparing: false,
-            observation_limit: limits.loop_slots as usize + limits.pending_requests as usize,
+            fault: None,
         },
     )
 }

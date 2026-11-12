@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "payload": {
     "kind": "transition_case",
     "value": {
@@ -133,93 +133,55 @@
                 "retrigger": true
               }
             }
-          ],
-          "previews": [
-            [
-              {
-                "kind": "capture_unavailable",
-                "target": {
-                  "slot": 1,
-                  "generation": 1
-                },
-                "reason": "capacity"
-              }
-            ],
-            [],
-            []
           ]
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
@@ -242,9 +204,6 @@
                 "retrigger": false
               }
             }
-          ],
-          "previews": [
-            []
           ]
         },
         {
@@ -266,9 +225,6 @@
                 "kind": "stop"
               }
             }
-          ],
-          "previews": [
-            []
           ]
         }
       ]

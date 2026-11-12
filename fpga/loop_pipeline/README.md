@@ -1,219 +1,152 @@
 # Shared-loop audio pipeline
 
-`loop_pipeline` connects transition resolution, node state execution, sample jobs
-and persistent media. Playback/capture instructions read the transition processor's
-committed loop RAM directly. No loop decisions are copied into state memory.
+`loop_pipeline` connects transition settlement, state/job execution and media
+storage under one processing operation. The Rust `pipeline::Pipeline` has the
+same contract. See [SIMPLIFY.md](../../SIMPLIFY.md) for the design decision.
 
 ```text
-Host commands and observations
-             |
-     Transition processor
-       candidate loop bank
-             |
-     preflight / retry
-             |
-           commit
-             |
-     committed loop bank ------ read port -----> State processor
-       mode, position, length                    program + node state
-             |                                         |
-             |                                     job FIFO
-             |                                         |
-             |                                   Job processor
-             |                                         |
-             |                          scratch BRAM + media store
-             |                                         |
-             |                              external sample RAM port
-             |                                         |
-             +--------- finish after successful samples +
+commands -> settle transitions -> execute state and jobs -> advance clocks
+                                      |
+                                   failure -> latch fault -> silence until reset
 ```
 
-The default simulation memory path now uses the shared synthesizable AXI
-endpoint. See [AXI memory and DRAMsim3](../axi_memory/README.md) for detailed
-timing, bus-width options, and the retained legacy word-port mode.
+## Processing and publication
 
-## Ownership and publication
+The transition processor has one loop/request/journal bank. Settlement updates it
+in place; state instructions read its stable settled records through the shared
+RAM port while jobs execute. Successful completion advances logical clocks once.
+Read ordinary state between quanta. A fault can leave partial diagnostic state,
+media writes, jobs and events; it never establishes a resumable session snapshot.
+There is no resource preflight, observation list, continuation, boundary token,
+commit, rollback, replay, or selectable external job executor in the public flow.
 
-The transition processor alone writes logical mode, position, length, revisions
-and timing metadata. It preserves its two banks and commits with the existing
-bank selector. During state/job execution, that bank stays fixed. The state
-processor requests loop records by slot and checks the full generation before
-using them. A stopped or repeat-waiting loop emits Silence from playback, while
-capture emits a job only in recording mode.
+Recording starts emit `BeginCapture` before `Capture`. The media store creates
+the configured view if it is the next descriptor, or clears/reuses that writable
+view on a retake. Configure playback and capture operands for an ordinary recording loop to use
+the same stable writable view ID. Retakes reuse that identity; there are no
+per-take host binding writes. Imported shared read-only views remain distinct. Creation is bounded
+by physical descriptor capacity in RTL; invalid/gapped IDs are refused before
+allocation. Shared read-only slices retain their chunks when the original view
+is cleared. Reference counting, free-slot reuse and allocator checks remain.
+Clearing a long take still walks its chunk list; this implementation establishes
+no worst-case audio deadline.
 
-The shared read port multiplexes the existing loop RAM's synchronous read port.
-It is available only between transition commands in the committed phase. A read
-returns valid, generation, mode, content length and position in one response.
-There is no additional decision RAM, per-loop copy pass or shared writer.
+Any required processing error, including arena/descriptor exhaustion, enters a
+sticky fault. Record the cause, stage and logical frame, suppress failed output,
+and reset/reload before processing again. Late posted-writeback faults take the
+same path when observed; already published audio cannot be retracted. Coordinate
+reset with outstanding memory traffic so old responses cannot enter a new epoch.
+Malformed commands can be rejected at admission without faulting the engine.
 
-Media view handles stay in node state. Gains keep their own ramp state. Signal
-nodes, logical loop IDs and media views retain independent identities, allowing
-multiple signal nodes to read the same loop and future timing-only composites.
-Composite execution itself remains unsupported.
+## Rust API
 
-## Rust flow
+Prepare the transition plan, program and persistent node state once. Apply
+`submit`, `cancel`, `collect` and control writes between calls. `process` executes
+one quantum; `process_block` executes a whole number of quanta over host slices.
+Both execute actual jobs and return `Result<(), PipelineError>`. A failure in a
+later quantum zeros **the entire host block**, including its successful prefix.
+Subsequent calls return the latched error and zero the supplied output slices.
+Recreate the engine and reload configuration/media to recover.
 
-`rt_fpga_reference::pipeline::Pipeline` owns the transition processor, persistent
-program, node state and FIFO. `preview` permits resource preparation and retries.
-`run_state` commits the chosen token and passes a borrowed `CommittedLoops` view
-directly to state execution. `run_jobs` executes the actual Rust job processor
-and advances logical time only after success. `run` combines those phases for a
-quantum without an intervening preparation callback.
+`trace_jobs(true)` and `emitted_jobs()` are optional diagnostic facilities;
+`queued_jobs()` permits inspection of a failed queue. They do not require host
+participation during execution. Standalone `TransitionProcessor::process()` also
+settles and advances in one call. Its split settlement/advance helpers are private
+to the Rust engine.
 
-An external executor can consume descriptors with `pop_job`, then acknowledge
-successful completion with `finish_jobs`. An undrained queue, stale token or
-duplicate completion cannot advance time. State/job errors retain partial
-effects, freeze the committed clock and fault the coordinator. Recreate/reset
-the pipeline after such a failure.
+## RTL interface
 
-The compiler's `LogicalPlayback` and `LogicalCapture` nodes generate
-`ProcessLogicalPlayback` and `ProcessLogicalCapture` instructions. Their operands
-hold a loop ID, view-state address and buffer ID. The isolated fixture profile's
-raw-state playback/capture instructions remain supported. The connected path
-does not use `StateBindings::export`; that copying API has been removed.
+Load the plan through the transition command port, program/state through `cfg_*`,
+input RAM through `audio_cfg_*`, and any imported media through `store_*` while
+idle. One `run_valid && run_ready` transfer latches the quantum descriptor and
+arena base. The coordinator then automatically settles, starts the internal
+state/job/media pipeline, and advances clocks after successful jobs. `done` pulses
+on completion; `error_stage` is 0 success, 1 transitions, 2 state or 3 jobs/memory.
+Error codes use the corresponding subsystem encoding.
 
-## RTL control
+`faulted` remains asserted after a processing error and `run_ready` stays low.
+The error stage/code and transition status frame remain available for diagnostics.
+The output-RAM readback path returns zero until successful completion and after
+any fault, even when RAM contains a partially executed Output job. A host adapter
+combining multiple runs into a block must withhold publication until all runs
+succeed and silence the whole block if any fails. The Rust block API implements
+that policy; a complete app/ARM transport remains future work.
 
-Defaults are 8 loop slots, 16 request slots, 32 events per journal bank, 64 program
-entries, 32 node-state entries and 64 FIFO jobs. Sample defaults are Q <= 32,
-16 scratch buffers and two ports in each direction. All logic shares one clock
-and synchronous active-high reset. RAM payloads survive reset and require a
-complete configuration reload. Media defaults are 32 views, 32 physical slots
-and 32 frames per chunk. These are deliberately small validation capacities;
-sample payloads live behind the external memory port, while descriptors, chunk
-tables, reference counts and the free stack use on-chip RAM.
+Host traffic is blocked during processing. Program/media/debug ports remain
+available between runs or for fault diagnostics subject to subsystem guards.
+The transition coordinator reserves opcodes 9 and 11 internally: settlement and
+clock advancement are ordered implementation phases, with no public token or
+acknowledgement. `INTEGRATED=1` selects this private transition interface.
 
-The transition command/response interface retains the standalone packed format.
-The coordinator owns Preview, Commit and Finish (opcodes 9, 10, 11). Those host
-commands remain unaccepted. Other commands transfer while idle, paused for
-preflight, or faulted, subject to the transition processor's own phase guards.
-No command can change the loop bank while state/jobs execute.
+`monitor_*`, queue counts and failed-queue draining support verification. The
+`job_enable` input permits controlled stalls. The production executor always
+consumes jobs internally. These are fabric interfaces, not a finalized ARM AXI
+register map.
 
-1. Load the timing plan, signal program, node state and input samples through
-   their existing configuration interfaces.
-2. Load the observation list. `run_valid && run_ready` latches the entire quantum
-   descriptor and starts Preview. Quantum must equal the prepared timing plan.
-3. `preflight_error` and `boundary_token` retain the preview result. Inspect
-   decisions with Read decision and that token. Use host media commands and node
-   state writes here to create/clear views and install their handles.
-4. To retry, clear/replace observations, then transfer
-   `preflight_valid && preflight_ready` with `preflight_retry=1`. Otherwise the
-   same handshake commits and starts state/job execution. A rejected preview
-   returns an error without committing or advancing time. Its frozen transition
-   inputs remain available for another preview.
-5. On success, the coordinator issues Finish and pulses `done`. On a state/job
-   failure, it pulses `done` without Finish and blocks further runs until reset.
+## Media and shared records
 
-`preflight_valid` means the preview is available for acknowledgement. It drops
-temporarily while transition responses, configuration or host media work are
-outstanding; the token/result remain stable. Commit/retry transfers only with
-`preflight_valid && preflight_ready`. This prevents a held acknowledgement from
-committing before preparation finishes. State execution also waits for pending
-configuration responses. Program/node-state, sample and host media access are
-blocked during execution. The entire run descriptor, including `arena_base`, is
-latched at acceptance; later input changes cannot redirect sample traffic.
-`error_stage` is 0 success, 1 transition, 2 state or 3 jobs. Error codes within a
-stage retain the underlying block's definitions. Committed state, journals, node
-state and remaining FIFO descriptors can be inspected after a fault.
+The shared response is 164 bits: valid at 0, generation u32 at 1, mode at 33,
+length u64 at 35, position u64 at 99, capture-start at 163. Capture-start means
+recording with zero captured frames and causes one `BeginCapture` job. Full IDs
+are validated before use. Node state does not duplicate loop modes or clocks.
 
-## Sample execution and memory interface
+Media commands are four bits; internal opcode 8 begins/reuses a recording view.
+Sample payloads use the chunk-memory service; descriptors, references and chunk
+indexes use synchronous on-chip RAM. The generated
+[`loop_pipeline_axi`](../axi_memory/README.md) top connects the existing buffered
+chunk service to AXI, including backpressure, retirement and late fault handling.
+The legacy word-memory port remains available for focused comparisons.
 
-With `run_external_jobs=0`, the internal job processor executes Input, Silence,
-Gain, Mix, Output, ReadView and Capture. `media_audio_pipeline` connects the last
-two to `media_store`: recording appends actual input samples; playback reads
-stored samples into scratch BRAM, including wrapped and retained-range reads.
-Finish waits for successful logical completion of sample work. Captures may
-complete into the chunk write pool while DDR writeback continues. Use host store
-opcode 7 (Fence) before observing backing memory. Testbench snapshots do this
-explicitly; it is outside the measured audio execution interval.
+## Reproduce checks
 
-The media frontend uses [chunk memory](../chunk_memory/README.md), with configurable
-`READ_BUFFERS` / `WRITE_BUFFERS`, shared coherence and a background transfer engine.
-Job-FIFO lookahead supplies advisory read hints. The `memory_fault` output reports
-late errors even after a quantum completed. The coordinator freezes further
-execution, reports stage 3/code 8 after foreground quiescence and requires reset.
-It preserves already advanced clocks. Reset also invalidates the chunk buffers;
-fence first when posted writes must be retained across a planned reset.
-
-`store_cmd_*`, `store_cfg_*` and host sample streams are available while idle,
-paused for preflight or faulted, subject to the store's own readiness/fault guards.
-Host commands support Create, Slice, Clear, Remove, Reclaim, Append, Read and Fence.
-They share the store with jobs and cannot interleave with job execution. A fresh
-recording needs a prepared empty view (or a cleared reusable view); resetting
-logical recording length does not clear physical media. Playback and capture
-can use separate view-state words so a refused retake preserves the old playback
-handle. There is no sealed/unsealed view state.
-
-The integrated AXI port transfers whole chunks through bursts of at most 16
-beats. The internal `BURST_MEMORY` interface carries a 64-bit byte address and
-sample count, 32-bit sample streams, and an aggregate completion; the direct
-core also retains acknowledged word mode. `MEMORY_RESPONSE_CYCLES` defaults to
-one and can impose additional response delay for simulation. The memory
-adapter must flush outstanding traffic on reset. A physical bus fault reports
-job code 8, freezes logical time and requires reset; partial sample effects can
-survive, including provisional metadata allocations. Codes 5/6/7 report
-InvalidView/MemoryFull/InvalidState.
-
-The packed store interfaces and snapshot layout are specified in
-[`media_store/README.md`](../media_store/README.md). Physical DDR controllers,
-large-session metadata and board audio/host transport remain
-outside this milestone.
-
-With `run_external_jobs=1`, `external_job_valid` and `monitor_data` expose the
-ordered FIFO, accepted with `external_job_ready`. After all descriptors drain,
-`external_done_ready` allows `external_done_valid` to report completion.
-`external_error=0` means success. Nonzero external codes use the Rust `Error`
-order: invalid_graph=1, invalid_state=2, invalid_buffer=3, invalid_view=4,
-invalid_shape=5, queue_full=6, memory_full=7.
-
-Draining descriptors alone cannot advance logical clocks. The separate control
-regression deliberately stalls external descriptors/completion and can report
-media failures; sample equivalence uses the internal RTL executor and store.
-
-## Behavioral comparison
-
-The additive `pipeline_case` / `pipeline_trace` JSON variants combine a transition
-plan with a persistent program, node state and quantum steps. Each step contains
-the existing transition actions/previews, node-state writes and either `external`
-completion status or `audio` input samples. Results retain complete transition
-decisions, requests/events/clocks, emitted jobs, node state and errors. Audio
-steps also retain exact scratch/output samples and FIFO effects. With an initial
-`media` snapshot they retain complete media snapshots after every quantum.
+Use the repository Cargo environment, Python dependencies in `requirements.txt`,
+Verilator, Make, a C++ compiler and Yosys on PATH:
 
 ```sh
-python fpga/loop_pipeline/simulate.py
-python fpga/loop_pipeline/simulate.py --config default --random-cases 30
-python fpga/loop_pipeline/simulate.py --media --random-cases 30
-python fpga/loop_pipeline/simulate.py --media --memory-model legacy --response-cycles 7 --random-cases 10
-python fpga/loop_pipeline/simulate.py --media --config default \
+cargo test --locked -p rt_fpga_reference -p rt_fpga_testbench
+python fpga/loop_pipeline/simulate.py --config all --random-cases 30
+python fpga/loop_pipeline/simulate.py --config default \
   --case fpga/loop_pipeline/examples/record_play_samples.json
-python fpga/loop_pipeline/simulate.py --config default \
-  --case fpga/loop_pipeline/examples/record_play.json
-python fpga/loop_pipeline/simulate.py --config default \
-  --case work/fpga-loop-pipeline/default/failure.case.json --waves
+python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing
 bash fpga/loop_pipeline/check.sh
 ```
 
-Use the repository's Cargo environment, Verilator and the existing cocotb Python
-environment. The simulator runs default, small and non-power-of-two odd configurations.
-Expected results come from the actual Rust pipeline. The tests use reverse signal
-order relative to loop IDs, one-quantum recordings, delayed sync, legal cycles,
-repeat waiting, retries/refusals, retained completions, sparse/stale IDs and full
-32-bit generations. They also check run-metadata latching, blocked commands,
-descriptor backpressure, delayed/failed completion, partial failures and reset.
-No backend arithmetic or transition settlement is reimplemented in Python.
+The bench uses format-version-3 Rust traces. All normal pipeline runs execute
+samples/media; `--media` is retained for command-line compatibility. Comparisons
+include post-process loop/request/event state, jobs, node state, samples and media
+snapshots. Dedicated tests cover automatic recording creation/reuse, allocation
+and descriptor exhaustion, partial Output work, sticky silence, late memory
+errors and reset with old traffic. Rust additionally checks whole-block silencing
+when a later quantum fails. Protocol tests check admission and backpressure.
 
-The media comparison additionally checks exact recorded/replayed samples, gain
-and mix arithmetic, retakes, refused recordings, retained read-only ranges and
-complete media ownership/free-list snapshots. It uses a stalled sample-memory
-slave initialized with nonzero garbage, detecting missing zero-fill as well as
-wrong published samples. Separate protocol checks cover preparing views during
-preflight, eager acknowledgement during a blocked host read, blocked host traffic
-during jobs, bus faults, and reset with an outstanding sample transaction.
+The timing workload has 64 logical loops, 128 request slots, 32-frame quanta and
+192 jobs per quantum. It profiles four coordinated boundaries using the selected
+AXI memory model. Current `active_cycles` covers the entire accepted run through
+completion; there is no host inspection pause to subtract. Results include bus
+activity and checked sample/state outcomes. Mapping and simulated cycle counts
+establish neither routed frequency nor physical audio deadlines.
 
-Failure artifacts contain replayable cases, expected traces and observed results.
-Lint/generic synthesis checks include minimum depths; ECP5 mapping is an estimate
-without placement/routing or a clock-frequency guarantee.
+## Simplification measurements
+
+The simplification checkpoint based on `23887b00`, before integrating upstream
+cached-playback pipelining from `54c616cf`, mapped the default core to 25,304 LUT4
+(previously 28,472), 13,442 flip-flops (13,913), 91 block RAMs (93) and four DSPs
+(unchanged). The four-quantum 64-loop instant-memory playback benchmark saves
+133 active cycles per quantum: steady playback took 18,836 instead of 18,969.
+Previous active counts exclude verifier preflight inspection pauses.
+After integrating `54c616cf`, the same AXI32 instant-memory fixture takes
+17,793 cycles initially and 16,221 in steady playback, including both changes.
+See [SIMPLIFY.md](../../SIMPLIFY.md) and the
+[machine-readable report](measurements/simplification.json) for capacities,
+measurement scope, validation and limits. These are mapped resources and simulated
+cycles, with no placed/routed frequency claim.
+
+## Historical measurements before simplification
+
+**Everything below describes earlier implementations, through `54c616cf`.**
+References to preflight, candidate banks, retry and external execution describe
+those historical measurements. Use the contract above for current behavior.
+The matched before/after simplification results are recorded in SIMPLIFY.md.
 
 ## Verification checkpoint
 

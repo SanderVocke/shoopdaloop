@@ -1,4 +1,4 @@
-//! Serial quantum coordination with read-only access to committed loop records.
+//! One quantum of transition settlement, node state and sample execution.
 use crate::{
     fixed::Fixed,
     jobs::{Job, JobProcessor, JobQueue, Memory},
@@ -10,6 +10,7 @@ use alloc::vec::Vec;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(
     feature = "serde",
     serde(
@@ -19,19 +20,10 @@ use alloc::vec::Vec;
         deny_unknown_fields
     )
 )]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum PipelineError {
     Transition(TransitionError),
     State(Error),
     Jobs(Error),
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum Phase {
-    Idle,
-    Preparing,
-    Running(BoundaryId),
-    Faulted,
 }
 
 pub struct Pipeline {
@@ -39,7 +31,9 @@ pub struct Pipeline {
     state: StateProcessor,
     program: Program,
     queue: JobQueue,
-    phase: Phase,
+    fault: Option<PipelineError>,
+    trace_jobs: bool,
+    emitted: Vec<Job>,
 }
 impl Pipeline {
     pub fn prepare(
@@ -59,7 +53,9 @@ impl Pipeline {
             state: StateProcessor::new(initial_state),
             program,
             queue: JobQueue::new(capacity),
-            phase: Phase::Idle,
+            fault: None,
+            trace_jobs: false,
+            emitted: Vec::with_capacity(capacity),
         })
     }
     pub fn transitions(&self) -> &TransitionProcessor {
@@ -71,118 +67,122 @@ impl Pipeline {
     pub fn program(&self) -> &Program {
         &self.program
     }
+    pub fn fault(&self) -> Option<PipelineError> {
+        self.fault
+    }
+    pub fn trace_jobs(&mut self, enabled: bool) {
+        self.trace_jobs = enabled;
+    }
+    pub fn emitted_jobs(&self) -> &[Job] {
+        &self.emitted
+    }
     pub fn queued_jobs(&self) -> impl Iterator<Item = &Job> {
         self.queue.iter()
     }
+    fn ready(&self) -> Result<(), TransitionError> {
+        if self.fault.is_some() {
+            Err(TransitionError::InvalidState)
+        } else {
+            Ok(())
+        }
+    }
     pub fn submit(&mut self, command: Command) -> Result<RequestId, TransitionError> {
+        self.ready()?;
         self.transitions.submit(command)
     }
     pub fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError> {
+        self.ready()?;
         self.transitions.cancel(id)
     }
     pub fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError> {
+        self.ready()?;
         self.transitions.take_completion(id)
     }
     pub fn write_state(&mut self, address: Address, value: Value) -> Result<(), Error> {
-        if !matches!(self.phase, Phase::Idle | Phase::Preparing) {
+        if self.fault.is_some() {
             return Err(Error::InvalidState);
         }
         self.state.write(address, value)
     }
-    pub fn preview(&mut self, observations: &[Observation]) -> Result<BoundaryId, TransitionError> {
-        if !matches!(self.phase, Phase::Idle | Phase::Preparing) {
-            return Err(TransitionError::InvalidState);
-        }
-        self.phase = Phase::Preparing;
-        self.transitions.preview(observations)
-    }
-    pub fn run_state(&mut self, boundary: BoundaryId) -> Result<(), PipelineError> {
-        self.run_state_with_intents(boundary, |_| {})
-    }
-    pub fn run_state_with_intents(
+    /// Failed output is silent. Recreate the engine to resume after a fault.
+    pub fn process(
         &mut self,
-        boundary: BoundaryId,
-        sink: impl FnMut(crate::resolver::ReadIntent),
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
     ) -> Result<(), PipelineError> {
-        if self.phase != Phase::Preparing {
-            return Err(PipelineError::Transition(TransitionError::InvalidState));
+        self.process_block(jobs, memory, inputs, outputs, self.program.quantum as usize)
+    }
+    pub fn process_block(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+    ) -> Result<(), PipelineError> {
+        for output in outputs.iter_mut() {
+            output.fill(Fixed::ZERO);
+        }
+        self.emitted.clear();
+        if let Some(error) = self.fault {
+            return Err(error);
+        }
+        let q = self.program.quantum as usize;
+        if q == 0
+            || frames == 0
+            || frames % q != 0
+            || jobs.quantum() != q
+            || memory.chunk_frames() != self.program.chunk_frames as usize
+            || inputs.iter().any(|input| input.len() != frames)
+            || outputs.iter().any(|output| output.len() != frames)
+        {
+            return Err(PipelineError::Jobs(Error::InvalidShape));
+        }
+        let result = (0..frames)
+            .step_by(q)
+            .try_for_each(|base| self.process_quantum(jobs, memory, inputs, outputs, base));
+        if let Err(error) = result {
+            self.fault = Some(error);
+            for output in outputs.iter_mut() {
+                output.fill(Fixed::ZERO);
+            }
+        }
+        result
+    }
+    fn process_quantum(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        base: usize,
+    ) -> Result<(), PipelineError> {
+        self.emitted.clear();
+        if let Some(error) = memory.fault() {
+            return Err(PipelineError::Jobs(error));
         }
         self.transitions
-            .commit(boundary)
+            .settle()
             .map_err(PipelineError::Transition)?;
-        self.phase = Phase::Running(boundary);
-        let result = self.state.run_with_loops_and_intents(
+        let state_result = self.state.run_with_loops_and_intents(
             &self.program,
             &mut self.queue,
             self.transitions
-                .committed(boundary)
+                .settled()
                 .map_err(PipelineError::Transition)?,
-            sink,
+            |intent| intent.prefetch(memory),
         );
-        if result.is_err() {
-            self.phase = Phase::Faulted;
+        if self.trace_jobs {
+            self.emitted.extend(self.queue.iter().copied());
         }
-        result.map_err(PipelineError::State)
-    }
-    pub fn pop_job(&mut self) -> Option<Job> {
-        if matches!(self.phase, Phase::Running(_)) {
-            self.queue.pop()
-        } else {
-            None
-        }
-    }
-    pub fn finish_jobs(
-        &mut self,
-        boundary: BoundaryId,
-        result: Result<(), Error>,
-    ) -> Result<(), PipelineError> {
-        if self.phase != Phase::Running(boundary) {
-            return Err(PipelineError::Transition(TransitionError::InvalidState));
-        }
-        if let Err(error) = result {
-            self.phase = Phase::Faulted;
+        state_result.map_err(PipelineError::State)?;
+        jobs.run_at(&mut self.queue, memory, inputs, outputs, base)
+            .map_err(PipelineError::Jobs)?;
+        if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
-        if !self.queue.is_empty() {
-            return Err(PipelineError::Jobs(Error::InvalidState));
-        }
-        self.transitions
-            .finish_quantum(boundary)
-            .map_err(PipelineError::Transition)?;
-        self.phase = Phase::Idle;
-        Ok(())
-    }
-    pub fn run_jobs(
-        &mut self,
-        boundary: BoundaryId,
-        jobs: &mut JobProcessor,
-        memory: &mut impl Memory,
-        inputs: &[&[Fixed]],
-        outputs: &mut [&mut [Fixed]],
-    ) -> Result<(), PipelineError> {
-        if self.phase != Phase::Running(boundary) {
-            return Err(PipelineError::Transition(TransitionError::InvalidState));
-        }
-        if jobs.quantum() != self.program.quantum as usize
-            || memory.chunk_frames() != self.program.chunk_frames as usize
-        {
-            return self.finish_jobs(boundary, Err(Error::InvalidShape));
-        }
-        let result = jobs.run(&mut self.queue, memory, inputs, outputs);
-        self.finish_jobs(boundary, result)
-    }
-    pub fn run(
-        &mut self,
-        observations: &[Observation],
-        jobs: &mut JobProcessor,
-        memory: &mut impl Memory,
-        inputs: &[&[Fixed]],
-        outputs: &mut [&mut [Fixed]],
-    ) -> Result<(), PipelineError> {
-        let boundary = self
-            .preview(observations)
-            .map_err(PipelineError::Transition)?;
-        self.run_state_with_intents(boundary, |intent| intent.prefetch(memory))?;
-        self.run_jobs(boundary, jobs, memory, inputs, outputs)
+        self.transitions.finish().map_err(PipelineError::Transition)
     }
 }

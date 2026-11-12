@@ -25,7 +25,6 @@ fn step(commands: Vec<Command>) -> TransitionStep {
         collect: vec![],
         cancel: vec![],
         commands,
-        previews: vec![vec![]],
     }
 }
 fn command(target: u32, sequence: u64, at: u64, operation: Operation) -> Command {
@@ -92,7 +91,6 @@ fn recording_repeat_wait_and_same_boundary_sync_chain() {
         },
         ..command(2, 4, 0, play())
     });
-    first.previews = vec![vec![], vec![], vec![]];
     let trace = compare(case(
         16,
         vec![
@@ -124,7 +122,7 @@ fn repeat_holds_endpoint_until_source_pulse() {
     ));
     assert_eq!(trace.results[1].states[1].position, 16);
     assert_eq!(trace.results[3].states[1].position, 16);
-    assert_eq!(trace.results[4].states[1].position, 0);
+    assert_eq!(trace.results[4].states[1].position, 16);
     assert_eq!(trace.results[4].states[1].cycles, 1);
 }
 
@@ -169,126 +167,6 @@ fn cycles_self_sync_and_declaration_reordering_are_deterministic() {
 }
 
 #[shoop_test]
-fn retries_refusals_arbitration_cancellation_and_slot_reuse() {
-    let mut first = step(vec![
-        command(0, 1, 0, Operation::Record),
-        command(0, 2, 0, play()),
-        command(1, 3, 97, play()),
-    ]);
-    first.collect_completed = false;
-    first.previews = vec![
-        vec![Observation::Refused {
-            request: RequestId {
-                slot: 1,
-                generation: 1,
-            },
-            reason: TransitionError::Capacity,
-        }],
-        vec![],
-    ];
-    let mut second = step(vec![command(0, 4, 0, Operation::Record)]);
-    second.cancel = vec![RequestId {
-        slot: 2,
-        generation: 1,
-    }];
-    second.previews = vec![
-        vec![],
-        vec![Observation::CaptureUnavailable {
-            target: id(0),
-            reason: TransitionError::Capacity,
-        }],
-        vec![],
-    ];
-    let third = step(vec![
-        command(0, 5, 0, play()),
-        command(0, 6, 80, Operation::Record),
-        command(0, 7, 64, Operation::Stop),
-    ]);
-    let trace = compare(case(
-        16,
-        vec![spec(0, 32, None, false), spec(1, 32, Some(0), false)],
-        vec![
-            first,
-            second,
-            third,
-            step(vec![]),
-            step(vec![]),
-            step(vec![]),
-            step(vec![]),
-        ],
-    ));
-    assert_eq!(
-        trace.results[1].submitted[0],
-        Response::Accepted(RequestId {
-            slot: 0,
-            generation: 2
-        })
-    );
-    assert_eq!(trace.results[2].states[0].content_length, 16);
-    assert_eq!(trace.results[4].states[0].mode, Mode::Stopped);
-}
-
-#[shoop_test]
-fn malformed_commands_and_observations_leave_committed_state_intact() {
-    let mut first = step(vec![command(
-        0,
-        1,
-        0,
-        Operation::Seek {
-            position: 0,
-            retrigger: false,
-        },
-    )]);
-    first.commands.extend([
-        command(0, 1, 0, play()),
-        command(
-            0,
-            2,
-            0,
-            Operation::Play {
-                position: 1,
-                retrigger: false,
-            },
-        ),
-        command(0, 3, u64::MAX, play()),
-        command(9, 4, 0, play()),
-        Command {
-            timing: Timing::AfterTicks {
-                source: id(1),
-                skip: 0,
-            },
-            ..command(0, 5, 0, play())
-        },
-    ]);
-    let duplicate = Observation::CaptureUnavailable {
-        target: id(0),
-        reason: TransitionError::Capacity,
-    };
-    first.previews = vec![
-        vec![duplicate, duplicate],
-        vec![],
-        vec![Observation::CaptureUnavailable {
-            target: id(9),
-            reason: TransitionError::Capacity,
-        }],
-    ];
-    let trace = compare(case(
-        16,
-        vec![spec(0, 32, None, false), spec(1, 32, None, false)],
-        vec![first, step(vec![])],
-    ));
-    assert!(!trace.results[0].committed);
-    assert_eq!(trace.results[0].next_frame, 0);
-    assert_eq!(
-        trace.results[1].requests[0].unwrap().outcome,
-        Some(Outcome::Failed {
-            frame: 0,
-            reason: TransitionError::InvalidState
-        })
-    );
-}
-
-#[shoop_test]
 fn wide_integers_roundtrip_and_timing_rounds_up() {
     let trace = compare(case(
         32,
@@ -308,34 +186,13 @@ fn wide_integers_roundtrip_and_timing_rounds_up() {
         ],
     ));
     assert_eq!(trace.results[0].requests[0].unwrap().effective, 32);
-    assert_eq!(trace.results[1].after_finish[0].position, u64::MAX - 31);
-    assert_eq!(trace.results[2].states[0].position, 0);
-}
-
-#[shoop_test]
-fn oracle_adapter_enforces_the_hardware_observation_limit() {
-    let mut first = step(vec![command(0, 1, 0, play())]);
-    first.previews = vec![
-        vec![
-            Observation::CaptureUnavailable {
-                target: id(0),
-                reason: TransitionError::Capacity,
-            };
-            45
-        ],
-        vec![],
-    ];
-    let trace = compare(case(16, vec![spec(0, 32, None, false)], vec![first]));
-    assert_eq!(
-        trace.results[0].previews[0],
-        Response::Rejected(TransitionError::Capacity)
-    );
-    assert_eq!(trace.results[0].states[0].mode, Mode::Playing);
+    assert_eq!(trace.results[1].states[0].position, u64::MAX - 31);
+    assert_eq!(trace.results[2].states[0].position, 32);
 }
 
 #[shoop_test]
 fn sparse_cross_word_pulses_preserve_priority_when_lower_ids_become_ready_later() {
-    let mut first = step(vec![
+    let first = step(vec![
         command(129, 1, 0, play()),
         Command {
             timing: Timing::AfterTicks {
@@ -360,14 +217,6 @@ fn sparse_cross_word_pulses_preserve_priority_when_lower_ids_become_ready_later(
         },
         command(64, 5, 64, play()),
     ]);
-    first.previews = vec![
-        vec![Observation::CaptureUnavailable {
-            target: id(64),
-            reason: TransitionError::Capacity,
-        }],
-        vec![],
-        vec![],
-    ];
     let mut input = case(
         16,
         vec![
@@ -393,82 +242,6 @@ fn sparse_cross_word_pulses_preserve_priority_when_lower_ids_become_ready_later(
         .map(|e| e.target)
         .collect();
     assert_eq!(pulses, vec![id(129), id(0), id(63), id(64)]);
-}
-
-#[shoop_test]
-fn pending_indexes_survive_head_removal_slot_reuse_arbitration_and_retry() {
-    let sync = |target, sequence, operation, skip| Command {
-        timing: Timing::AfterTicks {
-            source: id(0),
-            skip,
-        },
-        ..command(target, sequence, 0, operation)
-    };
-    let mut first = step(vec![
-        command(0, 1, 0, play()),
-        sync(1, 2, play(), 3),
-        sync(2, 3, play(), 4),
-        sync(1, 4, Operation::Record, 1),
-        command(1, 5, 48, Operation::Stop),
-        sync(
-            1,
-            6,
-            Operation::Seek {
-                position: 0,
-                retrigger: true,
-            },
-            1,
-        ),
-    ]);
-    first.previews = vec![vec![], vec![], vec![]];
-    let mut second = step(vec![sync(2, 7, play(), 0), sync(1, 8, play(), 2)]);
-    second.cancel = vec![RequestId {
-        slot: 1,
-        generation: 1,
-    }];
-    let mut third = step(vec![
-        sync(1, 9, play(), 0),
-        command(1, 10, 32, Operation::Record),
-        command(2, 12, 32, Operation::Stop),
-    ]);
-    third.previews = vec![
-        vec![Observation::Refused {
-            request: RequestId {
-                slot: 1,
-                generation: 2,
-            },
-            reason: TransitionError::Capacity,
-        }],
-        vec![],
-    ];
-    let trace = compare(case(
-        16,
-        vec![
-            spec(0, 16, None, false),
-            spec(1, 16, Some(0), false),
-            spec(2, 16, Some(0), false),
-        ],
-        vec![
-            first,
-            second,
-            third,
-            step(vec![]),
-            step(vec![]),
-            step(vec![]),
-        ],
-    ));
-    assert_eq!(
-        trace.results[1].submitted[0],
-        Response::Accepted(RequestId {
-            slot: 0,
-            generation: 2
-        })
-    );
-    assert_eq!(
-        trace.results[2].requests[2].unwrap().outcome,
-        Some(Outcome::Cancelled { frame: 32 })
-    );
-    assert_eq!(trace.results[3].states[1].mode, Mode::Playing);
 }
 
 struct Random(u64);
@@ -542,14 +315,7 @@ fn seeded_primitive_graphs_match_native_resolver() {
                     )
                 });
             }
-            let mut next = step(commands);
-            if random.below(3) == 0 {
-                let observation = Observation::CaptureUnavailable {
-                    target: id(random.below(n.into()) as u32),
-                    reason: TransitionError::Capacity,
-                };
-                next.previews.insert(0, vec![observation]);
-            }
+            let next = step(commands);
             steps.push(next);
         }
         let mut input = case(q, loops, steps);

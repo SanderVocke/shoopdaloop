@@ -26,7 +26,7 @@ async def resolver_conformance(dut):
                          "length_chunks": rng.randrange(n+2), "chunks": rng.randrange(2*slots+1)})
     case = {"name": "isolated-resolver-wrap-missing-and-stalls", "requests": requests,
             "media": {"chunk_frames": cf, "samples": [0]*(slots*cf), "free_chunks": [], "views": metadata}}
-    document = {"format_version": 2, "payload": {"kind": "resolver_case", "value": case}}
+    document = {"format_version": 3, "payload": {"kind": "resolver_case", "value": case}}
     wire.dump(document, output / "resolver.case.json")
     trace = wire.run_reference("trace", document, executable=Path(os.environ["RESOLVER_REFERENCE"]))
     pending = {"descriptor": None, "table": None}

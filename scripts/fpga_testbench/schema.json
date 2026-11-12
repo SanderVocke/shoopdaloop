@@ -679,36 +679,6 @@
         "outcome"
       ]
     },
-    "Decision": {
-      "type": "object",
-      "properties": {
-        "origin": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RequestId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "playback_discontinuity": {
-          "type": "boolean"
-        },
-        "state": {
-          "$ref": "#/$defs/LoopState"
-        },
-        "waiting_repeat": {
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "state",
-        "playback_discontinuity",
-        "waiting_repeat"
-      ]
-    },
     "Error": {
       "type": "string",
       "enum": [
@@ -844,7 +814,7 @@
     },
     "FormatVersion": {
       "type": "integer",
-      "const": 2
+      "const": 3
     },
     "Graph": {
       "type": "object",
@@ -1212,6 +1182,23 @@
             "left",
             "right",
             "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "begin_capture"
+            },
+            "view": {
+              "$ref": "#/$defs/ViewId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "view"
           ]
         },
         {
@@ -2047,52 +2034,6 @@
       "format": "uint32",
       "maximum": 4294967295,
       "minimum": 0
-    },
-    "Observation": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "capture_unavailable"
-            },
-            "reason": {
-              "$ref": "#/$defs/TransitionError"
-            },
-            "target": {
-              "$ref": "#/$defs/LoopId"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "kind",
-            "target",
-            "reason"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "refused"
-            },
-            "reason": {
-              "$ref": "#/$defs/TransitionError"
-            },
-            "request": {
-              "$ref": "#/$defs/RequestId"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "kind",
-            "request",
-            "reason"
-          ]
-        }
-      ]
     },
     "OnWrap": {
       "type": "object",
@@ -2984,23 +2925,6 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "external"
-            },
-            "value": {
-              "$ref": "#/$defs/ExecutionStatus"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "kind",
-            "value"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
               "const": "audio"
             },
             "value": {
@@ -3417,10 +3341,7 @@
               "const": "accepted"
             },
             "value": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/Decision"
-              }
+              "type": "null"
             }
           },
           "additionalProperties": false,
@@ -3723,12 +3644,6 @@
     "TransitionResult": {
       "type": "object",
       "properties": {
-        "after_finish": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/LoopState"
-          }
-        },
         "cancelled": {
           "type": "array",
           "items": {
@@ -3740,9 +3655,6 @@
           "items": {
             "$ref": "#/$defs/Collection"
           }
-        },
-        "committed": {
-          "type": "boolean"
         },
         "events": {
           "type": "array",
@@ -3762,11 +3674,8 @@
           "maximum": 18446744073709551615,
           "minimum": 0
         },
-        "previews": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Response4"
-          }
+        "processed": {
+          "$ref": "#/$defs/Response4"
         },
         "requests": {
           "type": "array",
@@ -3800,12 +3709,10 @@
         "collected",
         "cancelled",
         "submitted",
-        "previews",
-        "committed",
+        "processed",
         "states",
         "requests",
         "events",
-        "after_finish",
         "next_frame"
       ]
     },
@@ -3832,16 +3739,6 @@
           "items": {
             "$ref": "#/$defs/Command"
           }
-        },
-        "previews": {
-          "description": "Retries replace the candidate at the same frame; only the last can commit.",
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/Observation"
-            }
-          }
         }
       },
       "additionalProperties": false,
@@ -3849,8 +3746,7 @@
         "collect_completed",
         "collect",
         "cancel",
-        "commands",
-        "previews"
+        "commands"
       ]
     },
     "TransitionTrace": {

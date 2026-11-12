@@ -41,7 +41,7 @@ module state_processor #(
     output wire [31:0] loop_read_slot,
     input wire loop_response_valid,
     input wire loop_response_error,
-    input wire [162:0] loop_response_data
+    input wire [163:0] loop_response_data
 );
     initial begin
         if ((PROGRAM_DEPTH < 1) || (PROGRAM_DEPTH > 65536)

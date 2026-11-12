@@ -40,7 +40,7 @@ module job_processor #(
     output wire cfg_response_error,
     output wire [31:0] cfg_read_data,
     output wire media_cmd_valid, input wire media_cmd_ready,
-    output wire [2:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
+    output wire [3:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
     output wire [63:0] media_cmd_start, output wire [63:0] media_cmd_length,
     output wire [31:0] media_cmd_count,
     input wire media_done, input wire [7:0] media_error, input wire media_fault,
@@ -177,7 +177,7 @@ module job_processor #(
     assign cfg_read_data = (cfg_error || cfg_was_write) ? 32'b0
         : (cfg_response_space == 0) ? input_data : (cfg_response_space == 1) ? output_data : scratch_data;
     assign media_cmd_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_COMMAND) && !reset;
-    assign media_cmd_opcode = (ENABLE_MEDIA == 0) ? 3'b0 : (opcode == `SHOOP_SP_JOB_READ) ? 3'd6 : 3'd5;
+    assign media_cmd_opcode = (ENABLE_MEDIA == 0) ? 4'b0 : (opcode == `SHOOP_SP_JOB_BEGIN_CAPTURE) ? 4'd8 : (opcode == `SHOOP_SP_JOB_READ) ? 4'd6 : 4'd5;
     assign media_cmd_view = (ENABLE_MEDIA == 0) ? 64'b0 : packet[127:64];
     assign media_cmd_start = (ENABLE_MEDIA == 0) ? 64'b0 : packet[191:128] << chunk_shift;
     assign media_cmd_length = (ENABLE_MEDIA == 0) ? 64'b0 : packet[255:192] << chunk_shift;
@@ -410,6 +410,10 @@ module job_processor #(
                                 error_code <= 5; done <= 1; phase <= IDLE;
                             end else begin destination <= id0; phase <= MEDIA_COMMAND; end
                         end
+                        `SHOOP_SP_JOB_BEGIN_CAPTURE: begin
+                            if (ENABLE_MEDIA == 0) begin error_code <= UNSUPPORTED; done <= 1; phase <= IDLE; end
+                            else phase <= MEDIA_COMMAND;
+                        end
                         `SHOOP_SP_JOB_CAPTURE: begin
                             if (ENABLE_MEDIA == 0) begin
                                 error_code <= UNSUPPORTED; done <= 1; phase <= IDLE;
@@ -521,7 +525,7 @@ module job_processor #(
                     end
                 end
                 MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)
-                    phase <= (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : MEDIA_SOURCE_REQUEST;
+                    phase <= opcode == `SHOOP_SP_JOB_BEGIN_CAPTURE ? MEDIA_DONE : (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : MEDIA_SOURCE_REQUEST;
                 MEDIA_READ: if (media_read_valid && media_read_ready) begin
                     if (frame+1 == quantum) begin
                         buffer_ready[BUFFER_BITS'(destination)] <= 1;

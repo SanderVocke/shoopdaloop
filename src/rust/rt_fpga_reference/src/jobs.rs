@@ -53,6 +53,9 @@ pub enum Job {
         right: BufferId,
         destination: BufferId,
     },
+    BeginCapture {
+        view: ViewId,
+    },
     Capture {
         source: BufferId,
         view: ViewId,
@@ -106,6 +109,12 @@ impl JobQueue {
 
 /// Positions and lengths are in chunks; sample streams retain sample units.
 pub trait Memory {
+    fn begin_capture(&mut self, _view: ViewId) -> Result<(), Error> {
+        Err(Error::InvalidState)
+    }
+    fn fault(&self) -> Option<Error> {
+        None
+    }
     fn chunk_frames(&self) -> usize {
         1
     }
@@ -152,9 +161,19 @@ impl JobProcessor {
         {
             return Err(Error::InvalidShape);
         }
+        self.run_at(queue, memory, inputs, outputs, 0)
+    }
+    pub(crate) fn run_at(
+        &mut self,
+        queue: &mut JobQueue,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        base: usize,
+    ) -> Result<(), Error> {
         self.ready.fill(false);
         for output in outputs.iter_mut() {
-            output.fill(Fixed::ZERO);
+            output[base..base + self.quantum].fill(Fixed::ZERO);
         }
         while let Some(job) = queue.jobs.pop_front() {
             if let Some(Job::ReadView {
@@ -171,7 +190,7 @@ impl JobProcessor {
                     (self.quantum / memory.chunk_frames()) as u64,
                 );
             }
-            self.execute(job, memory, inputs, outputs)?;
+            self.execute_at(job, memory, inputs, outputs, base)?;
         }
         Ok(())
     }
@@ -206,11 +225,28 @@ impl JobProcessor {
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
     ) -> Result<(), Error> {
+        if inputs.iter().any(|input| input.len() != self.quantum)
+            || outputs.iter().any(|output| output.len() != self.quantum)
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.execute_at(job, memory, inputs, outputs, 0)
+    }
+    fn execute_at(
+        &mut self,
+        job: Job,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        base: usize,
+    ) -> Result<(), Error> {
         match job {
+            Job::BeginCapture { view } => memory.begin_capture(view)?,
             Job::Input { port, destination } => {
                 self.destination(destination)?;
-                self.buffers[destination.0]
-                    .copy_from_slice(inputs.get(port).ok_or(Error::InvalidBuffer)?);
+                self.buffers[destination.0].copy_from_slice(
+                    &inputs.get(port).ok_or(Error::InvalidBuffer)?[base..base + self.quantum],
+                );
                 self.ready[destination.0] = true;
             }
             Job::Silence { destination } => {
@@ -261,9 +297,7 @@ impl JobProcessor {
             }
             Job::Output { source, port } => {
                 self.require(source)?;
-                outputs
-                    .get_mut(port)
-                    .ok_or(Error::InvalidBuffer)?
+                outputs.get_mut(port).ok_or(Error::InvalidBuffer)?[base..base + self.quantum]
                     .copy_from_slice(&self.buffers[source.0]);
             }
         }

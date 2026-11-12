@@ -14,7 +14,7 @@ module media_store #(
     input wire [63:0] hint_view, input wire [63:0] hint_position, input wire [63:0] hint_length,
     input wire [31:0] hint_count,
     input wire cmd_valid, output wire cmd_ready,
-    input wire [2:0] cmd_opcode,
+    input wire [3:0] cmd_opcode,
     input wire [63:0] cmd_view, input wire [63:0] cmd_start,
     input wire [63:0] cmd_length, input wire [31:0] cmd_count,
     output wire busy, output reg done, output reg [7:0] error_code,
@@ -37,7 +37,7 @@ module media_store #(
     output wire cfg_response_valid, output reg cfg_response_error,
     output wire [159:0] cfg_read_data
 );
-    localparam [2:0] CREATE = 0, SLICE = 1, CLEAR = 2, REMOVE = 3,
+    localparam [3:0] CREATE = 0, SLICE = 1, CLEAR = 2, REMOVE = 3,
         RECLAIM = 4, APPEND = 5, READ = 6, FENCE = 7;
     localparam [7:0] OK = 0, INVALID_VIEW = 1, INVALID_STATE = 2,
         MEMORY_FULL = 3, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
@@ -46,7 +46,7 @@ module media_store #(
     typedef enum logic [5:0] {
         IDLE, DESCRIPTOR_READ, DESCRIPTOR_RESULT, CHECK,
         TABLE_READ, TABLE_RESULT, REF_READ, REF_RESULT, UPDATE_REFERENCE,
-        PUBLISH, ALLOCATE, FREE_RESULT, ALLOCATE_WRITE,
+        BEGIN_CREATE, PUBLISH, ALLOCATE, FREE_RESULT, ALLOCATE_WRITE,
         ZERO_REQUEST, ZERO_DATA, ZERO_WAIT, SAMPLE_TABLE_READ,
         SAMPLE_TABLE_RESULT, SAMPLE_REQUEST, SAMPLE_DATA, SAMPLE_WAIT,
         RETIRE_REQUEST, RETIRE_WAIT, FENCE_REQUEST, FENCE_WAIT,
@@ -65,7 +65,7 @@ module media_store #(
     reg cfg_pending, faulted, cfg_was_write;
     reg [2:0] cfg_response_space;
     reg [159:0] cfg_globals_data;
-    reg [2:0] opcode;
+    reg [3:0] opcode;
     reg [31:0] view_index, count, index, first_chunk, remaining, append_index;
     reg [31:0] chunk, sample_index, zero_index, span_count, span_index;
     reg [63:0] base, start, length, cursor;
@@ -218,7 +218,7 @@ module media_store #(
         descriptor_read = 0; descriptor_write = 0; table_read = 0; table_write = 0;
         ref_read = 0; ref_write = 0; free_read = 0; free_write = 0;
         descriptor_read_address = VIEW_BITS'(view_index);
-        descriptor_write_address = VIEW_BITS'(((opcode == CREATE) || (opcode == SLICE)) ? view_count : view_index);
+        descriptor_write_address = VIEW_BITS'(((opcode == CREATE) || (opcode == SLICE) || phase == BEGIN_CREATE) ? view_count : view_index);
         table_read_address = control_address;
         table_write_address = TABLE_BITS'(view_index * 32'(SLOTS) + append_index);
         ref_read_address = SLOT_BITS'(chunk); ref_write_address = SLOT_BITS'(chunk);
@@ -241,6 +241,7 @@ module media_store #(
                     free_write = reference_data == 1;
                 end
             end
+            BEGIN_CREATE: descriptor_write = 1;
             PUBLISH: descriptor_write = 1;
             ALLOCATE: free_read = (remaining != 0) && (free_count != 0);
             ALLOCATE_WRITE: begin table_write = 1; ref_write = 1; end
@@ -354,6 +355,14 @@ module media_store #(
                         || (arena_bound && arena_base != base)) begin
                         error_code <= INVALID_SHAPE;
                         phase <= FINISH;
+                    end else if (cmd_opcode == 8) begin
+                        opcode <= CLEAR;
+                        if (cmd_view > {32'b0,view_count}) begin error_code <= INVALID_VIEW; phase <= FINISH; end
+                        else if (cmd_view >= 64'(VIEWS)) begin error_code <= MEMORY_FULL; phase <= FINISH; end
+                        else if (cmd_view == {32'b0,view_count}) begin
+                            new_valid <= 1; new_range <= 0; new_offset <= 0; new_frames <= 0; new_chunks <= 0;
+                            phase <= BEGIN_CREATE;
+                        end else phase <= DESCRIPTOR_READ;
                     end else if (cmd_opcode == CREATE) begin
                         if (view_count == 32'(VIEWS)) begin
                             error_code <= MEMORY_FULL;
@@ -461,6 +470,10 @@ module media_store #(
                     remaining <= remaining - 1;
                     index <= index + 1;
                     phase <= (remaining == 1) ? PUBLISH : TABLE_READ;
+                end
+                BEGIN_CREATE: begin
+                    view_count <= view_count+1'b1;
+                    phase <= FINISH;
                 end
                 PUBLISH: begin
                     if ((opcode == CREATE) || (opcode == SLICE)) begin

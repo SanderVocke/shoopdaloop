@@ -22,15 +22,14 @@ class PipelineDriver(Driver):
         super().__init__(Transport(dut),depths[:3],seed)
         self.raw=dut;self.capacities=depths
         self.media=None
-        self.preflight_hook=None
         self.stalls=True
+        self.pending_snapshot=[]
     async def reset(self):
         self.set(run_valid=0,run_instruction_count=0,run_state_count=0,run_quantum=0, run_chunk_frames=0,run_job_budget=0,
             run_buffers=0,run_inputs=0,run_outputs=0,job_enable=1,drain_ready=0,
             cfg_valid=0,cfg_state=0,cfg_write=0,cfg_address=0,cfg_write_data=0,
             audio_cfg_valid=0,audio_cfg_space=0,audio_cfg_write=0,audio_cfg_address=0,audio_cfg_write_data=0,
-            run_external_jobs=0,external_job_ready=0,external_done_valid=0,external_error=0,
-            preflight_ready=0,preflight_retry=0)
+            )
         self.set(arena_base=0,store_cmd_valid=0,store_cmd_opcode=0,store_cmd_view=0,store_cmd_start=0,
             store_cmd_length=0,store_cmd_count=0,store_write_valid=0,store_write_data=0,store_read_ready=0,
             store_cfg_valid=0,store_cfg_write=0,store_cfg_space=0,store_cfg_address=0,store_cfg_write_data=0,
@@ -60,34 +59,22 @@ class PipelineDriver(Driver):
         assert case['buffers']<=self.capacities[7] and case['output_ports']<=self.capacities[9]
         await self.load(case,image)
         self.case=case
+        self.pending_snapshot=[]
         for i,instruction in enumerate(case['program']['instructions']):
             raw=sp.encode_instruction(instruction)
             await self.configure(i,raw,program=True)
             assert await self.configure(i,program=True)==raw
         for i,value in enumerate(case['initial_state']['memory']):await self.configure(i,sp.encode_value(value))
         if self.media is not None:
-            await self.media.load(case['media'])
+            if case['media'] is None:
+                _,slots,cf=self.media.views,self.media.slots,self.media.chunk_frames
+                initial=dict(chunk_frames=cf,chunk_limit=slots,samples=[],free_chunks=[],views=[])
+            else: initial=case['media']
+            await self.media.load(initial)
         else:
             assert case['media'] is None,'media-bearing cases require a sample-memory slave'
-    async def observations(self,values):
-        await self.ok(tp.OBS_CLEAR)
-        for value in values:await self.ok(tp.OBS_ADD,data=tp.encode_observation(value))
-    async def preflight(self):
-        if not int(self.raw.preflight_valid.value):
-            await with_timeout(RisingEdge(self.raw.preflight_valid),10_000_000,'ns');await Timer(1,units='ns')
-        assert int(self.raw.debug_frame.value)==self.frame
-        error=int(self.raw.preflight_error.value);token=int(self.raw.boundary_token.value)
-        decisions=None if error else [tp.decode_decision(await self.ok(tp.READ_DECISION,i['slot'],token),i['slot']) for i in self.ids]
-        return tp.response(error,decisions)
-    async def accept(self,retry=False):
-        if not int(self.raw.preflight_valid.value):
-            await with_timeout(RisingEdge(self.raw.preflight_valid),10_000_000,'ns')
-        await FallingEdge(self.raw.clk);self.set(preflight_ready=1,preflight_retry=int(retry))
-        await Timer(1,units='ns')
-        assert int(self.raw.preflight_valid.value)
-        await self.edge();self.set(preflight_ready=0,preflight_retry=0)
-    async def step(self,step):
-        control=step['transition'];self.frame=(await self.status())['frame']
+    async def step(self, step):
+        control=step['transition'];frame=(await self.status())['frame']
         collected=[]
         if control['collect_completed']:
             for request in await self.requests():
@@ -95,101 +82,63 @@ class PipelineDriver(Driver):
         for request in control['collect']:collected.append(await self.collect(request))
         cancelled=[]
         for request in control['cancel']:
-            error,value=await self.command(tp.CANCEL,request['slot'],request['generation']);cancelled.append(tp.response(error,bool(value)))
+            error,value=await self.command(tp.CANCEL,request['slot'],request['generation'])
+            cancelled.append(tp.response(error,bool(value)))
         submitted=[]
         for command in control['commands']:
-            error,value=await self.command(tp.SUBMIT,data=tp.encode_command(command));submitted.append(tp.response(error,tp.decode_identity(value)))
-        for write in step['writes']:await self.configure(write['address'],sp.encode_value(write['value']))
-        external=step['work']['kind']=='external';q=self.case['program']['quantum']
-        inputs=[] if external else step['work']['value']['inputs']
-        assert len(inputs)<=self.capacities[8] and all(len(samples)==q for samples in inputs)
-        if not external:
-            assert q<=self.capacities[6]
-            assert self.case['media'] is None or self.media is not None,'media requires a sample-memory slave'
+            error,value=await self.command(tp.SUBMIT,data=tp.encode_command(command))
+            submitted.append(tp.response(error,tp.decode_identity(value)))
+        for write in step['writes']:
+            if not int(self.raw.faulted.value): await self.configure(write['address'],sp.encode_value(write['value']))
+        q=self.case['program']['quantum'];inputs=step['work']['value']['inputs']
+        assert step['work']['kind']=='audio'
         for port,samples in enumerate(inputs):
-            for i,value in enumerate(samples):await self.sample(0,port*self.capacities[6]+i,value)
-        before=(await self.states(),await self.requests(),await self.events())
-        await self.observations(control['previews'][0])
-        await FallingEdge(self.raw.clk)
-        if self.media is not None:self.set(arena_base=self.media.base)
-        assert int(self.raw.run_ready.value)
-        self.set(run_valid=1,run_instruction_count=len(self.case['program']['instructions']),run_state_count=len(self.case['initial_state']['memory']),
-            run_quantum=q,run_chunk_frames=self.case['program']['chunk_frames'],run_job_budget=self.case['program']['jobs_per_quantum'],run_external_jobs=int(external),
-            run_buffers=self.case['buffers'],run_inputs=len(inputs),run_outputs=self.case['output_ports'])
-        await self.edge();self.set(run_valid=0,run_instruction_count=0xffffffff,run_state_count=0xffffffff,
-            run_quantum=0, run_chunk_frames=0,run_job_budget=0xffffffff,run_external_jobs=int(not external),run_buffers=0,run_inputs=0,run_outputs=0)
-        if self.media is not None:self.set(arena_base=0xffffffffffffffff)
-        previews=[]
-        for i,observations in enumerate(control['previews']):
-            if i:
-                await self.observations(observations);await self.accept(retry=True)
-            previews.append(await self.preflight())
-            assert (await self.states(),await self.requests(),await self.events())==before,'preview published a candidate'
-            if self.preflight_hook is not None:await self.preflight_hook(self,i,previews[-1])
-        committed=previews[-1]['kind']=='accepted'
-        await self.accept()
-        emitted=[];shared_reads=0;completion_delay=0;finished=bool(int(self.raw.done.value));held=None
-        jobs_finished=False;committed_bank=None
-        for _ in range(100000):
-            if finished:break
+            for i,value in enumerate(samples): await self.sample(0,port*self.capacities[6]+i,value)
+        emitted=[];remaining=list(self.pending_snapshot)
+        if not int(self.raw.faulted.value):
+            if self.media is not None:self.set(arena_base=self.media.base)
             await FallingEdge(self.raw.clk)
-            done_ready=int(self.raw.external_done_ready.value)
-            if done_ready:completion_delay+=1
-            status=step['work']['value'] if external else {'kind':'completed'}
-            injected=0 if status['kind']=='completed' else ERRORS.index(status['value']['error'])+1
-            self.set(external_job_ready=int(not self.stalls or self.random.randrange(4)!=0),job_enable=int(not self.stalls or self.random.randrange(5)!=0),
-                external_done_valid=int(external and completion_delay>4),external_error=injected)
-            await Timer(1,units='ns')
-            if held is not None:
-                assert int(self.raw.external_job_valid.value) and int(self.raw.monitor_data.value)==held,'external descriptor changed while stalled'
-            held=int(self.raw.monitor_data.value) if int(self.raw.external_job_valid.value) and not int(self.raw.external_job_ready.value) else None
-            if int(self.raw.monitor_valid.value) and int(self.raw.monitor_ready.value):emitted.append(sp.decode_job(int(self.raw.monitor_data.value)))
-            shared_reads+=int(self.raw.debug_shared_read.value)
-            if external and not (completion_delay>4):assert int(self.raw.debug_frame.value)==self.frame,'clock advanced before job completion'
-            if not external:
-                jobs_finished=jobs_finished or bool(int(self.raw.jobs_done.value))
-                if not jobs_finished:assert int(self.raw.debug_frame.value)==self.frame,'clock advanced before samples completed'
-            if int(self.raw.state_busy.value) or int(self.raw.jobs_busy.value):
-                bank=int(self.raw.debug_bank.value)
-                if committed_bank is None:committed_bank=bank
-                assert bank==committed_bank,'committed loop bank changed during execution'
-                assert not any(int(getattr(self.raw,name).value) for name in
-                    ('cfg_ready','audio_cfg_ready','command_ready','store_cmd_ready','store_cfg_ready','store_write_ready','store_read_valid'))
-            await self.edge()
-            if int(self.raw.done.value):finished=True;break
-        assert finished,'coordinator timed out'
-        self.set(external_done_valid=0,external_job_ready=0,job_enable=1)
-        if self.media is not None:self.set(arena_base=self.media.base)
-        error=None
-        stage=int(self.raw.error_stage.value);code=int(self.raw.error_code.value)
-        if stage==2:error={'stage':'state','error':sp.decode_status(code)['value']['error']}
-        if stage==3:error={'stage':'jobs','error':ERRORS[code-1] if external else {1:'invalid_buffer',2:'invalid_shape',5:'invalid_view',6:'memory_full',7:'invalid_state',8:'memory_fault'}[code]}
-        if error:assert not int(self.raw.run_ready.value),'failed quantum admitted a restart'
-        if stage==1:assert not committed
-        remaining=[]
-        if stage==2 or (stage==3 and not external):
-            self.set(drain_ready=1)
-            for _ in range(2000):
+            assert int(self.raw.run_ready.value)
+            self.set(run_valid=1,run_instruction_count=len(self.case['program']['instructions']),
+                run_state_count=len(self.case['initial_state']['memory']),run_quantum=q,
+                run_chunk_frames=self.case['program']['chunk_frames'],run_job_budget=self.case['program']['jobs_per_quantum'],
+                run_buffers=self.case['buffers'],run_inputs=len(inputs),run_outputs=self.case['output_ports'])
+            await self.edge();self.set(run_valid=0)
+            finished=bool(int(self.raw.done.value))
+            for _ in range(1000000):
+                if finished:break
                 await FallingEdge(self.raw.clk)
+                self.set(job_enable=int(not self.stalls or self.random.randrange(5)!=0))
+                await Timer(1,units='ns')
                 if int(self.raw.monitor_valid.value) and int(self.raw.monitor_ready.value):
-                    job=sp.decode_job(int(self.raw.monitor_data.value));emitted.append(job);remaining.append(job)
-                await self.edge()
-                if int(self.raw.queued_jobs.value)==0:break
-            self.set(drain_ready=0)
-        after_finish=await self.states()
-        states=[decision['state'] for decision in previews[-1]['value']] if committed else before[0]
-        transition=dict(frame=self.frame,collected=collected,cancelled=cancelled,submitted=submitted,previews=previews,committed=committed,
-            states=states,requests=await self.requests(),events=await self.events(),after_finish=after_finish,next_frame=(await self.status())['frame'])
+                    emitted.append(sp.decode_job(int(self.raw.monitor_data.value)))
+                if int(self.raw.state_busy.value) or int(self.raw.jobs_busy.value):
+                    assert not any(int(getattr(self.raw,n).value) for n in ('cfg_ready','audio_cfg_ready','store_cmd_ready','store_cfg_ready'))
+                await self.edge();finished=bool(int(self.raw.done.value))
+            assert finished,'coordinator timed out'
+            self.set(job_enable=1)
+            if int(self.raw.error_stage.value) in (2,3):
+                remaining=[];self.set(drain_ready=1)
+                for _ in range(2000):
+                    await FallingEdge(self.raw.clk)
+                    if int(self.raw.monitor_valid.value) and int(self.raw.monitor_ready.value):
+                        job=sp.decode_job(int(self.raw.monitor_data.value));emitted.append(job);remaining.append(job)
+                    await self.edge()
+                    if int(self.raw.queued_jobs.value)==0:break
+                self.set(drain_ready=0);self.pending_snapshot=remaining
+        stage=int(self.raw.error_stage.value);code=int(self.raw.error_code.value)
+        error=None
+        if stage==1:error=dict(stage='transition',error=tp.ERRORS[code])
+        elif stage==2:error=dict(stage='state',error=sp.decode_status(code)['value']['error'])
+        elif stage==3:error=dict(stage='jobs',error={1:'invalid_buffer',2:'invalid_shape',3:'invalid_state',4:'invalid_state',5:'invalid_view',6:'memory_full',7:'invalid_state',8:'memory_fault'}[code])
+        transition=dict(frame=frame,collected=collected,cancelled=cancelled,submitted=submitted,
+            processed=tp.response(code if stage==1 else 0,None),states=await self.states(),
+            requests=await self.requests(),events=await self.events(),next_frame=(await self.status())['frame'])
         state={'memory':[sp.decode_value(await self.configure(i)) for i in range(len(self.case['initial_state']['memory']))]}
-        audio=None
-        if not external and committed and stage!=2:
-            ready=int(self.raw.buffer_ready.value)
-            buffers=[[await self.sample(2,i*self.capacities[6]+f) for f in range(q)] if ready&(1<<i) else None for i in range(self.case['buffers'])]
-            outputs=[[await self.sample(1,i*self.capacities[6]+f) for f in range(q)] for i in range(self.case['output_ports'])]
-            audio=dict(jobs=emitted,remaining_jobs=remaining,state=state,buffers=buffers,outputs=outputs,stage='jobs',status={'kind':'completed'} if not error else {'kind':'failed','value':{'error':error['error']}})
-            # Bus faults may leave provisional allocations; inspect raw metadata
-            # instead of requiring a valid architectural snapshot before reset.
-            if self.case['media'] is not None and not (stage==3 and code==8):audio['media']=await self.media.snapshot()
-        if committed and stage!=2:
-            assert shared_reads==sum(i['kind'] in ('process_logical_playback','process_logical_capture') for i in self.case['program']['instructions'])
+        ready=int(self.raw.buffer_ready.value)
+        buffers=[[await self.sample(2,i*self.capacities[6]+f) for f in range(q)] if ready&(1<<i) else None for i in range(self.case['buffers'])]
+        outputs=[[await self.sample(1,i*self.capacities[6]+f) for f in range(q)] for i in range(self.case['output_ports'])]
+        audio=dict(jobs=emitted,remaining_jobs=remaining,state=state,buffers=buffers,outputs=outputs,
+            stage='jobs',status={'kind':'completed'} if error is None else {'kind':'failed','value':{'error':error['error']}},media=None)
+        if self.case['media'] is not None and not (stage==3 and code==8): audio['media']=await self.media.snapshot()
         return dict(transition=transition,jobs=emitted,state=state,error=error,audio=audio)

@@ -5,21 +5,18 @@ BRAM quantum buffers. `audio_pipeline` connects the job processor to the existin
 state processor's FIFO. The comparison bench runs the same program and samples
 through the actual Rust state and job processors.
 
-The ordinary top defaults to `ENABLE_MEDIA=0` and refuses ReadView and Capture.
+The ordinary top defaults to `ENABLE_MEDIA=0` and refuses ReadView, Capture and BeginCapture.
 The optional media command/stream interface connects those jobs to the bounded
 external-memory store in `fpga/media_store`; its combined top and tests exercise
 recording, playback and shared ranges. BRAM here holds scratch and I/O buffers.
 
-`fpga/loop_pipeline` connects transition processing through this wrapper's shared
-loop read port. Logical playback/capture instructions use committed loop records
-directly. The wrapper also supports `run_external_jobs`: descriptors then transfer
-with `external_job_valid && external_job_ready` through `monitor_data`. After the
-FIFO empties, `external_done_valid && external_done_ready` reports completion or
-`external_error`. The wrapper stays busy until that acknowledgement. Its internal
-job processor remains the default path. The connected top enables media through
-`media_audio_pipeline`, executing actual recording/playback against its external
-sample-memory port. Its README defines external error encoding and
-clock/transaction ownership.
+`fpga/loop_pipeline` connects transition processing through the shared settled
+loop read port. Its production executor always runs jobs internally.
+`BeginCapture` (job opcode 7, view in payload 0) uses media command 8 to create or
+clear/reuse the recording view, then waits for completion without sample traffic.
+The media command bus is four bits. The media-enabled top executes actual sample
+recording/playback. Its wrapper no longer has an external descriptor/completion
+mode. Debug monitoring and failed-queue draining remain available.
 
 ## Structure
 
@@ -133,7 +130,7 @@ Successful runs leave the FIFO empty.
 | 0 | Completed |
 | 1 | Invalid buffer/source/destination/port |
 | 2 | Invalid shape or logical capacity |
-| 3 | Unsupported ReadView/Capture |
+| 3 | Unsupported media job |
 | 4 | Unknown opcode/internal phase |
 
 The combined top reports `error_stage=1` for state errors, retaining the state
@@ -160,11 +157,10 @@ ready, null otherwise. They also identify the failing/completed stage and status
 enable Rust recording/playback and shared-range comparisons; the media-enabled RTL
 bench compares those cases too.
 Python validates the generated schema and compares complete results; it does
-not implement reference sample arithmetic. The format change adds payload
-variants within version 2. Programs explicitly specify `chunk_frames`; media
+not implement reference sample arithmetic. The current interchange is format version 3. Programs explicitly specify `chunk_frames`; media
 jobs use `position_chunks` and `length_chunks`. Arithmetic ramps retain sample
 units. Normal media execution requires the configured physical chunk size;
-BRAM-only and external-job runs retain their separate profiles.
+BRAM-only tests retain a separate profile.
 
 ## Run and reproduce
 

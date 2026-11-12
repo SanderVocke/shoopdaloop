@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "payload": {
     "kind": "transition_case",
     "value": {
@@ -98,39 +98,19 @@
                 "retrigger": true
               }
             }
-          ],
-          "previews": [
-            [
-              {
-                "kind": "capture_unavailable",
-                "target": {
-                  "slot": 1,
-                  "generation": 4294967294
-                },
-                "reason": "capacity"
-              }
-            ],
-            [],
-            []
           ]
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
@@ -153,19 +133,13 @@
                 "retrigger": true
               }
             }
-          ],
-          "previews": [
-            []
           ]
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         },
         {
           "collect_completed": true,
@@ -186,19 +160,13 @@
                 "kind": "stop"
               }
             }
-          ],
-          "previews": [
-            []
           ]
         },
         {
           "collect_completed": true,
           "collect": [],
           "cancel": [],
-          "commands": [],
-          "previews": [
-            []
-          ]
+          "commands": []
         }
       ]
     }
