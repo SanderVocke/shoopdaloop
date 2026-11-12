@@ -4550,34 +4550,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_audio_math"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+]
+
+[[package]]
+name = "rt_backend_testbench"
+version = "0.3.0"
+dependencies = [
+ "rt_audio_math",
+ "rt_runtime",
+ "schemars",
+ "serde",
+ "serde_json",
+ "shoop_loops",
+ "shoop_rt_engine",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
-]
-
-[[package]]
-name = "rt_fpga_reference"
-version = "0.3.0"
-dependencies = [
- "schemars",
- "serde",
- "shoop_wasm_test_support",
-]
-
-[[package]]
-name = "rt_fpga_testbench"
-version = "0.3.0"
-dependencies = [
- "rt_fpga_reference",
- "rt_runtime",
- "schemars",
- "serde",
- "serde_json",
- "shoop_loops",
- "shoop_wasm_test_support",
 ]
 
 [[package]]
@@ -4597,7 +4596,7 @@ name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
  "loom",
- "rt_fpga_reference",
+ "rt_audio_math",
  "rt_profiling",
  "rtrb",
  "shoop_wasm_test_support",
@@ -5420,6 +5419,7 @@ name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
  "profiling_protocol",
+ "rt_audio_math",
  "rt_buffered",
  "rt_profiling",
  "rt_runtime",

@@ -1,6 +1,7 @@
 use super::*;
+use crate::Sample;
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
     pub(super) fn retain(&mut self, root: Option<usize>) -> Result<(), Error> {
         if let Some(n) = root {
             let n = self.nodes[n].as_mut().expect("live node");
@@ -97,7 +98,7 @@ impl MidiStore {
     }
     pub(super) fn clipped_root(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         view: View,
     ) -> Result<Option<usize>, Error> {
         let chunks = usize::try_from(view.last.serial - view.first.serial)
@@ -156,7 +157,7 @@ impl MidiStore {
             self.enqueue(Garbage::Node(n), owner, immediate);
         }
     }
-    pub(super) fn release_now(&mut self, store: &mut ResourceStore, root: Option<usize>) {
+    pub(super) fn release_now(&mut self, store: &mut ResourceStore<S>, root: Option<usize>) {
         let owner = self.views.len() + 1;
         self.drop_root(root, owner, true);
         while let Some(job) = self.immediate.pop() {
@@ -166,7 +167,7 @@ impl MidiStore {
     }
     pub(super) fn process_job(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         job: Job,
         immediate: bool,
     ) -> Result<(), Error> {
@@ -268,7 +269,7 @@ impl MidiStore {
     }
     pub(super) fn block_read(
         &self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         block: usize,
         offset: usize,
         out: &mut [u8],
@@ -303,7 +304,7 @@ impl MidiStore {
         }
         Ok(())
     }
-    pub(super) fn block_from(&mut self, store: &mut ResourceStore, data: &[u8]) -> usize {
+    pub(super) fn block_from(&mut self, store: &mut ResourceStore<S>, data: &[u8]) -> usize {
         let slot = self.free_blocks.pop().expect("prepared byte block");
         let count = data.len().div_ceil(self.page_bytes);
         for page in 0..count {
@@ -327,7 +328,7 @@ impl MidiStore {
         });
         slot
     }
-    pub(super) fn block_from_scratch(&mut self, store: &mut ResourceStore, len: usize) -> usize {
+    pub(super) fn block_from_scratch(&mut self, store: &mut ResourceStore<S>, len: usize) -> usize {
         let slot = self.free_blocks.pop().expect("prepared byte block");
         self.scratch[len..].fill(0);
         self.reserved -= 1;
@@ -347,7 +348,7 @@ impl MidiStore {
     }
     pub(super) fn publish_chunk(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         root: &mut Option<usize>,
         serial: u64,
         count: usize,
@@ -448,7 +449,7 @@ impl MidiStore {
     }
     pub(super) fn apply_record(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         state: &mut MidiState,
         record: Record,
     ) -> Result<(), Error> {

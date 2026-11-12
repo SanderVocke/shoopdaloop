@@ -1,0 +1,450 @@
+{
+  "format_version": 1,
+  "source_base": "16679ba7f39afe3f161c40ccdaa9626ce07a8d62",
+  "working_tree_dirty": true,
+  "baseline": "e5c015be",
+  "integrated_upstream": [
+    "012ed6bd",
+    "da6f9ebe",
+    "354305d4"
+  ],
+  "tools": {
+    "rust": "1.99.1",
+    "verilator": "5.032",
+    "yosys": "0.52",
+    "cocotb": "1.9.2"
+  },
+  "environment": {
+    "platform": "Debian 13 x86_64",
+    "cgroup_cpus": 4,
+    "memory_gib": 16,
+    "shared_host": true
+  },
+  "production": {
+    "native_workspace_build": {
+      "passed": true,
+      "command": "RUSTFLAGS=\"-D warnings\" cargo build --workspace"
+    },
+    "wasm_build": {
+      "passed": true,
+      "command": "cargo build --target wasm32-unknown-unknown -p rt_runtime -p shoop_loops -p shoop_rt_engine -p shoop_rt_host_worklet -p shoopdaloop",
+      "browser_execution": false
+    },
+    "affected_suite": {
+      "passed": 665,
+      "failed": 0,
+      "ignored": 1
+    },
+    "common_rust_contract": {
+      "passed": 4
+    },
+    "common_python_contract": {
+      "passed": 6
+    },
+    "native_suite": {
+      "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci",
+      "run": 3200,
+      "passed": 3180,
+      "failed": 20,
+      "skipped": 11,
+      "green": false,
+      "first_serial_rerun": [
+        {
+          "binary": "shoop_backend",
+          "name": "legacy::native::tests::native_dummy_grab_captures_processed_dry_wet_audio_and_midi",
+          "code": 0,
+          "seconds": 0.6428867239992542,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/shoop_backend-9e1d4f791ae26756"
+        },
+        {
+          "binary": "shoop_backend",
+          "name": "legacy::native::tests::native_builtin_fx_track_has_matching_audio_midi_and_transactional_state",
+          "code": 0,
+          "seconds": 11.16454721899936,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/shoop_backend-9e1d4f791ae26756"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile",
+          "code": 101,
+          "seconds": 17.80594502799795,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "ipv6_profiles_connect_and_ownerless_shutdown_is_confirmed",
+          "code": 0,
+          "seconds": 13.074806717999309,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints",
+          "code": 0,
+          "seconds": 10.633157804000803,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "losing_a_management_reply_reconciles_the_same_shutdown_operation",
+          "code": 0,
+          "seconds": 13.581809830000566,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "native_host_reports_deployment_unsupported_independently_of_session_version",
+          "code": 101,
+          "seconds": 17.079442907001066,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "non_loopback_interface_is_supported_only_by_explicit_lan_policy",
+          "code": 0,
+          "seconds": 11.991377172002103,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state",
+          "code": 0,
+          "seconds": 23.690936243998294,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "silent_network_loss_releases_the_controller_while_recording_continues",
+          "code": 0,
+          "seconds": 20.63456126500023,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::lan",
+          "name": "wildcard_profiles_and_remote_shared_memory_are_refused",
+          "code": 0,
+          "seconds": 12.990324495000095,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/lan-7a5523a6ecad33c1"
+        },
+        {
+          "binary": "shoop_host::recovery",
+          "name": "app_version_and_endpoint_role_are_checked_before_shared_attachment_admission",
+          "code": 0,
+          "seconds": 8.769198165999114,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/recovery-6b71ae3a0e334cc0"
+        },
+        {
+          "binary": "shoop_host::recovery",
+          "name": "bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections",
+          "code": 0,
+          "seconds": 33.75938719300029,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/recovery-6b71ae3a0e334cc0"
+        },
+        {
+          "binary": "shoop_host::recovery",
+          "name": "master_preview_plays_in_the_independent_host_without_creating_loop_content",
+          "code": 101,
+          "seconds": 10.05775862900191,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/recovery-6b71ae3a0e334cc0"
+        },
+        {
+          "binary": "shoop_host::recovery",
+          "name": "startup_fallback_retains_the_effective_dummy_profile_for_later_switches",
+          "code": 101,
+          "seconds": 11.060920253999939,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/recovery-6b71ae3a0e334cc0"
+        },
+        {
+          "binary": "shoop_rt_host_process::process",
+          "name": "both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations",
+          "code": 0,
+          "seconds": 9.328358869999647,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/process-4bdbbd4050095240"
+        },
+        {
+          "binary": "shoopdaloop::bin/shoopdaloop",
+          "name": "native_recovery_tests::real_ui_process_loss_repeated_attachment_media_and_both_exit_actions",
+          "code": 0,
+          "seconds": 15.868074703001184,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/shoopdaloop-6503dcb95aac5359"
+        },
+        {
+          "binary": "shoopdaloop::bin/shoopdaloop",
+          "name": "native_recovery_tests::remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_shutdown",
+          "code": 0,
+          "seconds": 10.838293456999963,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/shoopdaloop-6503dcb95aac5359"
+        },
+        {
+          "binary": "shoopdaloop::bin/shoopdaloop",
+          "name": "tests::driver_preference_retry_serializes_all_native_settings_writers",
+          "code": 101,
+          "seconds": 34.02342786000008,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/shoopdaloop-6503dcb95aac5359"
+        },
+        {
+          "binary": "shoopdaloop::bin/shoopdaloop",
+          "name": "tests::embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids",
+          "code": 101,
+          "seconds": 33.605677781997656,
+          "executable": "/workspace/shoopdaloop/target/debug/deps/shoopdaloop-6503dcb95aac5359"
+        }
+      ],
+      "quiet_ui_rerun": [
+        {
+          "name": "tests::driver_preference_retry_serializes_all_native_settings_writers",
+          "code": 0,
+          "seconds": 36.93775804899997
+        },
+        {
+          "name": "tests::embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids",
+          "code": 0,
+          "seconds": 20.970263798000815
+        }
+      ],
+      "quiet_host_rerun": [
+        {
+          "name": "exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile",
+          "code": 101,
+          "seconds": 19.492897263997293
+        },
+        {
+          "name": "native_host_reports_deployment_unsupported_independently_of_session_version",
+          "code": 0,
+          "seconds": 10.8831090700005
+        },
+        {
+          "name": "master_preview_plays_in_the_independent_host_without_creating_loop_content",
+          "code": 0,
+          "seconds": 16.55397762999928
+        },
+        {
+          "name": "startup_fallback_retains_the_effective_dummy_profile_for_later_switches",
+          "code": 0,
+          "seconds": 12.611548908000259
+        }
+      ],
+      "baseline_startup": [
+        {
+          "version": "before",
+          "repeat": 0,
+          "ready": true,
+          "seconds": 27.62898999299796,
+          "cpu_seconds": 27.776994000000002
+        },
+        {
+          "version": "after",
+          "repeat": 0,
+          "ready": true,
+          "seconds": 15.519917156998417,
+          "cpu_seconds": 15.912464000000003
+        },
+        {
+          "version": "after",
+          "repeat": 1,
+          "ready": true,
+          "seconds": 14.62807519999842,
+          "cpu_seconds": 14.992300999999994
+        },
+        {
+          "version": "before",
+          "repeat": 1,
+          "ready": true,
+          "seconds": 16.336628922999807,
+          "cpu_seconds": 16.681883999999997
+        },
+        {
+          "version": "before",
+          "repeat": 2,
+          "ready": true,
+          "seconds": 21.553800583998964,
+          "cpu_seconds": 19.468579000000005
+        },
+        {
+          "version": "after",
+          "repeat": 2,
+          "ready": true,
+          "seconds": 20.725166301999707,
+          "cpu_seconds": 15.354742999999978
+        }
+      ],
+      "baseline_ui": [
+        {
+          "revision": "e5c015be",
+          "name": "tests::driver_preference_retry_serializes_all_native_settings_writers",
+          "code": 0,
+          "seconds": 28.13250694999806
+        },
+        {
+          "revision": "e5c015be",
+          "name": "tests::embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids",
+          "code": 0,
+          "seconds": 27.636527560000104
+        }
+      ],
+      "diagnosis": "Nineteen original failures passed focused reruns. One LAN profile-publication readiness timeout remains and reproduces in the same unchanged test with the original e5c015be host. Unchanged MIDI checkpoint initialization sampled. Complete native run remains non-green.",
+      "baseline_lan_reproduction": {
+        "host_revision": "e5c015be",
+        "driver": "unchanged LAN test from current build",
+        "code": 101,
+        "seconds": 18.56862367299982
+      }
+    },
+    "dependency_boundaries": true,
+    "test_policy": true,
+    "final_current_build": {
+      "passed": true,
+      "command": "cargo build --locked -p rt_backend_testbench -p shoop_host",
+      "rustflags": "-D warnings"
+    },
+    "formatting": true,
+    "generated_axi_and_audio_tops": true,
+    "active_retired_dependency_search": true,
+    "block_image_unit_tests": true
+  },
+  "behavior": {
+    "campaign_report": "accuracy-gates.json",
+    "subsystem_report": "subsystem-gates.json",
+    "extra_faults": {
+      "arena_exhaustion": true,
+      "partial_output_silenced": true,
+      "late_memory_error": true,
+      "sticky_silence": true,
+      "reset_reload": true,
+      "state_generation": true,
+      "descriptor_exhaustion": true,
+      "automatic_view_creation": true,
+      "cold_metadata_error": true,
+      "reset_outstanding": true,
+      "posted_writeback": true
+    },
+    "block32_faults": {
+      "arena_exhaustion": true,
+      "partial_output_silenced": true,
+      "late_memory_error": true,
+      "sticky_silence": true,
+      "reset_reload": true,
+      "state_generation": true,
+      "descriptor_exhaustion": true,
+      "automatic_view_creation": true,
+      "cold_metadata_error": true,
+      "reset_outstanding": true,
+      "posted_writeback": true
+    },
+    "block_units": {
+      "ownership": true,
+      "audio": true,
+      "grouped_retirement": true,
+      "image_packing": true
+    },
+    "audio_io": {
+      "continuous_summary": {
+        "q": 32,
+        "p": 17,
+        "channels": 16,
+        "processed": 13,
+        "missed": 0,
+        "discarded": 0,
+        "rx_high_water": 1,
+        "tx_high_water": 2,
+        "compared_frames": 433,
+        "media_exact": true,
+        "states_exact": true
+      },
+      "accuracy": {
+        "name": "audio-io-16x16-q32",
+        "classification": "bounded",
+        "samples": 10240,
+        "max_abs": 0.0,
+        "rms": 0.0,
+        "signed_bias": 0.0,
+        "drift_first_to_last_quantum": 0.0,
+        "max_derived_error_budget": 1.6393073565268423e-09,
+        "worst": {
+          "path": "quanta[0].outputs.channels[0][0]",
+          "absolute_error": 0.0
+        },
+        "saturating_operations": 0,
+        "clipping_quanta": [],
+        "float_samples_outside_fixed_range": []
+      },
+      "arguments": {
+        "q": 32,
+        "chunk": null,
+        "p": 17,
+        "banks": 3,
+        "channels": 16,
+        "slots": 1024,
+        "monitoring": true,
+        "routing": "fanout",
+        "demo": false,
+        "audio_period": 13,
+        "audio_phase": 0,
+        "frame_cycles": 512,
+        "stalls": true,
+        "overrun": false,
+        "output": "work/unify-audio-continuous",
+        "memory_model": "fixed",
+        "memory_cycles": 7,
+        "dram_library": "/workspace/shoopdaloop/work/dramsim3/build/libshoop_dram.so",
+        "dram_config": "/workspace/shoopdaloop/fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini",
+        "fabric_hz": 100000000,
+        "physical_base": 16777216,
+        "axi_data_width": 64,
+        "block_chunks": 32,
+        "metadata_lines": 8,
+        "metadata_pages": null,
+        "reference_lines": 4,
+        "stack_lines": 2,
+        "word_transfers": false
+      },
+      "watchdog_stimulus_fix": "ready asserted on falling edge and held through processing acceptance; focused alternate-phase test passes; five other unit cases passed before that fixture-only change",
+      "control_unit": true
+    }
+  },
+  "performance": {
+    "cpu": "cpu-final.json",
+    "ddr64": "ddr64.json",
+    "ddr64_repeat": "Explicitly waived by user after upstream changes; no new measurement.",
+    "small_live_dramsim3": true,
+    "small_ddr_memory": {
+      "metadata_lines": 8,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "dramsim3",
+      "backend": "cocotb",
+      "purpose": "realistic",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "2e11341c195fd8940af6dec50468fcc4de387c32",
+      "working_tree_dirty": true,
+      "profile": "/workspace/shoopdaloop/fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini",
+      "profile_sha256": "629ccabea75c16ca2faedc921675986ebe878a9e3b2a75872582fe7cc42b640e",
+      "library_sha256": "7c4bf7a0b6ebdafb5b70c6e20b8fb91ccfa7427930c1fc9233e11169a3e28caa",
+      "model_patch_sha256": "0b576afb7d62edc1570bf712c63ee2b762098db8ec2d08dc0a91d12a1ba93eca",
+      "model_revision": "29817593b3389f1337235d63cac515024ab8fd6e"
+    }
+  },
+  "synthesis": {
+    "local": {
+      "axi32_64_lint": true,
+      "generic": true,
+      "ecp5": true,
+      "source_note": "Before final block/IO upstream integrations; not a fresh combined-top estimate."
+    },
+    "upstream_block_report": "../media_store/measurements/blocks32/resources.json",
+    "upstream_io_report": "../audio_io/measurements/validation.json",
+    "routed_timing": false,
+    "board_fit_claim": false
+  },
+  "reviews": {
+    "pr": 969,
+    "comments": 0,
+    "reviews": 0,
+    "ci_checked": false
+  }
+}

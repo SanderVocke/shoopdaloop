@@ -62,6 +62,7 @@ class FixedTiming:
 
 
 class AxiMemory:
+    is_native = False
     SLAVE = ("awready", "wready", "bid", "bresp", "bvalid", "arready",
              "rid", "rdata", "rresp", "rlast", "rvalid")
     MASTER = ("awid", "awaddr", "awlen", "awsize", "awburst", "awvalid", "wdata", "wstrb", "wlast", "wvalid",
@@ -274,3 +275,9 @@ class AxiMemory:
 
     def close(self):
         self.timing.close()
+
+    async def load_words(self, words, tick):
+        self.words[:] = words
+
+    async def read_words(self, tick):
+        return list(self.words)

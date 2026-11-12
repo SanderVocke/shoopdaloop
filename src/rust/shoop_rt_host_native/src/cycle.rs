@@ -142,7 +142,6 @@ impl Cycle {
             let diagnostics = self.render.diagnostics();
             let graph = self.render.audio_graph_work();
             let pool = self.render.audio_pool_work();
-            let elastic = self.render.elastic_audio_work();
             for (target, value) in self.shared.benchmark_work.iter().zip([
                 work.copied_bytes as u64,
                 work.validation_steps as u64,
@@ -158,13 +157,6 @@ impl Cycle {
                 pool.shared_payloads,
                 pool.payload_live,
                 pool.index_live,
-                elastic.slots as u64,
-                elastic.free_slots as u64,
-                elastic.capacity_slots as u64,
-                elastic.arena_growths,
-                elastic.read_samples,
-                elastic.captured_samples,
-                elastic.reclaimed_chunks,
             ]) {
                 target.store(value, std::sync::atomic::Ordering::Relaxed);
             }

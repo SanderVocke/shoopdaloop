@@ -7,16 +7,26 @@ module loop_pipeline #(
     parameter integer PROGRAM_DEPTH = 64,
     parameter integer STATE_DEPTH = 32,
     parameter integer JOB_DEPTH = 64,
+    parameter integer EXTERNAL_IO = 0,
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
     parameter integer OUTPUT_PORTS = 2,
     parameter integer VIEWS = 32,
-    parameter integer SLOTS = 32,
+    parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer BLOCK_CHUNKS = 32,
+    parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
+    parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
     input wire run_valid,
@@ -93,6 +103,14 @@ module loop_pipeline #(
     input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_meta_valid, input wire memory_meta_ready,
+    output wire memory_meta_write, output wire [63:0] memory_meta_address,
+    output wire [31:0] memory_meta_write_data,
+    output wire [31:0] memory_meta_count,
+    output wire memory_meta_write_valid, input wire memory_meta_write_ready,
+    input wire memory_meta_read_valid, output wire memory_meta_read_ready,
+    input wire memory_meta_response_valid, output wire memory_meta_response_ready,
+    input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
     output wire memory_fault
 );
     typedef enum logic [2:0] { IDLE, SETTLE_SEND, SETTLE_WAIT, AUDIO_START,
@@ -151,10 +169,12 @@ module loop_pipeline #(
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .configured_quantum(configured_quantum)
     );
-    media_audio_pipeline #(.PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+    media_audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) audio (
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) audio (
+        .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
+        .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(phase == AUDIO_START), .run_ready(audio_run_ready),
         .run_instruction_count(instructions), .run_state_count(states), .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_job_budget(budget),
         .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs), .job_enable(job_enable),
@@ -189,7 +209,7 @@ module loop_pipeline #(
         .memory_write_ready(memory_write_ready), .memory_read_valid(memory_read_valid),
         .memory_read_ready(memory_read_ready),
         .memory_response_valid(memory_response_valid), .memory_response_ready(memory_response_ready),
-        .memory_response_error(memory_response_error), .memory_read_data(memory_read_data), .memory_fault(memory_fault)
+        .memory_response_error(memory_response_error), .memory_read_data(memory_read_data), .memory_meta_valid(memory_meta_valid), .memory_meta_ready(memory_meta_ready), .memory_meta_write(memory_meta_write), .memory_meta_address(memory_meta_address), .memory_meta_write_data(memory_meta_write_data), .memory_meta_count(memory_meta_count), .memory_meta_write_valid(memory_meta_write_valid), .memory_meta_write_ready(memory_meta_write_ready), .memory_meta_read_valid(memory_meta_read_valid), .memory_meta_read_ready(memory_meta_read_ready), .memory_meta_response_valid(memory_meta_response_valid), .memory_meta_response_ready(memory_meta_response_ready), .memory_meta_response_error(memory_meta_response_error), .memory_meta_read_data(memory_meta_read_data), .memory_fault(memory_fault)
     );
 
     always @(posedge clk) begin

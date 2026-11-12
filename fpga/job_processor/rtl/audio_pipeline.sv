@@ -4,6 +4,7 @@ module audio_pipeline #(
     parameter integer PROGRAM_DEPTH = 32,
     parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32,
+    parameter integer EXTERNAL_IO = 0,
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
@@ -11,6 +12,12 @@ module audio_pipeline #(
     parameter integer CHUNK_FRAMES = 1,
     parameter integer ENABLE_MEDIA = 0
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
     input wire run_valid,
@@ -139,10 +146,12 @@ module audio_pipeline #(
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
     );
-    job_processor #(
+    job_processor #(.EXTERNAL_IO(EXTERNAL_IO),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(ENABLE_MEDIA)
     ) sample_engine (
+        .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
+        .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(phase == JOB_START), .run_ready(job_run_ready),
         .run_quantum(quantum), .run_chunk_frames(chunk_frames), .run_buffers(buffers), .run_inputs(inputs), .run_outputs(outputs),
         .run_jobs(queued_jobs), .busy(sample_busy), .done(sample_done), .error_code(job_error), .buffer_ready(buffer_ready),

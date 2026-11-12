@@ -1,132 +1,126 @@
-"""Behavioral comparison against the actual Rust executor plus RTL protocol checks."""
-
+"""Explicit instruction vectors and FIFO/protocol checks; no software SP executor."""
 from copy import deepcopy
-from collections import Counter
 import json
 import os
 from pathlib import Path
-
+import random
 import cocotb
-
-import fpga_testbench as wire
-from cases import case, directed, ins, ramp, random_cases, word
+from cases import case, ins, ramp, word
 from codec import encode_instruction, encode_value
 from driver import Driver
 
-ROOT = Path(__file__).resolve().parents[3]
-DEPTHS = tuple(map(int, os.environ["SP_DEPTHS"].split(",")))
-SEED = int(os.environ["SP_SEED"])
-ARTIFACTS = Path(os.environ["SP_ARTIFACT_DIR"])
-EXECUTABLE = Path(os.environ["SHOOP_FPGA_REFERENCE"])
+DEPTHS=tuple(map(int,os.environ['SP_DEPTHS'].split(',')))
+SEED=int(os.environ['SP_SEED'])
+ARTIFACTS=Path(os.environ['SP_ARTIFACT_DIR'])
 
+async def vector(dut,name,instruction,memory,jobs,*,status=0,after=None,budget=None,quantum=32):
+    value=case(name,[instruction],memory,DEPTHS[2],budget=budget,quantum=quantum)
+    driver=Driver(dut,DEPTHS,SEED)
+    await driver.load(value)
+    code=await driver.execute()
+    observed=await driver.drain()
+    assert (code,observed)==(status,jobs),(name,code,observed)
+    assert await driver.snapshot()==dict(memory=memory if after is None else after),name
 
-def document(kind, value):
-    return {"format_version": 3, "payload": {"kind": kind, "value": value}}
+@cocotb.test()
+async def instruction_vectors(dut):
+    vectors=[
+        (ins('input',port=65535,destination=417),dict(kind='input',port=65535,destination=417)),
+        (ins('mix',left=65535,right=32768,destination=91),dict(kind='mix',left=65535,right=32768,destination=91)),
+        (ins('output',source=65534,port=513),dict(kind='output',source=65534,port=513)),
+        (ins('silence',destination=633),dict(kind='silence',destination=633)),
+    ]
+    for instruction,job in vectors:await vector(dut,instruction['kind'],instruction,[],[job])
+    gain=ins('gain',ramp=0,source=91,destination=633)
+    for q in (0,1,32,2**32-1):
+        for duration,elapsed in ((0,0),(0,2**32-1),(1,0),(33,1),(2**32-1,2**32-16),(2**32-1,2**32-1)):
+            memory=[ramp(duration,elapsed)];after=deepcopy(memory)
+            after[0]['value']['elapsed']=min(duration,elapsed+q)
+            await vector(dut,f'ramp-{q}-{duration}-{elapsed}',gain,memory,
+                [dict(kind='gain',source=91,destination=633,ramp=memory[0]['value'])] if q else [],after=after if q else memory,status=0 if q else 2,quantum=q)
+    await vector(dut,'wrong-ramp-type',gain,[word(0)],[],status=2)
+    await vector(dut,'bad-ramp-address',dict(gain,ramp=65535),[],[],status=2)
+    play=ins('loop_playback',view=65535,position=65535,length=65535,enabled=0,destination=633)
+    await vector(dut,'disabled-playback',play,[word(0)],[dict(kind='silence',destination=633)])
+    capture=ins('loop_capture',view=65535,enabled=0,source=911)
+    await vector(dut,'disabled-capture',capture,[word(0)],[],budget=0)
+    await vector(dut,'bad-enable',play,[ramp()],[],status=2)
+    if DEPTHS[1]>=4:
+        memory=[word(2**32-1),word(2**63),word(2**64-2),word(2**64-1)]
+        play=dict(play,view=0,enabled=1,position=2,length=3)
+        await vector(dut,'wide-playback',play,memory,[dict(kind='read_view',destination=633,view=2**32-1,position_chunks=2**64-2,length_chunks=2**64-1)])
+        await vector(dut,'wide-capture',dict(capture,view=0,enabled=1),memory,[dict(kind='capture',source=911,view=2**32-1)])
+        for field in ('view','enabled','position','length'):
+            await vector(dut,'bad-'+field,dict(play,**{field:65535}),memory,[],status=2)
+        for position,length in ((0,0),(9,9),(10,9)):
+            bad=deepcopy(memory);bad[2:]=[word(position),word(length)]
+            await vector(dut,'invalid-range',play,bad,[],status=2)
+    await vector(dut,'last-state',dict(gain,ramp=DEPTHS[1]-1),[word(9)]*(DEPTHS[1]-1)+[ramp()],
+        [dict(kind='gain',source=91,destination=633,ramp=ramp()['value'])],
+        after=[word(9)]*(DEPTHS[1]-1)+[ramp(elapsed=32)])
+    await vector(dut,'admission-refusal',gain,[ramp()],[],status=1,budget=DEPTHS[2]+1)
 
+    # A delayed read-only loop-record slave checks the logical-node interface.
+    class LoopDriver(Driver):
+        pending=None
+        response=0
+        async def tick(self):
+            resetting=int(self.dut.reset.value)
+            ready=not resetting and self.rng.randrange(3)!=0
+            valid=not resetting and self.pending==0
+            self.set(loop_read_ready=int(ready),loop_response_valid=int(valid),loop_response_data=self.response)
+            request=bool(int(self.dut.loop_read_valid.value) and ready)
+            if request:assert int(self.dut.loop_read_slot.value)==3
+            result=await super().tick()
+            if resetting or valid:self.pending=None
+            elif self.pending is not None:self.pending-=1
+            if request:self.pending=3
+            return result
+    logical=dict(loop_id=dict(slot=3,generation=0x81234567),view=0,destination=91)
+    for mode in (0,1,2,3):
+        for generation in (0x81234567,0x81234566):
+            driver=LoopDriver(dut,DEPTHS,SEED)
+            driver.response=1|(generation<<1)|(mode<<33)|(64<<35)|(32<<99)|(1<<163)
+            value=case('logical-playback',[ins('logical_playback',**logical)],[word(2**32-1)],DEPTHS[2])
+            value['program']['chunk_frames']=32
+            await driver.load(value)
+            code=await driver.execute();jobs=await driver.drain()
+            if generation!=0x81234567 or mode==3:assert (code,jobs)==(2,[])
+            else:
+                expected=dict(kind='read_view',destination=91,view=2**32-1,position_chunks=1,length_chunks=2) if mode==1 else dict(kind='silence',destination=91)
+                assert (code,jobs)==(0,[expected])
+    if DEPTHS[2]>=2:
+        for first in (False,True):
+            driver=LoopDriver(dut,DEPTHS,SEED)
+            driver.response=1|(0x81234567<<1)|(2<<33)|(int(first)<<163)
+            value=case('logical-capture',[ins('logical_capture',loop_id=logical['loop_id'],view=0,source=91)],[word(37)],DEPTHS[2],budget=2)
+            await driver.load(value)
+            assert await driver.execute()==0
+            assert await driver.drain()==([dict(kind='begin_capture',view=37)] if first else [])+[dict(kind='capture',source=91,view=37)]
 
-def fits(value):
-    return (len(value["program"]["instructions"]) <= DEPTHS[0]
-            and len(value["initial_state"]["memory"]) <= DEPTHS[1])
-
-
-async def compare(dut, value, *, seed):
-    input_document = document("case", value)
-    trace_document = wire.run_reference("trace", input_document, executable=EXECUTABLE)
-    trace = trace_document["payload"]["value"]
-    driver = Driver(dut, DEPTHS, seed)
-    observed = []
-    cycles = []
-    try:
+@cocotb.test()
+async def fifo_order_wrap_and_partial_failure(dut):
+    rng=random.Random(SEED)
+    driver=Driver(dut,DEPTHS,SEED)
+    count=min(DEPTHS[0],DEPTHS[2])
+    instructions=[ins('input',port=rng.randrange(65536),destination=rng.randrange(65536)) for _ in range(count)]
+    value=case('fifo-wrap',instructions,[],DEPTHS[2])
+    expected=[dict(kind='input',port=i['port'],destination=i['destination']) for i in instructions]
+    await driver.load(value)
+    for _ in range(2*DEPTHS[2]//count+3):
+        assert await driver.execute()==0
+        assert await driver.drain()==expected
+    if DEPTHS[0]>DEPTHS[2]:
+        value=case('partial-fifo',instructions+[ins('gain',ramp=0,source=0,destination=0)],[ramp()],DEPTHS[2],budget=0)
         await driver.load(value)
-        for step, expected in zip(value["steps"], trace["results"]):
-            result = await driver.quantum(step["writes"])
-            observed.append(result)
-            cycles.append(driver.last_run_cycles)
-            wire.assert_result_matches(expected, result)
-    except BaseException as error:
-        wire.dump(input_document, ARTIFACTS / "failure.case.json")
-        wire.dump(trace_document, ARTIFACTS / "failure.expected.trace.json")
-        (ARTIFACTS / "failure.observed.json").write_text(json.dumps(
-            {"name": value["name"], "seed": seed, "results": observed, "error": str(error)},
-            indent=2) + "\n")
-        dut._log.error("case %s failed, seed=%d; artifacts in %s", value["name"], seed, ARTIFACTS)
-        raise
-    return observed, cycles
-
-
-def accumulate(results, jobs, statuses):
-    for result in results:
-        jobs.update(job["kind"] for job in result["jobs"])
-        status = result["status"]
-        statuses.update([status["value"]["error"] if status["kind"] == "failed" else "completed"])
-
-
-@cocotb.test()
-async def directed_against_rust(dut):
-    replay = os.environ.get("SP_CASE_FILE")
-    if replay:
-        loaded = wire.load(replay)["payload"]
-        value = loaded["value"]["case"] if loaded["kind"] == "trace" else loaded["value"]
-        _, cycles = await compare(dut, value, seed=SEED)
-        (ARTIFACTS / "replay-cycles.json").write_text(json.dumps(
-            {"case": value["name"], "quantum_frames": value["program"]["quantum"],
-             "execution_cycles": cycles}, indent=2) + "\n")
-        return
-    values = list(directed(DEPTHS))
-    example = deepcopy(wire.load(ROOT / "scripts/fpga_testbench/examples/record_play.json")["payload"]["value"])
-    example["queue_capacity"] = DEPTHS[2]
-    values.append(example)
-    graph = {"chunk_frames": 1, "quantum": 32, "nodes": [
-        {"kind": "input", "port": 3},
-        {"kind": "playback", "view": 17, "length_chunks": 45, "position_chunks": 40, "playing": True},
-        {"kind": "gain", "input": 0, "gain": 8388608},
-        {"kind": "mix", "left": 1, "right": 2},
-        {"kind": "capture", "input": 3, "view": 17, "recording": True},
-        {"kind": "output", "input": 3, "port": 11},
-    ]}
-    compiled = wire.run_reference("compile", document("graph", graph), executable=EXECUTABLE)["payload"]["value"]
-    values.append({"name": "rust-compiled-graph", "program": compiled["program"],
-                   "initial_state": {"memory": compiled["initial_state"]},
-                   "queue_capacity": DEPTHS[2], "steps": [{"writes": []}] * 3})
-    executed, quanta = [], 0
-    jobs, statuses = Counter(), Counter()
-    cycle_counts = {}
-    for index, value in enumerate(values):
-        if fits(value):
-            results, cycles = await compare(dut, value, seed=SEED + index)
-            cycle_counts[value["name"]] = cycles
-            quanta += len(results)
-            accumulate(results, jobs, statuses)
-            executed.append(value["name"])
-    report = {"depths": DEPTHS, "cases": executed, "quanta": quanta,
-              "jobs": dict(jobs), "statuses": dict(statuses),
-              "execution_cycles": cycle_counts,
-              "outside_physical_capacity": len(values) - len(executed)}
-    (ARTIFACTS / "directed-summary.json").write_text(json.dumps(report, indent=2) + "\n")
-    dut._log.info("Rust comparison: %d directed cases, %d quanta", len(executed), quanta)
-    assert set(statuses) == {"completed", "queue_full", "invalid_state"}
-    if DEPTHS[0] >= 7 and DEPTHS[1] >= 5:
-        assert set(jobs) == {"input", "silence", "read_view", "gain", "mix", "capture", "output"}
-
-
-@cocotb.test()
-async def randomized_against_rust(dut):
-    count = int(os.environ["SP_RANDOM_CASES"])
-    quanta = 0
-    jobs, statuses = Counter(), Counter()
-    measured_cycles = []
-    for index, value in enumerate(random_cases(DEPTHS, SEED, count)):
-        results, cycles = await compare(dut, value, seed=SEED + 10000 + index)
-        measured_cycles.extend(value for value in cycles if value is not None)
-        quanta += len(results)
-        accumulate(results, jobs, statuses)
-    (ARTIFACTS / "random-summary.json").write_text(json.dumps(
-        {"depths": DEPTHS, "seed": SEED, "cases": count, "quanta": quanta,
-         "execution_cycles": {"min": min(measured_cycles, default=None),
-                              "max": max(measured_cycles, default=None), "total": sum(measured_cycles)},
-         "jobs": dict(jobs), "statuses": dict(statuses)}, indent=2) + "\n")
-    dut._log.info("Rust comparison: %d randomized cases, %d quanta, seed=%d", count, quanta, SEED)
-
+        assert await driver.execute()==1
+        assert await driver.drain()==expected
+        assert await driver.snapshot()==value['initial_state']
+    if DEPTHS[0]>=2:
+        value=case('partial-invalid-state',[ins('input',port=0,destination=1),ins('gain',ramp=65535,source=1,destination=2)],[],DEPTHS[2],budget=0)
+        await driver.load(value)
+        assert await driver.execute()==2
+        assert await driver.drain()==[dict(kind='input',port=0,destination=1)]
 
 @cocotb.test()
 async def configuration_and_error_protocol(dut):
@@ -164,9 +158,9 @@ async def configuration_and_error_protocol(dut):
     assert before["busy"] and not before["cfg_ready"] and not before["run_ready"]
     driver.set(cfg_valid=0, run_valid=0, job_ready=0)
     await driver.tick()
-    expected = wire.run_reference("trace", document("case", value), executable=EXECUTABLE)["payload"]["value"]["results"][0]
-    wire.assert_result_matches(expected, {"jobs": await driver.drain(), "state": await driver.snapshot(),
-                                          "status": {"kind": "completed"}})
+    expected_gain=dict(kind='gain',source=1,destination=2,ramp=deepcopy(value['initial_state']['memory'][0]['value']))
+    assert await driver.drain()==[expected_gain]
+    assert (await driver.snapshot())['memory'][0]['value']['elapsed']==32
 
     await driver.load(value)
     assert await driver.execute(run_instruction_count=DEPTHS[0] + 1) == 3
@@ -214,7 +208,8 @@ async def nonempty_admission_and_reset(dut):
     assert int(dut.queued_jobs.value) == 0
     assert await driver.snapshot() == updated, "reset cleared retained architectural state"
     assert await driver.configure(False, 0) == encode_instruction(value["program"]["instructions"][0])
-    resumed = deepcopy(value)
-    resumed["initial_state"] = updated
-    expected = wire.run_reference("trace", document("case", resumed), executable=EXECUTABLE)["payload"]["value"]["results"][0]
-    wire.assert_result_matches(expected, await driver.quantum([]))
+    before=updated['memory'][0]['value']
+    result=await driver.quantum([])
+    assert result['status']==dict(kind='completed')
+    assert result['jobs']==[dict(kind='gain',source=1,destination=2,ramp=before)]
+    assert result['state']['memory'][0]['value']['elapsed']==64

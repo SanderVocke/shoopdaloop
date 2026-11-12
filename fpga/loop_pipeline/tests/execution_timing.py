@@ -29,9 +29,31 @@ class ExecutionTiming:
         self.start = self.total = None
         self.phases, self.jp_phases, self.tp_states = Counter(), Counter(), Counter()
         self.state_cycles = self.job_cycles = self.fill_wait = self.dma_cycles = 0
+        self.metadata_stalls = self.metadata_busy = 0
         self.jobs = []
+        self.completions = {}
+        self.metadata_start = self.metadata_end = None
         self.segment = None
         self.bus_segments = []
+
+    def metadata_snapshot(self):
+        if not hasattr(self.core.audio.media,'metadata'):return None
+        meta=self.core.audio.media.metadata
+        transport=self.dut.core.memory_endpoint.scheduler
+        result={}
+        for i,name in enumerate(('sample','metadata')):
+            for metric in ('reads','writes','bytes','wait_cycles'):
+                result[name+'_'+metric]=int(getattr(transport,metric)[i].value)
+        for i,name in enumerate(('table','reference','stack')):
+            cache=meta.banks[i].cache
+            for metric in ('hits','misses','fills','writebacks'):
+                result[name+'_'+metric]=int(getattr(cache,metric).value)
+        result['directory_reads']=int(meta.directory_reads.value)
+        result['table_reads']=int(meta.table_reads.value)
+        for i,name in enumerate(('table_read','table_write','reference_read','reference_write',
+                                 'stack_read','stack_write','trim','capacity_check','fence','invalidate')):
+            result[name+'_operations']=int(meta.operations[i].value)
+        return result
 
     def snapshot(self):
         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
@@ -44,8 +66,13 @@ class ExecutionTiming:
         if self.start is None:
             if int(self.dut.run_valid.value) and int(self.dut.run_ready.value):
                 self.start = cycle+1
+                self.metadata_start = self.metadata_snapshot()
+                self.requests_start = (self.memory.read_requests,self.memory.write_requests)
             return
         time = cycle-self.start
+        for signal,label in (('state_done','state_done'),('jobs_done','jobs_done')):
+            if int(getattr(self.dut,signal).value):self.completions.setdefault(label,time)
+        if self.labels[int(self.core.phase.value)] == 'AUDIO_START':self.completions.setdefault('transition_settle_done',time)
         phase = self.labels[int(self.core.phase.value)]
         if self.segment is None:
             self.segment = (phase, self.snapshot())
@@ -53,7 +80,10 @@ class ExecutionTiming:
             self.bus_segments.append((self.segment[0], self.segment[1], self.snapshot()))
             self.segment = (phase, self.snapshot())
         if int(self.dut.done.value):
+            self.completions["finish_done"]=time
             self.total = time
+            self.metadata_end = self.metadata_snapshot()
+            self.requests_end = (self.memory.read_requests,self.memory.write_requests)
             self.enabled = False
             return
         self.phases[phase] += 1
@@ -72,6 +102,9 @@ class ExecutionTiming:
             self.jobs[-1].setdefault('end', time)
         self.fill_wait += int(int(self.cm.phase.value) == 3 and int(self.cm.opcode.value) == 0)
         self.dma_cycles += int(int(self.cm.dma_phase.value) != 0)
+        if hasattr(self.core.audio.media,'metadata'):
+            self.metadata_stalls += int(not int(self.core.audio.media.advance.value))
+            self.metadata_busy += int(int(self.core.audio.media.metadata.phase.value) != 0)
 
     def bus(self):
         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
@@ -94,10 +127,18 @@ class ExecutionTiming:
             group['cycles'] += row['end']-row['start']
         tp_cycles = sum(value for name,value in self.phases.items() if name.startswith(('SETTLE_', 'FINISH_')))
         active = self.total
-        return dict(raw_cycles=self.total,
+        metadata_end=self.metadata_end
+        delta={key:metadata_end[key]-self.metadata_start[key] for key in metadata_end} if metadata_end else None
+        if delta is not None:
+            for access in ('read','write'):
+                delta['logical_'+access+'_bytes']=4*sum(delta[bank+'_'+access+'_operations'] for bank in ('table','reference','stack'))
+            delta['directory_read_bytes']=4*delta['directory_reads']
+        return dict(completion_cycles=self.completions,metadata_statistics=delta,raw_cycles=self.total,
+                    axi_reads=self.requests_end[0]-self.requests_start[0],axi_writes=self.requests_end[1]-self.requests_start[1],
                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,
                     coordinator_phases=dict(self.phases), job_phases=dict(self.jp_phases),
                     transition_states=dict(self.tp_states), jobs=grouped,
                     demand_fill_wait_cycles=self.fill_wait, transfer_active_cycles=self.dma_cycles,
+                    metadata_foreground_stall_cycles=self.metadata_stalls,metadata_service_busy_cycles=self.metadata_busy,
                     raw_ddr_bus=self.bus(), active_ddr_bus=self.bus())

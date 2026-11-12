@@ -1,7 +1,7 @@
 //! All-member interval reservation, staging, and publication.
 use super::*;
 use crate::buffer::MidiBuffer;
-use rt_fpga_reference::fixed::Fixed;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureTickId {
@@ -11,14 +11,12 @@ pub struct CaptureTickId {
 #[derive(Clone, Copy)]
 pub(super) struct TickReservation {
     pages: usize,
-    elastic_chunks: usize,
-    elastic_channel: usize,
     revision: Revision,
     ready: bool,
     bytes: usize,
     events: usize,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub(in crate::resource) fn capture_tick_end(
         &self,
         interval: CaptureTickId,
@@ -60,9 +58,6 @@ impl ResourceStore {
         ))
     }
     fn append_pages(&self, version: Version, bytes: usize) -> Result<usize, Error> {
-        if version.elastic.is_some() {
-            return Ok(0);
-        }
         let written = version.written;
         let end = written.checked_add(bytes).ok_or(Error::Capacity)?;
         let page = self.config.limits().page_bytes;
@@ -117,7 +112,6 @@ impl ResourceStore {
         at.checked_add(frames)?;
         let sequence = group.tick_sequence.checked_add(1).ok_or(Error::Exhausted)?;
         let mut pages = 0usize;
-        let mut elastic_chunks = 0usize;
         for index in 0..group.members {
             let member = self.capture_groups.member(take.group, index);
             let id = member.take.ok_or(Error::InvalidState)?;
@@ -148,17 +142,7 @@ impl ResourceStore {
             pages = pages
                 .checked_add(self.append_pages(version, self.tick_bound(member))?)
                 .ok_or(Error::Capacity)?;
-            if let Some(take) = version.elastic {
-                let total = usize::try_from(version.description.frames)
-                    .ok()
-                    .and_then(|n| n.checked_add(frames))
-                    .ok_or(Error::Capacity)?;
-                elastic_chunks += self
-                    .elastic_audio
-                    .as_mut()
-                    .ok_or(Error::InvalidState)?
-                    .prepare(take, total, elastic_chunks)?;
-            }
+
             if let Some(owner) = version.midi {
                 self.midi_indexes
                     .preflight(owner, id, member.spec.midi_events as u64)?;
@@ -199,9 +183,7 @@ impl ResourceStore {
             }
         }
         self.reserved_pages += pages;
-        if let Some(audio) = &mut self.elastic_audio {
-            audio.reserved_chunks += elastic_chunks;
-        }
+
         for index in 0..group.members {
             let mut member = self.capture_groups.member(take.group, index);
             let id = member.take.expect("validated take");
@@ -210,16 +192,6 @@ impl ResourceStore {
                 pages: self
                     .append_pages(version, self.tick_bound(member))
                     .expect("validated append size"),
-                elastic_chunks: if let Some(take) = version.elastic {
-                    self.elastic_audio
-                        .as_ref()
-                        .expect("elastic store")
-                        .additional_chunks(take, version.description.frames as usize + frames)
-                        .expect("prepared growth")
-                } else {
-                    0
-                },
-                elastic_channel: 0,
                 revision: if prepared {
                     version
                         .revision
@@ -251,9 +223,7 @@ impl ResourceStore {
             let mut member = self.capture_groups.member(interval.take.group, index);
             let reservation = member.append.take().expect("interval reservation");
             self.reserved_pages -= reservation.pages;
-            if let Some(audio) = &mut self.elastic_audio {
-                audio.reserved_chunks -= reservation.elastic_chunks;
-            }
+
             let slot = self.capture_groups.member_index(interval.take.group, index);
             if let Some(write) = self.capture_groups.audio_writes[slot].take() {
                 self.with_audio(write.store, |store, pool| {
@@ -276,7 +246,7 @@ impl ResourceStore {
         &mut self,
         interval: CaptureTickId,
         ordinal: usize,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
         let (_, mut member) = self.tick_member(interval, ordinal)?;
@@ -302,17 +272,10 @@ impl ResourceStore {
             result?;
         } else {
             self.charge_work(WorkClass::Render, bytes, 0)?;
-            let id = member.take.ok_or(Error::InvalidState)?;
-            let elastic = get(&self.versions, id.slot, id.generation)?
-                .elastic
-                .is_some();
             for (index, sample) in samples.iter().enumerate() {
                 let start = member.staging_start + index * 4;
-                self.capture_groups.staging[start..start + 4].copy_from_slice(&if elastic {
-                    Fixed::from_f32(*sample).0.to_le_bytes()
-                } else {
-                    sample.to_le_bytes()
-                });
+                self.capture_groups.staging[start..start + 4]
+                    .copy_from_slice(&sample.to_le_bytes());
             }
         }
         reservation.ready = true;
@@ -322,49 +285,7 @@ impl ResourceStore {
             .set_member(interval.take.group, ordinal, member);
         Ok(())
     }
-    pub fn stage_elastic_audio(
-        &mut self,
-        interval: CaptureTickId,
-        ordinal: usize,
-        channel: usize,
-        channels: usize,
-        samples: &[Fixed],
-    ) -> Result<(), Error> {
-        let (_, mut member) = self.tick_member(interval, ordinal)?;
-        if member.spec.format
-            != (Format::Audio {
-                channels: channels as u32,
-            })
-            || channel >= channels
-            || samples.len() != self.quantum.frames()
-        {
-            return Err(Error::InvalidShape);
-        }
-        let id = member.take.ok_or(Error::InvalidState)?;
-        if get(&self.versions, id.slot, id.generation)?
-            .elastic
-            .is_none()
-        {
-            return Err(Error::InvalidShape);
-        }
-        let mut reservation = member.append.ok_or(Error::InvalidState)?;
-        if reservation.ready || reservation.elastic_channel != channel {
-            return Err(Error::InvalidState);
-        }
-        for (frame, sample) in samples.iter().enumerate() {
-            let at = member.staging_start + (frame * channels + channel) * 4;
-            self.capture_groups.staging[at..at + 4].copy_from_slice(&sample.0.to_le_bytes());
-        }
-        reservation.elastic_channel += 1;
-        if channel + 1 == channels {
-            reservation.ready = true;
-            reservation.bytes = samples.len() * channels * 4;
-        }
-        member.append = Some(reservation);
-        self.capture_groups
-            .set_member(interval.take.group, ordinal, member);
-        Ok(())
-    }
+
     pub fn stage_capture_midi(
         &mut self,
         interval: CaptureTickId,
@@ -418,14 +339,6 @@ impl ResourceStore {
         Ok(())
     }
     fn append_group_staging(&mut self, version: &mut Version, mut start: usize, mut bytes: usize) {
-        if let Some(take) = version.elastic {
-            self.elastic_audio
-                .as_mut()
-                .expect("elastic store")
-                .append_staging(take, &self.capture_groups.staging[start..start + bytes]);
-            version.written += bytes;
-            return;
-        }
         let mut chunk = [0; 64];
         while bytes > 0 {
             let count = bytes.min(chunk.len());
@@ -538,9 +451,7 @@ impl ResourceStore {
                 },
                 version,
             );
-            if let Some(audio) = &mut self.elastic_audio {
-                audio.reserved_chunks -= reservation.elastic_chunks;
-            }
+
             self.capture_groups
                 .set_member(interval.take.group, index, member);
         }

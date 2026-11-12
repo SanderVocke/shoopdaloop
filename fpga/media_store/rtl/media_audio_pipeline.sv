@@ -1,13 +1,23 @@
 `include "state_processor_defs.svh"
 
 module media_audio_pipeline #(
+    parameter integer EXTERNAL_IO = 0,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
-    parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
+    parameter integer VIEWS = 32, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer BLOCK_CHUNKS = 32,
+    parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
+    parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     input wire clk, input wire reset,
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
@@ -48,6 +58,14 @@ module media_audio_pipeline #(
     input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_meta_valid, input wire memory_meta_ready,
+    output wire memory_meta_write, output wire [63:0] memory_meta_address,
+    output wire [31:0] memory_meta_write_data,
+    output wire [31:0] memory_meta_count,
+    output wire memory_meta_write_valid, input wire memory_meta_write_ready,
+    input wire memory_meta_read_valid, output wire memory_meta_read_ready,
+    input wire memory_meta_response_valid, output wire memory_meta_response_ready,
+    input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
     output wire memory_fault
 );
     wire pipeline_busy, pipeline_ready, state_cfg_ready, sample_cfg_ready;
@@ -86,11 +104,13 @@ module media_audio_pipeline #(
     assign job_read_valid = internal_read_valid && pipeline_busy;
     assign store_read_data = store_sample;
 
-    audio_pipeline #(
+    audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1)
     ) pipeline (
+        .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
+        .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(pipeline_ready),
         .run_instruction_count(run_instruction_count), .run_state_count(run_state_count),
         .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
@@ -117,14 +137,14 @@ module media_audio_pipeline #(
         .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) media (
+    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
         .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
         .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
         .cmd_opcode(pipeline_busy ? job_opcode : store_cmd_opcode), .cmd_view(pipeline_busy ? job_view : store_cmd_view),
         .cmd_start(pipeline_busy ? job_start : store_cmd_start), .cmd_length(pipeline_busy ? job_length : store_cmd_length),
         .cmd_count(pipeline_busy ? job_count : store_cmd_count),
-        .busy(store_busy), .done(internal_done), .error_code(store_error_code), .memory_fault(memory_fault),
+        .busy(store_busy), .done(internal_done), .error_code(store_error_code), .memory_meta_valid(memory_meta_valid), .memory_meta_ready(memory_meta_ready), .memory_meta_write(memory_meta_write), .memory_meta_address(memory_meta_address), .memory_meta_write_data(memory_meta_write_data), .memory_meta_count(memory_meta_count), .memory_meta_write_valid(memory_meta_write_valid), .memory_meta_write_ready(memory_meta_write_ready), .memory_meta_read_valid(memory_meta_read_valid), .memory_meta_read_ready(memory_meta_read_ready), .memory_meta_response_valid(memory_meta_response_valid), .memory_meta_response_ready(memory_meta_response_ready), .memory_meta_response_error(memory_meta_response_error), .memory_meta_read_data(memory_meta_read_data), .memory_fault(memory_fault),
         .result_view(store_result_view), .result_empty(store_result_empty),
         .write_valid(pipeline_busy ? job_write_valid : store_write_valid), .write_ready(internal_write_ready),
         .write_data(pipeline_busy ? job_write_data : store_write_data),

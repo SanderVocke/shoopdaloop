@@ -67,9 +67,6 @@ impl Render {
         self.runtime.set_profiling_clock(clock);
     }
 
-    pub fn fpga_program(&self) -> Option<&rt_runtime::fpga::NodeProgram> {
-        self.runtime.fpga_program()
-    }
     pub fn next_frame(&self) -> Frame {
         self.runtime.next_frame()
     }
@@ -87,9 +84,7 @@ impl Render {
     pub fn audio_pool_work(&self) -> rt_runtime::resource::shared_audio::AudioPoolWork {
         self.runtime.audio_pool_work()
     }
-    pub fn elastic_audio_work(&self) -> rt_runtime::resource::ElasticAudioWork {
-        self.runtime.elastic_audio_work()
-    }
+
     pub fn audio_graph_work(&self) -> rt_runtime::audio_refs::AudioGraphWork {
         self.runtime.audio_graph_work()
     }

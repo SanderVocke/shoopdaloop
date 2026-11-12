@@ -1,5 +1,9 @@
 # Elastic reference media integration
 
+Historical: this report describes the retired FPGA Rust reference/app renderer.
+Its commands are no longer supported. Current comparisons use the production
+backend; see [verification](../../../fpga/verification/README.md).
+
 The app-selected `fpga-reference` renderer now stores audio in the Rust reference
 `MediaStore`. Recording, playback, bulk readback and PCM import/export use its
 contiguous fixed-point slot arena and per-channel chunk tables. Native resource

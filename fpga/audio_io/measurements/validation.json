@@ -1,0 +1,161 @@
+{
+  "production_base": "fa6d9f55",
+  "tools": {
+    "rust": "1.99.1",
+    "verilator": "5.032",
+    "yosys": "0.52",
+    "cocotb": "1.9.2"
+  },
+  "routed_timing": false,
+  "synthesis": {
+    "main": {
+      "top": "audio_loop_pipeline",
+      "q": 32,
+      "channels": 16,
+      "rx_banks": 3,
+      "tx_banks": 3,
+      "logical_io_bytes": 12288,
+      "cells": {
+        "$scopeinfo": 363,
+        "CCU2C": 5494,
+        "DP16KD": 152,
+        "L6MUX21": 147,
+        "LUT4": 37079,
+        "MULT18X18D": 4,
+        "PFUMX": 3837,
+        "TRELLIS_DPR16X4": 8,
+        "TRELLIS_FF": 20860
+      },
+      "routed_timing": false
+    },
+    "demo": {
+      "top": "audio_demo",
+      "q": 32,
+      "channels": 16,
+      "rx_banks": 3,
+      "tx_banks": 3,
+      "logical_io_bytes": 12288,
+      "cells": {
+        "$scopeinfo": 366,
+        "CCU2C": 5188,
+        "DP16KD": 132,
+        "L6MUX21": 48,
+        "LUT4": 28261,
+        "MULT18X18D": 6,
+        "PFUMX": 2543,
+        "TRELLIS_DPR16X4": 8,
+        "TRELLIS_FF": 16600
+      },
+      "routed_timing": false
+    }
+  },
+  "continuous": [
+    {
+      "q": 16,
+      "p": 8,
+      "channels": 16,
+      "processed": 13,
+      "missed": 0,
+      "discarded": 0,
+      "rx_high_water": 1,
+      "tx_high_water": 2,
+      "compared_frames": 216,
+      "media_exact": true,
+      "states_exact": true,
+      "memory_model": "instant",
+      "replay": "python fpga/audio_io/simulate_pipeline.py --q 16 --chunk 8 --p 8 --banks 2 --monitoring --frame-cycles 1024",
+      "max_input_publication_to_output_eligible_ns": 91819.0
+    },
+    {
+      "q": 64,
+      "p": 32,
+      "channels": 16,
+      "processed": 13,
+      "missed": 0,
+      "discarded": 0,
+      "rx_high_water": 1,
+      "tx_high_water": 2,
+      "compared_frames": 864,
+      "media_exact": true,
+      "states_exact": true,
+      "memory_model": "fixed",
+      "replay": "python fpga/audio_io/simulate_pipeline.py --q 64 --chunk 32 --p 32 --routing reverse --monitoring --memory-model fixed --axi-data-width 64 --stalls",
+      "max_input_publication_to_output_eligible_ns": 208806.0
+    },
+    {
+      "q": 32,
+      "p": 16,
+      "channels": 16,
+      "processed": 13,
+      "missed": 0,
+      "discarded": 0,
+      "rx_high_water": 1,
+      "tx_high_water": 2,
+      "compared_frames": 432,
+      "media_exact": true,
+      "states_exact": true,
+      "memory_model": "dramsim3",
+      "replay": "python fpga/audio_io/simulate_pipeline.py --p 16 --frame-cycles 1600 --memory-model dramsim3 --axi-data-width 64 --stalls",
+      "max_input_publication_to_output_eligible_ns": 111488.0
+    },
+    {
+      "q": 16,
+      "p": 16,
+      "channels": 16,
+      "processed": 14,
+      "missed": 0,
+      "discarded": 0,
+      "rx_high_water": 1,
+      "tx_high_water": 2,
+      "compared_frames": 224,
+      "media_exact": true,
+      "states_exact": true,
+      "memory_model": "instant",
+      "replay": "python fpga/audio_io/simulate_pipeline.py --q 16 --routing sparse",
+      "max_input_publication_to_output_eligible_ns": 89739.0
+    },
+    {
+      "q": 16,
+      "p": 16,
+      "channels": 16,
+      "processed": 14,
+      "missed": 0,
+      "discarded": 0,
+      "rx_high_water": 1,
+      "tx_high_water": 2,
+      "compared_frames": 224,
+      "media_exact": true,
+      "states_exact": true,
+      "memory_model": "instant",
+      "replay": "python fpga/audio_io/simulate_pipeline.py --q 16 --routing fanout",
+      "max_input_publication_to_output_eligible_ns": 89336.0
+    }
+  ],
+  "autonomous": [
+    {
+      "q": 32,
+      "p": 32,
+      "channels": 16,
+      "generated_input": true,
+      "prepared_loader": true,
+      "recoveries": 4,
+      "epoch": 5,
+      "input_exhaustion_recovered": true,
+      "memory_fault_recovered": true,
+      "pending_response_drained": true
+    },
+    {
+      "q": 32,
+      "p": 16,
+      "channels": 16,
+      "generated_input": true,
+      "prepared_loader": true,
+      "recoveries": 4,
+      "epoch": 5,
+      "input_exhaustion_recovered": true,
+      "memory_fault_recovered": true,
+      "pending_response_drained": true
+    }
+  ],
+  "scope": "Mapped resources and measured simulation cases; no placed/routed frequency or board-fit claim."
+}

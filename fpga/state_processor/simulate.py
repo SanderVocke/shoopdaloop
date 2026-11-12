@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Verilator models and compare behavioral execution against Rust traces."""
+"""Check standalone SP instruction vectors, state bounds, FIFO and reset."""
 
 import argparse
 import os
@@ -32,11 +32,6 @@ def main():
         parser.error("--depths values must be in 1..65536")
     if args.case and args.config == "all" and not args.depths:
         parser.error("--case requires one --config or explicit --depths")
-    executable = Path(os.environ.get("SHOOP_FPGA_REFERENCE", ROOT / "target/debug/fpga-reference")).resolve()
-    if "SHOOP_FPGA_REFERENCE" not in os.environ:
-        subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
-    if not executable.is_file():
-        parser.error(f"reference executable does not exist: {executable}")
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
@@ -57,7 +52,6 @@ def main():
             log_file=output / "build.log",
         )
         environment = {
-            "SHOOP_FPGA_REFERENCE": str(executable),
             "SP_DEPTHS": ",".join(map(str, depths)),
             "SP_RANDOM_CASES": str(args.random_cases), "SP_SEED": str(args.seed),
             "SP_ARTIFACT_DIR": str(output),

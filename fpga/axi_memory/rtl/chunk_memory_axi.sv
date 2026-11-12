@@ -7,6 +7,7 @@ module chunk_memory_axi #(
     parameter integer READ_BUFFERS = 4,
     parameter integer WRITE_BUFFERS = 4,
     parameter integer BURST_MEMORY = 1,
+    parameter integer RETIRE_CHUNKS = 1,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000
 ) (
@@ -88,9 +89,10 @@ module chunk_memory_axi #(
         .CHUNK_FRAMES(CHUNK_FRAMES),
         .READ_BUFFERS(READ_BUFFERS),
         .WRITE_BUFFERS(WRITE_BUFFERS),
-        .BURST_MEMORY(BURST_MEMORY)) core (.*);
+        .BURST_MEMORY(BURST_MEMORY),
+        .RETIRE_CHUNKS(RETIRE_CHUNKS)) core (.*);
     generate if (BURST_MEMORY != 0) begin : bursts
-        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH), .MAX_WORDS(32'(CHUNK_FRAMES))) memory_endpoint (.arena_base(memory_arena_base),.*);
+        chunk_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.MAX_WORDS(32'(CHUNK_FRAMES))) memory_endpoint (.arena_base(memory_arena_base),.*);
     end else begin : words
         wire unused_stream = &{1'b0,memory_count,memory_write_valid,memory_read_ready};
         assign memory_write_ready = 0;

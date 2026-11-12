@@ -144,14 +144,6 @@ impl EngineDescription {
     }
 
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
-        if self.audio_render_mode == rt_runtime::AudioRenderMode::FpgaReference
-            && (!self.audio_bench_only
-                || self.history.seconds != 0
-                || self.smoothing_frames != 0
-                || self.external_dry_wet)
-        {
-            return Err(rt_runtime::Error::InvalidConfig);
-        }
         self.processors
             .validate()
             .map_err(|_| rt_runtime::Error::InvalidConfig)?;

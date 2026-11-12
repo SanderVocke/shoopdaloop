@@ -23,7 +23,8 @@ class Driver:
 
     async def tick(self):
         self.dut.clk.value = 0
-        self.memory.drive()
+        if not self.memory.is_native:
+            self.memory.drive()
         await Timer(5, units="ns")
         if self.word:
             names = ("memory_ready", "memory_response_valid", "memory_response_error", "memory_read_data")
@@ -31,7 +32,8 @@ class Driver:
             names = ("command_ready", "write_ready", "read_valid", "read_data", "read_error", "read_last",
                      "completion_valid", "completion_error")
         before = {key: int(getattr(self.dut, key).value) for key in names}
-        self.memory.step(self.memory.sample(), bool(int(self.dut.reset.value)))
+        if not self.memory.is_native:
+            self.memory.step(self.memory.sample(), bool(int(self.dut.reset.value)))
         self.dut.clk.value = 1
         await Timer(5, units="ns")
         self.dut.clk.value = 0
@@ -50,6 +52,11 @@ class Driver:
         await self.tick()
         self.set(reset=0)
         await self.tick()
+        if self.memory.is_native and not self.memory.loaded:
+            await self.memory.load_words(self.words,self.tick)
+
+    async def image(self):
+        return await self.memory.read_words(self.tick)
 
     async def transaction(self, address, size, count, data=None, strobes=None, error=False):
         self.set(command_valid=1, command_write=int(data is not None), command_address=address,
@@ -122,7 +129,7 @@ async def words_and_bursts(dut):
                     offset = start+(index << size)-driver.memory.base
                     aligned = offset-offset % driver.width
                     assert actual == int.from_bytes(oracle[aligned:aligned+driver.width], "little")
-    assert b"".join(word.to_bytes(4, "little") for word in driver.words) == oracle
+    assert b"".join(word.to_bytes(4, "little") for word in await driver.image()) == oracle
     for write in (False, True):
         driver.memory.fail_next = True
         await driver.transaction(driver.memory.base, 2, 1, [123] if write else None, [15] if write else None, error=True)
@@ -135,7 +142,7 @@ async def words_and_bursts(dut):
                                      [0]*count if write else None, error=True)
             assert driver.memory.reads+driver.memory.writes == requests
     memory = driver.memory
-    for write in (False, True):
+    for write in (() if memory.is_native else (False, True)):
         expected = 0
         for record in memory.records:
             if record["write"] == write:

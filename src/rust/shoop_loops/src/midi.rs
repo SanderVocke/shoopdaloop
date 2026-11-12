@@ -2,6 +2,7 @@
 //! cursor positions only validate contiguous use of an immutable media prefix.
 use crate::midi_restore::{self, Emission};
 use alloc::{boxed::Box, vec};
+use rt_runtime::Sample;
 use rt_runtime::{
     buffer::MidiBuffer,
     midi::{Message, ResetState},
@@ -98,9 +99,9 @@ impl MidiRenderer {
     /// Output must be empty and packet scratch must cover the store's packet
     /// limit. Full is reported after all source events advance; the processor
     /// must propagate it to runtime recovery after other required processing.
-    pub fn render(
+    pub fn render<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         playback: Playback,
         frames: usize,
         output: &mut MidiBuffer,
@@ -108,9 +109,9 @@ impl MidiRenderer {
         self.render_range(io, playback, frames, 0, frames, output)
     }
 
-    pub fn render_windowed(
+    pub fn render_windowed<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         mut playback: Playback,
         position: i64,
         window: crate::windows::ChannelWindow,
@@ -135,9 +136,9 @@ impl MidiRenderer {
         self.render_range(io, playback, frames, span.offset, span.frames, output)
     }
 
-    fn render_range(
+    fn render_range<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         playback: Playback,
         frames: usize,
         offset: usize,
@@ -285,9 +286,9 @@ pub struct MidiCapture {
 impl MidiCapture {
     /// Observe input before storing it. On a storage refusal the tracker stays
     /// advanced; resume history with an explicit discontinuity and this state.
-    pub fn append_history(
+    pub fn append_history<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         history: rt_runtime::resource::MidiStoreId,
         frame: rt_runtime::Frame,
         frames: usize,
@@ -330,9 +331,9 @@ impl MidiCapture {
     }
     /// Track connected input even while not recording. Invalid input leaves the
     /// tracker unchanged; a later staging refusal does not undo observed input.
-    pub fn process(
+    pub fn process<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         input: &MidiBuffer,
         frames: usize,
         capture: Option<(CaptureTickId, usize)>,

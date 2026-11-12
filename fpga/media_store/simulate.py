@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a bounded RTL media store with the Rust elastic media store."""
+"""Check media ownership/protocols or the standalone sample pipeline."""
 import argparse
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ ROOT = HERE.parents[1]
 CONFIGS = {"default": (32, 32, 32), "small": (16, 8, 4), "odd": (5, 5, 8),
            "wide": (16, 32, 4), "8x8": (64, 1024, 32)}
 sys.path.insert(0, str(ROOT/"fpga/axi_memory/sim"))
-from options import add_options, environment
+from options import add_options, environment, direct_sources
 
 
 def main():
@@ -48,24 +48,34 @@ def main():
         parser.error("buffer capacities must be positive")
     if args.response_cycles < 1 or ((args.response_cycles != 1 or args.timing) and not args.pipeline):
         parser.error("use positive --response-cycles; delay/timing options require --pipeline")
-    if args.timing and args.case:
-        parser.error("--timing and --case are mutually exclusive")
-    if args.prefetch_analysis and (not args.timing or args.config != "8x8" or args.read_buffers < 64):
-        parser.error("--prefetch-analysis requires --timing --config 8x8 and at least 64 read buffers")
-    subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
+    if args.case:
+        parser.error('hardware-shaped cases are retired; use fpga/verification/simulate.py --case with a common scenario')
+    if args.timing:
+        command=[sys.executable,str(ROOT/'fpga/verification/simulate.py'),'--output',str(args.output),
+            '--memory-model',args.memory_model,'--read-buffers',str(args.read_buffers),'--write-buffers',str(args.write_buffers),
+            '--metadata-lines',str(args.metadata_lines),'--reference-lines',str(args.reference_lines),'--stack-lines',str(args.stack_lines),
+            '--block-chunks',str(args.block_chunks),'--axi-data-width',str(args.axi_data_width),'--dram-library',str(args.dram_library),'--dram-config',str(args.dram_config)]
+        if args.config=='8x8':command+=['--benchmark64','--config','8x8']
+        if args.word_transfers:command+=['--word-transfers']
+        subprocess.run(command,cwd=ROOT,check=True)
+        return
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "fpga/job_processor/tests"),
                    str(ROOT / "fpga/state_processor/tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
     configs = {name: CONFIGS[name] for name in ("default", "small", "odd")} if args.config == "all" else {args.config: CONFIGS[args.config]}
     for name, capacities in configs.items():
+        if args.block_chunks > 1:
+            capacities=(capacities[0],capacities[1]*args.block_chunks,capacities[2])
         output = args.output.resolve() / name
         output.mkdir(parents=True, exist_ok=True)
         runner = get_runner("verilator")
         top = "media_audio_pipeline" if args.pipeline else "media_store"
         sources = [ROOT / "fpga/chunk_memory/rtl/chunk_ram.sv", ROOT / "fpga/chunk_memory/rtl/chunk_memory.sv",
-                   HERE / "rtl/media_ram.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
+                   HERE / "rtl/media_ram.sv", HERE / "rtl/metadata_cache.sv", HERE / "rtl/media_metadata.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
         parameters = dict(zip(("VIEWS", "SLOTS", "CHUNK_FRAMES"), capacities))
+        parameters.update(BLOCK_CHUNKS=args.block_chunks,TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers, WRITE_BUFFERS=args.write_buffers)
         audio = (32, 16, 32, 32, 16, 2, 2) if name == "default" else (16, 8, 16, capacities[2], 8, 2, 2)
         if name == "wide":
@@ -81,16 +91,17 @@ def main():
             parameters.update(zip(("PROGRAM_DEPTH", "STATE_DEPTH", "JOB_DEPTH", "MAX_FRAMES", "BUFFERS", "INPUT_PORTS", "OUTPUT_PORTS"), audio))
             parameters["MEMORY_RESPONSE_CYCLES"] = args.response_cycles
         if axi:
-            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "axi_burst_mux.sv", "shared_axi.sv", "chunk_dma.sv", "word_dma.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
             top += "_axi"
             parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
-        runner.build(verilog_sources=sources, includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
+        runner.build(verilog_sources=direct_sources(sources,top,args.memory_model), includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
                      parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"],
                      build_dir=output / "build", always=True, waves=args.waves, log_file=output / "build.log")
-        testcase = "memory_timing" if args.timing else (("directed_pipeline" if args.pipeline else "directed_media") if args.case else
-                   ["directed_pipeline", "randomized_pipeline", "pipeline_protocol", "playback_stream_protocol"] if args.pipeline else None)
-        result = runner.test(hdl_toplevel=top, test_module="test_media_pipeline" if args.pipeline else "test_media_store",
+        block_test=args.block_chunks>1
+        testcase=None if block_test else ['directed_pipeline','randomized_pipeline','pipeline_protocol','playback_stream_protocol'] if args.pipeline else None
+        module=('test_block_audio' if args.pipeline else 'test_block_media') if block_test else ('test_media_pipeline' if args.pipeline else 'test_media_store')
+        result = runner.test(hdl_toplevel=top, test_module=module,
                              testcase=testcase, seed=args.seed,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"MEDIA_CAPACITIES": ",".join(map(str, capacities)),
@@ -100,12 +111,11 @@ def main():
                                         "MEDIA_SEED": str(args.seed), "MEDIA_RANDOM_CASES": str(args.random_cases),
                                         "MEDIA_RESPONSE_CYCLES": str(args.response_cycles),
                                         "MEDIA_PREFETCH_ANALYSIS": str(int(args.prefetch_analysis)),
-                                        "MEDIA_REFERENCE": str(ROOT / "target/debug/fpga-reference"),
                                         "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.case or args.timing else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (1 if block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

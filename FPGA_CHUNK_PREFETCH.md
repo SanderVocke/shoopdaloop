@@ -89,15 +89,15 @@ the current authoritative contents are available.
 
 ## Rust reference and verification
 
-Rust has an optional read-intent sink at state job emission and a separate pure
-resolver. `Backend`, the shared-loop `Pipeline` and their trace runners use it.
-The elastic media store remains cache-independent with no-op physical prefetch.
-The app adapter retains host frame windows behind transient one-quantum views.
+The original separate Rust FPGA model has been retired. The production runtime
+now supplies logical playback/capture and arithmetic expectations; RTL lowering
+emits the persistent state program. The production CPU path does not model
+physical prefetch or BRAM caches.
 
 Standalone cocotb tests cover queued, completed and in-flight
 prefetch/write conflicts, including delayed stale responses, repeated writes and
-retirement/reuse. An isolated resolver compares with Rust under stalled metadata
-and prefetch interfaces. Full Rust/RTL pipelines cover ordered read/write/read
+retirement/reuse. An isolated resolver checks table indexing under stalled metadata
+and prefetch interfaces. Production Rust/RTL comparisons and local protocol fixtures cover ordered read/write/read
 and capture/publication/read cases, checking samples and media contents rather
 than identical hint schedules. Wire/schema fixtures use the new units explicitly.
 Aligned Q=32 timing runs use moving playback positions and media larger than cache

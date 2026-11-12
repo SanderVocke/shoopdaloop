@@ -118,15 +118,15 @@ execution strategies will be developed incrementally.
 Chunk memory exposes read/write spans, advisory prefetch, fence and retirement.
 RTL owns bounded read/write BRAM pools, a shared coherence directory and a chunk
 transfer scheduler. Writes complete when buffered and visible, with asynchronous
-DDR writeback; fences and retirement account for outstanding transfers. The Rust
-implementation retains an elastic arena and immediate completion. Both standalone
-and full-loop tests compare logical results; separate protocol tests exercise
+DDR writeback; fences and retirement account for outstanding transfers. The production
+Rust oracle uses its native resource storage. Full-loop tests compare logical
+results; separate protocol tests exercise
 backpressure, forwarding, reuse and late faults. See
 [the design](FPGA_CHUNK_MEMORY.md) and [implementation](fpga/chunk_memory/README.md).
 The integrated RTL tops use a shared synthesizable AXI master for external
-sample memory. A cocotb slave connects instant/fixed memory or a ctypes-wrapped
-DRAMsim3 DDR3 timing model at that boundary. Current transfers remain single-word;
-the endpoint and simulation independently support bursts. See
+sample and metadata memory. Separate DMA clients alternate at complete AXI burst
+boundaries, with one outstanding transaction. Native direct simulation uses an SV
+backing store; realistic simulation uses cocotb and a ctypes-wrapped DRAMsim3 model. See
 [AXI memory](fpga/axi_memory/README.md).
 
 ## Storage model
@@ -168,59 +168,47 @@ greater complexity is justified.
 
 Audio only. **No MIDI in the architecture or initial prototypes.**
 
-## Rust functional reference
+## Production Rust oracle and RTL verification
 
-The `rt_fpga_reference` crate provides a readable single-issue software model of
-this decomposition. It also has an experimental `fpga-reference` native renderer
-for app-connected comparisons. See `src/rust/rt_fpga_reference/README.md` for the
-supported subset, execution example, and boundaries of the existing app adapter.
+The production `rt_runtime::GraphRuntime`, `shoop_loops` planner/processors and
+shared engine DSP provide the behavioral oracle. Float remains the application
+default and ultimate numerical reference. A static Q8.24 sample policy runs the
+same production implementation for exact RTL comparisons. Samples and gains are
+signed 32-bit Q8.24, with truncation toward zero and saturation after each binary
+operation. Ramps use sample durations, the start at offset zero and the target at
+the duration; interruptions preserve the prior boundary value.
 
-The `rt_fpga_testbench` tool and Python helpers exchange versioned JSON values
-validated against a schema generated from Rust. Reference traces record ordered
-jobs and architectural state after each quantum, providing a comparison boundary
-for a future cocotb/SystemVerilog testbench without fixing internal hardware
-layout or cycle counts. See `scripts/fpga_testbench/README.md`.
+`rt_backend_testbench` and Python helpers share versioned logical inputs and
+outputs. The production signal compiler determines node execution and incoming
+mix order; its timing compiler supplies the separate transition dependency order.
+Control-side lowering emits a persistent RTL program and initial bindings. Loop
+mode and gain changes do not recompile it. Full TP/SP/JP/media/cache/AXI execution
+is compared at matching boundaries for every Q8.24 output/media sample, loop state,
+transition event and logical action outcome. Float agreement has a separate
+checked error budget and clipping/drift report. See [verification](fpga/verification/README.md).
 
-The Rust reference uses an elastic contiguous sample-slot arena, dynamic per-view
-chunk-ID tables, and deterministic reuse of released slots. It has optional chunk
-limits for hardware comparisons and capacity hints for host preparation, with no
-BRAM-cache simulation. Read-only range views share recorded chunks, including
-partial boundary chunks; each slot is reusable after its last view releases it.
-Media snapshots and control actions extend the audio trace
-boundary to capture, playback, reclamation, and allocation failure. The app's
-reference backend uses this store behind native resource revisions and snapshot
-leases, with fixed-point capture/playback and float conversion for persistence.
-It permits callback-time growth; warmed playback uses prepared storage. Retired
-recordings reclaim chunks incrementally, while pinned snapshots retain their
-published prefixes.
+`fpga/state_processor` implements the single-issue node/state engine and job FIFO.
+Its logical capture/playback instructions read settled loop records from the
+separate transition processor. `fpga/job_processor` executes fixed arithmetic and
+sample jobs using BRAM scratch buffers. `fpga/loop_pipeline` coordinates transition
+settlement, state/job execution, clock advancement and sticky fault silencing.
+VLIW issue remains a possible later extension.
 
-## State processor RTL prototype
+`fpga/media_store` owns bounded hardware allocation, shared read-only ranges,
+reference counts and deterministic reuse. Physical ownership uses allocation
+blocks of 32 chunks, while state/job time and sample transfers remain chunk-sized.
+Compact view descriptors/roots stay
+on chip. Chunk-ID vectors, reference counts and reusable IDs live in DDR behind
+persistent caches; samples use the chunk-memory cache. Samples and metadata share
+one synthesizable AXI endpoint. See [metadata layout](fpga/media_store/DDR_METADATA.md).
+The production CPU path keeps its prepared resource/page storage and does not
+model BRAM caches or DMA. Physical allocator identities are not common results.
+The parallel FPGA-reference Rust backend and its app mode have been retired.
+Board/DDR-controller integration remains future work.
 
-`fpga/state_processor` contains a multicycle SystemVerilog state processor with
-synchronous program/state memories and a finite job FIFO. It implements the
-standalone reference's six node instructions. Its README specifies the packed
-instruction/state/job ABI, configuration protocol, and synthesis commands.
-Lint, synthesis checks, and a cocotb/Verilator behavioral comparison against
-versioned Rust traces are available. The bench compares ordered jobs, complete
-state, and status per quantum, with separate hardware protocol checks. This
-isolated top keeps transition and job execution separate; `loop_pipeline`
-connects all three processors and the media store.
-
-## BRAM job processor milestone
-
-`fpga/job_processor` adds synthesizable Input/Silence/Gain/Mix/Output execution
-and an `audio_pipeline` wrapper connected to the state processor's FIFO. BRAM
-holds reusable quantum scratch and I/O buffers. A shared multiplier and iterative
-ramp initialization preserve the Rust fixed-point semantics. The cocotb bench
-compares full state, buffer readiness, intermediate/output samples, and FIFO
-effects against traces from both actual Rust processors. See that directory's
-README for interface, coverage, cycle counts, and ECP5 synthesis results.
-
-`fpga/media_store` adds a bounded RTL counterpart of the Rust chunk store, including
-shared read-only ranges, reference counts and deterministic slot reuse. Metadata
-uses synchronous on-chip RAM; samples use a stalled external memory port. Its
-`media_audio_pipeline` connects ReadView/Capture jobs to that store and is also
-instantiated by the transition-coordinated `loop_pipeline`. Cocotb compares
-serial store commands and complete audio quanta against Rust, including sample
-bits, ownership, FIFO effects and memory backpressure. Physical DDR controllers,
-burst access and large-session metadata storage remain future work.
+`fpga/audio_io` adds a 16-lane audio frame/bank adapter around that pipeline.
+Input/output bank ownership crosses the audio and processing clocks explicitly;
+JP can use synchronous external sample reads/writes. The adapter declares Q+P
+startup latency and publishes complete output quanta or silence. Its prepared
+program still comes from production compilation. See [fabric audio I/O](fpga/audio_io/README.md).
+This does not define a physical audio protocol or ARM control transport.

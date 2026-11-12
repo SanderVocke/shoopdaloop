@@ -1,6 +1,7 @@
 `include "state_processor_defs.svh"
 
 module job_processor #(
+    parameter integer EXTERNAL_IO = 0,
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
@@ -12,6 +13,12 @@ module job_processor #(
     parameter integer INPUT_BITS = (INPUT_PORTS * MAX_FRAMES > 1) ? $clog2(INPUT_PORTS * MAX_FRAMES) : 1,
     parameter integer OUTPUT_BITS = (OUTPUT_PORTS * MAX_FRAMES > 1) ? $clog2(OUTPUT_PORTS * MAX_FRAMES) : 1
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
     input wire run_valid,
@@ -100,12 +107,19 @@ module job_processor #(
     reg cfg_pending, cfg_error, cfg_was_write;
     reg [1:0] cfg_response_space;
     wire cfg_accept = cfg_valid && cfg_ready;
-    wire cfg_in_range = (cfg_space == 0) ? cfg_address < 32'(INPUT_PORTS * MAX_FRAMES)
+    wire cfg_shape_in_range = (cfg_space == 0) ? cfg_address < 32'(INPUT_PORTS * MAX_FRAMES)
         : (cfg_space == 1) ? cfg_address < 32'(OUTPUT_PORTS * MAX_FRAMES)
         : (cfg_space == 2) && (cfg_address < 32'(BUFFERS * MAX_FRAMES));
+    wire cfg_in_range = cfg_shape_in_range && ((EXTERNAL_IO == 0) || cfg_space == 2);
     wire [31:0] input_data, output_data, scratch_data;
-    wire input_access = cfg_accept && cfg_in_range && (cfg_space == 0);
-    wire output_access = cfg_accept && cfg_in_range && (cfg_space == 1);
+    wire [31:0] local_input_data;
+    assign input_data = EXTERNAL_IO != 0 ? sample_input_data : local_input_data;
+    assign sample_input_read = EXTERNAL_IO != 0 && input_read && !reset;
+    assign sample_input_address = 32'(port_index)*MAX_FRAMES+frame;
+    assign sample_output_write = EXTERNAL_IO != 0 && output_write && !reset
+        && !((ENABLE_MEDIA != 0) && media_fault);
+    assign sample_output_address = 32'(output_address);
+    assign sample_output_data = phase == CLEAR_OUTPUT ? 32'b0 : result_sample;
     wire scratch_access = cfg_accept && cfg_in_range && (cfg_space == 2);
     wire input_read = (phase == READ_REQUEST) && (opcode == `SHOOP_SP_JOB_INPUT);
     wire streaming = phase == GAIN_STREAM || phase == MIX_STREAM;
@@ -117,15 +131,12 @@ module job_processor #(
         || stream_read || (phase == MEDIA_SOURCE_REQUEST);
     wire scratch_write = ((phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT)) || stream_write || playback_write;
     wire output_write = (phase == CLEAR_OUTPUT) || ((phase == STORE) && (opcode == `SHOOP_SP_JOB_OUTPUT));
-    wire [INPUT_BITS-1:0] input_address = INPUT_BITS'(32'(port_index) * 32'(MAX_FRAMES) + frame);
     wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'((phase == MIX_STREAM && mix_second) ? source_b : source_a)
         * 32'(MAX_FRAMES) + frame);
     wire [SCRATCH_BITS-1:0] scratch_write_address = SCRATCH_BITS'(32'(destination) * 32'(MAX_FRAMES)
         + (streaming ? stream_frame : frame));
     wire [OUTPUT_BITS-1:0] output_address = OUTPUT_BITS'(((phase == CLEAR_OUTPUT) ? clear_port : 32'(port_index))
         * 32'(MAX_FRAMES) + frame);
-    wire [INPUT_BITS-1:0] input_ram_read_address = busy ? INPUT_BITS'(input_address) : INPUT_BITS'(cfg_address);
-    wire [OUTPUT_BITS-1:0] output_ram_write_address = busy ? OUTPUT_BITS'(output_address) : OUTPUT_BITS'(cfg_address);
     wire [SCRATCH_BITS-1:0] scratch_ram_read_address = busy ? SCRATCH_BITS'(scratch_read_address) : SCRATCH_BITS'(cfg_address);
     wire [SCRATCH_BITS-1:0] scratch_ram_write_address = busy ? SCRATCH_BITS'(scratch_write_address) : SCRATCH_BITS'(cfg_address);
 
@@ -188,9 +199,15 @@ module job_processor #(
         .numerator((phase == STEP_DIVIDE) ? {32'b0, delta_magnitude} : product),
         .denominator(duration), .done(divide_done), .quotient(divide_quotient), .remainder(divide_remainder)
     );
+    generate if (EXTERNAL_IO == 0) begin : local_io
+        wire input_access = cfg_accept && cfg_in_range && (cfg_space == 0);
+        wire output_access = cfg_accept && cfg_in_range && (cfg_space == 1);
+        wire [INPUT_BITS-1:0] input_address = INPUT_BITS'(32'(port_index) * 32'(MAX_FRAMES) + frame);
+        wire [INPUT_BITS-1:0] input_ram_read_address = busy ? INPUT_BITS'(input_address) : INPUT_BITS'(cfg_address);
+        wire [OUTPUT_BITS-1:0] output_ram_write_address = busy ? OUTPUT_BITS'(output_address) : OUTPUT_BITS'(cfg_address);
     jp_sample_ram #(.DEPTH(INPUT_PORTS * MAX_FRAMES), .ADDR_BITS(INPUT_BITS)) inputs_memory (
         .clk(clk), .read_enable(!reset && (input_read || (input_access && !cfg_write))),
-        .read_address(input_ram_read_address), .read_data(input_data),
+        .read_address(input_ram_read_address), .read_data(local_input_data),
         .write_enable(input_access && cfg_write), .write_address(INPUT_BITS'(cfg_address)), .write_data(cfg_write_data)
     );
     jp_sample_ram #(.DEPTH(OUTPUT_PORTS * MAX_FRAMES), .ADDR_BITS(OUTPUT_BITS)) outputs_memory (
@@ -200,6 +217,10 @@ module job_processor #(
         .write_address(output_ram_write_address),
         .write_data(busy ? ((phase == CLEAR_OUTPUT) ? 32'b0 : result_sample) : cfg_write_data)
     );
+    end else begin : external_io
+        assign local_input_data = 0;
+        assign output_data = 0;
+    end endgenerate
     jp_sample_ram #(.DEPTH(BUFFERS * MAX_FRAMES), .ADDR_BITS(SCRATCH_BITS)) scratch_memory (
         .clk(clk), .read_enable(!reset && (scratch_read || (scratch_access && !cfg_write))),
         .read_address(scratch_ram_read_address), .read_data(scratch_data),

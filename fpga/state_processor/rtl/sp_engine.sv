@@ -169,6 +169,11 @@ module sp_engine #(
                     writeback <= 0;
                     case (program_read_data[7:0])
                         `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE: phase <= LOOP_REQUEST;
+                        `SHOOP_SP_PROCESS_SILENCE: begin
+                            job_data <= pack_job(`SHOOP_SP_JOB_SILENCE,
+                                program_read_data[23:8], 0, 0, 0, 0);
+                            phase <= EMIT;
+                        end
                         `SHOOP_SP_PROCESS_INPUT: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_INPUT,
                                 program_read_data[23:8], program_read_data[39:24], 0, 0, 0);

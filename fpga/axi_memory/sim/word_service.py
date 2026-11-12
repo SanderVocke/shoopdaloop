@@ -4,6 +4,13 @@ from options import create_memory
 from axi_memory import summary
 
 
+def create_service(owner, dut, **kwargs):
+    if os.environ.get('AXI_MEMORY_MODEL','instant') == 'instant':
+        from direct_memory import DirectMemory
+        return DirectMemory(dut, owner.memory)
+    return WordService(owner,dut,**kwargs)
+
+
 class WordService:
     def __init__(self, owner, dut, *, seed=0, output=None):
         self.owner = owner
@@ -33,6 +40,7 @@ class WordService:
             self.chunk = None
         for record in memory.records[self.records:]:
             word = (record["address"]-memory.base)//4
+            if hasattr(owner,"views") and word >= owner.slots*owner.chunk_frames:continue
             if self.chunk is None:
                 self.chunk = dict(chunk=word//frames, write=record["write"], start=record["start"], words=0)
             self.chunk["words"] += ((record["length"]+1) << record["size"])//4

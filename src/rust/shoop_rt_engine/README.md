@@ -216,10 +216,8 @@ credits within the prepared maximum and sends `LimitsChanged`.
 
 The `testing` feature adds `testing::OfflineHost`: it pulls callbacks
 synchronously with given inputs and pumps the endpoint through the in-process
-carrier and a `ProtocolClient`. There are no threads and no real time. Its
-Ordinary renderer callbacks, `request` and `receive` do not allocate, so tests
-guard them with an allocator check. The elastic FPGA reference measures callback
-heap operations and separately checks allocation-free warmed playback.
+carrier and a `ProtocolClient`. There are no threads and no real time. Renderer callbacks, `request` and `receive` do not allocate, so tests
+guard them with an allocator check.
 The crate's tests use it for the legacy timing reference,
 structural edits while rendering, telemetry, bulk reads, resynchronization,
 credits and shutdown.

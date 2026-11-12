@@ -2,6 +2,7 @@
 `include "state_processor_defs.svh"
 
 module loop_pipeline_tb #(
+    parameter integer EXTERNAL_IO = 0,
     parameter integer LOOP_DEPTH = 8,
     parameter integer REQUEST_DEPTH = 16,
     parameter integer EVENT_DEPTH = 32,
@@ -13,11 +14,20 @@ module loop_pipeline_tb #(
     parameter integer INPUT_PORTS = 2,
     parameter integer OUTPUT_PORTS = 2,
     parameter integer VIEWS = 32,
-    parameter integer SLOTS = 32,
+    parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer BLOCK_CHUNKS = 32,
+    parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
+    parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     output reg clk,
     input wire reset,
     input wire run_valid,
@@ -93,17 +103,25 @@ module loop_pipeline_tb #(
     input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_meta_valid, input wire memory_meta_ready,
+    output wire memory_meta_write, output wire [63:0] memory_meta_address,
+    output wire [31:0] memory_meta_write_data,
+    output wire [31:0] memory_meta_count,
+    output wire memory_meta_write_valid, input wire memory_meta_write_ready,
+    input wire memory_meta_read_valid, output wire memory_meta_read_ready,
+    input wire memory_meta_response_valid, output wire memory_meta_response_ready,
+    input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
     output wire memory_fault,
     output wire [63:0] debug_frame,
     output wire debug_shared_read
 );
     initial clk=0;
     always #5 clk<=~clk;
-    loop_pipeline #(.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
+    loop_pipeline #(.EXTERNAL_IO(EXTERNAL_IO),.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) core (.*);
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) core (.*);
     assign debug_frame=core.timing.frame;
     assign debug_shared_read=core.loop_read_valid && core.loop_read_ready;
 endmodule

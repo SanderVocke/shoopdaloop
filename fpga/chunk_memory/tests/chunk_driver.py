@@ -2,6 +2,7 @@
 import random
 import os
 from cocotb.triggers import Timer
+from direct_memory import MemoryHost, native_field
 
 OPCODES = {"read": 0, "write": 1, "prefetch": 2, "fence": 3, "retire": 4}
 ERRORS = {1: "invalid_view", 4: "invalid_shape", 5: "memory_fault"}
@@ -12,7 +13,10 @@ def signed(value):
     return value - (1 << 32) if value & (1 << 31) else value
 
 
-class Driver:
+class Driver(MemoryHost):
+    reads = native_field('reads')
+    writes = native_field('writes')
+    burst = native_field('burst')
     OUTPUTS = ("cmd_ready", "write_ready", "read_valid", "read_data", "read_last", "response_valid",
                "response_id", "response_error", "prefetch_ready", "busy", "fault", "memory_valid",
                "memory_write", "memory_address", "memory_write_data", "memory_response_ready")
@@ -32,8 +36,8 @@ class Driver:
         self.burst = None
         self.axi = None
         if hasattr(dut, "m_axi_awvalid"):
-            from word_service import WordService
-            self.axi = WordService(self, dut, seed=seed, output=os.environ.get("CHUNK_OUTPUT"))
+            from word_service import create_service
+            self.axi = create_service(self, dut, seed=seed, output=os.environ.get("CHUNK_OUTPUT"))
 
     def close(self):
         if self.axi is not None:
@@ -49,7 +53,8 @@ class Driver:
     async def tick(self):
         self.set(clk=0)
         if self.axi is not None:
-            self.axi.drive()
+            if not self.native_memory:
+                self.axi.drive()
         else:
             response = self.pending is not None and self.pending[0] == 0 and not self.pause
             self.set(memory_ready=int(not self.pause and self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
@@ -58,7 +63,8 @@ class Driver:
         await Timer(5, units="ns")
         before = self.sample()
         if self.axi is not None:
-            self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
+            if not self.native_memory:
+                self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
         elif int(self.dut.reset.value):
             self.pending = self.held_request = self.held_read = self.held_response = self.burst = None
         else:
@@ -113,6 +119,8 @@ class Driver:
         if samples is not None:
             assert len(samples) == len(self.memory)
             self.memory[:] = [x & MASK for x in samples]
+        if self.native_memory and (samples is not None or not self.axi.loaded):
+            await self.load_memory()
         assert int(self.dut.cmd_ready.value) and not int(self.dut.fault.value)
 
     async def hint(self, chunk):

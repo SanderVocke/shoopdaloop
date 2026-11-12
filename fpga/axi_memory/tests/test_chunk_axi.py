@@ -10,16 +10,18 @@ class ChunkDriver(Driver):
 
     async def tick(self):
         self.dut.clk.value = 0
-        self.memory.drive()
+        if not self.memory.is_native:
+            self.memory.drive()
         active = self.memory.active
-        if (self.error_index is not None and active and not active["write"]
+        if (not self.memory.is_native and self.error_index is not None and active and not active["write"]
                 and active["index"] == self.error_index and self.memory.driven["rvalid"]):
             self.dut.m_axi_rresp.value = 2
         await Timer(5, units="ns")
         before = {key: int(getattr(self.dut, key).value) for key in (
             "memory_ready", "memory_write_ready", "memory_read_valid", "memory_read_data",
             "memory_response_valid", "memory_response_error")}
-        self.memory.step(self.memory.sample(), bool(int(self.dut.reset.value)))
+        if not self.memory.is_native:
+            self.memory.step(self.memory.sample(), bool(int(self.dut.reset.value)))
         self.dut.clk.value = 1
         await Timer(5, units="ns")
         self.dut.clk.value = 0
@@ -92,12 +94,12 @@ async def packing_splitting_and_backpressure(dut):
                           (0, 32), (0, 33), (4, 64), (4092, 64), (4096, 1031),
                           (len(oracle)*4-132, 33)):
         data = [driver.rng.getrandbits(32) for _ in range(count)]
-        start = len(driver.memory.records)
+        start = driver.memory.requests if driver.memory.is_native else len(driver.memory.records)
         await driver.access(offset, count, data)
         oracle[offset//4:offset//4+count] = data
-        assert driver.words == oracle, "write changed adjacent sample lanes"
+        assert await driver.image() == oracle, "write changed adjacent sample lanes"
         assert await driver.access(offset, count) == data
-        for write in (False, True):
+        for write in (() if driver.memory.is_native else (False, True)):
             records = [r for r in driver.memory.records[start:] if r["write"] == write]
             assert sum((r["length"]+1) << r["size"] for r in records) == count*4
             address = driver.memory.base+offset
@@ -109,6 +111,8 @@ async def packing_splitting_and_backpressure(dut):
             if offset == 0 and count == 32:
                 assert len(records) == (1 if driver.width == 8 else 2)
                 assert all(r["length"] == 15 and r["size"] == (3 if driver.width == 8 else 2) for r in records)
+        if driver.memory.is_native and offset == 0 and count == 32:
+            assert driver.memory.requests-start == (2 if driver.width == 8 else 4)
     # Exercise independent AW/W backpressure with a full burst.
     for hold_address in (True, False):
         driver.memory.hold_aw = hold_address
@@ -143,11 +147,12 @@ async def bounds_fault_drain_and_reset(dut):
         await driver.access(0, 64, [91]*64 if write else None, error=True, stop_after=0)
         assert driver.memory.reads+driver.memory.writes == requests+1, "issued bursts after a failed burst"
     # An error in the middle of a burst must drain R even if the sample consumer stops.
-    driver.error_index = 3
-    prefix = 3*(driver.width//4)
-    assert await driver.access(0, 64, error=True, stop_after=prefix) == driver.words[:prefix]
-    driver.error_index = None
-    assert await driver.access(0, 32) == driver.words[:32]
+    if not driver.memory.is_native:
+        driver.error_index = 3
+        prefix = 3*(driver.width//4)
+        assert await driver.access(0, 64, error=True, stop_after=prefix) == (await driver.image())[:prefix]
+        driver.error_index = None
+    assert await driver.access(0, 32) == (await driver.image())[:32]
     # Reset cancels an outstanding read, a half-packed write, and an unretired B response.
     for write, packed in ((False, False), (True, False), (True, True)):
         driver.memory.pause_responses = True

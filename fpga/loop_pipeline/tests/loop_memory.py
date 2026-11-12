@@ -9,7 +9,7 @@ class StorePorts:
         self.dut = dut
 
     def __getattr__(self, name):
-        shared = name in ('clk', 'reset', 'arena_base') or name.startswith(('memory_', 'm_axi_'))
+        shared = name in ('clk', 'reset', 'arena_base') or name.startswith(('memory_', 'm_axi_', 'sim_'))
         return getattr(self.dut, name if shared else 'store_' + name)
 
 
@@ -19,7 +19,7 @@ class LoopMemory(StoreDriver):
         self.raw = dut
         self.initial_override = None
         self.pause_responses = False
-        self.task = cocotb.start_soon(self.serve())
+        self.task = cocotb.start_soon(self.observe_clock() if self.native_memory else self.serve())
 
     async def reset(self):
         self.set(arena_base=self.base, cmd_valid=0, cmd_opcode=0, cmd_view=0,
@@ -48,12 +48,14 @@ class LoopMemory(StoreDriver):
                 await Timer(1, units='ns')
                 packet = self.axi.sample()
                 resetting = bool(int(self.raw.reset.value))
+                self.observe_memory()
                 if self.before_clock is not None and not resetting:
                     self.before_clock()
                 await RisingEdge(self.raw.clk)
                 self.cycles += 1
                 self.axi.step(packet, resetting)
                 continue
+            self.legacy_metadata.drive()
             response = self.pending is not None and self.pending[0] == 0 and not self.pause_responses
             self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
                      memory_response_valid=int(response), memory_read_data=self.pending[1] if response else 0,
@@ -65,12 +67,14 @@ class LoopMemory(StoreDriver):
             ready = int(self.raw.memory_ready.value)
             response_ready = int(self.raw.memory_response_ready.value)
             resetting = int(self.raw.reset.value)
+            metadata_packet = self.legacy_metadata.sample()
             if not resetting and self.held_request is not None:
                 assert valid and request == self.held_request, 'stalled memory request changed'
             if self.before_clock is not None and not resetting:
                 self.before_clock()
             await RisingEdge(self.raw.clk)
             self.cycles += 1
+            self.legacy_metadata.step(metadata_packet,bool(resetting))
             if resetting:
                 self.pending = self.held_request = None
                 continue
@@ -84,7 +88,7 @@ class LoopMemory(StoreDriver):
                 assert self.pending is None, 'multiple memory requests outstanding'
                 write, absolute, data = request
                 address = absolute - self.base
-                assert address % 4 == 0 and 0 <= address < len(self.memory) * 4, 'sample request outside admitted arena'
+                assert address % 4 == 0 and 0 <= address < self.slots*self.chunk_frames*4, 'sample request outside admitted arena'
                 index = address // 4
                 error = self.fail_next
                 self.fail_next = False
@@ -92,9 +96,20 @@ class LoopMemory(StoreDriver):
                     self.memory[index] = data
                 self.pending = [self.rng.randrange(6) if self.stalls else 0, self.memory[index], error]
                 self.requests += 1
+                self.sample_transactions += 1
                 self.write_requests += write
                 self.read_requests += 1 - write
                 self.request_cycle = self.cycles
+
+    async def observe_clock(self):
+        while True:
+            await FallingEdge(self.raw.clk)
+            await Timer(1, units='ns')
+            self.observe_memory()
+            if self.before_clock is not None and not int(self.raw.reset.value):
+                self.before_clock()
+            await RisingEdge(self.raw.clk)
+            self.cycles += 1
 
     def close(self):
         self.task.kill()

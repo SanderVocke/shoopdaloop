@@ -3,6 +3,8 @@ from collections import Counter
 import os
 import random
 from cocotb.triggers import Timer
+from direct_memory import MemoryHost, native_field
+from legacy_metadata import LegacyMetadata
 
 OPCODES = {"create": 0, "slice": 1, "clear": 2, "remove": 3, "reclaim": 4, "append": 5, "read": 6}
 ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape"}
@@ -13,7 +15,9 @@ def signed(value):
     return value - (1 << 32) if value & (1 << 31) else value
 
 
-class Driver:
+class Driver(MemoryHost):
+    read_requests = native_field('read_requests','reads')
+    write_requests = native_field('write_requests','writes')
     SIGNALS = ("busy", "done", "error_code", "cmd_ready", "result_view", "result_empty",
                "write_ready", "read_valid", "read_data", "memory_valid", "memory_write",
                "memory_address", "memory_write_data", "memory_response_ready", "cfg_ready",
@@ -23,8 +27,14 @@ class Driver:
         self.dut = dut
         self.views, self.slots, self.chunk_frames = capacities
         self.rng = random.Random(seed)
+        self.block_chunks=int(os.environ.get('AXI_BLOCK_CHUNKS','1'))
+        self.blocks=self.slots//self.block_chunks
         self.base = 0x1234000000
-        self.memory = [0xa5a5a5a5] * (self.slots * self.chunk_frames)
+        self.table_pages = int(os.environ.get('AXI_METADATA_PAGES') or ((self.blocks+14)//15+8*self.views+16))
+        self.slot_bits = max(1,(self.blocks-1).bit_length())
+        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.blocks+15)//16)*16+self.table_pages*16
+        self.memory = [0xa5a5a5a5] * storage_words
+        self.sample_transactions = 0
         self.pending = None
         self.held_request = self.held_read = None
         self.cycles = self.requests = 0
@@ -36,9 +46,23 @@ class Driver:
         self.chunk_limit = None
         self.before_clock = None
         self.axi = None
+        self.legacy_metadata = None
         if hasattr(dut, "m_axi_awvalid"):
-            from word_service import WordService
-            self.axi = WordService(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
+            from word_service import create_service
+            self.axi = create_service(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
+        else:
+            self.legacy_metadata = LegacyMetadata(self)
+
+    def table_address(self, view, ordinal):
+        return (view << self.slot_bits) | ordinal
+
+    def observe_memory(self):
+        if self.axi is None or int(self.dut.reset.value):return
+        base=int(os.environ.get('AXI_PHYSICAL_BASE',str(0x01000000)))
+        for channel in ('ar','aw'):
+            if int(getattr(self.dut,'m_axi_'+channel+'valid').value) and int(getattr(self.dut,'m_axi_'+channel+'ready').value):
+                address=int(getattr(self.dut,'m_axi_'+channel+'addr').value)
+                if base <= address < base+self.slots*self.chunk_frames*4:self.sample_transactions += 1
 
     def close(self):
         if self.axi is not None:
@@ -54,17 +78,21 @@ class Driver:
     async def tick(self):
         self.dut.clk.value = 0
         if self.axi is not None:
-            self.axi.drive()
+            if not self.native_memory:
+                self.axi.drive()
         else:
             response = self.pending is not None and self.pending[0] == 0
             self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
                      memory_response_valid=int(response),
                      memory_read_data=self.pending[1] if response else 0,
                      memory_response_error=int(response and self.pending[2]))
+        if self.legacy_metadata is not None:self.legacy_metadata.drive()
         await Timer(5, units="ns")
+        if self.legacy_metadata is not None:self.legacy_metadata.step(self.legacy_metadata.sample(),bool(int(self.dut.reset.value)))
         before = self.sample()
         if self.axi is not None:
-            self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
+            if not self.native_memory:
+                self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
         elif int(self.dut.reset.value):
             self.pending = self.held_request = self.held_read = None
             self.request_cycle = None
@@ -87,7 +115,7 @@ class Driver:
             if before["memory_valid"] and int(self.dut.memory_ready.value):
                 assert self.pending is None, "more than one memory request outstanding"
                 address = before["memory_address"] - self.base
-                assert address % 4 == 0 and 0 <= address < len(self.memory) * 4, "sample address outside arena"
+                assert address % 4 == 0 and 0 <= address < self.slots*self.chunk_frames*4, "sample address outside arena"
                 index = address // 4
                 error = self.fail_next
                 self.fail_next = False
@@ -95,9 +123,11 @@ class Driver:
                     self.memory[index] = before["memory_write_data"]
                 self.pending = [self.rng.randrange(6) if self.stalls else 0, self.memory[index], error]
                 self.requests += 1
+                self.sample_transactions += 1
                 self.write_requests += before["memory_write"]
                 self.read_requests += 1 - before["memory_write"]
                 self.request_cycle = self.cycles
+        self.observe_memory()
         if self.before_clock is not None:
             self.before_clock()
         self.dut.clk.value = 1
@@ -117,18 +147,23 @@ class Driver:
         self.set(reset=0)
         _, after = await self.tick()
         assert after["cmd_ready"] and not after["busy"]
+        if self.native_memory:
+            if self.axi.loaded:
+                self.memory[:] = await self.read_memory()
+            else:
+                await self.load_memory()
 
     async def configure(self, space, address, value=None, *, expect_error=False):
         self.set(cfg_valid=1, cfg_space=space, cfg_address=address,
                  cfg_write=int(value is not None), cfg_write_data=0 if value is None else value)
-        for _ in range(100):
+        for _ in range(100000):
             before, after = await self.tick()
             if before["cfg_ready"]:
                 break
         else:
             raise AssertionError("configuration timed out")
         self.set(cfg_valid=0)
-        for _ in range(100):
+        for _ in range(100000):
             if after["cfg_response_valid"]:
                 break
             _, after = await self.tick()
@@ -145,50 +180,63 @@ class Driver:
     async def load(self, media):
         await self.reset()
         assert media["chunk_frames"] == self.chunk_frames
+        assert media.get('block_chunks',1)==self.block_chunks
         slots = len(media["samples"]) // self.chunk_frames
         assert slots <= self.slots and len(media["views"]) <= self.views
         self.chunk_limit = media.get("chunk_limit")
-        await self.configure(0, 3, self.slots if self.chunk_limit is None else self.chunk_limit)
+        await self.configure(0, 3, (self.slots if self.chunk_limit is None else self.chunk_limit)//self.block_chunks)
         self.memory[:len(media["samples"])] = [value & MASK32 for value in media["samples"]]
+        await self.load_memory()
         refs = Counter()
         for index, view in enumerate(media["views"]):
             descriptor = 0
             if view is not None:
-                descriptor = (1 | (int("range" in view) << 1)
-                              | (view.get("range", {}).get("offset", 0) << 32)
-                              | (view["frames"] << 64) | (len(view["chunks"]) << 128))
-                for ordinal, chunk in enumerate(view["chunks"]):
-                    await self.configure(2, index * self.slots + ordinal, chunk)
-                    refs[chunk] += 1
+                from block_images import view_blocks
+                blocks,offset=view_blocks(view,self.chunk_frames,self.block_chunks)
+                descriptor = (1 | (int("range" in view) << 1) | (offset << 32)
+                              | (view["frames"] << 64) | (len(blocks) << 128))
+                for ordinal,block in enumerate(blocks):
+                    await self.configure(2,self.table_address(index,ordinal),block)
+                refs.update(blocks)
             await self.configure(1, index, descriptor)
-        for chunk in range(slots):
-            await self.configure(3, chunk, refs[chunk])
-        for index, chunk in enumerate(media["free_chunks"]):
-            await self.configure(4, index, chunk)
-        for index, value in enumerate((len(media["views"]), slots, len(media["free_chunks"]))):
-            await self.configure(0, index, value)
+        for block in range(slots//self.block_chunks):
+            await self.configure(3,block,refs[block])
+        free=media["free_chunks"]
+        for index in range(0,len(free),self.block_chunks):
+            await self.configure(4,index//self.block_chunks,free[index]//self.block_chunks)
+        for index,value in enumerate((len(media["views"]),slots//self.block_chunks,len(free)//self.block_chunks)):
+            await self.configure(0,index,value)
 
     async def snapshot(self):
         await self.fence()
-        views, slots, free = [await self.configure(0, index) for index in range(3)]
-        assert views <= self.views and free <= slots <= self.slots
-        result = {"chunk_frames": self.chunk_frames, "samples": [signed(x) for x in self.memory[:slots*self.chunk_frames]],
-                  "free_chunks": [await self.configure(4, index) for index in range(free)], "views": []}
-        if self.chunk_limit is not None:
-            result["chunk_limit"] = self.chunk_limit
-        refs = Counter()
+        self.memory[:] = await self.read_memory()
+        views,blocks,free = [await self.configure(0,index) for index in range(3)]
+        assert views<=self.views and free<=blocks<=self.blocks
+        free_blocks=[await self.configure(4,index) for index in range(free)]
+        result={"chunk_frames":self.chunk_frames,
+                "samples":[signed(x) for x in self.memory[:blocks*self.block_chunks*self.chunk_frames]],
+                "free_chunks":[block*self.block_chunks+i for block in free_blocks for i in range(self.block_chunks)],"views":[]}
+        if self.block_chunks!=1:result['block_chunks']=self.block_chunks
+        if self.chunk_limit is not None:result['chunk_limit']=self.chunk_limit
+        refs=Counter()
         for index in range(views):
-            descriptor = await self.configure(1, index)
-            view = None
+            descriptor=await self.configure(1,index)
+            view=None
             if descriptor & 1:
-                chunks = [await self.configure(2, index * self.slots + ordinal) for ordinal in range(descriptor >> 128)]
-                view = {"chunks": chunks, "frames": (descriptor >> 64) & ((1 << 64) - 1)}
-                if descriptor & 2:
-                    view["range"] = {"offset": (descriptor >> 32) & MASK32}
-                refs.update(chunks)
-            result["views"].append(view)
-        for chunk in range(slots):
-            assert await self.configure(3, chunk) == refs[chunk], "reference count differs from view ownership"
+                ids=[await self.configure(2,self.table_address(index,ordinal)) for ordinal in range(descriptor>>128)]
+                frames=(descriptor>>64)&((1<<64)-1);offset=(descriptor>>32)&MASK32
+                first=offset//self.chunk_frames
+                count=(offset%self.chunk_frames+frames+self.chunk_frames-1)//self.chunk_frames
+                chunks=[ids[(first+i)//self.block_chunks]*self.block_chunks+(first+i)%self.block_chunks for i in range(count)]
+                view={'chunks':chunks,'frames':frames}
+                if descriptor & 2:view['range']={'offset':offset%self.chunk_frames}
+                refs.update(ids)
+            result['views'].append(view)
+        for block in range(blocks):
+            assert await self.configure(3,block)==refs[block], 'block reference count differs from view ownership'
+        if self.block_chunks!=1:
+            from block_images import canonicalize
+            canonicalize(result)
         return result
 
     async def fence(self):

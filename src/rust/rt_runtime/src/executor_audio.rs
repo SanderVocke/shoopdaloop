@@ -1,7 +1,10 @@
 use super::*;
 use crate::audio_refs::{AudioSequence, ReferenceBlock, RenderArena};
+use crate::Sample;
 
-impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q> {
+impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
+    GraphRuntime<P, L, Q, S>
+{
     pub fn audio_pool_work(&self) -> crate::resource::shared_audio::AudioPoolWork {
         self.resources.audio_pool_work()
     }
@@ -11,7 +14,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
 
     pub(super) fn run_graph_references(
         &mut self,
-        audio: &mut impl crate::host_buffer::AudioIo,
+        audio: &mut impl crate::host_buffer::AudioIo<S>,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
@@ -162,13 +165,13 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
 }
 
-fn route_referenced<P>(
-    slots: &mut [Option<Slot<P>>],
+fn route_referenced<P, S: Sample>(
+    slots: &mut [Option<Slot<P, S>>],
     edge: Connection,
-    arena: &mut RenderArena,
-    host: &mut [AudioSequence],
-    resources: &ResourceStore,
-    audio: &mut impl crate::host_buffer::AudioIo,
+    arena: &mut RenderArena<S>,
+    host: &mut [AudioSequence<S>],
+    resources: &ResourceStore<S>,
+    audio: &mut impl crate::host_buffer::AudioIo<S>,
     start: usize,
     frames: usize,
 ) -> Result<(), Error> {

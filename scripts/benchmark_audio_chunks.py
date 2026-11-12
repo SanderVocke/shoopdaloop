@@ -15,7 +15,7 @@ import sys
 import time
 
 MODES = ("current", "chunks", "chunks-descriptors")
-AVAILABLE_MODES = MODES + ("fpga-reference",)
+AVAILABLE_MODES = MODES
 
 
 def source_info():
@@ -193,8 +193,7 @@ def main():
     if args.worker:
         worker(args.worker, args.load_cpu)
         return
-    if "fpga-reference" in args.modes and any(s.split(":")[0] in ("grab", "shared", "continue") for s in args.scenarios):
-        parser.error("fpga-reference requires explicit --scenarios without grab/shared/continue")
+
     assert args.host and args.launcher and args.output
     assert args.callbacks > 0 and args.repeats > 0
     allowed = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else []

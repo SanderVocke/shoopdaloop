@@ -1,5 +1,6 @@
 //! Borrowed audio blocks and caller-owned bounded event storage.
 
+use crate::Sample;
 use crate::{Error, Frame};
 use alloc::{boxed::Box, vec, vec::Vec};
 
@@ -100,18 +101,18 @@ impl<'a> EventBuffer<'a> {
 
 /// Safe Rust borrowing makes input/output aliasing impossible for safe callers.
 /// The frame count selects a prefix of each channel; suffixes are left untouched.
-pub struct AudioBlock<'a, 'samples> {
+pub struct AudioBlock<'a, 'samples, S: Sample = f32> {
     pub frame: Frame,
     pub frames: usize,
-    pub inputs: &'a [&'samples [f32]],
-    pub outputs: &'a mut [&'samples mut [f32]],
+    pub inputs: &'a [&'samples [S]],
+    pub outputs: &'a mut [&'samples mut [S]],
 }
 
 /// A planar contiguous processor view. A stride separates ports; each view can
 /// select a subrange without constructing temporary vectors of slice references.
-pub struct AudioPorts<'a> {
-    inputs: &'a [f32],
-    outputs: &'a mut [f32],
+pub struct AudioPorts<'a, S: Sample = f32> {
+    inputs: &'a [S],
+    outputs: &'a mut [S],
     stride: usize,
     start: usize,
     frames: usize,
@@ -120,10 +121,10 @@ pub struct AudioPorts<'a> {
     output_count: usize,
 }
 
-impl<'a> AudioPorts<'a> {
+impl<'a, S: Sample> AudioPorts<'a, S> {
     pub fn new(
-        inputs: &'a [f32],
-        outputs: &'a mut [f32],
+        inputs: &'a [S],
+        outputs: &'a mut [S],
         stride: usize,
         start: usize,
         frames: usize,
@@ -153,14 +154,14 @@ impl<'a> AudioPorts<'a> {
     pub fn output_count(&self) -> usize {
         self.output_count
     }
-    pub fn input(&self, port: usize) -> Option<&[f32]> {
+    pub fn input(&self, port: usize) -> Option<&[S]> {
         if port >= self.input_count() {
             return None;
         }
         let start = port * self.stride + self.start;
         Some(&self.inputs[start..start + self.frames])
     }
-    pub fn output(&mut self, port: usize) -> Option<&mut [f32]> {
+    pub fn output(&mut self, port: usize) -> Option<&mut [S]> {
         if port >= self.output_count() {
             return None;
         }
@@ -172,7 +173,7 @@ impl<'a> AudioPorts<'a> {
         &mut self,
         inputs: core::ops::Range<usize>,
         outputs: core::ops::Range<usize>,
-    ) -> Result<AudioPorts<'_>, Error> {
+    ) -> Result<AudioPorts<'_, S>, Error> {
         if inputs.start > inputs.end
             || inputs.end > self.input_count()
             || outputs.start > outputs.end
@@ -190,7 +191,7 @@ impl<'a> AudioPorts<'a> {
     }
 
     /// Disjoint input/output borrowing for a processor without temporary storage.
-    pub fn pair(&mut self, input: usize, output: usize) -> Option<(&[f32], &mut [f32])> {
+    pub fn pair(&mut self, input: usize, output: usize) -> Option<(&[S], &mut [S])> {
         if input >= self.input_count() || output >= self.output_count() {
             return None;
         }
@@ -714,11 +715,11 @@ pub struct MidiBlock<'a> {
     pub outputs: &'a mut [MidiBuffer],
 }
 
-impl AudioBlock<'_, '_> {
+impl<S: Sample> AudioBlock<'_, '_, S> {
     pub(crate) fn clear_bounded(&mut self, channels: usize, frames: usize) {
         for output in self.outputs.iter_mut().take(channels) {
             let count = output.len().min(frames);
-            output[..count].fill(0.0);
+            output[..count].fill(S::ZERO);
         }
     }
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::buffer::MidiBuffer;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureId {
@@ -28,7 +29,7 @@ pub struct ResourceInfo {
     pub capture: Option<CaptureInfo>,
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn info(&self, resource: ResourceId) -> Result<ResourceInfo, Error> {
         let active = get(&self.resources, resource.slot(), resource.generation())?
             .active
@@ -181,16 +182,7 @@ impl ResourceStore {
             .checked_add(bytes)
             .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         let page_bytes = self.config.limits().page_bytes;
-        let pages = if let Some(take) = version.elastic {
-            self.elastic_audio
-                .as_mut()
-                .ok_or(Error::InvalidState)?
-                .prepare(take, duration as usize, 0)
-                .map_err(|error| self.halt_capture(id, error))?;
-            0
-        } else {
-            length.div_ceil(page_bytes) - version.written.div_ceil(page_bytes)
-        };
+        let pages = length.div_ceil(page_bytes) - version.written.div_ceil(page_bytes);
         if pages > self.free_pages.len() - self.reserved_pages {
             return Err(self.halt_capture(id, Error::Capacity));
         }
@@ -214,13 +206,6 @@ impl ResourceStore {
         mut bytes: &[u8],
         class: WorkClass,
     ) {
-        if version.elastic.is_some() {
-            self.elastic_audio
-                .as_mut()
-                .expect("elastic store")
-                .append_bytes(version, bytes, true);
-            return;
-        }
         let page_bytes = self.config.limits().page_bytes;
         while !bytes.is_empty() {
             if version
@@ -263,7 +248,7 @@ impl ResourceStore {
         &mut self,
         id: CaptureId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.capture_audio_with(id, frame, samples, WorkClass::Background)
     }
@@ -271,7 +256,7 @@ impl ResourceStore {
         &mut self,
         id: CaptureId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
         class: WorkClass,
     ) -> Result<Revision, Error> {
         self.note_operation(class);
@@ -296,13 +281,7 @@ impl ResourceStore {
             .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for sample in samples {
-            let bytes = if version.elastic.is_some() {
-                rt_fpga_reference::fixed::Fixed::from_f32(*sample)
-                    .0
-                    .to_le_bytes()
-            } else {
-                sample.to_le_bytes()
-            };
+            let bytes = sample.to_le_bytes();
             self.append_reserved(&mut version, &bytes, class);
         }
         Ok(self.publish_capture(id, version))
