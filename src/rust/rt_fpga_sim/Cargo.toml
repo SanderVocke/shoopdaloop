@@ -13,10 +13,15 @@ default = []
 sim = ["dep:marlin", "dep:rt_backend_testbench", "dep:serde_json"]
 
 [dependencies]
+rt_fpga_adapter = { path = "../rt_fpga_adapter" }
+rt_runtime = { path = "../rt_runtime" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
 rt_audio_math = { path = "../rt_audio_math" }
-marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
 rt_backend_testbench = { path = "../rt_backend_testbench", optional = true }
 serde_json = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
@@ -24,4 +29,9 @@ shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 [[bin]]
 name = "fpga-marlin"
 path = "src/main.rs"
+required-features = ["sim"]
+
+[[bin]]
+name = "fpga-runtime-demo"
+path = "src/queue_main.rs"
 required-features = ["sim"]

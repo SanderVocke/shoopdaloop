@@ -3001,8 +3001,6 @@ dependencies = [
 [[package]]
 name = "marlin-verilator"
 version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "649278d4af672cad9d1f0fd432ddc773071beb2458b9a85ca995f2ded613409d"
 dependencies = [
  "boxcar",
  "camino",

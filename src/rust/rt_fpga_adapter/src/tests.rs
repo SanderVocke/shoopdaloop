@@ -381,3 +381,50 @@ fn empty_graph_lowers_silence_and_lowerer_rejects_bad_ranges() {
     }];
     assert!(crate::compiler::lower(&bad, &nodes, image.clone()).is_err());
 }
+
+#[shoop_test]
+fn commit_completion_waits_for_stalled_device_activation() {
+    use std::sync::mpsc;
+    struct Stalled {
+        arrived: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    }
+    impl Device for Stalled {
+        fn load(&mut self, _: &Image) -> Result<(), Error> {
+            self.arrived.send(()).map_err(|_| Error::Disconnected)?;
+            self.release
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .map_err(|_| Error::Disconnected)
+        }
+        fn write_state(&mut self, _: u16, _: Value) -> Result<(), Error> {
+            Ok(())
+        }
+        fn process(&mut self, _: &Image, _: &[Vec<i32>]) -> Result<Vec<Vec<i32>>, Error> {
+            Ok(vec![vec![0; 32]])
+        }
+    }
+    let (arrived, wait) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    let (mut c, mut a) = Adapter::prepare(
+        config(),
+        vec![node(1, 1)],
+        Stalled {
+            arrived,
+            release: blocked,
+        },
+    )
+    .unwrap();
+    install(&mut c);
+    let worker = std::thread::spawn(move || {
+        a.service().unwrap();
+        a
+    });
+    wait.recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(outcomes(&mut c), vec![Outcome::Applied, Outcome::Applied]);
+    assert_eq!(c.outstanding(), 1);
+    release.send(()).unwrap();
+    let a = worker.join().unwrap();
+    assert_eq!(outcomes(&mut c), vec![Outcome::Applied]);
+    assert_eq!(a.epoch(), Epoch(3));
+}

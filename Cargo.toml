@@ -3,7 +3,7 @@
 resolver = "2"
 
 members = ["src/rust/*"]
-exclude = ["third_party/egui_graph"]
+exclude = ["third_party/egui_graph", "third_party/marlin-verilator"]
 
 [workspace.package]
 version = "0.3.0"
@@ -76,6 +76,7 @@ inherits = "release"
 debug = true
 
 [patch.crates-io]
+marlin-verilator = { path = "third_party/marlin-verilator" }
 fundsp = { path = "third_party/fundsp" }
 oxisynth = { path = "third_party/oxisynth" }
 oxisynth-reverb = { path = "third_party/oxisynth-reverb" }

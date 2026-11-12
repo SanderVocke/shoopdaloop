@@ -160,11 +160,11 @@ is accepted at frame zero; unsupported later activation is rejected explicitly.
 
 ### 6. Queue-driven Marlin integration
 
-- [ ] Connect the adapter to the existing Marlin driver. Load configuration
+- [x] Connect the adapter to the existing Marlin driver. Load configuration
   generated from queued installs and the actual submitted plan, supply raw
   inputs and return samples/status. Do not supply the stage-2 fixture image to
   this queue-driven path. Test stalled handshakes and surfaced device faults.
-- [ ] Run the same producer workload through the production Q8.24 runtime and
+- [x] Run the same producer workload through the production Q8.24 runtime and
   the adapter/RTL. Compare every output word and supported receipt/frame. Use
   signed samples with nonzero low bits, chained/parallel graphs and several
   quantum-aligned gain changes. Retain replayable command/input traces.
@@ -213,3 +213,17 @@ supplies the compiler and adapter, not that activation mechanism.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Implementation evidence
+
+- `rt_fpga_sim` supplies the optional native static Marlin bindings, fixed wrapper,
+  direct gain demo, queued differential runner and original recording replay.
+- `rt_fpga_adapter` supplies the shared lowerer and owning queue consumer. Native
+  construction reuses the factored queues/scheduler; the shared gain processor
+  retains production DSP. Recording/stalling doubles check protocol behavior.
+- A reproducible Marlin/Verilator context-lifetime fault required a small local
+  bridge patch. Each model now owns its context, traces close before models,
+  and independent runtimes pass concurrently. The patch and upgrade boundary are
+  documented in `third_party/marlin-verilator/SHOOP_PATCH.md`.
+- Final commands, measurements and any environment-related check failures are
+  recorded in `src/rust/rt_fpga_sim/VALIDATION.md`.

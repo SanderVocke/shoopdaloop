@@ -141,3 +141,199 @@ mod fifo {
         }
     }
 }
+
+#[shoop_test]
+fn queued_chain_and_parallel_match_native_samples_completions_and_receipts() {
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-tests");
+    let rt = runtime(&cache).unwrap();
+    for source in [
+        include_str!("../fixtures/chain.json"),
+        include_str!("../fixtures/parallel.json"),
+    ] {
+        let scenario = serde_json::from_str(source).unwrap();
+        let sim = Simulator::new(&rt, None, true).unwrap();
+        let report = rt_fpga_sim::differential::run(&scenario, sim).unwrap();
+        assert_eq!(report.samples, 320);
+        assert_eq!(report.state, 2);
+        assert!(report.gain_writes >= 8);
+    }
+}
+
+#[shoop_test]
+fn original_record_stop_play_case_preserves_audio_state_and_captured_media() {
+    use rt_backend_testbench::spec::{Timing, Transition};
+    use rt_fpga_sim::{get, put};
+    let case: Scenario = serde_json::from_str(include_str!(
+        "../../../../fpga/verification/scenarios/mono-record.json"
+    ))
+    .unwrap();
+    let expected = production::run::<Q824>(&case).unwrap();
+    let image = rtl::compile(&case).unwrap();
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-tests");
+    let rt = runtime(&cache).unwrap();
+    let mut sim = Simulator::new(&rt, None, true).unwrap();
+    sim.load(&image).unwrap();
+    let mut sequence = 0;
+    for (i, step) in case.steps.iter().enumerate() {
+        for action in &step.actions {
+            let Action::Transition {
+                target,
+                at,
+                timing: Timing::At,
+                operation,
+                ..
+            } = action
+            else {
+                panic!("record fixture")
+            };
+            let mut words = [0; 20];
+            let code = match operation {
+                Transition::Stop => 0,
+                Transition::Play { .. } => 1,
+                Transition::Record => 2,
+                Transition::Seek { .. } => 3,
+            };
+            put(&mut words, 34, 2, code);
+            put(
+                &mut words,
+                64,
+                64,
+                u64::from(target.slot) | (u64::from(target.generation) << 32),
+            );
+            sequence += 1;
+            put(&mut words, 128, 64, sequence);
+            put(&mut words, 192, 64, *at);
+            if let Transition::Play {
+                position,
+                retrigger,
+            }
+            | Transition::Seek {
+                position,
+                retrigger,
+            } = operation
+            {
+                put(&mut words, 384, 64, *position);
+                put(&mut words, 36, 1, u64::from(*retrigger));
+            }
+            sim.command(4, 0, words).unwrap();
+        }
+        assert_eq!(
+            Samples::Q824(sim.run(&image, &step.inputs).unwrap()),
+            expected.quanta[i].outputs,
+            "quantum {i}"
+        );
+        assert_eq!(sim.frame(), expected.quanta[i].next_frame);
+        for state in &expected.quanta[i].states {
+            let raw = sim.command(12, state.id.slot, [0; 20]).unwrap();
+            assert_eq!(get(&raw, 0, 1), 1);
+            assert_eq!(get(&raw, 1, 32), u64::from(state.id.generation));
+            assert_eq!(
+                ["stopped", "playing", "recording"][get(&raw, 33, 2) as usize],
+                state.mode
+            );
+            for (offset, value) in [
+                (64, state.content_length),
+                (128, state.position),
+                (192, state.capture_frames),
+                (256, state.cycles),
+                (320, state.content_revision),
+                (384, state.capture_revision),
+            ] {
+                assert_eq!(
+                    get(&raw, offset, 64),
+                    value,
+                    "state field {offset} quantum {i}"
+                );
+            }
+            assert_eq!(get(&raw, 35, 1) != 0, state.repeat_sync);
+            assert_eq!(
+                if get(&raw, 36, 1) != 0 {
+                    Some(get(&raw, 512, 64))
+                } else {
+                    None
+                },
+                state.last_pulse
+            );
+        }
+    }
+    let frames = expected.media[0].frames as u32;
+    let capture_view = image
+        .program
+        .instructions
+        .iter()
+        .find_map(|i| {
+            if let rtl::Instruction::ProcessLogicalCapture { view, .. } = i {
+                Some(*view)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let words = sim.state(capture_view, None, false).unwrap();
+    let view = u64::from(words[0]) | (u64::from(words[1]) << 32);
+    assert_eq!(
+        Samples::Q824(vec![sim.read_view(view, frames).unwrap()]),
+        expected.media[0].samples
+    );
+}
+
+#[shoop_test]
+fn rtl_fault_is_latched_and_future_controls_receive_terminal_cancellation() {
+    use rt_fpga_adapter::adapter::{Adapter, Node, Operation, Processor, Request};
+    use rt_runtime::{
+        Epoch, Error, Frame, NodeId,
+        graph::{self, Catalog, GraphDescription},
+        schedule::Action,
+        transport::{Lane, Outcome},
+    };
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-tests");
+    let rt = runtime(&cache).unwrap();
+    let sim = Simulator::new(&rt, None, true).unwrap();
+    let id = NodeId::from_parts(0, 1).unwrap();
+    let nodes = vec![Node::new(id, Processor::new(1, 32, Q824(16777216)))];
+    let config = rt_fpga_sim::differential::config();
+    let plan = graph::compile(
+        &Catalog::new(config, &[nodes[0].spec()]).unwrap(),
+        &GraphDescription {
+            nodes: vec![id],
+            connections: vec![],
+        },
+    )
+    .unwrap();
+    let (mut c, mut a) = Adapter::prepare(config, nodes, sim).unwrap();
+    c.submit(Lane::Normal, Request::commit(Epoch(0), plan))
+        .map_err(|e| e.error)
+        .unwrap();
+    a.service().unwrap();
+    assert_eq!(c.try_completion().unwrap().outcome, Outcome::Applied);
+    c.submit(
+        Lane::Normal,
+        Request::Schedule {
+            at: Frame(64),
+            action: Action::Processor {
+                node: id,
+                operation: Operation {
+                    target: Q824(1),
+                    duration: 0,
+                },
+            },
+            payload: Box::new([]),
+        },
+    )
+    .map_err(|e| e.error)
+    .unwrap();
+    a.device_mut()
+        .state(0, Some([255, 0, 0, 0, 0]), true)
+        .unwrap();
+    assert_eq!(a.process(&[vec![1; 32]]), Err(Error::InvalidState));
+    assert_eq!(a.fault(), Some(Error::InvalidState));
+    assert_eq!(a.frame(), Frame(0));
+    assert!(
+        a.device()
+            .last_error
+            .as_ref()
+            .unwrap()
+            .contains("pipeline fault stage")
+    );
+    assert_eq!(c.try_execution().unwrap().result, Err(Error::Cancelled));
+}

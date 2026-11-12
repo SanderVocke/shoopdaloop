@@ -4,7 +4,7 @@ use marlin::verilator::{
     tracing::{TraceFile, Waveform},
 };
 use marlin::verilog::prelude::*;
-use rt_backend_testbench::rtl::{Image, Instruction, Value};
+use rt_fpga_adapter::image::{Image, Instruction, Value};
 use std::path::{Path, PathBuf};
 
 pub type SimResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -59,11 +59,13 @@ pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
 }
 
 pub struct Simulator<'ctx> {
-    model: Pipeline<'ctx>,
+    // Close the trace while its model is still alive (fields drop in order).
     trace: Option<TraceFile<'ctx>>,
+    model: Pipeline<'ctx>,
     pub cycles: u64,
     pub stalls: bool,
     pub timeout: u64,
+    pub last_error: Option<String>,
 }
 impl<'ctx> Simulator<'ctx> {
     pub fn new(
@@ -81,11 +83,13 @@ impl<'ctx> Simulator<'ctx> {
             cycles: 0,
             stalls,
             timeout: 100_000,
+            last_error: None,
         };
         sim.reset();
         Ok(sim)
     }
     pub fn reset(&mut self) {
+        self.last_error = None;
         self.model.run_valid = 0;
         self.model.cfg_valid = 0;
         self.model.audio_cfg_valid = 0;
@@ -227,19 +231,70 @@ impl<'ctx> Simulator<'ctx> {
         {
             return Err("image exceeds simulation capacities".into());
         }
+        if !image.media.samples.is_empty()
+            || !image.media.free_chunks.is_empty()
+            || image.media.views.len() > 8
+            || image
+                .media
+                .views
+                .iter()
+                .any(|v| !v.chunks.is_empty() || v.frames != 0)
+        {
+            return Err("direct media loader supports initially empty recording views only".into());
+        }
         self.reset();
         for i in 0..image.transition.limits.loop_slots {
-            self.command(1, i, [0; 20])?;
+            let mut words = [0; 20];
+            if let Some(spec) = image
+                .transition
+                .description
+                .loops
+                .iter()
+                .find(|s| s.id.slot == i)
+            {
+                if spec.kind != "primitive" || spec.timeline.is_some() {
+                    return Err("unsupported direct TP spec".into());
+                }
+                put(&mut words, 0, 1, 1);
+                put(&mut words, 1, 32, u64::from(spec.id.generation));
+                if let Some(source) = spec.sync_source {
+                    put(&mut words, 33, 1, 1);
+                    put(
+                        &mut words,
+                        34,
+                        64,
+                        u64::from(source.slot) | (u64::from(source.generation) << 32),
+                    );
+                }
+                put(&mut words, 98, 1, u64::from(spec.repeat_sync));
+                put(&mut words, 128, 64, spec.length);
+            }
+            self.command(1, i, words)?;
         }
-        if !image.transition.description.loops.is_empty() {
-            return Err("loop configuration not yet supported".into());
+        let mut members = 0;
+        for component in &image.transition.components {
+            for (i, member) in component.iter().enumerate() {
+                let mut words = [0; 20];
+                words[0] = member.slot;
+                words[1] = u32::from(i + 1 == component.len());
+                self.command(2, members, words)?;
+                members += 1;
+            }
         }
         let mut prepare = [0; 20];
         prepare[0] = image.transition.limits.loop_slots;
         prepare[1] = image.transition.limits.pending_requests;
         prepare[2] = image.transition.limits.events;
+        prepare[3] = members;
         prepare[4] = image.program.quantum;
         self.command(3, 0, prepare)?;
+        self.store_config(0, 3, Some([128, 0, 0, 0, 0]))?;
+        for i in 0..image.media.views.len() {
+            self.store_config(1, i as u32, Some([1, 0, 0, 0, 0]))?;
+        }
+        self.store_config(0, 0, Some([image.media.views.len() as u32, 0, 0, 0, 0]))?;
+        self.store_config(0, 1, Some([0; 5]))?;
+        self.store_config(0, 2, Some([0; 5]))?;
         for (i, instruction) in image.program.instructions.iter().enumerate() {
             let value = instruction_words(*instruction)?;
             self.state(i as u16, Some(value), true)?;
@@ -255,6 +310,85 @@ impl<'ctx> Simulator<'ctx> {
             }
         }
         Ok(())
+    }
+    pub fn store_config(
+        &mut self,
+        space: u8,
+        address: u32,
+        value: Option<[u32; 5]>,
+    ) -> SimResult<[u32; 5]> {
+        self.model.store_cfg_space = space;
+        self.model.store_cfg_address = address;
+        self.model.store_cfg_write = u8::from(value.is_some());
+        self.model.store_cfg_write_data = WideIn::new(value.unwrap_or_default());
+        self.model.store_cfg_valid = 1;
+        let mut accepted = false;
+        for _ in 0..self.timeout {
+            self.model.eval();
+            let ready = self.model.store_cfg_ready != 0;
+            self.cycle();
+            if ready {
+                accepted = true;
+                break;
+            }
+        }
+        self.model.store_cfg_valid = 0;
+        if !accepted {
+            return Err("media configuration admission timeout".into());
+        }
+        for _ in 0..self.timeout {
+            if self.model.store_cfg_response_valid != 0 {
+                break;
+            }
+            self.cycle();
+        }
+        if self.model.store_cfg_response_valid == 0 || self.model.store_cfg_response_error != 0 {
+            return Err("media configuration response failed".into());
+        }
+        let words = *self.model.store_cfg_read_data.value();
+        self.cycle();
+        Ok(words)
+    }
+    pub fn read_view(&mut self, view: u64, frames: u32) -> SimResult<Vec<i32>> {
+        self.model.eval();
+        if self.model.store_cmd_ready == 0 {
+            return Err("media command busy".into());
+        }
+        self.model.store_cmd_opcode = 6;
+        self.model.store_cmd_view = view;
+        self.model.store_cmd_start = 0;
+        self.model.store_cmd_length = u64::from(frames);
+        self.model.store_cmd_count = frames;
+        self.model.store_cmd_valid = 1;
+        self.cycle();
+        self.model.store_cmd_valid = 0;
+        let mut samples = vec![];
+        for _ in 0..self.timeout {
+            if self.model.store_done != 0 {
+                break;
+            }
+            self.model.store_read_ready = u8::from(!self.stalls || self.cycles % 4 != 0);
+            self.model.eval();
+            if self.model.store_read_valid != 0 && self.model.store_read_ready != 0 {
+                samples.push(self.model.store_read_data as i32);
+            }
+            self.cycle();
+        }
+        self.model.store_read_ready = 0;
+        if self.model.store_done == 0
+            || self.model.store_error_code != 0
+            || samples.len() != frames as usize
+        {
+            return Err(format!(
+                "media read view {view}: done {}, code {}, received {} of {frames}",
+                self.model.store_done,
+                self.model.store_error_code,
+                samples.len()
+            )
+            .into());
+        }
+        self.cycle();
+        Ok(samples)
     }
     pub fn run(&mut self, image: &Image, inputs: &[Vec<i32>]) -> SimResult<Vec<Vec<i32>>> {
         let q = image.program.quantum;
@@ -375,4 +509,51 @@ pub fn instruction_words(value: Instruction) -> SimResult<[u32; 5]> {
         0,
         0,
     ])
+}
+
+impl rt_fpga_adapter::adapter::Device for Simulator<'_> {
+    fn load(&mut self, image: &Image) -> std::result::Result<(), rt_runtime::Error> {
+        let result = Simulator::load(self, image);
+        result.map_err(|e| {
+            self.last_error = Some(e.to_string());
+            rt_runtime::Error::InvalidState
+        })
+    }
+    fn write_state(
+        &mut self,
+        address: u16,
+        value: Value,
+    ) -> std::result::Result<(), rt_runtime::Error> {
+        let result = self.state(address, Some(value_words(value)), false);
+        result.map(|_| ()).map_err(|e| {
+            self.last_error = Some(e.to_string());
+            rt_runtime::Error::InvalidState
+        })
+    }
+    fn process(
+        &mut self,
+        image: &Image,
+        inputs: &[Vec<i32>],
+    ) -> std::result::Result<Vec<Vec<i32>>, rt_runtime::Error> {
+        let result = self.run(image, inputs);
+        result.map_err(|e| {
+            self.last_error = Some(e.to_string());
+            rt_runtime::Error::InvalidState
+        })
+    }
+}
+
+pub fn put<const N: usize>(words: &mut [u32; N], offset: usize, width: usize, value: u64) {
+    assert!(width <= 64 && offset + width <= N * 32);
+    for i in 0..width {
+        let bit = offset + i;
+        words[bit / 32] =
+            (words[bit / 32] & !(1 << (bit % 32))) | ((((value >> i) & 1) as u32) << (bit % 32));
+    }
+}
+pub fn get<const N: usize>(words: &[u32; N], offset: usize, width: usize) -> u64 {
+    assert!(width <= 64 && offset + width <= N * 32);
+    (0..width).fold(0, |v, i| {
+        v | u64::from((words[(offset + i) / 32] >> ((offset + i) % 32)) & 1) << i
+    })
 }

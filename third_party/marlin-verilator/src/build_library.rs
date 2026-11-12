@@ -1,0 +1,611 @@
+// Copyright (C) 2024 Ethan Uppal.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License,
+// v. 2.0. If a copy of the MPL was not distributed with this file, You can
+// obtain one at https://mozilla.org/MPL/2.0/.
+
+//! See the documentation for [`build_library`].
+
+// hardcoded knowledge:
+// - output library is obj_dir/libV${top_module}.a
+// - location of verilated.h
+// - verilator library is obj_dir/libverilated.a
+
+use std::{fmt::Write, fs, process::Command};
+
+use camino::{Utf8Path, Utf8PathBuf};
+use snafu::prelude::*;
+
+use crate::{
+    BuildTarget, CxxStandard, MangledVerilatorNameRef, PortDirection,
+    VerilatedModelConfig, VerilatorRuntimeOptions, VerilatorVersion,
+    compute_edata_word_count_from_width_not_msb,
+    dpi::DpiFunction,
+    error::VerilatorError,
+    ffi_names::{
+        self, DPI_INIT_CALLBACK, TRACE_CLOSE_AND_DELETE, TRACE_DUMP,
+        TRACE_EVER_ON, TRACE_FLUSH, TRACE_OPEN_NEXT,
+    },
+    tracing::Waveform,
+    types, verilator_version,
+};
+
+fn build_ffi_for_tracing(
+    buffer: &mut String,
+    top_module_mangled: MangledVerilatorNameRef,
+    waveform: Waveform,
+) -> Result<(), VerilatorError> {
+    let open_trace = ffi_names::open_trace(top_module_mangled.as_str());
+    let waveform_class = match waveform {
+        Waveform::Vcd => "VerilatedVcdC",
+        Waveform::Fst => "VerilatedFstC",
+    };
+    let open_next_body = match waveform {
+        Waveform::Vcd => "trace->openNext(increment_filename);",
+        Waveform::Fst => "/* does not exist */",
+    };
+
+    let trace_levels = 99;
+    writeln!(
+        buffer,
+        r#"
+    void {TRACE_EVER_ON}(bool everOn) {{
+        Verilated::traceEverOn(everOn);
+    }}
+
+    #include <stdio.h>
+    {waveform_class}* {open_trace}(V{top_module_mangled}* top, const char* path) {{
+        Verilated::threadContextp(top->contextp());
+        {waveform_class}* trace = new {waveform_class};
+        top->trace(trace, {trace_levels});
+        trace->open(path);
+        return trace;
+    }}
+
+    void {TRACE_DUMP}({waveform_class}* trace, uint64_t timestamp) {{
+        trace->dump(timestamp);
+    }}
+
+    void {TRACE_OPEN_NEXT}({waveform_class}* trace, bool increment_filename) {{
+        {open_next_body}
+    }}
+
+    void {TRACE_FLUSH}({waveform_class}* trace) {{
+        trace->flush();
+    }}
+
+    void {TRACE_CLOSE_AND_DELETE}({waveform_class}* trace) {{
+        trace->close();
+        delete trace;
+    }}
+"#
+    )
+    .whatever_context("Failed to format tracing FFI")?;
+
+    Ok(())
+}
+
+/// Writes `extern "C"` C++ bindings for a Verilator model with the given name
+/// (`top_module`) and signature (`ports`) to the given artifact directory
+/// `artifact_directory`, returning the path to the C++ file containing the FFI
+/// wrappers.
+///
+/// # Accessible Functions
+///
+/// The FFI wrappers for creating ([`ffi_names::new_top`]) and deleting
+/// ([`ffi_names::delete_top`]) the model are wrappers of C++
+/// `new` and `delete`, where the deletion is of the pointer created with `new`
+/// in the former function. See §18.6 "Dynamic memory management" of the C++14
+/// standard draft for specific semantics to translate into Rust safety
+/// comments.
+///
+/// The wrappers reading ([`ffi_names::read_port`]) and writing
+/// ([`ffi_names::pin_port`]) ports directly read and write to class members of
+/// the ppointer created with `new in the FFI creation wrapper.
+///
+/// The wrapper for evaluating the model ([`ffi_names::top_eval`]) simply calls
+/// `eval` \[1\].
+///
+/// \[1\]: https://verilator.org/guide/latest/connecting.html#wrappers-and-model-evaluation-loop
+fn build_ffi(
+    artifact_directory: &Utf8Path,
+    top_module_mangled: MangledVerilatorNameRef,
+    ports: &[(&str, usize, usize, PortDirection)],
+    enable_tracing: Option<Waveform>,
+    verilator_version: VerilatorVersion,
+) -> Result<Utf8PathBuf, VerilatorError> {
+    let ffi_wrappers = artifact_directory.join("ffi.cpp");
+
+    let mut buffer = String::new();
+
+    if let Some(waveform) = enable_tracing {
+        buffer.push_str(match waveform {
+            Waveform::Vcd => "#include \"verilated_vcd_c.h\"\n",
+            Waveform::Fst => "#include \"verilated_fst_c.h\"\n",
+        });
+        buffer.push_str("#include <stdint.h>\n");
+    }
+
+    let new_top = ffi_names::new_top(top_module_mangled.as_str());
+    let top_eval = ffi_names::top_eval(top_module_mangled.as_str());
+    let delete_top = ffi_names::delete_top(top_module_mangled.as_str());
+    let trace_enabled = enable_tracing.is_some();
+
+    writeln!(
+        &mut buffer,
+        r#"
+#include <cstring> // std::memcpy
+#include "verilated.h"
+#include "V{top_module_mangled}.h"
+
+extern "C" {{
+    void* {new_top}() {{
+        auto* context = new VerilatedContext{{}};
+        context->traceEverOn({trace_enabled});
+        return new V{top_module_mangled}{{context}};
+    }}
+
+    
+    void {top_eval}(V{top_module_mangled}* top) {{
+        Verilated::threadContextp(top->contextp());
+        top->eval();
+    }}
+
+    void {delete_top}(V{top_module_mangled}* top) {{
+        auto* context = top->contextp();
+        delete top;
+        Verilated::threadContextp(nullptr);
+        delete context;
+    }}
+"#
+    )
+    .whatever_context("Failed to format utility FFI")?;
+
+    for (port, msb, lsb, direction) in ports {
+        let width = msb - lsb + 1;
+        let macro_prefix = match direction {
+            PortDirection::Input => "VL_IN",
+            PortDirection::Output => "VL_OUT",
+            PortDirection::Inout => "VL_INOUT",
+        };
+        let macro_suffix = if width <= 8 {
+            "8"
+        } else if width <= 16 {
+            "16"
+        } else if width <= 32 {
+            ""
+        } else if width <= 64 {
+            "64"
+        } else {
+            "W"
+        };
+        // Computes the C++ type for the port suitable for use in function
+        // parameters and return types.
+        let const_type_macro = |name: Option<&str>| {
+            let name_or_empty = name.unwrap_or("/* return value */");
+            if width <= 64 {
+                format!(
+                    "{macro_prefix}{macro_suffix}({name_or_empty}, {msb}, {lsb})",
+                )
+            } else {
+                format!(
+                    "const {}* {name_or_empty}",
+                    if verilator_version >= verilator_version!(5 050) {
+                        "EData"
+                    } else {
+                        "WData"
+                    }
+                )
+            }
+        };
+
+        let pin_port = ffi_names::pin_port(top_module_mangled.as_str(), port);
+        let read_port = ffi_names::read_port(top_module_mangled.as_str(), port);
+
+        match direction {
+            PortDirection::Input | PortDirection::Inout => {
+                let input_type = const_type_macro(Some("new_value"));
+                let pin_code = if width <= 64 {
+                    format!("top->{port} = new_value;")
+                } else {
+                    let to_pointer =
+                    // https://github.com/verilator/verilator/pull/7642
+                    if verilator_version >= verilator_version!(5 052) { ".data()" } else { "" };
+                    let word_count =
+                        compute_edata_word_count_from_width_not_msb(width);
+                    let bytes_to_copy = word_count * size_of::<types::EData>();
+                    // https://en.cppreference.com/w/cpp/string/byte/memcpy
+                    format!(
+                        "std::memcpy(top->{port}{to_pointer}, new_value, {bytes_to_copy});"
+                    )
+                };
+                writeln!(
+                    &mut buffer,
+                    r#"
+    void {pin_port}(V{top_module_mangled}* top, {input_type}) {{
+        {pin_code}
+    }}
+            "#
+                )
+                .whatever_context("Failed to format input port FFI")?;
+            }
+            PortDirection::Output => {
+                let to_pointer_if_wide =
+                    if width > 64 { ".data()" } else { "" };
+                let return_type = const_type_macro(None);
+                writeln!(
+                    &mut buffer,
+                    r#"
+    {return_type} {read_port}(V{top_module_mangled}* top) {{
+        return top->{port}{to_pointer_if_wide};
+    }}
+            "#
+                )
+                .whatever_context("Failed to format output port FFI")?;
+            }
+        }
+    }
+
+    if let Some(waveform) = enable_tracing {
+        build_ffi_for_tracing(&mut buffer, top_module_mangled, waveform)
+            .whatever_context(
+                "Failed to generate FFI bindings to Verilator tracing APIs",
+            )?;
+    }
+
+    writeln!(&mut buffer, "}} // extern \"C\"")
+        .whatever_context("Failed to format ending brace")?;
+
+    fs::write(&ffi_wrappers, buffer)
+        .whatever_context("Failed to write FFI wrappers file")?;
+
+    Ok(ffi_wrappers)
+}
+
+/// Sets up the DPI artifacts directory and generates DPI function bindings if
+/// needed, returning:
+/// 1. `Some` DPI bindings file to compile in (or `None` if there are no DPI
+///    functions in the first place)
+/// 2. Whether there was a regeneration of any kind
+///
+/// This function is a nop if `dpi_functions.is_empty()`.
+fn bind_dpi_if_needed(
+    top_module_mangled: MangledVerilatorNameRef,
+    dpi_functions: &[&'static dyn DpiFunction],
+    dpi_artifact_directory: &Utf8Path,
+) -> Result<(Option<Utf8PathBuf>, bool), VerilatorError> {
+    if dpi_functions.is_empty() {
+        return Ok((None, false));
+    }
+
+    let dpi_file_absolute_path = dpi_artifact_directory.join("dpi.cpp");
+    // TODO: hard-coded knowledge, same verilator bug
+    let dpi_file = Utf8PathBuf::from("../dpi/dpi.cpp");
+
+    let file_code = format!(
+        "#include \"svdpi.h\"
+#include \"V{}__Dpi.h\"
+#include <stdint.h>
+{}
+extern \"C\" void {DPI_INIT_CALLBACK}(void** callbacks) {{
+{}
+}}",
+        top_module_mangled,
+        dpi_functions
+            .iter()
+            .map(|dpi_function| {
+                let name = dpi_function.name();
+                let signature = dpi_function
+                    .signature()
+                    .iter()
+                    .map(|(name, ty)| format!("{ty} {name}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let arguments = dpi_function
+                    .signature()
+                    .iter()
+                    .map(|(name, _)| name.to_owned())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!(
+                    "static void (*rust_{name})({signature});
+extern \"C\" void {name}({signature}) {{
+    rust_{name}({arguments});
+}}"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        dpi_functions
+            .iter()
+            .enumerate()
+            .map(|(i, dpi_function)| {
+                let signature = dpi_function
+                    .signature()
+                    .iter()
+                    .map(|(name, ty)| format!("{ty} {name}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "   rust_{} = ( void(*)({}) ) callbacks[{}];",
+                    dpi_function.name(),
+                    signature,
+                    i
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+
+    // only rebuild if there's been a change
+    if fs::read_to_string(&dpi_file_absolute_path)
+        .map(|current_file_code| current_file_code == file_code)
+        .unwrap_or(false)
+    {
+        return Ok((Some(dpi_file), false));
+    }
+
+    fs::write(dpi_artifact_directory.join("dpi.cpp"), file_code)
+        .whatever_context(format!(
+        "Failed to write DPI function wrapper code to {dpi_file_absolute_path}"
+    ))?;
+
+    Ok((Some(dpi_file), true))
+}
+
+/// Returns `Ok(true)` when the library doesn't exist or if any Verilog source
+/// file has been modified after last building the library.
+fn needs_verilator_rebuild(
+    source_files: &[Utf8PathBuf],
+    library_path: &Utf8Path,
+) -> Result<bool, VerilatorError> {
+    if !library_path.exists() {
+        return Ok(true);
+    }
+
+    let last_built = fs::metadata(library_path)
+        .whatever_context(format!(
+            "Failed to read file metadata for dynamic library {library_path}"
+        ))?
+        .modified()
+        .whatever_context(format!(
+            "Failed to determine last-modified time for dynamic library {library_path}"
+        ))?;
+
+    for source_file in source_files {
+        let last_edited = fs::metadata(source_file)
+            .whatever_context(format!(
+                "Failed to read file metadata for source file {source_file}"
+            ))?
+            .modified()
+            .whatever_context(format!(
+                "Failed to determine last-modified time for source file {source_file}"
+            ))?;
+        if last_edited > last_built {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Builds a dynamic library using Verilator serving as the runtime for the
+/// specified Verilog module. If DPI functions are given, `rustc` compiles them
+/// before they are linked with the library.
+///
+/// First, we set up the artifact directories (let us assume the top-level
+/// directory is called "artifacts"):
+/// ```text
+/// artifacts/
+/// ├─ ffi/
+/// ├─ obj_dir/
+/// ├─ dpi/
+/// ```
+///
+/// If there are any DPI functions, we (re)build them (see
+/// [`build_dpi_if_needed`]). It is important that this function is a nop when
+/// there no DPI functions because invoking `rustc` takes a long time.
+///
+/// Then, if the DPI files were rebuilt, any Verilog source code has been
+/// edited, or the `options` force rebuilding, we proceed in (re)building the
+/// dynamic library. Otherwise, the function returns the library path
+/// immediately here.
+///
+/// Next, the FFI wrappers are rebuilt (although we could probably be smarter
+/// about this and only rebuild if the module's source file was edited).
+///
+/// Finally, we invoke `verilator` and return the library path as well as
+/// whether the library was rebuilt.
+///
+/// This function is not thread-safe; the `artifact_directory` must be guarded.
+///
+/// See [`build_ffi`] for specific information on the functions accessible in
+/// the returned library.
+#[allow(clippy::too_many_arguments)]
+pub fn build_library(
+    source_files: &[Utf8PathBuf],
+    build_target: BuildTarget,
+    include_directories: &[Utf8PathBuf],
+    dpi_functions: &[&'static dyn DpiFunction],
+    top_module: &str,
+    top_module_mangled: MangledVerilatorNameRef,
+    ports: &[(&str, usize, usize, PortDirection)],
+    artifact_directory: &Utf8Path,
+    options: &VerilatorRuntimeOptions,
+    config: &VerilatedModelConfig,
+    verilator_version: VerilatorVersion,
+    on_rebuild: impl FnOnce() -> Result<(), VerilatorError>,
+) -> Result<(Utf8PathBuf, bool), VerilatorError> {
+    let ffi_artifact_directory = artifact_directory.join("ffi");
+    fs::create_dir_all(&ffi_artifact_directory).whatever_context(
+        "Failed to create ffi/ subdirectory under artifacts directory",
+    )?;
+    let verilator_artifact_directory = artifact_directory.join("obj_dir");
+    let dpi_artifact_directory = artifact_directory.join("dpi");
+    fs::create_dir_all(&dpi_artifact_directory).whatever_context(
+        "Failed to create dpi/ subdirectory under artifacts directory",
+    )?;
+    let shared_library_name = format!("marlin_V{top_module_mangled}");
+    let shared_library_path = verilator_artifact_directory
+        .join(format!("lib{shared_library_name}.so"));
+    let static_library_path = verilator_artifact_directory
+        .join(format!("libV{top_module_mangled}.a"));
+    let libverilated_path = verilator_artifact_directory.join("libverilated.a");
+
+    let (dpi_file, dpi_rebuilt) = bind_dpi_if_needed(
+        top_module_mangled,
+        dpi_functions,
+        &dpi_artifact_directory,
+    )
+    .whatever_context("Failed to build DPI functions")?;
+
+    if !options.force_verilator_rebuild
+        && (!needs_verilator_rebuild(
+            source_files,
+            &verilator_artifact_directory,
+        )
+        .whatever_context("Failed to check if artifacts need rebuilding")?
+            && !dpi_rebuilt)
+    {
+        return Ok((shared_library_path, false));
+    }
+
+    on_rebuild()?;
+
+    let _ffi_wrappers = build_ffi(
+        &ffi_artifact_directory,
+        top_module_mangled,
+        ports,
+        config.enable_tracing,
+        verilator_version,
+    )
+    .whatever_context("Failed to build FFI wrappers")?;
+
+    // bug in verilator#5226 means the directory must be relative to -Mdir
+    // TODO: compute relative path explicitly
+    let ffi_wrappers = Utf8Path::new("../ffi/ffi.cpp");
+
+    let mut cflags = vec!["-shared".into(), "-fpic".into()];
+    if let Some(cxx_standard) = config.cxx_standard {
+        cflags.push(
+            match cxx_standard {
+                CxxStandard::Cxx98 => "-std=c++98",
+                CxxStandard::Cxx11 => "-std=c++11",
+                CxxStandard::Cxx14 => "-std=c++14",
+                CxxStandard::Cxx17 => "-std=c++17",
+                CxxStandard::Cxx20 => "-std=c++20",
+                CxxStandard::Cxx23 => "-std=c++23",
+                CxxStandard::Cxx26 => "-std=c++26",
+            }
+            .into(),
+        );
+    }
+
+    // https://github.com/verilator/verilator/blob/master/docs/guide/faq.rst#why-do-i-get-undefined-reference-to-sc_time_stamp
+    cflags.push("-DVL_TIME_CONTEXT".into());
+
+    for additional_include in &config.additional_includes {
+        cflags.push(format!("-I{additional_include}"));
+    }
+    for additional_library_path in &config.additional_library_paths {
+        cflags.push(format!("-L{additional_library_path}"));
+    }
+
+    let cflags_string = cflags.join(" ");
+
+    let makeflags = format!("CXX={}", config.cxx_executable);
+
+    let mut verilator_command = Command::new(&options.verilator_executable);
+    verilator_command
+        .args(["--cc", "-sv", "-j", "0", "--build"])
+        .args(["-CFLAGS", &cflags_string])
+        .args(["-MAKEFLAGS", &makeflags])
+        .args(["--Mdir", verilator_artifact_directory.as_str()])
+        .args(["--top-module", top_module])
+        .args(source_files)
+        .arg(ffi_wrappers);
+    for include_directory in include_directories {
+        verilator_command.arg(format!("-I{include_directory}"));
+    }
+    if let Some(dpi_file) = dpi_file {
+        verilator_command.arg(dpi_file);
+    }
+    if config.verilator_optimization != 0 {
+        let level = config.verilator_optimization;
+        if (1..=3).contains(&level) {
+            verilator_command.arg(format!("-O{level}"));
+        } else {
+            whatever!("Invalid Verilator optimization level: {}", level);
+        }
+    }
+    for ignored_warning in &config.ignored_warnings {
+        verilator_command.arg(format!("-Wno-{ignored_warning}"));
+    }
+    if let Some(waveform) = config.enable_tracing {
+        match waveform {
+            Waveform::Vcd => {
+                verilator_command.arg(
+                    if verilator_version < verilator_version!(5 036) {
+                        "--trace"
+                    } else {
+                        "--trace-vcd"
+                    },
+                );
+            }
+            Waveform::Fst => {
+                verilator_command.arg("--trace-fst");
+            }
+        }
+    }
+    println!("{verilator_command:?}");
+    let verilator_output = verilator_command
+        .output()
+        .whatever_context("Invocation of Verilator failed")?;
+
+    if !verilator_output.status.success() {
+        whatever!(
+            "Invocation of verilator failed with nonzero exit code {}\n\n--- STDOUT ---\n{}\n\n--- STDERR ---\n{}",
+            verilator_output.status,
+            String::from_utf8_lossy(&verilator_output.stdout),
+            String::from_utf8_lossy(&verilator_output.stderr)
+        );
+    }
+
+    // `--build` will create a static library at `lib{prefix}.a``:
+    // - https://veripool.org/guide/latest/exe_verilator.html#cmdoption-build
+    // - https://veripool.org/guide/latest/files.html
+
+    let mut cxx_command = Command::new(&config.cxx_executable);
+    cxx_command
+        .arg("-shared")
+        .args(cflags)
+        .arg(match build_target {
+            BuildTarget::Linux => "-Wl,--whole-archive",
+            BuildTarget::MacOS => "-Wl,-force_load",
+        })
+        .args(["-o", shared_library_path.as_str()])
+        .args([static_library_path, libverilated_path]);
+    if matches!(build_target, BuildTarget::Linux) {
+        cxx_command.arg("-Wl,--no-whole-archive");
+    }
+    if matches!(config.enable_tracing, Some(Waveform::Fst)) {
+        cxx_command.arg("-lz");
+        if verilator_version >= verilator_version!(5 050) {
+            cxx_command.arg("-llz4");
+        }
+    }
+    let cxx_output = cxx_command
+        .output()
+        .whatever_context("Invocation of C++ compiler failed")?;
+
+    if !cxx_output.status.success() {
+        whatever!(
+            "Invocation of C++ failed with nonzero exit code {}\n\n--- STDOUT ---\n{}\n\n--- STDERR ---\n{}",
+            cxx_output.status,
+            String::from_utf8_lossy(&cxx_output.stdout),
+            String::from_utf8_lossy(&cxx_output.stderr)
+        );
+    }
+
+    Ok((shared_library_path, true))
+}
