@@ -3,6 +3,7 @@ from collections import Counter
 import os
 import random
 from cocotb.triggers import Timer
+from direct_memory import MemoryHost, native_field
 
 OPCODES = {"create": 0, "slice": 1, "clear": 2, "remove": 3, "reclaim": 4, "append": 5, "read": 6}
 ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape"}
@@ -13,7 +14,9 @@ def signed(value):
     return value - (1 << 32) if value & (1 << 31) else value
 
 
-class Driver:
+class Driver(MemoryHost):
+    read_requests = native_field('read_requests','reads')
+    write_requests = native_field('write_requests','writes')
     SIGNALS = ("busy", "done", "error_code", "cmd_ready", "result_view", "result_empty",
                "write_ready", "read_valid", "read_data", "memory_valid", "memory_write",
                "memory_address", "memory_write_data", "memory_response_ready", "cfg_ready",
@@ -37,8 +40,8 @@ class Driver:
         self.before_clock = None
         self.axi = None
         if hasattr(dut, "m_axi_awvalid"):
-            from word_service import WordService
-            self.axi = WordService(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
+            from word_service import create_service
+            self.axi = create_service(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
 
     def close(self):
         if self.axi is not None:
@@ -54,7 +57,8 @@ class Driver:
     async def tick(self):
         self.dut.clk.value = 0
         if self.axi is not None:
-            self.axi.drive()
+            if not self.native_memory:
+                self.axi.drive()
         else:
             response = self.pending is not None and self.pending[0] == 0
             self.set(memory_ready=int(self.pending is None and (not self.stalls or self.rng.randrange(4) != 0)),
@@ -64,7 +68,8 @@ class Driver:
         await Timer(5, units="ns")
         before = self.sample()
         if self.axi is not None:
-            self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
+            if not self.native_memory:
+                self.axi.step(self.axi.sample(), bool(int(self.dut.reset.value)))
         elif int(self.dut.reset.value):
             self.pending = self.held_request = self.held_read = None
             self.request_cycle = None
@@ -117,6 +122,11 @@ class Driver:
         self.set(reset=0)
         _, after = await self.tick()
         assert after["cmd_ready"] and not after["busy"]
+        if self.native_memory:
+            if self.axi.loaded:
+                self.memory[:] = await self.read_memory()
+            else:
+                await self.load_memory()
 
     async def configure(self, space, address, value=None, *, expect_error=False):
         self.set(cfg_valid=1, cfg_space=space, cfg_address=address,
@@ -144,6 +154,7 @@ class Driver:
         self.chunk_limit = media.get("chunk_limit")
         await self.configure(0, 3, self.slots if self.chunk_limit is None else self.chunk_limit)
         self.memory[:len(media["samples"])] = [value & MASK32 for value in media["samples"]]
+        await self.load_memory()
         refs = Counter()
         for index, view in enumerate(media["views"]):
             descriptor = 0
@@ -164,6 +175,7 @@ class Driver:
 
     async def snapshot(self):
         await self.fence()
+        self.memory[:] = await self.read_memory()
         views, slots, free = [await self.configure(0, index) for index in range(3)]
         assert views <= self.views and free <= slots <= self.slots
         result = {"chunk_frames": self.chunk_frames, "samples": [signed(x) for x in self.memory[:slots*self.chunk_frames]],

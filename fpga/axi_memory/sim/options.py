@@ -36,6 +36,9 @@ def environment(args):
 
 def create_memory(dut, words, *, seed=0, word_only=False, output=None):
     mode = os.environ.get("AXI_MEMORY_MODEL", "instant")
+    if mode == 'instant':
+        from direct_memory import DirectMemory
+        return DirectMemory(dut, words)
     if mode == "dramsim3":
         from dram_timing import DramTiming
         timing = DramTiming(library=os.environ["AXI_DRAM_LIBRARY"], config=os.environ["AXI_DRAM_CONFIG"],
@@ -50,18 +53,28 @@ def create_memory(dut, words, *, seed=0, word_only=False, output=None):
     return memory
 
 
+def direct_sources(sources, top, mode):
+    if mode != 'instant':
+        return sources
+    return [HERE/'tests/direct'/path.name if path.stem == top else path for path in sources]+[HERE/'tests/axi_direct_memory.sv']
+
+
 def metadata():
     profile = Path(os.environ.get("AXI_DRAM_CONFIG", HERE/"configs/zynq7010-ddr3-1066-x16.ini"))
     library = Path(os.environ.get("AXI_DRAM_LIBRARY", "missing"))
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
-    return dict(model=os.environ.get("AXI_MEMORY_MODEL", "instant"),
+    mode = os.environ.get('AXI_MEMORY_MODEL','instant')
+    result = dict(model=mode, backend='systemverilog' if mode == 'instant' else 'cocotb',
+                purpose='realistic' if mode == 'dramsim3' else 'functional' if mode == 'instant' else 'diagnostic',
                 fabric_hz=int(os.environ.get("AXI_FABRIC_HZ", "100000000")),
                 physical_base=int(os.environ.get("AXI_PHYSICAL_BASE", str(0x01000000))),
                 fixed_cycles=int(os.environ.get("AXI_MEMORY_CYCLES", "7")),
                 axi_data_width=int(os.environ.get("AXI_DATA_WIDTH", "32")),
                 word_transfers=os.environ.get("AXI_WORD_TRANSFERS") == "1",
-                profile=str(profile), profile_sha256=digest(profile), library_sha256=digest(library),
-                model_patch_sha256=digest(HERE/"native/drain.patch"),
-                model_revision=dict(line.split("=", 1) for line in (HERE/"dramsim3.lock").read_text().splitlines())["revision"],
                 revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                 working_tree_dirty=bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT)))
+    if mode == 'dramsim3':
+        result.update(profile=str(profile), profile_sha256=digest(profile), library_sha256=digest(library),
+            model_patch_sha256=digest(HERE/'native/drain.patch'),
+            model_revision=dict(line.split('=',1) for line in (HERE/'dramsim3.lock').read_text().splitlines())['revision'])
+    return result

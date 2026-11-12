@@ -7,6 +7,16 @@ import re
 HERE = Path(__file__).resolve().parent
 FPGA = HERE.parent
 
+ADMIN = """input wire [1:0] sim_image_request,
+    output wire sim_image_done,
+    input wire [4:0] sim_control,
+    input wire [31:0] sim_fail_token,
+    output wire [31:0] sim_fail_seen,
+    output wire sim_busy, output wire sim_active, output wire sim_error, output wire sim_write,
+    output wire [31:0] sim_index,
+    output wire [63:0] sim_reads, output wire [63:0] sim_writes,
+    output wire [31:0] sim_capacity"""
+
 
 def header(text):
     match = re.search(r"module (\w+) #\((.*?)\)\s*\((.*?)\);", text, re.S)
@@ -21,6 +31,21 @@ def header(text):
             name = part
         ports.append((declaration, name))
     return match, ports
+
+
+def direct_top(source, endpoint=False):
+    match, ports = header(source)
+    params = match[2].strip()
+    if endpoint:
+        params += ",\n    parameter integer SIM_WORDS = 8192,\n    parameter [31:0] SIM_PHYSICAL_BASE = 32'h01000000"
+    ports = [(prefix.replace('input wire','output wire') if name.startswith('m_axi_') else prefix, name)
+             for prefix,name in ports]
+    text = source[:match.start()]+f'module {match[1]} #(\n'+params+'\n) (\n'
+    text += ',\n'.join('    '+p+n for p,n in ports)+',\n    '+ADMIN+'\n);'
+    body = source[match.end():].rsplit('endmodule',1)[0]
+    width, words, base = ('DATA_WIDTH','SIM_WORDS','SIM_PHYSICAL_BASE') if endpoint else ('AXI_DATA_WIDTH','SLOTS*CHUNK_FRAMES','PHYSICAL_BASE')
+    body += f'    axi_direct_memory #(.DATA_WIDTH({width}),.WORDS({words}),.BASE({base})) sim_memory (.*);\nendmodule\n'
+    return '// Generated functional simulation top; do not edit by hand.\n'+text+body
 
 
 def generate():
@@ -71,6 +96,10 @@ endmodule
         body = "\n    "+declaration+name+" = core."+name+";"+body
     text += body
     result[HERE/"tests/loop_pipeline_axi_tb.sv"] = "// Generated integration testbench; do not edit by hand.\n"+text
+    direct = {HERE/'tests/direct'/path.name:direct_top(value) for path,value in result.items()}
+    for name in ('axi_master','word_axi','chunk_axi'):
+        direct[HERE/'tests/direct'/f'{name}.sv'] = direct_top((HERE/'rtl'/f'{name}.sv').read_text(),endpoint=True)
+    result.update(direct)
     return result
 
 

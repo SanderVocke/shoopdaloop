@@ -4,6 +4,13 @@ from options import create_memory
 from axi_memory import summary
 
 
+def create_service(owner, dut, **kwargs):
+    if os.environ.get('AXI_MEMORY_MODEL','instant') == 'instant':
+        from direct_memory import DirectMemory
+        return DirectMemory(dut, owner.memory)
+    return WordService(owner,dut,**kwargs)
+
+
 class WordService:
     def __init__(self, owner, dut, *, seed=0, output=None):
         self.owner = owner

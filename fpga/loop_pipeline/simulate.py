@@ -15,7 +15,7 @@ CONFIGS={"default":(8,16,32,64,32,64,32,16,2,2), "small":(3,5,11,16,8,16,16,4,1,
 MEDIA_CONFIGS={"default":(32,32,32),"small":(16,8,4),"odd":(7,11,8),"8x8":(64,1024,32)}
 PARAMS=("LOOP_DEPTH","REQUEST_DEPTH","EVENT_DEPTH","PROGRAM_DEPTH","STATE_DEPTH","JOB_DEPTH","MAX_FRAMES","BUFFERS","INPUT_PORTS","OUTPUT_PORTS")
 sys.path.insert(0,str(ROOT/'fpga/axi_memory/sim'))
-from options import add_options, environment
+from options import add_options, environment, direct_sources
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -64,7 +64,7 @@ def main():
         axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
         test_top=ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv' if axi else HERE/'tests/loop_pipeline_tb.sv'
         if axi:parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
-        runner.build(verilog_sources=[*sources,*(axi_sources if axi else []),test_top],includes=[ROOT/'fpga/state_processor/rtl'],
+        runner.build(verilog_sources=direct_sources([*sources,*(axi_sources if axi else []),test_top],top,args.memory_model),includes=[ROOT/'fpga/state_processor/rtl'],
             hdl_toplevel=top,parameters=parameters,build_args=['--Wall','--timing','--timescale','1ns/1ps'],
             build_dir=output/'build',always=True,waves=args.waves,log_file=output/'build.log')
         results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_media_loop_pipeline',seed=20261110,

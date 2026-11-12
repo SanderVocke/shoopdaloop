@@ -13,7 +13,7 @@ ROOT = HERE.parents[1]
 CONFIGS = {"default": (16, 32, 4, 4), "small": (8, 4, 2, 2),
            "odd": (9, 8, 3, 3), "minimum": (3, 1, 1, 1)}
 sys.path.insert(0, str(ROOT/"fpga/axi_memory/sim"))
-from options import add_options, environment
+from options import add_options, environment, direct_sources
 
 
 def main():
@@ -48,7 +48,7 @@ def main():
         if axi:
             sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv", "chunk_memory_axi.sv")]
             parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
-        runner.build(verilog_sources=sources, includes=[ROOT/"fpga/state_processor/rtl"],
+        runner.build(verilog_sources=direct_sources(sources,top,args.memory_model), includes=[ROOT/"fpga/state_processor/rtl"],
                      hdl_toplevel=top, parameters=parameters,
                      build_args=["--Wall", "--timescale", "1ns/1ps"], build_dir=output / "build",
                      always=True, waves=args.waves, log_file=output / "build.log")

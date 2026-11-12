@@ -35,10 +35,10 @@ async def compare(dut, operations, seed, case=None):
             assert status == expected["status"]
             assert samples == expected["samples"]
             if request["operation"]["kind"] == "fence":
-                assert [signed(x) for x in driver.memory] == expected["memory"]
+                assert [signed(x) for x in await driver.read_memory()] == expected["memory"]
         assert await driver.command({"kind": "fence"}) == (0, [])
         results = trace["payload"]["value"]["results"]
-        assert [signed(x) for x in driver.memory] == (results[-1]["memory"] if results else case["samples"])
+        assert [signed(x) for x in await driver.read_memory()] == (results[-1]["memory"] if results else case["samples"])
         assert driver.burst is None and driver.pending is None
     except BaseException:
         wire.dump(document("chunk_case", case), OUTPUT / "failure.case.json")
@@ -134,7 +134,7 @@ async def buffering_protocol(dut):
     driver.set(response_ready=1)
     await driver.tick()
     driver.set(response_ready=0)
-    assert [signed(x) for x in driver.memory[:frames]] == payload
+    assert [signed(x) for x in (await driver.read_memory())[:frames]] == payload
     assert await driver.command({"kind": "retire", "chunk": 0}, 3) == (0, [])
     assert await driver.command({"kind": "write", "chunk": 0, "offset": 0, "samples": [91]}, 4) == (0, [])
     assert await driver.command({"kind": "read", "chunk": 0, "offset": 0, "frames": frames}, 5) == (0, [91]+payload[1:])
@@ -169,7 +169,7 @@ async def buffering_protocol(dut):
     driver.pause = False
     assert await driver.command({"kind": "fence"}, 73, stalls=False) == (0, [])
     assert await driver.command({"kind": "read", "chunk": 0, "offset": 0, "frames": frames}, 74, stalls=False) == (0, replacement)
-    assert [signed(x) for x in driver.memory[:frames]] == replacement
+    assert [signed(x) for x in (await driver.read_memory())[:frames]] == replacement
 
     # A completed prefetch is invalidated, and a queued one releases its credit.
     await driver.reset(initial)
