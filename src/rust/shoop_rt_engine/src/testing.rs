@@ -7,7 +7,6 @@
 //! both together.
 //!
 //! The standard renderer's callbacks and the control endpoint do not allocate.
-//! The experimental FPGA reference can allocate when its elastic media grows.
 
 use alloc::boxed::Box;
 use alloc::vec;

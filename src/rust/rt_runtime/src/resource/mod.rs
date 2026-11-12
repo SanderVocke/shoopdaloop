@@ -24,8 +24,6 @@ pub use midi_index::{MidiIndexConfig, MidiIndexInfo, MidiIndexUsage, MidiIndexWo
 use midi_index::{MidiOwner, MidiPool};
 pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod audio_backing;
-mod elastic_audio;
-pub use elastic_audio::ElasticAudioWork;
 pub mod indexed_midi;
 mod midi_backing;
 pub use midi_backing::{MidiEditId, MidiImportId, MidiStoreId};

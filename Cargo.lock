@@ -4580,28 +4580,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rt_fpga_reference"
-version = "0.3.0"
-dependencies = [
- "schemars",
- "serde",
- "shoop_wasm_test_support",
-]
-
-[[package]]
-name = "rt_fpga_testbench"
-version = "0.3.0"
-dependencies = [
- "rt_fpga_reference",
- "rt_runtime",
- "schemars",
- "serde",
- "serde_json",
- "shoop_loops",
- "shoop_wasm_test_support",
-]
-
-[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [

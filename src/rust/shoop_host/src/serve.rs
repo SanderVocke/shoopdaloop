@@ -299,13 +299,7 @@ pub fn run_with_ready(
         Box::new(backend),
         ServiceOptions {
             master_auto_connect: config.master_auto_connect,
-            loop_smoothing_ms: if std::env::var("SHOOP_AUDIO_RENDER").as_deref()
-                == Ok("fpga-reference")
-            {
-                0
-            } else {
-                config.loop_smoothing_ms
-            },
+            loop_smoothing_ms: config.loop_smoothing_ms,
         },
     )?;
     if let Some(controller) = crate::host_graph::controller(host.as_ref().expect("running host")) {

@@ -80,3 +80,17 @@ suites. Full-pipeline oracle replacement is still pending stages 4–6.
 
 Executable paths under `fpga/` no longer import or invoke the old reference.
 Final deletion and clean-build validation remain stages 7/8.
+
+## Stage 7 retirement complete
+
+Both old crates, CLI, Python package/schema, hardware-shaped JSON examples and
+model-backed tests are gone, including their Cargo.lock entries. Dormant elastic
+app storage/hooks/counters and old benchmark selectors are removed. The ordinary
+CPU benchmark is retained as `cpu_benchmark`; production numeric measurements
+use `rt_backend_testbench`'s `cpu` example and `benchmark_production_cpu.py`.
+No active Rust/Python/TOML/YAML path references the retired packages/tool.
+`shoop_app_reference` and other independent legacy application fixtures remain.
+Active guides link to the new contract; old benchmark notes explicitly say their
+commands/tools are historical. Fresh comparisons pass after deleting the old
+executable. The concurrent DDR metadata implementation and its standalone cache
+checks remain intact.

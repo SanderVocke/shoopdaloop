@@ -686,9 +686,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
     pub fn resource_work(&self) -> resource::Work {
         self.resources.work()
     }
-    pub fn elastic_audio_work(&self) -> resource::ElasticAudioWork {
-        resource::ElasticAudioWork::default()
-    }
+
     pub fn render_work(&self) -> resource::RenderWork {
         self.resources.render_work()
     }

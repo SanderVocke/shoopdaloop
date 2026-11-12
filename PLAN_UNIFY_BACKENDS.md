@@ -304,31 +304,31 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
   retirement/reuse, pinned reads, dirty writeback/fences, AXI 32/64-bit bursts,
   backpressure, reset and fault containment checks. Keep DRAMsim3/ctypes, memory
   services, useful codecs, timing instrumentation and synthesis entry points.
-- [ ] Gate each old test's removal on its mapped replacement. Update all simulator
+- [x] Gate each old test's removal on its mapped replacement. Update all simulator
   entry points to the new runner/helpers. Run the full subsystem matrix once;
   stop depending on the old CLI before deleting it.
 
 ### 7. Retire the reference implementation and obsolete tooling
 
-- [ ] Remove `rt_fpga_reference` and old `rt_fpga_testbench` crates, old executable
+- [x] Remove `rt_fpga_reference` and old `rt_fpga_testbench` crates, old executable
   and workspace/lockfile dependencies. Remove the app's `FpgaReference` enum/parser
   mode, `rt_runtime/src/fpga.rs`/`executor_fpga.rs` execution machinery, obsolete
   processor/planner hooks, reference-backed elastic-store branches and engine
   special cases. Keep only separately justified production/shared primitives.
-- [ ] Remove or replace old `scripts/fpga_testbench` schema/API/tests/examples,
+- [x] Remove or replace old `scripts/fpga_testbench` schema/API/tests/examples,
   fixture generators and trace variants that assume the deleted model. Retain
   useful strict JSON validation/schema generation under the new contract. No
   compatibility shim may execute the deleted model or silently accept old cases
   with changed meaning.
-- [ ] Update app/host descriptions, native/worklet configuration, benchmark mode
+- [x] Update app/host descriptions, native/worklet configuration, benchmark mode
   lists and all active test/build entry points. Delete reference-only elastic
   comparison tooling; retain general CPU/RTL performance tooling with the new
   labels. Preserve useful test scenarios in the new specification.
-- [ ] Update `FPGA_ARCHITECTURE.md` and relevant runtime/FPGA READMEs with the new
+- [x] Update `FPGA_ARCHITECTURE.md` and relevant runtime/FPGA READMEs with the new
   oracle, numeric contract, supported profile and commands. Label historical
   reference benchmark documents as historical. Do not delete unrelated legacy
   application/reference engines or their feature-parity tests.
-- [ ] Gate with dependency/symbol searches, fresh builds and every retained runner
+- [x] Gate with dependency/symbol searches, fresh builds and every retained runner
   from fresh output paths. No active code/import/command may require retired
   crates or stale `fpga-reference` binaries. Check the coverage map is complete.
 
@@ -471,3 +471,20 @@ The remaining configuration-matrix gate is still running. Current evidence is
 exhaustion, stale generations, metadata errors, late writeback, reset with old
 traffic and automatic view creation. Schema/Python tests (six), Rust contract
 tests, warnings-denying native host build, formatting and test policy pass.
+
+Stage 6 completed: all four TP configurations, three SP configurations, two JP
+configurations, four chunk configurations, three media/resolver/pipeline
+configurations and AXI32/64 endpoint checks pass without the retired CLI.
+The expanded generation/descriptor/metadata/late-writeback/reset fault gate also
+passes. `subsystem-gates.json` records the complete executed matrix.
+
+Stage 7 completed: removed both reference crates, their lockfile entries, the old
+CLI/Python schema/examples/tests and all remaining app/benchmark integration.
+No executable Rust/Python/build dependency references them. The unrelated legacy
+application/reference engines remain. Active architecture/runtime/FPGA guides
+use the production oracle; earlier measurements are labeled historical. Fresh
+three-scenario instant-memory execution passes with the retired executable
+deleted. The warnings-denying workspace build passes. New production CPU tooling
+measures actual process scopes under heap guards; `cpu-final.json` records no
+material default-float regression and the production fixed-point cost. Full
+native/Wasm and final synthesis gates remain running for stage 8.

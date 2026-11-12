@@ -55,7 +55,7 @@ your environment. Realistic runs additionally need the native timing library
 built as described below.
 
 ```sh
-python -m pip install -r fpga/axi_memory/requirements.txt -r scripts/fpga_testbench/requirements.txt
+python -m pip install -r fpga/axi_memory/requirements.txt -r scripts/rt_backend_testbench/requirements.txt
 python fpga/axi_memory/simulate_direct.py
 python fpga/chunk_memory/simulate.py --config all --axi-data-width 64
 python fpga/loop_pipeline/simulate.py --media --config small

@@ -571,6 +571,23 @@ impl<S: OracleSample> Observer<S> {
     }
 }
 pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> {
+    run_monitored::<S, _>(scenario, &mut Direct)
+}
+
+pub trait ProcessMonitor {
+    fn process<T>(&mut self, run: impl FnOnce() -> T) -> T;
+}
+struct Direct;
+impl ProcessMonitor for Direct {
+    fn process<T>(&mut self, run: impl FnOnce() -> T) -> T {
+        run()
+    }
+}
+
+pub fn run_monitored<S: OracleSample, M: ProcessMonitor>(
+    scenario: &wire::Scenario,
+    monitor: &mut M,
+) -> Checked<wire::Result> {
     let Prepared {
         mut runtime,
         mut control,
@@ -718,24 +735,26 @@ pub fn run<S: OracleSample>(scenario: &wire::Scenario) -> Checked<wire::Result> 
             .collect();
         let mut outputs =
             vec![vec![S::ZERO; scenario.quantum as usize]; scenario.output_ports as usize];
+        let input_refs = inputs.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let mut output_refs = outputs
+            .iter_mut()
+            .map(Vec::as_mut_slice)
+            .collect::<Vec<_>>();
         S::begin_quantum(frame.0);
-        checked(
+        checked(monitor.process(|| {
             runtime.process(
                 AudioBlock {
                     frame,
                     frames: scenario.quantum as usize,
-                    inputs: &inputs.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-                    outputs: &mut outputs
-                        .iter_mut()
-                        .map(Vec::as_mut_slice)
-                        .collect::<Vec<_>>(),
+                    inputs: &input_refs,
+                    outputs: &mut output_refs,
                 },
                 MidiBlock {
                     inputs: &[],
                     outputs: &mut [],
                 },
-            ),
-        )?;
+            )
+        }))?;
         S::end_quantum();
         let states = scenario
             .loops

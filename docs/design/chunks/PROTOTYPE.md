@@ -161,9 +161,7 @@ final measurement report.
 
 ## FPGA architecture reference
 
-A fourth, audio-only renderer, `SHOOP_AUDIO_RENDER=fpga-reference`, executes a
-readable Rust compiler/state/job model. It requires
-`SHOOP_AUDIO_BENCH_AUDIO_ONLY=1`. Unlike the chunk experiments, it disables
-history and smoothing and does not support effects, MIDI, or grab scenarios.
-See [the reference guide](../../../src/rust/rt_fpga_reference/README.md) for the
-architecture boundaries, numerical semantics, and comparison commands.
+The experimental fourth FPGA-reference renderer has been retired. FPGA behavior
+is now compared against the production backend using its compile-time Q8.24
+policy; float remains the normal application default. See
+[the verification guide](../../../fpga/verification/README.md).

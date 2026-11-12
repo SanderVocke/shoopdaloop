@@ -1,7 +1,7 @@
 # FPGA state processor
 
-A synthesizable SystemVerilog prototype of `rt_fpga_reference::state::StateProcessor`.
-It supports the six raw-state node instructions plus shared-loop playback/capture,
+A synthesizable SystemVerilog state processor, loaded from production-plan lowering.
+It supports raw-state node instructions, explicit silence, and shared-loop playback/capture,
 a multicycle single-issue engine,
 synchronous program/state RAMs, and a finite job FIFO. It implements state execution
 only. Transitions, logical clocks, sample processing, view storage, and the host
@@ -11,10 +11,6 @@ transport are outside this block.
 Its logical instructions read the settled loop RAM directly while view handles
 and ramps remain in node-state RAM. The raw-state instruction ABI remains usable
 for isolated fixtures.
-
-Status: lint, synthesis, and behavioral comparison against the actual Rust state
-executor pass for the configurations and cases documented below. These checks
-do not constitute formal equivalence or a clock/deadline guarantee.
 
 ## Modules
 
@@ -96,7 +92,7 @@ Each accepted read-job enqueue also pulses `read_intent_valid` with
 and cannot stall state execution. The combined pipeline buffers these intents
 and resolves them while state execution continues.
 
-## Packed ABI (format-version-3 bench)
+## Packed RTL ABI
 
 Bit positions below describe packed integers, independent of a host transport's
 byte order. A byte-oriented transport should encode the least significant byte
@@ -167,7 +163,7 @@ Opcodes `0x06` (logical playback) and `0x07` (logical capture) use the same
 96-bit instruction layout: arg0 is loop slot, arg1/arg2 are the low/high halves
 of its 32-bit generation, arg3 is the view-state address, and arg4 is destination
 or source buffer respectively. The bounded slot/address/buffer fields remain
-16 bits. Rust's `LogicalPlayback` / `LogicalCapture` compiler nodes emit these
+16 bits. Production-plan lowering emits these
 instructions without allocating mode, position or length words in node state.
 
 The `loop_read_valid/ready/slot` port requests one record. A transferred request
@@ -254,133 +250,19 @@ The default configuration's initial Yosys 0.52 ECP5 synthesis reports:
 Lint used Verilator 5.032. Resource counts are synthesis estimates; no board
 pinout, placement, routing, timing closure, or clock-frequency claim is included.
 
-## Behavioral comparison
+## Verification
 
-The cocotb/Verilator bench uses the versioned JSON interface in
-`scripts/fpga_testbench`. Expected results come from the actual Rust executable's
-`trace` command. Python only creates stimulus, packs/unpacks the RTL ABI, drives
-handshakes, and compares results; it does not implement a second state processor.
-
-Run Cargo in the repository's development environment. With Verilator, Make, a
-C++ compiler, and Python 3.12 available:
+Full musical/state/media behavior is compared with the production float and
+Q8.24 runtime via [common sessions](../verification/README.md). Static lowering
+uses production signal and timing compilation. There is no software FPGA executor.
+Standalone tests preserve hardware-specific protocol, configuration, stream,
+cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python3 -m venv work/fpga-sim-venv
-. work/fpga-sim-venv/bin/activate
-python -m pip install -r fpga/state_processor/requirements.txt
-python fpga/state_processor/simulate.py
+python fpga/state_processor/simulate.py --config all
 ```
 
-The runner builds `rt_fpga_testbench`, compiles three Verilator models, and runs
-four cocotb tests per configuration. It exits nonzero for simulator failures,
-missing or skipped tests, architectural mismatches, and protocol violations.
-Set `SHOOP_FPGA_REFERENCE` to use an explicitly built reference executable instead.
-
-For each case, the driver resets the block, loads and reads back the program and
-initial state through the configuration port, then applies each step's settled
-writes without resetting between quanta. It waits for completion, drains accepted
-jobs with bounded randomized backpressure, and reads back every logical state
-entry. The shared comparator checks exact job order, full state, and result,
-including retained jobs and state writes after an execution failure. It also
-checks for extra jobs after draining and stability of stalled descriptors.
-
-Queue capacity is the actual elaborated `JOB_DEPTH`; the runner does not silently
-substitute a larger FIFO. Out-of-vector settled writes are rejected by the host
-driver before starting execution, matching the Rust trace orchestration. This
-tests the driver boundary; in-program address/type checks execute in RTL.
-Operands exceeding the bounded 16-bit ABI are rejected, not truncated. View IDs
-emitted in JSON must fit that interface's 32-bit ID representation; state words,
-positions, and lengths retain their full 64-bit representation.
-
-Directed tests cover every instruction and job variant, both disabled paths,
-high-bit nonzero enable values, extreme ramp endpoints/counters, zero and maximum
-quantum sizes, aliased ramps, simultaneous playback/capture, logical and physical
-address bounds, type/range errors, partial failure, FIFO admission and exhaustion,
-full FIFO, pointer wrap across repeated quanta, the last program/state entries,
-and a program generated by the Rust graph compiler. Cases exceeding a physical
-configuration's program/state capacity are counted separately in the summary.
-
-Two additional protocol tests per configuration cover configuration arbitration
-and response timing, blocked writes/restarts while busy, invalid counts/opcodes,
-nonempty-FIFO refusal, and reset both during execution and with undrained jobs.
-Reset checks include retention of state/program RAM and a subsequent Rust-matched
-run from the retained state. These hardware-specific checks have explicit
-protocol expectations rather than invented Rust enum equivalents.
-
-The initial run used Verilator 5.032, cocotb 1.9.2, and seed `20261110`:
-
-| Program/state/job depth | Directed cases | Seeded cases | Compared quanta |
-| --- | --- | --- | --- |
-| 256/256/256 | 69 | 200 | 693 |
-| 7/11/5 | 70 | 200 | 682 |
-| 1/1/1 | 40 | 200 | 605 |
-| Total | 179 | 600 | 1,980 |
-
-All 779 cases and all six additional protocol/reset test groups passed. No RTL
-correction was required. This is finite behavioral coverage, not an exhaustive
-proof, gate-level simulation, or timing closure.
-
-### Execution latency
-
-The driver measures clock periods from the rising edge accepting a run to the
-rising edge asserting `done`. Directed summaries record counts per case/quantum;
-replays write `replay-cycles.json`. `null` means a settled write failed before a
-run was submitted. Immediate admission errors and empty programs complete at the
-accepting edge and therefore record zero elapsed periods.
-
-The compiler-generated test uses six nodes at Q=32:
-
-```text
-Input 3 -> Gain (0.5) -> Mix -> Output 11
-                         ^  |
-Playback (view 17) -------+  +-> Capture (view 17)
-```
-
-Playback and capture are both enabled. Its persistent program executes Input,
-Playback, Gain, Mix, Capture, and Output, taking `4 + 12 + 6 + 4 + 8 + 4 = 38`
-periods. All three tested quanta measured 38. At an assumed 150 MHz, this is
-`38 / 150,000,000 = 0.2533 microseconds` per state execution.
-
-The supplied record/play example instead branches the gain output to capture
-and to the mix, with playback supplying the other mix input. Its five measured
-executions took `32, 32, 35, 35, 29` periods:
-
-| Mode | Periods | Time at assumed 150 MHz |
-| --- | --- | --- |
-| Capture enabled, playback disabled | 32 | 0.2133 microseconds |
-| Capture disabled, playback enabled | 35 | 0.2333 microseconds |
-| Both disabled | 29 | 0.1933 microseconds |
-
-The measurement ends with jobs queued. It excludes initial program loading,
-settled-state writes, FIFO draining, transition resolution, and execution of
-sample jobs or external-memory accesses. The frequency is an estimate input,
-not a placement/routing result.
-
-### Reproduction and diagnostics
-
-Logs, xUnit results, and JSON coverage summaries go to `work/fpga-state-sim` by
-default. `--output` changes that location. `--seed` and `--random-cases` select
-the deterministic stimulus, and `--config default|small|minimum` selects one
-configuration. `--depths PROGRAM STATE JOBS` overrides the presets.
-
-On a case failure, the bench saves `failure.case.json`,
-`failure.expected.trace.json`, and `failure.observed.json` under the configuration's
-output directory. Replay one case or trace with its matching physical capacity:
-
-```sh
-python fpga/state_processor/simulate.py --config small \
-  --case work/fpga-state-sim/small/failure.case.json --waves
-```
-
-The original upstream example has a six-entry FIFO, so use explicit depths:
-
-```sh
-python fpga/state_processor/simulate.py --depths 32 32 6 \
-  --case scripts/fpga_testbench/examples/record_play.json \
-  --waves --output work/fpga-state-example
-```
-
-`--case` runs only the replay comparison. Expected results are regenerated through
-Rust even when the input is a saved trace. `--waves` records a VCD alongside the
-simulation log; it is optional for the normal regression. Transition and sample
-processing remain outside this bench.
+The subsystem's `check.sh` retains lint and synthesis entry points. Current
+coverage and local evidence are recorded in [the retirement ledger](../verification/MIGRATION.md)
+and [subsystem gates](../verification/subsystem-gates.json). [Historical results](HISTORY.md)
+retain the earlier reference-backed measurements; their commands are retired.

@@ -124,8 +124,7 @@ pub fn midi_out() -> HostPortId {
 
 type Input = Box<dyn FnMut(usize, u64) -> f32>;
 
-/// Engine calls are heap-guarded, except elastic reference callbacks whose heap
-/// operations are measured. Message collection happens outside the guard.
+/// Engine calls are heap-guarded. Message collection happens outside the guard.
 pub struct Harness {
     pub host: OfflineHost,
     pub results: BTreeMap<u64, Outcome>,
@@ -139,8 +138,6 @@ pub struct Harness {
     pub midi: Vec<(u64, Vec<u8>)>,
     /// MIDI events to feed into the host MIDI input at their frames.
     pub midi_input: Vec<(u64, Vec<u8>)>,
-    pub callback_heap: Vec<shoop_wasm_test_support::heap::Counts>,
-    elastic_audio: bool,
 }
 
 impl Harness {
@@ -156,8 +153,6 @@ impl Harness {
             outputs: [Vec::new(), Vec::new()],
             midi: Vec::new(),
             midi_input: Vec::new(),
-            callback_heap: Vec::new(),
-            elastic_audio: false,
         };
         assert_no_heap(|| harness.host.connect()).unwrap();
         harness.pump();
@@ -219,14 +214,7 @@ impl Harness {
                         .unwrap();
                 }
             }
-            if self.elastic_audio {
-                let (result, counts) =
-                    shoop_wasm_test_support::heap::measure(|| self.host.process(count));
-                result.unwrap();
-                self.callback_heap.push(counts);
-            } else {
-                assert_no_heap(|| self.host.process(count)).unwrap();
-            }
+            assert_no_heap(|| self.host.process(count)).unwrap();
             for port in 0..2 {
                 self.outputs[port].extend_from_slice(&self.host.output(port)[..count]);
             }

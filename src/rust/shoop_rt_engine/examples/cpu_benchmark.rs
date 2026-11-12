@@ -32,7 +32,7 @@ fn main() {
             "--voices" => voices = value.parse().expect("voice count"),
             "--callbacks" => callbacks = value.parse().expect("callback count"),
             "--phase" => phase = value,
-            _ => panic!("usage: --mode current|fpga-reference --voices N --callbacks N --phase play|record-play|record|clear"),
+            _ => panic!("usage: --mode current --voices N --callbacks N --phase play|record-play|record|clear"),
         }
     }
     assert!(matches!(mode, AudioRenderMode::Current));
@@ -114,16 +114,16 @@ fn main() {
                 "steady playback/native callback allocated"
             );
         }
-        rows.push((callback, elapsed, heap, h.host.render.elastic_audio_work()));
+        rows.push((callback, elapsed, heap));
         h.pump();
     }
     for request in pending {
         assert_eq!(h.results.get(&request), Some(&Outcome::Done));
     }
-    println!("mode,phase,voices,callback,elapsed_ns,allocations,reallocations,deallocations,elastic_slots,elastic_free_slots,elastic_capacity_slots,elastic_arena_growths,elastic_reclaimed_chunks");
-    for (callback, ns, heap, work) in rows {
+    println!("mode,phase,voices,callback,elapsed_ns,allocations,reallocations,deallocations");
+    for (callback, ns, heap) in rows {
         println!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{}",
             mode.name(),
             phase,
             voices,
@@ -131,12 +131,7 @@ fn main() {
             ns,
             heap.allocations,
             heap.reallocations,
-            heap.deallocations,
-            work.slots,
-            work.free_slots,
-            work.capacity_slots,
-            work.arena_growths,
-            work.reclaimed_chunks
+            heap.deallocations
         );
     }
 }

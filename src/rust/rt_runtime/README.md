@@ -35,9 +35,11 @@ flowchart LR
 
 **The real-time contract is conditional:** runtime callback paths use prepared storage and finite application-dependent rendering work without heap allocation, freeing, locks, waits, or external I/O. Your processors and host callback must satisfy the same contract. This is not a hard-real-time deadline guarantee.
 
-The experimental `fpga-reference` audio renderer permits elastic media growth and
-table retirement on callbacks. Its warmed playback uses prepared storage; capture
-and reclamation are measured separately. See `../rt_fpga_reference/README.md`.
+The production audio path accepts a compile-time sample policy with `f32` defaults.
+`Q824` uses the same buffers, processors, routing and media codecs with raw fixed
+samples. The FPGA comparison profile uses this path and the production loop
+planner; it does not select a separate runtime renderer. See
+[production/RTL verification](../../../fpga/verification/README.md).
 
 ## Documentation
 

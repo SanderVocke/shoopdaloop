@@ -1,8 +1,6 @@
 {
   "scope": "Migrated standalone checks and production full-pipeline gates",
-  "pending": [
-    "transition minimum/wide configurations are still running"
-  ],
+  "pending": [],
   "campaigns": [
     {
       "name": "unify-transition",
@@ -31,6 +29,17 @@
         },
         {
           "config": "small",
+          "tests": [
+            "directed_against_rust",
+            "seeded_against_rust",
+            "transport_and_negative_cases",
+            "scratch_initialization_and_reset",
+            "sixty_four_loop_workload"
+          ],
+          "passed": true
+        },
+        {
+          "config": "wide",
           "tests": [
             "directed_against_rust",
             "seeded_against_rust",

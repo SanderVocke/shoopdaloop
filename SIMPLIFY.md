@@ -98,8 +98,9 @@ view. Configure playback and capture for an ordinary recording loop with the
 same persistent view identity; retakes do not need host binding writes. Gapped
 IDs are invalid and cannot trigger allocation of all intervening descriptors.
 Descriptor or chunk-table exhaustion uses the same fatal policy as sample-arena
-exhaustion. The Rust functional media store remains elastic; finite descriptor
-capacity is exercised in RTL and via a failing Rust memory implementation.
+exhaustion. Hardware descriptor capacity is exercised directly in RTL. The production Rust
+oracle uses independently sized resources; it does not simulate physical FPGA
+allocation failures.
 
 Do not add reservation/undo/retry machinery to recover from these failures. Keep
 the checks that detect them and prevent invalid memory accesses.

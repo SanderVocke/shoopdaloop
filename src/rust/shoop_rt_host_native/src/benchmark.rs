@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 const CAPACITY: usize = 8192;
-const FIELDS: usize = 25;
+const FIELDS: usize = 18;
 
 struct Queue {
     slots: Box<[[AtomicU64; FIELDS]]>,
@@ -57,7 +57,7 @@ impl Recorder {
                 let mut output = BufWriter::new(file);
                 let _ = writeln!(output, "# mode={mode} sample_rate={sample_rate} quantum={quantum}");
                 let _ = writeln!(output, "# memory={memory:?}");
-                let _ = writeln!(output, "frame,frames,elapsed_ns,late_ns,resource_copy_bytes,resource_steps,nodes_processed,render_fault,forwarded,materialized,sample_reads,sample_writes,arena_peak_samples,index_allocated,index_reclaimed,shared_payloads,payload_live,index_live,elastic_slots,elastic_free_slots,elastic_capacity_slots,elastic_arena_growths,elastic_read_samples,elastic_capture_samples,elastic_reclaimed_chunks");
+                let _ = writeln!(output, "frame,frames,elapsed_ns,late_ns,resource_copy_bytes,resource_steps,nodes_processed,render_fault,forwarded,materialized,sample_reads,sample_writes,arena_peak_samples,index_allocated,index_reclaimed,shared_payloads,payload_live,index_live");
                 loop {
                     let mut read = reader.read.load(Ordering::Relaxed);
                     let write = reader.write.load(Ordering::Acquire);
