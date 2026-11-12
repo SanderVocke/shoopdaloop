@@ -1,6 +1,7 @@
 //! Opt-in fixed MIDI checkpoint rows, owned by resource versions.
 use super::*;
 use crate::midi_state::MidiState;
+use crate::Sample;
 use format::RecordSummary;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -372,14 +373,14 @@ mod tests {
     }
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn with_midi_indexing(
         config: PreparedConfig,
         quantum: Quantum,
         indexing: MidiIndexConfig,
     ) -> Result<Self, Error> {
         let pool = MidiPool::new(indexing)?;
-        let mut store = Self::new(config, quantum)?;
+        let mut store = Self::new_numeric(config, quantum)?;
         store.midi_indexes = pool;
         Ok(store)
     }

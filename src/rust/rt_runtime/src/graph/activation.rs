@@ -69,17 +69,7 @@ impl GraphStages {
     pub(crate) fn prepare(count: usize, config: crate::PreparedConfig) -> Result<Self, Error> {
         Self::prepare_with_extra(count, config, 0)
     }
-    pub(crate) fn prepare_fpga(count: usize, config: crate::PreparedConfig) -> Result<Self, Error> {
-        let limits = config.limits();
-        let bytes = limits
-            .max_nodes
-            .checked_mul(2)
-            .and_then(|n| n.checked_add(limits.max_edges))
-            .and_then(|n| n.checked_add(limits.audio_outputs))
-            .and_then(|n| n.checked_mul(size_of::<crate::fpga::NodeInstruction>()))
-            .ok_or(Error::Capacity)?;
-        Self::prepare_with_extra(count, config, bytes)
-    }
+
     fn prepare_with_extra(
         count: usize,
         config: crate::PreparedConfig,

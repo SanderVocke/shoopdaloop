@@ -22,11 +22,7 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
     let mut d = audio_description(mode);
     d.quantum = q;
     d.max_frames = 128;
-    d.history.seconds = if mode == AudioRenderMode::FpgaReference {
-        0
-    } else {
-        1
-    };
+    d.history.seconds = 1;
     d.smoothing_frames = 0;
     d.ramp_frames = (q * 3) as u32;
     let mut h = Harness::new(&d);
@@ -52,15 +48,6 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
         });
         h.done(transition(loop_id, LoopMode::Recording));
     }
-    let program = if mode == AudioRenderMode::FpgaReference {
-        let program = h.host.render.fpga_program().unwrap();
-        Some((
-            program.instructions.clone(),
-            program.instructions.as_ptr() as usize,
-        ))
-    } else {
-        None
-    };
     h.run(5 * q, partition);
     for index in 0..2 {
         h.done(transition(loop_id(index, 1), LoopMode::Playing));
@@ -115,18 +102,7 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
         h.read(loop_id(0, 1), BulkSelector::Audio { channel: 0 }).1,
         frozen
     );
-    if let Some((instructions, address)) = program {
-        let current = h.host.render.fpga_program().unwrap();
-        assert_eq!(
-            current.instructions, instructions,
-            "loop modes and controls must not alter the program"
-        );
-        assert_eq!(
-            current.instructions.as_ptr() as usize,
-            address,
-            "the program must not be replaced between quanta"
-        );
-    }
+
     h.done(Request::LoopClear {
         loop_id: loop_id(1, 1),
     });
@@ -153,156 +129,18 @@ fn reference_graph_preserves_samples_capture_controls_wrap_and_callback_partitio
     for q in [1, 32] {
         let reference = render(AudioRenderMode::Current, q, 13);
         for partition in [1, 13, 128] {
-            for mode in audio_modes()
-                .into_iter()
-                .chain([AudioRenderMode::FpgaReference])
-            {
+            for mode in audio_modes() {
                 let (actual, media) = render(mode, q, partition);
-                if mode == AudioRenderMode::FpgaReference {
-                    assert_eq!(media.len(), reference.1.len());
-                    assert!(
-                        media.iter().zip(&reference.1).all(|(&a, &b)| close(a, b)),
-                        "fixed-point capture differs, Q={q}"
-                    );
-                } else {
-                    assert_eq!(media, reference.1, "recording {mode:?}, Q={q}");
-                }
+
+                assert_eq!(media, reference.1, "recording {mode:?}, Q={q}");
+
                 for (channel, expected) in actual.iter().zip(&reference.0) {
                     assert_eq!(channel.len(), expected.len(), "timing {mode:?}, Q={q}");
                     for (i, (&sample, &expected)) in channel.iter().zip(expected).enumerate() {
-                        if !matches!(
-                            mode,
-                            AudioRenderMode::ChunksDescriptors | AudioRenderMode::FpgaReference
-                        ) || i % q == 0
-                            || i % q == q - 1
-                        {
-                            assert!(close(sample,expected),"{mode:?}, Q={q}, partition={partition}, sample={i}: {sample} != {expected}");
-                        }
+                        assert!(close(sample,expected),"{mode:?}, Q={q}, partition={partition}, sample={i}: {sample} != {expected}");
                     }
                 }
             }
         }
     }
-}
-
-#[shoop_test]
-fn fpga_reference_refuses_unsupported_requests_without_faulting_the_renderer() {
-    let mut d = audio_description(AudioRenderMode::FpgaReference);
-    d.history.seconds = 0;
-    d.smoothing_frames = 0;
-    let mut h = Harness::new(&d);
-    assert_eq!(
-        h.apply(Request::CreateStrip {
-            strip: strip(0, 1),
-            shape: shape(2, 2, true)
-        }),
-        Outcome::Refused(Refusal::Unsupported)
-    );
-    h.done(Request::CreateStrip {
-        strip: strip(0, 1),
-        shape: shape(1, 1, false),
-    });
-    assert_eq!(
-        h.apply(Request::SetSmoothing { frames: 4 }),
-        Outcome::Refused(Refusal::Unsupported)
-    );
-    h.done(Request::CreateLoop {
-        loop_id: loop_id(0, 1),
-        strip: strip(0, 1),
-    });
-    assert_eq!(
-        h.apply(transition(loop_id(0, 1), LoopMode::Replacing)),
-        Outcome::Refused(Refusal::Unsupported)
-    );
-    h.done(Request::Connect {
-        port: port(strip(0, 1), PortKind::AudioIn, 0),
-        host: audio_in(0),
-        connected: true,
-    });
-    h.done(route(strip(0, 1), 0, 0, true));
-    h.input = Box::new(|_, _| 0.25);
-    h.done(transition(loop_id(0, 1), LoopMode::Recording));
-    h.run(16, 13);
-    h.done(transition(loop_id(0, 1), LoopMode::Playing));
-    h.run(64, 13);
-    let (_, samples, _) = h.read(loop_id(0, 1), BulkSelector::Audio { channel: 0 });
-    assert!(samples.iter().any(|sample| *sample == 0.25));
-}
-
-#[shoop_test]
-fn elastic_app_recordings_outgrow_native_pages_export_clear_and_reuse_without_playback_heap_work() {
-    let mut d = audio_description(AudioRenderMode::FpgaReference);
-    d.quantum = 32;
-    d.max_frames = 128;
-    d.history.seconds = 0;
-    d.smoothing_frames = 0;
-    d.ramp_frames = 0;
-    d.resource_pages = 64;
-    d.page_bytes = 256;
-    let mut h = Harness::new(&d);
-    let track = strip(0, 1);
-    let looped = loop_id(0, 1);
-    h.done(Request::CreateStrip {
-        strip: track,
-        shape: shape(2, 2, false),
-    });
-    for channel in 0..2 {
-        h.done(Request::Connect {
-            port: port(track, PortKind::AudioIn, channel),
-            host: audio_in(channel as u32),
-            connected: true,
-        });
-        h.done(route(track, channel, channel, true));
-    }
-    h.done(Request::CreateLoop {
-        loop_id: looped,
-        strip: track,
-    });
-    h.input = Box::new(|port, frame| ((frame + port as u64) % 16) as f32 / 32.);
-    let native_pages = h.host.render.resource_usage().free_pages;
-    h.done(transition(looped, LoopMode::Recording));
-    h.run(4_096, 128);
-    h.done(transition(looped, LoopMode::Playing));
-    let left = h.read(looped, BulkSelector::Audio { channel: 0 });
-    let right = h.read(looped, BulkSelector::Audio { channel: 1 });
-    assert_eq!(left.0, right.0);
-    assert!(left.0 * 8 > (d.resource_pages * d.page_bytes) as u64);
-    assert!(left.1.iter().any(|sample| *sample != 0.));
-    assert!(left.1.iter().zip(&right.1).all(|(a, b)| a != b));
-    let export = shoop_session::LoopAudio {
-        sample_rate: d.sample_rate,
-        channels: [left.1.clone(), right.1.clone()]
-            .into_iter()
-            .enumerate()
-            .map(|(index, samples)| shoop_session::LoopAudioChannel {
-                label: format!("channel {index}"),
-                role: "direct".into(),
-                samples,
-            })
-            .collect(),
-    };
-    let wav = shoop_session::encode_float_wav(&export).unwrap();
-    let imported = shoop_session::decode_wav(&wav).unwrap();
-    assert_eq!(imported.channels[0].samples, left.1);
-    assert_eq!(imported.channels[1].samples, right.1);
-    assert_eq!(h.host.render.resource_usage().free_pages, native_pages);
-    let peak = h.host.render.elastic_audio_work().slots;
-    assert!(peak > 0);
-    h.run(512, 128);
-    h.callback_heap.clear();
-    h.run(4_096, 128);
-    assert!(h
-        .callback_heap
-        .iter()
-        .all(|counts| *counts == shoop_wasm_test_support::heap::Counts::default()));
-    h.done(Request::LoopClear { loop_id: looped });
-    h.run(512, 128);
-    assert_eq!(h.host.render.elastic_audio_work().free_slots, peak);
-    h.done(transition(looped, LoopMode::Recording));
-    h.run(512, 128);
-    h.done(transition(looped, LoopMode::Playing));
-    assert_eq!(h.host.render.elastic_audio_work().slots, peak);
-    let replacement = h.read(looped, BulkSelector::Audio { channel: 0 });
-    assert!(replacement.0 < left.0);
-    assert_eq!(h.host.render.phase(), shoop_rt_engine::Phase::Running);
 }

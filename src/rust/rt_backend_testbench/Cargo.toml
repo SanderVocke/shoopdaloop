@@ -1,0 +1,25 @@
+[package]
+name = "rt_backend_testbench"
+version.workspace = true
+edition = "2021"
+description = "Common production audio and RTL behavioral verification"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rt_audio_math = { path = "../rt_audio_math" }
+rt_runtime = { path = "../rt_runtime" }
+shoop_loops = { path = "../shoop_loops" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json.workspace = true
+schemars = "1"
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[[bin]]
+name = "rt-backend-testbench"
+path = "src/main.rs"

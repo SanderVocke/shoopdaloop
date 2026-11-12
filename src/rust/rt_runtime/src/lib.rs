@@ -1,5 +1,11 @@
 //! Generic, bounded audio/MIDI processing primitives.
 //!
+//! Audio uses a static [`Sample`] policy, defaulting to f32 throughout buffers,
+//! processors and media. [`Q824`] selects raw fixed-point processing; it does not
+//! change the application's float device or persistence formats. Adapters must
+//! convert those formats explicitly. Typed processor/planner operations preserve
+//! raw fixed controls; the legacy float parameter action is an external boundary.
+//!
 //! This crate always uses `no_std` with `alloc`. Hosts supply allocation and panic
 //! handling; targets need pointer-width and 32-bit atomic operations.
 //!
@@ -43,11 +49,12 @@ mod audio_mode;
 pub use audio_mode::AudioRenderMode;
 pub mod audio_refs;
 
+pub use rt_audio_math::{Sample, Q824};
+
 pub mod buffer;
 pub mod config;
 pub mod error;
 pub mod executor;
-pub mod fpga;
 pub mod graph;
 mod host_buffer;
 pub mod ids;

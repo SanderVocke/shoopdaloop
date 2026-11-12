@@ -1,4 +1,5 @@
 use super::*;
+use rt_runtime::Sample;
 
 /// An owning, single-use logical-owner edit. Unapplied input leases remain the
 /// caller's responsibility; successful publication transfers them to the ledger.
@@ -78,20 +79,20 @@ impl OwnerChange {
 /// Exclusive preflight authority for one atomic batch. Dropping an unused permit
 /// changes neither ownership nor generation watermarks. It does not stop music,
 /// clean MIDI, change a resolver, or claim capture resources.
-pub struct OwnerActivation<'a, 'store> {
+pub struct OwnerActivation<'a, 'store, S: Sample = f32> {
     ledger: &'a mut Ledger,
-    io: &'a mut ResourceIo<'store>,
+    io: &'a mut ResourceIo<'store, S>,
     changes: &'a mut [OwnerChange],
 }
 impl Ledger {
     /// Validate all edits and initial media before publication. Each slot appears
     /// once; replacement generations strictly exceed its committed watermark.
     /// New initial media needs free metadata now, without counting later retirement.
-    pub fn prepare_owner_activation<'a, 'store>(
+    pub fn prepare_owner_activation<'a, 'store, S: Sample>(
         &'a mut self,
-        io: &'a mut ResourceIo<'store>,
+        io: &'a mut ResourceIo<'store, S>,
         changes: &'a mut [OwnerChange],
-    ) -> Result<OwnerActivation<'a, 'store>, Error> {
+    ) -> Result<OwnerActivation<'a, 'store, S>, Error> {
         if changes.len() > self.owners.len()
             || changes.iter().filter(|c| c.input.is_some()).count() > self.free_media.len()
         {
@@ -141,7 +142,7 @@ impl Ledger {
         })
     }
 }
-impl OwnerActivation<'_, '_> {
+impl<S: Sample> OwnerActivation<'_, '_, S> {
     /// Publish preflighted owner/media changes without an ordinary failure path.
     /// Old residency, pins and exports remain independently owned. New initial
     /// media has one resident reference and one playback reference, no latest take.

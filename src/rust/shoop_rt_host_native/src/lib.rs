@@ -440,13 +440,6 @@ impl Prepared {
             ));
         }
 
-        if description.audio_render_mode == shoop_rt_engine::AudioRenderMode::FpgaReference {
-            description.history.seconds = 0;
-            description.smoothing_frames = 0;
-            description.smoothing_limit_frames = 0;
-            description.external_dry_wet = false;
-            description.processors = shoop_rt_protocol::ProcessorSettings::disabled();
-        }
         if description.audio_bench_only {
             description.host.midi_inputs.clear();
             description.host.midi_outputs.clear();

@@ -1,0 +1,30 @@
+{
+  "format_version": 1,
+  "name": "unconnected-output-is-silent",
+  "quantum": 32,
+  "chunk_frames": 32,
+  "input_ports": 0,
+  "output_ports": 1,
+  "request_capacity": 2,
+  "loops": [],
+  "nodes": [],
+  "connections": [],
+  "media": [],
+  "steps": [
+    {
+      "inputs": [],
+      "actions": [],
+      "collect_completed": true
+    },
+    {
+      "inputs": [],
+      "actions": [],
+      "collect_completed": true
+    },
+    {
+      "inputs": [],
+      "actions": [],
+      "collect_completed": true
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 //! Continuous MIDI media exposed through ordinary resource and snapshot leases.
 
 use super::{midi_packets, midi_writer as writer, *};
+use crate::Sample;
 use crate::{
     buffer::MidiBuffer,
     midi_state::{indexed::store, MidiState},
@@ -345,7 +346,7 @@ impl Config {
     }
 }
 impl Store {
-    fn prepare(resources: &mut ResourceStore, config: Config) -> Result<Self, Error> {
+    fn prepare<S: Sample>(resources: &mut ResourceStore<S>, config: Config) -> Result<Self, Error> {
         config.capacity(resources.config, resources.quantum)?;
         let mut views = Arena::prepare(config.views)?;
         let mut sources = Arena::prepare(config.sources)?;
@@ -425,7 +426,7 @@ pub struct Usage {
     pub available_records: usize,
     pub available_bodies: usize,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn indexed_midi_usage(&mut self, id: StoreId) -> Result<Usage, Error> {
         self.with_indexed_midi(id, |_, pool| {
             Ok(Usage {
@@ -473,7 +474,7 @@ impl ResourceStore {
     pub(super) fn with_indexed_midi<T>(
         &mut self,
         id: StoreId,
-        operation: impl FnOnce(&mut ResourceStore, &mut Store) -> Result<T, Error>,
+        operation: impl FnOnce(&mut ResourceStore<S>, &mut Store) -> Result<T, Error>,
     ) -> Result<T, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
@@ -560,7 +561,6 @@ impl ResourceStore {
             index: VersionIndex::default(),
             midi: None,
             audio: None,
-            elastic: None,
             shared_midi: None,
             indexed_midi: Some(take),
         });
@@ -1165,7 +1165,7 @@ impl ResourceStore {
         false
     }
 }
-impl RenderIo<'_> {
+impl<S: Sample> RenderIo<'_, S> {
     pub fn append_indexed_midi_source(
         &mut self,
         id: SourceId,
@@ -1318,7 +1318,7 @@ impl RenderIo<'_> {
     }
 }
 
-impl ResourceIo<'_> {
+impl<S: Sample> ResourceIo<'_, S> {
     pub fn resume_indexed_midi_window_writer(&mut self, id: WriterId) -> Result<(), Error> {
         self.store.resume_indexed_midi_window_writer(id)
     }

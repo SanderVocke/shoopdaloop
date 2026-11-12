@@ -1,5 +1,6 @@
 //! Snapshot publication credits owned before a continuous writer begins.
 use super::*;
+use crate::Sample;
 
 /// Owns a private snapshot slot and future backing owner. Copying the token does
 /// not acquire ownership; publish or cancel exactly once.
@@ -18,7 +19,7 @@ pub(super) struct Reservation {
     backing: Backing,
     maximum_frames: u64,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     /// Pin the current version and reserve the final snapshot/view capacity.
     /// The resource may change its complete content in place, within the supplied
     /// maximum duration; replacing its version invalidates publication.
@@ -166,7 +167,7 @@ impl ResourceStore {
     }
 }
 
-impl ResourceIo<'_> {
+impl<S: Sample> ResourceIo<'_, S> {
     pub fn reserve_writer_snapshot(
         &mut self,
         resource: ResourceId,

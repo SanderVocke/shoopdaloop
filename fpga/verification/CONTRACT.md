@@ -51,6 +51,15 @@ not shift outputs after observing them.
 
 ## Numeric contract
 
+Production float remains the ultimate oracle. The common runner also executes
+the same sessions in float, comparing exact logical behavior and checked bounded
+audio error against Q8.24. Record maximum absolute/RMS error, signed bias and drift;
+derive error budgets from conversion and the actual ordered arithmetic stages.
+Cover long sessions and interrupted/short ramps. Clipping cases are explicit:
+float may exceed the fixed range, so report the intended saturation difference
+and clipping locations/counts separately. This comparison never weakens the
+bit-exact Q8.24/RTL sample and media comparisons.
+
 Samples and gains are signed Q8.24. Every binary mix saturates to i32. Gain
 multiplication uses a signed widened product, division by 2^24 truncated toward
 zero, then saturation. Preserve expression grouping and each intermediate

@@ -9,11 +9,11 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
         source_packets_per_callback: 1,
     };
     assert!(matches!(
-        NodePairs::prepare(usize::MAX, settings),
+        NodePairs::<f32>::prepare(usize::MAX, settings),
         Err(Error::Capacity)
     ));
     assert!(matches!(
-        NodePairs::prepare(
+        NodePairs::<f32>::prepare(
             1,
             NodePairSettings {
                 candidates: 0,
@@ -23,7 +23,7 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        NodePairs::prepare(
+        NodePairs::<f32>::prepare(
             1,
             NodePairSettings {
                 sources: 0,
@@ -33,7 +33,7 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        NodePairs::prepare(
+        NodePairs::<f32>::prepare(
             1,
             NodePairSettings {
                 source_packets_per_callback: 0,
@@ -43,7 +43,7 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        NodePairs::prepare(
+        NodePairs::<f32>::prepare(
             1,
             NodePairSettings {
                 source_packets_per_callback: usize::MAX,
@@ -118,8 +118,8 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
         .unwrap();
     store.finish_upload(token).unwrap();
     store.commit(token).unwrap();
-    let mut node_pairs = NodePairs::prepare(1, settings).unwrap();
-    let mut validation = NodePairs::prepare(1, settings).unwrap();
+    let mut node_pairs = NodePairs::<f32>::prepare(1, settings).unwrap();
+    let mut validation = NodePairs::<f32>::prepare(1, settings).unwrap();
     node_pairs.banks[0].generation = u32::MAX - 1;
     node_pairs.sources[0].generation = u32::MAX - 1;
     assert_no_heap(|| {

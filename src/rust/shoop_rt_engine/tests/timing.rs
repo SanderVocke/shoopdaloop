@@ -80,18 +80,15 @@ fn synchronized_transitions_match_the_legacy_reference() {
 }
 
 #[shoop_test]
-fn fpga_transition_dependencies_are_independent_of_signal_order_and_preserve_the_program() {
+fn transition_dependencies_are_independent_of_signal_order() {
     for reversed in [false, true] {
-        synchronized_reference(shoop_rt_engine::AudioRenderMode::FpgaReference, reversed);
+        synchronized_reference(shoop_rt_engine::AudioRenderMode::Current, reversed);
     }
 }
 
 fn synchronized_reference(mode: shoop_rt_engine::AudioRenderMode, reversed: bool) {
-    let mut d = audio_description(mode);
-    if mode == shoop_rt_engine::AudioRenderMode::FpgaReference {
-        d.history.seconds = 0;
-        d.smoothing_frames = 0;
-    }
+    let d = audio_description(mode);
+
     let mut harness = Harness::new(&d);
     let (sync_strip, track) = (strip(0, 1), strip(1, 1));
     let (sync, a, b) = if reversed {
@@ -120,14 +117,6 @@ fn synchronized_reference(mode: shoop_rt_engine::AudioRenderMode, reversed: bool
             loop_id: id,
             strip: owner,
         });
-    }
-    let program = harness
-        .host
-        .render
-        .fpga_program()
-        .map(|p| (p.instructions.clone(), p.instructions.as_ptr() as usize));
-    if mode == shoop_rt_engine::AudioRenderMode::FpgaReference {
-        assert!(program.is_some());
     }
     harness.done(Request::LoopSync {
         loop_id: a,
@@ -192,11 +181,6 @@ fn synchronized_reference(mode: shoop_rt_engine::AudioRenderMode, reversed: bool
     assert_eq!(modes(&views_b, 0..21), [LoopMode::Stopped; 21]);
     assert_eq!(views_b[&21].mode, LoopMode::Recording);
 
-    if let Some((instructions, address)) = program {
-        let current = harness.host.render.fpga_program().unwrap();
-        assert_eq!(current.instructions, instructions);
-        assert_eq!(current.instructions.as_ptr() as usize, address);
-    }
     let compare_samples = |actual: &[f32], expected: &[f32]| {
         if mode == shoop_rt_engine::AudioRenderMode::Current {
             assert_eq!(actual, expected);

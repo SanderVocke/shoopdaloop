@@ -29,30 +29,6 @@ pub(crate) enum Staged {
     Wait,
 }
 
-fn unsupported_fpga(request: Request) -> bool {
-    match request {
-        Request::CreateStrip { shape, .. } => shape.midi_input || shape.midi_output,
-        Request::CreateProcessedStrip { .. }
-        | Request::CreateProcessedBus { .. }
-        | Request::InjectMidi { .. }
-        | Request::PreviewStart { .. }
-        | Request::ContentWindow { .. } => true,
-        Request::SetBusProcessor { enabled, .. } => enabled,
-        Request::SetSmoothing { frames } => frames != 0,
-        Request::ContentBegin(description) => description.midi,
-        Request::LoopTransition { mode, .. } => !matches!(
-            mode,
-            shoop_rt_protocol::LoopMode::Stopped
-                | shoop_rt_protocol::LoopMode::Playing
-                | shoop_rt_protocol::LoopMode::Recording
-        ),
-        Request::StripDefaultPlayback {
-            dry_through_wet, ..
-        } => dry_through_wet,
-        _ => false,
-    }
-}
-
 fn structural(request: &Request) -> bool {
     matches!(
         request,
@@ -125,10 +101,6 @@ impl ControlEndpoint {
         staging: &mut bool,
         open: &mut bool,
     ) -> bool {
-        if self.settings.fpga_reference && unsupported_fpga(request) {
-            self.answer(correlation, Outcome::Refused(Refusal::Unsupported));
-            return true;
-        }
         if matches!(
             request,
             Request::InputCancel { .. }
@@ -581,9 +553,6 @@ impl ControlEndpoint {
     }
     /// Validate a structural request against the staged model.
     pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
-        if self.settings.fpga_reference && unsupported_fpga(request) {
-            return Staged::Refused(Refusal::Unsupported);
-        }
         let next = &self.next;
         match request {
             Request::SetBusProcessor { bus, enabled } => {

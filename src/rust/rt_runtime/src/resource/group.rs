@@ -1,6 +1,7 @@
 //! Fixed capture-group ownership and prepared take lifecycle.
 use super::*;
 use crate::midi_state::MidiState;
+use crate::Sample;
 mod tick;
 pub use tick::CaptureTickId;
 use tick::TickReservation;
@@ -151,7 +152,7 @@ impl CapturePool {
     }
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     /// Prepare group storage before handing the store to a render runtime.
     pub fn with_capture_groups(
         config: PreparedConfig,
@@ -162,7 +163,7 @@ impl ResourceStore {
         let pool = CapturePool::new(groups, config)?;
         let mut store = match indexing {
             Some(indexing) => Self::with_midi_indexing(config, quantum, indexing)?,
-            None => Self::new(config, quantum)?,
+            None => Self::new_numeric(config, quantum)?,
         };
         store.capture_groups = pool;
         Ok(store)
@@ -392,19 +393,7 @@ impl ResourceStore {
         if self.free_versions.len() < group.members || self.free_snapshots.len() < group.members {
             return Err(Error::Capacity);
         }
-        if let Some(audio) = &mut self.elastic_audio {
-            let channels = (0..group.members).try_fold(0usize, |total, index| {
-                let count = match self.capture_groups.member(id, index).spec.format {
-                    Format::Audio { channels } => channels as usize,
-                    Format::Midi => 0,
-                };
-                total.checked_add(count).ok_or(Error::Capacity)
-            })?;
-            audio
-                .media
-                .reserve_recordings(channels)
-                .map_err(|_| Error::Capacity)?;
-        }
+
         if midi != 0 {
             self.midi_indexes.prepare()?;
             if self.midi_indexes.usage().free_versions < midi {

@@ -35,3 +35,19 @@ Completion requires no executable dependency on the retired crates, no alternate
 implementation hidden behind a renamed mode, and no old binary/schema import
 needed by a retained runner. Small numeric, packing and serialization helpers
 remain only where used and independently verified.
+
+## Stage 3 progress
+
+The app-only reference executor/hooks/resource branches and selector have been
+retired while the standalone reference crates and their RTL comparisons remain.
+Production runtime/storage/loop types now accept the numeric sample policy, and
+the production gain controls share it. The app render-mode and timing scenarios
+continue on production paths; mode-specific refusal/growth/program-address
+assertions belonged to the retired mode. Their retained counterparts are strict
+profile rejection, production bounded-pool/heap tests, and immutable RTL lowering
+checks in the common runner. The obsolete elastic CPU counters and dormant test
+source will be deleted with their remaining benchmark consumers in stage 7.
+
+Evidence: `PRODUCTION_NUMERICS.md`, `production-numeric.json`, production numeric
+capture/readback and routing tests, and the existing float engine/loop/resource
+suites. Full-pipeline oracle replacement is still pending stages 4–6.

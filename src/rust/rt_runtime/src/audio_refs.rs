@@ -1,21 +1,25 @@
 use crate::resource::{AudioChunkRef, ReadIndex, ResourceStore};
+use crate::Sample;
 use crate::{Error, Frame, NodeId, Quantum};
 use alloc::{boxed::Box, vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GainEnvelope {
-    pub start: f32,
-    pub end: f32,
+pub struct GainEnvelope<S: Sample = f32> {
+    pub start: S,
+    pub end: S,
 }
 
-impl Default for GainEnvelope {
+impl<S: Sample> Default for GainEnvelope<S> {
     fn default() -> Self {
-        Self { start: 1., end: 1. }
+        Self {
+            start: S::ONE,
+            end: S::ONE,
+        }
     }
 }
 
-impl GainEnvelope {
-    pub fn constant(gain: f32) -> Self {
+impl<S: Sample> GainEnvelope<S> {
+    pub fn constant(gain: S) -> Self {
         Self {
             start: gain,
             end: gain,
@@ -27,13 +31,13 @@ impl GainEnvelope {
             end: self.end * other.end,
         }
     }
-    pub fn at(self, offset: usize, frames: usize) -> f32 {
+    pub fn at(self, offset: usize, frames: usize) -> S {
         if frames <= 1 || offset == 0 {
             self.start
         } else if offset + 1 == frames {
             self.end
         } else {
-            self.start + (self.end - self.start) * (offset as f32 / (frames - 1) as f32)
+            S::interpolate(self.start, self.end, (frames - 1) as u32, offset as u32)
         }
     }
 }
@@ -61,13 +65,13 @@ impl Default for ChunkSpan {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct AudioSequence {
+pub struct AudioSequence<S: Sample = f32> {
     pub spans: [ChunkSpan; 2],
     pub len: usize,
-    pub gain: GainEnvelope,
+    pub gain: GainEnvelope<S>,
 }
 
-impl AudioSequence {
+impl<S: Sample> AudioSequence<S> {
     fn transient(offset: usize, frames: usize, epoch: u64) -> Self {
         Self {
             spans: [
@@ -81,7 +85,7 @@ impl AudioSequence {
             gain: GainEnvelope::default(),
         }
     }
-    pub fn scaled(mut self, gain: GainEnvelope) -> Self {
+    pub fn scaled(mut self, gain: GainEnvelope<S>) -> Self {
         self.gain = self.gain.compose(gain);
         self
     }
@@ -106,20 +110,20 @@ pub struct AudioGraphWork {
     pub arena_peak_samples: u64,
 }
 
-pub struct RenderArena {
+pub struct RenderArena<S: Sample = f32> {
     epoch: u64,
-    data: Box<[f32]>,
+    data: Box<[S]>,
     used: usize,
     pins: Vec<Option<AudioChunkRef>>,
     pin_limit: usize,
     pub work: AudioGraphWork,
 }
 
-impl RenderArena {
+impl<S: Sample> RenderArena<S> {
     pub fn prepare(samples: usize, pins: usize) -> Self {
-        let mut data = vec![0.; samples].into_boxed_slice();
+        let mut data = vec![S::ZERO; samples].into_boxed_slice();
         for sample in &mut data {
-            *core::hint::black_box(sample) = 0.;
+            *core::hint::black_box(sample) = S::ZERO;
         }
         let pin_limit = pins;
         // The extra tag touches the page containing the final usable slot's payload.
@@ -146,7 +150,7 @@ impl RenderArena {
         self.work = AudioGraphWork::default();
         Ok(())
     }
-    pub fn transient(&self, offset: usize, frames: usize) -> AudioSequence {
+    pub fn transient(&self, offset: usize, frames: usize) -> AudioSequence<S> {
         AudioSequence::transient(offset, frames, self.epoch)
     }
     pub fn allocate(&mut self, samples: usize) -> Result<usize, Error> {
@@ -158,19 +162,19 @@ impl RenderArena {
             .checked_add(samples)
             .filter(|&end| end <= self.data.len())
             .ok_or(Error::Capacity)?;
-        self.data[start..self.used].fill(0.);
+        self.data[start..self.used].fill(S::ZERO);
         self.work.arena_peak_samples = self.used as u64;
         self.work.materialized += 1;
         self.work.sample_writes += samples as u64;
         Ok(start)
     }
-    pub fn output(&mut self, offset: usize, samples: usize) -> &mut [f32] {
+    pub fn output(&mut self, offset: usize, samples: usize) -> &mut [S] {
         &mut self.data[offset..offset + samples]
     }
     pub fn pin_sequence(
         &mut self,
-        sequence: &mut AudioSequence,
-        resources: &mut ResourceStore,
+        sequence: &mut AudioSequence<S>,
+        resources: &mut ResourceStore<S>,
     ) -> Result<(), Error> {
         if self.pin_limit - self.pins.len() < sequence.len {
             return Err(Error::Capacity);
@@ -184,7 +188,7 @@ impl RenderArena {
         }
         Ok(())
     }
-    pub fn unpin(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+    pub fn unpin(&mut self, resources: &mut ResourceStore<S>) -> Result<(), Error> {
         while let Some(reference) = self.pins.pop() {
             resources.release_audio_chunk(reference.ok_or(Error::InvalidState)?)?;
         }
@@ -192,14 +196,14 @@ impl RenderArena {
     }
     pub fn read_into(
         &mut self,
-        sequence: AudioSequence,
-        output: &mut [f32],
-        resources: &ResourceStore,
+        sequence: AudioSequence<S>,
+        output: &mut [S],
+        resources: &ResourceStore<S>,
         add: bool,
     ) -> Result<(), Error> {
         let frames = output.len();
         if !add {
-            output.fill(0.);
+            output.fill(S::ZERO);
         }
         visit(
             sequence,
@@ -219,10 +223,10 @@ impl RenderArena {
     }
     pub fn accumulate(
         &mut self,
-        sequence: AudioSequence,
+        sequence: AudioSequence<S>,
         offset: usize,
         frames: usize,
-        resources: &ResourceStore,
+        resources: &ResourceStore<S>,
     ) -> Result<(), Error> {
         let (before, target) = self.data[..self.used].split_at_mut(offset);
         let (target, after) = target.split_at_mut(frames);
@@ -242,10 +246,10 @@ impl RenderArena {
     }
     pub fn peak(
         &mut self,
-        sequence: AudioSequence,
+        sequence: AudioSequence<S>,
         frames: usize,
-        resources: &ResourceStore,
-    ) -> Result<f32, Error> {
+        resources: &ResourceStore<S>,
+    ) -> Result<S, Error> {
         let mut peak = 0u32;
         visit(
             sequence,
@@ -255,18 +259,22 @@ impl RenderArena {
             None,
             &[],
             resources,
-            |_, sample| peak = peak.max(sample.to_bits() & 0x7FFF_FFFF),
+            |_, sample| peak = peak.max(sample.peak_key()),
         )?;
         self.work.sample_reads += sequence.source_frames();
-        Ok(f32::from_bits(peak))
+        Ok(S::from_bits(peak))
     }
-    pub fn last(&self, sequence: AudioSequence, resources: &ResourceStore) -> Result<f32, Error> {
+    pub fn last(
+        &self,
+        sequence: AudioSequence<S>,
+        resources: &ResourceStore<S>,
+    ) -> Result<S, Error> {
         if sequence.silent() {
-            return Ok(0.);
+            return Ok(S::ZERO);
         }
         let span = sequence.spans[sequence.len - 1];
         let sample = match span.chunk {
-            ChunkRef::Silence => 0.,
+            ChunkRef::Silence => S::ZERO,
             ChunkRef::Transient { offset, epoch } => {
                 if epoch != self.epoch {
                     return Err(Error::InvalidState);
@@ -276,7 +284,7 @@ impl RenderArena {
                     .ok_or(Error::InvalidOffset)?
             }
             ChunkRef::Persistent(reference) => {
-                let mut value = 0.;
+                let mut value = S::ZERO;
                 resources.visit_audio_chunk(reference, span.frames, |samples, first, stride| {
                     value = samples[first + (span.frames - 1) * stride]
                 })?;
@@ -291,35 +299,27 @@ impl RenderArena {
     }
 }
 
-fn visit(
-    mut sequence: AudioSequence,
+fn visit<S: Sample>(
+    mut sequence: AudioSequence<S>,
     frames: usize,
     epoch: u64,
-    before: &[f32],
+    before: &[S],
     excluded: Option<(usize, usize)>,
-    after: &[f32],
-    resources: &ResourceStore,
-    mut consume: impl FnMut(usize, f32),
+    after: &[S],
+    resources: &ResourceStore<S>,
+    mut consume: impl FnMut(usize, S),
 ) -> Result<(), Error> {
     if sequence.silent() {
         return Ok(());
     }
     let mut at = 0;
-    let step = if frames > 1 {
-        (sequence.gain.end - sequence.gain.start) / (frames - 1) as f32
-    } else {
-        0.
-    };
-    let mut gain = sequence.gain.start;
     for span in &mut sequence.spans[..sequence.len] {
         let count = span.frames;
         if count > frames - at {
             return Err(Error::InvalidShape);
         }
         match span.chunk {
-            ChunkRef::Silence => {
-                gain += step * count as f32;
-            }
+            ChunkRef::Silence => {}
             ChunkRef::Transient {
                 offset,
                 epoch: origin,
@@ -336,21 +336,15 @@ fn visit(
                 }
                 .ok_or(Error::InvalidState)?;
                 for (i, &sample) in samples.iter().enumerate() {
-                    if at + i + 1 == frames && frames > 1 {
-                        gain = sequence.gain.end;
-                    }
+                    let gain = sequence.gain.at(at + i, frames);
                     consume(at + i, sample * gain);
-                    gain += step;
                 }
             }
             ChunkRef::Persistent(reference) => {
                 resources.visit_audio_chunk(reference, count, |samples, first, stride| {
                     for i in 0..count {
-                        if at + i + 1 == frames && frames > 1 {
-                            gain = sequence.gain.end;
-                        }
+                        let gain = sequence.gain.at(at + i, frames);
                         consume(at + i, samples[first + i * stride] * gain);
-                        gain += step;
                     }
                 })?;
             }
@@ -363,24 +357,24 @@ fn visit(
     Ok(())
 }
 
-pub struct ReferenceBlock<'a, L> {
+pub struct ReferenceBlock<'a, L, S: Sample = f32> {
     pub node: NodeId,
     pub frame: Frame,
     pub graph_epoch: crate::Epoch,
     pub quantum: Quantum,
-    pub inputs: &'a [AudioSequence],
-    pub outputs: &'a mut [AudioSequence],
-    pub arena: &'a mut RenderArena,
-    pub resources: &'a mut ResourceStore,
+    pub inputs: &'a [AudioSequence<S>],
+    pub outputs: &'a mut [AudioSequence<S>],
+    pub arena: &'a mut RenderArena<S>,
+    pub resources: &'a mut ResourceStore<S>,
     pub domain: &'a mut L,
 }
 
-impl<L> ReferenceBlock<'_, L> {
+impl<L, S: Sample> ReferenceBlock<'_, L, S> {
     pub fn forward(
         &mut self,
         input: usize,
         output: usize,
-        gain: GainEnvelope,
+        gain: GainEnvelope<S>,
     ) -> Result<(), Error> {
         *self.outputs.get_mut(output).ok_or(Error::InvalidShape)? = self
             .inputs
@@ -391,7 +385,7 @@ impl<L> ReferenceBlock<'_, L> {
         self.arena.work.forwarded += 1;
         Ok(())
     }
-    pub fn peak(&mut self, sequence: AudioSequence) -> Result<f32, Error> {
+    pub fn peak(&mut self, sequence: AudioSequence<S>) -> Result<S, Error> {
         self.arena
             .peak(sequence, self.quantum.frames(), self.resources)
     }
@@ -400,7 +394,7 @@ impl<L> ReferenceBlock<'_, L> {
         index: ReadIndex,
         position: u64,
         channel: usize,
-    ) -> Result<Option<AudioSequence>, Error> {
+    ) -> Result<Option<AudioSequence<S>>, Error> {
         let mut sequence =
             self.resources
                 .audio_chunk_sequence(index, position, self.quantum.frames(), channel)?;
@@ -409,7 +403,7 @@ impl<L> ReferenceBlock<'_, L> {
         }
         Ok(sequence)
     }
-    pub fn materialize(&mut self, output: usize, source: AudioSequence) -> Result<(), Error> {
+    pub fn materialize(&mut self, output: usize, source: AudioSequence<S>) -> Result<(), Error> {
         let count = self.quantum.frames();
         let offset = self.arena.allocate(count)?;
         self.arena

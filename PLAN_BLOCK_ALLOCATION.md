@@ -107,3 +107,16 @@ targeting `proto/fpga-rust-reference`. That PR was subsequently merged upstream
 as `012ed6bd`; no merge action was performed by this task. Block changes remain
 on their separate branch. CI/review follow-up is left for later, following the
 user's earlier instruction.
+
+PR preparation: merged `proto/fpga-rust-reference` through `e7b6ed01` after
+the squash merge of #971. Every conflicting path was unchanged upstream from
+the frozen metadata baseline, so resolution retains the block implementation
+while incorporating production numeric/session verification changes. The new
+production comparison runner now includes the metadata/shared-DMA source files,
+sets one-chunk allocation for its current image format, and forwards cache/page
+parameters. Post-merge warning-denying workspace build, targeted reference/math/
+production tests, test-attribute policy and 24 Python contract tests pass. Native
+block-loop smoke and production mono/silence/gain-ramp plus fault/reset cases
+pass at AXI64. AXI32 production mono also passes with explicitly reduced metadata
+cache/page dimensions. Stored benchmark/resource artifacts retain their original
+clean measured revision; no performance claims are regenerated from merge tests.
