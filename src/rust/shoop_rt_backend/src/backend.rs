@@ -365,6 +365,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
             .with(
+                BackendCapability::LoopDuplication,
+                self.is_ready() && self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
+            .with(
                 BackendCapability::Grab,
                 self.capabilities.contains(Capabilities::INPUT_BATCH),
             )
@@ -1047,6 +1051,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         update: &BackendLoopContentUpdate,
     ) -> Result<BackendAsyncResult<()>> {
         self.import_content(loop_id, update)
+    }
+
+    fn load_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        content: &shoop_backend::BackendLoopContent,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_payload(loop_id, crate::import::Payload::Captured(content))
     }
 
     fn replace_loop_family_async(

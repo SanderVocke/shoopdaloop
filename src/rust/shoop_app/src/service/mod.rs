@@ -11,6 +11,7 @@ mod audio_driver;
 mod commands;
 mod composites;
 mod deployment;
+mod duplication;
 mod management;
 mod media;
 mod monitoring;
@@ -81,6 +82,7 @@ struct Port {
 
 #[derive(Clone, Debug)]
 enum Effect {
+    Duplication,
     AudioDriver,
     None,
     CompositeEdit(LoopId),
@@ -199,6 +201,7 @@ pub struct Service {
     next_composite_event: u64,
     automatic_monitoring_intent: BTreeMap<TrackId, u64>,
     composite_structure: Option<composites::structure::Job>,
+    duplication: Option<duplication::Job>,
     ports: BTreeMap<PortId, Port>,
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
     buses: BTreeMap<BusId, Bus>,
@@ -303,6 +306,7 @@ impl Service {
             next_composite_event: 1,
             automatic_monitoring_intent: BTreeMap::new(),
             composite_structure: None,
+            duplication: None,
             ports: BTreeMap::new(),
             channels: BTreeMap::new(),
             buses: BTreeMap::new(),
@@ -836,6 +840,8 @@ impl Service {
             || self.shutdown.is_some()
         {
             Some((Refusal::NotReady, "the session is not accepting commands"))
+        } else if self.duplication.is_some() {
+            Some((Refusal::Busy, "a loop copy is active"))
         } else if self.audio_driver_busy(command.as_ref()) {
             Some((Refusal::Busy, "an audio-driver transition is active"))
         } else if epoch.is_some_and(|epoch| epoch != self.persistence_epoch) {
@@ -981,6 +987,13 @@ impl Service {
     }
 
     fn finish(&mut self, id: OperationId) {
+        if self
+            .pending
+            .get(&id)
+            .is_some_and(|p| matches!(p.effect, Effect::Duplication))
+        {
+            self.settle_duplication(id);
+        }
         let Some(pending) = self.pending.remove(&id) else {
             return;
         };
@@ -1170,6 +1183,7 @@ impl Service {
                     }
                 }
                 self.advance_composite_structure();
+                self.advance_duplication();
                 self.reconcile_monitoring_policy();
                 self.advance_publications();
                 self.advance_graph_connections();

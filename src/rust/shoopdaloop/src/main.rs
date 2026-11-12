@@ -56,6 +56,7 @@ mod browser_preview;
 mod browser_rt_audio;
 #[cfg(target_arch = "wasm32")]
 mod browser_rt_self_test;
+mod copy_probe;
 #[cfg(not(target_arch = "wasm32"))]
 mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
@@ -5136,6 +5137,7 @@ mod tests {
                 .with(BackendCapability::SessionCapture, true)
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
+                .with(BackendCapability::LoopDuplication, true)
                 .with(BackendCapability::LoopTimingEdits, true)
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::DryWetModes, true)
