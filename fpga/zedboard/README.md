@@ -14,12 +14,24 @@ input, rather than a frequency-search result.
 See [routed resource usage](RESOURCES.md) for totals and the subsystem breakdown
 of the fully routed 64-loop deployment, including debug instrumentation.
 
-Prebuilt deployment bundles belong in
-[GitHub release assets](https://github.com/SanderVocke/shoopdaloop/releases),
-outside Git. A bundle contains the hardware outputs, load/control scripts, a
-portable manifest and build provenance; a companion SHA256 file verifies the
-download. The validated experimental build has not been tested on hardware and
-its requested 100 MHz clock remains unqualified; see [validation](VALIDATION.md).
+The [prebuilt deployment ZIP](zedboard-benchmark-vivado-2021.1.zip) (2.47 MB) and
+its [SHA256 checksum](zedboard-benchmark-vivado-2021.1.zip.sha256) are included
+here. The bundle contains the hardware outputs, load/control scripts, a portable
+manifest and build provenance. This experimental build has not been tested on
+hardware and its requested 100 MHz clock remains unqualified; see
+[validation](VALIDATION.md).
+
+To verify and extract the bundle, run from the repository root:
+
+```sh
+(cd fpga/zedboard && sha256sum -c zedboard-benchmark-vivado-2021.1.zip.sha256)
+unzip fpga/zedboard/zedboard-benchmark-vivado-2021.1.zip -d work/zedboard/prebuilt
+```
+
+Follow `README.txt` in the extracted `zedboard-benchmark-vivado-2021.1` directory
+to load and measure using the portable manifest. To rebuild from RTL, follow
+the instructions below. The ZIP preserves the previously validated hardware
+outputs; its embedded provenance identifies the original build revision.
 
 ## AXI connection
 
@@ -42,6 +54,16 @@ Run from the repository root. Python requires the existing
 Rust builds only the workload compiler. Vivado needs the Digilent ZedBoard board
 files and support for the actual XC7Z020 silicon. RTL validation uses Vivado
 2021.1, SW Build 3247384; hardware qualification is pending.
+The validated compiler came from the public Docker Hub image
+[`siliconbootcamp/xilinx-vivado:stable`](https://hub.docker.com/r/siliconbootcamp/xilinx-vivado).
+Its original vendor layer was extracted unmodified, excluding later image
+overlays. The matching IP catalog came from
+[`pwang7/vivado_ubuntu:standard-2021.1`](https://hub.docker.com/r/pwang7/vivado_ubuntu/tags?name=standard-2021.1),
+giving IP Build 3246043. See [compiler provenance](VALIDATION.md#fresh-vivado-20211-build)
+and [catalog setup](CATALOG.md) for pinned image/layer digests, extraction details
+and the container's system `libudev` preload workaround. Source the installation's
+`.settings64-Vivado.sh` to configure the Vivado-only environment before building.
+
 For a board repository outside the Vivado installation, set `SHOOP_BOARD_REPO`
 to its `new/board_files` directory. Both Avnet `zed` and Digilent `zedboard`
 board identifiers are accepted. Build scratch files stay in the output directory,
