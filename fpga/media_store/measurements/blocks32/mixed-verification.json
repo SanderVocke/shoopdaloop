@@ -1,0 +1,3339 @@
+{
+  "configuration": {
+    "block_chunks": 32,
+    "metadata_lines": 128,
+    "reference_lines": 4,
+    "stack_lines": 2,
+    "metadata_pages": null,
+    "model": "instant",
+    "backend": "systemverilog",
+    "purpose": "functional",
+    "fabric_hz": 100000000,
+    "physical_base": 16777216,
+    "fixed_cycles": 7,
+    "axi_data_width": 64,
+    "word_transfers": false,
+    "revision": "d1a672196dd40a8ead6279200e394ba580b0960d",
+    "working_tree_dirty": false
+  },
+  "verification_replay": true,
+  "workload": "mixed",
+  "cleanup": [
+    {
+      "view": 64,
+      "command_cycles": 78
+    },
+    {
+      "view": 65,
+      "command_cycles": 78
+    },
+    {
+      "view": 66,
+      "command_cycles": 78
+    },
+    {
+      "view": 67,
+      "command_cycles": 78
+    },
+    {
+      "view": 68,
+      "command_cycles": 78
+    },
+    {
+      "view": 69,
+      "command_cycles": 78
+    },
+    {
+      "view": 70,
+      "command_cycles": 78
+    },
+    {
+      "view": 71,
+      "command_cycles": 78
+    }
+  ],
+  "seed": 20261110,
+  "random_stalls": false,
+  "loop_slots": 64,
+  "request_slots": 128,
+  "quantum_frames": 32,
+  "chunk_frames": 32,
+  "read_buffers": 128,
+  "write_buffers": 4,
+  "final_fence_cycles": 160,
+  "observation": "full snapshots",
+  "initialization_cycles": 8273,
+  "cold_preparation_cycles": 4995,
+  "final_snapshot_cycles": 2267,
+  "simulation_seconds": 189.36580855800275,
+  "results": [
+    {
+      "completion_cycles": {
+        "transition_settle_done": 2376,
+        "state_done": 3917,
+        "jobs_done": 25885,
+        "finish_done": 25956
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 32,
+        "sample_bytes": 8192,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 100,
+        "metadata_writes": 0,
+        "metadata_bytes": 6400,
+        "metadata_wait_cycles": 2574,
+        "table_hits": 304,
+        "table_misses": 128,
+        "table_fills": 96,
+        "table_writebacks": 0,
+        "reference_hits": 61,
+        "reference_misses": 3,
+        "reference_fills": 3,
+        "reference_writebacks": 0,
+        "stack_hits": 16,
+        "stack_misses": 1,
+        "stack_fills": 1,
+        "stack_writebacks": 0,
+        "directory_reads": 80,
+        "table_reads": 144,
+        "table_read_operations": 144,
+        "table_write_operations": 32,
+        "reference_read_operations": 16,
+        "reference_write_operations": 48,
+        "stack_read_operations": 9,
+        "stack_write_operations": 8,
+        "trim_operations": 32,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 676,
+        "logical_write_bytes": 352,
+        "directory_read_bytes": 320
+      },
+      "raw_cycles": 25956,
+      "axi_reads": 132,
+      "axi_writes": 32,
+      "active_cycles": 25956,
+      "transition_cycles": 2445,
+      "state_cycles": 1540,
+      "job_cycles": 21966,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 2375,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 23510,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 258,
+        "DECODE": 257,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 96,
+        "MEDIA_READ": 2501,
+        "MEDIA_DONE": 4025,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 4637
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 65,
+        "S_R_WAIT": 128,
+        "S_R_GET": 128,
+        "S_DIRECT_CHECK": 64,
+        "S_L_WAIT": 256,
+        "S_L_GET": 256,
+        "S_OFFER_CHECK": 64,
+        "S_OFFER_LOOP": 64,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_FIRST_APPLY": 64,
+        "S_APPLY": 64,
+        "S_APPLY_CHECK": 64,
+        "S_UNLINK_BEGIN": 64,
+        "S_UNLINK_HEAD": 64,
+        "S_UNLINK_NEXT": 64,
+        "S_UNLINK_DONE": 64,
+        "S_APPLY_UNLINK_DONE": 64,
+        "S_FIRST_NATURAL": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 128,
+        "S_PULSE_EMIT": 64,
+        "S_FOLLOW": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 2693
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "begin_capture": {
+          "count": 32,
+          "cycles": 3865
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 6942
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4989,
+      "metadata_foreground_stall_cycles": 7938,
+      "metadata_service_busy_cycles": 11034,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 0
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 15,
+        "metadata_writes": 0,
+        "metadata_bytes": 960,
+        "metadata_wait_cycles": 574,
+        "table_hits": 113,
+        "table_misses": 15,
+        "table_fills": 15,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 47,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 2543,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 1
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 2
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 3
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 4
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 5
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 6
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 7
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 8
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 9
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 10
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 11
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 1576,
+        "state_done": 3053,
+        "jobs_done": 14279,
+        "finish_done": 14350
+      },
+      "metadata_statistics": {
+        "sample_reads": 64,
+        "sample_writes": 0,
+        "sample_bytes": 8192,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 192,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 192,
+        "table_read_operations": 192,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 0,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 768,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 14350,
+      "axi_reads": 64,
+      "axi_writes": 0,
+      "active_cycles": 14350,
+      "transition_cycles": 1645,
+      "state_cycles": 1476,
+      "job_cycles": 11224,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 1575,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 12704,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 194,
+        "DECODE": 193,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 288,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 3461,
+        "MEDIA_DONE": 192,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 33,
+        "S_R_WAIT": 64,
+        "S_R_GET": 64,
+        "S_DIRECT_CHECK": 32,
+        "S_L_WAIT": 160,
+        "S_L_GET": 160,
+        "S_OFFER_CHECK": 32,
+        "S_OFFER_LOOP": 32,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 96,
+        "S_APPLY": 32,
+        "S_APPLY_CHECK": 32,
+        "S_UNLINK_BEGIN": 32,
+        "S_UNLINK_HEAD": 32,
+        "S_UNLINK_NEXT": 32,
+        "S_UNLINK_DONE": 32,
+        "S_APPLY_UNLINK_DONE": 32,
+        "S_FIRST_NATURAL": 32,
+        "S_PULSE_EMIT": 32,
+        "S_FOLLOW": 32,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 64,
+          "cycles": 3845
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 785
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 3520,
+      "metadata_foreground_stall_cycles": 773,
+      "metadata_service_busy_cycles": 2112,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 12
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 1576,
+        "state_done": 3117,
+        "jobs_done": 23362,
+        "finish_done": 23433
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 32,
+        "sample_bytes": 8192,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 480,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 96,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 64,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 32,
+        "table_reads": 160,
+        "table_read_operations": 160,
+        "table_write_operations": 32,
+        "reference_read_operations": 32,
+        "reference_write_operations": 64,
+        "stack_read_operations": 32,
+        "stack_write_operations": 32,
+        "trim_operations": 32,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 896,
+        "logical_write_bytes": 512,
+        "directory_read_bytes": 128
+      },
+      "raw_cycles": 23433,
+      "axi_reads": 32,
+      "axi_writes": 32,
+      "active_cycles": 23433,
+      "transition_cycles": 1645,
+      "state_cycles": 1540,
+      "job_cycles": 20243,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 1575,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 21787,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 258,
+        "DECODE": 257,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 96,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 2784,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 4928
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 33,
+        "S_R_WAIT": 64,
+        "S_R_GET": 64,
+        "S_DIRECT_CHECK": 32,
+        "S_L_WAIT": 160,
+        "S_L_GET": 160,
+        "S_OFFER_CHECK": 32,
+        "S_OFFER_LOOP": 32,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 96,
+        "S_APPLY": 32,
+        "S_APPLY_CHECK": 32,
+        "S_UNLINK_BEGIN": 32,
+        "S_UNLINK_HEAD": 32,
+        "S_UNLINK_NEXT": 32,
+        "S_UNLINK_DONE": 32,
+        "S_APPLY_UNLINK_DONE": 32,
+        "S_FIRST_NATURAL": 32,
+        "S_PULSE_EMIT": 32,
+        "S_FOLLOW": 32,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "begin_capture": {
+          "count": 32,
+          "cycles": 2624
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 7233
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4989,
+      "metadata_foreground_stall_cycles": 6016,
+      "metadata_service_busy_cycles": 6368,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 13
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 14
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 15
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 1000,
+        "state_done": 2509,
+        "jobs_done": 18418,
+        "finish_done": 18489
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18489,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18489,
+      "transition_cycles": 1069,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 999,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 96,
+        "S_L_GET": 96,
+        "S_FIRST_APPLY": 64,
+        "S_NATURAL": 32,
+        "S_NATURAL_WRAP": 32,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 96,
+        "S_PULSE_EMIT": 32,
+        "S_FOLLOW": 32,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 16
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 17
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 18
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 19
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 20
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 21
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 22
+    },
+    {
+      "completion_cycles": {
+        "transition_settle_done": 776,
+        "state_done": 2285,
+        "jobs_done": 18194,
+        "finish_done": 18265
+      },
+      "metadata_statistics": {
+        "sample_reads": 32,
+        "sample_writes": 29,
+        "sample_bytes": 7808,
+        "sample_wait_cycles": 0,
+        "metadata_reads": 0,
+        "metadata_writes": 0,
+        "metadata_bytes": 0,
+        "metadata_wait_cycles": 0,
+        "table_hits": 128,
+        "table_misses": 0,
+        "table_fills": 0,
+        "table_writebacks": 0,
+        "reference_hits": 0,
+        "reference_misses": 0,
+        "reference_fills": 0,
+        "reference_writebacks": 0,
+        "stack_hits": 0,
+        "stack_misses": 0,
+        "stack_fills": 0,
+        "stack_writebacks": 0,
+        "directory_reads": 0,
+        "table_reads": 128,
+        "table_read_operations": 128,
+        "table_write_operations": 0,
+        "reference_read_operations": 0,
+        "reference_write_operations": 0,
+        "stack_read_operations": 0,
+        "stack_write_operations": 0,
+        "trim_operations": 0,
+        "capacity_check_operations": 32,
+        "fence_operations": 0,
+        "invalidate_operations": 0,
+        "logical_read_bytes": 512,
+        "logical_write_bytes": 0,
+        "directory_read_bytes": 0
+      },
+      "raw_cycles": 18265,
+      "axi_reads": 32,
+      "axi_writes": 29,
+      "active_cycles": 18265,
+      "transition_cycles": 845,
+      "state_cycles": 1508,
+      "job_cycles": 15907,
+      "other_cycles": 5,
+      "coordinator_phases": {
+        "SETTLE_SEND": 1,
+        "SETTLE_WAIT": 775,
+        "AUDIO_START": 1,
+        "AUDIO_WAIT": 17419,
+        "FINISH_SEND": 1,
+        "FINISH_WAIT": 68
+      },
+      "job_phases": {
+        "CLEAR_OUTPUT": 256,
+        "FETCH": 226,
+        "DECODE": 225,
+        "READ_REQUEST": 288,
+        "READ_RESULT": 288,
+        "STORE": 1312,
+        "MEDIA_COMMAND": 64,
+        "MEDIA_READ": 1728,
+        "MEDIA_DONE": 256,
+        "RAMP_PREPARE": 64,
+        "GAIN_STREAM": 2240,
+        "MIX_STREAM": 3696,
+        "MEDIA_SOURCE_REQUEST": 1024,
+        "MEDIA_SOURCE_RESULT": 1024,
+        "MEDIA_WRITE": 3216
+      },
+      "transition_states": {
+        "S_IDLE": 4,
+        "S_DISPATCH": 2,
+        "S_CLEAR": 66,
+        "S_DIRECT_SCAN": 1,
+        "S_COMPONENT": 65,
+        "S_COMPONENT_END": 64,
+        "S_M_WAIT": 64,
+        "S_M_GET": 64,
+        "S_COMPONENT_END_CHECK": 64,
+        "S_FIRST_MEMBER": 64,
+        "S_L_WAIT": 64,
+        "S_L_GET": 64,
+        "S_FIRST_APPLY": 64,
+        "S_FIRST_INHERIT": 64,
+        "S_FIND_PULSE": 64,
+        "S_FINAL": 1,
+        "S_FINISH_LOOP": 66
+      },
+      "jobs": {
+        "input": {
+          "count": 1,
+          "cycles": 98
+        },
+        "read_view": {
+          "count": 32,
+          "cycles": 1920
+        },
+        "gain": {
+          "count": 64,
+          "cycles": 2432
+        },
+        "mix": {
+          "count": 56,
+          "cycles": 3808
+        },
+        "output": {
+          "count": 8,
+          "cycles": 784
+        },
+        "silence": {
+          "count": 32,
+          "cycles": 1088
+        },
+        "capture": {
+          "count": 32,
+          "cycles": 5521
+        }
+      },
+      "demand_fill_wait_cycles": 0,
+      "transfer_active_cycles": 4680,
+      "metadata_foreground_stall_cycles": 896,
+      "metadata_service_busy_cycles": 1504,
+      "raw_ddr_bus": null,
+      "active_ddr_bus": null,
+      "quantum": 23
+    }
+  ],
+  "memory_statistics": {
+    "backend": "systemverilog",
+    "purpose": "functional",
+    "reads": 1101,
+    "writes": 1021
+  }
+}

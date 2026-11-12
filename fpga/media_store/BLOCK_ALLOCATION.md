@@ -102,3 +102,7 @@ refusal, full-block reuse, restore and capture across allocation boundaries.
 The retirement test explicitly holds responses, pauses dirty writeback, drains
 in-flight prefetch, checks invalidation of other chunks in the block, injects an
 error, and resets/reuses storage. Native SV and DRAMsim3 support both AXI widths.
+
+The [block benchmark comparison](measurements/blocks32/README.md) contains the
+original/streaming/mixed replay results, including the storage-reservation cost,
+cold-start regression and short-take timing limitation.

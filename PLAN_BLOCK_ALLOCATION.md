@@ -14,11 +14,11 @@ Metadata-cache baseline: `676093aa`, preserved in PR #971 onto
   Cover both AXI widths, backpressure, in-flight retirement, faults and reset.
 - [x] Run targeted Rust tests, formatting, warning-denying build, schema checks,
   warning-clean RTL lint and generic/ECP5 synthesis.
-- [ ] Rerun original, streaming and mixed 64-loop DRAMsim3 benchmarks with 32-chunk
+- [x] Rerun original, streaming and mixed 64-loop DRAMsim3 benchmarks with 32-chunk
   allocation blocks, including the 32-reference-line comparison. Preserve graph,
   audio, quantum, buses, buffers, clock and DDR profile. Report required physical
   capacity/placement changes and completion, metadata/DDR and resource metrics.
-- [ ] Publish comparison reports, commit the follow-up, and report results. Leave
+- [x] Publish comparison reports, commit the follow-up, and report results. Leave
   the metadata PR separate; no autonomous merge or CI/review follow-up is required.
 
 ## Contract
@@ -74,3 +74,34 @@ transfers. Ordinary recording is approximately 18,251 clocks. Published clean
 revision measurements and full snapshot replays follow this implementation
 milestone. Generated build/incremental caches were cleared after debug-heavy
 workspace builds exhausted disk; reduced-debug full tests then completed.
+
+All benchmark/verification runs at clean implementation revision `d1a67219`
+are complete. Reports, cases, allocation-equivalence checks, per-quantum counters,
+processor completion times, capacities, resource counts and replay commands are
+in `fpga/media_store/measurements/blocks32/`. All 52 primary measured quanta
+and the additional 24-quanta reference-cache variant match Rust; separate native
+replays match complete intermediate media for all 52 primary quanta. Audio, jobs,
+state, readiness and transitions also match the original chunk-allocation cases.
+
+At 100 MHz the mixed retake takes 234.33 us with either four or 32 reference
+lines, versus 738.05/430.68 us before. BeginCapture work drops to 26.24 us,
+reference reads to 32 from 384, and metadata DDR traffic to zero in that quantum.
+Final ordinary recording is 182.51 us, so the retake is 1.28 times that cost.
+The largest measured mixed quantum is startup at 262.31 us (39.3% of budget).
+Warm original playback is 131.76 us versus 131.74; cold playback is 172.67 us
+versus 166.53 because foreground metadata wait increases despite fewer fills.
+These short-take tests do not establish a bound for long-take reclamation, which
+remains synchronous and proportional to block count. No background workers or
+other ownership schemes were added.
+
+Default resource use is 29,433 LUT4 / 16,141 FF / 94 DP16KD / four DSPs. The
+metadata baseline is 29,265 / 16,142 / 94 / four; block reservation increases
+external sample capacity for short takes without increasing cache/descriptor BRAM.
+The original and mixed timing arenas explicitly grow to 2,048 and 2,304 physical
+chunks; streaming stays at 4,096. Blocked snapshots canonically omit unpublished
+bytes, and the post-run Reclaim unit changes from one chunk to one block.
+
+Implementation and publication commits are pushed on `proto/fpga-block-allocation`.
+PR #971 stays separate and ready on `proto/fpga-metadata-cache` at `676093aa`,
+targeting `proto/fpga-rust-reference`. CI/review follow-up is left for later,
+following the user's earlier instruction; no autonomous merge is performed.
