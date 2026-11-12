@@ -6,6 +6,7 @@ on:
       - 'fpga/**'
       - 'PLAN_SIM_MEM.md'
       - 'PLAN_METADATA_CACHE.md'
+      - 'AUDIO_IO.md'
       - 'scripts/rt_backend_testbench/**'
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
@@ -86,6 +87,26 @@ jobs:
           python fpga/axi_memory/simulate.py --memory-model ${{ matrix.model }} --output work/native-ci/endpoints
           python fpga/media_store/simulate.py --pipeline --config small --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/audio
           python fpga/loop_pipeline/simulate.py --config odd --directed --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/loops
+      - name: Check audio generated tops
+        run: |
+          python fpga/audio_io/generate_top.py --check
+          python fpga/audio_io/generate_demo.py --check
+          python fpga/audio_io/prepare_demo.py --check
+      - name: Check bank ownership and quantum fences
+        if: matrix.model == 'instant'
+        run: |
+          python fpga/audio_io/simulate.py --q 1 --banks 2 --audio-period 10 --audio-phase 3 --output work/native-ci/audio-q1
+          python fpga/audio_io/simulate.py --q 3 --p 1 --output work/native-ci/audio-odd
+          python fpga/audio_io/simulate.py --control --output work/native-ci/audio-control
+      - name: Check continuous 16-channel audio
+        run: |
+          python fpga/audio_io/simulate_pipeline.py --p 16 --frame-cycles 1600 --memory-model ${{ matrix.model }} --axi-data-width 64 --stalls --output work/native-ci/audio-continuous
+      - name: Check shallow latency and underrun recovery
+        if: matrix.model == 'instant'
+        run: |
+          python fpga/audio_io/simulate_pipeline.py --q 16 --chunk 8 --p 8 --banks 2 --monitoring --frame-cycles 1024 --output work/native-ci/audio-shallow
+          python fpga/audio_io/simulate_pipeline.py --overrun --output work/native-ci/audio-overrun
+          python fpga/audio_io/simulate_pipeline.py --demo --output work/native-ci/audio-demo
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -94,4 +115,50 @@ jobs:
             work/native-ci/**/*.log
             work/native-ci/**/results.xml
             work/native-ci/**/*summary.json
+            work/native-ci/audio-*/*.json
+            work/native-ci/audio-*/*.hex
+          if-no-files-found: warn
+
+  audio-synthesis:
+    name: Audio I/O lint and synthesis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install RTL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes yosys autoconf flex bison libfl-dev zlib1g-dev g++
+      - name: Cache synthesis Verilator 5.032
+        id: verilator
+        uses: actions/cache@v4
+        with:
+          path: work/verilator
+          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
+      - name: Build synthesis Verilator 5.032
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
+          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
+          cd work/verilator
+          autoconf
+          ./configure
+          make -C src -j2 opt
+      - name: Select synthesis Verilator
+        run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Check complete audio top variants
+        run: python3 fpga/audio_io/check.py
+      - name: Check prepared demo synthesis
+        run: python3 fpga/audio_io/check.py --demo --output work/audio-demo-synthesis
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: audio-synthesis
+          path: |
+            work/audio-synthesis/*.log
+            work/audio-synthesis/*generic.json
+            work/audio-synthesis/resources.json
+            work/audio-demo-synthesis/*.log
+            work/audio-demo-synthesis/*generic.json
+            work/audio-demo-synthesis/resources.json
           if-no-files-found: warn

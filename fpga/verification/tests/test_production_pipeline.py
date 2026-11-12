@@ -6,6 +6,7 @@ import cocotb
 import rt_backend_testbench as wire
 from pipeline_driver import PipelineDriver
 from loop_memory import LoopMemory
+from media_results import logical_media
 import codec as tp
 from pipeline_driver import sp
 from execution_timing import ExecutionTiming
@@ -39,23 +40,6 @@ async def collect(driver,names,submitted,q):
             row=await driver.collect(request['id'])
             assert row['result']['kind']=='accepted'
             result.append(completion(row['result']['value'],names,submitted,q))
-    return result
-
-def logical_media(snapshot,views,states):
-    result=[]
-    for row in views:
-        state=next(s for s in states if s['id']==row['id'])
-        if state['mode']=='recording':continue
-        channels=[]
-        for view in row['views']:
-            value=snapshot['views'][view]
-            data=[]
-            for chunk in value['chunks']:
-                first=chunk*snapshot['chunk_frames'];data.extend(snapshot['samples'][first:first+snapshot['chunk_frames']])
-            offset=value.get('range',{}).get('offset',0)
-            channels.append(data[offset:offset+value['frames']])
-        if channels and channels[0]:
-            result.append(dict(name=f"loop:{row['id']['slot']}:{row['id']['generation']}",frames=len(channels[0]),samples=dict(encoding='q824',channels=channels)))
     return result
 
 @cocotb.test()
