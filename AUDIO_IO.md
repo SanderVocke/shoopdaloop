@@ -222,11 +222,11 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 2 — Implement bank storage, clock crossing and frame transport
 
-- [ ] Add `fpga/audio_io/` RTL, a runner and local protocol tests. Implement
+- [x] Add `fpga/audio_io/` RTL, a runner and local protocol tests. Implement
   banked lane RAM, ownership descriptor transport, frame assembly/playout and
   priming using a stub quantum consumer solely for these local tests.
-- [ ] Implement parameter checks, coherent reset/rearm and bank reuse rules.
-- [ ] Verification: channel/frame patterns, wrap/reuse, two/three/more banks,
+- [x] Implement parameter checks, coherent reset/rearm and bank reuse rules.
+- [x] Verification: channel/frame patterns, wrap/reuse, two/three/more banks,
   Q=1 and odd Q in local tests, multiple unrelated clock ratios/phases, bounded
   descriptor stalls and reset during every ownership transition. Check dual-clock
   RAM inference and CDC structure; assert exclusive ownership and complete frames.
@@ -352,3 +352,17 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
 - Generated wrappers pass drift checking; the existing 64-loop instant-memory
   timing fixture passes (four complete Rust-matched quanta).
 - Baseline logs/artifacts: `work/baseline-*.log`, `work/audio-baseline/`.
+
+### Stage 2
+
+- Implemented per-lane dual-clock RAM and per-bank ownership mailboxes, fixed
+  playback slots, explicit prefetch cutoff and coordinated session reset.
+- Local loopback passes Q=1/two banks/same clocks, Q=3/P=1/two banks/17 ns audio
+  clock, Q=3/three banks/13 ns audio clock, and 16 lanes with Q=16/P=8.
+- Default local checks cover recoverable late output, bank exhaustion, rearm and
+  reset during capture/publication/processing/playback. Generic Yosys synthesis
+  retains dual-clock memories and passes `check -assert`.
+- CDC/reset integration constraints are documented in
+  `fpga/audio_io/constraints/README.md`. Physical vendor CDC signoff remains a
+  board-integration responsibility, outside this milestone.
+- Artifacts: `work/audio-local*`. Full-core recovery verification remains stage 4.
