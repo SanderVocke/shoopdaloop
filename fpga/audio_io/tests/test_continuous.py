@@ -9,6 +9,7 @@ from driver import Driver
 from pipeline_driver import Transport, sp
 from loop_memory import LoopMemory
 from media_results import logical_media
+import rt_backend_testbench as wire
 from cocotb.utils import get_sim_time
 
 OUTPUT = Path(os.environ['AIO_OUTPUT'])
@@ -175,10 +176,12 @@ async def continuous_record_playback(d):
         processed = int(d.processed_quanta.value)
         assert processed >= 12
         states = [{k: v for k, v in state.items() if k != 'revision_watermark'} for state in await driver.states()]
-        assert states == expected['quanta'][processed-1]['states'], (processed, states, expected['quanta'][processed-1]['states'])
+        wire.assert_exact(states, expected['quanta'][processed-1]['states'])
         snapshot = await memory.snapshot()
         media = logical_media(snapshot, image['loop_views'], states)
-        assert media == expected['media']
+        media.sort(key=lambda row: row['name'])
+        (OUTPUT/'actual-media.json').write_text(json.dumps(media)+'\n')
+        wire.assert_exact(media, expected['media'])
         assert int(d.missed_deadlines.value) == int(overrun)
         assert int(d.discarded_quanta.value) == int(overrun)
         (OUTPUT/'actual-frames.json').write_text(json.dumps(actual)+'\n')

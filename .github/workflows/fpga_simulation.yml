@@ -115,6 +115,8 @@ jobs:
             work/native-ci/**/*.log
             work/native-ci/**/results.xml
             work/native-ci/**/*summary.json
+            work/native-ci/audio-*/*.json
+            work/native-ci/audio-*/*.hex
           if-no-files-found: warn
 
   audio-synthesis:

@@ -98,7 +98,8 @@ explicit ordered mix with playback. `--q` changes compiled and physical quantum;
 The runner saves scenario, compiled image, fixed/float production results,
 prepared ROMs, observed frames, publication times, summary and simulator logs.
 Expected processing samples/media come from production Rust, not a Python DSP
-model. Publication measurements include RX handoff, controls, core execution and
+model. Each prepared case also passes the shared production float-accuracy/audit
+gate; fixed/RTL comparisons remain bit exact. Publication measurements include RX handoff, controls, core execution and
 TX handoff. Check them against the selected P budget plus a physical timing margin;
 they establish measured cases, not every possible graph's worst case.
 
@@ -172,3 +173,32 @@ Counters saturate, except the 64-bit timelines/sequences and epoch. Played count
 successful bank selections; a later fatal fault can interrupt a selected block.
 Diagnostics crossing into a future register interface require a coherent snapshot.
 See `constraints/README.md` before physical integration.
+
+## Validation checkpoint
+
+`measurements/validation.json` records the measured configurations and replay
+commands. Complete-top mapping with Yosys 0.52 to ECP5 primitives gives:
+
+| Top, Q=32, 16x16, three banks each | LUT4 | FF | DP16KD | MULT18X18D |
+| --- | ---: | ---: | ---: | ---: |
+| Reusable main top, 128 physical scratch buffers | 37,079 | 20,860 | 152 | 4 |
+| Prepared demo, 32 physical scratch buffers | 28,261 | 16,600 | 132 | 6 |
+
+Both include the actual processing/media/AXI path and 12 KiB of logical I/O
+samples. The demo adds its generator and loader ROMs. RAM granularity means these
+counts are not the logical byte total divided by BRAM size. These figures do not
+establish fit or routed timing for a particular device.
+
+Measured maximum last-input-sample-to-output-eligibility times are 91.819 us for
+Q=16/P=8 with two banks and monitoring, 111.488 us for Q=32/P=16 with stalled
+AXI64/DRAMsim3, and 208.806 us for Q=64/P=32 with permutation, monitoring and
+stalled AXI64/fixed memory. The corresponding conservative P budgets in those
+test clock profiles exceed 106 us, 332 us and 212 us. Select P from the complete
+worst-case bound plus margin for the actual graph and physical clock; these are
+measured workloads. The Q=32 DDR case uses a sample rate close to 48 kHz.
+
+Both demo latency modes pass complete record/playback sessions, input-loss
+recovery, memory-error recovery and a withheld-response drain before reset.
+Local tests verify exact cutoff behavior, one/two silent quanta followed by
+catch-up, signed/extreme words, bank reuse and reset at ownership transitions.
+The target branch's production-backed subsystem tests remain in service.
