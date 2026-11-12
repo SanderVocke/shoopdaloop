@@ -238,6 +238,10 @@ module media_store #(
     wire [31:0] metadata_result;
     wire [7:0] metadata_result_error;
     wire metadata_ready, metadata_valid;
+    wire metadata_request_ready;
+    reg metadata_request_valid;
+    reg [3:0] metadata_request_opcode;
+    reg [31:0] metadata_request_view, metadata_request_index, metadata_request_data;
     reg [3:0] metadata_opcode;
     reg [31:0] metadata_view, metadata_index, metadata_data;
     reg [1:0] metadata_selected;
@@ -255,6 +259,7 @@ module media_store #(
     wire issue_metadata = !metadata_pending && !reset && (foreground_metadata ||
         (resolver_table_valid && !cfg_valid && !faulted));
     wire is_prefetch = !foreground_metadata;
+    assign metadata_ready = !metadata_request_valid || metadata_request_ready;
     assign table_grant = issue_metadata && is_prefetch && metadata_ready;
     assign resolver_table_data = hint_table_data;
     always @* begin
@@ -283,8 +288,8 @@ module media_store #(
     media_metadata #(.VIEWS(VIEWS),.SLOTS(BLOCKS),.CHUNK_FRAMES(CHUNK_FRAMES*BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES),
         .TABLE_LINES(TABLE_LINES),.REF_LINES(REF_LINES),.STACK_LINES(STACK_LINES),.BURST_MEMORY(BURST_MEMORY)) metadata (
         .clk(clk),.reset(reset),.arena_base(memory_arena_base),
-        .request_valid(issue_metadata),.request_ready(metadata_ready),.request_opcode(metadata_opcode),
-        .request_view(metadata_view),.request_index(metadata_index),.request_data(metadata_data),
+        .request_valid(metadata_request_valid),.request_ready(metadata_request_ready),.request_opcode(metadata_request_opcode),
+        .request_view(metadata_request_view),.request_index(metadata_request_index),.request_data(metadata_request_data),
         .response_valid(metadata_valid),.response_ready(metadata_pending),
         .response_data(metadata_result),.response_error(metadata_result_error),.fault(metadata_fault),
         .memory_valid(memory_meta_valid),.memory_ready(memory_meta_ready),.memory_write(memory_meta_write),
@@ -294,6 +299,19 @@ module media_store #(
         .memory_response_valid(memory_meta_response_valid),.memory_response_ready(memory_meta_response_ready),
         .memory_response_error(memory_meta_response_error),.memory_read_data(memory_meta_read_data)
     );
+    always @(posedge clk) begin
+        if (reset) begin
+            metadata_request_valid <= 0; metadata_request_opcode <= 0;
+            metadata_request_view <= 0; metadata_request_index <= 0; metadata_request_data <= 0;
+        end else if (metadata_ready) begin
+            metadata_request_valid <= issue_metadata;
+            if (issue_metadata) begin
+                metadata_request_opcode <= metadata_opcode;
+                metadata_request_view <= metadata_view; metadata_request_index <= metadata_index;
+                metadata_request_data <= metadata_data;
+            end
+        end
+    end
     always @(posedge clk) begin
         if (reset) begin
             metadata_done <= 0; metadata_pending <= 0; metadata_prefetch <= 0; metadata_writing <= 0; metadata_slot <= 0;

@@ -1,5 +1,6 @@
 module shared_axi #(parameter integer DATA_WIDTH = 32, parameter integer BURST_MEMORY = 1,
-    parameter [31:0] MAX_SAMPLE_WORDS = 32'hffffffff) (
+    parameter [31:0] MAX_SAMPLE_WORDS = 32'hffffffff,
+    parameter [31:0] MAX_METADATA_WORDS = 32'hffffffff) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base, input wire [63:0] arena_bytes, input wire [63:0] sample_bytes,
     input wire [31:0] physical_base,
@@ -128,7 +129,7 @@ module shared_axi #(parameter integer DATA_WIDTH = 32, parameter integer BURST_M
             .completion_error(client_completion_error[0]));
     end endgenerate
     generate if (BURST_MEMORY != 0) begin : stream_1
-        chunk_dma #(.DATA_WIDTH(DATA_WIDTH)) transfer (
+        chunk_dma #(.DATA_WIDTH(DATA_WIDTH),.MAX_WORDS(MAX_METADATA_WORDS)) transfer (
             .clk(clk),
             .reset(reset),
             .arena_base(arena_base),
