@@ -112,13 +112,14 @@ module audio_loop_pipeline #(
     output wire memory_fault,
     output wire m_axi_awid,
     output wire [31:0] m_axi_awaddr,
-    output wire [7:0] m_axi_awlen,
+    output wire [3:0] m_axi_awlen,
     output wire [2:0] m_axi_awsize,
     output wire [1:0] m_axi_awburst,
     output wire m_axi_awvalid,
     input wire m_axi_awready,
     output wire [AXI_DATA_WIDTH-1:0] m_axi_wdata,
     output wire [AXI_DATA_WIDTH/8-1:0] m_axi_wstrb,
+    output wire m_axi_wid,
     output wire m_axi_wlast,
     output wire m_axi_wvalid,
     input wire m_axi_wready,
@@ -128,7 +129,7 @@ module audio_loop_pipeline #(
     output wire m_axi_bready,
     output wire m_axi_arid,
     output wire [31:0] m_axi_araddr,
-    output wire [7:0] m_axi_arlen,
+    output wire [3:0] m_axi_arlen,
     output wire [2:0] m_axi_arsize,
     output wire [1:0] m_axi_arburst,
     output wire m_axi_arvalid,
@@ -180,13 +181,14 @@ module audio_loop_pipeline #(
     wire [831:0] core_response_data;
     wire core_m_axi_awid;
     wire [31:0] core_m_axi_awaddr;
-    wire [7:0] core_m_axi_awlen;
+    wire [3:0] core_m_axi_awlen;
     wire [2:0] core_m_axi_awsize;
     wire [1:0] core_m_axi_awburst;
     wire core_m_axi_awvalid;
     wire core_m_axi_awready;
     wire [AXI_DATA_WIDTH-1:0] core_m_axi_wdata;
     wire [AXI_DATA_WIDTH/8-1:0] core_m_axi_wstrb;
+    wire core_m_axi_wid;
     wire core_m_axi_wlast;
     wire core_m_axi_wvalid;
     wire core_m_axi_wready;
@@ -196,7 +198,7 @@ module audio_loop_pipeline #(
     wire core_m_axi_bready;
     wire core_m_axi_arid;
     wire [31:0] core_m_axi_araddr;
-    wire [7:0] core_m_axi_arlen;
+    wire [3:0] core_m_axi_arlen;
     wire [2:0] core_m_axi_arsize;
     wire [1:0] core_m_axi_arburst;
     wire core_m_axi_arvalid;
@@ -334,6 +336,7 @@ module audio_loop_pipeline #(
         .m_axi_awready(core_m_axi_awready),
         .m_axi_wdata(core_m_axi_wdata),
         .m_axi_wstrb(core_m_axi_wstrb),
+        .m_axi_wid(core_m_axi_wid),
         .m_axi_wlast(core_m_axi_wlast),
         .m_axi_wvalid(core_m_axi_wvalid),
         .m_axi_wready(core_m_axi_wready),
@@ -451,6 +454,7 @@ module audio_loop_pipeline #(
     assign m_axi_awlen = core_m_axi_awlen;
     assign m_axi_awsize = core_m_axi_awsize;
     assign m_axi_awburst = core_m_axi_awburst;
+    assign m_axi_wid = core_m_axi_wid;
     assign m_axi_wdata = core_m_axi_wdata;
     assign m_axi_wstrb = core_m_axi_wstrb;
     assign m_axi_wlast = core_m_axi_wlast;

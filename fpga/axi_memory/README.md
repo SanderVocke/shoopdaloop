@@ -148,9 +148,10 @@ therefore wait for all constituent transactions. Reset remains coordinated with
 the downstream slave. The cache's existing RAM request/result sequencing is
 retained, so this version does not promise a full-width beat every clock.
 
-On hardware the endpoint attaches through an AXI4-to-AXI3 compatibility wrapper:
-LEN is at most 15 and WID is fixed zero. Zynq-7000 HP supports 32/64-bit buses.
-This work does not supply the PS, DDR controller/PHY or board clock/reset logic.
+The endpoint exposes native AXI3: four-bit ARLEN/AWLEN, WID fixed zero,
+and one ID-zero transaction outstanding. Zynq-7000 HP supports 32/64-bit buses;
+no protocol converter is required. Hardware integration supplies the AXI
+sidebands, PS-width ID wiring, DDR controller and board clock/reset logic.
 
 Word reads complete at R acceptance and writes at B acceptance. Cache fence and
 retirement drain earlier AXI transactions and preserve visibility; they do not
