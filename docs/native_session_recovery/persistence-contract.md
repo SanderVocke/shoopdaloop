@@ -3,7 +3,10 @@
 Implementation contract for [the persistence plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_SESSION_PERSISTENCE_MEDIA_IO.md).
 The core slice is implemented and validated;
 [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md) records its scope.
-P01/P02/P11 remain open for their deferred dependencies.
+The [feature backlog](feature-parity.md#missing-features) assigns remaining
+save/load/store/export requirements to Carla (P07), latency compensation (P09),
+take alignment (P10), duplication/MIDI state (P11) and session scripts/resources
+(P16). Historical P01/P02 are no longer standalone backlog items.
 
 ## Shared audio reconciliation
 
@@ -43,7 +46,8 @@ uses fresh identities and stopped loops; old exports retain their original data.
 | Ordinary buses, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |
 | Core composites | Preserve authored identities, original timing basis, frozen geometry, nested references, explicit sync and repeat intent; load stopped with fresh runtime identities | See the [composite contract](composites.md) and [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md); captures exclude pending candidates and refuse active/scheduled/future recording |
-| FX/synth/dry-wet and dependent composite events | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08 remain open; no flattening or dropped state |
+| Built-in FX/OxiSynth, External dry/wet, bus FX and dependent composite events | Preserve processor state/mappings, recorded settings, role media and authored modes | Supported under P03/P06/P08/P17 and the built-in portion of P07; prepare privately and publish atomically, without flattening or dropping state |
+| Carla and general latency/take controls | Refuse complete documents requiring unavailable capabilities | Remaining storage, capture, load and applicable export work belongs to P07/P09/P10 |
 | Session-owned scripts/resources | Refuse documents requiring unavailable ownership/resource handling | P16 remains open; VM stays client-side and is never serialized/restarted |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
