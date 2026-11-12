@@ -69,5 +69,22 @@ no Marlin/Verilator. Both `shoopdaloop` and `shoop_rt_host_worklet` build for
 `wasm32-unknown-unknown` with warnings denied. The feature-enabled simulator also
 builds with warnings denied.
 
-The broad native suite is recorded separately below when it completes. No PR CI
-was inspected, and the previously waived 64-loop benchmark was not repeated.
+The broad native run used:
+
+```sh
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace \
+  --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+```
+
+It exercised 3220 tests: 3209 passed, 11 failed, 11 skipped. Seven failures were
+LAN host startup deadlines, one a recovery startup deadline, one a settings-write
+deadline, and two involved a host test binary overwritten by an overlapping
+workspace build (including a missing `testing`-feature configuration field).
+All 11 failed tests passed on one isolated retry with the same feature selection,
+`--test-threads 1` and no concurrent builds (142.79 s). The added stalled-device
+activation test also passed in its focused six-test adapter gate. This records
+the original failure rather than presenting the first broad run as clean.
+
+No PR CI was inspected, and the previously waived 64-loop benchmark was not
+repeated. PR #979 targets `proto/fpga-rust-reference`; only the implementation
+branch was pushed. No automated review findings were present at delivery.

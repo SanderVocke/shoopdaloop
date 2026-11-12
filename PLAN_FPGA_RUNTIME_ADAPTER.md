@@ -1,6 +1,8 @@
 # First FPGA runtime adapter: Marlin simulation and queued gain graphs
 
-Status: implementation in progress on `feat/fpga-runtime-adapter`.
+Status: completed on `feat/fpga-runtime-adapter`.
+PR: [#979](https://github.com/SanderVocke/shoopdaloop/pull/979), targeting
+`proto/fpga-rust-reference`.
 
 During execution, fetch and merge `origin/proto/fpga-rust-reference` at the start
 and between milestones. Push only the working branch; the final PR targets
@@ -171,12 +173,12 @@ is accepted at frame zero; unsupported later activation is rejected explicitly.
 
 ### 7. End-to-end validation and delivery
 
-- [ ] Document one-command differential execution and failure replay. Verify
+- [x] Document one-command differential execution and failure replay. Verify
   unsupported operations/device faults. Assert one graph compilation per accepted
   initial graph, none for gain changes, and no Verilator rebuild when loading
   graph/parameter data into an unchanged model. Record host/tools, separate RTL
   build/load and graph compile/configuration timings, and image sizes.
-- [ ] Run affected Rust/transport tests, compiler/packing contracts, the standalone
+- [x] Run affected Rust/transport tests, compiler/packing contracts, the standalone
   demonstrator and queue-driven Marlin comparisons with stalls. After lowerer
   extraction, preserve the original looping regression gate: replay one existing
   record/playback case through the direct Marlin driver and functional SV memory,
@@ -184,11 +186,11 @@ is accepted at frame zero; unsupported later activation is rejected explicitly.
   the driver operations needed for that case; this does not add looping support
   to the adapter. Retain the remaining cocotb suites independently, without making
   them a prerequisite of the new runner.
-- [ ] Run formatting, warning-denying workspace build, test-policy and dependency
+- [x] Run formatting, warning-denying workspace build, test-policy and dependency
   isolation checks, including relevant Wasm builds when available. Verify a fresh
   simulation output directory and document prerequisites/failure replay. Reuse
   unchanged expensive evidence; do not repeat the waived 64-loop benchmark.
-- [ ] Commit/push milestones, open a PR and address applicable incoming automated
+- [x] Commit/push milestones, open a PR and address applicable incoming automated
   review feedback. Do not inspect PR CI under the standing user instruction, and
   do not merge autonomously.
 
