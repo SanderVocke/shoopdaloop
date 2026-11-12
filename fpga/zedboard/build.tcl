@@ -2,6 +2,9 @@ if {$argc < 1 || $argc > 2} {
     error "usage: vivado -mode batch -source fpga/zedboard/build.tcl -tclargs BUILD_DIRECTORY ?BOARD_PART?"
 }
 source [file join [file normalize [lindex $argv 0]] manifest.tcl]
+set bench_stage bitstream
+if {[info exists ::env(SHOOP_BUILD_STAGE)]} {set bench_stage $::env(SHOOP_BUILD_STAGE)}
+if {$bench_stage ni {generate synth bitstream}} {error "SHOOP_BUILD_STAGE must be generate, synth or bitstream"}
 cd $bench_output
 if {[info exists ::env(SHOOP_BOARD_REPO)]} {
     set_param board.repoPaths [concat [get_param board.repoPaths] [list [file normalize $::env(SHOOP_BOARD_REPO)]]]
@@ -15,6 +18,8 @@ if {$argc == 2} {
 if {$board eq ""} {error "Install the Digilent ZedBoard board files, or specify its BOARD_PART"}
 set_property board_part $board [current_project]
 add_files $bench_sources
+add_files [list [file join $bench_root fpga state_processor rtl state_processor_defs.svh] \
+    [file join $bench_root fpga zedboard rtl timing_body.svh]]
 set_property include_dirs [list [file join $bench_root fpga state_processor rtl] [file join $bench_root fpga zedboard rtl]] [current_fileset]
 create_bd_design system
 create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps
@@ -37,10 +42,8 @@ connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/aux_reset_in] [get_bd_
     [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
 connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins bench/aresetn]
-foreach signal $bench_axi_signals {
-    set suffix [string toupper [string range $signal 6 end]]
-    connect_bd_net [get_bd_pins bench/$signal] [get_bd_pins ps/S_AXI_HP0_$suffix]
-}
+connect_bd_intf_net [get_bd_intf_pins bench/m_axi] [get_bd_intf_pins ps/S_AXI_HP0]
+assign_bd_address
 create_bd_cell -type ip -vlnv xilinx.com:ip:vio:3.0 vio
 set settings [list CONFIG.C_NUM_PROBE_IN {17} CONFIG.C_NUM_PROBE_OUT {7} CONFIG.C_PROBE_IN0_WIDTH {32}]
 for {set i 1} {$i <= 16} {incr i} {lappend settings CONFIG.C_PROBE_IN${i}_WIDTH 64}
@@ -60,7 +63,7 @@ foreach signal {start stop snapshot quanta_limit warmup_quanta gap_cycles watchd
     incr i
 }
 create_bd_cell -type ip -vlnv xilinx.com:ip:ila:6.2 ila
-set_property -dict [list CONFIG.C_NUM_OF_PROBES {2} CONFIG.C_PROBE0_WIDTH {128} \
+set_property -dict [list CONFIG.C_MONITOR_TYPE {Native} CONFIG.C_NUM_OF_PROBES {2} CONFIG.C_PROBE0_WIDTH {128} \
     CONFIG.C_PROBE1_WIDTH {96} CONFIG.C_DATA_DEPTH {2048}] [get_bd_cells ila]
 connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ila/clk]
 connect_bd_net [get_bd_pins bench/debug_state] [get_bd_pins ila/probe0]
@@ -75,9 +78,16 @@ update_compile_order -fileset sources_1
 set init_files [glob -nocomplain [file join $bench_output project zedboard_timing.gen sources_1 bd system ip * ps7_init.tcl]]
 if {[llength $init_files] != 1} {error "Cannot locate generated board-specific ps7_init.tcl: $init_files"}
 file copy -force [lindex $init_files 0] [file join $bench_output ps7_init.tcl]
+if {$bench_stage eq "generate"} {puts "Block design and IP generation complete: $bench_output"; return}
 launch_runs synth_1 -jobs 4
 wait_on_run synth_1
 if {[get_property PROGRESS [get_runs synth_1]] ne "100%"} {error "Synthesis did not complete"}
+if {$bench_stage eq "synth"} {
+    open_run synth_1
+    write_checkpoint -force [file join $bench_output bench_synth.dcp]
+    puts "Benchmark synthesis complete: $bench_output"
+    return
+}
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Bitstream generation did not complete"}

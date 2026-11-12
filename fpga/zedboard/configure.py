@@ -94,7 +94,7 @@ def configure(workload, output, fabric_mhz=100, physical_base=0x01000000,
                   'm_axi_rid': '|m_axi_rid', 'm_axi_bid': '|m_axi_bid'}.get(name, name)
         connections.append('        .'+name+'('+target+')')
     text += ',\n'.join(connections)+'\n    );\nendmodule\n'
-    top = output/'zedboard_bench.sv'
+    top = output/'zedboard_bench.v'
     top.write_text(text)
     manifest = sources(True)+[HERE/'rtl/timing_bench.sv', top]
     variables = dict(bench_root=ROOT.as_posix(), bench_output=output.as_posix(),

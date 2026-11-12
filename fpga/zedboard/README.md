@@ -31,8 +31,8 @@ the software-only PS initialization file does not configure this deployment.
 Run from the repository root. Python requires the existing
 `fpga/axi_memory/requirements.txt` and `scripts/rt_backend_testbench/requirements.txt`.
 Rust builds only the workload compiler. Vivado needs the Digilent ZedBoard board
-files and support for the actual XC7Z020 silicon. The Tcl workflow targets the
-Vivado/Vitis 2023.2 command interfaces; hardware qualification is pending.
+files and support for the actual XC7Z020 silicon. The build scripts have been
+exercised with Vivado 2024.1; hardware qualification is pending.
 For a board repository outside the Vivado installation, set `SHOOP_BOARD_REPO`
 to its `new/board_files` directory. Both Avnet `zed` and Digilent `zedboard`
 board identifiers are accepted. Build scratch files stay in the output directory,
@@ -66,6 +66,9 @@ The Vivado script builds the bitstream and exports `bench.bit`, `bench.ltx`,
 `bench.xsa` and its generated `ps7_init.tcl` into the selected directory. It adds
 VIO and a two-probe ILA. It does not request utilization or timing-analysis reports.
 An optional second Tcl argument selects an explicit installed ZedBoard BOARD_PART.
+Set `SHOOP_BUILD_STAGE=generate` to stop after block-design validation and IP
+generation, or `SHOOP_BUILD_STAGE=synth` to stop after synthesis and save
+`bench_synth.dcp`. The default stage is `bitstream`.
 
 ## Load and measure
 
@@ -183,7 +186,7 @@ nonzero memory. Control checks withhold an accepted response, verify watchdog
 drain, release it, restart, snapshot and stop. All results are written as JSON.
 
 Native AXI3 endpoint protocol tests and generated-wrapper checks also remain
-applicable. This environment has no Vivado or attached ZedBoard; bitstream
-generation, real PS/HP initialization and ILA/VIO operation require verification
-on the development workstation. Record board/silicon revision and the generated
-`deployment.json` alongside hardware measurements.
+applicable. See [public-container validation](VALIDATION.md) for the tool version,
+board preset and build results. Real PS/HP initialization and ILA/VIO operation
+still require an attached ZedBoard. Record board/silicon revision and the
+generated `deployment.json` alongside hardware measurements.
