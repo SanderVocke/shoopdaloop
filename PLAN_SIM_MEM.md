@@ -213,4 +213,7 @@ Stage 5: pushed `proto/fpga-native-sim-memory` and opened
 in the workflow and existing RTL width warnings under Ubuntu's Verilator
 5.020. CI now installs the fixture requirements and builds/caches the same
 pinned Verilator 5.032 revision used for local validation, without changing
-synthesizable RTL. CI/review validation remains in progress.
+synthesizable RTL. The compiler build also requires Ubuntu's separate
+`libfl-dev` header package, now included. The retained legacy connected-loop
+smoke passes its three tests against Rust. CI/review validation remains in
+progress.
