@@ -20,7 +20,7 @@ def generate():
     for field, value in [('LOOP_DEPTH', 16), ('REQUEST_DEPTH', 128), ('EVENT_DEPTH', 256),
                          ('PROGRAM_DEPTH', 256), ('STATE_DEPTH', 128), ('JOB_DEPTH', 256),
                          ('BUFFERS', 128), ('INPUT_PORTS', 16), ('OUTPUT_PORTS', 16),
-                         ('VIEWS', 32), ('SLOTS', 256)]:
+                         ('VIEWS', 32), ('SLOTS', 1024)]:
         params = re.sub(rf'(parameter integer {field} = )\d+', rf'\g<1>{value}', params)
     params += ',\n    parameter integer P = MAX_FRAMES, RX_BANKS = 3, TX_BANKS = 3,\n    parameter integer WATCHDOG_CYCLES = 1000000, CONTROL_DEPTH = 128'
     removed = {'run_valid', 'sample_input_read', 'sample_input_address', 'sample_input_data',

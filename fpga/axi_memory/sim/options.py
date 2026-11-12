@@ -18,6 +18,7 @@ def add_options(parser, *, legacy=False):
     parser.add_argument("--fabric-hz", type=int, default=100_000_000)
     parser.add_argument("--physical-base", type=lambda value: int(value, 0), default=0x01000000)
     parser.add_argument("--axi-data-width", type=int, choices=(32, 64), default=32)
+    parser.add_argument('--block-chunks',type=int,default=1,help='chunks per allocation block (power of two; default legacy mode)')
     parser.add_argument('--metadata-lines',type=int,default=8)
     parser.add_argument('--metadata-pages',type=int)
     parser.add_argument('--reference-lines',type=int,default=4)
@@ -26,6 +27,8 @@ def add_options(parser, *, legacy=False):
 
 
 def environment(args):
+    if args.block_chunks < 1 or args.block_chunks > 65536 or args.block_chunks & (args.block_chunks-1):
+        raise ValueError("block chunks must be a power of two in 1..65536")
     if min(args.metadata_lines,args.reference_lines,args.stack_lines)<1 or (args.metadata_pages is not None and args.metadata_pages<1):
         raise ValueError("metadata cache and page capacities must be positive")
     if args.memory_cycles < 0 or not 1_000_000 <= args.fabric_hz <= 1_000_000_000:
@@ -34,7 +37,7 @@ def environment(args):
         raise ValueError("physical base must be an eight-byte aligned 32-bit address")
     if args.memory_model == "dramsim3" and (not args.dram_library.is_file() or not args.dram_config.is_file()):
         raise ValueError("DRAMsim3 library/profile missing; run fpga/axi_memory/build_dramsim3.py first")
-    return {"AXI_METADATA_LINES": str(args.metadata_lines), "AXI_REFERENCE_LINES": str(args.reference_lines), "AXI_STACK_LINES": str(args.stack_lines), "AXI_METADATA_PAGES": str(args.metadata_pages or ""), "AXI_MEMORY_MODEL": args.memory_model, "AXI_MEMORY_CYCLES": str(args.memory_cycles),
+    return {"AXI_BLOCK_CHUNKS": str(args.block_chunks), "AXI_METADATA_LINES": str(args.metadata_lines), "AXI_REFERENCE_LINES": str(args.reference_lines), "AXI_STACK_LINES": str(args.stack_lines), "AXI_METADATA_PAGES": str(args.metadata_pages or ""), "AXI_MEMORY_MODEL": args.memory_model, "AXI_MEMORY_CYCLES": str(args.memory_cycles),
             "AXI_DRAM_LIBRARY": str(args.dram_library.resolve()), "AXI_DRAM_CONFIG": str(args.dram_config.resolve()),
             "AXI_FABRIC_HZ": str(args.fabric_hz), "AXI_PHYSICAL_BASE": str(args.physical_base),
             "AXI_DATA_WIDTH": str(args.axi_data_width), "AXI_WORD_TRANSFERS": str(int(args.word_transfers))}
@@ -70,7 +73,7 @@ def metadata():
     library = Path(os.environ.get("AXI_DRAM_LIBRARY", "missing"))
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
     mode = os.environ.get('AXI_MEMORY_MODEL','instant')
-    result = dict(metadata_lines=int(os.environ.get('AXI_METADATA_LINES','8')),
+    result = dict(block_chunks=int(os.environ.get("AXI_BLOCK_CHUNKS","1")),metadata_lines=int(os.environ.get('AXI_METADATA_LINES','8')),
                 reference_lines=int(os.environ.get('AXI_REFERENCE_LINES','4')),stack_lines=int(os.environ.get('AXI_STACK_LINES','2')),
                 metadata_pages=os.environ.get('AXI_METADATA_PAGES') or None,model=mode, backend='systemverilog' if mode == 'instant' else 'cocotb',
                 purpose='realistic' if mode == 'dramsim3' else 'functional' if mode == 'instant' else 'diagnostic',

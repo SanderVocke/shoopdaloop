@@ -48,7 +48,7 @@ def main():
         subprocess.run(['yosys', '-Q', '-T', '-q', '-l', str(output/'mapping.log'), '-s', str(path)], cwd=ROOT, check=True)
         cells = Counter(c['type'] for c in json.loads(netlist.read_text())['modules'][top]['cells'].values())
         (output/'resources.json').write_text(json.dumps(dict(top=top, q=32, channels=16, rx_banks=3, tx_banks=3,
-            logical_io_bytes=12288, cells=dict(sorted(cells.items())), routed_timing=False), indent=2)+'\n')
+            logical_io_bytes=12288, block_chunks=32, media_slots=1024, cells=dict(sorted(cells.items())), routed_timing=False), indent=2)+'\n')
     print(f'{top}: lint and synthesis passed: {output}')
 
 

@@ -8,6 +8,7 @@ from cocotb.triggers import FallingEdge, RisingEdge, Edge, Timer, with_timeout
 from driver import Driver
 from pipeline_driver import Transport, sp
 from loop_memory import LoopMemory
+from block_images import reblock
 from media_results import logical_media
 import rt_backend_testbench as wire
 from cocotb.utils import get_sim_time
@@ -130,6 +131,7 @@ async def continuous_record_playback(d):
     image = json.loads((OUTPUT/'image.json').read_text())
     expected = json.loads((OUTPUT/'expected.json').read_text())
     q, channels = scenario['quantum'], scenario['input_ports']
+    config = json.loads((OUTPUT/'config.json').read_text())
     for name in ('enable', 'session_reset', 'quiesce', 'frame_tick', 'frame_prepare', 'rx_samples',
                  'control_valid', 'control_data', 'cfg_valid', 'cfg_state', 'cfg_write', 'cfg_address',
                  'cfg_write_data', 'audio_cfg_valid', 'audio_cfg_space', 'audio_cfg_write', 'audio_cfg_address',
@@ -141,7 +143,7 @@ async def continuous_record_playback(d):
     d.job_enable.value = 1
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
     cocotb.start_soon(start_audio_clock(d))
-    memory = LoopMemory(DebugPorts(d), (32, 256, scenario['chunk_frames']), 20261112)
+    memory = LoopMemory(DebugPorts(d), (32, config['slots'], scenario['chunk_frames']), 20261112)
     memory.stalls = os.environ['AIO_STALLS'] == '1'
     driver = Driver(Transport(d), (16, 128, 256), 20261112)
     case = dict(plan=dict(limits=image['transition']['limits']))
@@ -151,7 +153,7 @@ async def continuous_record_playback(d):
             await configure(d, i, sp.encode_instruction(instruction))
         for i, value in enumerate(image['initial_state']['memory']):
             await configure(d, i | (1 << 31), sp.encode_value(value))
-        await memory.load({**image['media'], 'chunk_limit': 256})
+        await memory.load(reblock(image['media'], config['block_chunks'], config['slots']))
         for name, value in dict(run_instruction_count=len(image['program']['instructions']),
                                 run_state_count=len(image['initial_state']['memory']), run_quantum=q,
                                 run_chunk_frames=scenario['chunk_frames'], run_job_budget=image['program']['jobs_per_quantum'],

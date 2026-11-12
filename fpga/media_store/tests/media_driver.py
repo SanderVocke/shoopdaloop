@@ -27,10 +27,12 @@ class Driver(MemoryHost):
         self.dut = dut
         self.views, self.slots, self.chunk_frames = capacities
         self.rng = random.Random(seed)
+        self.block_chunks=int(os.environ.get('AXI_BLOCK_CHUNKS','1'))
+        self.blocks=self.slots//self.block_chunks
         self.base = 0x1234000000
-        self.table_pages = int(os.environ.get('AXI_METADATA_PAGES') or ((self.slots+14)//15+8*self.views+16))
-        self.slot_bits = max(1,(self.slots-1).bit_length())
-        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.slots+15)//16)*16+self.table_pages*16
+        self.table_pages = int(os.environ.get('AXI_METADATA_PAGES') or ((self.blocks+14)//15+8*self.views+16))
+        self.slot_bits = max(1,(self.blocks-1).bit_length())
+        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.blocks+15)//16)*16+self.table_pages*16
         self.memory = [0xa5a5a5a5] * storage_words
         self.sample_transactions = 0
         self.pending = None
@@ -172,52 +174,63 @@ class Driver(MemoryHost):
     async def load(self, media):
         await self.reset()
         assert media["chunk_frames"] == self.chunk_frames
+        assert media.get('block_chunks',1)==self.block_chunks
         slots = len(media["samples"]) // self.chunk_frames
         assert slots <= self.slots and len(media["views"]) <= self.views
         self.chunk_limit = media.get("chunk_limit")
-        await self.configure(0, 3, self.slots if self.chunk_limit is None else self.chunk_limit)
+        await self.configure(0, 3, (self.slots if self.chunk_limit is None else self.chunk_limit)//self.block_chunks)
         self.memory[:len(media["samples"])] = [value & MASK32 for value in media["samples"]]
         await self.load_memory()
         refs = Counter()
         for index, view in enumerate(media["views"]):
             descriptor = 0
             if view is not None:
-                descriptor = (1 | (int("range" in view) << 1)
-                              | (view.get("range", {}).get("offset", 0) << 32)
-                              | (view["frames"] << 64) | (len(view["chunks"]) << 128))
-                for ordinal, chunk in enumerate(view["chunks"]):
-                    await self.configure(2, self.table_address(index, ordinal), chunk)
-                    refs[chunk] += 1
+                from block_images import view_blocks
+                blocks,offset=view_blocks(view,self.chunk_frames,self.block_chunks)
+                descriptor = (1 | (int("range" in view) << 1) | (offset << 32)
+                              | (view["frames"] << 64) | (len(blocks) << 128))
+                for ordinal,block in enumerate(blocks):
+                    await self.configure(2,self.table_address(index,ordinal),block)
+                refs.update(blocks)
             await self.configure(1, index, descriptor)
-        for chunk in range(slots):
-            await self.configure(3, chunk, refs[chunk])
-        for index, chunk in enumerate(media["free_chunks"]):
-            await self.configure(4, index, chunk)
-        for index, value in enumerate((len(media["views"]), slots, len(media["free_chunks"]))):
-            await self.configure(0, index, value)
+        for block in range(slots//self.block_chunks):
+            await self.configure(3,block,refs[block])
+        free=media["free_chunks"]
+        for index in range(0,len(free),self.block_chunks):
+            await self.configure(4,index//self.block_chunks,free[index]//self.block_chunks)
+        for index,value in enumerate((len(media["views"]),slots//self.block_chunks,len(free)//self.block_chunks)):
+            await self.configure(0,index,value)
 
     async def snapshot(self):
         await self.fence()
         self.memory[:] = await self.read_memory()
-        views, slots, free = [await self.configure(0, index) for index in range(3)]
-        assert views <= self.views and free <= slots <= self.slots
-        result = {"chunk_frames": self.chunk_frames, "samples": [signed(x) for x in self.memory[:slots*self.chunk_frames]],
-                  "free_chunks": [await self.configure(4, index) for index in range(free)], "views": []}
-        if self.chunk_limit is not None:
-            result["chunk_limit"] = self.chunk_limit
-        refs = Counter()
+        views,blocks,free = [await self.configure(0,index) for index in range(3)]
+        assert views<=self.views and free<=blocks<=self.blocks
+        free_blocks=[await self.configure(4,index) for index in range(free)]
+        result={"chunk_frames":self.chunk_frames,
+                "samples":[signed(x) for x in self.memory[:blocks*self.block_chunks*self.chunk_frames]],
+                "free_chunks":[block*self.block_chunks+i for block in free_blocks for i in range(self.block_chunks)],"views":[]}
+        if self.block_chunks!=1:result['block_chunks']=self.block_chunks
+        if self.chunk_limit is not None:result['chunk_limit']=self.chunk_limit
+        refs=Counter()
         for index in range(views):
-            descriptor = await self.configure(1, index)
-            view = None
+            descriptor=await self.configure(1,index)
+            view=None
             if descriptor & 1:
-                chunks = [await self.configure(2, self.table_address(index, ordinal)) for ordinal in range(descriptor >> 128)]
-                view = {"chunks": chunks, "frames": (descriptor >> 64) & ((1 << 64) - 1)}
-                if descriptor & 2:
-                    view["range"] = {"offset": (descriptor >> 32) & MASK32}
-                refs.update(chunks)
-            result["views"].append(view)
-        for chunk in range(slots):
-            assert await self.configure(3, chunk) == refs[chunk], "reference count differs from view ownership"
+                ids=[await self.configure(2,self.table_address(index,ordinal)) for ordinal in range(descriptor>>128)]
+                frames=(descriptor>>64)&((1<<64)-1);offset=(descriptor>>32)&MASK32
+                first=offset//self.chunk_frames
+                count=(offset%self.chunk_frames+frames+self.chunk_frames-1)//self.chunk_frames
+                chunks=[ids[(first+i)//self.block_chunks]*self.block_chunks+(first+i)%self.block_chunks for i in range(count)]
+                view={'chunks':chunks,'frames':frames}
+                if descriptor & 2:view['range']={'offset':offset%self.chunk_frames}
+                refs.update(ids)
+            result['views'].append(view)
+        for block in range(blocks):
+            assert await self.configure(3,block)==refs[block], 'block reference count differs from view ownership'
+        if self.block_chunks!=1:
+            from block_images import canonicalize
+            canonicalize(result)
         return result
 
     async def fence(self):

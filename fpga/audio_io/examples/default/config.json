@@ -1,6 +1,8 @@
 {
   "q": 32,
   "channels": 16,
+  "block_chunks": 32,
+  "slots": 1024,
   "boot_words": 166,
   "event_words": 74,
   "instructions": 64,

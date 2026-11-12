@@ -107,6 +107,16 @@ def seeded(count,seed=20261112):
             value['steps'].append(step(ordinal=i,actions=actions))
         yield value
 
+def allocation_boundary(block_chunks,chunk_frames,q=32):
+    value=base('stereo-block-boundary-retake-retains-old-export',channels=2,q=q,cf=chunk_frames)
+    end=(block_chunks*chunk_frames+q-1)//q+3
+    controls={0:[action('record',0,0,'record')],end:[action('play',0,end*q,'play')],
+        end+1:[dict(kind='export',name='old-take',target=lid(0),selection='playback')],
+        end+2:[action('retake',0,(end+2)*q,'record')],end+5:[action('new-play',0,(end+5)*q,'play')],
+        end+6:[dict(kind='export',name='new-take',target=lid(0),selection='latest')]}
+    value['steps']=[step(q=q,ports=2,ordinal=i,actions=controls.get(i,())) for i in range(end+8)]
+    return value
+
 def benchmark64(seed=20261110):
     value=base('coordinated-8x8-production-playback-q32',loops=64,inputs=0,outputs=8,requests=128)
     loaded(value,512,seed)

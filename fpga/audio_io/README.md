@@ -61,6 +61,14 @@ Q=32, chunk=32, 16 RX/TX lanes, three RX/TX banks (12 KiB logical samples).
 Two-bank profiles and Q=16/64 are required checks. Local transport tests also use
 Q=1 and odd Q independently of supported processing/media profiles.
 
+Media defaults follow the processing core: BLOCK_CHUNKS=32 and SLOTS=1024,
+providing 32 allocation blocks. Sixteen simultaneous independent recordings need
+at least 16 such blocks even when each take is shorter than one block. The
+prepared loader writes block counts; sample transport and Q-sized I/O banks are
+independent of this allocation geometry. The runner accepts `--block-chunks` and
+`--slots` and rejects insufficient capacity. `--block-chunks 1` selects the legacy
+allocation profile for comparison.
+
 The 16-loop graph maps lane c to input port c, a mono capture/playback view for
 logical loop c, and output port c. Input/Output and BeginCapture/Capture/ReadView
 remain ordinary jobs. Monitoring and playback fan-in is an explicit graph mix.
@@ -176,7 +184,7 @@ See `constraints/README.md` before physical integration.
 
 ## Validation checkpoint
 
-`measurements/validation.json` records the measured configurations and replay
+The pre-#972 baseline in `measurements/validation.json` records the measured configurations and replay
 commands. Complete-top mapping with Yosys 0.52 to ECP5 primitives gives:
 
 | Top, Q=32, 16x16, three banks each | LUT4 | FF | DP16KD | MULT18X18D |

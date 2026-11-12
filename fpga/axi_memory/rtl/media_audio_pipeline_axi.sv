@@ -6,9 +6,10 @@ module media_audio_pipeline_axi #(
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
-    parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
+    parameter integer VIEWS = 32, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
-    parameter integer TABLE_PAGES = (SLOTS+14)/15 + 8*VIEWS + 16,
+    parameter integer BLOCK_CHUNKS = 32,
+    parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
     parameter integer AXI_DATA_WIDTH = 32,
@@ -175,6 +176,7 @@ module media_audio_pipeline_axi #(
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),
+        .BLOCK_CHUNKS(BLOCK_CHUNKS),
         .TABLE_PAGES(TABLE_PAGES),
         .TABLE_LINES(TABLE_LINES),
         .REF_LINES(REF_LINES),
@@ -182,7 +184,7 @@ module media_audio_pipeline_axi #(
         .READ_BUFFERS(READ_BUFFERS),
         .WRITE_BUFFERS(WRITE_BUFFERS),
         .BURST_MEMORY(BURST_MEMORY)) core (.*);
-    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS)+15)/16)*16 + 64'(TABLE_PAGES)*16;
+    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16;
     initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
     shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);
 endmodule

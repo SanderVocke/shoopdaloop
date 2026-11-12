@@ -1,6 +1,6 @@
 # FPGA audio I/O implementation plan
 
-Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–6 complete; final validation and PR delivery in progress.
+Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–6 complete; revalidating final delivery after allocator integration.
 
 Base: `proto/fpga-rust-reference`, inspected at `012ed6bd`. The current local
 `work` branch points to that base. Follow `.agents/prompts/write_plan.md` when
@@ -297,21 +297,21 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 7 — Final end-to-end validation and delivery
 
-- [x] Run the 16x16 demo through both latency modes with monitoring and complete
+- [ ] Run the 16x16 demo through both latency modes with monitoring and complete
   record/playback sessions. Verify every output and recorded word, expected
   startup silence and exact latency from the declared schedule, without aligning
   traces after observing results or dropping prefixes/tails.
-- [x] Repeat with a recoverable processing overrun and with exhaustion followed
+- [ ] Repeat with a recoverable processing overrun and with exhaustion followed
   by quiesce/reset/reload/rearm. Demonstrate that output returns at the configured
   latency and that no old bank or memory response crosses epochs.
-- [x] Run targeted Rust/contract suites, all affected FPGA regressions, production
+- [ ] Run targeted Rust/contract suites, all affected FPGA regressions, production
   comparisons and the existing 64-loop scale/timing workload. Complete repository
   mandated formatting, warning-denying builds and test gates for changed code.
-- [x] Lint and synthesize the full 16x16 top and bank/quantum variants; report
+- [ ] Lint and synthesize the full 16x16 top and bank/quantum variants; report
   BRAM/LUT/FF/DSP use and measured complete input-publication-to-output-eligibility
   cycles. Explain the selected P and clock assumptions. Synthesis/cycle simulation
   is evidence for the design, not a claim of routed board timing closure.
-- [x] Document ports, channel mapping, parameters, clock/reset constraints,
+- [ ] Document ports, channel mapping, parameters, clock/reset constraints,
   recovery/rearm ownership and exact replay commands in `fpga/audio_io/README.md`.
 - [ ] Push the implementation branch and create a PR targeting
   `proto/fpga-rust-reference`. Monitor CI to green; inspect automated reviews,
@@ -451,3 +451,18 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
   and the README. Routed board timing/fit remains outside the agreed scope.
 - PR: https://github.com/SanderVocke/shoopdaloop/pull/973. Final CI/review checking
   is in progress; the PR will remain unmerged.
+
+### Allocator integration requested during PR review
+
+- Integrated `da6f9ebe` / PR #972. Resolved the loop-top conflict by retaining
+  external audio sample ports and forwarding BLOCK_CHUNKS. Retained the updated
+  logical-media offset handling in the shared verification helper. Regenerated
+  all AXI/native/audio wrappers from their canonical sources.
+- The audio demo now defaults to 32 chunks/block and 1,024 physical media chunks
+  (32 allocation blocks), with loader limits expressed in blocks. This provides
+  enough independent blocks for all 16 recording channels. Simulation and
+  prepared-image metadata use the same layout; legacy block size 1 remains
+  selectable for comparison. Audio I/O quantum/bank geometry is unchanged.
+- Final validation is reopened for the updated allocator. Earlier resource and
+  publication measurements above describe the pre-#972 baseline and will be
+  refreshed before final delivery. Goals and acceptance criteria are unchanged.

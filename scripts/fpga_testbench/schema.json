@@ -1680,6 +1680,13 @@
     "MediaSnapshot": {
       "type": "object",
       "properties": {
+        "block_chunks": {
+          "description": "Allocation granularity; payload addresses and view chunk IDs stay physical.",
+          "type": "integer",
+          "format": "uint32",
+          "maximum": 4294967295,
+          "minimum": 0
+        },
         "chunk_frames": {
           "type": "integer",
           "format": "uint32",
@@ -1693,6 +1700,7 @@
           "minimum": 0
         },
         "free_chunks": {
+          "description": "Complete blocks in stack order, with ascending physical IDs inside each block.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ChunkId"

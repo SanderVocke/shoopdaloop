@@ -60,8 +60,10 @@ async def prepared_demo_and_recovery(d):
     cocotb.start_soon(Clock(d.clk, 10, units='ns').start())
     cocotb.start_soon(start_audio_clock(d))
     chunk = json.loads((OUTPUT/'scenario.json').read_text())['chunk_frames']
-    pages = (256+14)//15+8*32+16
-    words = ((256*chunk+15)//16)*16+2*((256+15)//16)*16+pages*16
+    slots = config['slots']
+    blocks = slots//config['block_chunks']
+    pages = (blocks+14)//15+8*32+16
+    words = ((slots*chunk+15)//16)*16+2*((blocks+15)//16)*16+pages*16
     memory = create_memory(d, [0]*words, seed=20261112, output=OUTPUT)
     task = None
     if not getattr(memory, 'is_native', False):

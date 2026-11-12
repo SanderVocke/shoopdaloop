@@ -11,10 +11,15 @@ import codec as tp
 from pipeline_driver import sp
 from execution_timing import ExecutionTiming
 from options import metadata
+from block_images import reblock
 
 OUTPUT=Path(os.environ['UNIFY_OUTPUT'])
 DEPTHS=tuple(map(int,os.environ['LP_DEPTHS'].split(',')))
 MEDIA=tuple(map(int,os.environ['LP_MEDIA_CAPACITIES'].split(',')))
+BLOCK_CHUNKS=int(os.environ.get('AXI_BLOCK_CHUNKS','1'))
+
+def physical_media(image):
+    return {**reblock(image['media'],BLOCK_CHUNKS,MEDIA[1]),'chunk_limit':MEDIA[1]}
 
 def identity(value):return value['slot'],value['generation']
 
@@ -45,7 +50,8 @@ async def production_scenarios(dut):
         scenario=wire.load(OUTPUT/f'{index}.scenario.json')
         image=wire.load(OUTPUT/f'{index}.image.json','image')
         expected=wire.load(OUTPUT/f'{index}.expected.json','result')
-        physical={**image['media'],'chunk_limit':MEDIA[1]}
+        physical=physical_media(image)
+        (OUTPUT/f'{index}.physical-media.json').write_text(json.dumps(physical,indent=2)+'\n')
         case=dict(name=scenario['name'],plan=dict(description=image['transition']['description'],limits=image['transition']['limits']),
             program=image['program'],initial_state=image['initial_state'],buffers=image['buffers'],output_ports=image['output_ports'],queue_capacity=DEPTHS[5],media=physical)
         driver=PipelineDriver(dut,DEPTHS,20261112);driver.stalls=os.environ['UNIFY_STALLS']=='1'
@@ -154,7 +160,7 @@ if os.environ.get('UNIFY_FAULTS')=='1':
         def physical(image):
             return dict(name=image['name'],plan=dict(description=image['transition']['description'],limits=image['transition']['limits']),
                 program=image['program'],initial_state=image['initial_state'],buffers=image['buffers'],output_ports=image['output_ports'],queue_capacity=DEPTHS[5],
-                media={**image['media'],'chunk_limit':MEDIA[1]})
+                media=physical_media(image))
         def row(inputs,commands=()):
             return dict(transition=dict(collect_completed=True,collect=[],cancel=[],commands=list(commands)),writes=[],work=dict(kind='audio',value=dict(inputs=inputs)))
         def record_command():return dict(target=dict(slot=0,generation=1),sequence=1,at=0,timing=dict(kind='at'),operation=dict(kind='record'))
@@ -166,16 +172,21 @@ if os.environ.get('UNIFY_FAULTS')=='1':
         image['program']['jobs_per_quantum']+=1
         driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
         try:
-            case=physical(image);case['media']['chunk_limit']=scenario['quantum']//MEDIA[2]
+            capacity=max(BLOCK_CHUNKS,scenario['quantum']//MEDIA[2])
+            filled_quanta=capacity*MEDIA[2]//scenario['quantum']
+            failed_frame=filled_quanta*scenario['quantum']
+            case=physical(image);case['media']['chunk_limit']=capacity
             await driver.initialize(case,image['transition'])
             assert (await driver.step(row(scenario['steps'][0]['inputs'],[record_command()])))['error'] is None
+            for _ in range(filled_quanta-1):
+                assert (await driver.step(row(scenario['steps'][1]['inputs'])))['error'] is None
             failed=await driver.step(row(scenario['steps'][1]['inputs']))
             assert failed['error']==dict(stage='jobs',error='memory_full')
             assert failed['audio']['outputs']==[[0]*32]
-            assert failed['transition']['next_frame']==32
+            assert failed['transition']['next_frame']==failed_frame
             assert int(dut.faulted.value) and not int(dut.run_ready.value)
             held=await driver.step(row(scenario['steps'][2]['inputs']))
-            assert held['error']==failed['error'] and held['transition']['next_frame']==32
+            assert held['error']==failed['error'] and held['transition']['next_frame']==failed_frame
             assert held['audio']['outputs']==[[0]*32]
             case=physical(image)
             await driver.initialize(case,image['transition'])
@@ -262,8 +273,9 @@ if os.environ.get('UNIFY_FAULTS')=='1':
         driver=PipelineDriver(dut,DEPTHS,20261112);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
         try:
             case=physical(image);case['media']=None
-            memory.initial_override=dict(chunk_frames=MEDIA[2],samples=[0]*32,
-                free_chunks=list(range(32//MEDIA[2])),views=[dict(chunks=[],frames=0)])
+            free_slots=max(BLOCK_CHUNKS,32//MEDIA[2])
+            memory.initial_override=dict(block_chunks=BLOCK_CHUNKS,chunk_frames=MEDIA[2],samples=[0]*(free_slots*MEDIA[2]),
+                free_chunks=list(range(free_slots)),views=[dict(chunks=[],frames=0)])
             await driver.initialize(case,image['transition'])
             memory.pause_responses=True;memory.fail_next=True
             first=await driver.step(row(scenario['steps'][0]['inputs'],[record_command()]))

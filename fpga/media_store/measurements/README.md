@@ -1,5 +1,7 @@
 # DDR metadata measurements
 
+This is the one-chunk ownership baseline. The follow-up [32-chunk block comparison](blocks32/README.md) preserves these measurements and reports the new allocation policy.
+
 All measured quanta compare jobs, loop/node state, scratch/output samples and statuses with Rust; final fenced media and independently derived reference counts also match. Separate native replays compare complete media after every quantum. Rust storage/arithmetic semantics are unchanged.
 
 The primary experiment assumes 100 MHz fabric, Q=32 at 48 kHz (666.67 µs budget), 32-sample chunks, AXI64, 128 sample read buffers, four write buffers, 128 table lines, four reference lines and two stack lines. It uses the pinned 512 MiB DDR3-1066 x16 DRAMsim3 profile. These are behavioral clock estimates, with no placement/routing guarantee.

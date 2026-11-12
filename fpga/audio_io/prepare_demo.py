@@ -66,7 +66,9 @@ def make_scenario(q=32, chunk=None, channels=16, monitoring=False, routing="iden
                 request_capacity=128, loops=loops, nodes=nodes, connections=connections, media=[], steps=steps)
 
 
-def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="identity"):
+def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="identity", block_chunks=32, slots=1024):
+    if block_chunks < 1 or block_chunks & (block_chunks-1) or slots % block_chunks or slots//block_chunks < channels:
+        raise ValueError('media capacity must contain at least one allocation block per recording channel')
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     scenario = make_scenario(q, chunk, channels, monitoring, routing)
@@ -100,7 +102,7 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
         boot.append(packet(kind=1, index=i | (1 << 31), data=sp.encode_value(value)))
     for i in range(32):
         boot.append(packet(kind=2, opcode=1, index=i, data=0))
-    for i, value in enumerate([0, 0, 0, 256]):
+    for i, value in enumerate([0, 0, 0, slots//block_chunks]):
         boot.append(packet(kind=2, opcode=0, index=i, data=value))
     boot.append(packet(kind=3))
     events, sequence = [], 0
@@ -113,7 +115,7 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
         events.append(packet(sequence=n, kind=2))
     for name, records in [('boot', boot), ('events', events)]:
         (output/f'{name}.hex').write_text(''.join(f'{r:0187x}\n' for r in records))
-    config = dict(q=q, channels=channels, boot_words=len(boot), event_words=len(events),
+    config = dict(q=q, channels=channels, block_chunks=block_chunks, slots=slots, boot_words=len(boot), event_words=len(events),
                   instructions=len(image['program']['instructions']), states=len(image['initial_state']['memory']),
                   buffers=image['buffers'], jobs=image['program']['jobs_per_quantum'],
                   loop_slots=limits['loop_slots'], requests=limits['pending_requests'], events=limits['events'])
@@ -124,6 +126,8 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
+    parser.add_argument('--block-chunks', type=int, default=32)
+    parser.add_argument('--slots', type=int, default=1024)
     parser.add_argument('--output', type=Path, default=HERE/'examples/default')
     parser.add_argument('--q', type=int, default=32)
     parser.add_argument('--chunk', type=int)
@@ -135,13 +139,13 @@ def main():
     if args.check:
         (ROOT/'work').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='audio-rom-', dir=ROOT/'work') as temporary:
-            prepare(temporary, args.q, args.chunk, args.channels, args.monitoring, args.routing)
+            prepare(temporary, args.q, args.chunk, args.channels, args.monitoring, args.routing, args.block_chunks, args.slots)
             for name in ('boot.hex', 'events.hex', 'config.json'):
                 if (Path(temporary)/name).read_bytes() != (args.output/name).read_bytes():
                     raise SystemExit(f'stale prepared demo: {name}')
         print('prepared audio ROMs match production compilation')
     else:
-        print(json.dumps(prepare(args.output, args.q, args.chunk, args.channels, args.monitoring, args.routing), indent=2))
+        print(json.dumps(prepare(args.output, args.q, args.chunk, args.channels, args.monitoring, args.routing, args.block_chunks, args.slots), indent=2))
 
 
 if __name__ == '__main__':

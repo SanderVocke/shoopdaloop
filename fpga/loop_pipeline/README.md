@@ -4,6 +4,10 @@
 storage under one processing operation. The Rust `pipeline::Pipeline` has the
 same contract. See [SIMPLIFY.md](../../SIMPLIFY.md) for the design decision.
 
+The media path supports [32-chunk allocation blocks](../media_store/BLOCK_ALLOCATION.md),
+with block-level tables/counts/free IDs and chunk-level sample delivery. Select
+`--block-chunks 32` in simulations; legacy regression fixtures default to one chunk.
+
 ```text
 commands -> settle transitions -> execute state and jobs -> advance clocks
                                       |

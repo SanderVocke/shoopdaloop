@@ -26,8 +26,8 @@ module audio_demo #(
     parameter integer BOOT_WORDS = 166, EVENT_WORDS = 74,
     parameter integer INSTRUCTIONS = 64, STATES = 32, BUFFERS = 32, JOB_BUDGET = 80,
     parameter integer RESET_CYCLES = 64, WATCHDOG_CYCLES = 1000000,
-    parameter integer VIEWS = 32, SLOTS = 256,
-    parameter integer TABLE_PAGES = (SLOTS+14)/15+8*VIEWS+16,
+    parameter integer VIEWS = 32, SLOTS = 1024, BLOCK_CHUNKS = 32,
+    parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15+8*VIEWS+16,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000,
     parameter BOOT_FILE = "fpga/audio_io/examples/default/boot.hex",
     parameter EVENT_FILE = "fpga/audio_io/examples/default/events.hex"
@@ -48,7 +48,7 @@ module audio_demo #(
         text += '    '+re.sub(r'(?:input|output)\s+(?:wire|reg)', 'wire', p).replace('INPUT_PORTS', 'CHANNELS').replace('OUTPUT_PORTS', 'CHANNELS')+n+';\n'
     text += '''    audio_loop_pipeline #(.MAX_FRAMES(Q),.CHUNK_FRAMES(CHUNK_FRAMES),.P(P),
         .BUFFERS(BUFFERS),.INPUT_PORTS(CHANNELS),.OUTPUT_PORTS(CHANNELS),.RX_BANKS(RX_BANKS),.TX_BANKS(TX_BANKS),
-        .VIEWS(VIEWS),.SLOTS(SLOTS),.TABLE_PAGES(TABLE_PAGES),.PHYSICAL_BASE(PHYSICAL_BASE),
+        .VIEWS(VIEWS),.SLOTS(SLOTS),.BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES),.PHYSICAL_BASE(PHYSICAL_BASE),
         .REQUEST_DEPTH(128),.EVENT_DEPTH(256),.AXI_DATA_WIDTH(AXI_DATA_WIDTH),.WATCHDOG_CYCLES(WATCHDOG_CYCLES)) engine (.*);
 '''
     text += (HERE/'rtl/audio_demo_body.svh').read_text()
