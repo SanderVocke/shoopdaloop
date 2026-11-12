@@ -30,6 +30,8 @@ phys_opt_design
 write_checkpoint -force post_place.dcp
 reports post_place
 route_design
+phys_opt_design -directive AggressiveExplore
+route_design
 write_checkpoint -force post_route.dcp
 reports post_route
 report_route_status -file post_route_route_status.rpt
