@@ -102,6 +102,8 @@ chunks; streaming stays at 4,096. Blocked snapshots canonically omit unpublished
 bytes, and the post-run Reclaim unit changes from one chunk to one block.
 
 Implementation and publication commits are pushed on `proto/fpga-block-allocation`.
-PR #971 stays separate and ready on `proto/fpga-metadata-cache` at `676093aa`,
-targeting `proto/fpga-rust-reference`. CI/review follow-up is left for later,
-following the user's earlier instruction; no autonomous merge is performed.
+The metadata baseline was published separately in PR #971 at `676093aa`,
+targeting `proto/fpga-rust-reference`. That PR was subsequently merged upstream
+as `012ed6bd`; no merge action was performed by this task. Block changes remain
+on their separate branch. CI/review follow-up is left for later, following the
+user's earlier instruction.
