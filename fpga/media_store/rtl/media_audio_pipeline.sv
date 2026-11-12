@@ -1,6 +1,7 @@
 `include "state_processor_defs.svh"
 
 module media_audio_pipeline #(
+    parameter integer EXTERNAL_IO = 0,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
@@ -10,6 +11,12 @@ module media_audio_pipeline #(
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     input wire clk, input wire reset,
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
@@ -96,11 +103,13 @@ module media_audio_pipeline #(
     assign job_read_valid = internal_read_valid && pipeline_busy;
     assign store_read_data = store_sample;
 
-    audio_pipeline #(
+    audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1)
     ) pipeline (
+        .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
+        .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(pipeline_ready),
         .run_instruction_count(run_instruction_count), .run_state_count(run_state_count),
         .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),

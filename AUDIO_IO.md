@@ -1,6 +1,6 @@
 # FPGA audio I/O implementation plan
 
-Status: implementation in progress on `feat/fpga-audio-io`. Stage 1 complete.
+Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–3 complete; recovery/demo integration in progress.
 
 Base: `proto/fpga-rust-reference`, inspected at `012ed6bd`. The current local
 `work` branch points to that base. Follow `.agents/prompts/write_plan.md` when
@@ -233,18 +233,18 @@ milestone commit. Independent checks within a stage may run concurrently.
 
 ### Stage 3 — Attach real processing and migrate bench transport
 
-- [ ] Replace/refactor job-processor I/O RAM access with the dedicated bank
+- [x] Replace/refactor job-processor I/O RAM access with the dedicated bank
   interfaces; propagate run-bank metadata and sample ports through audio/media/
   loop tops. Preserve scratch/debug observability needed by existing benches.
-- [ ] Connect the autonomous quantum coordinator to real transition/state/job/
+- [x] Connect the autonomous quantum coordinator to real transition/state/job/
   media execution and successful whole-pipeline publication.
-- [ ] Update standalone and integrated testbench drivers together with the port
+- [x] Update standalone and integrated testbench drivers together with the port
   change. Supply a bench-side RAM/transport adapter where appropriate; existing
   noncontinuous benches may retain explicit run control. Their compatibility
   adapter must not become a production idle-port dependency.
-- [ ] Regenerate AXI/native-memory wrappers using `generate_tops.py`; update all
+- [x] Regenerate AXI/native-memory wrappers using `generate_tops.py`; update all
   source manifests, synthesis scripts and explicit/implicit port connections.
-- [ ] Verification: existing bit-exact audio/media/state results, zero unwritten
+- [x] Verification: existing bit-exact audio/media/state results, zero unwritten
   outputs, sticky processing faults, partial-output suppression, stalls and reset;
   run generator `--check` and lint every affected standalone/integrated top.
 
@@ -366,3 +366,19 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
   `fpga/audio_io/constraints/README.md`. Physical vendor CDC signoff remains a
   board-integration responsibility, outside this milestone.
 - Artifacts: `work/audio-local*`. Full-core recovery verification remains stage 4.
+
+### Stage 3
+
+- Added dedicated synchronous sample interfaces through JP/audio/media/loop and
+  generated AXI wrappers. `EXTERNAL_IO=1` eliminates local I/O RAM from the
+  continuous path; mode 0 preserves existing bench transport and coverage.
+  External-mode debug I/O accesses are rejected; scratch debug stays available.
+- Added `audio_loop_pipeline`, a sequence-tagged bounded control queue and fixed
+  ownership handoff to the actual core. No external job executor is introduced.
+- Continuous 16x16 Q=32/P=32 passes 448 frame comparisons against production
+  Q8.24 plus exact final media and loop state. Injected late processing silences
+  exactly one quantum, preserves recording, and resumes at the original latency.
+- Existing standalone default/small audio and integrated default/small/odd
+  loop/media regressions pass (directed plus two seeded cases per profile).
+  Canonical/generated tops pass strict Verilator compilation.
+- Artifacts: `work/audio-connected`, `work/audio-overrun`, `work/audio-regression`.

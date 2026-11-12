@@ -4,7 +4,8 @@
 `include "state_processor_defs.svh"
 
 module loop_pipeline_axi_tb #(
-parameter integer LOOP_DEPTH = 8,
+parameter integer EXTERNAL_IO = 0,
+    parameter integer LOOP_DEPTH = 8,
     parameter integer REQUEST_DEPTH = 16,
     parameter integer EVENT_DEPTH = 32,
     parameter integer PROGRAM_DEPTH = 64,
@@ -24,6 +25,12 @@ parameter integer LOOP_DEPTH = 8,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     output reg clk,
     input wire reset,
     input wire run_valid,
@@ -182,7 +189,7 @@ parameter integer LOOP_DEPTH = 8,
     wire memory_valid = core.memory_valid;
     initial clk=0;
     always #5 clk<=~clk;
-    loop_pipeline_axi #(.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
+    loop_pipeline_axi #(.EXTERNAL_IO(EXTERNAL_IO),.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),

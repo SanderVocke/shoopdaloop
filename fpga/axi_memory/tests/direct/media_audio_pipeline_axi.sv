@@ -3,7 +3,8 @@
 `include "state_processor_defs.svh"
 
 module media_audio_pipeline_axi #(
-parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
+parameter integer EXTERNAL_IO = 0,
+    parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer VIEWS = 32, parameter integer SLOTS = 32, parameter integer CHUNK_FRAMES = 32,
@@ -14,6 +15,12 @@ parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer AXI_DATA_WIDTH = 32,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000
 ) (
+    output wire sample_input_read,
+    output wire [31:0] sample_input_address,
+    input wire [31:0] sample_input_data,
+    output wire sample_output_write,
+    output wire [31:0] sample_output_address,
+    output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
     input wire run_valid,
@@ -166,6 +173,7 @@ parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     wire [31:0] physical_base = PHYSICAL_BASE;
     media_audio_pipeline #(
+        .EXTERNAL_IO(EXTERNAL_IO),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_DEPTH),
