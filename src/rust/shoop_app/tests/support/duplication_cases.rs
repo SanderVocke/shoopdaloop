@@ -12,6 +12,32 @@ fn action(track: TrackId, loop_id: LoopId, action: LoopAction) -> Command {
         action,
     }
 }
+fn clear_then_copy(
+    f: &mut Fixture,
+    client: &mut Client,
+    track: TrackId,
+    source: LoopId,
+    target: LoopId,
+    encoded: bool,
+) -> Outcome {
+    let cleared = run(
+        f,
+        client,
+        Command::Control(ControlOperation::ClearLoops {
+            loops: vec![target],
+        }),
+        encoded,
+    );
+    if matches!(cleared, Outcome::Refused { .. }) {
+        return cleared;
+    }
+    run(
+        f,
+        client,
+        action(track, source, LoopAction::DuplicateTo(target)),
+        encoded,
+    )
+}
 fn setup(encoded: bool) -> (Fixture, Client, TrackId, Vec<LoopId>) {
     let mut f = fixture();
     let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
@@ -442,6 +468,33 @@ fn copied_definition(source: &Versioned, target: &Versioned) {
             .map(|i| (i.start_frame, i.end_frame))
             .collect::<Vec<_>>()
     );
+}
+
+#[shoop_test]
+fn normal_clear_then_copy_supports_both_kind_changes() {
+    for encoded in [false, true] {
+        let (mut f, mut client, track, loops) = setup(encoded);
+        run(
+            &mut f,
+            &mut client,
+            append(loops[2], vec![loops[0]]),
+            encoded,
+        );
+        let source = definition(&f, loops[2]);
+        let outcome = clear_then_copy(&mut f, &mut client, track, loops[2], loops[1], encoded);
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+        copied_definition(&source, &definition(&f, loops[1]));
+        let media = audio(&mut f, &client, loops[0]);
+        assert!(matches!(
+            clear_then_copy(&mut f, &mut client, track, loops[0], loops[2], encoded),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(audio(&mut f, &client, loops[2]), media);
+        assert_eq!(
+            (view(&f, loops[2]).mode, view(&f, loops[2]).position),
+            (LoopMode::Stopped, 0.)
+        );
+    }
 }
 
 #[shoop_test]
