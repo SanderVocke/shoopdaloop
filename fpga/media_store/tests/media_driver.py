@@ -4,6 +4,7 @@ import os
 import random
 from cocotb.triggers import Timer
 from direct_memory import MemoryHost, native_field
+from legacy_metadata import LegacyMetadata
 
 OPCODES = {"create": 0, "slice": 1, "clear": 2, "remove": 3, "reclaim": 4, "append": 5, "read": 6}
 ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape"}
@@ -27,7 +28,11 @@ class Driver(MemoryHost):
         self.views, self.slots, self.chunk_frames = capacities
         self.rng = random.Random(seed)
         self.base = 0x1234000000
-        self.memory = [0xa5a5a5a5] * (self.slots * self.chunk_frames)
+        self.table_pages = int(os.environ.get('AXI_METADATA_PAGES') or ((self.slots+14)//15+8*self.views+16))
+        self.slot_bits = max(1,(self.slots-1).bit_length())
+        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.slots+15)//16)*16+self.table_pages*16
+        self.memory = [0xa5a5a5a5] * storage_words
+        self.sample_transactions = 0
         self.pending = None
         self.held_request = self.held_read = None
         self.cycles = self.requests = 0
@@ -39,9 +44,23 @@ class Driver(MemoryHost):
         self.chunk_limit = None
         self.before_clock = None
         self.axi = None
+        self.legacy_metadata = None
         if hasattr(dut, "m_axi_awvalid"):
             from word_service import create_service
             self.axi = create_service(self, dut, seed=seed, output=os.environ.get("MEDIA_OUTPUT", os.environ.get("LP_OUTPUT")))
+        else:
+            self.legacy_metadata = LegacyMetadata(self)
+
+    def table_address(self, view, ordinal):
+        return (view << self.slot_bits) | ordinal
+
+    def observe_memory(self):
+        if self.axi is None or int(self.dut.reset.value):return
+        base=int(os.environ.get('AXI_PHYSICAL_BASE',str(0x01000000)))
+        for channel in ('ar','aw'):
+            if int(getattr(self.dut,'m_axi_'+channel+'valid').value) and int(getattr(self.dut,'m_axi_'+channel+'ready').value):
+                address=int(getattr(self.dut,'m_axi_'+channel+'addr').value)
+                if base <= address < base+self.slots*self.chunk_frames*4:self.sample_transactions += 1
 
     def close(self):
         if self.axi is not None:
@@ -65,7 +84,9 @@ class Driver(MemoryHost):
                      memory_response_valid=int(response),
                      memory_read_data=self.pending[1] if response else 0,
                      memory_response_error=int(response and self.pending[2]))
+        if self.legacy_metadata is not None:self.legacy_metadata.drive()
         await Timer(5, units="ns")
+        if self.legacy_metadata is not None:self.legacy_metadata.step(self.legacy_metadata.sample(),bool(int(self.dut.reset.value)))
         before = self.sample()
         if self.axi is not None:
             if not self.native_memory:
@@ -92,7 +113,7 @@ class Driver(MemoryHost):
             if before["memory_valid"] and int(self.dut.memory_ready.value):
                 assert self.pending is None, "more than one memory request outstanding"
                 address = before["memory_address"] - self.base
-                assert address % 4 == 0 and 0 <= address < len(self.memory) * 4, "sample address outside arena"
+                assert address % 4 == 0 and 0 <= address < self.slots*self.chunk_frames*4, "sample address outside arena"
                 index = address // 4
                 error = self.fail_next
                 self.fail_next = False
@@ -100,9 +121,11 @@ class Driver(MemoryHost):
                     self.memory[index] = before["memory_write_data"]
                 self.pending = [self.rng.randrange(6) if self.stalls else 0, self.memory[index], error]
                 self.requests += 1
+                self.sample_transactions += 1
                 self.write_requests += before["memory_write"]
                 self.read_requests += 1 - before["memory_write"]
                 self.request_cycle = self.cycles
+        self.observe_memory()
         if self.before_clock is not None:
             self.before_clock()
         self.dut.clk.value = 1
@@ -131,7 +154,7 @@ class Driver(MemoryHost):
     async def configure(self, space, address, value=None, *, expect_error=False):
         self.set(cfg_valid=1, cfg_space=space, cfg_address=address,
                  cfg_write=int(value is not None), cfg_write_data=0 if value is None else value)
-        for _ in range(100):
+        for _ in range(100000):
             before, after = await self.tick()
             if before["cfg_ready"]:
                 break
@@ -163,7 +186,7 @@ class Driver(MemoryHost):
                               | (view.get("range", {}).get("offset", 0) << 32)
                               | (view["frames"] << 64) | (len(view["chunks"]) << 128))
                 for ordinal, chunk in enumerate(view["chunks"]):
-                    await self.configure(2, index * self.slots + ordinal, chunk)
+                    await self.configure(2, self.table_address(index, ordinal), chunk)
                     refs[chunk] += 1
             await self.configure(1, index, descriptor)
         for chunk in range(slots):
@@ -187,7 +210,7 @@ class Driver(MemoryHost):
             descriptor = await self.configure(1, index)
             view = None
             if descriptor & 1:
-                chunks = [await self.configure(2, index * self.slots + ordinal) for ordinal in range(descriptor >> 128)]
+                chunks = [await self.configure(2, self.table_address(index, ordinal)) for ordinal in range(descriptor >> 128)]
                 view = {"chunks": chunks, "frames": (descriptor >> 64) & ((1 << 64) - 1)}
                 if descriptor & 2:
                     view["range"] = {"offset": (descriptor >> 32) & MASK32}

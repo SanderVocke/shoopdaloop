@@ -1,0 +1,16 @@
+{
+  "revision": "4b2fe897",
+  "axi_width": 32,
+  "timing_checked": false,
+  "cells": {
+    "LUT4": 24691,
+    "PFUMX": 2915,
+    "CCU2C": 3872,
+    "$scopeinfo": 80,
+    "TRELLIS_FF": 13716,
+    "L6MUX21": 145,
+    "DP16KD": 91,
+    "MULT18X18D": 4,
+    "TRELLIS_DPR16X4": 66
+  }
+}

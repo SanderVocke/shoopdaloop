@@ -16,6 +16,8 @@ module loop_pipeline_tb #(
     parameter integer SLOTS = 32,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
+    parameter integer TABLE_PAGES = (SLOTS+14)/15 + 8*VIEWS + 16,
+    parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
     output reg clk,
@@ -93,6 +95,14 @@ module loop_pipeline_tb #(
     input wire memory_read_valid, output wire memory_read_ready,
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data,
+    output wire memory_meta_valid, input wire memory_meta_ready,
+    output wire memory_meta_write, output wire [63:0] memory_meta_address,
+    output wire [31:0] memory_meta_write_data,
+    output wire [31:0] memory_meta_count,
+    output wire memory_meta_write_valid, input wire memory_meta_write_ready,
+    input wire memory_meta_read_valid, output wire memory_meta_read_ready,
+    input wire memory_meta_response_valid, output wire memory_meta_response_ready,
+    input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
     output wire memory_fault,
     output wire [63:0] debug_frame,
     output wire debug_shared_read
@@ -103,7 +113,7 @@ module loop_pipeline_tb #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY)) core (.*);
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) core (.*);
     assign debug_frame=core.timing.frame;
     assign debug_shared_read=core.loop_read_valid && core.loop_read_ready;
 endmodule

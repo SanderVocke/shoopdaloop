@@ -1,10 +1,19 @@
-# AXI sample memory
+# AXI sample and metadata memory
 
 The endpoint and timing model follow [PLAN_DDR3.md](../../PLAN_DDR3.md). The
 subsequent chunk-burst implementation extends its original word-only producer.
 Integrated tops now use whole-chunk descriptors and sample streams through the
 common synthesizable AXI master. No accesses bypass AXI in these tops. The word
 port remains selectable for regressions and before/after comparisons.
+
+Integrated media/audio/loop tops use `shared_axi`: independent sample and metadata
+DMA clients share one `axi_master` through `axi_burst_mux`. Competing clients
+alternate at completed burst boundaries, including between bursts of one chunk.
+Ownership lasts through RLAST/B; only one transaction is outstanding. Sample DMA
+is bounded to sample bytes, metadata DMA to the full arena. The disjoint metadata
+layout, capacity/cache parameters and fence/reset contract are documented in
+[DDR metadata](../media_store/DDR_METADATA.md). Chunk-only tops retain their
+single-client adapter.
 
 ## Functional and realistic simulation
 

@@ -40,6 +40,7 @@ class WordService:
             self.chunk = None
         for record in memory.records[self.records:]:
             word = (record["address"]-memory.base)//4
+            if hasattr(owner,"views") and word >= owner.slots*owner.chunk_frames:continue
             if self.chunk is None:
                 self.chunk = dict(chunk=word//frames, write=record["write"], start=record["start"], words=0)
             self.chunk["words"] += ((record["length"]+1) << record["size"])//4

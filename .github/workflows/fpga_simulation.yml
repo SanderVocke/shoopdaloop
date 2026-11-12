@@ -5,6 +5,7 @@ on:
     paths:
       - 'fpga/**'
       - 'PLAN_SIM_MEM.md'
+      - 'PLAN_METADATA_CACHE.md'
       - 'scripts/fpga_testbench/**'
       - 'src/rust/rt_fpga_reference/**'
       - 'src/rust/rt_fpga_testbench/**'
@@ -74,6 +75,9 @@ jobs:
         run: |
           python fpga/axi_memory/simulate_direct.py --output work/native-ci/model
           python fpga/chunk_memory/simulate.py --config minimum --random-cases 1 --axi-data-width 64 --dram-library /missing/not-required.so --output work/native-ci/chunks
+      - name: Check metadata caches and shared transport
+        if: matrix.model == 'instant'
+        run: python fpga/media_store/simulate_metadata.py --output work/native-ci/metadata
       - name: Check endpoints and Rust pipeline comparisons
         run: |
           python fpga/axi_memory/simulate.py --memory-model ${{ matrix.model }} --output work/native-ci/endpoints

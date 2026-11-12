@@ -28,6 +28,8 @@ def main():
     parser.add_argument('--response-cycles',type=int,default=1)
     parser.add_argument('--read-buffers',type=int,default=4)
     parser.add_argument('--write-buffers',type=int,default=4)
+    parser.add_argument('--timing-verify',action='store_true')
+    parser.add_argument('--timing-workload',choices=('original','streaming','mixed'),default='original')
     parser.add_argument('--timing',action='store_true',help='profile the coordinated 64-loop benchmark (--media --config 8x8)')
     add_options(parser,legacy=True)
     args=parser.parse_args()
@@ -50,18 +52,26 @@ def main():
         ('job_processor',['jp_sample_ram.sv','jp_divider.sv','job_processor.sv','audio_pipeline.sv']),
         ('transition_processor',['tp_ram.sv','tp_priority.sv','transition_processor.sv']),
         ('chunk_memory',['chunk_ram.sv','chunk_memory.sv']),
-        ('media_store',['media_ram.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
+        ('media_store',['media_ram.sv','metadata_cache.sv','media_metadata.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
         ('loop_pipeline',['loop_pipeline.sv'])] for s in names]
     configs={name:CONFIGS[name] for name in ('default','small','odd')} if args.config=='all' else {args.config:CONFIGS[args.config]}
     for name,depths in configs.items():
         output=args.output.resolve()/name;output.mkdir(parents=True,exist_ok=True)
         runner=get_runner('verilator')
+        if args.timing and args.timing_workload=='mixed':
+            depths=tuple(384 if i in (3,5,7) else n for i,n in enumerate(depths))
         parameters=dict(zip(PARAMS,depths))
         parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),MEDIA_CONFIGS[name]))
+        media_capacities=MEDIA_CONFIGS[name]
+        if args.timing and args.timing_workload=='streaming':media_capacities=(64,4096,32)
+        if args.timing and args.timing_workload=='mixed':media_capacities=(72,2048,32)
+        parameters.update(zip(('VIEWS','SLOTS','CHUNK_FRAMES'),media_capacities))
         parameters['MEMORY_RESPONSE_CYCLES']=args.response_cycles
+        parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers)
         top='loop_pipeline_axi_tb' if axi else 'loop_pipeline_tb'
-        axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
+        axi_sources=[ROOT/'fpga/axi_memory/rtl'/module for module in ('axi_master.sv','axi_burst_mux.sv','shared_axi.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv')]
         test_top=ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv' if axi else HERE/'tests/loop_pipeline_tb.sv'
         if axi:parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
         runner.build(verilog_sources=direct_sources([*sources,*(axi_sources if axi else []),test_top],top,args.memory_model),includes=[ROOT/'fpga/state_processor/rtl'],
@@ -70,9 +80,9 @@ def main():
         results=runner.test(hdl_toplevel=top,test_module='test_timing_pipeline' if args.timing else 'test_media_loop_pipeline',seed=20261110,
             testcase='directed_against_rust' if args.case else None,
             test_dir=output,waves=args.waves,log_file=output/'simulation.log',extra_env={
-                'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),
+                'LP_TIMING_VERIFY':str(int(args.timing_verify)),'LP_TIMING_WORKLOAD':args.timing_workload,'LP_DEPTHS':','.join(map(str,depths)),'LP_RANDOM_CASES':str(args.random_cases),
                 'LP_OUTPUT':str(output),'LP_REFERENCE':str(ROOT/'target/debug/fpga-reference'),
-                'LP_MEDIA_CAPACITIES':','.join(map(str,MEDIA_CONFIGS[name])),
+                'LP_MEDIA_CAPACITIES':','.join(map(str,media_capacities)),
                 'LP_WRITE_BUFFERS':str(args.write_buffers),
                 'LP_READ_BUFFERS':str(args.read_buffers),
                 'LP_CASE':str(args.case.resolve()) if args.case else '',**memory_env})

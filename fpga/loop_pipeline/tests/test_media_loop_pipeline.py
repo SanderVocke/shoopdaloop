@@ -119,14 +119,18 @@ async def fatal_resources_silence_and_reset(dut):
     image=wire.run_reference('compile',document('transition_plan',value['plan']),executable=REFERENCE)['payload']['value']
     driver=PipelineDriver(dut,DEPTHS);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
     try:
-        await driver.initialize(value,image);memory.fail_next=True
-        failed=await driver.step(value['steps'][0])
-        assert failed['error']==dict(stage='jobs',error='memory_fault')
-        assert failed['audio']['outputs']==[[0]*q] and failed['transition']['next_frame']==0
-        assert (await driver.step(value['steps'][1]))['audio']['outputs']==[[0]*q]
-        memory.fail_next=False
-        await driver.initialize(value,image)
-        assert (await driver.step(value['steps'][0]))['audio']['outputs']==[[7654321]*q]
+        for cold_metadata in (False,True):
+            await driver.initialize(value,image)
+            if cold_metadata:
+                await memory.fence();await memory.configure(5,0,1)
+            memory.fail_next=True
+            failed=await driver.step(value['steps'][0])
+            assert failed['error']==dict(stage='jobs',error='memory_fault')
+            assert failed['audio']['outputs']==[[0]*q] and failed['transition']['next_frame']==0
+            assert (await driver.step(value['steps'][1]))['audio']['outputs']==[[0]*q]
+            memory.fail_next=False
+            await driver.initialize(value,image)
+            assert (await driver.step(value['steps'][0]))['audio']['outputs']==[[7654321]*q]
 
         # Reset drains the simulated old-response epoch before another run.
         await driver.initialize(value,image);memory.pause_responses=True
@@ -148,6 +152,10 @@ async def fatal_resources_silence_and_reset(dut):
     image=wire.run_reference('compile',document('transition_plan',value['plan']),executable=REFERENCE)['payload']['value']
     driver=PipelineDriver(dut,DEPTHS);memory=LoopMemory(dut,MEDIA,20261112);driver.media=memory
     try:
+        initial=empty(MEDIA,1)
+        initial['samples']=[0]*q
+        initial['free_chunks']=list(range(q//MEDIA[2]))
+        memory.initial_override=initial
         await driver.initialize(value,image)
         memory.pause_responses=True;memory.fail_next=True
         first=await driver.step(value['steps'][0])

@@ -64,8 +64,10 @@ def main():
         runner = get_runner("verilator")
         top = "media_audio_pipeline" if args.pipeline else "media_store"
         sources = [ROOT / "fpga/chunk_memory/rtl/chunk_ram.sv", ROOT / "fpga/chunk_memory/rtl/chunk_memory.sv",
-                   HERE / "rtl/media_ram.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
+                   HERE / "rtl/media_ram.sv", HERE / "rtl/metadata_cache.sv", HERE / "rtl/media_metadata.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
         parameters = dict(zip(("VIEWS", "SLOTS", "CHUNK_FRAMES"), capacities))
+        parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers, WRITE_BUFFERS=args.write_buffers)
         audio = (32, 16, 32, 32, 16, 2, 2) if name == "default" else (16, 8, 16, capacities[2], 8, 2, 2)
         if name == "wide":
@@ -81,7 +83,7 @@ def main():
             parameters.update(zip(("PROGRAM_DEPTH", "STATE_DEPTH", "JOB_DEPTH", "MAX_FRAMES", "BUFFERS", "INPUT_PORTS", "OUTPUT_PORTS"), audio))
             parameters["MEMORY_RESPONSE_CYCLES"] = args.response_cycles
         if axi:
-            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
+            sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "axi_burst_mux.sv", "shared_axi.sv", "chunk_dma.sv", "word_dma.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
             top += "_axi"
             parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
         runner.build(verilog_sources=direct_sources(sources,top,args.memory_model), includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
