@@ -4,6 +4,51 @@ Validation date: 2026-11-12. Workload: the default 64-loop deployment, Q=32,
 64-bit AXI3, four read buffers, four write buffers, eight metadata cache lines,
 four reference cache lines, 100 MHz requested fabric clock.
 
+## Retry after timing MR #975
+
+Merged `proto/fpga-rust-reference` at `a29e1999`, including timing improvements
+`f7cca570` (#975) and native AXI3 (#974), into the temporary deployment branch.
+The tested merge revision is `1b32bef7dc5e4e328dced1bb9586ad887172bebf`.
+The same default 64-loop workload and board configuration were regenerated.
+
+- Generated AXI, audio and benchmark interface checks pass.
+- Full configured board-wrapper lint passes with warnings enabled.
+- Four-loop harness control tests pass, including watchdog/drain/restart,
+  snapshots and stop during boot.
+- The full 64-loop schedule completes 80 simulated quanta. All measured counter
+  boundaries agree with observed run/done edges. After 72 warmup quanta, the
+  eight measured quanta total 185,712 cycles, with a range of 22,974..23,454
+  cycles. These are native instant-memory simulation results, not hardware or
+  DDR latency measurements; audio-output correctness is not checked.
+- Block-design validation, IP generation and full synthesis pass again.
+  Benchmark synthesis has zero errors, zero critical warnings and 145 warnings;
+  top-level synthesis has zero errors, zero critical warnings and one warning.
+  The three cache RAM inference critical warnings from the initial run are gone.
+  The merged synthesis checkpoint and board initialization were exported as
+  `bench_synth.dcp` and `ps7_init.tcl`.
+- Placement completes and the implementation writes a routed checkpoint.
+  Bitstream generation fails physical DRC again: the routed report contains
+  667 `PDIL-1` invalid-site-configuration errors and insufficient routing.
+  `Route 35-557` pin-assignment failures also remain. No `bench.bit`, `bench.ltx`
+  or `bench.xsa` was produced. The tool still reports timing violations for the
+  full board deployment at 100 MHz; no timing tuning was performed here.
+
+The retry also tested the small counter with the normal `/sys` view, both in
+the image's original Ubuntu Focal runtime and a fresh Ubuntu 22.04 runtime.
+Both abort in `libudev` device enumeration called through Vivado's registration/
+Webtalk code after routing. Ubuntu 22.04 was based on
+`ubuntu:22.04@sha256:74b12b11ffa550fba1929ad4d8d16533c34f6612728469671afba1b03b66881c`,
+with normal distribution libraries and the same read-only Vivado installation.
+The supported `webtalk.disableTransmit` setting did not prevent the Focal crash.
+The exact source of the runtime/physical-build failures remains unresolved.
+
+Run outputs are under `work/zedboard/vivado-timing-merge`; simulation results
+are under `work/zedboard/runner-timing-merge` and
+`work/zedboard/runner64-timing-merge`. The merge and retest required no deployment
+RTL changes.
+
+## Initial result before timing MR #975
+
 Outcome: block-design/IP generation, full synthesis and placement completed.
 The implementation wrote a routed checkpoint, but physical DRC errors blocked
 bitstream generation. `bench_synth.dcp` and `ps7_init.tcl` were exported;
@@ -41,7 +86,7 @@ registration/telemetry device enumeration. An empty read-only `/sys` mount
 then obtained the standard XC7Z020 license normally. The runtime had no network,
 no attached devices and no user license directory mounted.
 
-## Build checks
+## Initial build checks
 
 The deployment was prepared with `prepare.py` and `configure.py`. With the
 board repository mounted separately, the build uses:
@@ -71,8 +116,9 @@ Top-level synthesis completed with zero errors and zero critical warnings.
 The benchmark's out-of-context synthesis completed with zero errors, three
 critical warnings and 148 warnings. The three critical warnings are
 `Synth 8-5796`: conflicting RAM writes in metadata-cache banks 0, 1 and 2.
-They refer to existing core RTL and remain unresolved; this build does not
-qualify that RAM inference for hardware measurements. No core rewrite or
+They referred to existing core RTL and were unresolved in that run; #975
+subsequently replaced the RAM template, and the retry no longer reports them.
+The initial build did not qualify that RAM inference. No core rewrite or
 resource/timing optimization was performed as part of this integration work.
 The linked synthesized checkpoint retains a block RAM in each of these three
 cache banks.
