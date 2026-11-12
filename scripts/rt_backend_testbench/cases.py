@@ -146,3 +146,27 @@ def geometry_cases():
         controls={0:[action('play',0,0,'play')],3:[action('record',0,3*q,'record')],5:[action('resume',0,5*q,'play')],8:[action('stop',0,8*q,'stop')]}
         value['steps']=[step(q=q,ordinal=i,actions=controls.get(i,())) for i in range(10)]
         yield value
+
+def scale_workload(kind):
+    if kind=='original':return benchmark64()
+    if kind=='streaming':
+        value=base('production-8x8-streaming-metadata',loops=64,inputs=0,outputs=8,requests=128)
+        loaded(value,2048,20261110)
+        value['connections']=[]
+        for i in range(64):
+            value['nodes'].append(dict(id=lid(128+i),operation=dict(kind='gain',channels=1,initial=8388608)))
+            value['connections'] += [edge(ep(2*i),ep(128+i)),edge(ep(128+i),ep(None,i//8))]
+        value['steps']=[step(ports=0,actions=[action(f'play-{i}',i,0,'play',position=(i%64)*32) for i in range(64)])]+[step(ports=0) for _ in range(23)]
+        for q in (8,16):value['steps'][q]['actions']=[action(f'seek-{q}-{i}',i,q*32,'seek',position=((i*7+q*3)%64)*32,retrigger=True) for i in range(64)]
+        return value
+    if kind!='mixed':raise ValueError('unknown scale workload')
+    value=benchmark64();value['name']='production-8x8-mixed-record-play-retake';value['input_ports']=1
+    for i,row in enumerate(value['loops']):
+        if i>=48:row['content']=None
+        value['connections'].append(edge(ep(),ep(2*i+1)))
+    value['steps']=[step(ordinal=q) for q in range(24)]
+    value['steps'][0]['actions']=[action(f'start-{i}',i,0,'play' if i<32 else 'record') for i in range(64)]
+    value['steps'][12]['actions']=[action(f'play-take-{i}',i,384,'play') for i in range(32,64)]
+    value['steps'][13]['actions']=[action(f'retake-{i}',i,416,'record') for i in range(32,64)]
+    value['steps'][23]['actions']=[action(f'stop-{i}',i,736,'stop') for i in range(32,64)]
+    return value

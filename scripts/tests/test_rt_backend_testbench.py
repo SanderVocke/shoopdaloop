@@ -79,6 +79,21 @@ class CommonContract(unittest.TestCase):
         self.assertEqual(report['saturating_operations'],320)
         self.assertGreater(report['max_abs'],70)
 
+    def test_standalone_transition_fixture_uses_the_production_resolver_and_versioned_types(self):
+        source=dict(format_version=1,name='transport',plan=dict(description=dict(quantum=32,
+            loops=[dict(id=dict(slot=0,generation=1),kind='primitive',length=64,sync_source=None,repeat_sync=False,timeline=None)]),
+            limits=dict(loop_slots=1,pending_requests=1,events=3)),steps=[dict(collect_completed=True,collect=[],cancel=[],commands=[
+            dict(target=dict(slot=0,generation=1),sequence=1,at=0,timing=dict(kind='at'),operation=dict(kind='play',position=0,retrigger=True))])])
+        image=wire.run(source,kind='transition_case',command='transition-compile',executable=self.executable)
+        trace=wire.run(source,kind='transition_case',command='transition-run',executable=self.executable)
+        self.assertEqual(image['components'],[[dict(slot=0,generation=1)]])
+        self.assertEqual(trace['results'][0]['states'][0]['position'],32)
+        for kind,value in [('transition_case',source),('transition_image',image),('transition_trace',trace)]:
+            self.assertEqual(wire.run(value,kind=kind,command='roundtrip',executable=self.executable),value)
+        bad=deepcopy(source);bad['plan']['description']['loops'][0]['kind']='composite'
+        with self.assertRaisesRegex(RuntimeError,'Unsupported'):
+            wire.run(bad,kind='transition_case',command='transition-compile',executable=self.executable)
+
     def test_a_deliberate_one_bit_mismatch_reports_frame_port_and_sample(self):
         expected=wire.run(self.scenario,executable=self.executable)
         actual=deepcopy(expected);actual['quanta'][3]['outputs']['channels'][0][17]^=1

@@ -5,7 +5,6 @@ from pathlib import Path
 import random
 import cocotb
 from cocotb.triggers import Timer
-import fpga_testbench as wire
 
 
 @cocotb.test()
@@ -26,9 +25,14 @@ async def resolver_conformance(dut):
                          "length_chunks": rng.randrange(n+2), "chunks": rng.randrange(2*slots+1)})
     case = {"name": "isolated-resolver-wrap-missing-and-stalls", "requests": requests,
             "media": {"chunk_frames": cf, "samples": [0]*(slots*cf), "free_chunks": [], "views": metadata}}
-    document = {"format_version": 3, "payload": {"kind": "resolver_case", "value": case}}
-    wire.dump(document, output / "resolver.case.json")
-    trace = wire.run_reference("trace", document, executable=Path(os.environ["RESOLVER_REFERENCE"]))
+    (output/'resolver.case.json').write_text(json.dumps(dict(case,format_version=1),indent=2)+'\n')
+    # This isolated property is table indexing, not a looping/media executor.
+    expected=[]
+    for request in requests:
+        view=metadata[request['view']] if request['view']<len(metadata) else None
+        length=request['length_chunks'];position=request['position_chunks']
+        valid=view is not None and 0<length<=len(view['chunks']) and position<length
+        expected.append([view['chunks'][(position+i)%length] for i in range(request['chunks'])] if valid else [])
     pending = {"descriptor": None, "table": None}
     observed, held = [], {}
 
@@ -80,7 +84,7 @@ async def resolver_conformance(dut):
                hint_count=0, view_count=len(metadata), slot_count=slots)
     await tick()
     set_values(reset=0)
-    for request, expected in zip(requests, trace["payload"]["value"]["results"]):
+    for request, expected in zip(requests, expected):
         observed.clear()
         set_values(hint_valid=1, hint_view=request["view"], hint_position=request["position_chunks"]*cf,
                    hint_length=request["length_chunks"]*cf, hint_count=request["chunks"]*cf)

@@ -71,7 +71,7 @@ def dump(document, path, kind='scenario'):
     Path(path).write_text(json.dumps(document, indent=2, sort_keys=True, allow_nan=False)+'\n', encoding='utf-8')
 
 def run_batch(scenarios, *, executable, command='run', numeric='q824', kind='scenario'):
-    if command not in ('run', 'compile', 'validate', 'roundtrip', 'audit') or numeric not in ('q824', 'float'):
+    if command not in ('run', 'compile', 'validate', 'roundtrip', 'audit', 'transition-run', 'transition-compile') or numeric not in ('q824', 'float'):
         raise ValueError('unsupported command/numeric profile')
     args = [str(executable), command]
     if command == 'run':
@@ -82,7 +82,7 @@ def run_batch(scenarios, *, executable, command='run', numeric='q824', kind='sce
                              text=True, capture_output=True, check=False)
     if process.returncode:
         raise RuntimeError(process.stderr.strip())
-    kind = {'run':'result', 'compile':'image', 'validate':'scenario', 'roundtrip':kind, 'audit':'audit'}[command]
+    kind = {'run':'result', 'compile':'image', 'validate':'scenario', 'roundtrip':kind, 'audit':'audit', 'transition-run':'transition_trace', 'transition-compile':'transition_image'}[command]
     results = [loads(line, kind) for line in process.stdout.splitlines()]
     if len(results) != len(scenarios):
         raise ValueError('runner returned an incorrect document count')

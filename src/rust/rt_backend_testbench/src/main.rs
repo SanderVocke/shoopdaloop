@@ -1,4 +1,4 @@
-use rt_backend_testbench::{audit, production, rtl, spec::*};
+use rt_backend_testbench::{audit, production, rtl, spec::*, transition_fixture as tp};
 use std::io::{self, Write};
 
 fn main() {
@@ -11,7 +11,7 @@ fn execute() -> std::result::Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|s| s == "schema") {
         let schemas = serde_json::json!({"format_version":FORMAT_VERSION,
-            "scenario":schemars::schema_for!(Scenario),"result":schemars::schema_for!(Result),"image":schemars::schema_for!(rtl::Image),"audit":schemars::schema_for!(audit::Report)});
+            "scenario":schemars::schema_for!(Scenario),"result":schemars::schema_for!(Result),"image":schemars::schema_for!(rtl::Image),"audit":schemars::schema_for!(audit::Report),"transition_case":schemars::schema_for!(tp::TransitionCase),"transition_image":schemars::schema_for!(tp::TransitionPlanImage),"transition_trace":schemars::schema_for!(tp::TransitionTrace)});
         println!(
             "{}",
             serde_json::to_string_pretty(&schemas).map_err(|e| e.to_string())?
@@ -19,6 +19,28 @@ fn execute() -> std::result::Result<(), String> {
         return Ok(());
     }
     let command = args.first().map(String::as_str).unwrap_or("run");
+    if matches!(command, "transition-run" | "transition-compile") {
+        let stdin = io::stdin();
+        for source in
+            serde_json::Deserializer::from_reader(stdin.lock()).into_iter::<tp::TransitionCase>()
+        {
+            let case = source.map_err(|e| e.to_string())?;
+            if case.format_version != FORMAT_VERSION {
+                return Err("unsupported format_version".into());
+            }
+            let value = if command == "transition-run" {
+                serde_json::to_value(tp::run_transition_oracle(case).map_err(|e| format!("{e:?}"))?)
+            } else {
+                serde_json::to_value(tp::compile(&case.plan).map_err(|e| format!("{e:?}"))?)
+            }
+            .map_err(|e| e.to_string())?;
+            println!(
+                "{}",
+                serde_json::to_string(&value).map_err(|e| e.to_string())?
+            );
+        }
+        return Ok(());
+    }
     if command == "roundtrip" {
         let kind = if args.get(1).map(String::as_str) == Some("--kind") {
             args.get(2).map(String::as_str)
@@ -30,7 +52,10 @@ fn execute() -> std::result::Result<(), String> {
             Some("image") => roundtrip::<rtl::Image>(),
             Some("result") => roundtrip::<Result>(),
             Some("audit") => roundtrip::<audit::Report>(),
-            _ => Err("roundtrip requires --kind scenario|image|result".into()),
+            Some("transition_case") => roundtrip::<tp::TransitionCase>(),
+            Some("transition_image") => roundtrip::<tp::TransitionPlanImage>(),
+            Some("transition_trace") => roundtrip::<tp::TransitionTrace>(),
+            _ => Err("roundtrip requires --kind scenario|image|result|audit|transition_case|transition_image|transition_trace".into()),
         };
     }
     if !matches!(command, "run" | "compile" | "validate" | "audit") {

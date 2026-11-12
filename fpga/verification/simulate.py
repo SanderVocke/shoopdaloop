@@ -14,7 +14,7 @@ ROOT=HERE.parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'fpga/axi_memory/sim')]
 import rt_backend_testbench as wire
 from rt_backend_testbench.accuracy import compare as compare_float
-from rt_backend_testbench.cases import directed,seeded,benchmark64,long_sessions
+from rt_backend_testbench.cases import directed,seeded,benchmark64,long_sessions,scale_workload
 from options import add_options,environment,direct_sources
 
 CONFIGS={'default':(8,16,32,64,32,64,32,32,4,4,32,128,32),
@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--directed',action='store_true')
     parser.add_argument('--random-cases',type=int,default=0)
     parser.add_argument('--benchmark64',action='store_true')
+    parser.add_argument('--scale-workload',choices=('original','streaming','mixed'),default='original')
     parser.add_argument('--long-sessions',action='store_true')
     parser.add_argument('--config',choices=CONFIGS,default='default')
     parser.add_argument('--output',type=Path,default=ROOT/'work/production-rtl')
@@ -48,7 +49,7 @@ def main():
     scenarios=[wire.load(p) for p in (args.case or ([] if args.benchmark64 else [HERE/'scenarios/mono-record.json']))]
     if args.directed:scenarios.extend(directed())
     scenarios.extend(seeded(args.random_cases))
-    if args.benchmark64:scenarios.append(benchmark64())
+    if args.benchmark64:scenarios.append(scale_workload(args.scale_workload))
     if args.long_sessions:scenarios.extend(long_sessions())
     images=wire.run_batch(scenarios,executable=executable,command='compile')
     expected=wire.run_batch(scenarios,executable=executable)
@@ -67,14 +68,18 @@ def main():
         ('job_processor',['jp_sample_ram.sv','jp_divider.sv','job_processor.sv','audio_pipeline.sv']),
         ('transition_processor',['tp_ram.sv','tp_priority.sv','transition_processor.sv']),
         ('chunk_memory',['chunk_ram.sv','chunk_memory.sv']),
-        ('media_store',['media_ram.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
+        ('media_store',['media_ram.sv','metadata_cache.sv','media_metadata.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
         ('loop_pipeline',['loop_pipeline.sv']),
-        ('axi_memory',['axi_master.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv'])] for module in names]
+        ('axi_memory',['axi_master.sv','axi_burst_mux.sv','shared_axi.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv'])] for module in names]
     top='loop_pipeline_axi_tb';sources.append(ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv')
     depths=list(CONFIGS[args.config])
+    if args.benchmark64 and args.scale_workload=='streaming':depths[11]=4096
+    if args.benchmark64 and args.scale_workload=='mixed':depths[11]=2048
     depths[12]=scenarios[0]['chunk_frames']
     parameters=dict(zip(PARAMS,depths));parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,
         AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
+    parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+    if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
     for image in images:
         needs={'LOOP_DEPTH':image['transition']['limits']['loop_slots'],'REQUEST_DEPTH':image['transition']['limits']['pending_requests'],
             'EVENT_DEPTH':image['transition']['limits']['events'],'PROGRAM_DEPTH':len(image['program']['instructions']),

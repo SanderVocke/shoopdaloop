@@ -285,22 +285,22 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
   several graph connection orders/fan-ins and valid quantum/chunk profiles.
   Include interrupted ramps and callback partition tests where the same command
   admission timeline can be maintained. Keep audio and transition orders distinct.
-- [ ] Run fast instant AXI comparisons first, then selected fixed/random-stall
+- [x] Run fast instant AXI comparisons first, then selected fixed/random-stall
   cases and a focused live DRAMsim3 campaign. Replay the TP-inclusive 64-loop
   benchmark against production Q8.24 outputs. Gate: no unexplained difference,
   tolerated sample, silently dropped case or dependency on the old execution oracle.
 
 ### 6. Migrate subsystem verification without duplicating a backend
 
-- [ ] Move transition comparisons directly to production `shoop_loops` APIs,
+- [x] Move transition comparisons directly to production `shoop_loops` APIs,
   adapting the existing native-resolver oracle and replacing old reference types.
   Retain request lifecycle, preview/retry and canonical event-order coverage.
-- [ ] Move SP/job/resolver/media tests to production-derived expectations where
+- [x] Move SP/job/resolver/media tests to production-derived expectations where
   the behavior is shared. Use small arithmetic specifications, logical media
   assertions and local protocol invariants for hardware-only details. Handwritten
   instruction vectors may test opcodes; no full substitute Rust SP/JP/TP/store
   may remain as the golden execution model.
-- [ ] Preserve cache forwarding, queued/completed/in-flight prefetch invalidation,
+- [x] Preserve cache forwarding, queued/completed/in-flight prefetch invalidation,
   retirement/reuse, pinned reads, dirty writeback/fences, AXI 32/64-bit bursts,
   backpressure, reset and fault containment checks. Keep DRAMsim3/ctypes, memory
   services, useful codecs, timing instrumentation and synthesis entry points.
@@ -447,3 +447,27 @@ Hardware allocation and late-response fault containment pass; graceful native
 resource refusal is not equated to fatal hardware failure. The live DRAMsim3
 64-loop gate is running; its final stage-5 item remains unchecked until it passes.
 Evidence and float metrics: `fpga/verification/accuracy-gates.json`.
+
+Stage 5 DDR gate passed on the preceding RTL revision: all four 64-loop quanta
+match production Q8.24, float meets its bounds, and timing/utilization are recorded
+in `fpga/verification/ddr64.json`. A concurrent upstream commit `012ed6bd` moved
+metadata to DDR caches. It was rebased in without dropping that work. The user
+explicitly asked not to repeat the 64-loop benchmark and to assume it passes;
+the repeated run was stopped and is not reported as a measurement. The new
+metadata path passes the 44-session stalled AXI64 differential campaign.
+
+Stage 6 migration milestone: standalone transition fixtures now call the actual
+production resolver and timing compiler; only serialization/identity adapters
+remain. SP uses explicit opcode/state/FIFO vectors and a delayed read-only loop
+record slave. JP uses small independent arithmetic formulas and retains stream,
+backpressure, partial-result, configuration, fault and reset tests. Media checks
+logical slices, retained content, partial tails, reclamation, reuse, atomic refusal,
+restore and ownership invariants; chunk checks compare visible memory without a
+cache implementation. Full-loop musical/state/media expectations come solely
+from production execution. Legacy full-loop scripts now route to the common
+runner, including timing, and obsolete functional-model fixtures were removed.
+The remaining configuration-matrix gate is still running. Current evidence is
+`fpga/verification/subsystem-gates.json`; extra fault checks include descriptor
+exhaustion, stale generations, metadata errors, late writeback, reset with old
+traffic and automatic view creation. Schema/Python tests (six), Rust contract
+tests, warnings-denying native host build, formatting and test policy pass.

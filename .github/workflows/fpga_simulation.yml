@@ -6,9 +6,12 @@ on:
       - 'fpga/**'
       - 'PLAN_SIM_MEM.md'
       - 'PLAN_METADATA_CACHE.md'
-      - 'scripts/fpga_testbench/**'
-      - 'src/rust/rt_fpga_reference/**'
-      - 'src/rust/rt_fpga_testbench/**'
+      - 'scripts/rt_backend_testbench/**'
+      - 'src/rust/rt_audio_math/**'
+      - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/rt_runtime/**'
+      - 'src/rust/shoop_loops/**'
+      - 'src/rust/shoop_rt_engine/**'
       - '.github/workflows/fpga_simulation.yml'
   push:
     branches: [master, proto/fpga-rust-reference]
@@ -38,13 +41,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: fpga-reference
+          shared-key: production-fpga
       - name: Install simulation tools
         run: |
           sudo apt-get update
           sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
           python3 -m venv .venv
-          .venv/bin/pip install -r fpga/axi_memory/requirements.txt -r scripts/fpga_testbench/requirements.txt
+          .venv/bin/pip install -r fpga/axi_memory/requirements.txt -r scripts/rt_backend_testbench/requirements.txt
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Cache Verilator 5.032
         id: verilator
@@ -82,7 +85,7 @@ jobs:
         run: |
           python fpga/axi_memory/simulate.py --memory-model ${{ matrix.model }} --output work/native-ci/endpoints
           python fpga/media_store/simulate.py --pipeline --config small --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/audio
-          python fpga/loop_pipeline/simulate.py --media --config small --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/loops
+          python fpga/loop_pipeline/simulate.py --config odd --directed --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/loops
       - uses: actions/upload-artifact@v7
         if: always()
         with:

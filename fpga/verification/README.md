@@ -94,3 +94,19 @@ resource refusals, and have separate sticky-silence/reset checks.
 DRAMsim3 adds actual data/command bus utilization over the active processing
 window, excluding host setup and observation. These are simulator measurements,
 not board-level deadline guarantees.
+
+Standalone TP transport cases use `transition-run` / `transition-compile` and
+versioned `transition_case`, `transition_image`, `transition_trace` documents.
+They execute the production resolver directly and expose hardware request-slot
+observations; the common runner still compares semantic action names. These
+fixtures contain no parallel transition executor or ordering algorithm.
+
+Exports use explicit cuts: `recording` selects a live immutable prefix;
+`playback`/`latest` select a completed take outside active recording. Exporting
+a prior playback binding during an active retake is outside this milestone and
+is rejected explicitly, as are exports at the same cut as a transition for that
+loop. Retain the old take before beginning the retake to compare its lifetime.
+Streaming/mixed scale inputs are available with `--benchmark64 --scale-workload
+streaming|mixed`; their node/arithmetic order is the production order. The mixed
+case ends recording to compare final media and therefore differs from historical
+hardware-shaped timing inputs. No old case format is accepted with changed meaning.

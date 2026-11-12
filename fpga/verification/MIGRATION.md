@@ -51,3 +51,32 @@ source will be deleted with their remaining benchmark consumers in stage 7.
 Evidence: `PRODUCTION_NUMERICS.md`, `production-numeric.json`, production numeric
 capture/readback and routing tests, and the existing float engine/loop/resource
 suites. Full-pipeline oracle replacement is still pending stages 4–6.
+
+## Stage 6 replacement coverage
+
+- TP transport: direct `transition_fixture` adapter to the production resolver;
+  canonical compilation, request retention/slots/generations, cancellation,
+  wide IDs and faults retain the standalone hardware driver. No model engine or
+  second timing compiler was copied.
+- SP raw instruction/FIFO tests: explicit vectors cover all nine opcodes, wide
+  values, invalid operands/ranges/tags, admission, partial failure, persistent
+  ramps, FIFO wrap/stalls and reset. Logical records have an independent delayed
+  read-only transport slave. Seeded musical behavior is now the common corpus.
+- JP: production numeric vectors plus independent widened formulas cover every
+  sample; sample/configuration, one-/two-cycle arithmetic streams and reset tests
+  remain. Full graph ordering is checked by production-plan lowering.
+- Media/resolver/cache: logical values, nested/partial ranges, preservation,
+  ownership/reference counts, refusal atomicity, snapshots, reclaim and reuse
+  replace physical allocator equality. A flat array checks chunk visibility;
+  there is no replacement cache/store execution model. Existing pinned reads,
+  dirty forwarding, speculative invalidation, retirement, fences, faults and
+  resets remain cycle-level checks.
+- Full loop: common production sessions replace legacy full-model expectations;
+  explicit fatal checks retain allocation/descriptor/generation/bus/metadata/late
+  writeback containment, partial-output silencing, old-response reset and reload.
+- AXI/DRAMsim3 services, metadata-cache tests, native SV memory, timing probes,
+  codecs and synthesis entry points are retained. The 64-loop repeat after the
+  concurrent metadata change is waived by the user's explicit instruction.
+
+Executable paths under `fpga/` no longer import or invoke the old reference.
+Final deletion and clean-build validation remain stages 7/8.

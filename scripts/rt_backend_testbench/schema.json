@@ -2299,5 +2299,1488 @@
     ],
     "title": "Scenario",
     "type": "object"
+  },
+  "transition_case": {
+    "$defs": {
+      "Command": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "operation": {
+            "$ref": "#/$defs/Operation"
+          },
+          "sequence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "timing": {
+            "$ref": "#/$defs/Timing"
+          }
+        },
+        "required": [
+          "target",
+          "sequence",
+          "at",
+          "timing",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "LoopId": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "LoopKind": {
+        "enum": [
+          "primitive",
+          "composite"
+        ],
+        "type": "string"
+      },
+      "LoopSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "kind": {
+            "$ref": "#/$defs/LoopKind"
+          },
+          "length": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          },
+          "sync_source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoopId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeline": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "length",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "Operation": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "stop",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "play",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "record",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "seek",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PlanDescription": {
+        "additionalProperties": false,
+        "properties": {
+          "loops": {
+            "items": {
+              "$ref": "#/$defs/LoopSpec"
+            },
+            "type": "array"
+          },
+          "quantum": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quantum",
+          "loops"
+        ],
+        "type": "object"
+      },
+      "RequestId": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "Timing": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "at",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "after_ticks",
+                "type": "string"
+              },
+              "skip": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source": {
+                "$ref": "#/$defs/LoopId"
+              }
+            },
+            "required": [
+              "kind",
+              "source",
+              "skip"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TransitionLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loop_slots": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_requests": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "loop_slots",
+          "pending_requests",
+          "events"
+        ],
+        "type": "object"
+      },
+      "TransitionPlanInput": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "$ref": "#/$defs/PlanDescription"
+          },
+          "limits": {
+            "$ref": "#/$defs/TransitionLimits"
+          }
+        },
+        "required": [
+          "description",
+          "limits"
+        ],
+        "type": "object"
+      },
+      "TransitionStep": {
+        "additionalProperties": false,
+        "properties": {
+          "cancel": {
+            "items": {
+              "$ref": "#/$defs/RequestId"
+            },
+            "type": "array"
+          },
+          "collect": {
+            "items": {
+              "$ref": "#/$defs/RequestId"
+            },
+            "type": "array"
+          },
+          "collect_completed": {
+            "type": "boolean"
+          },
+          "commands": {
+            "items": {
+              "$ref": "#/$defs/Command"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collect_completed",
+          "collect",
+          "cancel",
+          "commands"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "plan": {
+        "$ref": "#/$defs/TransitionPlanInput"
+      },
+      "steps": {
+        "items": {
+          "$ref": "#/$defs/TransitionStep"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "format_version",
+      "name",
+      "plan",
+      "steps"
+    ],
+    "title": "TransitionCase",
+    "type": "object"
+  },
+  "transition_image": {
+    "$defs": {
+      "LoopId": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "LoopKind": {
+        "enum": [
+          "primitive",
+          "composite"
+        ],
+        "type": "string"
+      },
+      "LoopSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "kind": {
+            "$ref": "#/$defs/LoopKind"
+          },
+          "length": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          },
+          "sync_source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoopId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeline": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "length",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "PlanDescription": {
+        "additionalProperties": false,
+        "properties": {
+          "loops": {
+            "items": {
+              "$ref": "#/$defs/LoopSpec"
+            },
+            "type": "array"
+          },
+          "quantum": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quantum",
+          "loops"
+        ],
+        "type": "object"
+      },
+      "TransitionLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loop_slots": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_requests": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "loop_slots",
+          "pending_requests",
+          "events"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "components": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "type": "array"
+        },
+        "type": "array"
+      },
+      "description": {
+        "$ref": "#/$defs/PlanDescription"
+      },
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "limits": {
+        "$ref": "#/$defs/TransitionLimits"
+      }
+    },
+    "required": [
+      "format_version",
+      "description",
+      "limits",
+      "components"
+    ],
+    "title": "TransitionPlanImage",
+    "type": "object"
+  },
+  "transition_trace": {
+    "$defs": {
+      "Collection": {
+        "additionalProperties": false,
+        "properties": {
+          "request": {
+            "$ref": "#/$defs/RequestId"
+          },
+          "result": {
+            "$ref": "#/$defs/Response"
+          }
+        },
+        "required": [
+          "request",
+          "result"
+        ],
+        "type": "object"
+      },
+      "Command": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "operation": {
+            "$ref": "#/$defs/Operation"
+          },
+          "sequence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "timing": {
+            "$ref": "#/$defs/Timing"
+          }
+        },
+        "required": [
+          "target",
+          "sequence",
+          "at",
+          "timing",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "Completion": {
+        "additionalProperties": false,
+        "properties": {
+          "effective": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/$defs/RequestId"
+          },
+          "outcome": {
+            "$ref": "#/$defs/Outcome"
+          },
+          "requested": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "requested",
+          "effective",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/$defs/EventKind"
+          },
+          "target": {
+            "$ref": "#/$defs/LoopId"
+          }
+        },
+        "required": [
+          "frame",
+          "target",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "EventKind": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "transition",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/Operation"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "wrap",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "pulse",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "LoopId": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "LoopKind": {
+        "enum": [
+          "primitive",
+          "composite"
+        ],
+        "type": "string"
+      },
+      "LoopSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "kind": {
+            "$ref": "#/$defs/LoopKind"
+          },
+          "length": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          },
+          "sync_source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoopId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeline": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "length",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "LoopState": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_frames": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "capture_revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_length": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cycles": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/$defs/LoopId"
+          },
+          "last_pulse": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/$defs/Mode"
+          },
+          "position": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          },
+          "revision_watermark": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "content_length",
+          "position",
+          "capture_frames",
+          "cycles",
+          "content_revision",
+          "capture_revision",
+          "revision_watermark",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "Mode": {
+        "enum": [
+          "stopped",
+          "playing",
+          "recording"
+        ],
+        "type": "string"
+      },
+      "Operation": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "stop",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "play",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "record",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "seek",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Outcome": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "frame": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "applied",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "frame"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "frame": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "superseded",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "frame"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "frame": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "cancelled",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "frame"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "frame": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "failed",
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/$defs/TransitionError"
+              }
+            },
+            "required": [
+              "kind",
+              "frame",
+              "reason"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PlanDescription": {
+        "additionalProperties": false,
+        "properties": {
+          "loops": {
+            "items": {
+              "$ref": "#/$defs/LoopSpec"
+            },
+            "type": "array"
+          },
+          "quantum": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quantum",
+          "loops"
+        ],
+        "type": "object"
+      },
+      "RequestId": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "RequestSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "$ref": "#/$defs/Command"
+          },
+          "effective": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/$defs/RequestId"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "remaining_ticks": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "command",
+          "effective"
+        ],
+        "type": "object"
+      },
+      "Response": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "accepted",
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Completion"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "rejected",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/TransitionError"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Response2": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "accepted",
+                "type": "string"
+              },
+              "value": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "rejected",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/TransitionError"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Response3": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "accepted",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/RequestId"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "rejected",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/TransitionError"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Response4": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "accepted",
+                "type": "string"
+              },
+              "value": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "rejected",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/TransitionError"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Timing": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "at",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "after_ticks",
+                "type": "string"
+              },
+              "skip": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source": {
+                "$ref": "#/$defs/LoopId"
+              }
+            },
+            "required": [
+              "kind",
+              "source",
+              "skip"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TransitionCase": {
+        "additionalProperties": false,
+        "properties": {
+          "format_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/$defs/TransitionPlanInput"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/TransitionStep"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "format_version",
+          "name",
+          "plan",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "TransitionError": {
+        "enum": [
+          "invalid_config",
+          "capacity",
+          "invalid_id",
+          "duplicate_id",
+          "invalid_state",
+          "invalid_frame",
+          "missing_sync",
+          "exhausted",
+          "empty_content",
+          "unsupported"
+        ],
+        "type": "string"
+      },
+      "TransitionLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loop_slots": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_requests": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "loop_slots",
+          "pending_requests",
+          "events"
+        ],
+        "type": "object"
+      },
+      "TransitionPlanInput": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "$ref": "#/$defs/PlanDescription"
+          },
+          "limits": {
+            "$ref": "#/$defs/TransitionLimits"
+          }
+        },
+        "required": [
+          "description",
+          "limits"
+        ],
+        "type": "object"
+      },
+      "TransitionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "items": {
+              "$ref": "#/$defs/Response2"
+            },
+            "type": "array"
+          },
+          "collected": {
+            "items": {
+              "$ref": "#/$defs/Collection"
+            },
+            "type": "array"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/$defs/Event"
+            },
+            "type": "array"
+          },
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "processed": {
+            "$ref": "#/$defs/Response4"
+          },
+          "requests": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RequestSnapshot"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "states": {
+            "items": {
+              "$ref": "#/$defs/LoopState"
+            },
+            "type": "array"
+          },
+          "submitted": {
+            "items": {
+              "$ref": "#/$defs/Response3"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "collected",
+          "cancelled",
+          "submitted",
+          "processed",
+          "states",
+          "requests",
+          "events",
+          "next_frame"
+        ],
+        "type": "object"
+      },
+      "TransitionStep": {
+        "additionalProperties": false,
+        "properties": {
+          "cancel": {
+            "items": {
+              "$ref": "#/$defs/RequestId"
+            },
+            "type": "array"
+          },
+          "collect": {
+            "items": {
+              "$ref": "#/$defs/RequestId"
+            },
+            "type": "array"
+          },
+          "collect_completed": {
+            "type": "boolean"
+          },
+          "commands": {
+            "items": {
+              "$ref": "#/$defs/Command"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "collect_completed",
+          "collect",
+          "cancel",
+          "commands"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "case": {
+        "$ref": "#/$defs/TransitionCase"
+      },
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "results": {
+        "items": {
+          "$ref": "#/$defs/TransitionResult"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "format_version",
+      "case",
+      "results"
+    ],
+    "title": "TransitionTrace",
+    "type": "object"
   }
 }

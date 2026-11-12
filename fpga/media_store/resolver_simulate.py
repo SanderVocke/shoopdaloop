@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the isolated metadata resolver with Rust under independent stalls."""
+"""Check isolated metadata indexing under independent stalls."""
 import argparse
 import os
 from pathlib import Path
@@ -16,7 +16,6 @@ def main():
     parser.add_argument("--seed", type=int, default=20261111)
     parser.add_argument("--output", type=Path, default=ROOT / "work/fpga-resolver-sim")
     args = parser.parse_args()
-    subprocess.run(["cargo", "build", "--locked", "-p", "rt_fpga_testbench"], cwd=ROOT, check=True)
     sys.path[:0] = [str(HERE / "tests"), str(ROOT / "scripts")]
     if sys.prefix != sys.base_prefix:
         os.environ.setdefault("VIRTUAL_ENV", sys.prefix)
@@ -32,8 +31,7 @@ def main():
         report = runner.test(hdl_toplevel="media_prefetch_resolver", test_module="test_prefetch_resolver",
                              seed=args.seed, test_dir=output, log_file=output / "simulation.log",
                              extra_env={"RESOLVER_CAPACITIES": f"{views},{slots},{cf}",
-                                        "RESOLVER_OUTPUT": str(output),
-                                        "RESOLVER_REFERENCE": str(ROOT / "target/debug/fpga-reference")})
+                                        "RESOLVER_OUTPUT": str(output)})
         tree = ET.parse(report).getroot()
         if len(list(tree.iter("testcase"))) != 1 or any(list(tree.iter(t)) for t in ("failure", "error", "skipped")):
             raise SystemExit(f"Resolver comparison failed; see {output / 'simulation.log'}")
