@@ -32,7 +32,7 @@ class ExecutionTiming:
         self.metadata_stalls = self.metadata_busy = 0
         self.jobs = []
         self.completions = {}
-        self.metadata_start = self.metadata_snapshot()
+        self.metadata_start = self.metadata_end = None
         self.segment = None
         self.bus_segments = []
 
@@ -66,6 +66,8 @@ class ExecutionTiming:
         if self.start is None:
             if int(self.dut.run_valid.value) and int(self.dut.run_ready.value):
                 self.start = cycle+1
+                self.metadata_start = self.metadata_snapshot()
+                self.requests_start = (self.memory.read_requests,self.memory.write_requests)
             return
         time = cycle-self.start
         for signal,label in (('state_done','state_done'),('jobs_done','jobs_done')):
@@ -80,6 +82,8 @@ class ExecutionTiming:
         if int(self.dut.done.value):
             self.completions["finish_done"]=time
             self.total = time
+            self.metadata_end = self.metadata_snapshot()
+            self.requests_end = (self.memory.read_requests,self.memory.write_requests)
             self.enabled = False
             return
         self.phases[phase] += 1
@@ -123,13 +127,14 @@ class ExecutionTiming:
             group['cycles'] += row['end']-row['start']
         tp_cycles = sum(value for name,value in self.phases.items() if name.startswith(('SETTLE_', 'FINISH_')))
         active = self.total
-        metadata_end=self.metadata_snapshot()
+        metadata_end=self.metadata_end
         delta={key:metadata_end[key]-self.metadata_start[key] for key in metadata_end} if metadata_end else None
         if delta is not None:
             for access in ('read','write'):
                 delta['logical_'+access+'_bytes']=4*sum(delta[bank+'_'+access+'_operations'] for bank in ('table','reference','stack'))
             delta['directory_read_bytes']=4*delta['directory_reads']
         return dict(completion_cycles=self.completions,metadata_statistics=delta,raw_cycles=self.total,
+                    axi_reads=self.requests_end[0]-self.requests_start[0],axi_writes=self.requests_end[1]-self.requests_start[1],
                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,
                     coordinator_phases=dict(self.phases), job_phases=dict(self.jp_phases),

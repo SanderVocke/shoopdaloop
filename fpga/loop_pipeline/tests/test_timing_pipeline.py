@@ -50,7 +50,6 @@ async def benchmark64(dut):
             await memory.configure(5,0,1)
         cold_preparation_cycles=memory.cycles-preparation_started
         for index, (row, target) in enumerate(zip(value['steps'], expected['payload']['value']['results'])):
-            reads, writes = memory.read_requests, memory.write_requests
             probe.begin()
             actual = await driver.step(row,snapshot_media=verify)
             target=deepcopy(target)
@@ -61,8 +60,6 @@ async def benchmark64(dut):
                 raise AssertionError(f'coordinated benchmark quantum {index} differs from Rust')
             result = probe.finish()
             result['quantum'] = index
-            result['axi_reads'] = memory.read_requests-reads
-            result['axi_writes'] = memory.write_requests-writes
             assert sum(group['count'] for group in result['jobs'].values()) == len(target['audio']['jobs'])
             assert min(result['transition_cycles'], result['state_cycles'], result['job_cycles']) > 0
             results.append(result)
