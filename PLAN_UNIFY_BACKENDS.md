@@ -195,15 +195,15 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 
 ### 2. Establish the shared numeric and ramp primitives
 
-- [ ] Add the compile-time numeric policy and minimal reusable arithmetic module,
+- [x] Add the compile-time numeric policy and minimal reusable arithmetic module,
   extracting useful fixed primitives without importing reference execution code.
   Implement float/fixed operations and the agreed duration-based ramp contract.
-- [ ] Add independent directed arithmetic vectors and sequence tests: signed
+- [x] Add independent directed arithmetic vectors and sequence tests: signed
   extremes, negative fractional products, saturation, zero/one duration,
   nondivisible slopes in both directions, interrupted/completed ramps, short ramps
   inside a quantum, and cross-quantum continuation. Check optimized stepping
   against the wide-integer specification, including extreme u32 counters.
-- [ ] Verify those vectors against existing gain/mix RTL, retaining streaming
+- [x] Verify those vectors against existing gain/mix RTL, retaining streaming
   throughput, reset and in-flight fault checks. Document any RTL correction.
   Gate: all sample positions match exactly, not just ramp endpoints.
 
@@ -341,6 +341,12 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
   64-loop instant-memory benchmark passed. Float release baseline covers four
   phases, three repeats of 1,024 callbacks each with no heap operations. Full
   baseline parameters/results are in `fpga/verification/baseline.json`.
+
+- Stage 2: `rt_audio_math` unit/specification tests pass. The separate
+  `numeric_simulate.py` gate compares 480 raw RTL output samples across default
+  and small configurations without the reference execution model. Existing
+  directed/stream/reset protocol comparisons remain passing in the migration
+  baseline. The numeric crate builds with denied warnings and test-policy checks.
 
 ## Testing cost and confidence
 
