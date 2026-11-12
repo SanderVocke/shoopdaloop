@@ -49,9 +49,9 @@ def main():
         ('job_processor',['jp_sample_ram.sv','jp_divider.sv','job_processor.sv','audio_pipeline.sv']),
         ('transition_processor',['tp_ram.sv','tp_priority.sv','transition_processor.sv']),
         ('chunk_memory',['chunk_ram.sv','chunk_memory.sv']),
-        ('media_store',['media_ram.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
+        ('media_store',['media_ram.sv','metadata_cache.sv','media_metadata.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
         ('loop_pipeline',['loop_pipeline.sv']),
-        ('axi_memory',['axi_master.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv'])] for module in names]
+        ('axi_memory',['axi_master.sv','axi_burst_mux.sv','shared_axi.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv'])] for module in names]
     top='loop_pipeline_axi_tb';sources.append(ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv')
     depths=CONFIGS[args.config]
     parameters=dict(zip(PARAMS,depths));parameters.update(READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,
