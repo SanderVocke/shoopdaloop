@@ -19,13 +19,15 @@ module metadata_cache #(
     input wire memory_response_error, input wire [31:0] memory_read_data
 );
     localparam integer SHIFT = $clog2(LINE_WORDS*4);
+    localparam integer WORD_BITS = $clog2(LINE_WORDS);
     typedef enum logic [3:0] {IDLE, LOOKUP, ACCESS, RESULT, RESPONSE, ZERO,
         FILL_REQUEST, FILL_DATA, FILL_ACK, WRITE_REQUEST, WRITE_READ, WRITE_DATA, WRITE_ACK, SCAN} phase_t;
     phase_t phase;
     reg [LINES-1:0] valid, dirty;
     reg [63:0] tags [0:LINES-1];
     reg [63:0] address;
-    reg [31:0] payload, target, victim, index, scan;
+    reg [31:0] payload, target, victim, scan;
+    reg [WORD_BITS-1:0] index;
     reg [1:0] opcode;
     reg invalidate, flushing;
     reg hit;
@@ -37,10 +39,9 @@ module metadata_cache #(
     wire ram_write = phase == ZERO || (phase == ACCESS && opcode == 1)
         || (phase == FILL_DATA && memory_read_valid && memory_read_ready)
         || (BURST_MEMORY == 0 && phase == FILL_ACK && memory_response_valid && !memory_response_error);
-    wire [31:0] ram_index = phase == ACCESS ? word_index : index;
+    wire [31:0] ram_index = phase == ACCESS ? word_index : 32'(index);
     wire [31:0] ram_data = phase == ZERO ? 32'b0 : phase == ACCESS ? payload : memory_read_data;
-    wire [31:0] unused_ram;
-    wire unused_bits = &{1'b0,unused_ram,address[1:0]};
+    wire unused_bits = &{1'b0,address[1:0]};
     assign request_ready = phase == IDLE && !reset && !fault;
     assign response_valid = phase == RESPONSE && !reset;
     assign memory_valid = !reset && (phase == FILL_REQUEST || phase == WRITE_REQUEST
@@ -53,12 +54,11 @@ module metadata_cache #(
     assign memory_read_ready = BURST_MEMORY != 0 && phase == FILL_DATA && !reset;
     assign memory_response_ready = phase == FILL_ACK || phase == WRITE_ACK || phase == FILL_DATA
         || phase == WRITE_REQUEST || phase == WRITE_READ || phase == WRITE_DATA;
-    chunk_ram #(.DEPTH(LINES*LINE_WORDS),.ADDR_BITS(ADDRESS_BITS)) data_ram (
-        .clk(clk),.a_enable(read_ram),.a_write(1'b0),
-        .a_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+(phase == ACCESS ? word_index : index))),
-        .a_write_data(32'b0),.a_read_data(ram_read),
-        .b_enable(ram_write),.b_write(1'b1),.b_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+ram_index)),
-        .b_write_data(ram_data),.b_read_data(unused_ram)
+    media_ram #(.DEPTH(LINES*LINE_WORDS),.ADDR_BITS(ADDRESS_BITS)) data_ram (
+        .clk(clk),.read_enable(read_ram),
+        .read_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+(phase == ACCESS ? word_index : 32'(index)))),
+        .read_data(ram_read),.write_enable(ram_write),
+        .write_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+ram_index)),.write_data(ram_data)
     );
     always @* begin
         hit = 0; hit_line = 0;
@@ -102,15 +102,15 @@ module metadata_cache #(
                 RESULT: begin response_data <= ram_read; phase <= RESPONSE; end
                 RESPONSE: if (response_ready) phase <= IDLE;
                 ZERO: begin
-                    if (index+1 == 32'(LINE_WORDS)) begin
+                    if (index == WORD_BITS'(LINE_WORDS-1)) begin
                         tags[target] <= tag; valid[target] <= 1; dirty[target] <= 1; phase <= RESPONSE;
-                    end else index <= index+1;
+                    end else index <= index+1'b1;
                 end
                 FILL_REQUEST: if (memory_ready) phase <= BURST_MEMORY != 0 ? FILL_DATA : FILL_ACK;
                 FILL_DATA: begin
                     if (memory_read_valid && memory_read_ready) begin
-                        if (index+1 == 32'(LINE_WORDS)) phase <= FILL_ACK;
-                        else index <= index+1;
+                        if (index == WORD_BITS'(LINE_WORDS-1)) phase <= FILL_ACK;
+                        else index <= index+1'b1;
                     end
                     if (memory_response_valid && memory_response_error) begin
                         response_error <= 1; fault <= 1; phase <= RESPONSE;
@@ -118,19 +118,19 @@ module metadata_cache #(
                 end
                 FILL_ACK: if (memory_response_valid) begin
                     if (memory_response_error) begin response_error <= 1; fault <= 1; phase <= RESPONSE; end
-                    else if (BURST_MEMORY != 0 || index+1 == 32'(LINE_WORDS)) begin
+                    else if (BURST_MEMORY != 0 || index == WORD_BITS'(LINE_WORDS-1)) begin
                         fills <= fills+1; valid[target] <= 1; dirty[target] <= 0; phase <= ACCESS;
-                    end else begin index <= index+1; phase <= FILL_REQUEST; end
+                    end else begin index <= index+1'b1; phase <= FILL_REQUEST; end
                 end
                 WRITE_REQUEST: if (memory_ready) phase <= WRITE_READ;
                 WRITE_READ: phase <= WRITE_DATA;
                 WRITE_DATA: if (BURST_MEMORY != 0 ? memory_write_ready : memory_ready) begin
-                    if (BURST_MEMORY == 0 || index+1 == 32'(LINE_WORDS)) phase <= WRITE_ACK;
-                    else begin index <= index+1; phase <= WRITE_READ; end
+                    if (BURST_MEMORY == 0 || index == WORD_BITS'(LINE_WORDS-1)) phase <= WRITE_ACK;
+                    else begin index <= index+1'b1; phase <= WRITE_READ; end
                 end
                 WRITE_ACK: if (memory_response_valid) begin
                     if (memory_response_error) begin response_error <= 1; fault <= 1; phase <= RESPONSE; end
-                    else if (BURST_MEMORY == 0 && index+1 != 32'(LINE_WORDS)) begin index <= index+1; phase <= WRITE_READ; end
+                    else if (BURST_MEMORY == 0 && index != WORD_BITS'(LINE_WORDS-1)) begin index <= index+1'b1; phase <= WRITE_READ; end
                     else begin
                         writebacks <= writebacks+1; dirty[target] <= 0; index <= 0;
                         if (flushing) begin valid[target] <= !invalidate; scan <= scan+1; phase <= SCAN; end

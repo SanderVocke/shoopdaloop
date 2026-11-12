@@ -1,5 +1,6 @@
 module chunk_axi #(
-    parameter integer DATA_WIDTH = 32
+    parameter integer DATA_WIDTH = 32,
+    parameter [31:0] MAX_WORDS = 32'hffffffff
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base, input wire [63:0] arena_bytes,
@@ -43,6 +44,6 @@ module chunk_axi #(
     wire completion_valid;
     wire completion_ready;
     wire completion_error;
-    chunk_dma #(.DATA_WIDTH(DATA_WIDTH)) transfer (.*);
+    chunk_dma #(.DATA_WIDTH(DATA_WIDTH),.MAX_WORDS(MAX_WORDS)) transfer (.*);
     axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.*);
 endmodule

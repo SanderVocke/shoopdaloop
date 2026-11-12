@@ -25,13 +25,17 @@ module media_metadata #(
     localparam [63:0] PAGE_BASE = (SAMPLE_WORDS+2*SLOT_WORDS)*4;
     typedef enum logic [4:0] {IDLE, ROOT, WALK, CHILD, ACCESS_DONE, PUBLISH, RESPONSE,
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
-        TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT} phase_t;
+        TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
+        CAPACITY} phase_t;
     phase_t phase, resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
     wire [127:0] root_data;
     reg [31:0] view, ordinal, payload, root, used, page, level;
     reg [31:0] high_water, free_head, free_pages;
     reg [31:0] allocated, parent_page, cached_leaf, cached_index;
+    reg [31:0] new_count;
+    reg [63:0] required_nodes, existing_nodes, unallocated_pages, additional, available;
+    reg capacity_grow;
     reg [63:0] operations [0:9];
     reg [63:0] directory_reads, table_reads;
     wire unused_operations = &{1'b0,directory_reads,table_reads,operations[0],operations[1],operations[2],operations[3],operations[4],operations[5],operations[6],operations[7],operations[8],operations[9]};
@@ -73,9 +77,6 @@ module media_metadata #(
             nodes = total;
         end
     endfunction
-    wire [31:0] new_count = opcode == 1 ? ordinal+1 : ordinal;
-    wire [63:0] additional = new_count > used ? nodes(new_count)-nodes(used) : 64'b0;
-    wire [63:0] available = 64'(TABLE_PAGES)-{32'b0,high_water}+{32'b0,free_pages};
     wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (level*4)) & 64'd15)*4;
     media_ram #(.WIDTH(128),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
         .clk(clk),.read_enable(request_valid && request_ready && request_view < 32'(VIEWS)),.read_address(VIEW_BITS'(request_view)),.read_data(root_data),
@@ -114,6 +115,8 @@ module media_metadata #(
             phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
             allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
+            new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
+            unallocated_pages <= 0; additional <= 0; available <= 0; capacity_grow <= 0;
             root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
             cache_opcode <= 0; cache_address <= 0; cache_data <= 0; value <= 0; cache_invalidate <= 0;
             response_data <= 0; response_error <= 0;
@@ -124,6 +127,7 @@ module media_metadata #(
                 IDLE: if (request_valid && request_ready) begin
                     if (request_opcode < 10) operations[request_opcode] <= operations[request_opcode]+1;
                     view <= request_view; ordinal <= request_index; payload <= request_data; opcode <= request_opcode;
+                    new_count <= request_opcode == 1 ? request_index+1'b1 : request_index;
                     root_exists <= request_view < 32'(VIEWS) && root_valid[VIEW_BITS'(request_view)];
                     checked <= 0; response_error <= 0; response_data <= 0; cache_invalidate <= request_opcode == 9;
                     bank <= 0; phase <= ROOT;
@@ -133,6 +137,12 @@ module media_metadata #(
                     used <= root_exists ? root_data[63:32] : 0;
                     cached_leaf <= root_exists && leaf_valid[VIEW_BITS'(view)] ? root_data[127:96] : 0;
                     cached_index <= root_data[95:64];
+                    if (opcode == 1 || opcode == 7) begin
+                        required_nodes <= nodes(new_count);
+                        existing_nodes <= nodes(root_exists ? root_data[63:32] : 32'b0);
+                        capacity_grow <= new_count > (root_exists ? root_data[63:32] : 32'b0);
+                        unallocated_pages <= 64'(TABLE_PAGES)-{32'b0,high_water};
+                    end
                     if (opcode == 9) leaf_valid <= 0;
                     if (opcode == 6) begin leaf_valid[VIEW_BITS'(view)] <= 0; cached_leaf <= 0; end
                     if (opcode >= 8) phase <= FLUSH_NEXT;
@@ -143,8 +153,13 @@ module media_metadata #(
                     end else begin
                         level <= 32'(LEVELS-1); parent_page <= 0;
                         page <= root_exists ? root_data[31:0] : 0;
-                        phase <= WALK;
+                        phase <= opcode == 1 || opcode == 7 ? CAPACITY : WALK;
                     end
+                end
+                CAPACITY: begin
+                    additional <= capacity_grow ? required_nodes-existing_nodes : 64'b0;
+                    available <= unallocated_pages+{32'b0,free_pages};
+                    phase <= WALK;
                 end
                 WALK: begin
                     checked <= 1;
