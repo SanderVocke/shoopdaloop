@@ -16,7 +16,9 @@ view ordinal -> block ID -> physical chunk = block * BLOCK_CHUNKS + within
 Each view retains one reference per block-table entry. Appending within an owned
 block changes no ownership counts. On growth, pop a free block or allocate the
 next block ID, set its reference count and append its ID to the compact table.
-Clearing/removing walks block entries. Reclaim releases one tail block and adjusts
+Clearing/removing detaches the old DDR table into a retirement queue without
+walking entries. A budgeted collector releases the detached table from its tail.
+Explicit Reclaim releases one tail block synchronously and adjusts
 the view's frame length. A frame range retains its intersecting blocks, including
 partial boundary blocks; nested ranges have independent block references.
 
@@ -35,8 +37,9 @@ sample cache line size and AXI burst size are unchanged.
 Allocation does not zero a whole block. Full-chunk writes create sample-cache
 entries directly; partial writes preserve existing bytes through the normal
 chunk-memory path. Only frames within published view ranges are accessible.
-There is no background collector; release stays synchronous and scales with the
-number of blocks in the old take.
+Foreground clear/retake work is independent of take length. Total deferred
+release work still scales with the number of blocks. See
+[maintenance, capacity and snapshot semantics](README.md#deferred-ownership-and-maintenance).
 
 ## Geometry and interfaces
 

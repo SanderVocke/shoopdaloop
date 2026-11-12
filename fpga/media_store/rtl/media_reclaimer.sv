@@ -3,7 +3,7 @@ module media_reclaimer #(
 ) (
     input wire clk, input wire reset, input wire enable,
     input wire grant, input wire [31:0] grant_cycles, input wire [31:0] grant_blocks,
-    input wire [31:0] pending_tables, input wire [31:0] free_count,
+    input wire [31:0] pending_tables, input wire [31:0] free_count, input wire [31:0] allocated_count,
     output wire lock_request, input wire lock_grant, output reg lock_held,
     output reg request_valid, input wire request_ready, output reg [3:0] request_opcode,
     output reg [31:0] request_index, output reg [31:0] request_data,
@@ -54,7 +54,11 @@ module media_reclaimer #(
             case (phase)
                 IDLE: if (pending_tables != 0 && permitted) phase <= LOOKUP;
                 LOOKUP: if (request_valid && request_ready) phase <= LOOKUP_WAIT;
-                LOOKUP_WAIT: if (response_valid) begin active_block <= response_data; phase <= ACQUIRE_REFERENCE; end
+                LOOKUP_WAIT: if (response_valid) begin
+                    active_block <= response_data;
+                    if (response_data >= allocated_count) begin fault <= 1; phase <= FAULT; end
+                    else phase <= ACQUIRE_REFERENCE;
+                end
                 ACQUIRE_REFERENCE: if (lock_request && lock_grant) begin lock_held <= 1; phase <= READ_REFERENCE; end
                 READ_REFERENCE: if (request_valid && request_ready) phase <= REFERENCE_WAIT;
                 REFERENCE_WAIT: if (response_valid) begin
@@ -71,7 +75,8 @@ module media_reclaimer #(
                     else phase <= ACQUIRE_FREE;
                 end
                 ACQUIRE_FREE: if (lock_request && lock_grant) begin
-                    lock_held <= 1; free_index <= free_count; phase <= ZERO_REFERENCE;
+                    if (free_count >= allocated_count) begin fault <= 1; phase <= FAULT; end
+                    else begin lock_held <= 1; free_index <= free_count; phase <= ZERO_REFERENCE; end
                 end
                 ZERO_REFERENCE: if (request_valid && request_ready) phase <= ZERO_WAIT;
                 ZERO_WAIT: if (response_valid) phase <= PUSH_FREE;

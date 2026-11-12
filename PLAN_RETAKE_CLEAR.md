@@ -112,7 +112,7 @@ Verification:
 
 - [x] Detach one-block and multi-page tables, reuse the live view, and inspect both mappings independently.
 - [x] Assert that detachment neither visits block entries nor changes reference counts.
-- [ ] Check empty roots, maximum configured tree depth and invalid detached contexts.
+- [x] Check empty roots, maximum configured tree depth and invalid detached contexts.
 
 ### Stage 2: Add retired-table storage and atomic command transfer
 
@@ -130,7 +130,7 @@ Verification:
 
 - [x] Exercise queue wraparound, queue exhaustion, empty clears and repeated clears of the same view.
 - [x] Verify that queued roots survive live-view reuse without consuming extra live view IDs.
-- [ ] Inject faults around transfer publication and verify that no old table becomes silently unowned.
+- [x] Inject faults around transfer publication and verify that no old table becomes silently unowned.
 - [x] Compare foreground operation counts across recording lengths.
 
 ### Stage 3: Implement resumable reference and metadata reclamation
@@ -143,15 +143,15 @@ Depends on Stages 1 and 2.
 - [x] Track each entry through lookup, reference release, retirement, table trimming and checkpoint completion.
 - [x] Make leaf/directory unlinking and free-page linking resumable.
 - [x] Recycle queue records after all table metadata has been released.
-- [ ] Ensure cleanup can progress without allocating new table pages, including when both sample and metadata pools are full.
+- [x] Ensure cleanup can progress without allocating new table pages, including when both sample and metadata pools are full.
 
 Verification:
 
-- [ ] Pause and resume at every meaningful collector state.
-- [ ] Cover shared ranges, duplicate ownership entries, partial blocks, directory boundaries and concurrent allocation.
-- [ ] Audit intermediate ownership, including the active transaction.
-- [ ] Drain after deleting all owners and verify exact resource recovery.
-- [ ] Exercise full metadata pools and prove that cleanup can release pages without additional allocation.
+- [x] Pause and resume at every meaningful collector state.
+- [x] Cover shared ranges, duplicate ownership entries, partial blocks, directory boundaries and concurrent allocation.
+- [x] Audit intermediate ownership, including the active transaction.
+- [x] Drain after deleting all owners and verify exact resource recovery.
+- [x] Exercise full metadata pools and prove that cleanup can release pages without additional allocation.
 
 ### Stage 4: Make last-reference retirement compatible with foreground audio
 
@@ -161,7 +161,7 @@ Depends on Stage 3.
 - [x] Keep a retiring block unavailable for allocation while matching dirty writes and accepted transfers finish.
 - [x] Allow foreground commands for unrelated blocks to proceed while retirement waits.
 - [x] Cancel queued hints/fills and prevent new stale work from repopulating a retiring block.
-- [ ] Extend `fpga/media_store/rtl/media_prefetch_resolver.sv` and its bridge with cancellation and generation-tagged outstanding lookup responses.
+- [x] Reuse the resolver reset/cancellation path and add generation-tagged outstanding responses in the metadata bridge (see implementation refinement below).
 - [x] Prevent responses from an old view mapping being accepted against its replacement table.
 - [x] Preserve fault propagation and the coordinated reset epoch.
 
@@ -170,7 +170,7 @@ Verification:
 - [x] Hold old writebacks and prefetch responses across several audio iterations while unrelated playback continues.
 - [x] Verify cache invalidation, delayed response handling and reuse of the retired block.
 - [x] Inject retirement/writeback errors and verify existing containment behavior.
-- [ ] Test reset with active cleanup and old traffic.
+- [x] Test reset with active cleanup and old traffic.
 
 ### Stage 5: Add maintenance scheduling and separate completion signals
 
@@ -189,46 +189,46 @@ Depends on Stages 3 and 4.
 Verification:
 
 - [ ] Measure foreground latency with an empty and a large pending queue.
-- [ ] Check budget accounting and yield latency under fixed, stalled and realistic memory service.
+- [x] Check budget accounting and yield latency under fixed, stalled and realistic memory service.
 - [ ] Run sustained recording with simultaneous deletion and measure releases, genuinely freed blocks and net free-space change.
 - [ ] Verify audio completion while cleanup remains pending.
-- [ ] State the memory-latency assumptions required for any deadline claim.
+- [x] State the memory-latency assumptions required for any deadline claim.
 
 ### Stage 6: Integrate capacity, diagnostics, snapshots and configuration
 
 Depends on Stages 2 through 5.
 
-- [ ] Extend arena-size calculations, address bounds, generated wrappers, simulation backends and source manifests for the queue region and new RTL.
-- [ ] Update the relevant AXI, direct-memory, audio-I/O, synthesis and board configurations.
-- [ ] Account for live and retired metadata pages together; add documented free-space watermarks/admission checks for new recordings.
-- [ ] Do not treat a just-detached recording's blocks as immediately available to its replacement.
-- [ ] Expose pending-table count, pending-reference count, queue high-water mark, blocks freed, metadata pages freed, cleanup cycles and capacity failures.
+- [x] Extend arena-size calculations, address bounds, generated wrappers, simulation backends and source manifests for the queue region and new RTL.
+- [x] Update the relevant AXI, direct-memory, audio-I/O, synthesis and board configurations.
+- [x] Account for live and retired metadata pages together; add documented free-space watermarks/admission checks for new recordings.
+- [x] Do not treat a just-detached recording's blocks as immediately available to its replacement.
+- [x] Expose pending-table count, pending-reference count, queue high-water mark, blocks freed, metadata pages freed, cleanup cycles and capacity failures.
 - [x] Keep ordinary Fence as a memory-ordering operation.
 - [x] Add an explicit offline cleanup-drain operation for physical snapshots and diagnostics.
 - [x] Update ownership audits to count live views, unprocessed retired entries and active transaction state.
 - [x] Preserve logical production comparisons separately from deferred physical allocator observations.
-- [ ] Update `BLOCK_ALLOCATION.md`, `DDR_METADATA.md`, subsystem READMEs and the hardware verification contract.
+- [x] Update `BLOCK_ALLOCATION.md`, `DDR_METADATA.md`, subsystem READMEs and the hardware verification contract.
 
 Verification:
 
-- [ ] Exhaust queue records, sample blocks and metadata pages independently.
-- [ ] Verify normal snapshots do not secretly drain cleanup during measured runs.
-- [ ] Verify explicit drain plus quiescence yields a consistent complete physical snapshot.
-- [ ] Check minimum, odd and larger capacities, AXI32/64 and address bounds.
+- [x] Exhaust queue records, sample blocks and metadata pages independently.
+- [x] Verify normal snapshots do not secretly drain cleanup during measured runs.
+- [x] Verify explicit drain plus quiescence yields a consistent complete physical snapshot.
+- [x] Check minimum, odd and larger capacities, AXI32/64 and address bounds.
 
 ### Stage 7: End-to-end validation and review
 
 Depends on all previous stages.
 
-- [ ] Extend focused media, metadata, block-retirement and production-pipeline tests with deferred reclamation cases.
-- [ ] Run exact production/RTL comparisons for retakes, retained exports and uninterrupted unrelated playback.
-- [ ] Exercise repeated record/clear/remove cycles with bounded capacity and prove eventual recovery.
+- [x] Extend focused media, metadata, block-retirement and production-pipeline tests with deferred reclamation cases.
+- [x] Run exact production/RTL comparisons for retakes, retained exports and uninterrupted unrelated playback.
+- [x] Exercise repeated record/clear/remove cycles with bounded capacity and prove eventual recovery.
 - [ ] Run long mono/stereo scenarios with many simultaneous retakes/deletions and report the exact take lengths, channels, allocation geometry and pending ownership counts.
-- [ ] Test cases whose old tables exceed metadata-cache capacity and cross multiple directory levels.
+- [x] Test cases whose old tables exceed metadata-cache capacity and cross multiple directory levels.
 - [ ] Record foreground command latency, whole-quantum latency, maintenance cycles, reclamation throughput, DDR traffic and resource high-water marks.
-- [ ] Run fault/reset recovery with queued and active cleanup, including late responses.
+- [x] Run fault/reset recovery with queued and active cleanup, including late responses.
 - [ ] Use focused tests during iteration, then run the applicable broader native regression, formatting, warning-denying builds, RTL lint and synthesis gates before publication. Follow the current repository test instructions.
-- [ ] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py`.
+- [x] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py` (not applicable: no Rust tests changed).
 - [ ] Report resource/timing changes and any unqualified hardware-memory assumptions.
 - [ ] Push the feature branch and create a PR with implementation and validation evidence.
 - [ ] Monitor CI and automated review; address failures and review feedback until resolved.
@@ -261,3 +261,12 @@ The final evidence must distinguish bounded foreground work, budgeted maintenanc
 - `python fpga/chunk_memory/simulate.py --config small --retire-chunks 32 --output work/background-retirement`: legacy and asynchronous retirement gates passed, including stalled dirty transfers, unrelated cached reads, safe reuse, writeback failure and reset recovery.
 - `python fpga/verification/simulate.py --directed --random-cases 2 --block-chunks 32 --output work/reclaim-production`: 18 production/RTL scenarios passed exactly.
 - Implementation detail: root/count checkpoints live in each 64-byte DDR queue record; active block/progress and bounded traversal state stay on chip across iteration boundaries. Extra record words remain reserved. A separate stored epoch is unnecessary for the existing destructive coordinated arena-reset contract; queue indices and collector state reset together with metadata and endpoints. This does not provide reset-time collector recovery.
+
+- Capacity/recovery milestone: read-only queue/page/free-space telemetry, allocated-ID validation, coordinated fatal quiescence, all generated audio/board parameters, full-pool cleanup and failed-publication tests.
+- The native deferred suite now covers eight gates, including all ownership/checkpoint phases, duplicate entries, a stalled old hint, queue-full refusal and reset with active traffic. The phase-pause audit allows accepted indivisible work to finish, checks the resulting ownership and resumes without repeating a release.
+- A large-table test exposed a config/collector lock deadlock. The bridge now completes an already-held atomic transaction even when configuration is waiting for admission; a focused regression prevents recurrence.
+- Implementation refinement: the prefetch resolver already has reset cancellation. Root exchange reuses it, while metadata bridge generation tags reject late results. Duplicating cancellation state inside the resolver was unnecessary. Detached trim checkpoints after one tail entry, including its bounded-depth ancestor unlink/free tail; it never sweeps the rest of a recording in one grant.
+- Extended metadata gates cover AXI32/64 and a 5,760,000-entry, six-level configured tree. All pages recover after detached cleanup. Legacy media tests pass at default, small and odd capacities; the standalone production audio comparison and board control/restart tests pass.
+- `cargo fmt --all` and warning-denying workspace build passed. No Rust tests changed; the Cargo output-layout compatibility fix is committed separately.
+
+- Final focused gates: eight deferred tests passed on native AXI32 and DRAMsim3 AXI64 with one-line caches; three full-pool/publication-fault tests passed. Media lint and generic/ECP5 synthesis passed for both store and audio pipeline. Generated AXI, continuous audio, demo and board tops match their generators.

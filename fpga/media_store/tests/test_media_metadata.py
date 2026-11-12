@@ -5,6 +5,11 @@ from cocotb.triggers import Timer, RisingEdge
 from direct_memory import DirectMemory
 
 
+def memory_words():
+    slots=int(os.environ.get('METADATA_SERVICE_SLOTS','256'))
+    return 3*slots+1024 if slots==5760000 else 8192
+
+
 @cocotb.test()
 async def indexed_metadata_reuse_and_limits(dut):
     def set(**values):
@@ -13,8 +18,8 @@ async def indexed_metadata_reuse_and_limits(dut):
         await Timer(1,units='ns');await RisingEdge(dut.clk);await Timer(1,units='ns')
     set(reset=1,request_valid=0,request_opcode=0,request_view=0,request_index=0,request_data=0,response_ready=0)
     clock=cocotb.start_soon(Clock(dut.clk,10,units='ns').start())
-    memory=DirectMemory(dut,[0]*8192)
-    await tick();set(reset=0);await tick();await memory.load_words([0]*8192,tick)
+    memory=DirectMemory(dut,[0]*memory_words())
+    await tick();set(reset=0);await tick();await memory.load_words([0]*memory_words(),tick)
     async def request(op,view=0,index=0,data=0,error=0):
         set(request_valid=1,request_opcode=op,request_view=view,request_index=index,request_data=data,response_ready=0)
         for _ in range(100000):
@@ -103,8 +108,8 @@ async def detached_tables_survive_reuse_and_recover_pages(dut):
         await Timer(1,units='ns');await RisingEdge(dut.clk);await Timer(1,units='ns')
     set(reset=1,request_valid=0,request_opcode=0,request_view=0,request_index=0,request_data=0,response_ready=0)
     clock=cocotb.start_soon(Clock(dut.clk,10,units='ns').start())
-    memory=DirectMemory(dut,[0]*8192)
-    await tick();set(reset=0);await tick();await memory.load_words([0]*8192,tick)
+    memory=DirectMemory(dut,[0]*memory_words())
+    await tick();set(reset=0);await tick();await memory.load_words([0]*memory_words(),tick)
     async def request(op,view=0,index=0,data=0,error=0):
         set(request_valid=1,request_opcode=op,request_view=view,request_index=index,request_data=data,response_ready=0)
         for _ in range(100000):

@@ -55,6 +55,12 @@ class ExecutionTiming:
             result[name+'_operations']=int(meta.operations[i].value)
         return result
 
+    def reclamation_snapshot(self):
+        media=self.core.audio.media
+        return {name:int(getattr(media,'reclaim_'+name).value) for name in
+            ('pending','references','active','high_water','blocks','freed','cycles',
+             'pages_used','pages_available','pages_freed','capacity_failures')}
+
     def snapshot(self):
         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
         return timing.bus_snapshot() if hasattr(timing, 'bus_snapshot') else None
@@ -67,6 +73,7 @@ class ExecutionTiming:
             if int(self.dut.run_valid.value) and int(self.dut.run_ready.value):
                 self.start = cycle+1
                 self.metadata_start = self.metadata_snapshot()
+                self.reclamation_start = self.reclamation_snapshot()
                 self.requests_start = (self.memory.read_requests,self.memory.write_requests)
             return
         time = cycle-self.start
@@ -83,6 +90,7 @@ class ExecutionTiming:
             self.completions["finish_done"]=time
             self.total = time
             self.metadata_end = self.metadata_snapshot()
+            self.reclamation_end = self.reclamation_snapshot()
             self.requests_end = (self.memory.read_requests,self.memory.write_requests)
             self.enabled = False
             return
@@ -133,7 +141,10 @@ class ExecutionTiming:
             for access in ('read','write'):
                 delta['logical_'+access+'_bytes']=4*sum(delta[bank+'_'+access+'_operations'] for bank in ('table','reference','stack'))
             delta['directory_read_bytes']=4*delta['directory_reads']
-        return dict(completion_cycles=self.completions,metadata_statistics=delta,raw_cycles=self.total,
+        reclamation=dict(start=self.reclamation_start,end=self.reclamation_end,
+            work={name:self.reclamation_end[name]-self.reclamation_start[name] for name in
+                ('blocks','freed','cycles','pages_freed','capacity_failures')})
+        return dict(completion_cycles=self.completions,metadata_statistics=delta,reclamation=reclamation,raw_cycles=self.total,
                     axi_reads=self.requests_end[0]-self.requests_start[0],axi_writes=self.requests_end[1]-self.requests_start[1],
                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,

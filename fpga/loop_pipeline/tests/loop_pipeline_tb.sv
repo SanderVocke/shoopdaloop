@@ -39,6 +39,8 @@ module loop_pipeline_tb #(
     output wire [31:0] reclaim_block, output wire [63:0] reclaim_blocks,
     output wire [63:0] reclaim_freed, output wire [63:0] reclaim_cycles,
     output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed, output wire [63:0] reclaim_capacity_failures,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,

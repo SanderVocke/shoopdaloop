@@ -15,6 +15,7 @@ module media_metadata #(
     output reg [31:0] retired_count, output reg [31:0] retired_high_water,
     output reg [31:0] retired_head, output reg [31:0] retired_tail,
     output reg [63:0] retired_references,
+    output wire [31:0] pages_used, output wire [31:0] pages_available, output reg [63:0] pages_freed,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data, output wire [31:0] memory_count,
     output wire memory_write_valid, input wire memory_write_ready,
@@ -64,6 +65,8 @@ module media_metadata #(
     wire [191:0] bus_address;
     wire [95:0] bus_write_data, bus_count, bus_read_data;
     assign fault = |cache_fault;
+    assign pages_used = high_water-free_pages;
+    assign pages_available = 32'(TABLE_PAGES)-high_water+free_pages;
     assign request_ready = phase == IDLE && !reset && !fault;
     assign response_valid = phase == RESPONSE && !reset;
     assign memory_valid = bank < 3 && bus_valid[bank];
@@ -125,7 +128,7 @@ module media_metadata #(
             allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
             retired_head <= 0; retired_tail <= 0; retired_count <= 0; retired_high_water <= 0;
-            retired_references <= 0; gc_root <= 0; gc_used <= 0; gc_loaded <= 0;
+            retired_references <= 0; pages_freed <= 0; gc_root <= 0; gc_used <= 0; gc_loaded <= 0;
             unallocated_pages <= 0; additional <= 0; available <= 0; capacity_grow <= 0;
             root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
             cache_opcode <= 0; cache_address <= 0; cache_data <= 0; value <= 0; cache_invalidate <= 0;
@@ -313,7 +316,7 @@ module media_metadata #(
                 SCAN_WORD: begin page <= value; level <= level-1; phase <= SCAN_START; end
                 FREE_PAGE: access_cache(0,1,page_address(page),free_head,FREE_LINK);
                 FREE_LINK: begin
-                    free_head <= page; free_pages <= free_pages+1;
+                    free_head <= page; free_pages <= free_pages+1; pages_freed <= pages_freed+1;
                     if (level+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_NEXT; end
                     else begin
                         page <= path_page[level+1]; level <= level+1;

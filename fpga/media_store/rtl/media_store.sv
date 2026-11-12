@@ -21,6 +21,8 @@ module media_store #(
     output wire [31:0] reclaim_block, output wire [63:0] reclaim_blocks,
     output wire [63:0] reclaim_freed, output wire [63:0] reclaim_cycles,
     output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed, output reg [63:0] reclaim_capacity_failures,
     input wire [63:0] arena_base,
     input wire hint_valid, output wire hint_ready,
     input wire [63:0] hint_view, input wire [63:0] hint_position, input wire [63:0] hint_length,
@@ -126,7 +128,7 @@ module media_store #(
         : (cfg_space == 1) ? cfg_address < 32'(VIEWS)
         : (cfg_space == 2) ? ((cfg_address >> SLOT_BITS) < 32'(VIEWS) && (cfg_address & ((32'd1 << SLOT_BITS)-1)) < 32'(BLOCKS))
         : (cfg_space == 5) ? cfg_address == 0 && cfg_write
-        : (cfg_space == 6) ? cfg_address < 11 && !cfg_write
+        : (cfg_space == 6) ? cfg_address < 15 && !cfg_write
         : (cfg_space == 7) ? cfg_address < 32'(RETIRED_TABLES)*16 && !cfg_write
         : ((cfg_space == 3) || (cfg_space == 4)) && (cfg_address < 32'(BLOCKS));
     wire cfg_value_valid = !cfg_write || (cfg_space == 1)
@@ -183,6 +185,7 @@ module media_store #(
             || ((CHUNK_FRAMES & (CHUNK_FRAMES-1)) != 0)
             || BLOCK_CHUNKS < 1 || BLOCK_CHUNKS > 65536 || (BLOCK_CHUNKS & (BLOCK_CHUNKS-1)) != 0
             || SLOTS % BLOCK_CHUNKS != 0
+            || RETIRED_TABLES < 1 || RECLAIM_BLOCKS < 1 || RECLAIM_GUARD < 0 || RECLAIM_CYCLES <= RECLAIM_GUARD
            )
             $fatal(1, "Invalid media store capacities");
     end
@@ -264,7 +267,8 @@ module media_store #(
     wire [31:0] gc_request_index, gc_request_data;
     wire gc_retire_valid, gc_retire_ready, gc_retire_done, gc_retire_busy;
     wire [7:0] gc_retire_error;
-    wire manual_grant = cmd_valid && cmd_ready && (cmd_opcode == 9 || cmd_opcode == 10);
+    wire manual_grant = cmd_valid && cmd_ready && hint_base_valid && cmd_start[63:32] == 0
+        && (cmd_opcode == 9 || cmd_opcode == 10);
     assign gc_lock_grant = (phase == IDLE || phase == DRAIN_WAIT) && !cmd_valid && !cfg_valid
         && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !metadata_pending && !metadata_request_valid;
     assign reclaim_quiescent = !gc_lock_held && !metadata_pending && !metadata_request_valid && !gc_retire_busy;
@@ -273,7 +277,7 @@ module media_store #(
         .grant(maintenance_tick || manual_grant),
         .grant_cycles(manual_grant && cmd_opcode == 10 ? 32'hffffffff : manual_grant && cmd_start != 0 ? cmd_start[31:0] : 32'(RECLAIM_CYCLES)),
         .grant_blocks(manual_grant && cmd_opcode == 10 ? 32'hffffffff : manual_grant && cmd_count != 0 ? cmd_count : 32'(RECLAIM_BLOCKS)),
-        .pending_tables(retired_count),.free_count(free_count),
+        .pending_tables(retired_count),.free_count(free_count),.allocated_count(slot_count),
         .lock_request(gc_lock_request),.lock_grant(gc_lock_grant),.lock_held(gc_lock_held),
         .request_valid(gc_request_valid),.request_ready(gc_request_ready),.request_opcode(gc_request_opcode),
         .request_index(gc_request_index),.request_data(gc_request_data),
@@ -303,8 +307,8 @@ module media_store #(
     wire advance = (metadata_required & ~metadata_done) == 0;
     wire foreground_metadata = !advance;
     wire gc_eligible = gc_request_valid && (phase == IDLE || phase == DRAIN_WAIT)
-        && !cfg_valid && !cfg_request_valid && !cfg_pending && !cfg_result_valid
-        && (gc_lock_held || !cmd_valid) && !faulted;
+        && (gc_lock_held || (!cfg_valid && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !cmd_valid))
+        && !faulted;
     wire issue_metadata = !metadata_pending && !reset && (foreground_metadata || gc_eligible ||
         (resolver_table_valid && !cfg_valid && !faulted && !gc_lock_held));
     wire is_gc = !foreground_metadata && gc_eligible;
@@ -349,7 +353,7 @@ module media_store #(
         .request_view(metadata_request_view),.request_index(metadata_request_index),.request_data(metadata_request_data),
         .response_valid(metadata_valid),.response_ready(metadata_pending),
         .response_data(metadata_result),.response_error(metadata_result_error),.fault(metadata_fault),
-        .retired_head(retired_head),.retired_tail(retired_tail),.retired_count(retired_count),.retired_high_water(retired_high_water),.retired_references(retired_references),
+        .pages_used(reclaim_pages_used),.pages_available(reclaim_pages_available),.pages_freed(reclaim_pages_freed),.retired_head(retired_head),.retired_tail(retired_tail),.retired_count(retired_count),.retired_high_water(retired_high_water),.retired_references(retired_references),
         .memory_valid(memory_meta_valid),.memory_ready(memory_meta_ready),.memory_write(memory_meta_write),
         .memory_address(memory_meta_address),.memory_write_data(memory_meta_write_data),.memory_count(memory_meta_count),
         .memory_write_valid(memory_meta_write_valid),.memory_write_ready(memory_meta_write_ready),
@@ -465,7 +469,7 @@ module media_store #(
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE;
-            done <= 0;
+            done <= 0; reclaim_capacity_failures <= 0;
             error_code <= OK;
             result_view <= 0;
             result_empty <= 0;
@@ -555,6 +559,10 @@ module media_store #(
                         8: cfg_globals_data <= {128'b0,32'(RETIRED_TABLES)};
                         9: cfg_globals_data <= {128'b0,retired_head};
                         10: cfg_globals_data <= {128'b0,retired_tail};
+                        11: cfg_globals_data <= {128'b0,reclaim_pages_used};
+                        12: cfg_globals_data <= {128'b0,reclaim_pages_available};
+                        13: cfg_globals_data <= {96'b0,reclaim_capacity_failures};
+                        14: cfg_globals_data <= {96'b0,reclaim_pages_freed};
                         default: begin end
                     endcase
                 end
@@ -576,7 +584,8 @@ module media_store #(
                         || (arena_bound && arena_base != base)) begin
                         error_code <= INVALID_SHAPE;
                         phase <= FINISH;
-                    end else if (cmd_opcode == 9) begin done <= 1; phase <= IDLE; end
+                    end else if ((cmd_opcode == 9 || cmd_opcode == 10) && cmd_start[63:32] != 0) begin error_code <= INVALID_SHAPE; phase <= FINISH; end
+                    else if (cmd_opcode == 9) begin done <= 1; phase <= IDLE; end
                     else if (cmd_opcode == 10) phase <= DRAIN_WAIT;
                     else if (cmd_opcode == 8) begin
                         opcode <= CLEAR;
@@ -820,6 +829,7 @@ module media_store #(
             if (memory_meta_valid && memory_meta_ready && !arena_bound) begin
                 base <= arena_base; arena_bound <= 1;
             end
+            if (phase == FINISH && error_code == MEMORY_FULL) reclaim_capacity_failures <= reclaim_capacity_failures+1;
             if (gc_freed) free_count <= free_count+1;
             if (memory_fault) begin
                 faulted <= 1; error_code <= MEMORY_FAULT;

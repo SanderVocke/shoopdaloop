@@ -40,6 +40,10 @@ module audio_loop_pipeline #(
     output wire [63:0] reclaim_freed,
     output wire [63:0] reclaim_cycles,
     output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used,
+    output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed,
+    output wire [63:0] reclaim_capacity_failures,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
     input wire [31:0] run_state_count,
@@ -272,6 +276,10 @@ module audio_loop_pipeline #(
         .reclaim_freed(reclaim_freed),
         .reclaim_cycles(reclaim_cycles),
         .reclaim_quiescent(reclaim_quiescent),
+        .reclaim_pages_used(reclaim_pages_used),
+        .reclaim_pages_available(reclaim_pages_available),
+        .reclaim_pages_freed(reclaim_pages_freed),
+        .reclaim_capacity_failures(reclaim_capacity_failures),
         .run_valid(core_run_valid),
         .run_ready(run_ready),
         .run_instruction_count(run_instruction_count),
@@ -461,7 +469,8 @@ module audio_loop_pipeline #(
     assign core_m_axi_awready = m_axi_awready && (!isolate || aw_exposed);
     assign m_axi_wvalid = core_m_axi_wvalid && outstanding_writes != 0;
     assign core_m_axi_wready = m_axi_wready && outstanding_writes != 0;
-    assign memory_quiescent = reclaim_quiescent && outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
+    assign memory_quiescent = (recovery_requested || reclaim_quiescent)
+        && outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
     always @(posedge clk) begin
         if (reset) begin outstanding_reads<=0; outstanding_writes<=0; ar_exposed<=0; aw_exposed<=0; end
         else begin

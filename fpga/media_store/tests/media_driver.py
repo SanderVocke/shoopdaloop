@@ -7,7 +7,7 @@ from direct_memory import MemoryHost, native_field
 from legacy_metadata import LegacyMetadata
 
 OPCODES = {"create": 0, "slice": 1, "clear": 2, "remove": 3, "reclaim": 4, "append": 5, "read": 6}
-ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape"}
+ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape", 5: "memory_fault"}
 MASK32 = (1 << 32) - 1
 
 
@@ -31,8 +31,9 @@ class Driver(MemoryHost):
         self.blocks=self.slots//self.block_chunks
         self.base = 0x1234000000
         self.table_pages = int(os.environ.get('AXI_METADATA_PAGES') or ((self.blocks+14)//15+8*self.views+16))
+        self.retired_tables = int(os.environ.get('AXI_RETIRED_TABLES','256'))
         self.slot_bits = max(1,(self.blocks-1).bit_length())
-        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.blocks+15)//16)*16+self.table_pages*16+int(os.environ.get("AXI_RETIRED_TABLES","256"))*16
+        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.blocks+15)//16)*16+self.table_pages*16+self.retired_tables*16
         self.memory = [0xa5a5a5a5] * storage_words
         self.sample_transactions = 0
         self.pending = None
@@ -180,6 +181,8 @@ class Driver(MemoryHost):
         return result
 
     async def load(self, media):
+        if media.get('pending_reclamation',0):
+            raise ValueError('drain reclamation before saving a restorable physical snapshot')
         await self.reset()
         assert media["chunk_frames"] == self.chunk_frames
         assert media.get('block_chunks',1)==self.block_chunks
@@ -210,8 +213,10 @@ class Driver(MemoryHost):
             await self.configure(0,index,value)
 
     async def snapshot(self):
-        enabled=int(self.dut.maintenance_enable.value)
-        self.set(maintenance_enable=0)
+        enabled=int(self.dut.maintenance_enable.value) if hasattr(self.dut,'maintenance_enable') else None
+        if enabled is not None:self.set(maintenance_enable=0)
+        elif hasattr(self,'raw') and hasattr(self.raw,'core_maintenance_enable'):
+            assert not int(self.raw.core_maintenance_enable.value),'quiesce continuous maintenance before snapshot'
         await self.fence()
         self.memory[:] = await self.read_memory()
         views,blocks,free = [await self.configure(0,index) for index in range(3)]
@@ -237,6 +242,7 @@ class Driver(MemoryHost):
                 refs.update(ids)
             result['views'].append(view)
         pending=await self.configure(6,0)
+        if pending:result['pending_reclamation']=pending
         head=await self.configure(6,9)
         capacity=await self.configure(6,8)
         sample_words=((self.slots*self.chunk_frames+15)//16)*16
@@ -263,7 +269,7 @@ class Driver(MemoryHost):
         if self.block_chunks!=1:
             from block_images import canonicalize
             canonicalize(result)
-        self.set(maintenance_enable=enabled)
+        if enabled is not None:self.set(maintenance_enable=enabled)
         return result
 
     async def fence(self):
@@ -287,13 +293,14 @@ class Driver(MemoryHost):
 
     async def drain_reclamation(self):
         if await self.configure(6,0)==0:return
+        limit=100000+int(self.dut.reclaim_references.value)*4096
         self.set(cmd_valid=1,cmd_opcode=10,cmd_view=0,cmd_start=0,cmd_length=0,cmd_count=0)
         for _ in range(100000):
             before,after=await self.tick()
             if before['cmd_ready']:break
         else:raise AssertionError('cleanup drain admission timeout')
         self.set(cmd_valid=0)
-        for _ in range(10000000):
+        for _ in range(limit):
             if after['done']:break
             _,after=await self.tick()
         else:raise AssertionError('cleanup drain timeout')
@@ -310,7 +317,7 @@ class Driver(MemoryHost):
         assert after['done'] and after['error_code']==0
         await self.tick()
 
-    async def command(self, command, *, stalls=True, drain=True):
+    async def command(self, command, *, stalls=True, drain=True, observe=True):
         self.stalls = stalls
         kind = command["kind"]
         source = command.get("samples", [])
@@ -357,4 +364,4 @@ class Driver(MemoryHost):
         assert not after["done"] and not after["busy"]
         status = {"kind": "completed"} if code == 0 else {"kind": "failed", "value": {"error": ERRORS[code]}}
         if drain and code==0:await self.drain_reclamation()
-        return {"status": status, "value": value, "media": await self.snapshot()}
+        return {"status": status, "value": value, "media": await self.snapshot() if observe else None}

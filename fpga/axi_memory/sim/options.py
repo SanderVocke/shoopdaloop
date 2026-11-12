@@ -33,6 +33,8 @@ def add_options(parser, *, legacy=False):
 def environment(args):
     if min(args.retired_tables,args.reclaim_blocks,args.reclaim_cycles)<1 or args.reclaim_guard<0:
         raise ValueError("cleanup capacities/budgets must be positive and guard nonnegative")
+    if args.reclaim_cycles<=args.reclaim_guard:
+        raise ValueError("cleanup cycle budget must exceed the transaction guard")
     if args.block_chunks < 1 or args.block_chunks > 65536 or args.block_chunks & (args.block_chunks-1):
         raise ValueError("block chunks must be a power of two in 1..65536")
     if min(args.metadata_lines,args.reference_lines,args.stack_lines)<1 or (args.metadata_pages is not None and args.metadata_pages<1):

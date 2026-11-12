@@ -22,7 +22,7 @@ class LoopMemory(StoreDriver):
         self.task = cocotb.start_soon(self.observe_clock() if self.native_memory else self.serve())
 
     async def reset(self):
-        self.set(maintenance_enable=1)
+        if hasattr(self.dut,'maintenance_enable'):self.set(maintenance_enable=1)
         self.set(arena_base=self.base, cmd_valid=0, cmd_opcode=0, cmd_view=0,
                  cmd_start=0, cmd_length=0, cmd_count=0, write_valid=0,
                  write_data=0, read_ready=0, cfg_valid=0, cfg_write=0,

@@ -6,9 +6,9 @@ remain chunk-sized. Legacy one-chunk regression runs and blocked runs are both
 available; select `--block-chunks 32` for the current allocation geometry.
 
 This hardware service implements mono fixed-point chunks, shared read-only
-ranges, per-slot references and deterministic LIFO reuse. Samples pass through
+ranges, per-block references and deterministic LIFO reuse. Samples pass through
 [chunk memory](../chunk_memory/README.md) to the external memory port. Small
-view descriptors use synchronous on-chip RAM. Chunk-ID vectors, reference counts
+view descriptors use synchronous on-chip RAM. Block-ID vectors, reference counts
 and the reusable-ID stack use DDR-backed persistent caches; see
 [the metadata architecture](DDR_METADATA.md).
 `media_audio_pipeline` connects the store to state/job execution, enabling ReadView
@@ -26,14 +26,16 @@ timing, bus-width options, and the retained legacy word-port mode.
 
 - `rtl/media_store.sv`: serial commands, allocation, ownership and range translation.
 - `rtl/media_ram.sv`: synchronous metadata RAM, one read and one write port.
-- `rtl/media_metadata.sv`: compact radix-indexed vectors and serialized ownership metadata.
+- `rtl/media_metadata.sv`: compact radix-indexed vectors, detached roots and serialized ownership metadata.
+- `rtl/media_reclaimer.sv`: budgeted reference release and detached-table cleanup.
 - `rtl/metadata_cache.sv`: persistent writeback cache used by tables, counts and free IDs.
 - `rtl/media_audio_pipeline.sv`: exclusive store ownership between jobs and host commands.
 - `rtl/memory_delay.sv`: optional minimum completion delay for a memory transfer.
 - `simulate.py`, `tests/`: standalone ownership/protocol checks and complete sample quanta.
 - `check.sh`: warning-clean lint and generic/ECP5 synthesis for both tops.
 
-Defaults: 32 issued view IDs, 32 slots, 32 samples per chunk. Each view allocates
+Defaults: 32 issued view IDs, 1,024 physical chunks, 32 samples per chunk,
+and 32 chunks per allocation block (32 allocation blocks). Each view allocates
 only the table/directory pages it uses from a bounded DDR page pool. Cache sizes
 are independently configurable and persist across quanta. Deleted view IDs remain holes and are not reissued within a reset
 epoch. View exhaustion is a hardware capacity refusal; native resources are sized separately.
@@ -53,12 +55,14 @@ at a time. Configuration takes priority, and commands/configuration block while 
 | --- | --- | --- | --- |
 | 0 | Create | None | `result_view`: next recording ID |
 | 1 | Slice | `cmd_view`: source, `cmd_start`, `cmd_length`: frames | `result_view`: read-only range ID |
-| 2 | Clear | `cmd_view` | Retain ID/kind; release all references |
-| 3 | Remove | `cmd_view` | Release references and invalidate ID |
+| 2 | Clear | `cmd_view` | Retain ID/kind; detach the old table for deferred release |
+| 3 | Remove | `cmd_view` | Detach the old table and invalidate ID |
 | 4 | Reclaim | `cmd_view` | Release at most one tail reference; `result_empty` |
 | 5 | Append | `cmd_view`, `cmd_count`: input words | Updated recording |
 | 6 | Read | `cmd_view`, `cmd_start`: position, `cmd_length`: loop length, `cmd_count`: output words | Sample stream |
-| 7 | Fence | None | Earlier writes acknowledged by backing memory |
+| 7 | Fence | None | Earlier writes acknowledged by backing memory; does not drain cleanup |
+| 9 | Maintenance grant | `cmd_count`: block ceiling, `cmd_start`: cycle window; zero selects defaults | Open a bounded cleanup window and acknowledge immediately |
+| 10 | Drain cleanup | None | Wait for all retired tables; offline operation |
 
 Slices copy IDs and retain references, with no sample-memory transactions. Nested
 ranges retain their own references. Partial boundary chunks stay allocated while
@@ -66,12 +70,16 @@ reads remain bounded by logical frame ranges. Sources may append, clear or be
 removed without changing retained slices. Read-only views reject append, including
 empty append and append after clear.
 
-Clear/remove release in table order. Reclaim releases from the tail and truncates
+Clear/remove transfer the existing DDR table to a fixed-size retirement record
+and publish the empty/invalid view without walking old entries. Cleanup later
+releases entries from the tail and recycles empty metadata pages. Reclaim remains
+a synchronous one-entry command and truncates
 logical length, accounting for the first-chunk offset. Only a zero reference count
 retires the allocation before returning its ID to the free stack. Allocation pops that stack before growing the slot
 high-water mark; storage does not shrink. Append checks capacity before changing
-media. New slots are zeroed, including unpublished tails, matching Rust snapshots.
-Reused slots retain old unpublished samples. Descriptors/lengths publish at completion.
+media. Fresh one-chunk allocations zero unpublished tails in legacy mode.
+Block allocations do not erase the whole block; only published samples are
+accessible. Reused allocations retain old unpublished samples. Descriptors/lengths publish at completion.
 Zero-word reads still validate the view, position and loop length.
 
 ### Streams and memory
@@ -105,7 +113,7 @@ Chunk arbitration is internal; integrated AXI tops transfer chunks in bursts.
 | 0 | Completed |
 | 1 | Invalid view or frame range |
 | 2 | Invalid state, including append to read-only views |
-| 3 | Slot, physical view or metadata page capacity exhausted |
+| 3 | Slot, physical view, metadata page or retired-record capacity exhausted |
 | 4 | Invalid opcode or arena base |
 | 5 | External-memory error |
 
@@ -127,20 +135,22 @@ be mistaken for a new transaction. Reset begins a new store epoch.
 
 The idle-only configuration port transfers on `cfg_valid && cfg_ready`; responses
 pulse after request/validation, the variable-latency metadata operation and a
-registered result stage. Sample data on `cfg_response_valid`. Data is 160 bits,
-with zeros above bit 31 in scalar
-spaces. Write/error responses return zero. Full 32-bit addresses are checked before
+registered result stage. Sample data on `cfg_response_valid`. Data is 160 bits;
+IDs/counts use 32 bits and diagnostic totals can use 64 bits.
+Write/error responses return zero. Full 32-bit addresses are checked before
 narrowing. Load only trusted, checked images while execution is stopped;
 this debug/loading port does not implement the complete snapshot validator.
 
 | Space | Address | Value |
 | --- | --- | --- |
-| 0 | 0 / 1 / 2 / 3 | Issued views / slot high-water mark / free count / logical slot limit |
+| 0 | 0 / 1 / 2 / 3 | Issued views / block high-water mark / free-block count / logical block limit |
 | 1 | View ID | Descriptor: valid bit 0, read-only bit 1, offset `[63:32]`, frames `[127:64]`, table count `[159:128]` |
-| 2 | `(view << SLOT_BITS) \| ordinal` | Chunk ID; SLOT_BITS = max(1, clog2(SLOTS)) |
-| 3 | Slot ID | Reference count |
-| 4 | Stack index | Chunk ID, top at `free_count - 1` |
+| 2 | `(view << SLOT_BITS) \| ordinal` | Block ID; SLOT_BITS = max(1, clog2(BLOCKS)) |
+| 3 | Block ID | Reference count |
+| 4 | Stack index | Block ID, top at `free_count - 1` |
 | 5 | 0, write | Fence and invalidate metadata caches/leaf translations |
+| 6 | 0..14, read | Cleanup and capacity diagnostics; see below |
+| 7 | `record * 16 + word`, read | Coherent retired-record words; diagnostic only |
 
 Descriptor bits `[31:2]` are reserved. Logical slot limit defaults to SLOTS and
 supports snapshots with smaller `chunk_limit`. Snapshots without a limit compare
@@ -149,6 +159,84 @@ consistent descriptors, tables, counters and free entries.
 Write each view's table as a dense ordinal prefix during restore. Reads beyond
 that prefix and sparse writes are refused. Space 5 is a cold-cache diagnostic;
 normal quantum boundaries do not flush metadata.
+
+## Deferred ownership and maintenance
+
+CLEAR, REMOVE and automatic BeginCapture share a root-detachment transaction.
+A nonempty old table moves to one of `RETIRED_TABLES` fixed-size DDR records;
+its existing pages and references remain owned by that record. No block-ID list
+or audio payload is copied. An empty view needs no record. Queue-full refusal
+occurs before the live view is changed. New takes still need free sample blocks
+and metadata pages; detached storage is not immediately reusable.
+
+A FIFO collector has one resumable context. Reference updates/free-stack changes
+are serialized against foreground ownership work. On the final reference, a
+separate grouped-retirement path waits for dirty writes and accepted sample
+transfers while unrelated sample commands can continue. Only then is the block
+made reusable. Each consumed tail entry also releases newly empty tree pages.
+
+`maintenance_tick` opens a new grant in the standalone store. The integrated
+pipeline grants maintenance at each accepted audio run. `maintenance_enable`
+allows new work; disabling it preserves progress and lets admitted indivisible
+work finish. Defaults are 20 block releases and a 10,000-cycle window with a
+1,024-cycle transaction guard. The clock window includes arbitration/wait time;
+20 is a ceiling, not a guaranteed number of freed blocks. Shared-reference drops
+may return no storage. In-flight operations can finish after the window closes.
+
+Foreground commands win admission at safe boundaries. An already accepted
+metadata operation, including one bounded-depth tail trim, can delay foreground
+service. The configured guard must cover the measured non-preemptible tail for
+the selected geometry and memory service. Arbitrarily stalled DDR has no finite
+latency bound; these defaults do not establish physical audio deadlines.
+
+`reclaim_pending`, `reclaim_references`, `reclaim_active`, `reclaim_released`,
+`reclaim_block`, `reclaim_blocks`, `reclaim_freed`, `reclaim_cycles`, page counters
+and capacity-failure counters expose progress. `reclaim_quiescent` excludes
+pending jobs but includes admitted collector transactions/retirement. Continuous
+wrappers combine it with accepted AXI traffic for normal quiescence. Fatal
+recovery instead drains accepted AXI transactions and resets the entire arena
+state, abandoning partial internal work under the existing reset contract.
+
+Space 6 addresses are: 0 pending tables; 1 remaining table references (64 bits);
+2 queue high-water mark; 3 completed releases; 4 blocks returned; 5 maintenance
+cycles; 6 active block ID; 7 active/released flags in bits 0/1; 8 record capacity;
+9/10 FIFO head/tail; 11 pages in use; 12 pages available; 13 command capacity
+failures; 14 metadata pages recycled. Counter values may span 64 bits.
+
+Pause maintenance before a consistent physical ownership audit. Its accounting
+includes live tables, retired tables and a reference already released by an
+in-flight cleanup step. Ordinary Fence drains writes without reclaiming old
+tables. Drain cleanup explicitly before exporting a complete restorable physical
+snapshot. The test adapter marks undrained logical snapshots with
+`pending_reclamation` and rejects restoring them. Its functional command helper
+can explicitly settle cleanup after measuring the foreground done pulse; timing
+and deferred tests use `drain=False`.
+
+Use free-block/page counts and pending ownership when admitting recording work.
+Reserve first-block capacity for all channels starting together, metadata paths
+for their new tables, and retirement records for the old takes. There is no
+synchronous sweep when those resources run low. Queue depth, page capacity and
+sample capacity remain independent limits. Cleanup itself allocates no pages.
+
+The queue and metadata state are volatile within the current session epoch.
+Coordinated reset discards roots, queue indices and collector state together
+with endpoint state. It does not resume a collector from old DDR records.
+
+Focused regression commands:
+
+```sh
+python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --deferred
+python fpga/media_store/simulate.py --config wide --block-chunks 32 --metadata-pages 3 --deferred-capacity
+python fpga/media_store/simulate.py --config retirement --block-chunks 32 --metadata-lines 128 --axi-data-width 64 --deferred-stress
+```
+
+The ownership suite also runs with AXI64, single-line metadata caches and
+`--memory-model dramsim3`. The long stress preloads actual hardware ownership
+tables for 32 mono or 16 stereo loops, each recorded for 30 seconds at 48 kHz.
+It checks mass clear, continued recording and complete recovery; old payloads
+are deliberately unobserved. CI uses `--stress-seconds 1` as a shorter large-arena
+regression. [Saved evidence](measurements/deferred/README.md) distinguishes these
+ownership campaigns from full production audio comparisons and timing tests.
 
 ## State/job integration
 
@@ -174,8 +262,9 @@ its internal executor. Logical capture starts emit BeginCapture (job opcode 7),
 which uses internal media opcode 8 over the four-bit command bus. It creates only
 the next descriptor or clears/reuses an existing writable view; gaps are invalid,
 physical descriptor exhaustion reports MemoryFull, and shared slices retain their
-references. Clearing walks the old chunk list, so long takes require bounded
-reclamation work before making deadline claims.
+references. Clearing detaches the existing table; its references and pages are
+released by budgeted maintenance. Physical capacity must cover pending cleanup
+and new captures simultaneously.
 
 The standalone media tests use per-node playback/capture state.
 `fpga/loop_pipeline` owns fatal processing policy: any required media error latches

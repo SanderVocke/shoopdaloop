@@ -11,7 +11,7 @@ from cocotb.runner import get_runner
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CONFIGS = {"default": (32, 32, 32), "small": (16, 8, 4), "odd": (5, 5, 8),
-           "wide": (16, 32, 4), "8x8": (64, 1024, 32)}
+           "wide": (16, 32, 4), "8x8": (64, 1024, 32), "retirement": (64, 45056, 32)}
 sys.path.insert(0, str(ROOT/"fpga/axi_memory/sim"))
 from options import add_options, environment, direct_sources
 
@@ -24,6 +24,9 @@ def main():
     parser.add_argument("--case", type=Path)
     parser.add_argument("--waves", action="store_true")
     parser.add_argument("--deferred",action="store_true",help="exercise deferred ownership and maintenance budgets")
+    parser.add_argument("--deferred-capacity",action="store_true",help="exercise exhausted metadata/sample pools and transfer faults")
+    parser.add_argument("--deferred-stress",action="store_true",help="30-second ownership tables, mass clear and continued recording")
+    parser.add_argument("--stress-seconds",type=int,default=30)
     parser.add_argument("--pipeline", action="store_true")
     parser.add_argument("--read-buffers", type=int, default=4)
     parser.add_argument("--write-buffers", type=int, default=4)
@@ -49,13 +52,23 @@ def main():
         parser.error("buffer capacities must be positive")
     if args.response_cycles < 1 or ((args.response_cycles != 1 or args.timing) and not args.pipeline):
         parser.error("use positive --response-cycles; delay/timing options require --pipeline")
+    if sum((args.deferred,args.deferred_capacity,args.deferred_stress))>1:
+        parser.error('select one deferred test suite')
+    if args.pipeline and any((args.deferred,args.deferred_capacity,args.deferred_stress)):
+        parser.error('deferred test suites use the standalone store')
+    if args.deferred_stress and (args.stress_seconds<1 or args.config!='retirement'
+            or args.block_chunks!=32 or args.memory_model!='instant'):
+        parser.error('--deferred-stress requires positive --stress-seconds, --config retirement --block-chunks 32 --memory-model instant')
     if args.case:
         parser.error('hardware-shaped cases are retired; use fpga/verification/simulate.py --case with a common scenario')
     if args.timing:
         command=[sys.executable,str(ROOT/'fpga/verification/simulate.py'),'--output',str(args.output),
             '--memory-model',args.memory_model,'--read-buffers',str(args.read_buffers),'--write-buffers',str(args.write_buffers),
             '--metadata-lines',str(args.metadata_lines),'--reference-lines',str(args.reference_lines),'--stack-lines',str(args.stack_lines),
-            '--block-chunks',str(args.block_chunks),'--axi-data-width',str(args.axi_data_width),'--dram-library',str(args.dram_library),'--dram-config',str(args.dram_config)]
+            '--block-chunks',str(args.block_chunks),'--retired-tables',str(args.retired_tables),
+            '--reclaim-blocks',str(args.reclaim_blocks),'--reclaim-cycles',str(args.reclaim_cycles),
+            '--reclaim-guard',str(args.reclaim_guard),'--axi-data-width',str(args.axi_data_width),'--dram-library',str(args.dram_library),'--dram-config',str(args.dram_config)]
+        if args.metadata_pages is not None:command+=['--metadata-pages',str(args.metadata_pages)]
         if args.config=='8x8':command+=['--benchmark64','--config','8x8']
         if args.word_transfers:command+=['--word-transfers']
         subprocess.run(command,cwd=ROOT,check=True)
@@ -95,16 +108,27 @@ def main():
             sources += [ROOT/"fpga/axi_memory/rtl"/name for name in ("axi_master.sv", "axi_burst_mux.sv", "shared_axi.sv", "chunk_dma.sv", "word_dma.sv", "word_axi.sv", "chunk_axi.sv", top+"_axi.sv")]
             top += "_axi"
             parameters.update(AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
-        runner.build(verilog_sources=direct_sources(sources,top,args.memory_model), includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
+        selected_sources=direct_sources(sources,top,args.memory_model)
+        if args.deferred_stress:
+            original=next(path for path in selected_sources if path.stem==top)
+            text=original.read_text().replace('input wire clk,','output reg clk,',1)
+            body,tail=text.rsplit('endmodule',1)
+            generated=output/f'{top}.sv'
+            generated.write_text(body+'    initial clk=0;\n    always #5 clk<=~clk;\nendmodule'+tail)
+            selected_sources=[generated if path==original else path for path in selected_sources]
+        runner.build(verilog_sources=selected_sources, includes=[ROOT / "fpga/state_processor/rtl"], hdl_toplevel=top,
                      parameters=parameters,
-                     build_args=["--Wall", "--timescale", "1ns/1ps"],
+                     build_args=["--Wall", "--timescale", "1ns/1ps"]+(['--timing'] if args.deferred_stress else []),
                      build_dir=output / "build", always=True, waves=args.waves, log_file=output / "build.log")
         block_test=args.block_chunks>1
         testcase=None if block_test else ['directed_pipeline','randomized_pipeline','pipeline_protocol','playback_stream_protocol'] if args.pipeline else None
         module=('test_block_audio' if args.pipeline else 'test_block_media') if block_test else ('test_media_pipeline' if args.pipeline else 'test_media_store')
         if args.deferred:
-            if args.pipeline:parser.error('--deferred uses the standalone store')
             module='test_deferred_media';testcase=None
+        if args.deferred_capacity:
+            module='test_deferred_capacity';testcase=None
+        if args.deferred_stress:
+            module='test_deferred_stress';testcase=None
         result = runner.test(hdl_toplevel=top, test_module=module,
                              testcase=testcase, seed=args.seed,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
@@ -115,11 +139,11 @@ def main():
                                         "MEDIA_SEED": str(args.seed), "MEDIA_RANDOM_CASES": str(args.random_cases),
                                         "MEDIA_RESPONSE_CYCLES": str(args.response_cycles),
                                         "MEDIA_PREFETCH_ANALYSIS": str(int(args.prefetch_analysis)),
-                                        "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
+                                        "MEDIA_STRESS_SECONDS":str(args.stress_seconds), "MEDIA_OUTPUT": str(output), "MEDIA_CASE": str(args.case.resolve()) if args.case else "", **memory_env})
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (3 if args.deferred else 1 if block_test else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (2 if args.deferred_stress else 3 if args.deferred_capacity else 8 if args.deferred else 1 if block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

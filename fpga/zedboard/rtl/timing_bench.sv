@@ -85,6 +85,10 @@ module timing_bench #(
     wire [63:0] reclaim_freed;
     wire [63:0] reclaim_cycles;
     wire reclaim_quiescent;
+    wire [31:0] reclaim_pages_used;
+    wire [31:0] reclaim_pages_available;
+    wire [63:0] reclaim_pages_freed;
+    wire [63:0] reclaim_capacity_failures;
     wire run_valid;
     wire run_ready;
     wire [31:0] run_instruction_count;
@@ -248,6 +252,10 @@ module timing_bench #(
         .reclaim_freed(reclaim_freed),
         .reclaim_cycles(reclaim_cycles),
         .reclaim_quiescent(reclaim_quiescent),
+        .reclaim_pages_used(reclaim_pages_used),
+        .reclaim_pages_available(reclaim_pages_available),
+        .reclaim_pages_freed(reclaim_pages_freed),
+        .reclaim_capacity_failures(reclaim_capacity_failures),
         .run_valid(run_valid),
         .run_ready(run_ready),
         .run_instruction_count(run_instruction_count),

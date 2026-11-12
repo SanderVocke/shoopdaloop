@@ -38,6 +38,8 @@ module loop_pipeline #(
     output wire [31:0] reclaim_block, output wire [63:0] reclaim_blocks,
     output wire [63:0] reclaim_freed, output wire [63:0] reclaim_cycles,
     output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed, output wire [63:0] reclaim_capacity_failures,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
@@ -182,6 +184,8 @@ module loop_pipeline #(
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) audio (
+        .reclaim_pages_used(reclaim_pages_used),.reclaim_pages_available(reclaim_pages_available),
+        .reclaim_pages_freed(reclaim_pages_freed),.reclaim_capacity_failures(reclaim_capacity_failures),
         .maintenance_enable(maintenance_enable),.reclaim_pending(reclaim_pending),.reclaim_high_water(reclaim_high_water),
         .reclaim_references(reclaim_references),.reclaim_active(reclaim_active),.reclaim_released(reclaim_released),
         .reclaim_block(reclaim_block),.reclaim_blocks(reclaim_blocks),.reclaim_freed(reclaim_freed),

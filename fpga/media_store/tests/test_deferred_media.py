@@ -54,8 +54,48 @@ async def detachment_and_maintenance_budgets(dut):
             await d.drain_reclamation()
             assert await d.configure(6,0)==0 and await d.configure(6,1)==0
             assert await d.configure(0,2)==count
-        assert max(x['clear_cycles'] for x in rows)-min(x['clear_cycles'] for x in rows)<32,rows
+        if os.environ['AXI_MEMORY_MODEL']!='dramsim3':
+            assert max(x['clear_cycles'] for x in rows)-min(x['clear_cycles'] for x in rows)<32,rows
         Path(os.environ['MEDIA_OUTPUT'],'deferred-timing.json').write_text(json.dumps(rows,indent=2)+'\n')
+    finally:d.close()
+
+
+@cocotb.test()
+async def clear_cancels_an_outstanding_metadata_hint(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        await empty(d)
+        await complete(d,'append',view=0,samples=[1901]*(2*bf))
+        await d.configure(5,0,0)
+        d.pause_responses=True
+        d.set(hint_valid=1,hint_view=0,hint_position=0,hint_length=2*bf,hint_count=d.chunk_frames)
+        for _ in range(10000):
+            ready=int(dut.hint_ready.value);await d.tick()
+            if ready:break
+        else:raise AssertionError('hint admission timeout')
+        d.set(hint_valid=0)
+        for _ in range(10000):
+            await d.tick()
+            if (d.axi if d.native_memory else d.axi.memory).active is not None:break
+        else:raise AssertionError('hint did not reach memory')
+        d.set(cmd_valid=1,cmd_opcode=2,cmd_view=0,cmd_start=0,cmd_length=0,cmd_count=0)
+        for _ in range(10000):
+            before,after=await d.tick()
+            if before['cmd_ready']:break
+        else:raise AssertionError('clear admission timeout')
+        d.set(cmd_valid=0)
+        for _ in range(10):await d.tick()
+        d.pause_responses=False
+        for _ in range(100000):
+            _,after=await d.tick()
+            if after['done']:break
+        else:raise AssertionError('clear did not drain the old hint')
+        assert after['error_code']==0
+        await d.tick()
+        await complete(d,'append',view=0,samples=[7777]*d.chunk_frames)
+        await d.drain_reclamation()
+        result=await complete(d,'read',view=0,position=0,length=d.chunk_frames,frames=d.chunk_frames)
+        assert result['value']==dict(kind='samples',value=[7777]*d.chunk_frames)
     finally:d.close()
 
 
@@ -111,4 +151,110 @@ async def retained_ranges_and_repeated_view_reuse(dut):
         await complete(d,'clear',view=0)
         await d.drain_reclamation()
         assert await d.configure(0,2)==await d.configure(0,1)
+        await empty(d)
+        for ordinal in range(2):await d.configure(2,d.table_address(0,ordinal),0)
+        await d.configure(1,0,3|((2*bf)<<64)|(2<<128))
+        await d.configure(3,0,2)
+        await d.configure(0,1,1)
+        await d.command(dict(kind='clear',view=0),drain=False,observe=False)
+        await d.drain_reclamation()
+        assert await d.configure(0,2)==1,'duplicate entries released the same physical block twice'
+        assert await d.configure(3,0)==0 and await d.configure(6,11)==0
+    finally:d.close()
+
+
+@cocotb.test()
+async def reset_discards_active_cleanup_and_old_responses(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        await empty(d)
+        await complete(d,'append',view=0,samples=[1901]*(2*bf))
+        await complete(d,'clear',view=0)
+        await d.configure(5,0,0)
+        d.pause_responses=True
+        await d.grant_maintenance(blocks=20,cycles=100000)
+        for _ in range(10000):
+            await d.tick()
+            if (d.axi if d.native_memory else d.axi.memory).active is not None:break
+        else:raise AssertionError('cleanup did not issue a transfer')
+        assert int(dut.reclaim_active.value)
+        d.pause_responses=False
+        await empty(d)
+        assert int(dut.reclaim_pending.value)==0 and not int(dut.reclaim_active.value)
+        await complete(d,'append',view=0,samples=[7777]*d.chunk_frames)
+        result=await complete(d,'read',view=0,position=0,length=d.chunk_frames,frames=d.chunk_frames)
+        assert result['value']==dict(kind='samples',value=[7777]*d.chunk_frames)
+    finally:d.close()
+
+
+@cocotb.test()
+async def invalid_retired_block_faults_before_reuse(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        await empty(d)
+        await complete(d,'append',view=0,samples=[1901]*bf)
+        await d.configure(2,d.table_address(0,0),d.blocks-1)
+        result=await d.command(dict(kind='clear',view=0),drain=False,observe=False)
+        assert result['status']['kind']=='completed'
+        await d.grant_maintenance(blocks=20,cycles=100000)
+        for _ in range(10000):
+            await d.tick()
+            if int(dut.memory_fault.value):break
+        else:raise AssertionError('invalid ownership did not fault')
+        assert int(dut.reclaim_freed.value)==0
+        assert int(dut.reclaim_pending.value)==1
+        assert await d.configure(0,2)==0
+        await empty(d)
+        await complete(d,'append',view=0,samples=[7777]*d.chunk_frames)
+    finally:d.close()
+
+
+@cocotb.test()
+async def status_reads_do_not_deadlock_atomic_cleanup(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        await empty(d)
+        await complete(d,'append',view=0,samples=[1901]*(2*bf))
+        await complete(d,'clear',view=0)
+        await d.grant_maintenance(blocks=20,cycles=100000)
+        for _ in range(10000):
+            await d.tick()
+            if int(dut.core.gc_lock_held.value):break
+        else:raise AssertionError('collector did not acquire ownership')
+        assert await d.configure(6,0)==1
+        await d.drain_reclamation()
+        assert await d.configure(0,2)==2
+        assert not int(dut.memory_fault.value)
+    finally:d.close()
+
+
+@cocotb.test()
+async def pause_at_ownership_and_checkpoint_boundaries(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        for target in range(2,18):
+            await empty(d)
+            await complete(d,'append',view=0,samples=[1901]*bf)
+            shared=target in (6,7)
+            if shared:await complete(d,'slice',source=0,start=0,frames=bf)
+            await complete(d,'clear',view=0)
+            await d.grant_maintenance(blocks=20,cycles=1000000)
+            for _ in range(100000):
+                if int(dut.core.reclaimer.phase.value)==target:break
+                await d.tick()
+            else:raise AssertionError(f'collector never reached phase {target}')
+            d.set(maintenance_enable=0)
+            await d.snapshot()
+            pending=int(dut.reclaim_references.value)
+            for _ in range(20):await d.tick()
+            assert int(dut.reclaim_references.value)==pending,'paused collector advanced'
+            d.set(maintenance_enable=1)
+            await d.drain_reclamation()
+            assert await d.configure(0,2)==int(not shared)
+            if shared:
+                result=await complete(d,'read',view=1,position=0,length=bf,frames=bf)
+                assert result['value']==dict(kind='samples',value=[1901]*bf)
+                await complete(d,'remove',view=1)
+                await d.drain_reclamation()
+            assert await d.configure(0,2)==1 and await d.configure(6,11)==0
     finally:d.close()

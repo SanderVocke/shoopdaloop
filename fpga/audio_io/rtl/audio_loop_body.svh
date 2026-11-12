@@ -72,7 +72,8 @@
     assign core_m_axi_awready = m_axi_awready && (!isolate || aw_exposed);
     assign m_axi_wvalid = core_m_axi_wvalid && outstanding_writes != 0;
     assign core_m_axi_wready = m_axi_wready && outstanding_writes != 0;
-    assign memory_quiescent = reclaim_quiescent && outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
+    assign memory_quiescent = (recovery_requested || reclaim_quiescent)
+        && outstanding_reads == 0 && outstanding_writes == 0 && !ar_exposed && !aw_exposed;
     always @(posedge clk) begin
         if (reset) begin outstanding_reads<=0; outstanding_writes<=0; ar_exposed<=0; aw_exposed<=0; end
         else begin
