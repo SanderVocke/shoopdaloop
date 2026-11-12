@@ -12,7 +12,7 @@ or failed run cannot be mistaken for a fast successful run. Resource optimizatio
 and timing closure are outside this workflow; the selected fabric clock is an
 input, rather than a frequency-search result.
 See [routed resource usage](RESOURCES.md) for totals and the subsystem breakdown
-of the existing 64-loop benchmark RTL checkpoint.
+of the fully routed 64-loop deployment, including debug instrumentation.
 
 ## AXI connection
 
@@ -42,6 +42,8 @@ so the RTL source tree can be mounted read-only in a container.
 The installation must include PS7, proc_sys_reset, xlconstant, VIO and ILA IPs.
 For an external matching IP repository, set `SHOOP_IP_REPO` to its directory;
 the build checks the required definitions before creating the block design.
+See [the verified public 2021.1 catalog source](CATALOG.md) if the tool image
+omits these IPs.
 
 ```sh
 python fpga/zedboard/prepare.py --output work/zedboard/workload
@@ -69,7 +71,8 @@ when comparing results. The memory arena is checked against 512 MiB DDR.
 
 The Vivado script builds the bitstream and exports `bench.bit`, `bench.ltx`,
 `bench.xsa` and its generated `ps7_init.tcl` into the selected directory. It adds
-VIO and a two-probe ILA. It does not request utilization or timing-analysis reports.
+VIO and a two-probe ILA. It also saves `utilization.rpt` and
+`utilization_hierarchical.rpt` for total and subsystem resource accounting.
 An optional second Tcl argument selects an explicit installed ZedBoard BOARD_PART.
 Set `SHOOP_BUILD_STAGE=generate` to stop after block-design validation and IP
 generation, or `SHOOP_BUILD_STAGE=synth` to stop after synthesis and save

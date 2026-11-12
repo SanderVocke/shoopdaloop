@@ -4,6 +4,63 @@ Validation date: 2026-11-12. Workload: the default 64-loop deployment, Q=32,
 64-bit AXI3, four read buffers, four write buffers, eight metadata cache lines,
 four reference cache lines, 100 MHz requested fabric clock.
 
+## Matching catalog and full board retry
+
+Found the complete 2021.1 catalog in the public image
+`pwang7/vivado_ubuntu:standard-2021.1`. The entire source layer was downloaded
+and SHA256-verified before extracting the catalog and resolving its original
+hardlinks. [Catalog instructions](CATALOG.md) include pinned image/layer digests;
+[catalog provenance](validation/2021.1/catalog-provenance.json) records the
+required-IP descriptor hashes.
+
+The compiler remains the unmodified vendor payload described below, with the
+catalog mounted read-only at its canonical `data/ip` location. The banner is
+**Vivado 2021.1, SW Build 3247384, IP Build 3246043**. The board was regenerated
+from RTL with no previous IP outputs or checkpoints.
+
+- Native AXI3 HP0 block-design validation and all IP output generation pass.
+  The DDR address segment covers 512 MiB, and board-specific `ps7_init.tcl`
+  is exported.
+- PS7, reset, ILA, VIO, benchmark and top-level synthesis complete with zero
+  errors and zero critical warnings.
+- Automatic JTAG debug-hub generation/synthesis succeeds, also with zero
+  errors and zero critical warnings.
+- Full board logic optimization and placement complete successfully, with
+  zero errors and zero critical warnings.
+- The complete board is fully routed: **51,330 / 51,330 routable nets, zero
+  routing errors**.
+- Bitstream generation succeeds. Its DRC has **zero errors, zero critical
+  warnings and ten warnings**: six DSP pipeline suggestions, three LUT-equation
+  term warnings inside the generated JTAG debug hub and one no-routable-loads
+  warning. The earlier invalid-site DRC errors did not reproduce.
+- `bench.bit`, `bench.ltx`, `bench.xsa` and `ps7_init.tcl` are exported. The XSA
+  archive passes its ZIP integrity check and contains exactly the exported
+  bitstream and PS initialization script.
+- The 100 MHz timing report has WNS **-0.425 ns**, TNS **-6.270 ns** across
+  60 failing setup endpoints; hold WHS is **+0.014 ns** with no hold violations.
+  This is not a timing-qualified 100 MHz deployment. Timing closure remains
+  outside this integration work.
+
+The total deployment uses **30,857 LUTs, 27,104 flip-flops, 68 BRAM36 equivalents
+and four DSPs**. See [resource accounting](RESOURCES.md) for subsystem and debug
+overhead. The build now exports total and hierarchical utilization reports.
+
+Retained board evidence: [DRC](validation/2021.1/board_drc.rpt),
+[route status](validation/2021.1/board_route_status.rpt),
+[timing summary](validation/2021.1/board_timing_summary.rpt) and
+[utilization](validation/2021.1/board_utilization.rpt). Artifact sizes and SHA256
+hashes are in the catalog provenance. Local deployment outputs are in
+`work/zedboard/board2021-catalog`; build logs are in `work/vivado-2021`.
+No hardware was connected, so real DDR access, ILA/VIO operation and processing
+times remain unmeasured.
+
+The first implementation attempt failed during automatic debug-hub generation.
+A retry also exposed a `malloc_usable_size` crash in `libudev`, called through
+Vivado registration/Webtalk at project launch. Preloading the runtime's original
+`/lib/x86_64-linux-gnu/libudev.so.1` allowed project launch and automatic debug-hub
+synthesis to complete. This retry retains the normal `/sys` view and normal
+device licensing; no vendor files were modified.
+
 ## Fresh Vivado 2021.1 build
 
 Removed the Vivado 2024.1 installation, its Docker runtimes and all previous FPGA
@@ -33,7 +90,7 @@ Results:
   warnings**. These comprise six DSP pipeline suggestions, an output with no
   routable loads and the intentionally omitted PS7. The invalid-site errors
   from the 2024.1 runs did not reproduce in this build.
-- The full board build is blocked earlier: this image has no Vivado IP catalog.
+- The initial full board build was blocked earlier: this image has no Vivado IP catalog.
   PS7 5.5, proc_sys_reset 5.0, xlconstant 1.1, VIO 3.0 and ILA 6.2 are all absent.
   The other image layers contain no replacement catalog. The build now checks
   these dependencies explicitly and accepts a matching external repository
@@ -41,8 +98,9 @@ Results:
 
 The routed RTL diagnostic excludes PS7, ILA and VIO. It does not establish full
 board connectivity, DDR operation or board timing closure. Its out-of-context
-clock has no physical clock-source assignment. No deployable benchmark bitstream
-was produced; `canary.bit` is only the small toolchain diagnostic.
+clock has no physical clock-source assignment. That diagnostic run produced no
+deployable benchmark bitstream; `canary.bit` is only the small toolchain check.
+The subsequent catalog retry above produced the full deployment bitstream.
 
 Retained evidence: [provenance and outcomes](validation/2021.1/provenance.json),
 [source hashes](validation/2021.1/source-manifest.json),

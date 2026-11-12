@@ -107,6 +107,8 @@ launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Bitstream generation did not complete"}
 open_run impl_1
+report_utilization -file [file join $bench_output utilization.rpt]
+report_utilization -hierarchical -hierarchical_depth 12 -file [file join $bench_output utilization_hierarchical.rpt]
 write_debug_probes -force [file join $bench_output bench.ltx]
 file copy -force [file join $bench_output project zedboard_timing.runs impl_1 system_wrapper.bit] [file join $bench_output bench.bit]
 write_hw_platform -fixed -include_bit -force -file [file join $bench_output bench.xsa]
