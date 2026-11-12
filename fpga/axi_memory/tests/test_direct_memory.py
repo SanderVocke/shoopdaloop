@@ -22,7 +22,7 @@ async def functional_memory(dut):
 
     set(reset=1, m_axi_awid=0, m_axi_awaddr=0, m_axi_awlen=0, m_axi_awsize=0,
         m_axi_awburst=1, m_axi_awvalid=0, m_axi_wdata=0, m_axi_wstrb=0,
-        m_axi_wlast=0, m_axi_wvalid=0, m_axi_bready=0, m_axi_arid=0,
+        m_axi_wid=0, m_axi_wlast=0, m_axi_wvalid=0, m_axi_bready=0, m_axi_arid=0,
         m_axi_araddr=0, m_axi_arlen=0, m_axi_arsize=0, m_axi_arburst=1,
         m_axi_arvalid=0, m_axi_rready=0)
     memory = DirectMemory(dut, [0]*2048)

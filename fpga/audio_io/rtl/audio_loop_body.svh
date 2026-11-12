@@ -94,6 +94,7 @@
     assign m_axi_awlen = core_m_axi_awlen;
     assign m_axi_awsize = core_m_axi_awsize;
     assign m_axi_awburst = core_m_axi_awburst;
+    assign m_axi_wid = core_m_axi_wid;
     assign m_axi_wdata = core_m_axi_wdata;
     assign m_axi_wstrb = core_m_axi_wstrb;
     assign m_axi_wlast = core_m_axi_wlast;

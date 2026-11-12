@@ -26,13 +26,14 @@ parameter integer DATA_WIDTH = 32,
     output wire completion_error,
     output wire m_axi_awid,
     output wire [31:0] m_axi_awaddr,
-    output wire [7:0] m_axi_awlen,
+    output wire [3:0] m_axi_awlen,
     output wire [2:0] m_axi_awsize,
     output wire [1:0] m_axi_awburst,
     output wire m_axi_awvalid,
     output wire m_axi_awready,
     output wire [DATA_WIDTH-1:0] m_axi_wdata,
     output wire [DATA_WIDTH/8-1:0] m_axi_wstrb,
+    output wire m_axi_wid,
     output wire m_axi_wlast,
     output wire m_axi_wvalid,
     output wire m_axi_wready,
@@ -42,7 +43,7 @@ parameter integer DATA_WIDTH = 32,
     output wire m_axi_bready,
     output wire m_axi_arid,
     output wire [31:0] m_axi_araddr,
-    output wire [7:0] m_axi_arlen,
+    output wire [3:0] m_axi_arlen,
     output wire [2:0] m_axi_arsize,
     output wire [1:0] m_axi_arburst,
     output wire m_axi_arvalid,
@@ -79,10 +80,11 @@ parameter integer DATA_WIDTH = 32,
     assign command_ready = phase == IDLE && !reset;
     assign m_axi_awid = 0;
     assign m_axi_awaddr = address;
-    assign m_axi_awlen = length;
+    assign m_axi_awlen = length[3:0];
     assign m_axi_awsize = size;
     assign m_axi_awburst = 1;
     assign m_axi_awvalid = phase == WRITING && !address_sent && !reset;
+    assign m_axi_wid = 0;
     assign m_axi_wdata = write_data;
     assign m_axi_wstrb = write_strobe;
     assign m_axi_wlast = index == length;
@@ -94,7 +96,7 @@ parameter integer DATA_WIDTH = 32,
     assign m_axi_bready = phase == WRITING && address_sent && data_sent && completion_ready && !reset;
     assign m_axi_arid = 0;
     assign m_axi_araddr = address;
-    assign m_axi_arlen = length;
+    assign m_axi_arlen = length[3:0];
     assign m_axi_arsize = size;
     assign m_axi_arburst = 1;
     assign m_axi_arvalid = phase == READING && !address_sent && !reset;

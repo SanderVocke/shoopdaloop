@@ -11,14 +11,14 @@ module axi_direct_memory #(
     output wire [31:0] sim_index, output reg [63:0] sim_reads, output reg [63:0] sim_writes,
     output wire [31:0] sim_capacity,
     input wire m_axi_awid, input wire [31:0] m_axi_awaddr,
-    input wire [7:0] m_axi_awlen, input wire [2:0] m_axi_awsize,
+    input wire [3:0] m_axi_awlen, input wire [2:0] m_axi_awsize,
     input wire [1:0] m_axi_awburst, input wire m_axi_awvalid, output wire m_axi_awready,
     input wire [DATA_WIDTH-1:0] m_axi_wdata, input wire [DATA_WIDTH/8-1:0] m_axi_wstrb,
-    input wire m_axi_wlast, input wire m_axi_wvalid, output wire m_axi_wready,
+    input wire m_axi_wid, input wire m_axi_wlast, input wire m_axi_wvalid, output wire m_axi_wready,
     output wire m_axi_bid, output wire [1:0] m_axi_bresp,
     output wire m_axi_bvalid, input wire m_axi_bready,
     input wire m_axi_arid, input wire [31:0] m_axi_araddr,
-    input wire [7:0] m_axi_arlen, input wire [2:0] m_axi_arsize,
+    input wire [3:0] m_axi_arlen, input wire [2:0] m_axi_arsize,
     input wire [1:0] m_axi_arburst, input wire m_axi_arvalid, output wire m_axi_arready,
     output wire m_axi_rid, output wire [DATA_WIDTH-1:0] m_axi_rdata,
     output wire [1:0] m_axi_rresp, output wire m_axi_rlast,
@@ -122,18 +122,19 @@ module axi_direct_memory #(
             read_index <= 0; sim_fail_seen <= sim_fail_token;
         end else begin
             if (m_axi_awvalid && m_axi_awready) begin
-                check_shape(m_axi_awid,m_axi_awaddr,m_axi_awlen,m_axi_awsize,m_axi_awburst);
-                writing <= 1; address <= m_axi_awaddr; length <= m_axi_awlen; size <= m_axi_awsize;
-                error <= outside(m_axi_awaddr,m_axi_awlen,m_axi_awsize) || sim_fail_token != sim_fail_seen;
+                check_shape(m_axi_awid,m_axi_awaddr,8'(m_axi_awlen),m_axi_awsize,m_axi_awburst);
+                writing <= 1; address <= m_axi_awaddr; length <= 8'(m_axi_awlen); size <= m_axi_awsize;
+                error <= outside(m_axi_awaddr,8'(m_axi_awlen),m_axi_awsize) || sim_fail_token != sim_fail_seen;
                 sim_fail_seen <= sim_fail_token; sim_writes <= sim_writes+1;
             end
             if (m_axi_arvalid && m_axi_arready) begin
-                check_shape(m_axi_arid,m_axi_araddr,m_axi_arlen,m_axi_arsize,m_axi_arburst);
-                reading <= 1; address <= m_axi_araddr; length <= m_axi_arlen; size <= m_axi_arsize;
-                error <= outside(m_axi_araddr,m_axi_arlen,m_axi_arsize) || sim_fail_token != sim_fail_seen;
+                check_shape(m_axi_arid,m_axi_araddr,8'(m_axi_arlen),m_axi_arsize,m_axi_arburst);
+                reading <= 1; address <= m_axi_araddr; length <= 8'(m_axi_arlen); size <= m_axi_arsize;
+                error <= outside(m_axi_araddr,8'(m_axi_arlen),m_axi_arsize) || sim_fail_token != sim_fail_seen;
                 sim_fail_seen <= sim_fail_token; sim_reads <= sim_reads+1; read_index <= 0;
             end
             if (m_axi_wvalid && m_axi_wready) begin
+                if (m_axi_wid != 0) $fatal(1,"Unexpected AXI3 WID");
                 write_data[write_count[3:0]] <= m_axi_wdata;
                 write_strobes[write_count[3:0]] <= m_axi_wstrb;
                 write_lasts[write_count[3:0]] <= m_axi_wlast;
