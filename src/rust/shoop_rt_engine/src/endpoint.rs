@@ -162,6 +162,8 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    #[cfg(feature = "testing")]
+    pub(crate) runtime_trace: Option<Vec<crate::testing::RuntimeCommand>>,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
@@ -463,6 +465,10 @@ impl ControlEndpoint {
         purpose: Purpose,
         expects: bool,
     ) -> Result<Sequence, Refusal> {
+        #[cfg(feature = "testing")]
+        if let Some(trace) = &mut self.runtime_trace {
+            trace.push(crate::testing::RuntimeCommand::observe(&command));
+        }
         let Some(slot) = self.pending.iter().position(Option::is_none) else {
             self.reclaim(command);
             return Err(Refusal::Overloaded);

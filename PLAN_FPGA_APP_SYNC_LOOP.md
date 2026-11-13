@@ -1,6 +1,6 @@
 # Default application Sync loop through the FPGA simulator
 
-Status: planned; implementation has not started.
+Status: implementation in progress on `feat/fpga-app-sync-loop`.
 Working branch: `feat/fpga-app-sync-loop`, based on `proto/fpga-rust-reference`
 through `821ba859` (the merged mono-looper adapter milestone).
 PR base: `proto/fpga-rust-reference`. Push only the working branch.
@@ -14,13 +14,17 @@ transaction, strip/master signal path, controls, observations and recording read
 Use Q=32, 32-sample chunks, Q8.24 audio execution, and Rust + Marlin/Verilator.
 
 This is an offline application integration milestone. Supply silence or
-deterministic synthetic samples in memory and advance time through an offline
-clock. Provide an optional native application/demo entry point for interacting
+deterministic synthetic samples in memory. The Marlin-backed engine runs
+continuously as fast as possible: immediately start the next iteration when the
+previous one finishes, independently of wall-clock/audio-rate deadlines. Provide an optional native application/demo entry point for interacting
 with the Sync loop through the existing UI. It must work without a host process,
 JACK, CPAL, audio-device enumeration, physical port publication or new live audio
 I/O. Reuse existing offline facilities and existing sample/read APIs. Simulated
 ports are logical endpoints for test samples; they are not physical audio ports.
 No wall-clock playback, recording-device access or hard real-time claim is required.
+Use no sleep, timer pacing or rate limiter between engine iterations. Deterministic
+replays may bound/step the number of iterations to place inputs/actions at known
+frame boundaries; each admitted batch still executes at maximum speed.
 
 Support record, stop, play/wrap, clear and re-record; the sync loop's own pulse,
 repeat and scheduled-transition behavior; applicable input/output/loop/master gain,
@@ -134,7 +138,11 @@ honestly without preventing the supported fresh-session startup.
   inactive prepared ports may be represented on the host; reject MIDI traffic.
   Distinguish prepared capacity from the single live strip/loop. Advertise only
   capabilities and limits that the app can actually use.
-- Reuse offline clock/buffering patterns. Keep one owner for each Marlin model,
+- Run the engine without wall-clock pacing or fixed iteration deadlines. After
+  finishing an iteration, immediately start the next; keep UI polling separate.
+  Bounded/stepped execution is for deterministic tests and replay, not a speed
+  limit on the wrapped backend. Reuse offline buffering patterns. Keep one owner
+  for each Marlin model,
   runtime and VCD; bound waits/work per pump and preserve backpressure. Build/load
   the model outside normal UI interaction. No audio callback/thread integration
   or simulator real-time performance work is part of this task.
@@ -151,17 +159,17 @@ adding UI streaming. Use focused tests until the final integration gates.
 
 ### 1. Capture the real startup and supported app contract
 
-- [ ] Continue on a new working branch from latest `proto/fpga-rust-reference`;
+- [x] Continue on a new working branch from latest `proto/fpga-rust-reference`;
   fetch/merge upstream at the start and between milestones. Push only that branch.
-- [ ] Run the actual fresh `Service`/`RtBackend`/app-client path against the native
+- [x] Run the actual fresh `Service`/`RtBackend`/app-client path against the native
   offline engine at Q=32. Record startup requests, runtime operations, staged
   payloads, graph order, node bindings, settings, capabilities and observation cuts.
   Include logical Master routing and the synthetic input connection needed by tests.
-- [ ] Define a versioned common input/action replay using public app actions,
-  synthetic samples and explicit clock advances. Pin defaults, admitted controls,
+- [x] Define a versioned common input/action replay using public app actions,
+  synthetic samples and explicit logical-frame/iteration advances. Pin defaults, admitted controls,
   native pulse/scheduled behavior and resource/telemetry expectations. Include
   nonzero default ramps/smoothing; establish fixed-point/float comparison bounds.
-- [ ] Verify native startup, immediate and scheduled sync-loop actions, recording,
+- [x] Verify native startup, immediate and scheduled sync-loop actions, recording,
   playback/wrap, clear and reads. List unsupported requests explicitly. These
   contract tests must use the real startup, not a reduced hand-built graph.
 
@@ -238,8 +246,8 @@ adding UI streaming. Use focused tests until the final integration gates.
 - [ ] Add an optional native entry point composing the existing application
   service/client/UI with the simulator-backed engine endpoint. Reuse application
   controls; keep simulator details out of ordinary product interactions.
-  Provide in-memory silence/test-signal selection and explicit or paced offline
-  progress. It must launch without a host process or JACK/CPAL initialization.
+  Provide in-memory silence/test-signal selection and continuous execution at
+  maximum speed, with app/UI polling independent of engine iteration timing. It must launch without a host process or JACK/CPAL initialization.
 - [ ] Adapt the existing callback-to-quantum buffering for logical offline blocks
   larger than or not divisible by 32. Preserve time remainders, processing latency,
   scheduling and partial output; perform no new live audio input/output.
@@ -293,3 +301,12 @@ or failures leave an unresolved concern.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Implementation evidence
+
+Stage 1 uses the actual native service/client and a shared public-action trace.
+Startup and waveform-selection findings, settings and predeclared numeric bounds
+are recorded in `src/rust/rt_fpga_sim/APP_CONTRACT.md`. The production preparation
+seam reuses the native render owner and observation publisher; native library
+regressions remain passing. Default simulator execution is explicitly unpaced
+under the user's clarification; deterministic replay uses bounded logical runs.

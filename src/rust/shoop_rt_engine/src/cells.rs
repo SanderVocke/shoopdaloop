@@ -452,56 +452,63 @@ impl BoundaryObserver for Observer {
             let Some(cells) = self.0.loops.get(state.id.slot() as usize) else {
                 continue;
             };
-            let publication = cells.publication.fetch_add(1, Ordering::SeqCst);
-            let generation = state.id.generation();
-            if cells.generation.load(Ordering::SeqCst) != generation {
-                cells.pulses.store(0, Ordering::SeqCst);
-                cells.generation.store(generation, Ordering::SeqCst);
-            }
-            if state.last_pulse == Some(frame) {
-                cells.pulses.fetch_add(1, Ordering::SeqCst);
-            }
-            let pending =
-                self.3[state.id.slot() as usize].filter(|(owner, _, _)| *owner == generation);
-            cells.pending_mode.store(
-                pending.map_or(0, |(_, _, mode)| mode_code(mode) + 1),
-                Ordering::SeqCst,
-            );
-            cells
-                .pending_delay
-                .store(pending.map_or(0, |(_, delay, _)| delay), Ordering::SeqCst);
-            cells.mode.store(mode_code(state.mode), Ordering::SeqCst);
-            cells
-                .capture_incomplete
-                .store(state.capture_incomplete, Ordering::SeqCst);
-            let length = if state.mode == Mode::Recording {
-                state.capture_frames
-            } else {
-                state.content_length
-            };
-            cells.length.store(length, Ordering::SeqCst);
-            cells
-                .content_revision
-                .store(state.content_revision.0, Ordering::SeqCst);
-            cells
-                .timing_revision
-                .store(state.timing_revision, Ordering::SeqCst);
-            cells.position.store(state.position, Ordering::SeqCst);
-            cells.epoch.store(self.1 .0, Ordering::SeqCst);
-            cells.frame.store(frame.0, Ordering::SeqCst);
-            let cursor = state.composite.unwrap_or_default();
-            cells.iteration.store(cursor.iteration, Ordering::SeqCst);
-            cells.passes.store(cursor.passes, Ordering::SeqCst);
-            cells
-                .waiting_repeat
-                .store(cursor.waiting_repeat, Ordering::SeqCst);
-            cells
-                .publication
-                .store(publication.wrapping_add(2), Ordering::SeqCst);
+            let pending = self.3[state.id.slot() as usize]
+                .filter(|(owner, _, _)| *owner == state.id.generation())
+                .map(|(_, delay, mode)| (delay, mode));
+            cells.publish(frame, self.1, state, pending);
         }
     }
     fn as_any(&self) -> &dyn core::any::Any {
         self
+    }
+}
+
+impl LoopCells {
+    pub(crate) fn publish(
+        &self,
+        frame: Frame,
+        epoch: rt_runtime::Epoch,
+        state: shoop_loops::State,
+        pending: Option<(u32, Mode)>,
+    ) {
+        let publication = self.publication.fetch_add(1, Ordering::SeqCst);
+        let generation = state.id.generation();
+        if self.generation.load(Ordering::SeqCst) != generation {
+            self.pulses.store(0, Ordering::SeqCst);
+            self.generation.store(generation, Ordering::SeqCst);
+        }
+        if state.last_pulse == Some(frame) {
+            self.pulses.fetch_add(1, Ordering::SeqCst);
+        }
+        self.pending_mode.store(
+            pending.map_or(0, |(_, mode)| mode_code(mode) + 1),
+            Ordering::SeqCst,
+        );
+        self.pending_delay
+            .store(pending.map_or(0, |(delay, _)| delay), Ordering::SeqCst);
+        self.mode.store(mode_code(state.mode), Ordering::SeqCst);
+        self.capture_incomplete
+            .store(state.capture_incomplete, Ordering::SeqCst);
+        let length = if state.mode == Mode::Recording {
+            state.capture_frames
+        } else {
+            state.content_length
+        };
+        self.length.store(length, Ordering::SeqCst);
+        self.content_revision
+            .store(state.content_revision.0, Ordering::SeqCst);
+        self.timing_revision
+            .store(state.timing_revision, Ordering::SeqCst);
+        self.position.store(state.position, Ordering::SeqCst);
+        self.epoch.store(epoch.0, Ordering::SeqCst);
+        self.frame.store(frame.0, Ordering::SeqCst);
+        let cursor = state.composite.unwrap_or_default();
+        self.iteration.store(cursor.iteration, Ordering::SeqCst);
+        self.passes.store(cursor.passes, Ordering::SeqCst);
+        self.waiting_repeat
+            .store(cursor.waiting_repeat, Ordering::SeqCst);
+        self.publication
+            .store(publication.wrapping_add(2), Ordering::SeqCst);
     }
 }
 
