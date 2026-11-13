@@ -386,3 +386,23 @@ the selected platform plus browser/portable paths affected by P16.
   application workflow and corrected pacing. The moved report definitions are
   byte-for-byte identical to upstream, and report codec/schema files are unchanged.
   Portable Node qualification is running alongside final CI after publication.
+- Latest integration is published as `4c23274b`, with a clean merge against
+  upstream `60d8f21c`. Additional portable Node checks pass **48/48**: diagnostics
+  6, persistence codec 29 and RT protocol 13. Two initial package builds exhausted
+  generated-cache disk space before executing tests; both pass after clearing
+  inactive native incremental caches and rerunning with incremental builds off.
+  Final CI and parity closure remain pending; no automated review is available.
+- Both actual native persistence probes pass again against the integrated memory
+  protocol: socket and shared memory preserve >32 MiB audio, exact MIDI,
+  script/resources, stopped loads and exact resaves. Socket loss also confirms
+  host-owned accepted completion once from a fresh connection. In CI, USB now
+  reaches a different intermittent failure: nested-hub output completion does
+  not drain after exact MIDI input/output already passed (artifact `14025661909`,
+  run `43400879971`). Preserve that evidence and retry the isolated job after the
+  workflow finishes; the parity/delivery gate remains open until CI passes.
+- Hosted-processor CI at `4c23274b` passed all Rust feature variants, Miri and
+  35 Node DSP tests, but its hand-written AudioWorklet scenario still sent RT
+  protocol 25 after upstream advanced to 26. The fixture now pins 26. A matching
+  locked worklet build and the actual Chromium scenario pass all five exact
+  audio regions with no render-memory growth. This changes no product protocol
+  or timeout; the next matrix includes the fixture correction.

@@ -1,6 +1,7 @@
 # P16 acceptance evidence
 
-Implementation and local validation are complete at `5b4bcfce` (2026-11-13).
+Implementation is published through `4c23274b` (2026-11-13), integrating upstream
+`60d8f21c`. Latest local integration gates pass as recorded below.
 PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977) targets
 `feat/backend-replacement`. All implementation commits are published; final CI and review
 are in progress. P16 remains OPEN.
@@ -31,7 +32,7 @@ Environment: Linux x86_64, Rust 1.100.0, nextest 0.9.116, pinned Node 22.22.2,
 Chromium 154. Activate the installed toolchain/native libraries with
 `. /workspace/.setup/activate.sh`. Rust builds use `RUSTFLAGS='-D warnings'`.
 
-| Gate | Command or route | Final result |
+| Gate | Command or route | Pre-merge result (`5b4bcfce`) |
 | --- | --- | --- |
 | Complete native suite | `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci` | **3,223 passed, 11 skipped**, 672.437 seconds |
 | Real backend facilities | `env -u SHOOP_ALLOW_MISSING_BACKENDS cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci -E 'test(native_builtin_fx_track_has_matching_audio_midi_and_transactional_state)'` | Passed without the missing-backend override |
@@ -283,6 +284,40 @@ is running alongside final CI after publication.
 
 Logs: `/tmp/p16-memory-neutral-{native-build,firmware-build,focused,node}.log`
 and `/tmp/p16-memory-boundary-audit.log`.
+
+Integration is published as `4c23274b`. Additional pinned Node checks pass
+**48/48**: `profiling_protocol` 6, `shoop_persistence_codec` 29 and
+`shoop_rt_protocol` 13. The first two remaining package builds exhausted disk
+space before executing tests. After clearing inactive native incremental caches,
+both pass with `CARGO_INCREMENTAL=0` and debug symbols disabled. The initial
+summary is `/tmp/p16-memory-node-first-summary.json`; successful retry results
+are in `/tmp/p16-memory-neutral-node-retry.log` and
+`target/wasm-tests/dev/reports/node/summary.json`. No test failure is attributed
+to the disk-space errors. Final CI and review remain pending.
+
+Both actual native persistence probes pass again on this integration, including
+>32 MiB audio, exact MIDI and script/resource round trips. Socket connection-loss
+cases confirm accepted host-owned load completion once from a fresh connection.
+Logs: `/tmp/p16-memory-socket-probe.log` and
+`/tmp/p16-memory-shared-probe.log`.
+
+The [firmware run for `4c23274b`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43400879971)
+has a different USB failure, in the nested-hub scenario. Exact channel/system/
+realtime/SysEx input and output pass, then the output-completion drain times out:
+all sixteen client queues are empty but one HCD output owner is still pending.
+Artifact `14025661909` retains serial/client logs and configuration; local copy:
+`/tmp/p16-usb-4c-evidence.zip`. This run is not claimed green. An isolated job
+retry is pending completion of the remaining workflow jobs.
+
+Hosted-processor [run `43400880038`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43400880038)
+passed all four Rust feature variants, Miri and 35 Node DSP tests. Its actual
+AudioWorklet scenario refused to welcome a hand-written protocol-25 client after
+upstream advanced the RT protocol to 26. Updating the fixture's explicit version
+pin to 26 passes the matching locked worklet build and the complete Chromium
+scenario: direct, processed, bypassed, reactivated and removed-bus output all
+match their expected signals; render-memory growth is false. Logs:
+`/tmp/p16-busfx-version-worklet-build.log` and
+`/tmp/p16-busfx-version-browser.log`. No product protocol or timeout changes.
 
 ## Deliberate limits
 
