@@ -31,6 +31,15 @@ struct Chunks<S: Sample = f32> {
 }
 
 impl<S: Sample> SharedPages<S> {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.references)
+            + super::memory::vec_bytes(&self.leases)
+            + super::memory::vec_bytes(&self.free_leases)
+            + self.chunks.as_ref().map_or(0, |chunks| {
+                core::mem::size_of_val(&*chunks.data) + super::memory::vec_bytes(&chunks.free)
+            })
+    }
+
     pub fn prepare(store: &ResourceStore<S>, leases: usize) -> Result<Self, Error> {
         if leases == 0 {
             return Err(Error::InvalidConfig);
