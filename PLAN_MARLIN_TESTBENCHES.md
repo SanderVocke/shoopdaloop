@@ -42,8 +42,11 @@ regression opens two traces and removes them after checking timestamps/lifetime.
 - [x] Verify VCD defaults and document architecture, replay and extension points.
 - [x] Complete regression, formatting, warning-denying build and source checks
   against the integrated target branch.
-- [ ] Commit and push the implementation branch; open a PR targeting
+- [x] Commit and push the implementation branch; open a PR targeting
   `proto/fpga-rust-reference`.
+
+Delivered in [PR #992](https://github.com/SanderVocke/shoopdaloop/pull/992) from
+`proto/fpga-marlin-testbenches`.
 
 ## Evaluation
 
