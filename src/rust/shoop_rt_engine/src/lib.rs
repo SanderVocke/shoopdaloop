@@ -42,6 +42,7 @@ mod composite;
 mod content;
 mod history;
 mod input;
+mod memory;
 pub use history::HistoryCapacity;
 mod description;
 pub mod dsp;
@@ -150,7 +151,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 2,
+            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 3,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -821,6 +822,7 @@ fn prepare_complete(
         input: input::Stage::new(loops, input_capacity),
         composite: composite::Stage::new(description.composite_segments),
         telemetry_frame: None,
+        memory_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,
         protocol_error: false,
@@ -833,6 +835,7 @@ fn prepare_complete(
         counts,
         description.max_frames,
         description.resource_pages + 128,
+        description.sample_rate,
     )?;
     Ok(Engine {
         endpoint,

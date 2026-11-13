@@ -46,12 +46,12 @@ fn segment(start: u64, end: u64, mode: Mode, ordinal: u32) -> Segment {
 }
 
 #[shoop_test]
-fn borrowed_views_match_independent_sparse_segments_and_component_order() {
+fn borrowed_views_match_independent_sparse_segments_and_dependency_order() {
     let mut input = TopologyDescription {
         loops: vec![
             node(0, LoopKind::Primitive, 1, None),
             node(1, LoopKind::Primitive, 4, Some(2)),
-            node(2, LoopKind::Primitive, 3, Some(1)),
+            node(2, LoopKind::Primitive, 3, None),
             node(3, LoopKind::Composite, 0, Some(0)),
             node(4, LoopKind::Composite, 0, Some(0)),
         ],
@@ -74,25 +74,10 @@ fn borrowed_views_match_independent_sparse_segments_and_component_order() {
     let reversed = compile(Limits::default(), &input).unwrap();
     assert_no_heap(|| {
         assert_eq!(first, reversed);
-        let components = first.components();
-        assert_eq!(components.len(), 4);
-        assert!(!components.is_empty());
-        assert_eq!(components.get(0), Some(&[id(0)][..]));
-        assert_eq!(components.get(1), Some(&[id(3)][..]));
-        assert_eq!(components.get(2), Some(&[id(4)][..]));
-        assert_eq!(components.last(), Some(&[id(1), id(2)][..]));
-        assert_eq!(components.get(4), None);
-        assert_eq!(components.get(usize::MAX), None);
-        let mut walk = components.into_iter();
-        assert_eq!(walk.len(), 4);
-        assert_eq!(walk.next(), Some(&[id(0)][..]));
-        assert_eq!(walk.next_back(), Some(&[id(1), id(2)][..]));
-        assert_eq!(walk.size_hint(), (2, Some(2)));
-        assert_eq!(walk.clone().count(), 2);
-        assert_eq!(walk.next(), Some(&[id(3)][..]));
-        assert_eq!(walk.next_back(), Some(&[id(4)][..]));
-        assert_eq!(walk.next(), None);
-        assert_eq!(walk.next_back(), None);
+        assert_eq!(
+            first.dependency_order(),
+            &[id(0), id(3), id(4), id(2), id(1)]
+        );
         let regular = first.program(id(3)).unwrap();
         assert_eq!(regular.kind, ProgramKind::Regular);
         assert_eq!(regular.iterations, 5);
@@ -144,9 +129,9 @@ fn borrowed_views_match_independent_sparse_segments_and_component_order() {
     });
     let empty = compile(Limits::default(), &TopologyDescription::default()).unwrap();
     assert_no_heap(|| {
-        assert!(empty.components().is_empty());
-        assert_eq!(empty.components().last(), None);
-        assert_eq!(empty.components().iter().len(), 0);
+        assert!(empty.dependency_order().is_empty());
+        assert_eq!(empty.dependency_order().last(), None);
+        assert_eq!(empty.dependency_order().iter().len(), 0);
         assert_eq!(empty.storage_bytes(), size_of::<PreparedTopology>());
     });
     let empty_program = compile(

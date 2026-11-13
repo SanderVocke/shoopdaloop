@@ -36,7 +36,7 @@ processor construction or hard-deadline certification.
 | Emit cleanup → projected restoration → original events | [MIDI restoration](docs/midi-restore.md) |
 | Retain media and publish logical-owner batches | [Media ownership](docs/media.md) |
 | Borrow flat/sparse compiled timing metadata | [Topology](docs/topology.md) |
-| Ingest LTP1 with finite callback-shared work/recycle | [Topology staging](docs/topology-staging.md) |
+| Ingest LTP2 with finite callback-shared work/recycle | [Topology staging](docs/topology-staging.md) |
 | Inspect an unpublished control/clock cut | [Program boundary probes](docs/program-boundaries.md) |
 | Own a program candidate until stopped/real zero | [Program changes](docs/program-changes.md) |
 | Publish timing, routes, stopped generations or a running program/graph pair | [Activation paths](docs/topology-activation.md) |
@@ -99,8 +99,10 @@ and MIDI cleanup/restoration.
 Pending requests and unread terminal records share fixed reserved slots.
 Automatic wraps and sync pulses do not consume those slots. Journal capacity
 is optional: overflow increments a saturating diagnostic without changing
-musical execution. Clock edges coalesce per loop/frame; a prepared sync
-component terminates by visiting each seeded member once, not by a wave quota.
+musical execution. Clock edges coalesce per loop/frame. Prepared sync/action
+dependencies between distinct loops must be acyclic; each loop settles once in
+canonical source-before-dependent order. Self-sync reacts to its own delivered
+pulse and remains supported.
 
 `replace_topology` checks the expected epoch and generation high-water marks,
 revalidates pending requests, and returns the displaced owner. Removed loops
@@ -166,7 +168,7 @@ cargo test --locked -p rt_runtime --test adversarial_delivery --test adversarial
 ```
 
 Add `--release` for the optimized profile. The timeline target compares seeded
-programs and sync components with independent scalar/event expectations while
+programs and sync chains with independent scalar/event expectations while
 request credits stay full and optional journals overflow. The runtime targets
 check typed payload/receipt ownership and retained capture/index content across
 partitions, refusals, stale/reused identities and exhausted maintenance credits.

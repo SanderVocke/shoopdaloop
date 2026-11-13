@@ -930,3 +930,7 @@ snapshots/revisions, scoped to the active attachment, bounded and fair across
 sources. The client owns typed decoding and the Audio/Host profiling panels.
 See the [protocol contract](docs/profiling/protocol.md) and
 [profiling guide](docs/runtime_profiling.md) for capacities and measurement limits.
+
+Bounded storage-accounting values also live in `profiling_protocol`. The engine
+and application protocols reuse those neutral definitions; portable application
+code does not depend on the RT protocol to display memory usage.

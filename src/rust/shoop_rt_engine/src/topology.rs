@@ -1,4 +1,4 @@
-//! Allocation-free LTP1 timing images, including sparse composite programs.
+//! Allocation-free LTP2 timing images, including sparse composite programs.
 
 use crate::model::OwnedSpan;
 use alloc::boxed::Box;
@@ -48,7 +48,7 @@ impl Encoder {
     }
     pub(crate) fn image_bytes(&self) -> usize {
         RECORD_BYTES
-            * (1 + 4 * self.limits.loop_slots
+            * (1 + 3 * self.limits.loop_slots
                 + self.limits.program_entries
                 + self.limits.program_segments)
     }
@@ -141,14 +141,14 @@ impl Encoder {
             self.order[ordered] = slot;
             ordered += 1;
         }
-        let counts = [count, 0, programs, targets, segments, count, count];
+        let counts = [count, 0, programs, targets, segments, count];
         let records = counts.iter().sum();
         let output = output
             .get_mut(..RECORD_BYTES * (1 + records))
             .ok_or(Error::Capacity)?;
         output.fill(0);
         let (header, body) = output.split_at_mut(RECORD_BYTES);
-        header[..4].copy_from_slice(b"LTP1");
+        header[..4].copy_from_slice(b"LTP2");
         put32(header, 4, records);
         for (index, value) in [
             self.limits.loop_slots,
@@ -257,11 +257,6 @@ impl Encoder {
                     shoop_rt_protocol::LoopMode::Replacing => 5,
                 };
             }
-        }
-        for index in 0..count {
-            let record = records.next().expect("sized image");
-            put32(record, 0, index);
-            put32(record, 4, 1);
         }
         for &slot in &self.order[..count] {
             put_id(

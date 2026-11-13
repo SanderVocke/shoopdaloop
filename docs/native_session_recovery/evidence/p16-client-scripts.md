@@ -120,7 +120,7 @@ Additional qualification after the lock audit:
   `cargo +1.99.1 build --locked --release --target armv7a-none-eabihf
   --manifest-path platforms/zynq7000/firmware/Cargo.toml` passed both with and
   without `--all-features`. Firmware dependency-boundary audits passed on all
-  four configured targets. No service or RT source/wire file changed for P16.
+  four configured targets. No service or RT wire schema carries P16 script data.
 
 ## Windows core-workflow fixture qualification
 
@@ -257,6 +257,32 @@ fixture. Local baseline passes **20/20** (21.587 seconds); corrected passes
 policy pass. Logs are `/tmp/p16-dummy-pacing-{baseline,corrected}.log` and
 `/tmp/p16-dummy-fixture-build.log`. No driver implementation or deadline changed.
 The follow-up CI matrix also reruns the unresolved USB scenario.
+
+## Integration with upstream memory reporting
+
+Upstream `60d8f21c` includes memory-use reporting and an acyclic loop dependency
+order. The `67be8b71` CI checkout was its synthetic merge `abb5b19b`, exposing a
+firmware `--locked` resolution failure from the new application API dependency
+on `shoop_rt_protocol`. Local audits also rejected that dependency through
+client, service and portable-codec paths.
+
+The integration places the unchanged `MemoryReport`, `MemoryResource` and
+`MemoryUnit` definitions in the existing `profiling_protocol` diagnostics crate.
+RT module/type paths re-export them, and the application API uses the same
+neutral values. Their bounded names already use that diagnostic crate's `Name`.
+No fields, enum order, report codec or wire versions are changed by this fix;
+upstream's memory telemetry and topology semantics remain intact. Removing the
+application-to-RT dependency also preserves the existing firmware lock file.
+Warning-denying native workspace and locked ARM production/all-feature builds
+pass. The complete four-target dependency audit passes all 148 configurations.
+**248/248** combined tests pass in 15.260 seconds: P16 persistence/recovery, loop
+topology, memory reports, core application workflow and corrected pacing. A direct
+source comparison confirms byte-for-byte identical report definitions, and codec
+and schema files have no difference from upstream. Portable Node qualification
+is running alongside final CI after publication.
+
+Logs: `/tmp/p16-memory-neutral-{native-build,firmware-build,focused,node}.log`
+and `/tmp/p16-memory-boundary-audit.log`.
 
 ## Deliberate limits
 

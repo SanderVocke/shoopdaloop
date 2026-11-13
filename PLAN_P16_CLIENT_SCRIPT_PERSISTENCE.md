@@ -5,7 +5,7 @@ CI/review in progress. PR [#977](https://github.com/SanderVocke/shoopdaloop/pull
 was revised with user approval on 2026-11-12. P16 remains OPEN.
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
-with `master` at `9134eb20`. Upstream is now integrated through `1c7609a8`.
+with `master` at `9134eb20`. Upstream is now integrated through `60d8f21c`.
 Follow
 [Write Plan](.agents/prompts/write_plan.md), the
 [P16 contract](docs/native_session_recovery/p16-client-scripts.md), and the
@@ -369,3 +369,20 @@ the selected platform plus browser/portable paths affected by P16.
   repetitions pass; warning-denying workspace build, formatting and test policy
   pass. No driver implementation or deadline changes. The next push requalifies
   both this fixture and the unresolved firmware USB scenario.
+- Upstream advanced to `60d8f21c` (memory reporting and acyclic loop dependency
+  order). CI at `67be8b71` tested that newer synthetic merge and exposed a
+  missing firmware dependency-lock edge. Local integration also found the new
+  application API's RT-protocol dependency violating the existing client/codec
+  boundary audit. Shared memory-report definitions now live in the existing
+  `profiling_protocol` diagnostic crate; RT public module/type names are retained
+  by re-export. The application API uses the neutral definitions, avoiding the
+  dependency and lock drift without changing report fields or encoded bytes.
+  Upstream's memory wire version and loop changes are retained. Native/ARM
+  builds, boundary audits and combined P16/memory/topology qualification continue.
+- Integration gates for `60d8f21c` now pass: warning-denying native workspace
+  build, locked ARM production/all-feature builds and the complete 148-entry
+  four-target dependency audit. **248/248** focused tests pass (15.260 seconds),
+  including P16 persistence/recovery, loop topology, memory reporting, the core
+  application workflow and corrected pacing. The moved report definitions are
+  byte-for-byte identical to upstream, and report codec/schema files are unchanged.
+  Portable Node qualification is running alongside final CI after publication.

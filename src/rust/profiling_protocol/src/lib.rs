@@ -6,6 +6,9 @@ extern crate alloc;
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
+pub mod memory;
+pub use memory::{MemoryReport, MemoryResource, MemoryUnit, MAX_MEMORY_RESOURCES};
+
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_REPORT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_SOURCES: usize = 8;

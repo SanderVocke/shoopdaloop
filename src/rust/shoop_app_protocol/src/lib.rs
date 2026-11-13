@@ -27,7 +27,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 34;
+pub const VERSION: u16 = 35;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -284,7 +284,12 @@ impl SessionSnapshot {
             .flat_map(|track| track.loops.iter().map(|entry| entry.id))
             .collect::<alloc::collections::BTreeSet<_>>();
         let mut composites = alloc::collections::BTreeSet::new();
-        if self.composites.len() > loops.len()
+        if self
+            .status
+            .memory
+            .as_ref()
+            .is_some_and(|report| !report.valid())
+            || self.composites.len() > loops.len()
             || !self.composites.iter().all(|view| {
                 view.valid()
                     && loops.contains(&view.loop_id)
@@ -745,6 +750,11 @@ impl HostReport {
         self.requested
             .as_ref()
             .is_none_or(|settings| settings.validate().is_ok())
+            && self
+                .effective
+                .memory
+                .as_ref()
+                .is_none_or(|report| report.valid())
             && self.diagnostics.len() <= 64
             && self.diagnostics.iter().all(|s| s.len() <= 1024)
             && self.restart_required_fields.len() <= 16

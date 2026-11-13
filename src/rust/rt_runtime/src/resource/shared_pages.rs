@@ -24,6 +24,12 @@ pub(super) struct SharedPages<S: Sample = f32> {
 }
 
 impl<S: Sample> SharedPages<S> {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.references)
+            + super::memory::vec_bytes(&self.leases)
+            + super::memory::vec_bytes(&self.free_leases)
+    }
+
     pub fn prepare(store: &ResourceStore<S>, leases: usize) -> Result<Self, Error> {
         if leases == 0 {
             return Err(Error::InvalidConfig);
