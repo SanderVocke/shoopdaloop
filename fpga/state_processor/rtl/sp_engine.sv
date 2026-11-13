@@ -29,7 +29,7 @@ module sp_engine #(
     input  wire [`SHOOP_SP_STATE_BITS-1:0]       state_read_data,
     output wire                                state_write_enable,
     output wire [STATE_ADDR_BITS-1:0]           state_write_address,
-    output reg  [`SHOOP_SP_STATE_BITS-1:0]       state_write_data,
+    output wire [`SHOOP_SP_STATE_BITS-1:0]       state_write_data,
     output wire                                job_valid,
     input  wire                                job_ready,
     output reg  [`SHOOP_SP_JOB_BITS-1:0]         job_data,
@@ -41,7 +41,8 @@ module sp_engine #(
     input wire [163:0] loop_response_data
 );
     typedef enum logic [3:0] {
-        IDLE, FETCH, DECODE, READ_REQUEST, READ_RESULT, EMIT, NEXT, LOOP_REQUEST, LOOP_RESULT
+        IDLE, ADMIT, FETCH, DECODE, READ_REQUEST, READ_CAPTURE, READ_RESULT, EMIT, NEXT,
+        LOOP_REQUEST, LOOP_WAIT, LOOP_RESULT
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING
@@ -70,8 +71,14 @@ module sp_engine #(
     reg [63:0] position;
     reg [63:0] length;
     reg writeback;
-    wire [63:0] word_value = state_read_data[63:0];
-    wire is_ramp = state_read_data[128];
+    reg [95:0] ramp_state;
+    reg [32:0] ramp_elapsed;
+    reg [`SHOOP_SP_STATE_BITS-1:0] operand_data;
+    reg queue_bad, shape_bad, program_bad, state_bad, empty_program;
+    reg loop_invalid, loop_at_start;
+    reg [1:0] loop_mode;
+    wire [63:0] word_value = operand_data[63:0];
+    wire is_ramp = operand_data[128];
     wire unused_reserved = &{1'b0, program_read_data[95:88]};
     wire operand_in_range = {16'b0, operand_address} < run_state_count;
 
@@ -86,18 +93,6 @@ module sp_engine #(
         pack_job = {payload2, payload1, payload0, 24'b0, id1, id0, kind};
     endfunction
 
-    function automatic [31:0] advance_ramp(
-        input [31:0] elapsed,
-        input [31:0] duration,
-        input [31:0] frames
-    );
-        reg [32:0] sum;
-        begin
-            sum = {1'b0, elapsed} + {1'b0, frames};
-            advance_ramp = (sum >= {1'b0, duration}) ? duration : sum[31:0];
-        end
-    endfunction
-
     assign busy = phase != IDLE;
     assign instruction_pc = 32'(pc);
     assign program_read_enable = (phase == FETCH) && !reset;
@@ -107,6 +102,9 @@ module sp_engine #(
     assign job_valid = (phase == EMIT) && (queue_remaining != 0) && !reset;
     assign state_write_enable = job_valid && job_ready && writeback;
     assign state_write_address = STATE_ADDR_BITS'(arg0);
+    assign state_write_data = {1'b1,
+        ramp_elapsed >= {1'b0, ramp_state[95:64]} ? ramp_state[95:64] : ramp_elapsed[31:0],
+        ramp_state};
     assign loop_read_valid = phase == LOOP_REQUEST && !reset;
     assign loop_read_slot = {16'b0, arg0};
 
@@ -128,7 +126,11 @@ module sp_engine #(
             position <= 0;
             length <= 0;
             writeback <= 0;
-            state_write_data <= 0;
+            ramp_state <= 0;
+            ramp_elapsed <= 0;
+            operand_data <= 0;
+            queue_bad <= 0; shape_bad <= 0; program_bad <= 0; state_bad <= 0; empty_program <= 0;
+            loop_invalid <= 0; loop_at_start <= 0; loop_mode <= 0;
             job_data <= 0;
             done <= 0;
             error_code <= `SHOOP_SP_OK;
@@ -138,24 +140,35 @@ module sp_engine #(
                 IDLE: if (start) begin
                     pc <= 0; chunk_shift <= shift_for(chunk_frames);
                     error_code <= `SHOOP_SP_OK;
-                    if ((queued_jobs != 0) || (queue_remaining < job_budget)) begin
+                    queue_bad <= (queued_jobs != 0) || (queue_remaining < job_budget);
+                    shape_bad <= chunk_frames == 0 || (chunk_frames & (chunk_frames-1)) != 0
+                        || quantum == 0 || (quantum & (chunk_frames-1)) != 0;
+                    program_bad <= instruction_count > 32'(PROGRAM_DEPTH);
+                    state_bad <= state_count > 32'(STATE_DEPTH);
+                    empty_program <= instruction_count == 0;
+                    run_count <= PC_BITS'(instruction_count);
+                    run_state_count <= state_count;
+                    run_quantum <= quantum;
+                    if (queued_jobs != 0) begin
                         error_code <= `SHOOP_SP_QUEUE_FULL;
                         done <= 1;
-                    end else if (chunk_frames == 0 || (chunk_frames & (chunk_frames-1)) != 0
-                        || quantum == 0 || (quantum & (chunk_frames-1)) != 0) begin
-                        error_code <= `SHOOP_SP_INVALID_STATE; done <= 1;
-                    end else if (instruction_count > 32'(PROGRAM_DEPTH)) begin
+                    end else phase <= ADMIT;
+                end
+                ADMIT: begin
+                    if (queue_bad) begin
+                        error_code <= `SHOOP_SP_QUEUE_FULL;
+                        done <= 1; phase <= IDLE;
+                    end else if (shape_bad) begin
+                        error_code <= `SHOOP_SP_INVALID_STATE; done <= 1; phase <= IDLE;
+                    end else if (program_bad) begin
                         error_code <= `SHOOP_SP_INVALID_PROGRAM;
-                        done <= 1;
-                    end else if (state_count > 32'(STATE_DEPTH)) begin
+                        done <= 1; phase <= IDLE;
+                    end else if (state_bad) begin
                         error_code <= `SHOOP_SP_INVALID_STATE;
-                        done <= 1;
-                    end else if (instruction_count == 0) begin
-                        done <= 1;
+                        done <= 1; phase <= IDLE;
+                    end else if (empty_program) begin
+                        done <= 1; phase <= IDLE;
                     end else begin
-                        run_count <= PC_BITS'(instruction_count);
-                        run_state_count <= state_count;
-                        run_quantum <= quantum;
                         phase <= FETCH;
                     end
                 end
@@ -224,43 +237,59 @@ module sp_engine #(
                         end
                     endcase
                 end
-                LOOP_REQUEST: if (loop_read_ready) phase <= LOOP_RESULT;
-                LOOP_RESULT: if (loop_response_valid) begin
-                    if (loop_response_error || !loop_response_data[0]
+                LOOP_REQUEST: if (loop_read_ready) phase <= LOOP_WAIT;
+                LOOP_WAIT: if (loop_response_valid) begin
+                    loop_invalid <= loop_response_error || !loop_response_data[0]
                         || loop_response_data[1+:32] != {arg2,arg1}
-                        || loop_response_data[33+:2] == 3) begin
+                        || loop_response_data[33+:2] == 3;
+                    loop_mode <= loop_response_data[33+:2];
+                    loop_at_start <= loop_response_data[99+:64] == 0;
+                    begin_capture <= loop_response_data[163];
+                    position <= loop_response_data[99+:64] >> chunk_shift;
+                    length <= loop_response_data[35+:64] >> chunk_shift;
+                    phase <= LOOP_RESULT;
+                end
+                LOOP_RESULT: begin
+                    if (loop_invalid) begin
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1;
                         phase <= IDLE;
                     end else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING) begin
-                        playback_flags <= {loop_response_data[99+:64]==0,loop_response_data[33+:2]==1};
+                        playback_flags <= {loop_at_start,loop_mode==1};
                         operand_address <= arg3; operand <= SMOOTHING; phase <= READ_REQUEST;
                     end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
-                        if (loop_response_data[33+:2] == 1) begin
-                            position <= loop_response_data[99+:64] >> chunk_shift;
-                            length <= loop_response_data[35+:64] >> chunk_shift;
+                        if (loop_mode == 1) begin
                             operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
                         end else begin
                             job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
                             phase <= EMIT;
                         end
-                    end else if (loop_response_data[33+:2] == 2) begin
-                        begin_capture <= loop_response_data[163];
+                    end else if (loop_mode == 2) begin
                         operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
                     end else phase <= NEXT;
                 end
                 READ_REQUEST: begin
-                    if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK && operand == VIEW
+                    if ((opcode == `SHOOP_SP_PROCESS_PLAYBACK || opcode == `SHOOP_SP_LOGICAL_PLAYBACK) && operand == VIEW
                         && (length == 0 || position >= length)) begin
-                        job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
-                        phase <= EMIT;
+                        if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
+                            job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
+                            phase <= EMIT;
+                        end else begin
+                            error_code <= `SHOOP_SP_INVALID_STATE;
+                            done <= 1;
+                            phase <= IDLE;
+                        end
                     end else if (!operand_in_range) begin
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1;
                         phase <= IDLE;
                     end else begin
-                        phase <= READ_RESULT;
+                        phase <= READ_CAPTURE;
                     end
+                end
+                READ_CAPTURE: begin
+                    operand_data <= state_read_data;
+                    phase <= READ_RESULT;
                 end
                 READ_RESULT: begin
                     if (is_ramp != (operand == RAMP)) begin
@@ -290,16 +319,10 @@ module sp_engine #(
                                 phase <= READ_REQUEST;
                             end
                             LENGTH: begin
-                                if ((word_value == 0) || (position >= word_value)) begin
-                                    error_code <= `SHOOP_SP_INVALID_STATE;
-                                    done <= 1;
-                                    phase <= IDLE;
-                                end else begin
-                                    length <= word_value;
-                                    operand_address <= arg0;
-                                    operand <= VIEW;
-                                    phase <= READ_REQUEST;
-                                end
+                                length <= word_value;
+                                operand_address <= arg0;
+                                operand <= VIEW;
+                                phase <= READ_REQUEST;
                             end
                             VIEW: begin
                                 if (opcode == `SHOOP_SP_PROCESS_PLAYBACK || opcode == `SHOOP_SP_LOGICAL_PLAYBACK)
@@ -315,16 +338,15 @@ module sp_engine #(
                                 phase <= EMIT;
                             end
                             SMOOTHING: begin
-                                job_data <= pack_job(`SHOOP_SP_JOB_SMOOTHING,arg4,state_read_data[15:0],
-                                    {state_read_data[63:32],16'b0,state_read_data[31:16]}, {62'b0,playback_flags},0);
+                                job_data <= pack_job(`SHOOP_SP_JOB_SMOOTHING,arg4,operand_data[15:0],
+                                    {operand_data[63:32],16'b0,operand_data[31:16]}, {62'b0,playback_flags},0);
                                 phase <= EMIT;
                             end
                             RAMP: begin
                                 job_data <= pack_job(`SHOOP_SP_JOB_GAIN, arg1, arg2,
-                                    state_read_data[63:0], state_read_data[127:64], 0);
-                                state_write_data <= {1'b1,
-                                    advance_ramp(state_read_data[127:96], state_read_data[95:64], run_quantum),
-                                    state_read_data[95:0]};
+                                    operand_data[63:0], operand_data[127:64], 0);
+                                ramp_state <= operand_data[95:0];
+                                ramp_elapsed <= {1'b0, operand_data[127:96]} + {1'b0, run_quantum};
                                 writeback <= 1;
                                 phase <= EMIT;
                             end

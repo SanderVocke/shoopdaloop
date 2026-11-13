@@ -1,5 +1,31 @@
 # Zynq core timing experiment
 
+Individual ZedBoard measurements use Vivado 2021.1 and the
+`xc7z020clg484-1` device:
+
+```sh
+python3 fpga/synthesis/subsystems.py state --vivado /path/to/vivado --output work/state-150
+python3 fpga/synthesis/subsystems.py job --vivado /path/to/vivado --output work/job-150
+python3 fpga/synthesis/subsystems.py memory --vivado /path/to/vivado --output work/memory-150
+```
+
+Each run freezes its sources and timing context in an empty output directory,
+records hashes and parameters, and runs synthesis, placement, routing and
+post-route physical optimization. Setup and hold must both pass the 150 MHz
+constraint with 0.2 ns uncertainty. `--stage synth` stops after synthesis for
+diagnosis; it does not establish timing closure. Interfaces use retained fabric
+launch/capture registers, with no false paths or multicycle exceptions.
+The period is conservatively rounded down to 6.666 ns (150.015 MHz), avoiding
+Vivado's rounding of 6.666667 ns to a period slightly slower than 150 MHz.
+
+The state profile has 512 program/state/job entries. The job profile has 256
+32-frame buffers, eight external input/output ports, media enabled and 32-frame
+chunks. The memory profile measures `media_store_axi`, including sample caches,
+metadata caches/storage, reclamation and the shared AXI64 master, with 64 views,
+2,048 chunks, 32-chunk allocation blocks, four read/write buffers and 8/4/2
+table/reference/stack cache lines. These are independent subsystem measurements;
+the complete integrated board design requires its own timing closure.
+
 Run the complete 64-loop core through Vivado synthesis, placement and routing:
 
 ```sh
