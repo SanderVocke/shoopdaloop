@@ -10,7 +10,7 @@ sources+=(fpga/chunk_memory/rtl/chunk_ram.sv fpga/chunk_memory/rtl/chunk_memory.
 for source in sp_ram sp_job_fifo sp_engine state_processor; do sources+=("fpga/state_processor/rtl/$source.sv"); done
 for source in jp_sample_ram jp_divider job_processor audio_pipeline; do sources+=("fpga/job_processor/rtl/$source.sv"); done
 for source in tp_ram tp_priority transition_processor; do sources+=("fpga/transition_processor/rtl/$source.sv"); done
-for source in media_ram metadata_cache media_metadata media_prefetch_resolver media_store memory_delay media_audio_pipeline; do sources+=("fpga/media_store/rtl/$source.sv"); done
+for source in media_ram metadata_cache media_metadata media_reclaimer media_prefetch_resolver media_store memory_delay media_audio_pipeline; do sources+=("fpga/media_store/rtl/$source.sv"); done
 sources+=(fpga/loop_pipeline/rtl/loop_pipeline.sv)
 read_command="read_verilog -sv -Ifpga/state_processor/rtl ${sources[*]}"
 yosys -V > "$output_dir/versions.txt"

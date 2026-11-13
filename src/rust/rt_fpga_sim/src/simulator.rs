@@ -30,7 +30,7 @@ pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
         ("chunk_memory", "chunk_ram chunk_memory"),
         (
             "media_store",
-            "media_ram metadata_cache media_metadata media_prefetch_resolver media_store memory_delay media_audio_pipeline",
+            "media_ram metadata_cache media_metadata media_reclaimer media_prefetch_resolver media_store memory_delay media_audio_pipeline",
         ),
         ("loop_pipeline", "loop_pipeline"),
         (
@@ -501,7 +501,7 @@ impl<'ctx> Simulator<'ctx> {
             }
         }
         self.model.eval();
-        if self.model.run_ready == 0 {
+        if self.model.faulted != 0 {
             return Err("pipeline not ready".into());
         }
         self.model.run_instruction_count = image.program.instructions.len() as u32;
@@ -513,8 +513,20 @@ impl<'ctx> Simulator<'ctx> {
         self.model.run_inputs = u32::from(image.input_ports);
         self.model.run_outputs = u32::from(image.output_ports);
         self.model.run_valid = 1;
-        self.cycle();
+        let mut accepted = false;
+        for _ in 0..self.timeout {
+            self.model.eval();
+            let ready = self.model.run_ready != 0;
+            self.cycle();
+            if ready {
+                accepted = true;
+                break;
+            }
+        }
         self.model.run_valid = 0;
+        if !accepted {
+            return Err("pipeline admission timeout".into());
+        }
         for _ in 0..self.maintenance_budget(u64::from(self.media_slots)) {
             if self.model.done != 0 {
                 break;
@@ -692,8 +704,8 @@ impl rt_fpga_adapter::looping::LoopDevice for Simulator<'_> {
             return Err(rt_runtime::Error::Disconnected);
         }
         let result = (|| {
-            let usage = self.store_config(6, 0, None)?;
-            let geometry = self.store_config(6, 1, None)?;
+            let usage = self.store_config(6, 16, None)?;
+            let geometry = self.store_config(6, 17, None)?;
             Ok::<_, Box<dyn std::error::Error>>((usage, geometry))
         })();
         let (usage, geometry) = result.map_err(|error| {

@@ -40,6 +40,12 @@ def main():
                       READ_BUFFERS=args.read_buffers, WRITE_BUFFERS=args.write_buffers, TABLE_LINES=args.metadata_lines,
                       REF_LINES=args.reference_lines, STACK_LINES=args.stack_lines,
                       BOOT_FILE='"'+str(workload/'boot.hex')+'"', EVENT_FILE='"'+str(workload/'events.hex')+'"')
+    parameters.update(RETIRED_TABLES=args.retired_tables,RECLAIM_BLOCKS=args.reclaim_blocks,
+        RECLAIM_CYCLES=args.reclaim_cycles,RECLAIM_GUARD=args.reclaim_guard)
+    if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
+    runtime_config={**config,'parameters':parameters}
+    runtime_path=output/'config.json'
+    runtime_path.write_text(json.dumps(runtime_config,indent=2)+'\n')
     manifest = sources(True)
     top = HERE/'rtl/timing_bench.sv'
     if args.memory_model == 'instant':
@@ -58,7 +64,7 @@ def main():
     sys.path.insert(0, str(HERE/'tests'))
     result = runner.test(hdl_toplevel='timing_bench', test_module='test_timing_bench', test_dir=output,
                          log_file=output/'simulation.log', extra_env={**env,
-                             'BENCH_CONFIG': str(workload/'config.json'), 'BENCH_QUANTA': str(args.quanta),
+                             'BENCH_CONFIG': str(runtime_path), 'BENCH_QUANTA': str(args.quanta),
                              'BENCH_CONTROLS': str(int(args.control_tests)), 'BENCH_OUTPUT': str(output)})
     report = ET.parse(result).getroot()
     if len(list(report.iter('testcase'))) != 1 or any(list(report.iter(k)) for k in ('failure', 'error', 'skipped')):

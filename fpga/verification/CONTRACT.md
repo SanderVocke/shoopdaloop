@@ -107,3 +107,23 @@ work. BeginCapture automatically creates/clears a stable recording view. There
 are no public observations, preview/commit/retry tokens or external executors.
 Ordinary results are observed between completed processing operations. A failed
 block is silent and requires reset/reload; partial state is diagnostic only.
+
+## Deferred physical reclamation
+
+Retake, media clear and media remove detach an existing DDR ownership tree and
+acknowledge logical completion without walking its old entries. Retired records
+own their unprocessed references. A budgeted collector releases them and their
+metadata pages independently of quantum completion. Block IDs are returned only
+after required cache/transfer retirement, with atomic ownership/free-stack updates.
+
+Compare production logical audio, views and supported state exactly; physical
+allocation order and delayed availability are hardware diagnostics. Pending
+ownership and an already-released active entry are included in reference audits.
+Fence orders memory writes; explicit offline drain is required for a complete
+restorable physical snapshot. No intermediate cleanup drain is allowed in timing
+measurements. Queue/page/sample exhaustion and collector faults are explicit
+hardware outcomes. Coordinated reset invalidates the entire arena epoch.
+
+Cleanup block/cycle grants and their transaction guard describe the selected
+memory-service assumptions. A count ceiling cannot guarantee released capacity,
+and an unbounded AXI stall cannot satisfy a finite deadline claim.

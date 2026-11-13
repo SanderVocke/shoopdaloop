@@ -7,6 +7,8 @@ module audio_demo #(
     parameter integer INSTRUCTIONS = 64, STATES = 32, BUFFERS = 32, JOB_BUDGET = 80,
     parameter integer RESET_CYCLES = 64, WATCHDOG_CYCLES = 1000000,
     parameter integer VIEWS = 32, SLOTS = 1024, BLOCK_CHUNKS = 32,
+    parameter integer RETIRED_TABLES = 256, RECLAIM_BLOCKS = 0, RECLAIM_CYCLES = 5000, RECLAIM_GUARD = 1024,
+    parameter integer TABLE_LINES = 8, REF_LINES = 4, STACK_LINES = 2,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15+8*VIEWS+16,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000,
     parameter BOOT_FILE = "fpga/audio_io/examples/default/boot.hex",
@@ -74,6 +76,20 @@ module audio_demo #(
     input wire m_axi_rvalid,
     output wire m_axi_rready
 );
+    wire [31:0] reclaim_pending;
+    wire [31:0] reclaim_high_water;
+    wire [63:0] reclaim_references;
+    wire reclaim_active;
+    wire reclaim_released;
+    wire [31:0] reclaim_block;
+    wire [63:0] reclaim_blocks;
+    wire [63:0] reclaim_freed;
+    wire [63:0] reclaim_cycles;
+    wire reclaim_quiescent;
+    wire [31:0] reclaim_pages_used;
+    wire [31:0] reclaim_pages_available;
+    wire [63:0] reclaim_pages_freed;
+    wire [63:0] reclaim_capacity_failures;
     wire run_ready;
     wire [31:0] run_instruction_count;
     wire [31:0] run_state_count;
@@ -159,7 +175,9 @@ module audio_demo #(
     wire [745:0] control_data;
     audio_loop_pipeline #(.MAX_FRAMES(Q),.CHUNK_FRAMES(CHUNK_FRAMES),.P(P),
         .BUFFERS(BUFFERS),.INPUT_PORTS(CHANNELS),.OUTPUT_PORTS(CHANNELS),.RX_BANKS(RX_BANKS),.TX_BANKS(TX_BANKS),
-        .VIEWS(VIEWS),.SLOTS(SLOTS),.BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES),.PHYSICAL_BASE(PHYSICAL_BASE),
+        .VIEWS(VIEWS),.SLOTS(SLOTS),.BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES),.RETIRED_TABLES(RETIRED_TABLES),
+        .RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),
+        .TABLE_LINES(TABLE_LINES),.REF_LINES(REF_LINES),.STACK_LINES(STACK_LINES),.PHYSICAL_BASE(PHYSICAL_BASE),
         .REQUEST_DEPTH(128),.EVENT_DEPTH(256),.AXI_DATA_WIDTH(AXI_DATA_WIDTH),.WATCHDOG_CYCLES(WATCHDOG_CYCLES)) engine (.*);
     localparam [2:0] LOADING=0, RUNNING=1, DRAINING=2, RESETTING=3, FAILED=4;
     reg [2:0] phase;
@@ -231,5 +249,5 @@ module audio_demo #(
             default: begin end
         endcase
     end
-    wire unused_status = &{1'b0,run_ready,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,cfg_ready,cfg_response_valid,cfg_response_error,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,audio_cfg_response_error,audio_cfg_read_data,queued_jobs,drain_valid,command_ready,response_valid,response_error,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,store_cfg_ready,store_cfg_response_valid,store_cfg_response_error,store_cfg_read_data,memory_fault,session_reset_ready,control_ready};
+    wire unused_status = &{1'b0,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,reclaim_quiescent,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,run_ready,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,cfg_ready,cfg_response_valid,cfg_response_error,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,audio_cfg_response_error,audio_cfg_read_data,queued_jobs,drain_valid,command_ready,response_valid,response_error,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,store_cfg_ready,store_cfg_response_valid,store_cfg_response_error,store_cfg_read_data,memory_fault,session_reset_ready,control_ready};
 endmodule

@@ -7,7 +7,7 @@ from direct_memory import MemoryHost, native_field
 from legacy_metadata import LegacyMetadata
 
 OPCODES = {"create": 0, "slice": 1, "clear": 2, "remove": 3, "reclaim": 4, "append": 5, "read": 6}
-ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape"}
+ERRORS = {1: "invalid_view", 2: "invalid_state", 3: "memory_full", 4: "invalid_shape", 5: "memory_fault"}
 MASK32 = (1 << 32) - 1
 
 
@@ -31,8 +31,9 @@ class Driver(MemoryHost):
         self.blocks=self.slots//self.block_chunks
         self.base = 0x1234000000
         self.table_pages = int(os.environ.get('AXI_METADATA_PAGES') or ((self.blocks+14)//15+8*self.views+16))
+        self.retired_tables = int(os.environ.get('AXI_RETIRED_TABLES','256'))
         self.slot_bits = max(1,(self.blocks-1).bit_length())
-        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.blocks+15)//16)*16+self.table_pages*16
+        storage_words = ((self.slots*self.chunk_frames+15)//16)*16+2*((self.blocks+15)//16)*16+self.table_pages*16+self.retired_tables*16
         self.memory = [0xa5a5a5a5] * storage_words
         self.sample_transactions = 0
         self.pending = None
@@ -138,6 +139,8 @@ class Driver(MemoryHost):
         return before, after
 
     async def reset(self):
+        self.set(maintenance_enable=1)
+        if hasattr(self.dut,"maintenance_tick"):self.set(maintenance_tick=0)
         if hasattr(self.dut, "hint_valid"):
             self.set(hint_valid=0, hint_view=0, hint_position=0, hint_length=0, hint_count=0)
         self.set(clk=0, reset=1, arena_base=self.base, cmd_valid=0, cmd_opcode=0, cmd_view=0,
@@ -178,6 +181,8 @@ class Driver(MemoryHost):
         return result
 
     async def load(self, media):
+        if media.get('pending_reclamation',0):
+            raise ValueError('drain reclamation before saving a restorable physical snapshot')
         await self.reset()
         assert media["chunk_frames"] == self.chunk_frames
         assert media.get('block_chunks',1)==self.block_chunks
@@ -208,11 +213,17 @@ class Driver(MemoryHost):
             await self.configure(0,index,value)
 
     async def snapshot(self):
+        enabled=int(self.dut.maintenance_enable.value) if hasattr(self.dut,'maintenance_enable') else None
+        if enabled is not None:self.set(maintenance_enable=0)
+        elif hasattr(self,'raw') and hasattr(self.raw,'core_maintenance_enable'):
+            assert not int(self.raw.core_maintenance_enable.value),'quiesce continuous maintenance before snapshot'
         await self.fence()
         self.memory[:] = await self.read_memory()
         views,blocks,free = [await self.configure(0,index) for index in range(3)]
         assert views<=self.views and free<=blocks<=self.blocks
         free_blocks=[await self.configure(4,index) for index in range(free)]
+        assert len(set(free_blocks))==free,'reusable block stack contains duplicate IDs'
+        assert all(0<=block<blocks for block in free_blocks),'reusable block outside allocated arena'
         result={"chunk_frames":self.chunk_frames,
                 "samples":[signed(x) for x in self.memory[:blocks*self.block_chunks*self.chunk_frames]],
                 "free_chunks":[block*self.block_chunks+i for block in free_blocks for i in range(self.block_chunks)],"views":[]}
@@ -232,11 +243,36 @@ class Driver(MemoryHost):
                 if descriptor & 2:view['range']={'offset':offset%self.chunk_frames}
                 refs.update(ids)
             result['views'].append(view)
+        pending=await self.configure(6,0)
+        if pending:result['pending_reclamation']=pending
+        head=await self.configure(6,9)
+        capacity=await self.configure(6,8)
+        sample_words=((self.slots*self.chunk_frames+15)//16)*16
+        page_base=sample_words+2*((self.blocks+15)//16)*16
+        queue_base=page_base+self.table_pages*16
+        levels=max(1,((self.blocks-1).bit_length()+3)//4)
+        remaining=0
+        for slot in range(pending):
+            address=queue_base+((head+slot)%capacity)*16
+            root,count=self.memory[address:address+2]
+            assert root and 0<count<=self.blocks
+            remaining+=count
+            for ordinal in range(count):
+                page=root
+                for level in reversed(range(levels)):
+                    assert 0<page<=self.table_pages
+                    value=self.memory[page_base+(page-1)*16+((ordinal>>(4*level))&15)]
+                    if level:page=value
+                    else:refs[value]+=1
+        assert remaining==await self.configure(6,1)
+        if await self.configure(6,7)&2:refs[await self.configure(6,6)]-=1
         for block in range(blocks):
             assert await self.configure(3,block)==refs[block], 'block reference count differs from view ownership'
+        assert set(free_blocks)=={block for block in range(blocks) if refs[block]==0},'unowned blocks differ from reusable IDs'
         if self.block_chunks!=1:
             from block_images import canonicalize
             canonicalize(result)
+        if enabled is not None:self.set(maintenance_enable=enabled)
         return result
 
     async def fence(self):
@@ -258,7 +294,34 @@ class Driver(MemoryHost):
         assert after["error_code"] == 0, "media fence reported a memory fault"
         await self.tick()
 
-    async def command(self, command, *, stalls=True):
+    async def drain_reclamation(self):
+        if await self.configure(6,0)==0:return
+        limit=100000+int(self.dut.reclaim_references.value)*4096
+        self.set(cmd_valid=1,cmd_opcode=10,cmd_view=0,cmd_start=0,cmd_length=0,cmd_count=0)
+        for _ in range(100000):
+            before,after=await self.tick()
+            if before['cmd_ready']:break
+        else:raise AssertionError('cleanup drain admission timeout')
+        self.set(cmd_valid=0)
+        for _ in range(limit):
+            if after['done']:break
+            _,after=await self.tick()
+        else:raise AssertionError('cleanup drain timeout')
+        assert after['error_code']==0
+        await self.tick()
+
+    async def grant_maintenance(self,blocks=0,cycles=None):
+        if cycles is None:cycles=int(os.environ.get('AXI_RECLAIM_CYCLES','5000'))
+        self.set(cmd_valid=1,cmd_opcode=9,cmd_view=0,cmd_start=cycles,cmd_length=0,cmd_count=blocks)
+        for _ in range(100000):
+            before,after=await self.tick()
+            if before['cmd_ready']:break
+        else:raise AssertionError('maintenance admission timeout')
+        self.set(cmd_valid=0)
+        assert after['done'] and after['error_code']==0
+        await self.tick()
+
+    async def command(self, command, *, stalls=True, drain=True, observe=True):
         self.stalls = stalls
         kind = command["kind"]
         source = command.get("samples", [])
@@ -266,8 +329,10 @@ class Driver(MemoryHost):
                  cmd_start=command.get("start", command.get("position", 0)),
                  cmd_length=command.get("frames", 0) if kind == "slice" else command.get("length", 0),
                  cmd_count=len(source) if kind == "append" else command.get("frames", 0) if kind == "read" else 0)
-        before, after = await self.tick()
-        assert before["cmd_ready"], "command not admitted"
+        for _ in range(100000):
+            before,after=await self.tick()
+            if before['cmd_ready']:break
+        else:raise AssertionError('command admission timeout')
         accepted = self.cycles
         self.set(cmd_valid=0)
         sent, samples, offered = 0, [], False
@@ -302,4 +367,5 @@ class Driver(MemoryHost):
         _, after = await self.tick()
         assert not after["done"] and not after["busy"]
         status = {"kind": "completed"} if code == 0 else {"kind": "failed", "value": {"error": ERRORS[code]}}
-        return {"status": status, "value": value, "media": await self.snapshot()}
+        if drain and code==0:await self.drain_reclamation()
+        return {"status": status, "value": value, "media": await self.snapshot() if observe else None}

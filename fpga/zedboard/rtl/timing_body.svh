@@ -16,7 +16,7 @@
     wire memory_quiescent;
     reg read_outstanding, write_outstanding, ar_exposed, aw_exposed;
     reg [2:0] read_size, write_size;
-    wire isolate = phase == DRAINING || phase == STOPPED;
+    wire isolate = (phase == DRAINING && (failed || faulted || memory_fault || reclaim_quiescent)) || phase == STOPPED;
     wire running = phase == RUNNING;
     wire timed_out = inflight && watchdog != 0 && run_cycles >= watchdog;
     wire failure = boot_fault || control_fault || memory_fault || faulted || timed_out;
@@ -39,6 +39,7 @@
     assign run_inputs = INPUT_PORTS;
     assign run_outputs = OUTPUT_PORTS;
     assign job_enable = 1;
+    assign maintenance_enable = running;
     assign drain_ready = 0;
     assign arena_base = 0;
     assign audio_cfg_valid = 0;
@@ -121,7 +122,8 @@
     assign core_m_axi_awready = m_axi_awready && (!isolate || aw_exposed);
     assign m_axi_wvalid = core_m_axi_wvalid && write_outstanding;
     assign core_m_axi_wready = m_axi_wready && write_outstanding;
-    assign memory_quiescent = !read_outstanding && !write_outstanding && !ar_exposed && !aw_exposed;
+    assign memory_quiescent = (failed || faulted || memory_fault || reclaim_quiescent)
+        && !read_outstanding && !write_outstanding && !ar_exposed && !aw_exposed;
     assign m_axi_awid = core_m_axi_awid;
     assign m_axi_awaddr = core_m_axi_awaddr;
     assign m_axi_awlen = core_m_axi_awlen;
@@ -233,7 +235,7 @@
             end
         end
     end
-    wire unused = &{1'b0,EXTERNAL_IO,buffer_ready,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,
+    wire unused = &{1'b0,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,EXTERNAL_IO,buffer_ready,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,
         audio_cfg_response_error,audio_cfg_read_data,monitor_valid,monitor_ready,monitor_data,queued_jobs,
         drain_valid,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,
         store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,

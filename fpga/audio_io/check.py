@@ -12,8 +12,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT/'work/audio-synthesis')
     parser.add_argument('--generic-only', action='store_true')
+    parser.add_argument('--mapping-only', action='store_true')
     parser.add_argument('--demo', action='store_true')
+    parser.add_argument('--quantum', type=int, choices=(16,32,64), help='select one continuous-audio lint/inference variant')
     args = parser.parse_args()
+    if args.mapping_only and (args.generic_only or args.quantum is not None):parser.error('--mapping-only selects the default-top mapping alone')
+    if args.demo and args.quantum is not None:parser.error('--quantum selects a continuous-audio variant')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     top = 'audio_demo' if args.demo else 'audio_loop_pipeline'
@@ -22,7 +26,9 @@ def main():
     subprocess.run(['python3', str(ROOT/'fpga/axi_memory/generate_tops.py'), '--check'], cwd=ROOT, check=True)
     subprocess.run(['python3', str(ROOT/'fpga/audio_io/generate_top.py'), '--check'], cwd=ROOT, check=True)
     subprocess.run(['python3', str(ROOT/'fpga/audio_io/generate_demo.py'), '--check'], cwd=ROOT, check=True)
-    for q, banks in ([(32, 3)] if args.demo else [(16, 2), (32, 3), (64, 3)]):
+    variants=[(16,2),(32,3),(64,3)]
+    if args.quantum is not None:variants=[variant for variant in variants if variant[0]==args.quantum]
+    for q, banks in ([] if args.mapping_only else [(32, 3)] if args.demo else variants):
         name = f'{top}-q{q}-b{banks}'
         print(f'{name}: strict lint and generic synthesis', flush=True)
         quantum = 'Q' if args.demo else 'MAX_FRAMES'

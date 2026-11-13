@@ -18,6 +18,9 @@ module loop_pipeline_tb #(
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
+    parameter integer RETIRED_TABLES = 256,
+    parameter integer RECLAIM_BLOCKS = 0, parameter integer RECLAIM_CYCLES = 5000,
+    parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
@@ -30,6 +33,14 @@ module loop_pipeline_tb #(
     output wire [31:0] sample_output_data,
     output reg clk,
     input wire reset,
+    input wire maintenance_enable,
+    output wire [31:0] reclaim_pending, output wire [31:0] reclaim_high_water,
+    output wire [63:0] reclaim_references, output wire reclaim_active, output wire reclaim_released,
+    output wire [31:0] reclaim_block, output wire [63:0] reclaim_blocks,
+    output wire [63:0] reclaim_freed, output wire [63:0] reclaim_cycles,
+    output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed, output wire [63:0] reclaim_capacity_failures,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
@@ -121,7 +132,7 @@ module loop_pipeline_tb #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) core (.*);
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) core (.*);
     assign debug_frame=core.timing.frame;
     assign debug_shared_read=core.loop_read_valid && core.loop_read_ready;
 endmodule
