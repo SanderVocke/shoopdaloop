@@ -438,30 +438,13 @@ fn composite_primitive_composite_chain_has_no_hop_delay() {
 }
 
 #[shoop_test]
-fn pure_sync_component_may_contain_a_composite_but_not_action_feedback() {
+fn composite_sync_feedback_is_rejected_without_an_action_edge() {
     let mut input = base();
     input.loops[0].sync_source = Some(id(1));
-    let mut resolver = prepare(&input);
-    start(&mut resolver);
-    let (events, rows) = run(&mut resolver, &[8]);
-    for target in [0, 1] {
-        for frame in if target == 0 {
-            vec![0, 2, 4, 6]
-        } else {
-            vec![0, 6]
-        } {
-            assert_eq!(
-                events
-                    .iter()
-                    .filter(|event| event.target == id(target)
-                        && event.frame == Frame(frame)
-                        && event.kind == EventKind::Pulse)
-                    .count(),
-                1
-            );
-        }
-    }
-    assert_eq!(rows[4][1].composite.unwrap().iteration, 2);
+    assert_eq!(
+        compile(Limits::default(), &input).unwrap_err(),
+        Error::InstantaneousDependencyCycle
+    );
     input.programs[0].sections[0]
         .entries
         .push(entry(0, 0, 1, None));

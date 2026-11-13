@@ -113,7 +113,7 @@ fn capacities_are_checked_without_allocation_and_journal_can_be_disabled() {
 fn empty_topology_and_zero_length_primitive_are_preparable() {
     let empty = compile(Limits::default(), &TopologyDescription::default()).unwrap();
     assert!(empty.nodes().is_empty());
-    assert!(empty.components().is_empty());
+    assert!(empty.dependency_order().is_empty());
     let single = compile(
         Limits::default(),
         &description(vec![primitive(0, 0)], vec![]),
@@ -146,22 +146,22 @@ fn missing_stale_duplicate_and_out_of_capacity_identities_are_rejected() {
 }
 
 #[shoop_test]
-fn mutual_sync_is_one_component_but_state_changing_feedback_is_invalid() {
-    let mut input = description(vec![primitive(0, 4), primitive(1, 7)], vec![]);
-    input.loops[0].sync_source = Some(id(1));
-    input.loops[1].sync_source = Some(id(0));
-    let prepared = compile(Limits::default(), &input).unwrap();
-    assert_eq!(prepared.components().len(), 1);
-    assert_eq!(&prepared.components()[0], &[id(0), id(1)]);
-    input.triggers.push(Trigger {
-        source: id(0),
-        target: id(1),
-        mode: Mode::Playing,
-    });
-    assert_eq!(
-        compile(Limits::default(), &input).unwrap_err(),
-        Error::InstantaneousDependencyCycle
-    );
+fn sync_cycles_between_distinct_loops_are_rejected() {
+    for sources in [[Some(1), Some(0), None], [Some(1), Some(2), Some(0)]] {
+        let mut input = description((0..3).map(|slot| primitive(slot, 4)).collect(), vec![]);
+        for (node, source) in input.loops.iter_mut().zip(sources) {
+            node.sync_source = source.map(id);
+        }
+        assert_eq!(
+            compile(Limits::default(), &input).unwrap_err(),
+            Error::InstantaneousDependencyCycle
+        );
+        input.loops.reverse();
+        assert_eq!(
+            compile(Limits::default(), &input).unwrap_err(),
+            Error::InstantaneousDependencyCycle
+        );
+    }
 }
 
 #[shoop_test]
@@ -171,7 +171,7 @@ fn self_sync_is_valid_self_action_is_not() {
     assert_eq!(
         compile(Limits::default(), &input)
             .unwrap()
-            .components()
+            .dependency_order()
             .len(),
         1
     );
@@ -207,9 +207,9 @@ fn compiler_orders_action_sources_before_targets_independent_of_ids() {
     let expected = compile(Limits::default(), &input).unwrap();
     assert_eq!(
         expected
-            .components()
+            .dependency_order()
             .iter()
-            .map(|component| component[0])
+            .copied()
             .collect::<Vec<_>>(),
         vec![id(2), id(1), id(0)]
     );
@@ -238,8 +238,8 @@ fn deep_finite_action_chain_has_no_wave_limit_or_recursive_stack_walk() {
         ..Limits::default()
     };
     let prepared = compile(limits, &input).unwrap();
-    assert_eq!(prepared.components().len(), count as usize);
-    assert_eq!(prepared.components().last().unwrap()[0], id(count - 1));
+    assert_eq!(prepared.dependency_order().len(), count as usize);
+    assert_eq!(*prepared.dependency_order().last().unwrap(), id(count - 1));
 }
 
 #[shoop_test]
@@ -346,9 +346,9 @@ fn nested_program_duration_and_order_are_derived_child_first() {
     );
     assert_eq!(
         prepared
-            .components()
+            .dependency_order()
             .iter()
-            .map(|component| component[0])
+            .copied()
             .collect::<Vec<_>>(),
         vec![id(2), id(1), id(0)]
     );
@@ -482,7 +482,7 @@ fn random(seed: &mut u64) -> u64 {
 }
 
 #[shoop_test]
-fn seeded_components_match_an_independent_reachability_reference() {
+fn seeded_dependency_order_matches_an_independent_reachability_reference() {
     let mut seed = 0x18ad_5c74_d032_fbb1;
     let mut accepted = 0;
     let mut rejected = 0;
@@ -523,7 +523,9 @@ fn seeded_components_match_an_independent_reachability_reference() {
         let invalid = input
             .triggers
             .iter()
-            .any(|edge| reachable[edge.target.slot() as usize][edge.source.slot() as usize]);
+            .any(|edge| reachable[edge.target.slot() as usize][edge.source.slot() as usize])
+            || (0..n)
+                .any(|from| (from + 1..n).any(|to| reachable[from][to] && reachable[to][from]));
         let result = compile(Limits::default(), &input);
         if invalid {
             assert_eq!(result.unwrap_err(), Error::InstantaneousDependencyCycle);
@@ -531,20 +533,14 @@ fn seeded_components_match_an_independent_reachability_reference() {
         } else {
             accepted += 1;
             let prepared = result.unwrap();
-            let mut group = vec![usize::MAX; n];
-            for (index, members) in prepared.components().iter().enumerate() {
-                for member in members.iter() {
-                    group[member.slot() as usize] = index;
-                }
+            let mut position = vec![usize::MAX; n];
+            for (index, id) in prepared.dependency_order().iter().enumerate() {
+                position[id.slot() as usize] = index;
             }
             for from in 0..n {
                 for to in 0..n {
-                    assert_eq!(
-                        group[from] == group[to],
-                        reachable[from][to] && reachable[to][from]
-                    );
-                    if reachable[from][to] {
-                        assert!(group[from] <= group[to]);
+                    if from != to && reachable[from][to] {
+                        assert!(position[from] < position[to]);
                     }
                 }
             }

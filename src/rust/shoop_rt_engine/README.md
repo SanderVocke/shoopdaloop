@@ -142,7 +142,7 @@ own. Delayed requests are answered when admitted; immediate ones when applied.
 ## Structural transactions
 
 A transaction first prepares everything without touching the music: node-pair
-edits for added or removed loops, a validated LTP1 timing image of the new loop
+edits for added or removed loops, a validated LTP2 timing image of the new loop
 topology, and a staged graph built in a prepared plan. The three stages start
 together; the node-pair edits and timing records follow in the next poll, the
 records scheduled one callback apart (the loop library accepts one append per
