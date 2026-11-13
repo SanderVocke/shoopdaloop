@@ -123,13 +123,24 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
     }
     boot.push(control_packet(0, 3, &Bits::default(), 0, 0));
     let mut events = Vec::new();
+    let mut owner = transition::request_service(t)?;
     let mut sequence = 0;
     for (n, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
         for action in step["actions"].as_array().unwrap() {
             sequence += 1;
             let mut c = action.clone();
             c["sequence"] = json!(sequence);
-            events.push(control_packet(n as u64, 0, &transition::command(&c), 4, 0));
+            let command = transition::command(&c);
+            let transfer = owner
+                .prepare_static(command.0.try_into().unwrap())
+                .map_err(|error| format!("prepared action refused: {error}"))?;
+            events.push(control_packet(
+                n as u64,
+                0,
+                &Bits(transfer.words.to_vec()),
+                u64::from(transfer.opcode),
+                u64::from(transfer.index),
+            ));
         }
         events.push(control_packet(n as u64, 2, &Bits::default(), 0, 0));
     }

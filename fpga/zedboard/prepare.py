@@ -78,14 +78,19 @@ def prepare(output, loops=64, tracks=8, q=32, record_quanta=64, mixed=True, buil
     for i, count in enumerate([0, 0, 0, slots//block_chunks]):
         boot.append(packet(kind=2, opcode=0, index=i, data=count))
     boot.append(packet(kind=3))
+    service = wire.TransitionService(transition)
     events, serial = [], 0
     for n, item in enumerate(value['steps']):
         for control in item['actions']:
             serial += 1
             command = {k: control[k] for k in ('target', 'at', 'timing', 'operation')}
             command['sequence'] = serial
-            events.append(packet(sequence=n, opcode=tp.SUBMIT, data=tp.encode_command(command)))
+            prepared = service.request(kind='static', words=wire.port_words(tp.encode_command(command),20))
+            if 'error' in prepared: raise ValueError(f"prepared action refused: {prepared['error']}")
+            transfer = prepared['transfer']
+            events.append(packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words'])))
         events.append(packet(sequence=n, kind=2))
+    service.close()
     for name, records in [('boot', boot), ('events', events)]:
         (output/f'{name}.hex').write_text(''.join(f'{word:0187x}\n' for word in records))
     params = dict(LOOP_DEPTH=limits['loop_slots'], REQUEST_DEPTH=limits['pending_requests'],

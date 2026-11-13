@@ -30,7 +30,7 @@ pub fn design(depths: [u64; 3]) -> Design {
         ("REQUEST_DEPTH", depths[1]),
         ("EVENT_DEPTH", depths[2]),
     ])
-    .probes(vec![Probe::inject("frame")])
+    .probes(vec![Probe::inject("frame"), Probe::inject("phase")])
 }
 pub fn lid(slot: u64) -> Value {
     json!({"slot":slot,"generation":3})
@@ -290,6 +290,7 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
     for seed in 0..random_cases {
         compare(&mut d, &mut s, &seeded(depths, seed))?;
     }
+    indexed_install_guards(&mut d, &mut s)?;
     transport_and_negative_cases(&mut d, &mut s)?;
     dependency_order_validation(&mut d, &mut s);
     scratch_initialization_and_reset(&mut d, &mut s)?;
@@ -316,7 +317,7 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
             )?;
         }
     }
-    println!("transition/{name}: 6 regression groups, {random_cases} seeds x 80 quanta");
+    println!("transition/{name}: 7 regression groups, {random_cases} seeds x 80 quanta");
     Ok(())
 }
 fn transport_case() -> Value {
@@ -333,6 +334,39 @@ fn load(d: &mut Transition, s: &mut Sim<'_>, value: &Value) -> Result<()> {
     let c: production::TransitionCase = serde_json::from_value(value.clone())?;
     let image = production::compile(&c.plan).map_err(|e| format!("transition compile: {e:?}"))?;
     d.load(s, &serde_json::to_value(image)?);
+    Ok(())
+}
+fn indexed_install_guards(d: &mut Transition, s: &mut Sim<'_>) -> Result<()> {
+    let value = transport_case();
+    load(d, s, &value)?;
+    let empty = d.requests(s);
+    let mut packet = abi::command(&value["steps"][0]["commands"][0]);
+    for (slot, generation) in [(1, 1), (0, 0), (0, 2)] {
+        packet.set(1, 32, generation);
+        assert_eq!(d.raw_command(s, 4, slot, &packet, None, false).0, 3);
+        assert_eq!(d.requests(s), empty);
+    }
+    packet.set(1, 32, 1);
+    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 0);
+    let pending = d.requests(s);
+    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
+    assert_eq!(d.requests(s), pending);
+    assert_eq!(d.raw_command(s, 9, 0, &Bits::default(), None, false).0, 0);
+    let terminal = d.requests(s);
+    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
+    assert_eq!(d.requests(s), terminal);
+    assert_eq!(d.raw_command(s, 6, 0, &Bits::from_u64(1), None, false).0, 0);
+    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 3);
+    packet.set(1, 32, 2);
+    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 0);
+    assert_eq!(d.raw_command(s, 5, 0, &Bits::from_u64(2), None, false).0, 0);
+    assert_eq!(d.raw_command(s, 6, 0, &Bits::from_u64(2), None, false).0, 0);
+    let before = d.requests(s);
+    packet.set(1, 32, 3);
+    s.model.inject("phase", Some(&Bits::from_u64(2)));
+    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
+    assert_eq!(d.requests(s), before);
+    s.model.inject("phase", None);
     Ok(())
 }
 fn transport_and_negative_cases(d: &mut Transition, s: &mut Sim<'_>) -> Result<()> {

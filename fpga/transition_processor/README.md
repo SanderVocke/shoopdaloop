@@ -19,7 +19,9 @@ production Rust loop resolver. The connected
 One `PROCESS` operation resolves commands, synchronization, natural wraps,
 arbitration and ordered events, then advances clocks by one quantum. Supported
 quanta are 1, 16, 32, 64 and 128 frames. IDs carry full 32-bit slots/generations;
-requests retain completion records until collected. Absolute and source-delayed
+installed actions retain completion records until collected. ARM owns request
+allocation and duplicate-sequence admission through the reusable Rust transition
+service; the fabric installs an explicitly addressed action. Absolute and source-delayed
 timing, self-sync, acyclic sync chains, repeat waiting, stop cancellation,
 record/play/seek and checked counters retain their normal semantics. Composite
 kinds/timelines remain reserved and unsupported.
@@ -58,7 +60,7 @@ signals, not a finalized ARM register map. Errors return zero payload.
 | 1 | Write spec | Slot / 192-bit spec | Zero |
 | 2 | Write order | Index / loop slot in low u32; next u32 must be zero | Zero |
 | 3 | Prepare | Five u32: loops, requests, events, ordered loops, quantum | Zero |
-| 4 | Submit | Request-row command fields | Slot u32 at 0, generation u32 at 32 |
+| 4 | Install | Request slot / command fields, generation token at bits 1–32 | Slot u32 at 0, generation u32 at 32 |
 | 5 | Cancel | Slot / generation low u32 | Cancelled bit at 0 |
 | 6 | Collect | Slot / generation low u32 | Terminal request, or zero |
 | 9 | Process | Ignored | Zero |
@@ -72,9 +74,16 @@ holes) and the compiler's flat `dependency_order` before Prepare. Prepare valida
 bounds, IDs, alignment, sources, unique coverage and that each distinct source
 appears before its dependent. This rejects multi-loop cycles and reversed
 dependencies; a loop may still name itself as source. The compiler determines
-the canonical order between independent loops. Submit/cancel/collect require idle
+the canonical order between independent loops. Install/cancel/collect require idle
 phase. A fault prevents control
 mutation; status/readback remain available. Reset is required to reconfigure.
+
+The ARM service preserves public submission, capacity, duplicate detection and
+request ownership. INSTALL checks the selected empty slot's generation and all
+existing target/source/frame guards, then uses the existing pending lists. It
+does not search for a free slot or duplicate sequence. See
+[the installation contract](INSTALL.md) for ownership, error precedence, prepared
+streams and the distinction between public submission and raw fabric traffic.
 
 Codes: 0 success, 1 invalid_config, 2 capacity, 3 invalid_id, 4 duplicate_id,
 5 invalid_state, 6 invalid_frame, 7 missing_sync, 8 exhausted, 9 empty_content,
@@ -138,7 +147,7 @@ Status has frame u64 at 0, fault code at 64 (4 bits), phase at 128 (2 bits:
 Three u32 diagnostics at 416/448/480 report request checks, follower visits and
 pulse deliveries for the latest process operation. The follower-visit diagnostic
 now counts source-pulse reactions, including self-sync. There is no serial or bank
-selector. Reserved fields return zero. `tests/codec.py` decodes these rows.
+selector. Reserved fields return zero. `../abi/transition.py` decodes these rows.
 
 ## Verification
 
@@ -172,6 +181,8 @@ compare revisions under the same parameters.
 
 The [acyclic synchronization experiment](measurements/ACYCLIC_SYNC.md) records
 matched resource measurements, processing cycles and verification evidence.
+The [ARM-owned request-slot experiment](measurements/ARM_REQUEST_SLOTS.md) records
+the indexed-installation boundary, matched admission costs, resources and timing.
 
 ## Application adapter extensions
 

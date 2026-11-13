@@ -1,5 +1,6 @@
 use rt_backend_testbench::{audit, production, rtl, spec::*, transition_fixture as tp};
 use std::io::{self, Write};
+mod transition_service;
 
 fn main() {
     if let Err(error) = execute() {
@@ -19,6 +20,9 @@ fn execute() -> std::result::Result<(), String> {
         return Ok(());
     }
     let command = args.first().map(String::as_str).unwrap_or("run");
+    if command == "transition-service" {
+        return transition_service::run();
+    }
     if matches!(command, "transition-run" | "transition-compile") {
         let stdin = io::stdin();
         for source in

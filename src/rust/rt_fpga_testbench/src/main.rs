@@ -9,6 +9,7 @@ enum Suite {
     Audio,
     Smoothing,
     Transition,
+    CommandCosts,
     Axi,
     Direct,
     Chunk,
@@ -65,6 +66,12 @@ struct Args {
     suite: Suite,
     #[arg(long, default_value = "all")]
     config: String,
+    #[arg(long, default_value_t = 272)]
+    requests: u64,
+    #[arg(long)]
+    transition_source: Option<PathBuf>,
+    #[arg(long)]
+    legacy_allocation: bool,
     #[arg(long, value_enum, default_value = "instant")]
     memory_model: Mode,
     #[arg(long, default_value_t = 64)]
@@ -267,6 +274,12 @@ fn run(a: &Args, suite: Suite) -> Result<()> {
                 suites::transition::run(n, c, a.random_cases.unwrap_or(100))?;
             }
         }
+        Suite::CommandCosts => rt_fpga_testbench::command_measurements::run(
+            a.requests,
+            a.transition_source.as_deref(),
+            a.legacy_allocation,
+            &a.output,
+        )?,
         Suite::Axi => suites::axi::run(width, mode)?,
         Suite::Direct => suites::direct::run(width)?,
         Suite::Chunk => {

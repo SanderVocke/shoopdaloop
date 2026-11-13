@@ -893,7 +893,7 @@ impl VerilatorRuntime {
                 .whatever_context("Failed to mangle module name")?;
 
         let mut hasher = hash::DefaultHasher::new();
-        "shoop-owned-context-v1".hash(&mut hasher);
+        "shoop-owned-context-v2".hash(&mut hasher);
         ports.hash(&mut hasher);
         config.hash(&mut hasher);
         self.source_files.hash(&mut hasher);

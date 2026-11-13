@@ -55,6 +55,19 @@ Old runner-specific flags are not a second supported configuration interface.
 
 ## Replay and measurements
 
+Transition submission, cancellation and collection use the shared
+`rt_fpga_adapter::transition_service::TransitionService` above the raw wire
+transactions. The driver reconstructs that owner only after successful device
+preparation. Prepared ROM streams reserve credits through the same Rust owner.
+The indexed-install guard test deliberately uses raw transactions to verify
+malformed/occupied identities without changing public admission semantics.
+
+For matched command costs, `command-costs --requests 272 --output DIR` records
+FPGA cycles, native service samples, source hashes and tool provenance. An
+explicit `--transition-source PATH --legacy-allocation` runs only frozen RTL
+containing the former allocator for baseline measurement. It does not retain a
+legacy implementation in the candidate hardware or software service.
+
 The production suite accepts JSON, arrays of scenarios, or JSONL; `--case -`
 reads standard input. Expected state, completion, event, sample and logical-media
 results come directly from the production Rust backend. RTL receives the compiled

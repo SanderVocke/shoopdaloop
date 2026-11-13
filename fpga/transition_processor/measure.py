@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -77,8 +78,22 @@ def main():
     command = [args.vivado, '-mode', 'batch', '-nojournal', '-log', 'vivado.log',
                '-source', 'run.tcl', '-tclargs', args.stage, str(args.threads),
                str(args.loops), str(args.requests), str(args.events), str(args.integrated)]
+    if sys.platform == 'linux':
+        import ctypes
+        if ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) != 0:
+            raise RuntimeError('cannot enable child subreaper')
     with (output / 'console.log').open('w') as log:
-        subprocess.run(command, cwd=output, stdout=log, stderr=subprocess.STDOUT, check=True)
+        process = subprocess.Popen(command, cwd=output, stdout=log, stderr=subprocess.STDOUT)
+        main_status = None
+        while True:
+            try:
+                pid, status = os.waitpid(-1, 0)
+            except ChildProcessError:
+                break
+            if pid == process.pid:
+                main_status = os.waitstatus_to_exitcode(status)
+    if main_status != 0:
+        raise SystemExit(f'Vivado failed ({main_status}); see {output}/console.log')
     result = summarize(output, 'post_synth')
     if args.stage == 'route':
         result = summarize(output, 'post_route')

@@ -3,6 +3,7 @@
 pub mod bits;
 pub mod clock;
 pub mod codec;
+pub mod command_measurements;
 pub mod drivers;
 pub mod images;
 pub mod memory;

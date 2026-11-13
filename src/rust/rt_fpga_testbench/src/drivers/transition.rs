@@ -1,4 +1,5 @@
 use crate::{bits::Bits, random::Random, sim::Sim};
+use rt_fpga_adapter::{looping::TpReply, transition_service::TransitionService};
 use serde_json::{Value, json};
 
 pub const ERRORS: &[&str] = &[
@@ -16,6 +17,12 @@ pub const ERRORS: &[&str] = &[
 ];
 pub const MODES: &[&str] = &["stopped", "playing", "recording"];
 const OPS: &[&str] = &["stop", "play", "record", "seek"];
+pub fn request_service(image: &Value) -> crate::Result<TransitionService> {
+    let image = serde_json::from_value(
+        json!({"description":image["description"],"limits":image["limits"],"dependency_order":image["dependency_order"]}),
+    )?;
+    Ok(TransitionService::new(&image)?)
+}
 pub fn identity(v: &Value) -> u64 {
     v["slot"].as_u64().unwrap() | (v["generation"].as_u64().unwrap() << 32)
 }
@@ -144,6 +151,8 @@ pub struct Transition {
     random: Random,
     pub last_cycles: u64,
     pub phase_cycles: Vec<u64>,
+    pub service: Option<TransitionService>,
+    pub service_timings: Option<Vec<Value>>,
 }
 impl Transition {
     pub fn new(depths: [u64; 3]) -> Self {
@@ -155,9 +164,12 @@ impl Transition {
             random: Random::new(20261110),
             last_cycles: 0,
             phase_cycles: Vec::new(),
+            service: None,
+            service_timings: None,
         }
     }
     pub fn reset(&mut self, s: &mut Sim<'_>) {
+        self.service = None;
         s.model.set_all(&[
             ("reset", 1),
             ("command_valid", 0),
@@ -181,6 +193,87 @@ impl Transition {
         s.idle(1);
     }
     pub fn command(
+        &mut self,
+        s: &mut Sim<'_>,
+        opcode: u64,
+        index: u64,
+        data: &Bits,
+        stall: Option<u64>,
+        intrude: bool,
+    ) -> (u64, Bits) {
+        if matches!(opcode, 4..=6) && self.service.is_some() {
+            let mut service = self.service.take().unwrap();
+            let mut words = [0; 20];
+            let count = data.0.len().min(words.len());
+            words[..count].copy_from_slice(&data.0[..count]);
+            let start = self
+                .service_timings
+                .as_ref()
+                .map(|_| std::time::Instant::now());
+            let prepared = service.begin(opcode as u8, index as u32, words);
+            if let Some(start) = start {
+                let ns = start.elapsed().as_nanos() as u64;
+                self.service_timings
+                    .as_mut()
+                    .unwrap()
+                    .push(json!({"kind":"begin","ns":ns}));
+            }
+            let reply = match prepared {
+                Err(error) => {
+                    self.last_cycles = 0;
+                    (u64::from(error), Bits::zero(832))
+                }
+                Ok(transfer) => {
+                    let (error, value) = self.raw_command(
+                        s,
+                        u64::from(transfer.opcode),
+                        u64::from(transfer.index),
+                        &Bits(transfer.words.to_vec()),
+                        stall,
+                        intrude,
+                    );
+                    let mut words = [0; 26];
+                    words.copy_from_slice(&value.0);
+                    let start = self
+                        .service_timings
+                        .as_ref()
+                        .map(|_| std::time::Instant::now());
+                    let reply = service
+                        .finish(TpReply {
+                            error: error as u8,
+                            words,
+                        })
+                        .expect("shared request service response");
+                    if let Some(start) = start {
+                        let ns = start.elapsed().as_nanos() as u64;
+                        self.service_timings
+                            .as_mut()
+                            .unwrap()
+                            .push(json!({"kind":"finish","ns":ns}));
+                    }
+                    (u64::from(reply.error), Bits(reply.words.to_vec()))
+                }
+            };
+            self.service = Some(service);
+            return reply;
+        }
+        let reply = self.raw_command(s, opcode, index, data, stall, intrude);
+        if matches!(opcode, 0 | 9 | 11 | 16) {
+            if let Some(service) = &mut self.service {
+                let mut words = [0; 26];
+                words.copy_from_slice(&reply.1.0);
+                service.observe(
+                    opcode as u8,
+                    &TpReply {
+                        error: reply.0 as u8,
+                        words,
+                    },
+                );
+            }
+        }
+        reply
+    }
+    pub fn raw_command(
         &mut self,
         s: &mut Sim<'_>,
         opcode: u64,
@@ -290,6 +383,7 @@ impl Transition {
             image["description"]["quantum"].as_u64().unwrap() as u32,
         ]);
         self.ok(s, 3, 0, &data);
+        self.service = Some(request_service(image).expect("prepared request service"));
     }
     pub fn status(&mut self, s: &mut Sim<'_>) -> Value {
         let b = self.ok(s, 0, 0, &Bits::default());

@@ -17,6 +17,12 @@ clears Verilator's current-thread pointer. The Rust driver closes traces before
 destroying models. This establishes model/trace/context ownership without
 retaining leaked models or serializing tests to conceal the failure.
 
+Deletion first selects the model's owned context: Verilator's exported-scope
+destructors consult the thread's current context. Destroying several compiled
+models otherwise accesses the context selected by the last evaluation, which
+may already have been deleted. The core regression and AXI endpoint matrix
+exercise this with overlapping models and public memory scopes.
+
 Library initialization also avoids the legacy global `traceEverOn` call. Tracing
 is configured on each owned context during model construction. Touching an
 implicit context while recreating a runtime can use a deleted context and hang

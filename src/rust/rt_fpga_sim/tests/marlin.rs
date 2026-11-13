@@ -189,6 +189,8 @@ fn original_record_stop_play_case_preserves_audio_state_and_captured_media() {
     let rt = runtime(&cache).unwrap();
     let mut sim = Simulator::new(&rt, None, true).unwrap();
     sim.load(&image).unwrap();
+    let mut requests =
+        rt_fpga_adapter::transition_service::TransitionService::new(&image.transition).unwrap();
     let mut sequence = 0;
     for (i, step) in case.steps.iter().enumerate() {
         for action in &step.actions {
@@ -231,7 +233,13 @@ fn original_record_stop_play_case_preserves_audio_state_and_captured_media() {
                 put(&mut words, 384, 64, *position);
                 put(&mut words, 36, 1, u64::from(*retrigger));
             }
-            sim.command(4, 0, words).unwrap();
+            use rt_fpga_adapter::looping::LoopDevice;
+            let reply = requests
+                .exchange(4, 0, words, |transfer| {
+                    sim.tp(transfer.opcode, transfer.index, transfer.words)
+                })
+                .unwrap();
+            assert_eq!(reply.error, 0);
         }
         assert_eq!(
             Samples::Q824(sim.run(&image, &step.inputs).unwrap()),

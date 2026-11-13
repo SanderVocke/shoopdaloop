@@ -7,6 +7,29 @@ use rt_fpga_testbench::{
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn exported_scopes_are_destroyed_in_their_own_model_context() {
+    use rt_fpga_testbench::{drivers::endpoint, memory::Mode};
+    let cache = rt_fpga_testbench::root().join("work/marlin-suite/core-contexts");
+    let first = endpoint::design("axi_master", 32, Mode::Instant)
+        .build(&cache)
+        .unwrap();
+    let second = endpoint::design("word_axi", 32, Mode::Instant)
+        .build(&cache)
+        .unwrap();
+    let mut a = Sim::new(first.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    let mut b = Sim::new(second.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    a.model.set("reset", 1);
+    a.idle(2);
+    b.model.set("reset", 1);
+    b.idle(2);
+    drop(a);
+    drop(first);
+    b.idle(1);
+    drop(b);
+    drop(second);
+}
+
+#[shoop_test]
 fn elaborated_widths_wide_inputs_probes_and_independent_models() {
     let root = rt_fpga_testbench::root();
     let cache = root.join("work/marlin-suite/core");

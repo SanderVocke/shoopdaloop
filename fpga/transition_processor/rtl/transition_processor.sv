@@ -33,7 +33,7 @@ module transition_processor #(
         EXHAUSTED=8, EMPTY_CONTENT=9, UNSUPPORTED=10;
     localparam [1:0] IDLE_PHASE=0, EXECUTING=1, SETTLED=2, FAULTED=3;
     localparam [7:0] STATUS=0, WRITE_SPEC=1, WRITE_ORDER=2, PREPARE=3,
-        SUBMIT=4, CANCEL=5, COLLECT=6, PROCESS=9, FINISH=11, READ_STATE=12,
+        INSTALL=4, CANCEL=5, COLLECT=6, PROCESS=9, FINISH=11, READ_STATE=12,
         READ_REQUEST=13, READ_EVENT=15, SET_REPEAT=17;
     localparam integer VALID=0, GENERATION=1, MODE=33, REPEAT=35, LAST_VALID=36,
         LENGTH=64, POSITION=128, CAPTURE=192, CYCLES=256,
@@ -63,8 +63,8 @@ module transition_processor #(
         S_PREP_LOOP, S_PREP_SPEC, S_PREP_SOURCE, S_PREP_WRITE,
         S_PREP_ORDER, S_PREP_ORDER_CHECK, S_PREP_ORDER_SOURCE,
         S_PREP_REQUEST, S_PREP_COMPLETE,
-        S_SUBMIT_TARGET, S_SUBMIT_SOURCE, S_SUBMIT_SCAN, S_SUBMIT_CHECK, S_SUBMIT_WRITE,
-        S_SUBMIT_ROUND, S_SUBMIT_ALIGN,
+        S_INSTALL_TARGET, S_INSTALL_SOURCE, S_INSTALL_CHECK,
+        S_INSTALL_ROUND, S_INSTALL_ALIGN,
         S_CANCEL_COLLECT, S_CANCEL_REPLY,
         S_INSERT_HEAD, S_INSERT_FIND, S_INSERT_READ, S_INSERT_PLACE,
         S_INSERT_PREV, S_INSERT_NEXT, S_INSERT_NEXT_WRITE, S_INSERT_DONE,
@@ -122,8 +122,6 @@ module transition_processor #(
     reg [63:0] offer_sequence, stop_sequence;
     reg [63:0] target_source;
     reg target_source_valid;
-    reg free_found;
-    reg [31:0] free_slot, free_generation;
 
     reg lr_en, lw_en, rr_en, rw_en, sr_en, sw_en, mr_en, mw_en, er_en, ew_en;
     reg [LA-1:0] lr_address, lw_address;
@@ -466,10 +464,10 @@ module transition_processor #(
                         end
                     end else if (!configured) reply(INVALID_STATE, 0);
                     else case (opcode)
-                        SUBMIT: begin
+                        INSTALL: begin
                             if (phase != IDLE_PHASE) reply(INVALID_STATE, 0);
-                            else if (payload[R_TARGET+:32] >= loop_slots) reply(INVALID_ID, 0);
-                            else read_spec(payload[R_TARGET+:32], S_SUBMIT_TARGET);
+                            else if (index >= request_slots || payload[R_TARGET+:32] >= loop_slots) reply(INVALID_ID, 0);
+                            else read_spec(payload[R_TARGET+:32], S_INSTALL_TARGET);
                         end
                         CANCEL, COLLECT: begin
                             if (phase != IDLE_PHASE) reply(INVALID_STATE, 0);
@@ -605,7 +603,7 @@ module transition_processor #(
                     if (!loop_row[VALID] || loop_row[GENERATION+:32]!=payload[31:0]) reply(INVALID_ID,0);
                     else begin temporary_loop=loop_row;temporary_loop[REPEAT]=payload[32];write_loop(index,temporary_loop);reply(OK,0);end
                 end
-                S_SUBMIT_TARGET: begin
+                S_INSTALL_TARGET: begin
                     if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[R_TARGET+32+:32]) reply(INVALID_ID, 0);
                     else if (!payload[R_CLEAR] && (payload[R_OP+:2] == OP_PLAY || payload[R_OP+:2] == OP_SEEK)
                         && (payload[R_POSITION+:64] & {57'b0,quantum_mask}) != 0) reply(INVALID_FRAME, 0);
@@ -613,44 +611,32 @@ module transition_processor #(
                         target_source <= spec_row[SPEC_SOURCE+:64]; target_source_valid <= spec_row[SPEC_SOURCE_VALID];
                         if (payload[R_TICKS]) begin
                             if (payload[R_SOURCE+:32] >= loop_slots) reply(INVALID_ID, 0);
-                            else read_spec(payload[R_SOURCE+:32], S_SUBMIT_SOURCE);
-                        end else begin request_cursor <= 0; free_found <= 0; state <= S_SUBMIT_SCAN; end
+                            else read_spec(payload[R_SOURCE+:32], S_INSTALL_SOURCE);
+                        end else read_request(index, S_INSTALL_CHECK);
                     end
                 end
-                S_SUBMIT_SOURCE: begin
+                S_INSTALL_SOURCE: begin
                     if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[R_SOURCE+32+:32]) reply(INVALID_ID, 0);
                     else if (!target_source_valid || target_source != payload[R_SOURCE+:64]) reply(MISSING_SYNC, 0);
-                    else begin request_cursor <= 0; free_found <= 0; state <= S_SUBMIT_SCAN; end
+                    else read_request(index, S_INSTALL_CHECK);
                 end
-                S_SUBMIT_SCAN: begin
-                    if (request_cursor == request_slots) state <= S_SUBMIT_WRITE;
-                    else read_request(request_cursor, S_SUBMIT_CHECK);
-                end
-                S_SUBMIT_CHECK: begin
-                    if (request_row[R_VALID] && request_row[R_SEQUENCE+:64] == payload[R_SEQUENCE+:64]) reply(DUPLICATE_ID, 0);
-                    else begin
-                        if (!free_found && !request_row[R_VALID] && request_row[R_GEN+:32] != 0) begin
-                            free_found <= 1; free_slot <= request_cursor; free_generation <= request_row[R_GEN+:32];
-                        end
-                        request_cursor <= request_cursor+1'b1; state <= S_SUBMIT_SCAN;
-                    end
-                end
-                S_SUBMIT_WRITE: begin
-                    if (!free_found) reply(CAPACITY, 0);
+                S_INSTALL_CHECK: begin
+                    if (payload[R_GEN+:32] == 0 || request_row[R_GEN+:32] != payload[R_GEN+:32]) reply(INVALID_ID, 0);
+                    else if (request_row[R_VALID]) reply(INVALID_STATE, 0);
                     else begin
                         submit_frame <= payload[R_AT+:64] > frame ? payload[R_AT+:64] : frame;
-                        state <= S_SUBMIT_ROUND;
+                        state <= S_INSTALL_ROUND;
                     end
                 end
-                S_SUBMIT_ROUND: begin
+                S_INSTALL_ROUND: begin
                     submit_sum <= {1'b0,submit_frame}+{58'b0,quantum_mask};
-                    state <= S_SUBMIT_ALIGN;
+                    state <= S_INSTALL_ALIGN;
                 end
-                S_SUBMIT_ALIGN: begin
+                S_INSTALL_ALIGN: begin
                     if (submit_sum[64]) reply(INVALID_FRAME, 0);
                     else begin
                         submitted_effective <= submit_sum[63:0] & ~{57'b0,quantum_mask};
-                        list_slot <= free_slot;
+                        list_slot <= index;
                         list_target <= payload[R_TARGET+:32]; list_ticks <= payload[R_TICKS];
                         read_loop(payload[R_TARGET+:32], 0, 0, S_INSERT_HEAD);
                     end
@@ -688,7 +674,7 @@ module transition_processor #(
                         temporary_request = {{(RW-640){1'b0}},payload};
                         temporary_request[63:0] = 0;
                         temporary_request[R_VALID] = 1;
-                        temporary_request[R_GEN+:32] = free_generation;
+                        temporary_request[R_GEN+:32] = payload[R_GEN+:32];
                         temporary_request[R_TICKS] = payload[R_TICKS];
                         temporary_request[R_OP+:2] = payload[R_OP+:2];
                         temporary_request[R_RETRIGGER] = payload[R_RETRIGGER];
@@ -723,7 +709,7 @@ module transition_processor #(
                     if (!list_ticks) begin
                         absolute[PA'(list_slot)] <= 1;
                     end
-                    reply(OK, {768'b0, free_generation, free_slot});
+                    reply(OK, {768'b0, payload[R_GEN+:32], index});
                 end
                 S_UNLINK_BEGIN: begin
                     if (list_previous == NO_REQUEST) read_loop(list_target, 0, 0, S_UNLINK_HEAD);

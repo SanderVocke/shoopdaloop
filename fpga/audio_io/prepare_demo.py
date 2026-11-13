@@ -101,14 +101,19 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
     for i, value in enumerate([0, 0, 0, slots//block_chunks]):
         boot.append(packet(kind=2, opcode=0, index=i, data=value))
     boot.append(packet(kind=3))
+    service = wire.TransitionService(transition)
     events, sequence = [], 0
     for n, step in enumerate(scenario['steps']):
         for action in step['actions']:
             sequence += 1
             command = {k: action[k] for k in ('target', 'at', 'timing', 'operation')}
             command['sequence'] = sequence
-            events.append(packet(sequence=n, opcode=tp.SUBMIT, data=tp.encode_command(command)))
+            prepared = service.request(kind='static', words=wire.port_words(tp.encode_command(command),20))
+            if 'error' in prepared: raise ValueError(f"prepared action refused: {prepared['error']}")
+            transfer = prepared['transfer']
+            events.append(packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words'])))
         events.append(packet(sequence=n, kind=2))
+    service.close()
     for name, records in [('boot', boot), ('events', events)]:
         (output/f'{name}.hex').write_text(''.join(f'{r:0187x}\n' for r in records))
     config = dict(q=q, channels=channels, block_chunks=block_chunks, slots=slots, boot_words=len(boot), event_words=len(events),

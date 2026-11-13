@@ -1,7 +1,9 @@
 #![cfg(all(feature = "sim", target_os = "linux"))]
 mod support;
 use rt_audio_math::{Q824, Sample};
-use rt_fpga_adapter::{image::*, protocol};
+use rt_fpga_adapter::{
+    image::*, looping::LoopDevice, protocol, transition_service::TransitionService,
+};
 use rt_fpga_sim::{Simulator, runtime, value_words};
 use shoop_wasm_test_support::shoop_test;
 fn base() -> Image {
@@ -205,6 +207,7 @@ fn smoothing_jobs_are_bit_exact_with_production_renderer_on_short_loops_and_rest
         ];
         image.program.jobs_per_quantum = 3;
         sim.load(&image).unwrap();
+        let mut requests = TransitionService::new(&image.transition).unwrap();
         let config = Config {
             max_frames: 32,
             resource_pages: 32,
@@ -268,19 +271,20 @@ fn smoothing_jobs_are_bit_exact_with_production_renderer_on_short_loops_and_rest
                         retrigger: false,
                     }
                 };
-                sim.command(
-                    4,
-                    0,
-                    protocol::transition(Request {
-                        target: LoopId::from_parts(0, 1).unwrap(),
-                        sequence: Sequence(tick + 1),
-                        at: Frame(tick * 32),
-                        timing: Timing::At,
-                        transition,
-                    })
-                    .unwrap(),
-                )
+                let words = protocol::transition(Request {
+                    target: LoopId::from_parts(0, 1).unwrap(),
+                    sequence: Sequence(tick + 1),
+                    at: Frame(tick * 32),
+                    timing: Timing::At,
+                    transition,
+                })
                 .unwrap();
+                let reply = requests
+                    .exchange(4, 0, words, |transfer| {
+                        sim.tp(transfer.opcode, transfer.index, transfer.words)
+                    })
+                    .unwrap();
+                assert_eq!(reply.error, 0);
             }
             if tick == 3 {
                 renderer.set_smoothing(Smoothing::LinearRestart { frames: 3 });
