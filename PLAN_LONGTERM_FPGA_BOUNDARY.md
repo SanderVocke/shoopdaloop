@@ -52,6 +52,10 @@ audio autonomy or a target percentage of area reduction.
 
 ### 2. Compact actions and results
 
+Combined implementation plan for milestones 2–3:
+[PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md).
+It preserves a measured milestone 2 checkpoint before the membership cutover.
+
 Recommended next step: use the existing Rust owner to stop carrying the full
 public request/result representation through the FPGA execution machinery.
 Deliver this in two reviewable parts, without changing pending-list ownership
@@ -98,6 +102,10 @@ and 5. This step alone does not qualify ARM audio-callback performance or board
 deadlines.
 
 ### 3. ARM-managed pending membership
+
+Execution is covered by the same
+[combined plan](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md), including atomic
+publication, stale membership, slot reuse and service-pause verification.
 
 - [ ] Move list insertion, unlinking and later compaction to ARM-prepared
   membership published at defined boundaries. Compare bounded slot rosters with
