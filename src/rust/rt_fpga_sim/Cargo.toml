@@ -10,9 +10,11 @@ workspace = true
 
 [features]
 default = []
-sim = ["dep:marlin", "dep:rt_backend_testbench", "dep:serde_json"]
+sim = ["dep:serde", "dep:marlin", "dep:rt_backend_testbench", "dep:serde_json"]
 
 [dependencies]
+serde = { workspace = true, features = ["derive", "std"], optional = true }
+shoop_loops = { path = "../shoop_loops" }
 rt_fpga_adapter = { path = "../rt_fpga_adapter" }
 rt_runtime = { path = "../rt_runtime" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
@@ -34,4 +36,9 @@ required-features = ["sim"]
 [[bin]]
 name = "fpga-runtime-demo"
 path = "src/queue_main.rs"
+required-features = ["sim"]
+
+[[bin]]
+name = "fpga-mono-demo"
+path = "src/mono_main.rs"
 required-features = ["sim"]

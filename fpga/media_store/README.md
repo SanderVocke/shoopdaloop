@@ -61,7 +61,7 @@ at a time. Configuration takes priority, and commands/configuration block while 
 | 5 | Append | `cmd_view`, `cmd_count`: input words | Updated recording |
 | 6 | Read | `cmd_view`, `cmd_start`: position, `cmd_length`: loop length, `cmd_count`: output words | Sample stream |
 | 7 | Fence | None | Earlier writes acknowledged by backing memory; does not drain cleanup |
-| 9 | Maintenance grant | `cmd_count`: block ceiling, `cmd_start`: cycle window; zero selects defaults | Open a bounded cleanup window and acknowledge immediately |
+| 9 | Maintenance grant | `cmd_count`: optional block ceiling, `cmd_start`: cycle budget; zero selects defaults | Grant bounded cleanup work and acknowledge immediately |
 | 10 | Drain cleanup | None | Wait for all retired tables; offline operation |
 
 Slices copy IDs and retain references, with no sample-memory transactions. Nested
@@ -81,6 +81,18 @@ media. Fresh one-chunk allocations zero unpublished tails in legacy mode.
 Block allocations do not erase the whole block; only published samples are
 accessible. Reused allocations retain old unpublished samples. Descriptors/lengths publish at completion.
 Zero-word reads still validate the view, position and loop length.
+
+### Physical view reuse
+
+`REUSE_VIEWS=0` (default) preserves append-only physical descriptor IDs: deleting
+a view does not make that raw ID available for a new view during the same reset
+epoch. `REUSE_VIEWS=1` lets Create/Slice scan for an invalid descriptor before
+growing the high-water mark. Chunk reference counting and allocation are unchanged.
+Enable this only behind a host registry that checks logical handle generations
+and media/export/cursor ownership before accessing raw views. The Marlin mono
+runtime adapter supplies that registry and opts in, keeping writable view zero
+stable while reclaiming immutable take descriptors. Raw IDs have no hardware
+generation field and cannot by themselves detect stale use in reuse mode.
 
 ### Streams and memory
 
@@ -177,17 +189,37 @@ separate grouped-retirement path waits for dirty writes and accepted sample
 transfers while unrelated sample commands can continue. Only then is the block
 made reusable. Each consumed tail entry also releases newly empty tree pages.
 
-`maintenance_tick` opens a new grant in the standalone store. The integrated
-pipeline grants maintenance at each accepted audio run. `maintenance_enable`
-allows new work; disabling it preserves progress and lets admitted indivisible
-work finish. Defaults are 20 block releases and a 10,000-cycle window with a
-1,024-cycle transaction guard. The clock window includes arbitration/wait time;
-20 is a ceiling, not a guaranteed number of freed blocks. Shared-reference drops
-may return no storage. In-flight operations can finish after the window closes.
+`maintenance_tick` opens a new grant in the standalone store. The loop pipeline
+grants maintenance once per processing iteration, before control settlement and
+audio processing. Explicit host settlement opens that iteration's grant; its
+subsequent audio run does not replenish it. `maintenance_enable` allows new work;
+disabling it preserves progress and lets admitted indivisible work finish.
+
+The default is 5,000 active cleanup cycles, equivalent to 50 microseconds at
+100 MHz, with a 1,024-cycle transaction guard and no block-count ceiling
+(`RECLAIM_BLOCKS=0`). This is 7.5% of a 32-frame quantum at 48 kHz. The counter
+charges accepted metadata requests, ownership locks, queue/page cleanup and
+sample retirement, including their memory-response waits. Idle time and waiting
+for foreground work to release a resource do not consume cleanup cycles. A new
+grant replaces the previous allowance; unused cycles do not accumulate.
+
+New transactions stop when only the guard remains; an accepted transaction or
+atomic reference/free-stack update finishes before yielding. A positive
+`RECLAIM_BLOCKS` optionally imposes an additional profiling/defensive ceiling.
+Shared-reference drops may return no storage. Simulation defaults derive the
+50-microsecond allowance from `--fabric-hz`; hardware integrating a different
+clock must set `RECLAIM_CYCLES` accordingly.
 
 Foreground commands win admission at safe boundaries. An already accepted
 metadata operation, including one bounded-depth tail trim, can delay foreground
-service. The configured guard must cover the measured non-preemptible tail for
+service. A pending processing iteration also suppresses new collector admission,
+before the run handshake, so an early audio completion does not force the next
+iteration to wait for the unused allowance. The standalone audio pipeline gives
+its pending run the same priority. The allowance is a ceiling, not a minimum
+iteration duration. The continuous wrapper admits a new iteration only when its
+input quantum and an output bank are available; offline back-to-back iterations
+can run sooner and each receives a fresh, non-accumulating allowance.
+The configured guard must cover the measured non-preemptible tail for
 the selected geometry and memory service. Arbitrarily stalled DDR has no finite
 latency bound; these defaults do not establish physical audio deadlines.
 
@@ -272,7 +304,8 @@ and new captures simultaneously.
 The standalone media tests use per-node playback/capture state.
 `fpga/loop_pipeline` owns fatal processing policy: any required media error latches
 a fault, suppresses output and requires reset/reload. Clock advancement follows
-successful jobs. There is no host preparation pause or external executor.
+successful jobs. The integrated coordinator also permits host media operations at its explicit
+pre-audio settlement pause; there is no external executor.
 
 ## Verification
 

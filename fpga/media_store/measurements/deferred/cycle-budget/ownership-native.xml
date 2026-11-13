@@ -1,0 +1,16 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="20261110" />
+    <testcase name="detachment_and_maintenance_budgets" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="25" time="6.4599220752716064" sim_time_ns="190680.001" ratio_time="29517.384076491802" />
+    <testcase name="clear_cancels_an_outstanding_metadata_hint" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="63" time="1.3262255191802979" sim_time_ns="34310.00100000002" ratio_time="25870.412312082528" />
+    <testcase name="queue_full_preserves_the_live_recording" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="102" time="2.351346731185913" sim_time_ns="66560.00100000002" ratio_time="28307.18248279366" />
+    <testcase name="retained_ranges_and_repeated_view_reuse" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="127" time="5.622617959976196" sim_time_ns="131290.001" ratio_time="23350.3328759964" />
+    <testcase name="reset_discards_active_cleanup_and_old_responses" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="166" time="1.5070576667785645" sim_time_ns="30270.00099999999" ratio_time="20085.49617394809" />
+    <testcase name="invalid_retired_block_faults_before_reuse" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="190" time="0.8225476741790771" sim_time_ns="19190.00099999999" ratio_time="23329.95594346806" />
+    <testcase name="status_reads_do_not_deadlock_atomic_cleanup" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="212" time="1.2090973854064941" sim_time_ns="25490.00099999999" ratio_time="21081.842792531013" />
+    <testcase name="pause_at_ownership_and_checkpoint_boundaries" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="231" time="13.550233364105225" sim_time_ns="330630.00100000005" ratio_time="24400.31784809286" />
+    <testcase name="offline_drain_survives_budget_counter_expiration" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="263" time="2.289780616760254" sim_time_ns="61170.00099999993" ratio_time="26714.350078894302" />
+    <testcase name="cycle_budget_releases_more_than_twenty_and_yields_safely" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="297" time="17.251506567001343" sim_time_ns="486400.00100000005" ratio_time="28194.639065922816" />
+    <testcase name="foreground_wait_preserves_the_cleanup_cycle_budget" classname="test_deferred_media" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_media.py" lineno="327" time="4.049465179443359" sim_time_ns="105950.00099999993" ratio_time="26163.94914020815" />
+  </testsuite>
+</testsuites>

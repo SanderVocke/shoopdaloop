@@ -170,10 +170,23 @@ jobs:
           python fpga/chunk_memory/simulate.py --config small --retire-chunks 32 --memory-model ${{ matrix.model }} --output work/reclamation/retirement
       - name: Check exhausted pools and transfer publication
         if: matrix.model == 'instant'
-        run: python fpga/media_store/simulate.py --config wide --block-chunks 32 --metadata-pages 3 --deferred-capacity --output work/reclamation/capacity
+        run: |
+          python fpga/media_store/simulate.py --config wide --block-chunks 32 --metadata-pages 3 --deferred-capacity --output work/reclamation/capacity
+          python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --metadata-pages 7 --reuse-views --deferred-reuse --output work/reclamation/reuse
       - name: Check large arena and continued recording
         if: matrix.model == 'instant'
         run: python fpga/media_store/simulate.py --config retirement --block-chunks 32 --deferred-stress --stress-seconds 1 --metadata-lines 128 --axi-data-width 64 --output work/reclamation/stress
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.model == 'instant'
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.model == 'instant'
+        with:
+          shared-key: production-fpga
+      - name: Check queue-driven Marlin runtime integration
+        if: matrix.model == 'instant'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -188,7 +201,7 @@ jobs:
   audio-synthesis:
     name: Audio I/O lint and synthesis
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - name: Install RTL tools

@@ -125,7 +125,7 @@ async def campaign(dut,loops,channels):
         report['metadata_pages_before_cleanup']=await d.configure(6,11)
         progress=[]
         for iteration in range(40):
-            await d.grant_maintenance(blocks=20,cycles=10000)
+            await d.grant_maintenance()
             for view in range(count):
                 result=await d.command(dict(kind='append',view=view,samples=[view+1]*32),
                     stalls=False,drain=False,observe=False)

@@ -19,7 +19,7 @@ module loop_pipeline_tb #(
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
     parameter integer RETIRED_TABLES = 256,
-    parameter integer RECLAIM_BLOCKS = 20, parameter integer RECLAIM_CYCLES = 10000,
+    parameter integer RECLAIM_BLOCKS = 0, parameter integer RECLAIM_CYCLES = 5000,
     parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,

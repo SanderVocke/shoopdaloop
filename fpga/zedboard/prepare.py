@@ -97,7 +97,7 @@ def prepare(output, loops=64, tracks=8, q=32, record_quanta=64, mixed=True, buil
                   STATE_DEPTH=max(2, len(image['initial_state']['memory'])), JOB_DEPTH=max(2, image['program']['jobs_per_quantum']),
                   BUFFERS=max(2, image['buffers']), MAX_FRAMES=q, CHUNK_FRAMES=q,
                   INPUT_PORTS=1, OUTPUT_PORTS=tracks, VIEWS=views, SLOTS=slots, BLOCK_CHUNKS=block_chunks,
-                  RETIRED_TABLES=256, RECLAIM_BLOCKS=20, RECLAIM_CYCLES=10000, RECLAIM_GUARD=1024,
+                  RETIRED_TABLES=256, RECLAIM_BLOCKS=0, RECLAIM_CYCLES=5000, RECLAIM_GUARD=1024,
                   AXI_DATA_WIDTH=64, EXTERNAL_IO=1, INSTRUCTION_COUNT=len(image['program']['instructions']),
                   STATE_COUNT=len(image['initial_state']['memory']), BUFFER_COUNT=image['buffers'],
                   JOB_BUDGET=image['program']['jobs_per_quantum'], BOOT_WORDS=len(boot), EVENT_WORDS=len(events))

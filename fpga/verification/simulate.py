@@ -110,7 +110,7 @@ def main():
             'LP_MEDIA_CAPACITIES':','.join(map(str,depths[10:])),'UNIFY_STALLS':str(int(args.stalls)),
             'LP_OUTPUT':str(output)})
     report=ET.parse(result).getroot()
-    if any(list(report.iter(key)) for key in ('failure','error','skipped')) or len(list(report.iter('testcase')))!=(2 if args.faults else 1):
+    if any(list(report.iter(key)) for key in ('failure','error','skipped')) or len(list(report.iter('testcase')))!=(3 if args.faults else 2):
         raise SystemExit(f'production/RTL comparison failed: {output}')
     print(f'{len(scenarios)} common production/RTL scenarios passed: {output}')
 

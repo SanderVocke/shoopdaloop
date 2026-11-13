@@ -185,7 +185,7 @@ Depends on Stages 3 and 4.
 - [x] Update `fpga/media_store/rtl/media_audio_pipeline.sv` and `fpga/loop_pipeline/rtl/loop_pipeline.sv` so foreground completion does not require an empty cleanup queue.
 - [x] Expose separate foreground-busy, cleanup-pending, cleanup-active and memory-quiescent observations.
 - [x] Integrate maintenance grants into continuous audio scheduling and the relevant audio/AXI wrappers.
-- [x] Add configurable per-iteration block and cycle budgets. Use 20 block releases as an initial configurable ceiling, subject to timing measurements.
+- [x] Add a configurable per-iteration cycle budget. Following the requested refinement, default to 50 microseconds (5,000 cycles at 100 MHz), with no block-count ceiling; retain an optional block ceiling for profiling.
 - [x] Charge all queue, metadata, retirement and page-reclamation work to the maintenance budget.
 - [x] Give foreground requests priority at safe transaction boundaries while measuring whether sufficient cleanup progress remains available.
 - [x] Reserve a guard interval for the declared worst-case completion time of an already accepted, non-preemptible memory transaction.
@@ -234,7 +234,7 @@ Depends on all previous stages.
 - [x] Record foreground command latency, whole-quantum latency, maintenance cycles, reclamation throughput, DDR traffic and resource high-water marks.
 - [x] Run fault/reset recovery with queued and active cleanup, including late responses.
 - [x] Use focused tests during iteration, then run the applicable broader native regression, formatting, warning-denying builds, RTL lint and synthesis gates before publication. Follow the current repository test instructions.
-- [x] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py` (not applicable: no Rust tests changed).
+- [x] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py` (passes after integrating the target branch's new Marlin tests).
 - [x] Report resource/timing changes and any unqualified hardware-memory assumptions.
 - [x] Push the feature branch and create a PR with implementation and validation evidence.
 - [ ] Monitor CI and automated review; address failures and review feedback until resolved.
@@ -277,4 +277,9 @@ Implementation refinements:
 
 - DDR records checkpoint root/count; the active block, release state and bounded context stay on chip. A stored epoch is redundant under the existing destructive coordinated arena reset: roots, queue indices, collector and endpoints reset together. This does not add reset-time collector recovery.
 - Root exchange reuses the resolver's existing reset/cancellation path. Metadata bridge generation tags reject late results; a second cancellation mechanism inside the resolver was unnecessary.
-- Tail trim checkpoints after one entry, including bounded-depth ancestor unlink/free work. It never sweeps the rest of a recording in one admitted operation. Automatic windows count all elapsed clocks and allow accepted indivisible tails to finish; the guard still needs qualification against the actual memory service.
+- Tail trim checkpoints after one entry, including bounded-depth ancestor unlink/free work. It never sweeps the rest of a recording in one admitted operation. The cycle budget charges active cleanup, including accepted memory-response waits, while preserving its allowance during foreground resource arbitration. Accepted indivisible tails finish; the guard still needs qualification against the actual memory service.
+- The requested scheduling refinement makes time the primary limit: 5,000 cycles per iteration at 100 MHz, a 1,024-cycle guard, and no default block-count ceiling. The loop pipeline opens one allowance before control settlement, without refreshing it again at audio admission. The historical measurements above used the earlier 20-block/10,000-elapsed-cycle policy; current-policy evidence is recorded separately.
+- A waiting processing iteration suppresses new collector transactions before its run handshake. Early job completion can therefore start the next ready iteration after any accepted transaction/atomic tail, without waiting for unused cleanup allowance. The standalone audio admission follows the same rule. Back-to-back runs replace the allowance; they do not accumulate it.
+- Integration with the advanced target preserves opt-in reuse of invalid view IDs. Slice preflight checks the selected destination's metadata capacity before publishing references. The Marlin simulator waits for admission across temporary collector locks, includes the collector RTL and reserves its queue storage.
+- Current-policy evidence in `measurements/deferred/cycle-budget/` records 32 focused FPGA test cases and 16 passing Marlin tests. Early empty runs complete in 33--74 cycles and the tested admissions take 1--52 cycles with cleanup allowance remaining. The repeated 30-second campaigns recover every issued ID/page and keep replacement captures exact; 355 blocks are freed during 40 recording grants. The new full native workspace run remains in progress; historical native failures above remain recorded.
+- Remote FPGA/native-memory, DRAMsim3, reclamation and hosted-processor checks passed on `47d9f227`. The synthesis job exhausted its 25-minute job limit after the first generic audio variant took about 15 minutes; its limit is now 90 minutes to retain all three variants, mapping, demo and media checks. No synthesis assertion or test deadline was relaxed.

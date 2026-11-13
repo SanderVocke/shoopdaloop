@@ -1,0 +1,125 @@
+{
+  "target_integrated": "821ba859bc7ba52e67afdd09cb312628830c0174",
+  "policy": {
+    "active_cycles": 5000,
+    "fabric_hz": 100000000,
+    "microseconds": 50,
+    "guard_cycles": 1024,
+    "block_ceiling": 0,
+    "charge_memory_response_waits": true,
+    "charge_foreground_arbitration": false,
+    "pending_iteration_preempts": true,
+    "host_settle_and_audio_share_grant": true,
+    "accepted_transaction_tail_may_overrun": true
+  },
+  "gates": [
+    {
+      "name": "ownership-native",
+      "result": "passed",
+      "testcases": 11,
+      "tests": [
+        "detachment_and_maintenance_budgets",
+        "clear_cancels_an_outstanding_metadata_hint",
+        "queue_full_preserves_the_live_recording",
+        "retained_ranges_and_repeated_view_reuse",
+        "reset_discards_active_cleanup_and_old_responses",
+        "invalid_retired_block_faults_before_reuse",
+        "status_reads_do_not_deadlock_atomic_cleanup",
+        "pause_at_ownership_and_checkpoint_boundaries",
+        "offline_drain_survives_budget_counter_expiration",
+        "cycle_budget_releases_more_than_twenty_and_yields_safely",
+        "foreground_wait_preserves_the_cleanup_cycle_budget"
+      ]
+    },
+    {
+      "name": "ownership-dram",
+      "result": "passed",
+      "testcases": 11,
+      "tests": [
+        "detachment_and_maintenance_budgets",
+        "clear_cancels_an_outstanding_metadata_hint",
+        "queue_full_preserves_the_live_recording",
+        "retained_ranges_and_repeated_view_reuse",
+        "reset_discards_active_cleanup_and_old_responses",
+        "invalid_retired_block_faults_before_reuse",
+        "status_reads_do_not_deadlock_atomic_cleanup",
+        "pause_at_ownership_and_checkpoint_boundaries",
+        "offline_drain_survives_budget_counter_expiration",
+        "cycle_budget_releases_more_than_twenty_and_yields_safely",
+        "foreground_wait_preserves_the_cleanup_cycle_budget"
+      ]
+    },
+    {
+      "name": "capacity",
+      "result": "passed",
+      "testcases": 3,
+      "tests": [
+        "full_pools_and_pause_after_reference_release",
+        "failed_detachment_preserves_ownership_until_reset",
+        "published_retirement_fault_requires_a_coordinated_reset"
+      ]
+    },
+    {
+      "name": "view-reuse",
+      "result": "passed",
+      "testcases": 2,
+      "tests": [
+        "removed_view_reuse_keeps_the_retired_root_independent",
+        "full_view_space_slice_checks_all_pages_before_copying"
+      ]
+    },
+    {
+      "name": "thirty-second-takes",
+      "result": "passed",
+      "testcases": 2,
+      "tests": [
+        "thirty_second_mono_takes",
+        "thirty_second_stereo_takes"
+      ]
+    },
+    {
+      "name": "early-iteration-handoff",
+      "result": "passed",
+      "testcases": 2,
+      "tests": [
+        "production_scenarios",
+        "early_iterations_preempt_cleanup_without_waiting_for_its_allowance"
+      ]
+    },
+    {
+      "name": "isolated-twenty",
+      "result": "passed",
+      "testcases": 1,
+      "tests": [
+        "isolated_twenty_releases"
+      ]
+    }
+  ],
+  "marlin": {
+    "result": "passed",
+    "tests": 16,
+    "log_sha256": "c2ef4675a35ede6eb89cf5d618942d5c892d52284b73242eb55be8be9dff48fc"
+  },
+  "warning_denying_workspace_build": {
+    "result": "passed",
+    "log_sha256": "31e2304d956404b4d282a41e6d61017768d3b7603571b0c721f76116335fd1af"
+  },
+  "source_sha256": {
+    "fpga/media_store/rtl/media_reclaimer.sv": "fc911dd8671d240f5f1512dbfdd6f8e3359b6705ac020fc6a9654f091be65161",
+    "fpga/media_store/rtl/media_store.sv": "c3c0983e4874fb2fa9fa03fb801c3a52eea245ed543560a963e7bd37f6957b8d",
+    "fpga/media_store/rtl/media_prefetch_resolver.sv": "a650a2fb6f1cf379190483c5ad9af558228fa77fd2e565d7f49fb7027e89d2ba",
+    "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+    "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+    "fpga/media_store/rtl/media_metadata.sv": "4eef2be8fb7811c935d99271e5a2bf72db4291e65f4adefdda185f4319c3a79e",
+    "fpga/media_store/rtl/media_audio_pipeline.sv": "7dd87503a6e9f97e39794d9b58887348a7a742c397455f4f7586e2718de43e7d",
+    "fpga/media_store/rtl/metadata_cache.sv": "3d86dc29a1970f201dfd967d6856329d0ec91bbcf94ba4e5122b9b57c7d5cab4",
+    "fpga/loop_pipeline/rtl/loop_pipeline.sv": "7d17881f233c3e5682a455e6f4eb20b49afe8a8f4d0db977d3050bf2fe5a5254",
+    "src/rust/rt_fpga_sim/rtl/marlin_pipeline.sv": "a413abf9a6effbed5f11d4a06fcd46b19a700c5a51a957096349cb2e389e7937",
+    "src/rust/rt_fpga_sim/src/simulator.rs": "11c1ba7863d21a8c9185444430805914f7a6289ffcb143bdf6455227614c0fd3"
+  },
+  "limitations": [
+    "Isolated profiling uses an explicit 20-block/100000-cycle grant, not the automatic default.",
+    "Memory service is modeled; an arbitrarily stalled accepted transaction has no finite latency bound.",
+    "Prior full-workspace native failures remain recorded separately; a new run is in progress."
+  ]
+}

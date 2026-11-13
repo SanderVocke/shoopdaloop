@@ -310,7 +310,8 @@ class Driver(MemoryHost):
         assert after['error_code']==0
         await self.tick()
 
-    async def grant_maintenance(self,blocks=20,cycles=10000):
+    async def grant_maintenance(self,blocks=0,cycles=None):
+        if cycles is None:cycles=int(os.environ.get('AXI_RECLAIM_CYCLES','5000'))
         self.set(cmd_valid=1,cmd_opcode=9,cmd_view=0,cmd_start=cycles,cmd_length=0,cmd_count=blocks)
         for _ in range(100000):
             before,after=await self.tick()

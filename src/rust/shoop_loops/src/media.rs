@@ -48,6 +48,24 @@ key!(MediaId);
 key!(ExportId);
 key!(PinId);
 
+/// Backend-local identities using the same namespace as native ledger handles.
+pub struct IdentityScope(u32);
+impl IdentityScope {
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self(
+            NEXT_SCOPE
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+                .map_err(|_| Error::Exhausted)?,
+        ))
+    }
+    pub fn media(&self, slot: u32, generation: u32) -> Result<MediaId, Error> {
+        MediaId::from_parts([self.0, slot, generation])
+    }
+    pub fn export(&self, slot: u32, generation: u32) -> Result<ExportId, Error> {
+        ExportId::from_parts([self.0, slot, generation])
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Description {
     pub owner: LoopId,
@@ -184,9 +202,7 @@ impl Ledger {
         {
             return Err(Error::Capacity);
         }
-        let scope = NEXT_SCOPE
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-            .map_err(|_| Error::Exhausted)?;
+        let scope = IdentityScope::new()?.0;
         let mut ledger = Self {
             scope,
             media: vec![

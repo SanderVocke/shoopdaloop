@@ -117,6 +117,21 @@ impl ResourceCommand {
             reply: None,
         }
     }
+    /// Preserve the owning read envelope while another backend supplies its bytes.
+    pub fn external_read(
+        &mut self,
+        read: impl FnOnce(&mut Cursor, &mut [u8]) -> Result<(usize, bool), Error>,
+    ) -> Result<(), Error> {
+        let Request::Read { cursor, bytes } = &mut self.request else {
+            return Err(Error::InvalidParameter);
+        };
+        let (written, eof) = read(cursor, bytes)?;
+        if written > bytes.len() {
+            return Err(Error::InvalidShape);
+        }
+        self.reply = Some(Reply::Read { written, eof });
+        Ok(())
+    }
     pub fn reply(&self) -> Option<Reply> {
         self.reply
     }

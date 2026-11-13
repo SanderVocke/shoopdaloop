@@ -2,11 +2,68 @@
 
 These measurements cover the retired-root FIFO, incremental block reference
 release and background sample retirement. The tested RTL sources are identified
-by hashes in the long-campaign reports. The implementation is based on
+by hashes in the long-campaign reports. The original implementation is based on
 `bc833fc310817648c9e9c1d4c7ae3d6d21ac24c6`. The full timing benchmark uses
 milestone `c2f63163`; final focused/long gates additionally cover the offline
 drain expiration fix. No routed FPGA timing or physical DDR deadline is
-established here.
+established here. The sections after the current-policy evidence describe the
+historical 20-block/10,000-elapsed-cycle policy and retain its original reports.
+
+## Current 50-microsecond policy and iteration handoff
+
+`cycle-budget/` records the requested change to 5,000 active cleanup cycles at
+100 MHz, a 1,024-cycle guard, and no block-count ceiling. Accepted DDR waits count
+against the allowance; waiting for foreground resource arbitration does not.
+An accepted indivisible transaction can finish after the allowance closes.
+This limits admitted cleanup work under the stated service assumptions, rather
+than establishing a hard deadline against arbitrarily stalled DDR.
+
+A pending iteration suppresses new collector admission before its run
+handshake. The allowance therefore imposes no minimum processing duration.
+Explicit host settlement and its subsequent audio run share one grant, and the
+next iteration replaces unused allowance instead of accumulating it. In the
+fixed-seven-cycle AXI64 regression, empty processing completes in 33--74 cycles;
+tested run/settlement admissions take 1--52 cycles with cleanup pending and
+allowance still available. These are scheduling probes, not a complete audio
+workload benchmark.
+
+The focused gates pass 11 native and 11 single-line-cache DRAMsim3 ownership
+tests, three capacity/fault tests, two reused-view tests, two long ownership
+campaigns, two full-pipeline tests (including the early-run handoff), and one
+isolated timing test. All 16 Marlin runtime tests also pass after integrating
+target `821ba859`, including its opt-in invalid-view-ID reuse. The selected
+destination's page capacity is checked before slice reference publication.
+
+The new 30-second mono/stereo campaigns still retire 45,024 references without
+copying their ID lists. Forty grants alongside continued recording free 355
+blocks; 315 are free while replacement takes remain live. Final drain recovers
+all 45,048 issued IDs exactly once (eight capacity blocks were never issued)
+and all metadata pages. Each replacement channel reads back its 1,280 frames
+exactly. Charged maintenance through old-recording drain is 5,112,309 cycles.
+
+An isolated profiling override of 20 releases and 100,000 cycles measures the
+trade-off independently of the automatic budget:
+
+| Retired tables / reference owners | Metadata cache | Release completion | Including explicit fence |
+| --- | --- | ---: | ---: |
+| One 20-entry table / one owner | Warm | 20.94 us | 26.55 us |
+| One 20-entry table / one owner | Cold | 24.25 us | 29.86 us |
+| Twenty one-entry tables / one owner | Warm | 29.51 us | 72.72 us |
+| Twenty one-entry tables / one owner | Cold | 65.71 us | 108.92 us |
+| One 20-entry table / two owners | Cold | 20.27 us | 25.08 us |
+
+The last row frees no blocks because another owner remains. These DRAMsim3
+AXI64 measurements include queue/page reclamation, use 128 table-cache lines,
+and have no competing audio or dirty sample payloads. Explicit fencing writes
+back cached metadata and is measured separately; normal iterations do not
+force this fence. Under the default policy a costly batch spans grants instead
+of forcing all 20 releases into one iteration. `reclaim-timing.json` identifies
+the profiling override, memory profile, geometry and sources.
+
+Reproduce the new admission probe with
+`python fpga/verification/simulate.py --block-chunks 32 --axi-data-width 64 --memory-model fixed --memory-cycles 7`.
+Reproduce isolated timing with
+`python fpga/media_store/simulate.py --config retirement --block-chunks 32 --metadata-lines 128 --axi-data-width 64 --memory-model dramsim3 --reclaim-timing`.
 
 ## Foreground detachment
 

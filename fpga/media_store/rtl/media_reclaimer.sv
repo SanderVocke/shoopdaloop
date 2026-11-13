@@ -22,9 +22,13 @@ module media_reclaimer #(
     } phase_t;
     phase_t phase;
     reg [31:0] cycles_left, blocks_left, reference_count, free_index;
-    wire permitted = enable && (drain || (cycles_left > 32'(GUARD_CYCLES) && blocks_left != 0));
+    reg block_limited;
+    wire permitted = enable && (drain || (cycles_left > 32'(GUARD_CYCLES) && (!block_limited || blocks_left != 0)));
     wire transaction_pending = phase == LOOKUP_WAIT || phase == REFERENCE_WAIT || phase == WRITE_WAIT
         || phase == RETIRE_WAIT || phase == ZERO_WAIT || phase == PUSH_WAIT || phase == TRIM_WAIT;
+    wire maintenance_work = !reset && !fault && (lock_held || transaction_pending
+        || (phase == IDLE && pending_tables != 0 && permitted)
+        || (request_valid && request_ready) || (lock_request && lock_grant) || (retire_valid && retire_ready));
     assign lock_request = (phase == ACQUIRE_REFERENCE || phase == ACQUIRE_FREE) && permitted;
     assign retire_valid = phase == RETIRE && permitted && !reset && !fault;
     assign active = phase != IDLE && phase != FAULT;
@@ -43,14 +47,17 @@ module media_reclaimer #(
     end
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; cycles_left <= 0; blocks_left <= 0; reference_count <= 0; free_index <= 0;
+            phase <= IDLE; cycles_left <= 0; blocks_left <= 0; block_limited <= 0; reference_count <= 0; free_index <= 0;
             active_block <= 0; lock_held <= 0; freed <= 0; released <= 0; fault <= 0;
             released_blocks <= 0; freed_blocks <= 0; maintenance_cycles <= 0;
         end else begin
             freed <= 0;
-            if (cycles_left != 0) cycles_left <= cycles_left-1;
-            if (grant) begin cycles_left <= grant_cycles; blocks_left <= grant_blocks; end
-            if (active && (drain || cycles_left != 0 || lock_held || transaction_pending)) maintenance_cycles <= maintenance_cycles+1;
+            if (maintenance_work && cycles_left != 0) cycles_left <= cycles_left-1;
+            if (grant) begin
+                cycles_left <= grant_cycles == 0 ? 0 : grant_cycles-32'(maintenance_work);
+                blocks_left <= grant_blocks; block_limited <= grant_blocks != 0;
+            end
+            if (maintenance_work) maintenance_cycles <= maintenance_cycles+1;
             case (phase)
                 IDLE: if (pending_tables != 0 && permitted) phase <= LOOKUP;
                 LOOKUP: if (request_valid && request_ready) phase <= LOOKUP_WAIT;

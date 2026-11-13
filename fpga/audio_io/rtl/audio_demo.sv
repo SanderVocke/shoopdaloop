@@ -7,7 +7,7 @@ module audio_demo #(
     parameter integer INSTRUCTIONS = 64, STATES = 32, BUFFERS = 32, JOB_BUDGET = 80,
     parameter integer RESET_CYCLES = 64, WATCHDOG_CYCLES = 1000000,
     parameter integer VIEWS = 32, SLOTS = 1024, BLOCK_CHUNKS = 32,
-    parameter integer RETIRED_TABLES = 256, RECLAIM_BLOCKS = 20, RECLAIM_CYCLES = 10000, RECLAIM_GUARD = 1024,
+    parameter integer RETIRED_TABLES = 256, RECLAIM_BLOCKS = 0, RECLAIM_CYCLES = 5000, RECLAIM_GUARD = 1024,
     parameter integer TABLE_LINES = 8, REF_LINES = 4, STACK_LINES = 2,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15+8*VIEWS+16,
     parameter [31:0] PHYSICAL_BASE = 32'h01000000,

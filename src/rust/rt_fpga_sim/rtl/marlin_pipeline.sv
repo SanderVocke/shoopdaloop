@@ -18,6 +18,9 @@ parameter integer EXTERNAL_IO = 0,
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 1,
+    parameter integer RETIRED_TABLES = 256,
+    parameter integer RECLAIM_BLOCKS = 0, parameter integer RECLAIM_CYCLES = 5000,
+    parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
@@ -187,15 +190,19 @@ parameter integer EXTERNAL_IO = 0,
     wire memory_write = core.memory_write;
     wire memory_ready = core.memory_ready;
     wire memory_valid = core.memory_valid;
-    loop_pipeline_axi #(.EXTERNAL_IO(EXTERNAL_IO),.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
+    wire maintenance_enable = 1'b1;
+    wire [31:0] reclaim_pending, reclaim_high_water, reclaim_block, reclaim_pages_used, reclaim_pages_available;
+    wire [63:0] reclaim_references, reclaim_blocks, reclaim_freed, reclaim_cycles, reclaim_pages_freed, reclaim_capacity_failures;
+    wire reclaim_active, reclaim_released, reclaim_quiescent;
+    loop_pipeline_axi #(.REUSE_VIEWS(1), .EXTERNAL_IO(EXTERNAL_IO),.LOOP_DEPTH(LOOP_DEPTH),.REQUEST_DEPTH(REQUEST_DEPTH),.EVENT_DEPTH(EVENT_DEPTH),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),.BUFFERS(BUFFERS),.INPUT_PORTS(INPUT_PORTS),.OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS),.SLOTS(SLOTS),.CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES),
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES),.READ_BUFFERS(READ_BUFFERS),.WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES),
         .AXI_DATA_WIDTH(AXI_DATA_WIDTH),.PHYSICAL_BASE(PHYSICAL_BASE)) core (.*);
     assign debug_frame=core.core.timing.frame;
     assign debug_shared_read=core.core.loop_read_valid && core.core.loop_read_ready;
-    localparam integer STORAGE_WORDS = ((SLOTS*CHUNK_FRAMES+15)/16)*16 + 2*((SLOTS/BLOCK_CHUNKS+15)/16)*16 + TABLE_PAGES*16;
+    localparam integer STORAGE_WORDS = ((SLOTS*CHUNK_FRAMES+15)/16)*16 + 2*((SLOTS/BLOCK_CHUNKS+15)/16)*16 + TABLE_PAGES*16 + RETIRED_TABLES*16;
     axi_direct_memory #(.DATA_WIDTH(AXI_DATA_WIDTH),.WORDS(32'(STORAGE_WORDS)),.BASE(PHYSICAL_BASE)) sim_memory (.*);
 endmodule
 

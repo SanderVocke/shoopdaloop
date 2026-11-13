@@ -20,8 +20,8 @@ def add_options(parser, *, legacy=False):
     parser.add_argument("--axi-data-width", type=int, choices=(32, 64), default=32)
     parser.add_argument('--block-chunks',type=int,default=1,help='chunks per allocation block (power of two; default legacy mode)')
     parser.add_argument('--retired-tables',type=int,default=256)
-    parser.add_argument('--reclaim-blocks',type=int,default=20)
-    parser.add_argument('--reclaim-cycles',type=int,default=10000)
+    parser.add_argument('--reclaim-blocks',type=int,default=0,help='optional block ceiling; zero uses only the cycle budget')
+    parser.add_argument('--reclaim-cycles',type=int,help='active cleanup cycles per quantum; default is 50 us at --fabric-hz')
     parser.add_argument('--reclaim-guard',type=int,default=1024)
     parser.add_argument('--metadata-lines',type=int,default=8)
     parser.add_argument('--metadata-pages',type=int)
@@ -31,8 +31,9 @@ def add_options(parser, *, legacy=False):
 
 
 def environment(args):
-    if min(args.retired_tables,args.reclaim_blocks,args.reclaim_cycles)<1 or args.reclaim_guard<0:
-        raise ValueError("cleanup capacities/budgets must be positive and guard nonnegative")
+    if args.reclaim_cycles is None:args.reclaim_cycles=args.fabric_hz//20000
+    if min(args.retired_tables,args.reclaim_cycles)<1 or min(args.reclaim_blocks,args.reclaim_guard)<0:
+        raise ValueError("queue/cycle capacities must be positive; block ceiling and guard must be nonnegative")
     if args.reclaim_cycles<=args.reclaim_guard:
         raise ValueError("cleanup cycle budget must exceed the transaction guard")
     if args.block_chunks < 1 or args.block_chunks > 65536 or args.block_chunks & (args.block_chunks-1):
@@ -81,7 +82,7 @@ def metadata():
     library = Path(os.environ.get("AXI_DRAM_LIBRARY", "missing"))
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
     mode = os.environ.get('AXI_MEMORY_MODEL','instant')
-    result = dict(retired_tables=int(os.environ.get("AXI_RETIRED_TABLES","256")),reclaim_blocks=int(os.environ.get("AXI_RECLAIM_BLOCKS","20")),reclaim_cycles=int(os.environ.get("AXI_RECLAIM_CYCLES","10000")),reclaim_guard=int(os.environ.get("AXI_RECLAIM_GUARD","1024")),block_chunks=int(os.environ.get("AXI_BLOCK_CHUNKS","1")),metadata_lines=int(os.environ.get('AXI_METADATA_LINES','8')),
+    result = dict(retired_tables=int(os.environ.get("AXI_RETIRED_TABLES","256")),reclaim_blocks=int(os.environ.get("AXI_RECLAIM_BLOCKS","0")),reclaim_cycles=int(os.environ.get("AXI_RECLAIM_CYCLES","5000")),reclaim_guard=int(os.environ.get("AXI_RECLAIM_GUARD","1024")),block_chunks=int(os.environ.get("AXI_BLOCK_CHUNKS","1")),metadata_lines=int(os.environ.get('AXI_METADATA_LINES','8')),
                 reference_lines=int(os.environ.get('AXI_REFERENCE_LINES','4')),stack_lines=int(os.environ.get('AXI_STACK_LINES','2')),
                 metadata_pages=os.environ.get('AXI_METADATA_PAGES') or None,model=mode, backend='systemverilog' if mode == 'instant' else 'cocotb',
                 purpose='realistic' if mode == 'dramsim3' else 'functional' if mode == 'instant' else 'diagnostic',

@@ -292,3 +292,75 @@ async def offline_drain_survives_budget_counter_expiration(dut):
         assert int(dut.reclaim_pending.value)==1,'offline drain left an unlimited automatic grant'
         await d.drain_reclamation()
     finally:d.close()
+
+
+@cocotb.test()
+async def cycle_budget_releases_more_than_twenty_and_yields_safely(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        for short in (False,True):
+            await empty(d)
+            await complete(d,'append',view=0,samples=[1901]*(25*bf))
+            await complete(d,'clear',view=0)
+            guard=int(os.environ['AXI_RECLAIM_GUARD'])
+            budget=guard+600 if short else 100000
+            start=int(dut.reclaim_cycles.value)
+            await d.grant_maintenance(cycles=budget)
+            for _ in range(100000):
+                await d.tick()
+                if not int(dut.reclaim_pending.value) and not int(dut.reclaim_active.value):break
+                if int(dut.core.reclaimer.cycles_left.value)<=guard and int(dut.reclaim_quiescent.value):break
+            else:raise AssertionError('cycle budget did not yield')
+            assert int(dut.reclaim_cycles.value)-start<=budget
+            released=int(dut.reclaim_blocks.value)
+            if short:
+                assert 0<released<25
+                for _ in range(100):await d.tick()
+                assert int(dut.reclaim_blocks.value)==released
+                await d.snapshot()
+                await d.drain_reclamation()
+            else:assert released==25,'cycle-only grant retained a twenty-block ceiling'
+            assert await d.configure(0,2)==25
+    finally:d.close()
+
+
+@cocotb.test()
+async def foreground_wait_preserves_the_cleanup_cycle_budget(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        await empty(d)
+        await complete(d,'append',view=0,samples=[1901]*(2*bf))
+        await complete(d,'clear',view=0)
+        await complete(d,'create')
+        await complete(d,'append',view=1,samples=[7777]*bf)
+        d.set(cmd_valid=1,cmd_opcode=6,cmd_view=1,cmd_start=0,cmd_length=bf,cmd_count=bf,read_ready=0)
+        for _ in range(10000):
+            before,after=await d.tick()
+            if before['cmd_ready']:break
+        else:raise AssertionError('foreground read admission timeout')
+        d.set(cmd_valid=0)
+        for _ in range(10000):
+            _,after=await d.tick()
+            if after['read_valid']:break
+        else:raise AssertionError('foreground read did not stall on its stream')
+        d.set(maintenance_tick=1);await d.tick();d.set(maintenance_tick=0)
+        await d.tick()
+        remaining=int(dut.core.reclaimer.cycles_left.value)
+        for _ in range(int(os.environ['AXI_RECLAIM_CYCLES'])+100):await d.tick()
+        assert int(dut.core.reclaimer.cycles_left.value)==remaining
+        assert int(dut.reclaim_blocks.value)==0
+        d.set(read_ready=1);samples=[]
+        for _ in range(100000):
+            before,after=await d.tick()
+            if before['read_valid']:samples.append(before['read_data'])
+            if after['done']:break
+        else:raise AssertionError('foreground read completion timeout')
+        d.set(read_ready=0);await d.tick()
+        assert samples==[7777]*bf
+        for _ in range(100000):
+            if not int(dut.reclaim_pending.value) and not int(dut.reclaim_active.value):break
+            await d.tick()
+        else:raise AssertionError('cleanup did not use its preserved budget')
+        assert await d.configure(0,2)==2
+        await d.snapshot()
+    finally:d.close()
