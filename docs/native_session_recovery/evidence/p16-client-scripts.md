@@ -211,6 +211,53 @@ the complete core application workflow and ten P16 persistence/recovery cases.
 Logs: `/tmp/p16-upstream-latest-build.log` and
 `/tmp/p16-upstream-latest-focused.log`.
 
+Latest merge `ab1e004c` is published and PR #977 is mergeable. Its
+[firmware workflow](https://github.com/SanderVocke/shoopdaloop/actions/runs/43392408674)
+has a failure in the existing four-device USB emulator scenario. Evidence
+artifact `14022215169` contains matching 448-byte captures for the third
+background device and its QEMU character log, instead of 512 bytes: the reset
+packets for channels 8/9 are absent on all four cables. The earlier and final
+packets are present, so this is not merely an unfinished final socket read.
+The same unchanged scenario passed in upstream's
+[firmware run](https://github.com/SanderVocke/shoopdaloop/actions/runs/43387851707).
+The current firmware gate remains failed pending the next qualification matrix; no P16
+firmware source change or test exception is introduced.
+
+The complete latest native run (`ab1e004c`, `--test-threads 2`) finished in
+1301.833 seconds: **3,230 passed, one failed, 11 skipped**. All ten P16 application
+cases, all 25 LAN/recovery cases and the three earlier startup/driver failures
+passed. `both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations`
+failed at its existing engine-setup response timeout. It subsequently passed
+**10/10** isolated repetitions in 125.840 seconds without changes (log:
+`/tmp/p16-upstream-process-baseline.log`). The full log is
+`/tmp/p16-upstream-latest-full-native.log`; this full
+local run is not claimed green. Final CI qualifies the unchanged normal settings.
+
+Latest-merge native backend qualification without `SHOOP_ALLOW_MISSING_BACKENDS`
+also passes (one test, 15.681 seconds; `/tmp/p16-upstream-real-backend.log`).
+
+## Dummy-driver pacing fixture
+
+Linux debug [run `43392409121`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43392409121)
+passed 3,230 native tests and failed one existing pacing assertion (11 skipped).
+The driver starts rendering before `start()` returns, but the fixture starts its
+stopwatch afterward and compares all frames since zero with that later interval.
+The correction compares frame progress after the measurement begins and waits
+for at least 2,400 additional frames. The sample-rate bound and two-buffer
+tolerance remain unchanged, as does the absolute callback-count assertion.
+
+Failure artifact `14023390142`,
+`perfetto-nextest-linux-x86_64-debug-43392409121`, has a 946.633 ms trace with a
+768.926 ms native-start span and a stopped-host report of 109 callbacks and
+18 xruns. The pinned processor reports no drop/loss/error statistics. There are
+no sampled frame counters or fixture-clock values; the trace cannot measure the
+assertion's exact overrun. The clock-order defect is visible directly in the
+fixture. Local baseline passes **20/20** (21.587 seconds); corrected passes
+**20/20** (24.694 seconds). Warning-denying workspace build, formatting and test
+policy pass. Logs are `/tmp/p16-dummy-pacing-{baseline,corrected}.log` and
+`/tmp/p16-dummy-fixture-build.log`. No driver implementation or deadline changed.
+The follow-up CI matrix also reruns the unresolved USB scenario.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of

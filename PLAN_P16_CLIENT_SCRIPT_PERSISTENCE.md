@@ -343,3 +343,29 @@ the selected platform plus browser/portable paths affected by P16.
 - Latest-upstream warning-denying workspace build passes. Focused combined-branch
   qualification passes **13/13** tests: both native-owner cleanup cases, the core
   application workflow and ten P16 persistence/recovery cases (21.999 seconds).
+- Published latest-upstream merge `ab1e004c`; PR #977 is mergeable and ready for
+  review against `feat/backend-replacement` at `1c7609a8`. The current matrix's
+  firmware USB test failed in its four-device emulator scenario: one device's
+  reset capture lacks the 64-byte block for channels 8/9. Both its capture and
+  QEMU character-device log show the same omission (artifact `14022215169` in
+  run `43392408674`). The unchanged USB scenario passed upstream's run
+  `43387851707`. Preserve this failure evidence and rerun the scenario in the
+  next qualification matrix; do not claim the firmware gate green while unresolved.
+- The full native run on `ab1e004c` with two concurrent tests completed in
+  1301.833 seconds: **3,230 passed, one failed, 11 skipped**. All P16 cases and
+  all three earlier timing failures passed, including 25 LAN/recovery cases.
+  The remaining subprocess fixture timed out waiting for engine setup, then
+  passed **10/10** isolated repetitions in 125.840 seconds without changes.
+  Preserve the full-run failure in the
+  evidence and use final CI to qualify the normal repository configuration.
+- Real native backend qualification on the latest merge also passes without
+  `SHOOP_ALLOW_MISSING_BACKENDS` (one test, 15.681 seconds).
+- Linux debug CI ran the complete native suite: **3,230 passed, one failed,
+  11 skipped**. Its failure was an existing dummy-driver pacing fixture whose
+  stopwatch began after rendering had already started, while the assertion
+  counted frames from zero. The fixture now measures frame progress within the
+  observed interval, preserving its minimum render duration, sample-rate bound
+  and two-buffer tolerance. Twenty baseline repetitions and twenty corrected
+  repetitions pass; warning-denying workspace build, formatting and test policy
+  pass. No driver implementation or deadline changes. The next push requalifies
+  both this fixture and the unresolved firmware USB scenario.
