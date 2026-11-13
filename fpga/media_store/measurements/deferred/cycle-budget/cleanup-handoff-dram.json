@@ -1,0 +1,19 @@
+[
+  {
+    "host_settlement": false,
+    "admission_cycles": [
+      1,
+      16
+    ],
+    "final_processing_cycles": 858
+  },
+  {
+    "host_settlement": true,
+    "admission_cycles": [
+      1,
+      1,
+      1
+    ],
+    "final_processing_cycles": 852
+  }
+]

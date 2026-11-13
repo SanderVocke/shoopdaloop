@@ -13,9 +13,10 @@ This plan was investigated against `proto/fpga-rust-reference` at `bc833fc310817
 Implementation and local FPGA validation are complete on `proto/deferred-retake-clear`.
 The branch is pushed and [PR #982](https://github.com/SanderVocke/shoopdaloop/pull/982)
 is open against `proto/fpga-rust-reference`. Remote CI and automated review
-are in progress; GitHub access is restored. The full native suite
-was run; its 18 host startup/recovery failures in unchanged host code remain
-recorded as failures. No merge has been performed.
+are in progress; GitHub access is restored. The latest full native suite
+reports 3,200 passes, 22 failures and 11 skips. Host startup/recovery and legacy
+native-FX pending-creation failures remain recorded as failures. No merge has
+been performed.
 
 ## Immutable acceptance criteria
 
@@ -281,5 +282,8 @@ Implementation refinements:
 - The requested scheduling refinement makes time the primary limit: 5,000 cycles per iteration at 100 MHz, a 1,024-cycle guard, and no default block-count ceiling. The loop pipeline opens one allowance before control settlement, without refreshing it again at audio admission. The historical measurements above used the earlier 20-block/10,000-elapsed-cycle policy; current-policy evidence is recorded separately.
 - A waiting processing iteration suppresses new collector transactions before its run handshake. Early job completion can therefore start the next ready iteration after any accepted transaction/atomic tail, without waiting for unused cleanup allowance. The standalone audio admission follows the same rule. Back-to-back runs replace the allowance; they do not accumulate it.
 - Integration with the advanced target preserves opt-in reuse of invalid view IDs. Slice preflight checks the selected destination's metadata capacity before publishing references. The Marlin simulator waits for admission across temporary collector locks, includes the collector RTL and reserves its queue storage.
-- Current-policy evidence in `measurements/deferred/cycle-budget/` records 32 focused FPGA test cases and 16 passing Marlin tests. Early empty runs complete in 33--74 cycles and the tested admissions take 1--52 cycles with cleanup allowance remaining. The repeated 30-second campaigns recover every issued ID/page and keep replacement captures exact; 355 blocks are freed during 40 recording grants. The new full native workspace run remains in progress; historical native failures above remain recorded.
-- Remote FPGA/native-memory, DRAMsim3, reclamation and hosted-processor checks passed on `47d9f227`. The synthesis job exhausted its 25-minute job limit after the first generic audio variant took about 15 minutes. All three variants, default-top mapping, demo and media checks now run as independent jobs with 45-minute limits. No synthesis assertion or test deadline was relaxed.
+- Current-policy evidence in `measurements/deferred/cycle-budget/` records 37 passing FPGA test cases and 16 passing Marlin tests. The additional full-pipeline gates compare all 21 production sessions under stalled AXI64, fatal recovery and the mixed 64-loop DDR fixture. Early empty runs complete in 33--74 fixed-model cycles or 852--858 DDR-model cycles; tested admissions take 1--52 fixed-model cycles or 1--16 DDR-model cycles with cleanup allowance remaining. The repeated 30-second campaigns recover every issued ID/page and keep replacement captures exact; 355 blocks are freed during 40 recording grants.
+- The final-source 64-loop retake peak is 26,523 cycles (265.23 microseconds at 100 MHz). All 32 short old takes finish release during that quantum, charging 3,328 cleanup cycles. Its source and modeled scope are recorded separately from the historical policy above.
+- The latest full native workspace run reports 3,200 passes, 22 failures and 11 skips. Twenty-one failures involve host startup/recovery; the legacy native-FX pending-creation failure also fails an isolated retry. These are retained as failed gates. The relevant host/legacy-backend source is unchanged from the integrated target; no base-branch native rerun establishes baseline status.
+- Refreshed resource comparison against target `821ba859` passes strict lint and generic/ECP5 mapping for both default tops. The store adds 629 LUT4 and 882 flip-flops; media/audio adds 1,893 LUT4 and 882 flip-flops. Block RAM counts remain 15/18. This is neither routed timing nor Zynq board-fit qualification.
+- Remote FPGA/native-memory, DRAMsim3, reclamation and hosted-processor checks passed on `47d9f227`. The original synthesis job exhausted its 25-minute limit. On `8a2adb25`, 13 checks passed; the remaining q32 job spent about 20 minutes in inference before default-top mapping exceeded its remaining 45-minute allowance. All three inference variants, default-top mapping, demo and media checks now run as independent jobs with 45-minute limits. No synthesis assertion or test deadline was relaxed.

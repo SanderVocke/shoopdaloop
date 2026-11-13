@@ -205,7 +205,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [q16, q32, q64, demo, media]
+        target: [q16, q32, q64, map, demo, media]
     steps:
       - uses: actions/checkout@v7
       - name: Install RTL tools
@@ -234,9 +234,12 @@ jobs:
         run: |
           case '${{ matrix.target }}' in
             q16) python3 fpga/audio_io/check.py --quantum 16 --generic-only ;;
-            q32) python3 fpga/audio_io/check.py --quantum 32 ;;
+            q32) python3 fpga/audio_io/check.py --quantum 32 --generic-only ;;
             q64) python3 fpga/audio_io/check.py --quantum 64 --generic-only ;;
           esac
+      - name: Map complete audio top
+        if: matrix.target == 'map'
+        run: python3 fpga/audio_io/check.py --mapping-only
       - name: Check prepared demo synthesis
         if: matrix.target == 'demo'
         run: python3 fpga/audio_io/check.py --demo --output work/audio-demo-synthesis

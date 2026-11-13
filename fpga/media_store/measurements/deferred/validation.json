@@ -619,8 +619,15 @@
     "status": "in_progress",
     "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/982",
     "branch_pushed": true,
-    "ci": "pending",
-    "automated_review": "pending"
+    "ci": "pending_after_synthesis_stage_split",
+    "automated_review": "checked_no_feedback_submitted",
+    "prior_ci_source": "8a2adb2573cbc93ad2e494246565db07fe958100",
+    "prior_ci": {
+      "passed": 13,
+      "cancelled": 1,
+      "reason": "q32 inference plus mapping exceeded 45-minute job limit"
+    },
+    "expected_ci_checks": 15
   },
   "toolchain": {
     "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
@@ -628,5 +635,7 @@
     "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
     "yosys": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
   },
-  "routed_timing": false
+  "routed_timing": false,
+  "cycle_budget_evidence": "cycle-budget/validation.json",
+  "current_resources": "cycle-budget/resources.json"
 }

@@ -93,6 +93,25 @@
       "tests": [
         "isolated_twenty_releases"
       ]
+    },
+    {
+      "name": "production-fixed",
+      "result": "passed",
+      "testcases": 3,
+      "tests": [
+        "production_scenarios",
+        "early_iterations_preempt_cleanup_without_waiting_for_its_allowance",
+        "fatal_processing_faults_silence_hold_and_reset"
+      ]
+    },
+    {
+      "name": "production-mixed64-dram",
+      "result": "passed",
+      "testcases": 2,
+      "tests": [
+        "production_scenarios",
+        "early_iterations_preempt_cleanup_without_waiting_for_its_allowance"
+      ]
     }
   ],
   "marlin": {
@@ -103,6 +122,56 @@
   "warning_denying_workspace_build": {
     "result": "passed",
     "log_sha256": "31e2304d956404b4d282a41e6d61017768d3b7603571b0c721f76116335fd1af"
+  },
+  "audio_q16_generic": {
+    "result": "passed",
+    "log_sha256": "4c516a0427ce6b67fb5ee59a880a5d19fbe61f3330b02ae77b67ef37cd5ff7e3"
+  },
+  "media_synthesis": {
+    "result": "passed",
+    "tops": [
+      "media_store",
+      "media_audio_pipeline"
+    ],
+    "log_sha256": "697a04837eddd7bc3525bbf5a682b9dd23fbe2fdfac99f7f0d595274b3641107"
+  },
+  "native_workspace": {
+    "result": "failed",
+    "workers": 2,
+    "run": 3222,
+    "passed": 3200,
+    "failed": 22,
+    "skipped": 11,
+    "failures": [
+      "shoop_backend legacy::native::tests::native_builtin_fx_track_has_matching_audio_midi_and_transactional_state",
+      "shoop_host::lan exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile",
+      "shoop_host::lan ipv6_profiles_connect_and_ownerless_shutdown_is_confirmed",
+      "shoop_host::lan lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints",
+      "shoop_host::lan losing_a_management_reply_reconciles_the_same_shutdown_operation",
+      "shoop_host::lan native_host_reports_deployment_unsupported_independently_of_session_version",
+      "shoop_host::lan non_loopback_interface_is_supported_only_by_explicit_lan_policy",
+      "shoop_host::lan saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state",
+      "shoop_host::lan silent_network_loss_releases_the_controller_while_recording_continues",
+      "shoop_host::lan wildcard_profiles_and_remote_shared_memory_are_refused",
+      "shoop_host::recovery audio_driver_switch_preserves_identities_and_persists_on_both_carriers",
+      "shoop_host::recovery bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections",
+      "shoop_host::recovery bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master",
+      "shoop_host::recovery busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_and_exits",
+      "shoop_host::recovery incompatible_greetings_versions_and_early_disconnects_leave_the_session_healthy",
+      "shoop_host::recovery invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure",
+      "shoop_host::recovery killing_a_ui_preserves_recording_and_a_replacement_can_read_media_and_close_the_host",
+      "shoop_host::recovery management_can_close_a_shared_host_after_its_only_data_connection_is_lost",
+      "shoop_host::recovery management_monitoring_preserves_controller_and_logs_startup_failures",
+      "shoop_host::recovery master_preview_plays_in_the_independent_host_without_creating_loop_content",
+      "shoop_host::recovery siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle",
+      "shoop_host::recovery startup_fallback_retains_the_effective_dummy_profile_for_later_switches"
+    ],
+    "log_sha256": "4285e881aaa1d4a08b3d9d565dac355135938a9160cd12b1b046554f62a432f5"
+  },
+  "isolated_native_fx": {
+    "result": "failed",
+    "reason": "loop is pending creation",
+    "log_sha256": "6fe49bb53190ab9bd5c2097160627f71df91ea3d6c6ff78c0333d72d9781cbcd"
   },
   "source_sha256": {
     "fpga/media_store/rtl/media_reclaimer.sv": "fc911dd8671d240f5f1512dbfdd6f8e3359b6705ac020fc6a9654f091be65161",
@@ -120,6 +189,6 @@
   "limitations": [
     "Isolated profiling uses an explicit 20-block/100000-cycle grant, not the automatic default.",
     "Memory service is modeled; an arbitrarily stalled accepted transaction has no finite latency bound.",
-    "Prior full-workspace native failures remain recorded separately; a new run is in progress."
+    "Full native testing retains host startup/recovery failures and a legacy native-FX pending-creation failure; no base-branch rerun establishes baseline status."
   ]
 }

@@ -1,0 +1,8 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="20261112" />
+    <testcase name="production_scenarios" classname="test_production_pipeline" file="/workspace/shoopdaloop/fpga/verification/tests/test_production_pipeline.py" lineno="46" time="1564.7265093326569" sim_time_ns="17769376.001" ratio_time="11356.218415816635" />
+    <testcase name="early_iterations_preempt_cleanup_without_waiting_for_its_allowance" classname="test_production_pipeline" file="/workspace/shoopdaloop/fpga/verification/tests/test_production_pipeline.py" lineno="154" time="2.1162285804748535" sim_time_ns="23950.0" ratio_time="11317.302970469258" />
+    <testcase name="fatal_processing_faults_silence_hold_and_reset" classname="test_production_pipeline" file="/workspace/shoopdaloop/fpga/verification/tests/test_production_pipeline.py" lineno="223" time="34.24187207221985" sim_time_ns="497180.0" ratio_time="14519.650063273208" />
+  </testsuite>
+</testsuites>

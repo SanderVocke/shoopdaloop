@@ -30,9 +30,27 @@ workload benchmark.
 The focused gates pass 11 native and 11 single-line-cache DRAMsim3 ownership
 tests, three capacity/fault tests, two reused-view tests, two long ownership
 campaigns, two full-pipeline tests (including the early-run handoff), and one
-isolated timing test. All 16 Marlin runtime tests also pass after integrating
+isolated timing test. The additional final-source gates pass all 21 production
+sessions and fatal recovery under stalled AXI64, plus the 64-loop DDR benchmark
+and its early-iteration probe: 37 FPGA test cases in total. All 16 Marlin runtime
+tests also pass after integrating
 target `821ba859`, including its opt-in invalid-view-ID reuse. The selected
 destination's page capacity is checked before slice reference publication.
+
+The final-source mixed 64-mono-loop retake peak is 26,523 cycles (265.23 us at
+100 MHz), releasing all 32 short old takes during that quantum with 3,328
+charged cleanup cycles and zero records pending at audio completion. Its
+recording lengths and 96-block arena match the historical mixed fixture below.
+In the same DDR configuration, empty processing takes 852--858 cycles and the
+tested run/settlement admissions take 1--16 cycles, with cleanup pending and
+allowance remaining. These modeled observations do not bound physical DDR.
+
+The new full native workspace run, with two test workers, reports 3,200 passes,
+22 failures and 11 skips. Twenty-one failures concern host startup/recovery;
+one legacy native-FX test fails with a pending loop creation and also fails an
+isolated retry. These gates remain failed in `cycle-budget/validation.json`.
+No base-branch rerun establishes baseline status. Host/legacy-backend source is
+unchanged relative to the integrated target; no test deadline was extended.
 
 The new 30-second mono/stereo campaigns still retire 45,024 references without
 copying their ID lists. Forty grants alongside continued recording free 355
@@ -40,6 +58,14 @@ blocks; 315 are free while replacement takes remain live. Final drain recovers
 all 45,048 issued IDs exactly once (eight capacity blocks were never issued)
 and all metadata pages. Each replacement channel reads back its 1,280 frames
 exactly. Charged maintenance through old-recording drain is 5,112,309 cycles.
+
+The refreshed default-top resource comparison against integrated target
+`821ba859`, using the same Yosys 0.52 / Verilator 5.032 tools, adds 629 LUT4 and
+882 flip-flops for the media store, or 1,893 LUT4 and 882 flip-flops for the
+media/audio top. Block RAM counts remain 15 and 18 respectively. These are
+unrouted ECP5 mappings, not Zynq timing or fit results; see
+`cycle-budget/resources.json`. The historical resource report below compares
+the earlier implementation against its earlier base.
 
 An isolated profiling override of 20 releases and 100,000 cycles measures the
 trade-off independently of the automatic budget:
