@@ -1,87 +1,4 @@
 {
-  "depths": [
-    64,
-    11,
-    400
-  ],
-  "repeated": [
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 59,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    }
-  ],
-  "duplicate_cycles": 48,
-  "full_cycles": 50,
-  "retained_full_cycles": 50,
-  "dense_process": 245,
   "dense_installs": [
     59,
     66,
@@ -95,12 +12,95 @@
     98,
     102
   ],
-  "reused_install_cycles": 59,
-  "host_service_ns": [],
+  "dense_process": 245,
+  "depths": [
+    64,
+    11,
+    400
+  ],
+  "duplicate_cycles": 48,
+  "full_cycles": 50,
   "host_metadata_bytes": null,
+  "host_service_ns": [],
   "payload_bytes": {
-    "install": 80,
     "cancel": 80,
-    "collect_response": 104
-  }
+    "collect_response": 104,
+    "install": 80
+  },
+  "repeated": [
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 59,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    }
+  ],
+  "retained_full_cycles": 50,
+  "reused_install_cycles": 59
 }

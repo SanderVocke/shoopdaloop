@@ -1,7 +1,8 @@
 # ARM-owned request slots
 
 Measured on 2026-11-13 against `5b7dd0a5b242884f86862991dc7b456a5b091df7`.
-Candidate RTL is committed in `8964470cfc3acd84ae22bec8837ab52020467c61`.
+Candidate RTL is committed in `2e19b3d5` after merging upstream `2bdd10c9`.
+The merged RTL was routed again and reproduces the earlier cleanup result exactly.
 [Machine-readable results](arm-request-slots.json) include source hashes,
 tool provenance, capacities, command samples and report hashes. The accompanying
 [evidence directory](arm-request-slots/) retains timing, utilization, routing and
@@ -65,7 +66,7 @@ integrated functional regressions does not establish full-core or board timing.
 
 ## Command and processing cycles
 
-The same measurement test runs against frozen baseline and current drivers/RTL,
+The same native Marlin measurement runs against frozen baseline and current RTL,
 using physical depths 64/R/400, one configured logical loop and Q=32. Eight
 repeated empty-list iterations give identical cycle counts. Measurements run
 from command acceptance to response availability, excluding response hold time,
@@ -99,9 +100,9 @@ The JSON retains the complete matched cycle sequences.
 Rust metadata occupies 1,321 bytes at R=11 and 24,289 bytes at R=272 for these
 one-loop images on the native 64-bit host. This counts the owner and allocated
 registry/image storage, excluding allocator overhead and transport buffers.
-Measured Rust `begin` median/max is 3.165/13.150 microseconds at R=11 and
-76.786/436.518 microseconds at R=272. `finish` median/max is 1.021/15.944 and
-0.701/43.466 microseconds respectively. Samples mix installs, cancellation,
+Measured Rust `begin` median/max is 2.194/7.952 microseconds at R=11 and
+68.543/815.870 microseconds at R=272. `finish` median/max is 0.150/18.157 and
+0.136/3.656 microseconds respectively. Samples mix installs, cancellation,
 collection and refusals, including the growing dense list. They use an
 unoptimized native dev build with debug information disabled, on a shared host,
 and exclude JSON parsing/serialization and IPC. They are characterization samples,
@@ -121,7 +122,7 @@ this milestone does not claim bus bandwidth savings or a physical ARM register m
   precedence, rollback, uncertain replies, stale identities, generation
   retirement and finite prepared streams. The primitive kernel codec is broader
   than the deliberately unchanged application whitelist.
-- Marlin passes the full simulator and application-feature suites. A dedicated
+- Marlin passes the simulator and regular-host application suites. A dedicated
   test finishes installation acknowledgements, makes no service calls for 1,024
   quanta, compares audio and final state/events, then compares retained
   completions, frames and captured media. A separate delayed-install test checks
@@ -142,12 +143,21 @@ this milestone does not claim bus bandwidth savings or a physical ARM register m
 - After the redundant-register cleanup, all five TP profiles, the 45-scenario
   pipeline corpus with stalls/faults, both Marlin boundary tests, bounded
   application replay, both command measurements and lint/mapping pass again.
-- The full native suite ran 3,254 tests: 3,252 passed, two failed and 11 were
-  skipped. Both failures were stale app-protocol golden vectors expecting version
-  34 while the baseline already declares version 36. The fixtures were corrected;
-  the affected codec suite then passed all nine tests. The full suite was not
-  repeated for these two byte-vector corrections. The historical six native
-  startup failures from the acyclic experiment passed in this full run.
+- After regular-host integration and the protocol/diagnostic-pipe fixes, the
+  serialized full native suite passes all 3,261 tests, with 11 skipped. The
+  detached-host shutdown regression also passes ten consecutive repetitions.
+  Earlier intermediate failures remain in the local logs; they are superseded
+  by this clean full sweep.
+- Upstream `2bdd10c9` replaces cocotb with the native `rt_fpga_testbench` matrix.
+  Both wire drivers and both native/Python prepared-stream generators use the
+  shared Rust request owner. All five migrated TP capacities pass seven groups
+  plus 20 seeded cases each, and both command depths reproduce every prior
+  baseline/current cycle count. The complete migrated matrix runs separately
+  from the native sweep above. The expanded matrix exposed a Marlin teardown
+  hang: exported-scope destructors consulted another model's current context.
+  Selecting the owned context before model destruction fixes it; both the
+  focused overlapping-model regression and the complete AXI backend matrix pass.
+
 
 Local detailed logs and build/checkpoint artifacts are under
 `work/fpga-boundary/`. CI evidence is attached to
@@ -159,10 +169,9 @@ application settlement pause remain for subsequent roadmap milestones.
 ## Reproduce
 
 Freeze baseline `fpga/transition_processor` from the revision above into a
-separate directory. Build the current Rust bridge, then run:
+separate directory. Install Verilator and Rust, then run:
 
 ```sh
-cargo build --locked -p rt_backend_testbench
 python fpga/transition_processor/measure_commands.py \
   --source work/baseline/fpga/transition_processor --requests 272 \
   --output work/slots-baseline-commands
@@ -176,9 +185,12 @@ python fpga/transition_processor/measure.py --vivado /path/to/vivado \
 ```
 
 Repeat command measurements with `--requests 11`. Use Rust 1.100.0, Verilator
-5.032, cocotb 1.9.2 and `CARGO_PROFILE_DEV_DEBUG=0` for comparable host samples;
-cycles do not depend on host wall time. Full commands and source manifests are
-recorded in the JSON. The measurement runner is a child subreaper so it also
+5.032, Marlin 0.21.1 and `CARGO_PROFILE_DEV_DEBUG=0` for comparable host samples;
+cycles do not depend on host wall time. The command wrapper launches the Rust
+runner and detects the explicitly supplied frozen legacy source. Full commands,
+source manifests and runner hashes are recorded in the JSON. The migrated Marlin
+measurements reproduce all earlier cocotb cycle counts; published host samples
+come from Marlin and exclude JSON transport. The measurement runner is a child subreaper so it also
 works in containers whose PID 1 does not reap detached Vivado workers.
 
 Vivado was recovered from the public `siliconbootcamp/xilinx-vivado:stable`

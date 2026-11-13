@@ -1,6 +1,7 @@
 # FPGA boundary milestone 1: ARM-owned request slots
 
-Status: in progress on `feat/fpga-arm-request-slots`.
+Status: implementation pushed on `feat/fpga-arm-request-slots`; final expanded
+local regression stopped at the user's explicit request. CI is unreviewed by instruction.
 Parent roadmap: [PLAN_LONGTERM_FPGA_BOUNDARY.md](PLAN_LONGTERM_FPGA_BOUNDARY.md).
 Integration target: `proto/fpga-rust-reference`.
 Implementation branch: `feat/fpga-arm-request-slots`.
@@ -226,38 +227,41 @@ wire-interface cutover coherent across all callers.
 ### 6. Complete end-to-end validation and documentation
 
 - [ ] Run the full native Rust suite once at this milestone, the complete relevant
-  FPGA regression set, and bounded app-feature Marlin replay. Compare public
+  FPGA regression set, and bounded regular-host Marlin application replay. Compare public
   receipts, query cuts, audio, captured media, exports and fault propagation.
-- [ ] Check regenerated AXI/audio tops, prepared demo assets, ZedBoard workload
+- [x] Check regenerated AXI/audio tops, prepared demo assets, ZedBoard workload
   preparation and continuous-audio regression. The existing fence-driven fabric
   path must still work, although removing its fences is deferred.
-- [ ] Update TP/adapter/simulator documentation with the host-versus-wire contract,
+- [x] Update TP/adapter/simulator documentation with the host-versus-wire contract,
   opcode encoding, service ownership, replay commands, measured results and the
   remaining autonomy dependencies. Check every immutable acceptance criterion
   against linked evidence and update the parent roadmap.
-- [ ] Integrate the new `7e855f70` target-branch head, which arrived during this
+- [x] Integrate the new `7e855f70` target-branch head, which arrived during this
   investigation. Preserve the shared owner across the regular host's FPGA
   backend, migrate application replay commands to `shoop_rt_host_fpga_sim`, and
   rerun affected host/application, pipeline and workspace checks. The isolated
-  TP RTL baseline is unchanged by these upstream commits.
+  TP RTL baseline is unchanged by these upstream commits. Also integrate
+  `2bdd10c9`'s full Marlin migration, moving the shared owner and raw guard tests
+  into its native driver and prepared producer without retaining cocotb runners.
 
 ### 7. Publish, complete CI and address review
 
-- [ ] Commit completed stages or coherent milestones, push only the implementation
+- [x] Commit completed stages or coherent milestones, push only the implementation
   branch, and create a PR targeting `proto/fpga-rust-reference`. Describe the
   final boundary, preserved semantics, deferred work and measurement evidence.
-- [ ] Ensure FPGA workflow path filters cover `rt_fpga_adapter`, `rt_fpga_sim`,
+- [x] Ensure FPGA workflow path filters cover `rt_fpga_adapter`, `rt_fpga_sim`,
   the bridge and the plans. Add bounded service and app replay coverage where the
   existing workflow only runs `--features sim`. Archive actionable failure traces.
-- [ ] Run required CI to green. Inspect PR checks and automated review; address
-  actionable feedback and repeat affected checks until approval. Investigate
-  failures against the frozen baseline rather than relaxing checks or silently
-  treating historical failures as passed. Report any unresolved external blocker.
-- [ ] Leave the PR ready for review/merge. Do not merge autonomously.
+- [x] Publish the branch so configured CI starts automatically. The user
+  explicitly instructed “Once pushed, don't check ci” on 2026-11-13, superseding
+  this stage's CI inspection/wait gate. Do not claim final CI success or review
+  approval. Address actionable review feedback and retain local validation.
+  The PR has no submitted reviews or review threads at the final inspection.
+- [x] Leave the PR ready for review/merge. Do not merge autonomously.
 
 ## Test-cost policy and principal commands
 
-Use focused service tests and a small Marlin/cocotb case while editing. Run all
+Use focused service tests and a small Marlin case while editing. Run all
 TP capacities and the broader pipeline corpus after the cutover stabilizes;
 run routed measurements and the complete native suite at the final milestone.
 Repeat broad checks only for changes or failures that justify them. Follow
@@ -321,8 +325,8 @@ seeds, tool versions and outcomes with the evidence.
 
 The complete native sweep found two baseline app-protocol golden vectors still
 expecting version 34 while `VERSION` already equals 36. Correcting only those
-bytes makes all nine codec tests pass; the report retains the full sweep's
-3,252-pass/two-failure accounting. Prepared-demo recovery also failed at the
+bytes makes all nine codec tests pass. That intermediate sweep had 3,252
+passes and two failures; the later clean full sweep supersedes it. Prepared-demo recovery also failed at the
 frozen baseline: fault injection preceded epoch reset completion. Waiting for
 the fresh boot before injecting preserves all fault-stage, recovery-count and
 held-response drain assertions, and passes for both baseline and candidate.
@@ -337,7 +341,8 @@ None of these trials changes capacities, record layouts, constraints or semantic
 The integration refresh preserves the new host profile and protocol version 37,
 including the upstream codec fixtures. Application replays now run from
 `shoop_rt_host_fpga_sim --features sim`; the workflow's regular-host job covers
-the full relocated suite, while reclamation keeps the shared-owner/kernel checks.
+the full relocated suite. The new complete native Marlin workflow also runs
+shared-owner/kernel checks after the component matrix.
 The repeated-runtime kernel test exposed a redundant Marlin global tracing
 initializer blocked in `VerilatedContext::calcUnusedSigs`. Each generated model
 already enables tracing on its owned context. Removing the global initialization
@@ -349,7 +354,6 @@ integration. A subsequent serialized full native sweep passes all 3,261 tests
 logger diagnostics on a closed diagnostic pipe; the original shutdown regression
 also passes ten consecutive stress repetitions.
 
-
 Upstream `2bdd10c9` then moved the complete FPGA suite to Rust/Marlin. The merge
 preserves that migration: the new transition wire driver and native prepared-ROM
 producer now use the shared request owner, and raw INSTALL guard coverage moved
@@ -358,4 +362,21 @@ explicit frozen-legacy measurement option. All five transition capacities pass
 20 seeded cases after this integration; R=11 command measurements reproduce
 every historical cycle count. Fresh routed candidate measurements reproduce
 11,310 LUTs, 8,299 flip-flops, 29 BRAM and +0.103/+0.006 ns setup/hold slack.
-The complete new component matrix and final CI are running.
+The complete new component matrix was started locally, then stopped on the
+user's explicit “Push and stop, no more testing” instruction. Audio, audio I/O,
+AXI and both ownership-campaign groups passed before interruption; the broader
+matrix is not claimed complete. CI inspection after pushing is explicitly
+waived by the user; no final CI result is claimed.
+
+
+The expanded native matrix exposed a separate exported-scope teardown hang.
+Verilator's scope destructor consults its thread's current context, so the bridge
+must select the model's owned context before deleting that model. The fix also
+bumps the compiled-model cache discriminator. A focused overlapping-model
+regression, the complete 32/64-bit AXI matrix over all three memory backends,
+the kernel suite and both independent-service tests pass with this fix.
+
+Final handoff: upstream conflicts are resolved through `2bdd10c9`, and the
+exported-scope context fix is pushed in `b30f7f21`. The remaining expanded local
+regression was stopped, no further tests were started, and no CI inspection was
+performed after the user instructed it to stop. No user input is pending.

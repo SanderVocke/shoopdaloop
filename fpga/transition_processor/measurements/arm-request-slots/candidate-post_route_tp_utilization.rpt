@@ -1,8 +1,8 @@
 Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
 -----------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
-| Date         : Fri Nov 13 16:10:46 2026
-| Host         : 6d59792efa2d running 64-bit Ubuntu 20.04.4 LTS
+| Date         : Fri Nov 13 17:35:38 2026
+| Host         : 5db5d62320f9 running 64-bit Ubuntu 20.04.4 LTS
 | Command      : report_utilization -cells [get_cells core_under_test] -file post_route_tp_utilization.rpt
 | Design       : registered_core_context
 | Device       : 7z020clg484-1

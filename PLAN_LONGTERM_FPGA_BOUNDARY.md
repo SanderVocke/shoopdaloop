@@ -1,6 +1,8 @@
 # Long-term ARM–FPGA boundary plan
 
-Status: proposed; implementation has not started.
+Status: milestone 1 implemented in [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990);
+the final expanded local regression was stopped at the user's request, and CI
+is unreviewed by instruction. Milestones 2–6 remain proposed.
 Target integration branch: `proto/fpga-rust-reference`.
 Investigated baseline: `5b7dd0a5b242884f86862991dc7b456a5b091df7`.
 
@@ -12,7 +14,8 @@ wraps, repeat waits, synchronization, transition arbitration and audio execution
 After admission, an action must not require ARM to return at its execution time.
 Continuing ordinary engine operation must not require ARM command service.
 
-Use the Marlin/cocotb boundary as the experimental ARM–FPGA boundary. Keep the
+Use the Marlin boundary as the experimental ARM–FPGA boundary. Upstream moved
+the original cocotb coverage into the native testbench during milestone 1. Keep the
 production Rust resolver/runtime as the independent behavioral oracle. Each
 milestone must leave a working end-to-end path with reproducible measurements.
 
@@ -20,17 +23,20 @@ milestone must leave a working end-to-end path with reproducible measurements.
 
 ### 1. ARM-owned request slots
 
-- [ ] Implement a reusable Rust transition service and an indexed action-install
+- [x] Implement a reusable Rust transition service and an indexed action-install
   interface. Move free-slot selection, duplicate-sequence checking and request
   ownership to ARM. Separate service calls from simulator audio progression.
-- [ ] Preserve current shared capacities, packed records, pending-list traversal,
+- [x] Preserve current shared capacities, packed records, pending-list traversal,
   terminal retention and musical resolution. Migrate all submission producers,
   including prepared audio and ZedBoard control streams.
-- [ ] Compare the service plus RTL with production Rust, including a pause in ARM
+- [x] Compare the service plus RTL with production Rust, including a pause in ARM
   service after admission. Measure command cycles, processing cycles and mapped
   resources against a frozen baseline.
 
 Detailed implementation plan: [PLAN_FPGA_ARM_REQUEST_SLOTS.md](PLAN_FPGA_ARM_REQUEST_SLOTS.md).
+Results: [matched measurements](fpga/transition_processor/measurements/ARM_REQUEST_SLOTS.md).
+At 272 request slots empty-list admission falls from 1,103 to 16 FPGA cycles;
+routed area changes by +13 LUTs, −103 flip-flops and zero BRAM.
 This milestone establishes the boundary; it does not establish full continuous
 audio autonomy or a target percentage of area reduction.
 
@@ -104,7 +110,7 @@ audio autonomy or a target percentage of area reduction.
 - Preserve public musical behavior, canonical ordering and completion ownership.
   Any proposed semantic or capacity change must be explicit.
 - Use one reusable Rust ARM service. Marlin tests the combined service and RTL;
-  cocotb supplies parameterized protocol/kernel coverage without a second ARM
+  the native Marlin testbench supplies parameterized protocol/kernel coverage without a second ARM
   implementation in Python. Expected decisions come from production Rust.
 - Record exact source revisions, capacities, tool versions and constraints for
   comparisons. Keep command, processing, observation and host-service costs

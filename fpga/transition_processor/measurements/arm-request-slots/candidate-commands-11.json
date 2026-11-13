@@ -1,87 +1,4 @@
 {
-  "depths": [
-    64,
-    11,
-    400
-  ],
-  "repeated": [
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    },
-    {
-      "install": 16,
-      "process": 44,
-      "read_state": 4,
-      "status": 1,
-      "collect": 4,
-      "cancel": 11,
-      "cancelled_collect": 4
-    }
-  ],
-  "duplicate_cycles": 0,
-  "full_cycles": 0,
-  "retained_full_cycles": 0,
-  "dense_process": 245,
   "dense_installs": [
     16,
     23,
@@ -95,251 +12,107 @@
     55,
     59
   ],
-  "reused_install_cycles": 16,
+  "dense_process": 245,
+  "depths": [
+    64,
+    11,
+    400
+  ],
+  "duplicate_cycles": 0,
+  "full_cycles": 0,
+  "host_metadata_bytes": 1321,
   "host_service_ns": [
     {
       "kind": "begin",
-      "ns": 13150
+      "ns": 5258
     },
     {
       "kind": "finish",
-      "ns": 14161
+      "ns": 340
     },
     {
       "kind": "begin",
-      "ns": 1793
+      "ns": 380
     },
     {
       "kind": "finish",
-      "ns": 3986
+      "ns": 2784
     },
     {
       "kind": "begin",
-      "ns": 4056
+      "ns": 2434
     },
     {
       "kind": "finish",
-      "ns": 471
+      "ns": 101
     },
     {
       "kind": "begin",
-      "ns": 220
+      "ns": 81
     },
     {
       "kind": "finish",
-      "ns": 15944
+      "ns": 862
     },
     {
       "kind": "begin",
-      "ns": 460
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 3295
+      "ns": 1702
     },
     {
       "kind": "begin",
-      "ns": 5969
+      "ns": 2344
     },
     {
       "kind": "finish",
-      "ns": 301
+      "ns": 90
     },
     {
       "kind": "begin",
-      "ns": 381
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 2624
+      "ns": 1522
     },
     {
       "kind": "begin",
-      "ns": 3595
+      "ns": 2223
     },
     {
       "kind": "finish",
-      "ns": 220
+      "ns": 100
     },
     {
       "kind": "begin",
-      "ns": 261
+      "ns": 90
     },
     {
       "kind": "finish",
-      "ns": 1783
+      "ns": 180
     },
     {
       "kind": "begin",
-      "ns": 210
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 2604
+      "ns": 1533
     },
     {
       "kind": "begin",
-      "ns": 3445
+      "ns": 2203
     },
     {
       "kind": "finish",
-      "ns": 470
+      "ns": 100
     },
     {
       "kind": "begin",
-      "ns": 751
-    },
-    {
-      "kind": "finish",
-      "ns": 2664
-    },
-    {
-      "kind": "begin",
-      "ns": 4236
-    },
-    {
-      "kind": "finish",
-      "ns": 200
-    },
-    {
-      "kind": "begin",
-      "ns": 330
-    },
-    {
-      "kind": "finish",
-      "ns": 1563
-    },
-    {
-      "kind": "begin",
-      "ns": 161
-    },
-    {
-      "kind": "finish",
-      "ns": 2013
-    },
-    {
-      "kind": "begin",
-      "ns": 3205
-    },
-    {
-      "kind": "finish",
-      "ns": 310
-    },
-    {
-      "kind": "begin",
-      "ns": 1292
-    },
-    {
-      "kind": "finish",
-      "ns": 3255
-    },
-    {
-      "kind": "begin",
-      "ns": 4717
-    },
-    {
-      "kind": "finish",
-      "ns": 280
-    },
-    {
-      "kind": "begin",
-      "ns": 371
-    },
-    {
-      "kind": "finish",
-      "ns": 2193
-    },
-    {
-      "kind": "begin",
-      "ns": 971
-    },
-    {
-      "kind": "finish",
-      "ns": 3676
-    },
-    {
-      "kind": "begin",
-      "ns": 3466
-    },
-    {
-      "kind": "finish",
-      "ns": 330
-    },
-    {
-      "kind": "begin",
-      "ns": 561
-    },
-    {
-      "kind": "finish",
-      "ns": 3004
-    },
-    {
-      "kind": "begin",
-      "ns": 3345
-    },
-    {
-      "kind": "finish",
-      "ns": 170
-    },
-    {
-      "kind": "begin",
-      "ns": 231
-    },
-    {
-      "kind": "finish",
-      "ns": 1021
-    },
-    {
-      "kind": "begin",
-      "ns": 250
-    },
-    {
-      "kind": "finish",
-      "ns": 2313
-    },
-    {
-      "kind": "begin",
-      "ns": 3134
-    },
-    {
-      "kind": "finish",
-      "ns": 191
-    },
-    {
-      "kind": "begin",
-      "ns": 1112
-    },
-    {
-      "kind": "finish",
-      "ns": 2674
-    },
-    {
-      "kind": "begin",
-      "ns": 4337
-    },
-    {
-      "kind": "finish",
-      "ns": 210
-    },
-    {
-      "kind": "begin",
-      "ns": 270
-    },
-    {
-      "kind": "finish",
-      "ns": 1673
-    },
-    {
-      "kind": "begin",
-      "ns": 211
-    },
-    {
-      "kind": "finish",
-      "ns": 2524
-    },
-    {
-      "kind": "begin",
-      "ns": 3195
+      "ns": 90
     },
     {
       "kind": "finish",
@@ -347,95 +120,135 @@
     },
     {
       "kind": "begin",
-      "ns": 771
+      "ns": 2294
     },
     {
       "kind": "finish",
-      "ns": 3586
+      "ns": 101
     },
     {
       "kind": "begin",
-      "ns": 6230
+      "ns": 90
     },
     {
       "kind": "finish",
-      "ns": 361
+      "ns": 261
     },
     {
       "kind": "begin",
-      "ns": 2243
+      "ns": 90
     },
     {
       "kind": "finish",
-      "ns": 3365
+      "ns": 1503
     },
     {
       "kind": "begin",
-      "ns": 952
+      "ns": 2184
     },
     {
       "kind": "finish",
-      "ns": 4477
+      "ns": 100
     },
     {
       "kind": "begin",
-      "ns": 4657
+      "ns": 100
     },
     {
       "kind": "finish",
-      "ns": 631
+      "ns": 1542
     },
     {
       "kind": "begin",
-      "ns": 932
+      "ns": 2223
     },
     {
       "kind": "finish",
-      "ns": 3706
+      "ns": 90
     },
     {
       "kind": "begin",
-      "ns": 4447
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 360
+      "ns": 280
     },
     {
       "kind": "begin",
-      "ns": 471
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 1703
+      "ns": 1543
     },
     {
       "kind": "begin",
-      "ns": 180
+      "ns": 2224
     },
     {
       "kind": "finish",
-      "ns": 2323
+      "ns": 100
     },
     {
       "kind": "begin",
-      "ns": 2654
+      "ns": 90
     },
     {
       "kind": "finish",
-      "ns": 160
+      "ns": 18157
     },
     {
       "kind": "begin",
-      "ns": 2874
+      "ns": 2273
     },
     {
       "kind": "finish",
-      "ns": 151
+      "ns": 100
     },
     {
       "kind": "begin",
-      "ns": 3265
+      "ns": 80
+    },
+    {
+      "kind": "finish",
+      "ns": 230
+    },
+    {
+      "kind": "begin",
+      "ns": 90
+    },
+    {
+      "kind": "finish",
+      "ns": 1582
+    },
+    {
+      "kind": "begin",
+      "ns": 2203
+    },
+    {
+      "kind": "finish",
+      "ns": 100
+    },
+    {
+      "kind": "begin",
+      "ns": 111
+    },
+    {
+      "kind": "finish",
+      "ns": 1563
+    },
+    {
+      "kind": "begin",
+      "ns": 2214
+    },
+    {
+      "kind": "finish",
+      "ns": 90
+    },
+    {
+      "kind": "begin",
+      "ns": 90
     },
     {
       "kind": "finish",
@@ -443,47 +256,71 @@
     },
     {
       "kind": "begin",
-      "ns": 3956
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 170
+      "ns": 1502
     },
     {
       "kind": "begin",
-      "ns": 4437
+      "ns": 2183
     },
     {
       "kind": "finish",
-      "ns": 120
+      "ns": 80
     },
     {
       "kind": "begin",
-      "ns": 5669
+      "ns": 90
     },
     {
       "kind": "finish",
-      "ns": 320
+      "ns": 1512
     },
     {
       "kind": "begin",
-      "ns": 5478
+      "ns": 2164
     },
     {
       "kind": "finish",
-      "ns": 180
+      "ns": 110
     },
     {
       "kind": "begin",
-      "ns": 5999
+      "ns": 80
     },
     {
       "kind": "finish",
-      "ns": 151
+      "ns": 150
     },
     {
       "kind": "begin",
-      "ns": 6430
+      "ns": 90
+    },
+    {
+      "kind": "finish",
+      "ns": 1493
+    },
+    {
+      "kind": "begin",
+      "ns": 2254
+    },
+    {
+      "kind": "finish",
+      "ns": 110
+    },
+    {
+      "kind": "begin",
+      "ns": 2404
+    },
+    {
+      "kind": "finish",
+      "ns": 4196
+    },
+    {
+      "kind": "begin",
+      "ns": 5979
     },
     {
       "kind": "finish",
@@ -491,53 +328,216 @@
     },
     {
       "kind": "begin",
-      "ns": 7110
+      "ns": 130
     },
     {
       "kind": "finish",
-      "ns": 170
+      "ns": 1221
     },
     {
       "kind": "begin",
-      "ns": 7712
+      "ns": 90
     },
     {
       "kind": "finish",
-      "ns": 111
+      "ns": 1613
     },
     {
       "kind": "begin",
-      "ns": 9805
-    },
-    {
-      "kind": "begin",
-      "ns": 8012
-    },
-    {
-      "kind": "begin",
-      "ns": 8533
-    },
-    {
-      "kind": "begin",
-      "ns": 391
+      "ns": 1813
     },
     {
       "kind": "finish",
-      "ns": 3015
+      "ns": 110
     },
     {
       "kind": "begin",
-      "ns": 8293
+      "ns": 2384
     },
     {
       "kind": "finish",
-      "ns": 270
+      "ns": 80
+    },
+    {
+      "kind": "begin",
+      "ns": 2835
+    },
+    {
+      "kind": "finish",
+      "ns": 90
+    },
+    {
+      "kind": "begin",
+      "ns": 3345
+    },
+    {
+      "kind": "finish",
+      "ns": 110
+    },
+    {
+      "kind": "begin",
+      "ns": 3986
+    },
+    {
+      "kind": "finish",
+      "ns": 231
+    },
+    {
+      "kind": "begin",
+      "ns": 4637
+    },
+    {
+      "kind": "finish",
+      "ns": 100
+    },
+    {
+      "kind": "begin",
+      "ns": 4967
+    },
+    {
+      "kind": "finish",
+      "ns": 90
+    },
+    {
+      "kind": "begin",
+      "ns": 5489
+    },
+    {
+      "kind": "finish",
+      "ns": 100
+    },
+    {
+      "kind": "begin",
+      "ns": 6009
+    },
+    {
+      "kind": "finish",
+      "ns": 90
+    },
+    {
+      "kind": "begin",
+      "ns": 6530
+    },
+    {
+      "kind": "finish",
+      "ns": 101
+    },
+    {
+      "kind": "begin",
+      "ns": 7130
+    },
+    {
+      "kind": "finish",
+      "ns": 140
+    },
+    {
+      "kind": "begin",
+      "ns": 7952
+    },
+    {
+      "kind": "begin",
+      "ns": 7912
+    },
+    {
+      "kind": "begin",
+      "ns": 7822
+    },
+    {
+      "kind": "begin",
+      "ns": 140
+    },
+    {
+      "kind": "finish",
+      "ns": 2023
+    },
+    {
+      "kind": "begin",
+      "ns": 7631
+    },
+    {
+      "kind": "finish",
+      "ns": 80
     }
   ],
-  "host_metadata_bytes": 1321,
   "payload_bytes": {
-    "install": 80,
     "cancel": 80,
-    "collect_response": 104
-  }
+    "collect_response": 104,
+    "install": 80
+  },
+  "repeated": [
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    },
+    {
+      "cancel": 11,
+      "cancelled_collect": 4,
+      "collect": 4,
+      "install": 16,
+      "process": 44,
+      "read_state": 4,
+      "status": 1
+    }
+  ],
+  "retained_full_cycles": 0,
+  "reused_install_cycles": 16
 }

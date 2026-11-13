@@ -2,7 +2,7 @@
   "measured_date": "2026-11-13",
   "revisions": {
     "baseline": "5b7dd0a5b242884f86862991dc7b456a5b091df7",
-    "candidate": "8964470cfc3acd84ae22bec8837ab52020467c61"
+    "candidate": "2e19b3d5b5d7b5354c12ebddb328193d995f8ec9"
   },
   "route_context": {
     "part": "xc7z020clg484-1",
@@ -97,37 +97,12 @@
         "post_route_drc.rpt": "2864efc6017efb70348d5fda1e543b40aa18e1d40a9dfd79545dca5ca78a4abe",
         "post_synth_hierarchical.rpt": "ed7f4c66365f0357e48ea19c51778beb580c0b589efa21a9ce451c24ff8269ad",
         "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
-      },
-      "capture_provenance": {
-        "revision": "5b7dd0a5b242884f86862991dc7b456a5b091df7",
-        "working_tree_dirty": true,
-        "command": [
-          "fpga/transition_processor/measure.py",
-          "--vivado",
-          "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
-          "--source",
-          "work/fpga-boundary/baseline/fpga/transition_processor/rtl",
-          "--stage",
-          "route",
-          "--output",
-          "work/fpga-boundary/baseline/route-runtime-v2"
-        ],
-        "part": "xc7z020clg484-1",
-        "loops": 64,
-        "requests": 272,
-        "events": 400,
-        "integrated": 1,
-        "clock_ns": 10,
-        "uncertainty_ns": 0.2,
-        "threads": 4,
-        "stage": "route"
-      },
-      "validated_rtl_revision": "5b7dd0a5b242884f86862991dc7b456a5b091df7"
+      }
     },
     "candidate": {
       "source_manifest": {
         "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
-        "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+        "tp_ram.sv": "1ef615a4b148be6d348174b0533250fe7b1756cc066f4e5d68c16b46ee32e9ca",
         "transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
       },
       "artifact_manifest": {
@@ -192,81 +167,67 @@
         }
       },
       "source_report_sha256": {
-        "post_route_tp_utilization.rpt": "a7718b6aa88adf43daab8945e2c55fca5172ca88135ac13cb0091dc56a07595a",
-        "post_route_timing.rpt": "b75554446a4c3970bd1436179c2a4211d24bd0c5423825d3a58b9d36536f6c68",
+        "post_route_tp_utilization.rpt": "78b04f643d0ae16dfcfb345d79040a5043f226609d51de807874f7127f41caa2",
+        "post_route_timing.rpt": "610fa7e16357f644c43774c7b8cff5f5966b3b0eeca331ac503a1c115a1431aa",
         "post_route_route_status.rpt": "20a7c02c0efd0792a8c5cf5ec7386781afa44e12b85fd32502313a6b1db1f845",
-        "post_route_drc.rpt": "e3c31c4f1fc7f19a761e1ab7a71d6d0311dbce4dfdcad88e1707b0ebdfe22312",
-        "post_synth_hierarchical.rpt": "2a60470ecaa62e8760931639cded402acea2da973e5b694d1e43997888247fbb",
+        "post_route_drc.rpt": "a7aed73400a184ef7b29f93a66c96e96ab0b531f2e69e956e896bedafc3f4e6c",
+        "post_synth_hierarchical.rpt": "4b098064ee5bfd8610f5cf437d533540853eab2b1dee5c7980e496307c882298",
         "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
       },
       "published_report_sha256": {
-        "post_route_tp_utilization.rpt": "c54db1d2fefb080cd72e00170d2c6bc9482948931fb80b32ffd45aa72c8e3351",
-        "post_route_timing.rpt": "bb30e42d5c7142320d28aff7ddf973c5e509dbda8afa669eb63d79cd014c78d0",
+        "post_route_tp_utilization.rpt": "7b14887f62bc6c7feb09ecea02d5a24d5e4da906b288dad24acccc790fec0516",
+        "post_route_timing.rpt": "7595c69404dfdef5a819342b90f7b8282ba4de9f2bc920b94f97031bd63e0889",
         "post_route_route_status.rpt": "ff1d579ecfb9f04220f0a389c2f773e4382b95090a2e35ca2fd6a3461e4b000e",
-        "post_route_drc.rpt": "50f70f52860fb9b54b7d5bf1c20286c5fccb7ef86cb71996ea97e0b633a7cc47",
-        "post_synth_hierarchical.rpt": "997879c8af9638026a475d80f149a86f24550a3cd01e73813a0dcf6912477827",
+        "post_route_drc.rpt": "b4c766e8c52ef63cc6d73476020f72170db3dc197491471f53a57a9a160e3236",
+        "post_synth_hierarchical.rpt": "ea77a39992143f39a2860404c5896e443aab9a3160a065d5a03f09abcd128282",
         "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
-      },
-      "capture_provenance": {
-        "revision": "fdb5cffdc1b98598a8c7ab77608907051b3ef286",
-        "working_tree_dirty": true,
-        "command": [
-          "fpga/transition_processor/measure.py",
-          "--vivado",
-          "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
-          "--stage",
-          "route",
-          "--output",
-          "work/fpga-boundary/candidate/route-final"
-        ],
-        "part": "xc7z020clg484-1",
-        "loops": 64,
-        "requests": 272,
-        "events": 400,
-        "integrated": 1,
-        "clock_ns": 10,
-        "uncertainty_ns": 0.2,
-        "threads": 4,
-        "stage": "route"
-      },
-      "validated_rtl_revision": "8964470cfc3acd84ae22bec8837ab52020467c61"
+      }
     }
   },
   "commands": {
     "baseline_11": {
       "provenance": {
-        "source_manifest": {
-          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
-          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
-          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
-        },
-        "depths": [
-          64,
-          11,
-          400
+        "models": [
+          {
+            "native_memory": null,
+            "parameters": {
+              "EVENT_DEPTH": "400",
+              "LOOP_DEPTH": "64",
+              "REQUEST_DEPTH": "11"
+            },
+            "probes": [
+              {
+                "injection": true,
+                "path": "frame"
+              },
+              {
+                "injection": true,
+                "path": "phase"
+              }
+            ],
+            "sources_sha256": {
+              "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7",
+              "work/fpga-boundary/baseline/commands-11-marlin/source/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+              "work/fpga-boundary/baseline/commands-11-marlin/source/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+              "work/fpga-boundary/baseline/commands-11-marlin/source/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+            },
+            "top": "transition_processor"
+          }
         ],
-        "revision": "2a3b6b95e408a06ce65853f44d230db178975db2",
-        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "revision": "0658df28006a0256ebfd7686015da08c2ecc65a0",
         "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
-        "command": [
-          "fpga/transition_processor/measure_commands.py",
-          "--source",
-          "work/fpga-boundary/baseline/fpga/transition_processor",
-          "--requests",
-          "11",
-          "--output",
-          "work/fpga-boundary/baseline/commands-11-complete"
-        ],
-        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+        "simulator": "Marlin 0.21.1 / Verilator",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "worktree": "MM .github/workflows/fpga_simulation.yml\nM  AUDIO_IO.md\nM  Cargo.lock\nM  FPGA_ARCHITECTURE.md\nM  FPGA_CHUNK_PREFETCH.md\nM  PLAN_DDR3.md\nM  PLAN_FPGA_MONO_LOOPER.md\nM  PLAN_FPGA_RUNTIME_ADAPTER.md\nA  PLAN_MARLIN_TESTBENCHES.md\nM  PLAN_SIM_MEM.md\nM  PLAN_UNIFY_BACKENDS.md\nM  SIMPLIFY.md\nA  fpga/README.md\nA  fpga/abi/README.md\nR  fpga/state_processor/tests/codec.py -> fpga/abi/state.py\nR  fpga/transition_processor/tests/codec.py -> fpga/abi/transition.py\nM  fpga/audio_io/README.md\nM  fpga/audio_io/measurements/validation.json\nM  fpga/audio_io/prepare_demo.py\nM  fpga/audio_io/rtl/audio_demo.sv\nM  fpga/audio_io/rtl/audio_demo_body.svh\nM  fpga/audio_io/simulate.py\nM  fpga/audio_io/simulate_pipeline.py\nD  fpga/audio_io/tests/test_audio_control.py\nD  fpga/audio_io/tests/test_audio_io.py\nD  fpga/audio_io/tests/test_continuous.py\nD  fpga/audio_io/tests/test_demo.py\nM  fpga/axi_memory/README.md\nM  fpga/axi_memory/generate_tops.py\nM  fpga/axi_memory/requirements.txt\nD  fpga/axi_memory/sim/axi_memory.py\nD  fpga/axi_memory/sim/bus_timing.py\nD  fpga/axi_memory/sim/direct_memory.py\nD  fpga/axi_memory/sim/dram_timing.py\nD  fpga/axi_memory/sim/legacy_metadata.py\nD  fpga/axi_memory/sim/options.py\nD  fpga/axi_memory/sim/word_service.py\nM  fpga/axi_memory/simulate.py\nM  fpga/axi_memory/simulate_direct.py\nD  fpga/axi_memory/tests/direct/axi_master.sv\nD  fpga/axi_memory/tests/direct/chunk_axi.sv\nD  fpga/axi_memory/tests/direct/chunk_memory_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/direct/media_audio_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/media_store_axi.sv\nD  fpga/axi_memory/tests/direct/word_axi.sv\nD  fpga/axi_memory/tests/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/test_axi.py\nD  fpga/axi_memory/tests/test_chunk_axi.py\nD  fpga/axi_memory/tests/test_direct_memory.py\nD  fpga/axi_memory/tests/test_timing.py\nD  fpga/axi_memory/tests/test_word.py\nM  fpga/chunk_memory/HISTORY.md\nM  fpga/chunk_memory/README.md\nM  fpga/chunk_memory/requirements.txt\nM  fpga/chunk_memory/simulate.py\nD  fpga/chunk_memory/tests/chunk_driver.py\nD  fpga/chunk_memory/tests/test_block_retire.py\nD  fpga/chunk_memory/tests/test_chunk_memory.py\nM  fpga/job_processor/HISTORY.md\nM  fpga/job_processor/README.md\nM  fpga/job_processor/numeric_simulate.py\nM  fpga/job_processor/simulate.py\nM  fpga/job_processor/simulate_smoothing.py\nD  fpga/job_processor/tests/audio_cases.py\nD  fpga/job_processor/tests/audio_driver.py\nD  fpga/job_processor/tests/test_audio_pipeline.py\nD  fpga/job_processor/tests/test_numeric_contract.py\nD  fpga/job_processor/tests/test_smoothing.py\nM  fpga/loop_pipeline/HISTORY.md\nM  fpga/loop_pipeline/README.md\nM  fpga/loop_pipeline/measurements/simplification.json\nM  fpga/loop_pipeline/simulate.py\nD  fpga/loop_pipeline/tests/execution_timing.py\nD  fpga/loop_pipeline/tests/loop_memory.py\nD  fpga/loop_pipeline/tests/loop_pipeline_tb.sv\nD  fpga/loop_pipeline/tests/pipeline_driver.py\nM  fpga/media_store/HISTORY.md\nM  fpga/media_store/README.md\nM  fpga/media_store/measurements/README.md\nM  fpga/media_store/measurements/baseline-observation.json\nM  fpga/media_store/measurements/blocks32/mixed-reference32-timing.json\nM  fpga/media_store/measurements/blocks32/mixed-timing.json\nM  fpga/media_store/measurements/blocks32/original-timing.json\nM  fpga/media_store/measurements/blocks32/streaming-timing.json\nM  fpga/media_store/measurements/blocks32/validation.json\nM  fpga/media_store/measurements/deferred/cycle-budget/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/cycle-budget/reclaim-timing.json\nM  fpga/media_store/measurements/deferred/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/production-summary.json\nM  fpga/media_store/measurements/execution-timing.json\nM  fpga/media_store/measurements/mixed-reference32-timing.json\nM  fpga/media_store/measurements/mixed-timing.json\nM  fpga/media_store/measurements/original-timing.json\nM  fpga/media_store/measurements/streaming-timing.json\nM  fpga/media_store/measurements/validation.json\nM  fpga/media_store/requirements.txt\nM  fpga/media_store/resolver_simulate.py\nM  fpga/media_store/simulate.py\nM  fpga/media_store/simulate_metadata.py\nD  fpga/media_store/tests/block_images.py\nD  fpga/media_store/tests/media_cases.py\nD  fpga/media_store/tests/media_driver.py\nD  fpga/media_store/tests/pipeline_driver.py\nD  fpga/media_store/tests/prefetch_timing.py\nD  fpga/media_store/tests/test_block_audio.py\nD  fpga/media_store/tests/test_block_media.py\nD  fpga/media_store/tests/test_deferred_capacity.py\nD  fpga/media_store/tests/test_deferred_media.py\nD  fpga/media_store/tests/test_deferred_reuse.py\nD  fpga/media_store/tests/test_deferred_stress.py\nD  fpga/media_store/tests/test_media_metadata.py\nD  fpga/media_store/tests/test_media_pipeline.py\nD  fpga/media_store/tests/test_media_statistics.py\nD  fpga/media_store/tests/test_media_store.py\nD  fpga/media_store/tests/test_metadata_cache.py\nD  fpga/media_store/tests/test_prefetch_resolver.py\nD  fpga/media_store/tests/test_reclaim_timing.py\nM  fpga/state_processor/HISTORY.md\nM  fpga/state_processor/README.md\nM  fpga/state_processor/requirements.txt\nM  fpga/state_processor/simulate.py\nD  fpga/state_processor/tests/cases.py\nD  fpga/state_processor/tests/driver.py\nD  fpga/state_processor/tests/test_state_processor.py\nM  fpga/synthesis/README.md\nM  fpga/synthesis/measurements/RESULTS.md\nM  fpga/synthesis/measurements/results.json\nM  fpga/transition_processor/README.md\n M fpga/transition_processor/measure_commands.py\nM  fpga/transition_processor/requirements.txt\nM  fpga/transition_processor/rtl/tp_ram.sv\nM  fpga/transition_processor/simulate.py\nD  fpga/transition_processor/tests/cases.py\nD  fpga/transition_processor/tests/driver.py\nD  fpga/transition_processor/tests/test_command_measurements.py\nD  fpga/transition_processor/tests/test_transition_processor.py\nD  fpga/transition_processor/tests/transition_processor_tb.sv\nM  fpga/verification/README.md\nM  fpga/verification/accuracy-gates.json\nM  fpga/verification/baseline.json\nM  fpga/verification/ddr64.json\nM  fpga/verification/final-gates.json\nM  fpga/verification/simulate.py\nD  fpga/verification/tests/media_results.py\nD  fpga/verification/tests/test_production_pipeline.py\nM  fpga/zedboard/README.md\nM  fpga/zedboard/prepare.py\nM  fpga/zedboard/simulate.py\nD  fpga/zedboard/tests/test_timing_bench.py\nA  scripts/check_fpga_float_accuracy.py\nA  scripts/check_fpga_testbench_coverage.py\nA  scripts/generate_fpga_scenarios.py\nA  scripts/run_fpga_testbench.py\nA  src/rust/rt_fpga_sim/CONTINUOUS_BENCH.md\nM  src/rust/rt_fpga_sim/MONO_VALIDATION.md\nM  src/rust/rt_fpga_sim/README.md\nM  src/rust/rt_fpga_sim/VALIDATION.md\nM  src/rust/rt_fpga_sim/src/simulator.rs\nM  src/rust/rt_fpga_sim/tests/marlin.rs\nA  src/rust/rt_fpga_testbench/Cargo.toml\nA  src/rust/rt_fpga_testbench/README.md\nA  src/rust/rt_fpga_testbench/coverage.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-audio.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-baseline.json\nA  src/rust/rt_fpga_testbench/fixtures/production-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/production-faults.json\nA  src/rust/rt_fpga_testbench/fixtures/transition-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/zedboard-scenario.json\nA  src/rust/rt_fpga_testbench/src/bits.rs\nA  src/rust/rt_fpga_testbench/src/clock.rs\nA  src/rust/rt_fpga_testbench/src/codec.rs\nA  src/rust/rt_fpga_testbench/src/drivers/audio.rs\nA  src/rust/rt_fpga_testbench/src/drivers/chunk.rs\nA  src/rust/rt_fpga_testbench/src/drivers/config.rs\nA  src/rust/rt_fpga_testbench/src/drivers/endpoint.rs\nA  src/rust/rt_fpga_testbench/src/drivers/execution.rs\nA  src/rust/rt_fpga_testbench/src/drivers/frames.rs\nA  src/rust/rt_fpga_testbench/src/drivers/loops.rs\nA  src/rust/rt_fpga_testbench/src/drivers/mod.rs\nA  src/rust/rt_fpga_testbench/src/drivers/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/drivers/request.rs\nA  src/rust/rt_fpga_testbench/src/drivers/state.rs\nA  src/rust/rt_fpga_testbench/src/drivers/store.rs\nA  src/rust/rt_fpga_testbench/src/drivers/stream.rs\nAM src/rust/rt_fpga_testbench/src/drivers/transition.rs\nA  src/rust/rt_fpga_testbench/src/images.rs\nAM src/rust/rt_fpga_testbench/src/lib.rs\nAM src/rust/rt_fpga_testbench/src/main.rs\nA  src/rust/rt_fpga_testbench/src/memory/axi.rs\nA  src/rust/rt_fpga_testbench/src/memory/legacy.rs\nA  src/rust/rt_fpga_testbench/src/memory/mod.rs\nA  src/rust/rt_fpga_testbench/src/model.rs\nAM src/rust/rt_fpga_testbench/src/prepared.rs\nA  src/rust/rt_fpga_testbench/src/protocol.rs\nA  src/rust/rt_fpga_testbench/src/random.rs\nA  src/rust/rt_fpga_testbench/src/reference.rs\nA  src/rust/rt_fpga_testbench/src/report.rs\nA  src/rust/rt_fpga_testbench/src/sim.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio_io.rs\nA  src/rust/rt_fpga_testbench/src/suites/axi.rs\nA  src/rust/rt_fpga_testbench/src/suites/chunk.rs\nA  src/rust/rt_fpga_testbench/src/suites/continuous.rs\nA  src/rust/rt_fpga_testbench/src/suites/control.rs\nA  src/rust/rt_fpga_testbench/src/suites/demo.rs\nA  src/rust/rt_fpga_testbench/src/suites/direct.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/basic.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/campaign.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/deferred.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/ownership.rs\nA  src/rust/rt_fpga_testbench/src/suites/metadata.rs\nA  src/rust/rt_fpga_testbench/src/suites/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/suites/production.rs\nA  src/rust/rt_fpga_testbench/src/suites/production_faults.rs\nA  src/rust/rt_fpga_testbench/src/suites/resolver.rs\nA  src/rust/rt_fpga_testbench/src/suites/smoothing.rs\nA  src/rust/rt_fpga_testbench/src/suites/state.rs\nAM src/rust/rt_fpga_testbench/src/suites/transition.rs\nA  src/rust/rt_fpga_testbench/src/suites/zedboard.rs\nA  src/rust/rt_fpga_testbench/src/timing/dram.rs\nA  src/rust/rt_fpga_testbench/src/timing/mod.rs\nA  src/rust/rt_fpga_testbench/tests/audio.rs\nA  src/rust/rt_fpga_testbench/tests/audio_io.rs\nA  src/rust/rt_fpga_testbench/tests/axi.rs\nA  src/rust/rt_fpga_testbench/tests/campaign.rs\nA  src/rust/rt_fpga_testbench/tests/chunk.rs\nA  src/rust/rt_fpga_testbench/tests/continuous.rs\nA  src/rust/rt_fpga_testbench/tests/core.rs\nA  src/rust/rt_fpga_testbench/tests/deferred.rs\nA  src/rust/rt_fpga_testbench/tests/demo.rs\nA  src/rust/rt_fpga_testbench/tests/direct.rs\nA  src/rust/rt_fpga_testbench/tests/media.rs\nA  src/rust/rt_fpga_testbench/tests/metadata.rs\nA  src/rust/rt_fpga_testbench/tests/ownership.rs\nA  src/rust/rt_fpga_testbench/tests/pipeline.rs\nA  src/rust/rt_fpga_testbench/tests/production.rs\nA  src/rust/rt_fpga_testbench/tests/smoothing.rs\nA  src/rust/rt_fpga_testbench/tests/state.rs\nA  src/rust/rt_fpga_testbench/tests/timing.rs\nA  src/rust/rt_fpga_testbench/tests/transition.rs\nA  src/rust/rt_fpga_testbench/tests/zedboard.rs\nM  third_party/marlin-verilator/README.md\nM  third_party/marlin-verilator/SHOOP_PATCH.md\nM  third_party/marlin-verilator/src/dynamic.rs\nM  third_party/marlin-verilator/src/lib.rs\n?? src/rust/rt_fpga_testbench/src/command_measurements.rs"
       },
       "empty_list": {
+        "cancel": 11,
+        "cancelled_collect": 4,
+        "collect": 4,
         "install": 59,
         "process": 44,
         "read_state": 4,
-        "status": 1,
-        "collect": 4,
-        "cancel": 11,
-        "cancelled_collect": 4
+        "status": 1
       },
       "duplicate_cycles": 48,
       "full_cycles": 50,
@@ -276,45 +237,60 @@
       "host_metadata_bytes": null,
       "host_service": {},
       "payload_bytes": {
-        "install": 80,
         "cancel": 80,
-        "collect_response": 104
-      }
+        "collect_response": 104,
+        "install": 80
+      },
+      "source_manifest": {
+        "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+        "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+        "transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+      },
+      "runner": "rt_fpga_testbench command-costs (native Marlin)"
     },
     "baseline_272": {
       "provenance": {
-        "source_manifest": {
-          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
-          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
-          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
-        },
-        "depths": [
-          64,
-          272,
-          400
+        "models": [
+          {
+            "native_memory": null,
+            "parameters": {
+              "EVENT_DEPTH": "400",
+              "LOOP_DEPTH": "64",
+              "REQUEST_DEPTH": "272"
+            },
+            "probes": [
+              {
+                "injection": true,
+                "path": "frame"
+              },
+              {
+                "injection": true,
+                "path": "phase"
+              }
+            ],
+            "sources_sha256": {
+              "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7",
+              "work/fpga-boundary/baseline/commands-272-marlin/source/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+              "work/fpga-boundary/baseline/commands-272-marlin/source/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+              "work/fpga-boundary/baseline/commands-272-marlin/source/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+            },
+            "top": "transition_processor"
+          }
         ],
-        "revision": "2a3b6b95e408a06ce65853f44d230db178975db2",
-        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "revision": "0658df28006a0256ebfd7686015da08c2ecc65a0",
         "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
-        "command": [
-          "fpga/transition_processor/measure_commands.py",
-          "--source",
-          "work/fpga-boundary/baseline/fpga/transition_processor",
-          "--requests",
-          "272",
-          "--output",
-          "work/fpga-boundary/baseline/commands-272-complete"
-        ],
-        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+        "simulator": "Marlin 0.21.1 / Verilator",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "worktree": "MM .github/workflows/fpga_simulation.yml\nM  AUDIO_IO.md\nM  Cargo.lock\nM  FPGA_ARCHITECTURE.md\nM  FPGA_CHUNK_PREFETCH.md\nM  PLAN_DDR3.md\nM  PLAN_FPGA_MONO_LOOPER.md\nM  PLAN_FPGA_RUNTIME_ADAPTER.md\nA  PLAN_MARLIN_TESTBENCHES.md\nM  PLAN_SIM_MEM.md\nM  PLAN_UNIFY_BACKENDS.md\nM  SIMPLIFY.md\nA  fpga/README.md\nA  fpga/abi/README.md\nR  fpga/state_processor/tests/codec.py -> fpga/abi/state.py\nR  fpga/transition_processor/tests/codec.py -> fpga/abi/transition.py\nM  fpga/audio_io/README.md\nM  fpga/audio_io/measurements/validation.json\nM  fpga/audio_io/prepare_demo.py\nM  fpga/audio_io/rtl/audio_demo.sv\nM  fpga/audio_io/rtl/audio_demo_body.svh\nM  fpga/audio_io/simulate.py\nM  fpga/audio_io/simulate_pipeline.py\nD  fpga/audio_io/tests/test_audio_control.py\nD  fpga/audio_io/tests/test_audio_io.py\nD  fpga/audio_io/tests/test_continuous.py\nD  fpga/audio_io/tests/test_demo.py\nM  fpga/axi_memory/README.md\nM  fpga/axi_memory/generate_tops.py\nM  fpga/axi_memory/requirements.txt\nD  fpga/axi_memory/sim/axi_memory.py\nD  fpga/axi_memory/sim/bus_timing.py\nD  fpga/axi_memory/sim/direct_memory.py\nD  fpga/axi_memory/sim/dram_timing.py\nD  fpga/axi_memory/sim/legacy_metadata.py\nD  fpga/axi_memory/sim/options.py\nD  fpga/axi_memory/sim/word_service.py\nM  fpga/axi_memory/simulate.py\nM  fpga/axi_memory/simulate_direct.py\nD  fpga/axi_memory/tests/direct/axi_master.sv\nD  fpga/axi_memory/tests/direct/chunk_axi.sv\nD  fpga/axi_memory/tests/direct/chunk_memory_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/direct/media_audio_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/media_store_axi.sv\nD  fpga/axi_memory/tests/direct/word_axi.sv\nD  fpga/axi_memory/tests/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/test_axi.py\nD  fpga/axi_memory/tests/test_chunk_axi.py\nD  fpga/axi_memory/tests/test_direct_memory.py\nD  fpga/axi_memory/tests/test_timing.py\nD  fpga/axi_memory/tests/test_word.py\nM  fpga/chunk_memory/HISTORY.md\nM  fpga/chunk_memory/README.md\nM  fpga/chunk_memory/requirements.txt\nM  fpga/chunk_memory/simulate.py\nD  fpga/chunk_memory/tests/chunk_driver.py\nD  fpga/chunk_memory/tests/test_block_retire.py\nD  fpga/chunk_memory/tests/test_chunk_memory.py\nM  fpga/job_processor/HISTORY.md\nM  fpga/job_processor/README.md\nM  fpga/job_processor/numeric_simulate.py\nM  fpga/job_processor/simulate.py\nM  fpga/job_processor/simulate_smoothing.py\nD  fpga/job_processor/tests/audio_cases.py\nD  fpga/job_processor/tests/audio_driver.py\nD  fpga/job_processor/tests/test_audio_pipeline.py\nD  fpga/job_processor/tests/test_numeric_contract.py\nD  fpga/job_processor/tests/test_smoothing.py\nM  fpga/loop_pipeline/HISTORY.md\nM  fpga/loop_pipeline/README.md\nM  fpga/loop_pipeline/measurements/simplification.json\nM  fpga/loop_pipeline/simulate.py\nD  fpga/loop_pipeline/tests/execution_timing.py\nD  fpga/loop_pipeline/tests/loop_memory.py\nD  fpga/loop_pipeline/tests/loop_pipeline_tb.sv\nD  fpga/loop_pipeline/tests/pipeline_driver.py\nM  fpga/media_store/HISTORY.md\nM  fpga/media_store/README.md\nM  fpga/media_store/measurements/README.md\nM  fpga/media_store/measurements/baseline-observation.json\nM  fpga/media_store/measurements/blocks32/mixed-reference32-timing.json\nM  fpga/media_store/measurements/blocks32/mixed-timing.json\nM  fpga/media_store/measurements/blocks32/original-timing.json\nM  fpga/media_store/measurements/blocks32/streaming-timing.json\nM  fpga/media_store/measurements/blocks32/validation.json\nM  fpga/media_store/measurements/deferred/cycle-budget/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/cycle-budget/reclaim-timing.json\nM  fpga/media_store/measurements/deferred/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/production-summary.json\nM  fpga/media_store/measurements/execution-timing.json\nM  fpga/media_store/measurements/mixed-reference32-timing.json\nM  fpga/media_store/measurements/mixed-timing.json\nM  fpga/media_store/measurements/original-timing.json\nM  fpga/media_store/measurements/streaming-timing.json\nM  fpga/media_store/measurements/validation.json\nM  fpga/media_store/requirements.txt\nM  fpga/media_store/resolver_simulate.py\nM  fpga/media_store/simulate.py\nM  fpga/media_store/simulate_metadata.py\nD  fpga/media_store/tests/block_images.py\nD  fpga/media_store/tests/media_cases.py\nD  fpga/media_store/tests/media_driver.py\nD  fpga/media_store/tests/pipeline_driver.py\nD  fpga/media_store/tests/prefetch_timing.py\nD  fpga/media_store/tests/test_block_audio.py\nD  fpga/media_store/tests/test_block_media.py\nD  fpga/media_store/tests/test_deferred_capacity.py\nD  fpga/media_store/tests/test_deferred_media.py\nD  fpga/media_store/tests/test_deferred_reuse.py\nD  fpga/media_store/tests/test_deferred_stress.py\nD  fpga/media_store/tests/test_media_metadata.py\nD  fpga/media_store/tests/test_media_pipeline.py\nD  fpga/media_store/tests/test_media_statistics.py\nD  fpga/media_store/tests/test_media_store.py\nD  fpga/media_store/tests/test_metadata_cache.py\nD  fpga/media_store/tests/test_prefetch_resolver.py\nD  fpga/media_store/tests/test_reclaim_timing.py\nM  fpga/state_processor/HISTORY.md\nM  fpga/state_processor/README.md\nM  fpga/state_processor/requirements.txt\nM  fpga/state_processor/simulate.py\nD  fpga/state_processor/tests/cases.py\nD  fpga/state_processor/tests/driver.py\nD  fpga/state_processor/tests/test_state_processor.py\nM  fpga/synthesis/README.md\nM  fpga/synthesis/measurements/RESULTS.md\nM  fpga/synthesis/measurements/results.json\nM  fpga/transition_processor/README.md\n M fpga/transition_processor/measure_commands.py\nM  fpga/transition_processor/requirements.txt\nM  fpga/transition_processor/rtl/tp_ram.sv\nM  fpga/transition_processor/simulate.py\nD  fpga/transition_processor/tests/cases.py\nD  fpga/transition_processor/tests/driver.py\nD  fpga/transition_processor/tests/test_command_measurements.py\nD  fpga/transition_processor/tests/test_transition_processor.py\nD  fpga/transition_processor/tests/transition_processor_tb.sv\nM  fpga/verification/README.md\nM  fpga/verification/accuracy-gates.json\nM  fpga/verification/baseline.json\nM  fpga/verification/ddr64.json\nM  fpga/verification/final-gates.json\nM  fpga/verification/simulate.py\nD  fpga/verification/tests/media_results.py\nD  fpga/verification/tests/test_production_pipeline.py\nM  fpga/zedboard/README.md\nM  fpga/zedboard/prepare.py\nM  fpga/zedboard/simulate.py\nD  fpga/zedboard/tests/test_timing_bench.py\nA  scripts/check_fpga_float_accuracy.py\nA  scripts/check_fpga_testbench_coverage.py\nA  scripts/generate_fpga_scenarios.py\nA  scripts/run_fpga_testbench.py\nA  src/rust/rt_fpga_sim/CONTINUOUS_BENCH.md\nM  src/rust/rt_fpga_sim/MONO_VALIDATION.md\nM  src/rust/rt_fpga_sim/README.md\nM  src/rust/rt_fpga_sim/VALIDATION.md\nM  src/rust/rt_fpga_sim/src/simulator.rs\nM  src/rust/rt_fpga_sim/tests/marlin.rs\nA  src/rust/rt_fpga_testbench/Cargo.toml\nA  src/rust/rt_fpga_testbench/README.md\nA  src/rust/rt_fpga_testbench/coverage.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-audio.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-baseline.json\nA  src/rust/rt_fpga_testbench/fixtures/production-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/production-faults.json\nA  src/rust/rt_fpga_testbench/fixtures/transition-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/zedboard-scenario.json\nA  src/rust/rt_fpga_testbench/src/bits.rs\nA  src/rust/rt_fpga_testbench/src/clock.rs\nA  src/rust/rt_fpga_testbench/src/codec.rs\nA  src/rust/rt_fpga_testbench/src/drivers/audio.rs\nA  src/rust/rt_fpga_testbench/src/drivers/chunk.rs\nA  src/rust/rt_fpga_testbench/src/drivers/config.rs\nA  src/rust/rt_fpga_testbench/src/drivers/endpoint.rs\nA  src/rust/rt_fpga_testbench/src/drivers/execution.rs\nA  src/rust/rt_fpga_testbench/src/drivers/frames.rs\nA  src/rust/rt_fpga_testbench/src/drivers/loops.rs\nA  src/rust/rt_fpga_testbench/src/drivers/mod.rs\nA  src/rust/rt_fpga_testbench/src/drivers/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/drivers/request.rs\nA  src/rust/rt_fpga_testbench/src/drivers/state.rs\nA  src/rust/rt_fpga_testbench/src/drivers/store.rs\nA  src/rust/rt_fpga_testbench/src/drivers/stream.rs\nAM src/rust/rt_fpga_testbench/src/drivers/transition.rs\nA  src/rust/rt_fpga_testbench/src/images.rs\nAM src/rust/rt_fpga_testbench/src/lib.rs\nAM src/rust/rt_fpga_testbench/src/main.rs\nA  src/rust/rt_fpga_testbench/src/memory/axi.rs\nA  src/rust/rt_fpga_testbench/src/memory/legacy.rs\nA  src/rust/rt_fpga_testbench/src/memory/mod.rs\nA  src/rust/rt_fpga_testbench/src/model.rs\nAM src/rust/rt_fpga_testbench/src/prepared.rs\nA  src/rust/rt_fpga_testbench/src/protocol.rs\nA  src/rust/rt_fpga_testbench/src/random.rs\nA  src/rust/rt_fpga_testbench/src/reference.rs\nA  src/rust/rt_fpga_testbench/src/report.rs\nA  src/rust/rt_fpga_testbench/src/sim.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio_io.rs\nA  src/rust/rt_fpga_testbench/src/suites/axi.rs\nA  src/rust/rt_fpga_testbench/src/suites/chunk.rs\nA  src/rust/rt_fpga_testbench/src/suites/continuous.rs\nA  src/rust/rt_fpga_testbench/src/suites/control.rs\nA  src/rust/rt_fpga_testbench/src/suites/demo.rs\nA  src/rust/rt_fpga_testbench/src/suites/direct.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/basic.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/campaign.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/deferred.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/ownership.rs\nA  src/rust/rt_fpga_testbench/src/suites/metadata.rs\nA  src/rust/rt_fpga_testbench/src/suites/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/suites/production.rs\nA  src/rust/rt_fpga_testbench/src/suites/production_faults.rs\nA  src/rust/rt_fpga_testbench/src/suites/resolver.rs\nA  src/rust/rt_fpga_testbench/src/suites/smoothing.rs\nA  src/rust/rt_fpga_testbench/src/suites/state.rs\nAM src/rust/rt_fpga_testbench/src/suites/transition.rs\nA  src/rust/rt_fpga_testbench/src/suites/zedboard.rs\nA  src/rust/rt_fpga_testbench/src/timing/dram.rs\nA  src/rust/rt_fpga_testbench/src/timing/mod.rs\nA  src/rust/rt_fpga_testbench/tests/audio.rs\nA  src/rust/rt_fpga_testbench/tests/audio_io.rs\nA  src/rust/rt_fpga_testbench/tests/axi.rs\nA  src/rust/rt_fpga_testbench/tests/campaign.rs\nA  src/rust/rt_fpga_testbench/tests/chunk.rs\nA  src/rust/rt_fpga_testbench/tests/continuous.rs\nA  src/rust/rt_fpga_testbench/tests/core.rs\nA  src/rust/rt_fpga_testbench/tests/deferred.rs\nA  src/rust/rt_fpga_testbench/tests/demo.rs\nA  src/rust/rt_fpga_testbench/tests/direct.rs\nA  src/rust/rt_fpga_testbench/tests/media.rs\nA  src/rust/rt_fpga_testbench/tests/metadata.rs\nA  src/rust/rt_fpga_testbench/tests/ownership.rs\nA  src/rust/rt_fpga_testbench/tests/pipeline.rs\nA  src/rust/rt_fpga_testbench/tests/production.rs\nA  src/rust/rt_fpga_testbench/tests/smoothing.rs\nA  src/rust/rt_fpga_testbench/tests/state.rs\nA  src/rust/rt_fpga_testbench/tests/timing.rs\nA  src/rust/rt_fpga_testbench/tests/transition.rs\nA  src/rust/rt_fpga_testbench/tests/zedboard.rs\nM  third_party/marlin-verilator/README.md\nM  third_party/marlin-verilator/SHOOP_PATCH.md\nM  third_party/marlin-verilator/src/dynamic.rs\nM  third_party/marlin-verilator/src/lib.rs\n?? src/rust/rt_fpga_testbench/src/command_measurements.rs"
       },
       "empty_list": {
+        "cancel": 11,
+        "cancelled_collect": 4,
+        "collect": 4,
         "install": 1103,
         "process": 44,
         "read_state": 4,
-        "status": 1,
-        "collect": 4,
-        "cancel": 11,
-        "cancelled_collect": 4
+        "status": 1
       },
       "duplicate_cycles": 1092,
       "full_cycles": 1094,
@@ -324,43 +300,60 @@
       "host_metadata_bytes": null,
       "host_service": {},
       "payload_bytes": {
-        "install": 80,
         "cancel": 80,
-        "collect_response": 104
-      }
+        "collect_response": 104,
+        "install": 80
+      },
+      "source_manifest": {
+        "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+        "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+        "transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+      },
+      "runner": "rt_fpga_testbench command-costs (native Marlin)"
     },
     "candidate_11": {
       "provenance": {
-        "source_manifest": {
-          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
-          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
-          "/workspace/shoopdaloop/fpga/transition_processor/rtl/transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
-        },
-        "depths": [
-          64,
-          11,
-          400
+        "models": [
+          {
+            "native_memory": null,
+            "parameters": {
+              "EVENT_DEPTH": "400",
+              "LOOP_DEPTH": "64",
+              "REQUEST_DEPTH": "11"
+            },
+            "probes": [
+              {
+                "injection": true,
+                "path": "frame"
+              },
+              {
+                "injection": true,
+                "path": "phase"
+              }
+            ],
+            "sources_sha256": {
+              "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7",
+              "work/fpga-boundary/candidate/commands-11-marlin-final/source/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+              "work/fpga-boundary/candidate/commands-11-marlin-final/source/tp_ram.sv": "1ef615a4b148be6d348174b0533250fe7b1756cc066f4e5d68c16b46ee32e9ca",
+              "work/fpga-boundary/candidate/commands-11-marlin-final/source/transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+            },
+            "top": "transition_processor"
+          }
         ],
-        "revision": "fdb5cffdc1b98598a8c7ab77608907051b3ef286",
-        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "revision": "0658df28006a0256ebfd7686015da08c2ecc65a0",
         "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
-        "command": [
-          "fpga/transition_processor/measure_commands.py",
-          "--requests",
-          "11",
-          "--output",
-          "work/fpga-boundary/candidate/commands-11-cleanup"
-        ],
-        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+        "simulator": "Marlin 0.21.1 / Verilator",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "worktree": "MM .github/workflows/fpga_simulation.yml\nM  AUDIO_IO.md\nM  Cargo.lock\nM  FPGA_ARCHITECTURE.md\nM  FPGA_CHUNK_PREFETCH.md\nM  PLAN_DDR3.md\nM  PLAN_FPGA_MONO_LOOPER.md\nM  PLAN_FPGA_RUNTIME_ADAPTER.md\nA  PLAN_MARLIN_TESTBENCHES.md\nM  PLAN_SIM_MEM.md\nM  PLAN_UNIFY_BACKENDS.md\nM  SIMPLIFY.md\nA  fpga/README.md\nA  fpga/abi/README.md\nR  fpga/state_processor/tests/codec.py -> fpga/abi/state.py\nR  fpga/transition_processor/tests/codec.py -> fpga/abi/transition.py\nM  fpga/audio_io/README.md\nM  fpga/audio_io/measurements/validation.json\nM  fpga/audio_io/prepare_demo.py\nM  fpga/audio_io/rtl/audio_demo.sv\nM  fpga/audio_io/rtl/audio_demo_body.svh\nM  fpga/audio_io/simulate.py\nM  fpga/audio_io/simulate_pipeline.py\nD  fpga/audio_io/tests/test_audio_control.py\nD  fpga/audio_io/tests/test_audio_io.py\nD  fpga/audio_io/tests/test_continuous.py\nD  fpga/audio_io/tests/test_demo.py\nM  fpga/axi_memory/README.md\nM  fpga/axi_memory/generate_tops.py\nM  fpga/axi_memory/requirements.txt\nD  fpga/axi_memory/sim/axi_memory.py\nD  fpga/axi_memory/sim/bus_timing.py\nD  fpga/axi_memory/sim/direct_memory.py\nD  fpga/axi_memory/sim/dram_timing.py\nD  fpga/axi_memory/sim/legacy_metadata.py\nD  fpga/axi_memory/sim/options.py\nD  fpga/axi_memory/sim/word_service.py\nM  fpga/axi_memory/simulate.py\nM  fpga/axi_memory/simulate_direct.py\nD  fpga/axi_memory/tests/direct/axi_master.sv\nD  fpga/axi_memory/tests/direct/chunk_axi.sv\nD  fpga/axi_memory/tests/direct/chunk_memory_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/direct/media_audio_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/media_store_axi.sv\nD  fpga/axi_memory/tests/direct/word_axi.sv\nD  fpga/axi_memory/tests/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/test_axi.py\nD  fpga/axi_memory/tests/test_chunk_axi.py\nD  fpga/axi_memory/tests/test_direct_memory.py\nD  fpga/axi_memory/tests/test_timing.py\nD  fpga/axi_memory/tests/test_word.py\nM  fpga/chunk_memory/HISTORY.md\nM  fpga/chunk_memory/README.md\nM  fpga/chunk_memory/requirements.txt\nM  fpga/chunk_memory/simulate.py\nD  fpga/chunk_memory/tests/chunk_driver.py\nD  fpga/chunk_memory/tests/test_block_retire.py\nD  fpga/chunk_memory/tests/test_chunk_memory.py\nM  fpga/job_processor/HISTORY.md\nM  fpga/job_processor/README.md\nM  fpga/job_processor/numeric_simulate.py\nM  fpga/job_processor/simulate.py\nM  fpga/job_processor/simulate_smoothing.py\nD  fpga/job_processor/tests/audio_cases.py\nD  fpga/job_processor/tests/audio_driver.py\nD  fpga/job_processor/tests/test_audio_pipeline.py\nD  fpga/job_processor/tests/test_numeric_contract.py\nD  fpga/job_processor/tests/test_smoothing.py\nM  fpga/loop_pipeline/HISTORY.md\nM  fpga/loop_pipeline/README.md\nM  fpga/loop_pipeline/measurements/simplification.json\nM  fpga/loop_pipeline/simulate.py\nD  fpga/loop_pipeline/tests/execution_timing.py\nD  fpga/loop_pipeline/tests/loop_memory.py\nD  fpga/loop_pipeline/tests/loop_pipeline_tb.sv\nD  fpga/loop_pipeline/tests/pipeline_driver.py\nM  fpga/media_store/HISTORY.md\nM  fpga/media_store/README.md\nM  fpga/media_store/measurements/README.md\nM  fpga/media_store/measurements/baseline-observation.json\nM  fpga/media_store/measurements/blocks32/mixed-reference32-timing.json\nM  fpga/media_store/measurements/blocks32/mixed-timing.json\nM  fpga/media_store/measurements/blocks32/original-timing.json\nM  fpga/media_store/measurements/blocks32/streaming-timing.json\nM  fpga/media_store/measurements/blocks32/validation.json\nM  fpga/media_store/measurements/deferred/cycle-budget/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/cycle-budget/reclaim-timing.json\nM  fpga/media_store/measurements/deferred/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/production-summary.json\nM  fpga/media_store/measurements/execution-timing.json\nM  fpga/media_store/measurements/mixed-reference32-timing.json\nM  fpga/media_store/measurements/mixed-timing.json\nM  fpga/media_store/measurements/original-timing.json\nM  fpga/media_store/measurements/streaming-timing.json\nM  fpga/media_store/measurements/validation.json\nM  fpga/media_store/requirements.txt\nM  fpga/media_store/resolver_simulate.py\nM  fpga/media_store/simulate.py\nM  fpga/media_store/simulate_metadata.py\nD  fpga/media_store/tests/block_images.py\nD  fpga/media_store/tests/media_cases.py\nD  fpga/media_store/tests/media_driver.py\nD  fpga/media_store/tests/pipeline_driver.py\nD  fpga/media_store/tests/prefetch_timing.py\nD  fpga/media_store/tests/test_block_audio.py\nD  fpga/media_store/tests/test_block_media.py\nD  fpga/media_store/tests/test_deferred_capacity.py\nD  fpga/media_store/tests/test_deferred_media.py\nD  fpga/media_store/tests/test_deferred_reuse.py\nD  fpga/media_store/tests/test_deferred_stress.py\nD  fpga/media_store/tests/test_media_metadata.py\nD  fpga/media_store/tests/test_media_pipeline.py\nD  fpga/media_store/tests/test_media_statistics.py\nD  fpga/media_store/tests/test_media_store.py\nD  fpga/media_store/tests/test_metadata_cache.py\nD  fpga/media_store/tests/test_prefetch_resolver.py\nD  fpga/media_store/tests/test_reclaim_timing.py\nM  fpga/state_processor/HISTORY.md\nM  fpga/state_processor/README.md\nM  fpga/state_processor/requirements.txt\nM  fpga/state_processor/simulate.py\nD  fpga/state_processor/tests/cases.py\nD  fpga/state_processor/tests/driver.py\nD  fpga/state_processor/tests/test_state_processor.py\nM  fpga/synthesis/README.md\nM  fpga/synthesis/measurements/RESULTS.md\nM  fpga/synthesis/measurements/results.json\nM  fpga/transition_processor/README.md\n M fpga/transition_processor/measure_commands.py\nM  fpga/transition_processor/requirements.txt\nM  fpga/transition_processor/rtl/tp_ram.sv\nM  fpga/transition_processor/simulate.py\nD  fpga/transition_processor/tests/cases.py\nD  fpga/transition_processor/tests/driver.py\nD  fpga/transition_processor/tests/test_command_measurements.py\nD  fpga/transition_processor/tests/test_transition_processor.py\nD  fpga/transition_processor/tests/transition_processor_tb.sv\nM  fpga/verification/README.md\nM  fpga/verification/accuracy-gates.json\nM  fpga/verification/baseline.json\nM  fpga/verification/ddr64.json\nM  fpga/verification/final-gates.json\nM  fpga/verification/simulate.py\nD  fpga/verification/tests/media_results.py\nD  fpga/verification/tests/test_production_pipeline.py\nM  fpga/zedboard/README.md\nM  fpga/zedboard/prepare.py\nM  fpga/zedboard/simulate.py\nD  fpga/zedboard/tests/test_timing_bench.py\nA  scripts/check_fpga_float_accuracy.py\nA  scripts/check_fpga_testbench_coverage.py\nA  scripts/generate_fpga_scenarios.py\nA  scripts/run_fpga_testbench.py\nA  src/rust/rt_fpga_sim/CONTINUOUS_BENCH.md\nM  src/rust/rt_fpga_sim/MONO_VALIDATION.md\nM  src/rust/rt_fpga_sim/README.md\nM  src/rust/rt_fpga_sim/VALIDATION.md\nM  src/rust/rt_fpga_sim/src/simulator.rs\nM  src/rust/rt_fpga_sim/tests/marlin.rs\nA  src/rust/rt_fpga_testbench/Cargo.toml\nA  src/rust/rt_fpga_testbench/README.md\nA  src/rust/rt_fpga_testbench/coverage.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-audio.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-baseline.json\nA  src/rust/rt_fpga_testbench/fixtures/production-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/production-faults.json\nA  src/rust/rt_fpga_testbench/fixtures/transition-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/zedboard-scenario.json\nA  src/rust/rt_fpga_testbench/src/bits.rs\nA  src/rust/rt_fpga_testbench/src/clock.rs\nA  src/rust/rt_fpga_testbench/src/codec.rs\nA  src/rust/rt_fpga_testbench/src/drivers/audio.rs\nA  src/rust/rt_fpga_testbench/src/drivers/chunk.rs\nA  src/rust/rt_fpga_testbench/src/drivers/config.rs\nA  src/rust/rt_fpga_testbench/src/drivers/endpoint.rs\nA  src/rust/rt_fpga_testbench/src/drivers/execution.rs\nA  src/rust/rt_fpga_testbench/src/drivers/frames.rs\nA  src/rust/rt_fpga_testbench/src/drivers/loops.rs\nA  src/rust/rt_fpga_testbench/src/drivers/mod.rs\nA  src/rust/rt_fpga_testbench/src/drivers/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/drivers/request.rs\nA  src/rust/rt_fpga_testbench/src/drivers/state.rs\nA  src/rust/rt_fpga_testbench/src/drivers/store.rs\nA  src/rust/rt_fpga_testbench/src/drivers/stream.rs\nAM src/rust/rt_fpga_testbench/src/drivers/transition.rs\nA  src/rust/rt_fpga_testbench/src/images.rs\nAM src/rust/rt_fpga_testbench/src/lib.rs\nAM src/rust/rt_fpga_testbench/src/main.rs\nA  src/rust/rt_fpga_testbench/src/memory/axi.rs\nA  src/rust/rt_fpga_testbench/src/memory/legacy.rs\nA  src/rust/rt_fpga_testbench/src/memory/mod.rs\nA  src/rust/rt_fpga_testbench/src/model.rs\nAM src/rust/rt_fpga_testbench/src/prepared.rs\nA  src/rust/rt_fpga_testbench/src/protocol.rs\nA  src/rust/rt_fpga_testbench/src/random.rs\nA  src/rust/rt_fpga_testbench/src/reference.rs\nA  src/rust/rt_fpga_testbench/src/report.rs\nA  src/rust/rt_fpga_testbench/src/sim.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio_io.rs\nA  src/rust/rt_fpga_testbench/src/suites/axi.rs\nA  src/rust/rt_fpga_testbench/src/suites/chunk.rs\nA  src/rust/rt_fpga_testbench/src/suites/continuous.rs\nA  src/rust/rt_fpga_testbench/src/suites/control.rs\nA  src/rust/rt_fpga_testbench/src/suites/demo.rs\nA  src/rust/rt_fpga_testbench/src/suites/direct.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/basic.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/campaign.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/deferred.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/ownership.rs\nA  src/rust/rt_fpga_testbench/src/suites/metadata.rs\nA  src/rust/rt_fpga_testbench/src/suites/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/suites/production.rs\nA  src/rust/rt_fpga_testbench/src/suites/production_faults.rs\nA  src/rust/rt_fpga_testbench/src/suites/resolver.rs\nA  src/rust/rt_fpga_testbench/src/suites/smoothing.rs\nA  src/rust/rt_fpga_testbench/src/suites/state.rs\nAM src/rust/rt_fpga_testbench/src/suites/transition.rs\nA  src/rust/rt_fpga_testbench/src/suites/zedboard.rs\nA  src/rust/rt_fpga_testbench/src/timing/dram.rs\nA  src/rust/rt_fpga_testbench/src/timing/mod.rs\nA  src/rust/rt_fpga_testbench/tests/audio.rs\nA  src/rust/rt_fpga_testbench/tests/audio_io.rs\nA  src/rust/rt_fpga_testbench/tests/axi.rs\nA  src/rust/rt_fpga_testbench/tests/campaign.rs\nA  src/rust/rt_fpga_testbench/tests/chunk.rs\nA  src/rust/rt_fpga_testbench/tests/continuous.rs\nA  src/rust/rt_fpga_testbench/tests/core.rs\nA  src/rust/rt_fpga_testbench/tests/deferred.rs\nA  src/rust/rt_fpga_testbench/tests/demo.rs\nA  src/rust/rt_fpga_testbench/tests/direct.rs\nA  src/rust/rt_fpga_testbench/tests/media.rs\nA  src/rust/rt_fpga_testbench/tests/metadata.rs\nA  src/rust/rt_fpga_testbench/tests/ownership.rs\nA  src/rust/rt_fpga_testbench/tests/pipeline.rs\nA  src/rust/rt_fpga_testbench/tests/production.rs\nA  src/rust/rt_fpga_testbench/tests/smoothing.rs\nA  src/rust/rt_fpga_testbench/tests/state.rs\nA  src/rust/rt_fpga_testbench/tests/timing.rs\nA  src/rust/rt_fpga_testbench/tests/transition.rs\nA  src/rust/rt_fpga_testbench/tests/zedboard.rs\nM  third_party/marlin-verilator/README.md\nM  third_party/marlin-verilator/SHOOP_PATCH.md\nM  third_party/marlin-verilator/src/dynamic.rs\nM  third_party/marlin-verilator/src/lib.rs\n?? src/rust/rt_fpga_testbench/src/command_measurements.rs"
       },
       "empty_list": {
+        "cancel": 11,
+        "cancelled_collect": 4,
+        "collect": 4,
         "install": 16,
         "process": 44,
         "read_state": 4,
-        "status": 1,
-        "collect": 4,
-        "cancel": 11,
-        "cancelled_collect": 4
+        "status": 1
       },
       "duplicate_cycles": 0,
       "full_cycles": 0,
@@ -371,57 +364,74 @@
       "host_service": {
         "begin": {
           "samples": 56,
-          "min_ns": 161,
-          "median_ns": 3164.5,
-          "p95_ns": 8293,
-          "max_ns": 13150
+          "min_ns": 80,
+          "median_ns": 2193.5,
+          "p95_ns": 7631,
+          "max_ns": 7952
         },
         "finish": {
           "samples": 53,
-          "min_ns": 111,
-          "median_ns": 1021,
-          "p95_ns": 3986,
-          "max_ns": 15944
+          "min_ns": 80,
+          "median_ns": 150,
+          "p95_ns": 2023,
+          "max_ns": 18157
         }
       },
       "payload_bytes": {
-        "install": 80,
         "cancel": 80,
-        "collect_response": 104
-      }
+        "collect_response": 104,
+        "install": 80
+      },
+      "source_manifest": {
+        "tp_ram.sv": "1ef615a4b148be6d348174b0533250fe7b1756cc066f4e5d68c16b46ee32e9ca",
+        "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+        "transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+      },
+      "runner": "rt_fpga_testbench command-costs (native Marlin)"
     },
     "candidate_272": {
       "provenance": {
-        "source_manifest": {
-          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
-          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
-          "/workspace/shoopdaloop/fpga/transition_processor/rtl/transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
-        },
-        "depths": [
-          64,
-          272,
-          400
+        "models": [
+          {
+            "native_memory": null,
+            "parameters": {
+              "EVENT_DEPTH": "400",
+              "LOOP_DEPTH": "64",
+              "REQUEST_DEPTH": "272"
+            },
+            "probes": [
+              {
+                "injection": true,
+                "path": "frame"
+              },
+              {
+                "injection": true,
+                "path": "phase"
+              }
+            ],
+            "sources_sha256": {
+              "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7",
+              "work/fpga-boundary/candidate/commands-272-marlin-final/source/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+              "work/fpga-boundary/candidate/commands-272-marlin-final/source/tp_ram.sv": "1ef615a4b148be6d348174b0533250fe7b1756cc066f4e5d68c16b46ee32e9ca",
+              "work/fpga-boundary/candidate/commands-272-marlin-final/source/transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+            },
+            "top": "transition_processor"
+          }
         ],
-        "revision": "fdb5cffdc1b98598a8c7ab77608907051b3ef286",
-        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "revision": "0658df28006a0256ebfd7686015da08c2ecc65a0",
         "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
-        "command": [
-          "fpga/transition_processor/measure_commands.py",
-          "--requests",
-          "272",
-          "--output",
-          "work/fpga-boundary/candidate/commands-272-cleanup"
-        ],
-        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+        "simulator": "Marlin 0.21.1 / Verilator",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "worktree": "MM .github/workflows/fpga_simulation.yml\nM  AUDIO_IO.md\nM  Cargo.lock\nM  FPGA_ARCHITECTURE.md\nM  FPGA_CHUNK_PREFETCH.md\nM  PLAN_DDR3.md\nM  PLAN_FPGA_MONO_LOOPER.md\nM  PLAN_FPGA_RUNTIME_ADAPTER.md\nA  PLAN_MARLIN_TESTBENCHES.md\nM  PLAN_SIM_MEM.md\nM  PLAN_UNIFY_BACKENDS.md\nM  SIMPLIFY.md\nA  fpga/README.md\nA  fpga/abi/README.md\nR  fpga/state_processor/tests/codec.py -> fpga/abi/state.py\nR  fpga/transition_processor/tests/codec.py -> fpga/abi/transition.py\nM  fpga/audio_io/README.md\nM  fpga/audio_io/measurements/validation.json\nM  fpga/audio_io/prepare_demo.py\nM  fpga/audio_io/rtl/audio_demo.sv\nM  fpga/audio_io/rtl/audio_demo_body.svh\nM  fpga/audio_io/simulate.py\nM  fpga/audio_io/simulate_pipeline.py\nD  fpga/audio_io/tests/test_audio_control.py\nD  fpga/audio_io/tests/test_audio_io.py\nD  fpga/audio_io/tests/test_continuous.py\nD  fpga/audio_io/tests/test_demo.py\nM  fpga/axi_memory/README.md\nM  fpga/axi_memory/generate_tops.py\nM  fpga/axi_memory/requirements.txt\nD  fpga/axi_memory/sim/axi_memory.py\nD  fpga/axi_memory/sim/bus_timing.py\nD  fpga/axi_memory/sim/direct_memory.py\nD  fpga/axi_memory/sim/dram_timing.py\nD  fpga/axi_memory/sim/legacy_metadata.py\nD  fpga/axi_memory/sim/options.py\nD  fpga/axi_memory/sim/word_service.py\nM  fpga/axi_memory/simulate.py\nM  fpga/axi_memory/simulate_direct.py\nD  fpga/axi_memory/tests/direct/axi_master.sv\nD  fpga/axi_memory/tests/direct/chunk_axi.sv\nD  fpga/axi_memory/tests/direct/chunk_memory_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/direct/media_audio_pipeline_axi.sv\nD  fpga/axi_memory/tests/direct/media_store_axi.sv\nD  fpga/axi_memory/tests/direct/word_axi.sv\nD  fpga/axi_memory/tests/loop_pipeline_axi_tb.sv\nD  fpga/axi_memory/tests/test_axi.py\nD  fpga/axi_memory/tests/test_chunk_axi.py\nD  fpga/axi_memory/tests/test_direct_memory.py\nD  fpga/axi_memory/tests/test_timing.py\nD  fpga/axi_memory/tests/test_word.py\nM  fpga/chunk_memory/HISTORY.md\nM  fpga/chunk_memory/README.md\nM  fpga/chunk_memory/requirements.txt\nM  fpga/chunk_memory/simulate.py\nD  fpga/chunk_memory/tests/chunk_driver.py\nD  fpga/chunk_memory/tests/test_block_retire.py\nD  fpga/chunk_memory/tests/test_chunk_memory.py\nM  fpga/job_processor/HISTORY.md\nM  fpga/job_processor/README.md\nM  fpga/job_processor/numeric_simulate.py\nM  fpga/job_processor/simulate.py\nM  fpga/job_processor/simulate_smoothing.py\nD  fpga/job_processor/tests/audio_cases.py\nD  fpga/job_processor/tests/audio_driver.py\nD  fpga/job_processor/tests/test_audio_pipeline.py\nD  fpga/job_processor/tests/test_numeric_contract.py\nD  fpga/job_processor/tests/test_smoothing.py\nM  fpga/loop_pipeline/HISTORY.md\nM  fpga/loop_pipeline/README.md\nM  fpga/loop_pipeline/measurements/simplification.json\nM  fpga/loop_pipeline/simulate.py\nD  fpga/loop_pipeline/tests/execution_timing.py\nD  fpga/loop_pipeline/tests/loop_memory.py\nD  fpga/loop_pipeline/tests/loop_pipeline_tb.sv\nD  fpga/loop_pipeline/tests/pipeline_driver.py\nM  fpga/media_store/HISTORY.md\nM  fpga/media_store/README.md\nM  fpga/media_store/measurements/README.md\nM  fpga/media_store/measurements/baseline-observation.json\nM  fpga/media_store/measurements/blocks32/mixed-reference32-timing.json\nM  fpga/media_store/measurements/blocks32/mixed-timing.json\nM  fpga/media_store/measurements/blocks32/original-timing.json\nM  fpga/media_store/measurements/blocks32/streaming-timing.json\nM  fpga/media_store/measurements/blocks32/validation.json\nM  fpga/media_store/measurements/deferred/cycle-budget/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/cycle-budget/reclaim-timing.json\nM  fpga/media_store/measurements/deferred/mixed64-timing.json\nM  fpga/media_store/measurements/deferred/production-summary.json\nM  fpga/media_store/measurements/execution-timing.json\nM  fpga/media_store/measurements/mixed-reference32-timing.json\nM  fpga/media_store/measurements/mixed-timing.json\nM  fpga/media_store/measurements/original-timing.json\nM  fpga/media_store/measurements/streaming-timing.json\nM  fpga/media_store/measurements/validation.json\nM  fpga/media_store/requirements.txt\nM  fpga/media_store/resolver_simulate.py\nM  fpga/media_store/simulate.py\nM  fpga/media_store/simulate_metadata.py\nD  fpga/media_store/tests/block_images.py\nD  fpga/media_store/tests/media_cases.py\nD  fpga/media_store/tests/media_driver.py\nD  fpga/media_store/tests/pipeline_driver.py\nD  fpga/media_store/tests/prefetch_timing.py\nD  fpga/media_store/tests/test_block_audio.py\nD  fpga/media_store/tests/test_block_media.py\nD  fpga/media_store/tests/test_deferred_capacity.py\nD  fpga/media_store/tests/test_deferred_media.py\nD  fpga/media_store/tests/test_deferred_reuse.py\nD  fpga/media_store/tests/test_deferred_stress.py\nD  fpga/media_store/tests/test_media_metadata.py\nD  fpga/media_store/tests/test_media_pipeline.py\nD  fpga/media_store/tests/test_media_statistics.py\nD  fpga/media_store/tests/test_media_store.py\nD  fpga/media_store/tests/test_metadata_cache.py\nD  fpga/media_store/tests/test_prefetch_resolver.py\nD  fpga/media_store/tests/test_reclaim_timing.py\nM  fpga/state_processor/HISTORY.md\nM  fpga/state_processor/README.md\nM  fpga/state_processor/requirements.txt\nM  fpga/state_processor/simulate.py\nD  fpga/state_processor/tests/cases.py\nD  fpga/state_processor/tests/driver.py\nD  fpga/state_processor/tests/test_state_processor.py\nM  fpga/synthesis/README.md\nM  fpga/synthesis/measurements/RESULTS.md\nM  fpga/synthesis/measurements/results.json\nM  fpga/transition_processor/README.md\n M fpga/transition_processor/measure_commands.py\nM  fpga/transition_processor/requirements.txt\nM  fpga/transition_processor/rtl/tp_ram.sv\nM  fpga/transition_processor/simulate.py\nD  fpga/transition_processor/tests/cases.py\nD  fpga/transition_processor/tests/driver.py\nD  fpga/transition_processor/tests/test_command_measurements.py\nD  fpga/transition_processor/tests/test_transition_processor.py\nD  fpga/transition_processor/tests/transition_processor_tb.sv\nM  fpga/verification/README.md\nM  fpga/verification/accuracy-gates.json\nM  fpga/verification/baseline.json\nM  fpga/verification/ddr64.json\nM  fpga/verification/final-gates.json\nM  fpga/verification/simulate.py\nD  fpga/verification/tests/media_results.py\nD  fpga/verification/tests/test_production_pipeline.py\nM  fpga/zedboard/README.md\nM  fpga/zedboard/prepare.py\nM  fpga/zedboard/simulate.py\nD  fpga/zedboard/tests/test_timing_bench.py\nA  scripts/check_fpga_float_accuracy.py\nA  scripts/check_fpga_testbench_coverage.py\nA  scripts/generate_fpga_scenarios.py\nA  scripts/run_fpga_testbench.py\nA  src/rust/rt_fpga_sim/CONTINUOUS_BENCH.md\nM  src/rust/rt_fpga_sim/MONO_VALIDATION.md\nM  src/rust/rt_fpga_sim/README.md\nM  src/rust/rt_fpga_sim/VALIDATION.md\nM  src/rust/rt_fpga_sim/src/simulator.rs\nM  src/rust/rt_fpga_sim/tests/marlin.rs\nA  src/rust/rt_fpga_testbench/Cargo.toml\nA  src/rust/rt_fpga_testbench/README.md\nA  src/rust/rt_fpga_testbench/coverage.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-audio.json\nA  src/rust/rt_fpga_testbench/fixtures/continuous-baseline.json\nA  src/rust/rt_fpga_testbench/fixtures/production-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/production-faults.json\nA  src/rust/rt_fpga_testbench/fixtures/transition-directed.json\nA  src/rust/rt_fpga_testbench/fixtures/zedboard-scenario.json\nA  src/rust/rt_fpga_testbench/src/bits.rs\nA  src/rust/rt_fpga_testbench/src/clock.rs\nA  src/rust/rt_fpga_testbench/src/codec.rs\nA  src/rust/rt_fpga_testbench/src/drivers/audio.rs\nA  src/rust/rt_fpga_testbench/src/drivers/chunk.rs\nA  src/rust/rt_fpga_testbench/src/drivers/config.rs\nA  src/rust/rt_fpga_testbench/src/drivers/endpoint.rs\nA  src/rust/rt_fpga_testbench/src/drivers/execution.rs\nA  src/rust/rt_fpga_testbench/src/drivers/frames.rs\nA  src/rust/rt_fpga_testbench/src/drivers/loops.rs\nA  src/rust/rt_fpga_testbench/src/drivers/mod.rs\nA  src/rust/rt_fpga_testbench/src/drivers/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/drivers/request.rs\nA  src/rust/rt_fpga_testbench/src/drivers/state.rs\nA  src/rust/rt_fpga_testbench/src/drivers/store.rs\nA  src/rust/rt_fpga_testbench/src/drivers/stream.rs\nAM src/rust/rt_fpga_testbench/src/drivers/transition.rs\nA  src/rust/rt_fpga_testbench/src/images.rs\nAM src/rust/rt_fpga_testbench/src/lib.rs\nAM src/rust/rt_fpga_testbench/src/main.rs\nA  src/rust/rt_fpga_testbench/src/memory/axi.rs\nA  src/rust/rt_fpga_testbench/src/memory/legacy.rs\nA  src/rust/rt_fpga_testbench/src/memory/mod.rs\nA  src/rust/rt_fpga_testbench/src/model.rs\nAM src/rust/rt_fpga_testbench/src/prepared.rs\nA  src/rust/rt_fpga_testbench/src/protocol.rs\nA  src/rust/rt_fpga_testbench/src/random.rs\nA  src/rust/rt_fpga_testbench/src/reference.rs\nA  src/rust/rt_fpga_testbench/src/report.rs\nA  src/rust/rt_fpga_testbench/src/sim.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio.rs\nA  src/rust/rt_fpga_testbench/src/suites/audio_io.rs\nA  src/rust/rt_fpga_testbench/src/suites/axi.rs\nA  src/rust/rt_fpga_testbench/src/suites/chunk.rs\nA  src/rust/rt_fpga_testbench/src/suites/continuous.rs\nA  src/rust/rt_fpga_testbench/src/suites/control.rs\nA  src/rust/rt_fpga_testbench/src/suites/demo.rs\nA  src/rust/rt_fpga_testbench/src/suites/direct.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/basic.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/campaign.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/deferred.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/media/ownership.rs\nA  src/rust/rt_fpga_testbench/src/suites/metadata.rs\nA  src/rust/rt_fpga_testbench/src/suites/mod.rs\nA  src/rust/rt_fpga_testbench/src/suites/pipeline.rs\nA  src/rust/rt_fpga_testbench/src/suites/production.rs\nA  src/rust/rt_fpga_testbench/src/suites/production_faults.rs\nA  src/rust/rt_fpga_testbench/src/suites/resolver.rs\nA  src/rust/rt_fpga_testbench/src/suites/smoothing.rs\nA  src/rust/rt_fpga_testbench/src/suites/state.rs\nAM src/rust/rt_fpga_testbench/src/suites/transition.rs\nA  src/rust/rt_fpga_testbench/src/suites/zedboard.rs\nA  src/rust/rt_fpga_testbench/src/timing/dram.rs\nA  src/rust/rt_fpga_testbench/src/timing/mod.rs\nA  src/rust/rt_fpga_testbench/tests/audio.rs\nA  src/rust/rt_fpga_testbench/tests/audio_io.rs\nA  src/rust/rt_fpga_testbench/tests/axi.rs\nA  src/rust/rt_fpga_testbench/tests/campaign.rs\nA  src/rust/rt_fpga_testbench/tests/chunk.rs\nA  src/rust/rt_fpga_testbench/tests/continuous.rs\nA  src/rust/rt_fpga_testbench/tests/core.rs\nA  src/rust/rt_fpga_testbench/tests/deferred.rs\nA  src/rust/rt_fpga_testbench/tests/demo.rs\nA  src/rust/rt_fpga_testbench/tests/direct.rs\nA  src/rust/rt_fpga_testbench/tests/media.rs\nA  src/rust/rt_fpga_testbench/tests/metadata.rs\nA  src/rust/rt_fpga_testbench/tests/ownership.rs\nA  src/rust/rt_fpga_testbench/tests/pipeline.rs\nA  src/rust/rt_fpga_testbench/tests/production.rs\nA  src/rust/rt_fpga_testbench/tests/smoothing.rs\nA  src/rust/rt_fpga_testbench/tests/state.rs\nA  src/rust/rt_fpga_testbench/tests/timing.rs\nA  src/rust/rt_fpga_testbench/tests/transition.rs\nA  src/rust/rt_fpga_testbench/tests/zedboard.rs\nM  third_party/marlin-verilator/README.md\nM  third_party/marlin-verilator/SHOOP_PATCH.md\nM  third_party/marlin-verilator/src/dynamic.rs\nM  third_party/marlin-verilator/src/lib.rs\n?? src/rust/rt_fpga_testbench/src/command_measurements.rs"
       },
       "empty_list": {
+        "cancel": 11,
+        "cancelled_collect": 4,
+        "collect": 4,
         "install": 16,
         "process": 44,
         "read_state": 4,
-        "status": 1,
-        "collect": 4,
-        "cancel": 11,
-        "cancelled_collect": 4
+        "status": 1
       },
       "duplicate_cycles": 0,
       "full_cycles": 0,
@@ -432,24 +442,30 @@
       "host_service": {
         "begin": {
           "samples": 317,
-          "min_ns": 580,
-          "median_ns": 76786,
-          "p95_ns": 198490,
-          "max_ns": 436518
+          "min_ns": 90,
+          "median_ns": 68543,
+          "p95_ns": 188013,
+          "max_ns": 815870
         },
         "finish": {
           "samples": 314,
-          "min_ns": 150,
-          "median_ns": 701.0,
-          "p95_ns": 3966,
-          "max_ns": 43466
+          "min_ns": 90,
+          "median_ns": 135.5,
+          "p95_ns": 1502,
+          "max_ns": 3656
         }
       },
       "payload_bytes": {
-        "install": 80,
         "cancel": 80,
-        "collect_response": 104
-      }
+        "collect_response": 104,
+        "install": 80
+      },
+      "source_manifest": {
+        "tp_ram.sv": "1ef615a4b148be6d348174b0533250fe7b1756cc066f4e5d68c16b46ee32e9ca",
+        "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+        "transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+      },
+      "runner": "rt_fpga_testbench command-costs (native Marlin)"
     }
   },
   "vivado": {
@@ -485,8 +501,10 @@
     "runtime": "original Ubuntu 20.04 runtime layers; uid/gid 1000; vendor files mounted read-only; network disabled; original libudev.so.1 preloaded"
   },
   "commands_harness_sha256": {
-    "fpga/transition_processor/measure_commands.py": "7cdea27ded962224202811c520ebd534fdf207fcbe777beba4945c05cad2eaa4",
-    "fpga/transition_processor/tests/test_command_measurements.py": "e65f77d18da36bd640d64d7307fdeba6de273b73bc3501f250d5e2c460564338"
+    "fpga/transition_processor/measure_commands.py": "281c421aca664629f4dde4e527ac29865ae4ab800e6e3abd3a7cc45a57b70c91",
+    "src/rust/rt_fpga_testbench/src/command_measurements.rs": "8a7d808661aeab4017cdd77b7ea9bc8f167f0e63c688371b90816f233f25f043",
+    "src/rust/rt_fpga_testbench/src/drivers/transition.rs": "e0438dbe8a318b752e8050ab6d77ba8a2da1ba7e94c3a65721fd17b391cf0c12",
+    "src/rust/rt_fpga_testbench/src/suites/transition.rs": "dff5fc4f04651cd58dcbe93ac0022a68631bdc072337dddcac10ba8700e940ac"
   },
   "limitations": [
     "Host service timing is native x86_64 dev profile, opt-level=0, debug=0, and excludes JSON RPC/transport/serialization; not an ARM deadline claim.",
@@ -611,16 +629,14 @@
       }
     ],
     "native": {
+      "revision": "0658df28006a0256ebfd7686015da08c2ecc65a0",
       "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci --test-threads 2",
-      "run": 3254,
-      "passed": 3252,
-      "failed": 2,
+      "run": 3261,
+      "passed": 3261,
+      "failed": 0,
       "skipped": 11,
-      "failures": [
-        "shoop_app_protocol::codec attachment_and_greeting_carry_no_host_or_session_identifiers",
-        "shoop_app_protocol::codec heartbeat_records_have_a_canonical_cross_platform_representation"
-      ],
-      "resolution": "Baseline golden vectors expected protocol 34, baseline VERSION is 36. Corrected literals only; all 9 codec tests pass on targeted rerun. Full sweep not repeated."
+      "log_sha256": "5d827e6fa215d8aedad0ad4bddee856ed6f9b8c3b4e58d3f03183bf4ab2a7bfa",
+      "note": "Serialized final sweep after host/profile integration and protocol fixture/closed diagnostic pipe fixes. Later upstream 2bdd10c9 changes FPGA test infrastructure only; affected Marlin suites rerun separately."
     },
     "rust": {
       "service_tests": 7,
@@ -644,6 +660,45 @@
       "pipeline": "Full common pipeline corpus passes again, now also with stalls.",
       "cycles": "Both pool depths reproduce all earlier cycle counts exactly.",
       "lint": "All five lint/generic configurations and default ECP5 mapping pass again."
+    },
+    "migration": {
+      "upstream": "2bdd10c9",
+      "rtl_revision": "2e19b3d5b5d7b5354c12ebddb328193d995f8ec9",
+      "transition": "All five capacities pass seven groups and 20 seeded cases each after driver migration.",
+      "commands": "R=11 and R=272 baseline/current Marlin measurements reproduce every historical cycle, metadata and payload field.",
+      "route": "Final merged RTL routed again; utilization and setup/hold reproduce the cleanup result exactly.",
+      "full_native": "3261 passed, 11 skipped; see native record.",
+      "kernel_and_service": {
+        "kernel": {
+          "log_sha256": "d9c4ae9064b4e46d92fbbc4adeb0f0b224aab45da1085e00167ade5e34e9b8ab",
+          "result": "passed"
+        },
+        "service": {
+          "log_sha256": "c18121f3f3f67913f8857a5d1da3dc90d39d8964158f83460ba700e3e216eee5",
+          "result": "passed"
+        },
+        "bounded_app": {
+          "log_sha256": "bc73f5bcf1d67d33af105abb863f1c030a9a093471bd3bea0fe8794f3c3502a3",
+          "result": "passed"
+        },
+        "scope_lifetime": {
+          "log_sha256": "bf7e8a4a4a75fa61b49a31d805ac4e8180823f9e412dd09eecf2849dd3977915",
+          "result": "passed"
+        },
+        "axi_matrix": {
+          "log_sha256": "68ceb93f5406402664e1706a076a9c73cd4e59b74a69d13799a58f8b226eb09c",
+          "result": "passed"
+        }
+      },
+      "review": "No submitted reviews or review threads at final inspection; no approval claimed.",
+      "ci": "Final CI inspection waived by explicit user instruction on 2026-11-13: Once pushed, don't check ci.",
+      "expanded_matrix": {
+        "command": "cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture",
+        "status": "stopped by explicit user instruction: Push and stop, no more testing",
+        "completed_groups": "audio, audio_io, AXI, ownership campaign; other targets incomplete",
+        "full_pass_claimed": false
+      },
+      "scope_context_fix_revision": "b30f7f21"
     }
   },
   "initial_indexed_install": {
@@ -758,7 +813,7 @@
       }
     }
   },
-  "report_note": "Published Vivado text reports normalize trailing whitespace at line ends and EOF only; source_report_sha256 refers to the original local reports and published_report_sha256 to the committed copies.",
+  "report_note": "Published Vivado text reports normalize trailing whitespace at line ends and EOF only; source_report_sha256 refers to original reports and published_report_sha256 to committed copies. Command provenance records the in-progress merge worktree; frozen source and runner hashes identify the measured contents.",
   "multi_loop_processing": {
     "default": {
       "depths": [
